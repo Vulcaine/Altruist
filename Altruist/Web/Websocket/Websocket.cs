@@ -9,14 +9,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Web;
 
-public static class AltruistWebExtensions
-{
-    public static AltruistCacheBuilder SetupWebsocket(this AltruistConnectionBuilder builder, Func<WebSocketConnectionSetup, WebSocketConnectionSetup> setup)
-    {
-        return builder.SetupTransport(WebSocketTransportToken.Instance, setup);
-    }
-}
-
 public sealed class WebSocketTransport : ITransport
 {
     public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path)

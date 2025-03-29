@@ -127,7 +127,7 @@ namespace Altruist
             return new AltruistDatabaseBuilder(Builder, Settings);
         }
 
-        public AltruistDatabaseBuilder SetupCache<TCacheConnectionSetup>(ICacheServiceToken token, Func<TCacheConnectionSetup, TCacheConnectionSetup> setup) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
+        public AltruistDatabaseBuilder SetupCache<TCacheConnectionSetup>(ICacheServiceToken token, Func<TCacheConnectionSetup, TCacheConnectionSetup>? setup) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
         {
             var serviceCollection = Builder.Services.AddSingleton<TCacheConnectionSetup>();
             var setupInstance = serviceCollection.BuildServiceProvider().GetService<TCacheConnectionSetup>();
@@ -163,6 +163,11 @@ namespace Altruist
         {
             Builder = builder;
             Settings = settings;
+        }
+
+        public void StartServer()
+        {
+            new AltruistServerBuilder(Builder, Settings).StartServer();
         }
 
         public AltruistServerBuilder NoDatabase()
