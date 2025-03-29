@@ -64,4 +64,48 @@ AltruistBuilder.Create(args)
     })
     .UseCache<RedisConnectionSetup>(RedisCacheServiceToken.Instance)
     .EnableEngine(FrameRate.Hz30)
-    .StartServer();
+        .StartServer();
+```
+
+### Steps:
+- Setup Transport: Define your WebSocket transport layer and map portals for different components.
+
+- Setup Database: Configure your ScyllaDB connection and keyspace setup for persistent storage.
+
+- Cache Integration: Use Redis as a caching service.
+
+- Engine Control: Control the server frame rate using EnableEngine.
+
+- Start Server: Launch the server with StartServer.
+
+## Key Concepts of Portals:
+1. Entry Point for Communication: A portal is the entry point for handling communication from clients (e.g., players). It serves as the gateway for various actions within the game.
+2. Automatically Handles Common Functionality: When you define a portal, you gain automatic support for common game server functionalities, such as:
+
+    - Session management: Handling player connections and disconnections.
+
+    - Room management: Organizing players into game rooms or sessions (e.g., multiplayer rooms).
+
+    - Player actions: Mapping client actions (e.g., movement, attack, chat) to game logic.
+
+These common functionalities are handled by the framework, so you don’t need to write boilerplate code to manage these aspects of the game.
+
+3. Customizable: While Altruist provides built-in functionality, you can extend the behavior of a portal to meet the specific needs of your game. You can define how data should be handled, how clients should interact with each other, and how game logic should be executed for specific game events.
+
+### Example Portal Usage:
+
+```csharp
+namespace GameGateway.Portals
+{
+    public class SpaceshipGamePortal : AltruistSpaceshipGamePortal
+    {
+        public SpaceshipGamePortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+        {
+        }
+    }
+}
+```
+
+The SpaceshipGamePortal inherits from AltruistSpaceshipGamePortal. This base class provides common functionalities for handling spaceship-related game logic, like joining the game or processing interactions.
+
+When you create a portal like this, it automatically enables functionalities like room management, player session management, and the basic communication flow between the client and server. The only things you need to handle are game-specific mechanics (like what happens when a player moves their spaceship).
