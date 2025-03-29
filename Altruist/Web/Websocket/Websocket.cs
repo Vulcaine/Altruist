@@ -84,7 +84,7 @@ public sealed class WebSocketTransportToken : ITransportServiceToken
     public static WebSocketTransportToken Instance = new WebSocketTransportToken();
     public ITransportConfiguration Configuration => new WebSocketConfiguration();
 
-    public string Description => "<Transport> WebSocket";
+    public string Description => "📡 Transport: WebSocket";
 }
 
 

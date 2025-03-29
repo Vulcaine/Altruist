@@ -350,14 +350,14 @@ namespace Altruist
 
             logBuilder.AppendLine("╔════════════════════════════════════════════════════╗");
             logBuilder.AppendLine("║ The Portals Are Open! Connect At:                  ║");
-
+            logBuilder.AppendLine("║".PadRight(lineWidth + 3, '-') + "║");
             foreach (var line in settingsLines)
             {
                 int currentLineLength = "║ ".Length + line.Length + " ║".Length;
                 string paddedLine = $"║ {line.PadRight(currentLineLength + (lineWidth - currentLineLength))} ║";
                 logBuilder.AppendLine(paddedLine);
             }
-
+            logBuilder.AppendLine("║".PadRight(lineWidth + 3, '-') + "║");
             logBuilder.AppendLine("║ ✨ Welcome, traveler! 🧙                           ║");
             logBuilder.AppendLine("╚════════════════════════════════════════════════════╝");
 

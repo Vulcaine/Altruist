@@ -37,7 +37,7 @@ public sealed class RedisCacheServiceToken : ICacheServiceToken
     public static readonly RedisCacheServiceToken Instance = new();
     public ICacheConfiguration Configuration => new RedisServiceConfiguration();
 
-    public string Description => "<Cache> Redis";
+    public string Description => "💾 Cache: Redis";
 }
 
 public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionSetup>, ICacheConnectionSetupBase

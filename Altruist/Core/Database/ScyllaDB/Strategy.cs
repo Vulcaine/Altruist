@@ -3,6 +3,7 @@ using Altruist.Contracts;
 using Altruist.Database;
 using Cassandra;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Altruist.ScyllaDB;
 
@@ -21,7 +22,7 @@ public sealed class ScyllaDBToken : IDatabaseServiceToken
     public static ScyllaDBToken Instance { get; } = new ScyllaDBToken();
     public IDatabaseConfiguration Configuration => new ScyllaDBConfiguration();
 
-    public string Description => "<Database> ScyllaDB";
+    public string Description => "💾 Database: ScyllaDB";
 }
 
 public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TScyllaKeyspace> where TScyllaKeyspace : class, IScyllaKeyspace
@@ -56,9 +57,12 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
 
     public override void Build()
     {
+        ILoggerFactory factory = _services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+        ILogger logger = factory.CreateLogger<ScyllaDBConnectionSetup>();
+
         if (_contactPoints.Count == 0)
         {
-            throw new InvalidOperationException("Connection string is not set for ScyllaDB.");
+            _contactPoints.Add("localhost:9042");
         }
 
         _services.AddSingleton<IScyllaDbProvider>(sp => new ScyllaDbProvider(_contactPoints));
@@ -75,6 +79,8 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
                 keyspaceSetup.BuildInternal();
             }
         }
+
+        logger.LogInformation("⚡ ScyllaDB support activated. Ready to store and distribute data across realms with incredible speed! 🌌");
     }
 }
 

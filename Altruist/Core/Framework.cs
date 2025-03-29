@@ -37,7 +37,7 @@ namespace Altruist
 
             foreach (var endpoint in Endpoints)
             {
-                lines.Add($"💻 {serverString}{endpoint}");
+                lines.Add($"💻 Address: {serverString}{endpoint}");
             }
 
             if (!string.IsNullOrEmpty(TransportToken.Description))
