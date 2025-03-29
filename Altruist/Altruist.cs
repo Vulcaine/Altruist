@@ -13,11 +13,7 @@ namespace Altruist
     public class AltruistBuilder
     {
         private WebApplicationBuilder Builder { get; }
-
-
         public IAltruistContext Settings { get; } = new AltruistServerContext();
-
-        // private readonly Dictionary<Type, string> _portals = new();
 
         private AltruistBuilder(string[] args)
         {
@@ -27,6 +23,7 @@ namespace Altruist
             var frameworkVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1";
             Builder.Logging.AddProvider(new AltruistLoggerProvider(frameworkVersion));
 
+            // Add core services
             Builder.Services.AddSingleton(Builder.Services);
             Builder.Services.AddSingleton(Settings);
             Builder.Services.AddSingleton<ClientSender>();
@@ -34,7 +31,6 @@ namespace Altruist
             Builder.Services.AddSingleton<RoomSender>();
             Builder.Services.AddSingleton<BroadcastSender>();
             Builder.Services.AddSingleton<ClientSynchronizator>();
-
             // Setup cache
             Builder.Services.AddSingleton<InMemoryCache>();
             Builder.Services.AddSingleton<IMemoryCache>(sp => sp.GetRequiredService<InMemoryCache>());
@@ -50,78 +46,24 @@ namespace Altruist
             Builder.Services.AddSingleton(typeof(IPlayerService<>), typeof(InMemoryPlayerService<>));
         }
 
-        public static AltruistBuilder Create(string[] args) => new AltruistBuilder(args);
+        public static AltruistConnectionBuilder Create(string[] args) => new AltruistBuilder(args).ToConnectionBuilder();
 
-        public IServiceCollection Services => Builder.Services;
+        private AltruistConnectionBuilder ToConnectionBuilder() => new AltruistConnectionBuilder(Builder, Settings);
+    }
 
+    // Step 1: Choose Transport
+    public class AltruistConnectionBuilder
+    {
+        protected readonly WebApplicationBuilder Builder;
+        protected readonly IAltruistContext Settings;
 
-
-
-        public AltruistBuilder AddSingleton<TObject>() where TObject : class
+        internal AltruistConnectionBuilder(WebApplicationBuilder builder, IAltruistContext settings)
         {
-            Builder.Services.AddSingleton<TObject>();
-            return this;
+            Builder = builder;
+            Settings = settings;
         }
 
-        private AltruistBuilder UseCache<TCacheConnectionSetup>(ICacheServiceToken token, TCacheConnectionSetup instance) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
-        {
-            token.Configuration.Configure(Builder.Services);
-            Builder.Services.AddSingleton<TCacheConnectionSetup>();
-            Builder.Services.AddSingleton(token);
-            instance.Build();
-            // readding the built instance
-            Builder.Services.AddSingleton(instance);
-            return this;
-        }
-
-        public AltruistEngineBuilder InMemoryCache()
-        {
-            return new AltruistEngineBuilder(Builder, Settings);
-        }
-
-        public AltruistEngineBuilder UseCache<TCacheConnectionSetup>(ICacheServiceToken token) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
-        {
-            token.Configuration.Configure(Builder.Services);
-            var setupInstance = Builder.Services.BuildServiceProvider()
-                .GetRequiredService<TCacheConnectionSetup>();
-            UseCache(token, setupInstance);
-            return new AltruistEngineBuilder(Builder, Settings);
-        }
-
-        public AltruistBuilder UseCache<TCacheConnectionSetup>(ICacheServiceToken token, Func<TCacheConnectionSetup, TCacheConnectionSetup> setup) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
-        {
-            var serviceCollection = Builder.Services.AddSingleton<TCacheConnectionSetup>();
-            var setupInstance = serviceCollection.BuildServiceProvider().GetService<TCacheConnectionSetup>();
-
-            if (setup != null)
-            {
-                setupInstance = setup(setupInstance!);
-            }
-
-            UseCache(token, setupInstance!);
-
-            return this;
-        }
-
-        private AltruistBuilder UseTransport<TTransportConnectionSetup>(ITransportServiceToken token, TTransportConnectionSetup instance) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
-        {
-            token.Configuration.Configure(Builder.Services);
-            Builder.Services.AddSingleton(token);
-            instance.Build();
-            // readding the built instance
-            Builder.Services.AddSingleton(instance);
-            return this;
-        }
-
-        public AltruistBuilder UseTransport<TTransportConnectionSetup>(ITransportServiceToken token) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
-        {
-            token.Configuration.Configure(Builder.Services);
-            var setupInstance = Builder.Services.BuildServiceProvider()
-                .GetRequiredService<TTransportConnectionSetup>();
-            return UseTransport(token, setupInstance);
-        }
-
-        public AltruistBuilder SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token, Func<TTransportConnectionSetup, TTransportConnectionSetup> setup) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
+        public AltruistCacheBuilder SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token, Func<TTransportConnectionSetup, TTransportConnectionSetup> setup) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
         {
             var serviceCollection = Builder.Services.AddSingleton<TTransportConnectionSetup>();
             var setupInstance = serviceCollection.BuildServiceProvider().GetService<TTransportConnectionSetup>();
@@ -131,31 +73,122 @@ namespace Altruist
                 setupInstance = setup(setupInstance!);
             }
 
-            UseTransport(token, setupInstance!);
-
-            return this;
+            SetupTransport(token, setupInstance!);
+            Settings.TransportToken = token;
+            return new AltruistCacheBuilder(Builder, Settings);
         }
 
-        public AltruistBuilder SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, Func<TDatabaseConnectionSetup, TDatabaseConnectionSetup> setup) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
+        private void SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token, TTransportConnectionSetup instance) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
+        {
+            token.Configuration.Configure(Builder.Services);
+            Builder.Services.AddSingleton(token);
+            instance.Build();
+            // readding the built instance
+            Builder.Services.AddSingleton(instance);
+        }
+
+        public void SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
+        {
+            token.Configuration.Configure(Builder.Services);
+            var setupInstance = Builder.Services.BuildServiceProvider()
+                .GetRequiredService<TTransportConnectionSetup>();
+            SetupTransport(token, setupInstance);
+        }
+    }
+
+    // Step 2: Choose Cache
+    public class AltruistCacheBuilder
+    {
+        protected readonly WebApplicationBuilder Builder;
+        protected readonly IAltruistContext Settings;
+
+        internal AltruistCacheBuilder(WebApplicationBuilder builder, IAltruistContext settings)
+        {
+            Builder = builder;
+            Settings = settings;
+        }
+
+        public void StartServer()
+        {
+            new AltruistServerBuilder(Builder, Settings).StartServer();
+        }
+
+        public AltruistDatabaseBuilder NoCache()
+        {
+            return new AltruistDatabaseBuilder(Builder, Settings);
+        }
+
+        public AltruistDatabaseBuilder SetupCache<TCacheConnectionSetup>(ICacheServiceToken token) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
+        {
+            token.Configuration.Configure(Builder.Services);
+            var setupInstance = Builder.Services.BuildServiceProvider()
+                .GetRequiredService<TCacheConnectionSetup>();
+            SetupCache(token, setupInstance);
+            return new AltruistDatabaseBuilder(Builder, Settings);
+        }
+
+        public AltruistDatabaseBuilder SetupCache<TCacheConnectionSetup>(ICacheServiceToken token, Func<TCacheConnectionSetup, TCacheConnectionSetup> setup) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
+        {
+            var serviceCollection = Builder.Services.AddSingleton<TCacheConnectionSetup>();
+            var setupInstance = serviceCollection.BuildServiceProvider().GetService<TCacheConnectionSetup>();
+
+            if (setup != null)
+            {
+                setupInstance = setup(setupInstance!);
+            }
+
+            SetupCache(token, setupInstance!);
+
+            return new AltruistDatabaseBuilder(Builder, Settings);
+        }
+
+        private void SetupCache<TCacheConnectionSetup>(ICacheServiceToken token, TCacheConnectionSetup instance) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>
+        {
+            token.Configuration.Configure(Builder.Services);
+            Builder.Services.AddSingleton<TCacheConnectionSetup>();
+            Builder.Services.AddSingleton(token);
+            instance.Build();
+            // readding the built instance
+            Builder.Services.AddSingleton(instance);
+        }
+    }
+
+    // Step 3: Choose Database
+    public class AltruistDatabaseBuilder
+    {
+        protected readonly WebApplicationBuilder Builder;
+        protected readonly IAltruistContext Settings;
+
+        internal AltruistDatabaseBuilder(WebApplicationBuilder builder, IAltruistContext settings)
+        {
+            Builder = builder;
+            Settings = settings;
+        }
+
+        public AltruistServerBuilder NoDatabase()
+        {
+            return new AltruistServerBuilder(Builder, Settings);
+        }
+
+        public AltruistServerBuilder SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, Func<TDatabaseConnectionSetup, TDatabaseConnectionSetup> setup) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
         {
             token.Configuration.Configure(Builder.Services);
             Builder.Services.AddSingleton<TDatabaseConnectionSetup>();
             setup(Builder.Services.BuildServiceProvider()
                 .GetRequiredService<TDatabaseConnectionSetup>()).Build();
             Builder.Services.AddSingleton(token);
-            return this;
+            return new AltruistServerBuilder(Builder, Settings);
         }
-
-
     }
 
     public class AltruistServerBuilder
     {
         private WebApplicationBuilder Builder { get; }
         private WebApplication? App { get; set; }
-        public AltruistServerBuilder(WebApplicationBuilder webApplicationBuilder)
+        public AltruistServerBuilder(WebApplicationBuilder webApplicationBuilder, IAltruistContext altruistContext)
         {
             Builder = webApplicationBuilder;
+            altruistContext.Validate();
         }
 
         public void StartServer()
@@ -198,7 +231,7 @@ namespace Altruist
 
         public AltruistServerBuilder NoEngine()
         {
-            return new AltruistServerBuilder(Builder);
+            return new AltruistServerBuilder(Builder, Settings);
         }
 
         public AltruistServerBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
@@ -222,7 +255,7 @@ namespace Altruist
             Builder.Services.AddSingleton<IAltruistRouter>(sp => sp.GetRequiredService<IAltruistEngineRouter>());
             Builder.Services.AddSingleton<MethodScheduler>();
             Settings.EngineEnabled = true;
-            return new AltruistServerBuilder(Builder);
+            return new AltruistServerBuilder(Builder, Settings);
         }
     }
 

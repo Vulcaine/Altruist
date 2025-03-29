@@ -9,6 +9,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Web;
 
+public static class AltruistWebExtensions
+{
+    public static AltruistCacheBuilder SetupWebsocket(this AltruistConnectionBuilder builder, Func<WebSocketConnectionSetup, WebSocketConnectionSetup> setup)
+    {
+        return builder.SetupTransport(WebSocketTransportToken.Instance, setup);
+    }
+}
 
 public sealed class WebSocketTransport : ITransport
 {
@@ -22,7 +29,7 @@ public sealed class WebSocketTransport : ITransport
         UseWebSocketEndpoint(app, path, (app.ApplicationServices.GetRequiredService(type) as IConnectionManager)!, app.ApplicationServices);
     }
 
-    private void  UseWebSocketEndpoint(
+    private void UseWebSocketEndpoint(
         IApplicationBuilder app, string path, IConnectionManager wsManager, IServiceProvider serviceProvider)
     {
         var shieldAttribute = wsManager.GetType().GetCustomAttribute<ShieldAttribute>();
@@ -67,7 +74,7 @@ public sealed class WebSocketConfiguration : ITransportConfiguration
 
         services.AddSingleton<WebSocketConnectionSetup>();
         services.AddSingleton<ITransportConnectionSetupBase>(sp => sp.GetRequiredService<WebSocketConnectionSetup>());
-        
+
         services.AddSingleton<ITransportConfiguration, WebSocketConfiguration>();
         services.AddSingleton<ITransportServiceToken, WebSocketTransportToken>();
     }

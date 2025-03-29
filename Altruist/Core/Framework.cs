@@ -1,4 +1,6 @@
 
+using Altruist.Contracts;
+
 namespace Altruist
 {
     public class AltruistServerContext : IAltruistContext
@@ -10,7 +12,22 @@ namespace Altruist
 
         public bool EngineEnabled { get; set; }
 
+        public ITransportServiceToken TransportToken { get; set; }
+
         public void AddEndpoint(string endpoint) => Endpoints.Add(endpoint);
+
+        public void Validate()
+        {
+            if (Endpoints.Count == 0)
+            {
+                throw new ArgumentException("No endpoints to listen to. Setup a transport with .UseTransport");
+            }
+
+            if (TransportToken == null)
+            {
+                throw new ArgumentException("No transport setup. Setup a transport with .UseTransport");
+            }
+        }
 
         public override string ToString()
         {
