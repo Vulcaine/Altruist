@@ -1,7 +1,7 @@
-using Altruist;
-using Altruist.Gaming;
 using Microsoft.Extensions.Logging;
 using Moq;
+
+namespace Altruist.Gaming;
 
 public class AltruistGamePortalTests
 {
@@ -138,9 +138,8 @@ public class TestAltruistGamePortal : AltruistGamePortal<PlayerEntity>
         return base.Cleanup();
     }
 
-    public async Task JoinGameAsync(JoinGamePacket message, string clientId)
+    public override async Task JoinGameAsync(JoinGamePacket message, string clientId)
     {
-        // You can override JoinGameAsync for testing purposes if needed
         await base.JoinGameAsync(message, clientId);
     }
 }

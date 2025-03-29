@@ -1,7 +1,7 @@
-using Altruist;
-using Altruist.Redis;
 using Moq;
 using StackExchange.Redis;
+
+namespace Altruist.Redis;
 
 public class RedisSocketClientSenderTests
 {

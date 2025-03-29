@@ -5,6 +5,46 @@ using StackExchange.Redis;
 
 namespace Altruist.Redis;
 
+public class RedisCacheCursor<T> : ICacheCursor<T> where T : notnull
+{
+    private int BatchSize { get; }
+    private int CurrentIndex { get; set; }
+    private List<T> CurrentBatch { get; }
+
+    private readonly RedisConnectionProvider _provider;
+
+    public List<T> Items => CurrentBatch;
+    public bool HasNext => CurrentBatch.Count == BatchSize;
+
+    public RedisCacheCursor(RedisConnectionProvider provider, int batchSize)
+    {
+        _provider = provider;
+        BatchSize = batchSize;
+        CurrentIndex = 0;
+        CurrentBatch = new List<T>();
+    }
+
+    public async Task<bool> NextBatch()
+    {
+        CurrentBatch.Clear();
+        var repo = _provider.RedisCollection<T>();
+        var entities = await repo.Skip(CurrentIndex).Take(BatchSize).ToListAsync();
+
+        if (entities.Count == 0)
+            return false;
+
+        CurrentBatch.AddRange(entities);
+        CurrentIndex += entities.Count;
+        return true;
+    }
+
+    public IEnumerator<T> GetEnumerator()
+    {
+        return CurrentBatch.GetEnumerator();
+    }
+}
+
+
 public interface IAltruistRedisProvider : IExternalCache
 {
 
@@ -20,127 +60,119 @@ public interface IAltruistRedisConnectionProvider : IConnectionStore
 
 public sealed class RedisCache : IAltruistRedisProvider
 {
+    private readonly RedisConnectionProvider _provider;
     private readonly IDatabase _redis;
     private readonly IMessageEncoder _encoder;
     private readonly IMessageDecoder _decoder;
 
-    public RedisCache(IConnectionMultiplexer mux, IMessageEncoder encoder, IMessageDecoder decoder)
+    public RedisCache(
+        RedisConnectionProvider provider,
+        IConnectionMultiplexer mux, IMessageEncoder encoder, IMessageDecoder decoder)
     {
         _redis = mux.GetDatabase();
         _encoder = encoder;
         _decoder = decoder;
+        _provider = provider;
     }
 
-    public async Task<T?> GetAsync<T>(string key)
+    public async Task<T?> GetAsync<T>(string key) where T : notnull
     {
-        var value = await _redis.StringGetAsync(key);
-        return value.HasValue ? _decoder.Decode<T>(value!) : default;
+        var repo = _provider.RedisCollection<T>();
+        var entity = await repo.FindByIdAsync(key);
+        return entity;
     }
 
-    public async Task<CacheCursor<T>> GetAllAsync<T>(int batchSize = 100)
+    public Task<ICacheCursor<T>> GetAllAsync<T>(int batchSize = 100) where T : notnull
     {
-        return await CreateCursorAsync<T>(string.Empty, batchSize);
+        var cursor = new RedisCacheCursor<T>(_provider, batchSize);
+        return Task.FromResult(cursor as ICacheCursor<T>);
     }
 
-
-    public Task<CacheCursor<T>> GetAllAsync<T>()
+    public Task<object?> GetAsync(string key, Type type)
     {
-        return GetAllAsync<T>(100);
+        throw new NotSupportedException("GetAsync(string key, Type type) is not supported when using Redis OM.");
     }
 
-    public async Task<CacheCursor<IModel>> GetAllAsync(Type type, int batchSize = 100)
+    public async Task SaveAsync<T>(string key, T entity) where T : notnull
     {
-        return await CreateCursorAsync<IModel>(string.Empty, batchSize);
+        var repo = _provider.RedisCollection<T>();
+        await repo.InsertAsync(entity);
+        await repo.SaveAsync();
     }
 
-    public async Task<object?> GetAsync(string key, Type type)
+    public Task SaveAsync(string key, object entity, Type type)
     {
-        var value = await _redis.StringGetAsync(key);
-        return value.HasValue ? _decoder.Decode(value!, type) : null;
+        throw new NotSupportedException("SaveAsync(string key, object entity, Type type) is not supported when using Redis OM.");
     }
 
-    public async Task SaveAsync<T>(string key, T entity)
+    public async Task SaveBatchAsync<T>(Dictionary<string, T> entities) where T : notnull
     {
-        var serialized = _encoder.Encode(entity as IModel);
-        await _redis.StringSetAsync(key, serialized);
-    }
-
-    public async Task SaveAsync(string key, object entity, Type type)
-    {
-        var serialized = _encoder.Encode(entity, type);
-        await _redis.StringSetAsync(key, serialized);
-    }
-
-    public async Task SaveBatchAsync<T>(Dictionary<string, T> entities)
-    {
-        var batch = _redis.CreateBatch();
+        var repo = _provider.RedisCollection<T>();
         foreach (var (key, entity) in entities)
         {
-            await batch.StringSetAsync(key, _encoder.Encode(entity as IModel));
+            await repo.InsertAsync(entity);
         }
-        batch.Execute();
+        await repo.SaveAsync();
     }
 
-    public async Task SaveBatchAsync(Dictionary<string, object> entities, Type type)
+    public Task SaveBatchAsync(Dictionary<string, object> entities, Type type)
     {
-        var batch = _redis.CreateBatch();
-        foreach (var (key, entity) in entities)
+        throw new NotSupportedException("SaveBatchAsync(Dictionary<string, object> entities, Type type) is not supported when using Redis OM.");
+    }
+
+    public async Task<T?> RemoveAsync<T>(string key) where T : notnull
+    {
+        var repo = _provider.RedisCollection<T>();
+
+        var element = await repo.FindByIdAsync(key);
+        if (element != null)
         {
-            await batch.StringSetAsync(key, _encoder.Encode(entity, type));
-        }
-        batch.Execute();
-    }
-
-    public Task<CacheCursor<object>> GetAllAsync(Type type)
-    {
-        return CreateCursorAsync<object>(string.Empty, 100);
-    }
-
-    public async Task<bool> RemoveAsync<T>(string key)
-    {
-        return await _redis.KeyDeleteAsync(key);
-    }
-
-    public async Task RemoveAsync(string key, Type type)
-    {
-        await _redis.KeyDeleteAsync(key);
-    }
-
-    public async Task<List<string>> GetBatchKeysAsync(string baseKey, int skip, int take)
-    {
-        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
-        var keys = server.KeysAsync(pattern: $"{baseKey}*");
-
-        var keyList = new List<string>();
-        await foreach (var key in keys)
-        {
-            keyList.Add(key.ToString());
+            await repo.DeleteAsync(element);
         }
 
-        return keyList.Skip(skip).Take(take).ToList();
+        return element;
     }
 
-
-    private Task<CacheCursor<T>> CreateCursorAsync<T>(string baseKey, int batchSize)
+    public Task RemoveAsync(string key, Type type)
     {
-        var cursor = new CacheCursor<T>(this, baseKey, batchSize);
-        return Task.FromResult(cursor);
+        throw new NotSupportedException("RemoveAsync(string key, Type type) is not supported when using Redis OM.");
     }
 
-    public async Task ClearAsync()
+    // public async Task<ICacheCursor<string>> GetBatchKeysAsync(string baseKey, int skip, int take)
+    // {
+    //     var repo = _provider.RedisCollection<object>();
+    //     var keys = await repo.KeysAsync(baseKey);
+    //     return keys.Skip(skip).Take(take).ToList();
+    // }
+
+    public async Task ClearAsync<T>() where T : notnull
     {
-        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
-        var keys = server.Keys(pattern: "*");
-        foreach (var key in keys)
-        {
-            await _redis.KeyDeleteAsync(key);
-        }
+        var repo = _provider.RedisCollection<T>();
+        var allItems = await repo.ToListAsync();
+        await repo.DeleteAsync(allItems);
     }
 
+    public async Task<ICacheCursor<T>> GetAllAsync<T>() where T : notnull
+    {
+        return await CreateCursorAsync<T>(nameof(T), 100);
+    }
 
+    public Task<ICacheCursor<object>> GetAllAsync(Type type)
+    {
+        throw new NotSupportedException("GetAllAsync(Type type) is not supported when using Redis OM.");
+    }
+
+    public Task ClearAllAsync()
+    {
+        throw new NotSupportedException("ClearAllAsync() is not supported when using Redis OM.");
+    }
+
+    private Task<ICacheCursor<T>> CreateCursorAsync<T>(string baseKey, int batchSize) where T : notnull
+    {
+        var cursor = new RedisCacheCursor<T>(_provider, batchSize);
+        return Task.FromResult(cursor as ICacheCursor<T>);
+    }
 }
-
-
 
 public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistRedisConnectionProvider
 {

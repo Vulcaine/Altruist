@@ -13,7 +13,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
     }
 
     [Gate(IngressEP.JOIN_GAME)]
-    public async Task JoinGameAsync(JoinGamePacket message, string clientId)
+    public async virtual Task JoinGameAsync(JoinGamePacket message, string clientId)
     {
         if (string.IsNullOrEmpty(message.Name))
         {
