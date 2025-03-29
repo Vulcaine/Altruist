@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Web\Web.csproj" />
+    <ProjectReference Include="..\Socket\Socket.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Altruist" Version="1.0.0" />
+</ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>Altruist.Redis</PackageId>
+    <Description>Redis module for Altruist framework.</Description>
+    <Version>0.1.0-alpha</Version>
+  </PropertyGroup>
+
+</Project>

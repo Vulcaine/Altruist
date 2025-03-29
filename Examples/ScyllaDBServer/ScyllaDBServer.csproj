@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Altruist\Altruist.csproj" />
+    <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
+    <ProjectReference Include="..\..\Altruist\Gaming\Gaming.csproj" />
+    <ProjectReference Include="..\..\Altruist\Redis\Redis.csproj" />
+    <ProjectReference Include="..\..\Altruist\ScyllaDB\ScyllaDB.csproj" />
+    <ProjectReference Include="..\..\Altruist\Web\Web.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

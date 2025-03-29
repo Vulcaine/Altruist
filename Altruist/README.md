@@ -2,7 +2,7 @@
 
 Altruist is a high-performance game server framework for real-time applications. It simplifies infrastructure setup, offering easy integration for transport, database, caching, and game mechanics.
 
-# Key Features
+# Features
 - Optimized for Real-Time: Handles many concurrent connections with minimal overhead.
 
 - **Cycle Attribute:** Control method execution rates (e.g., Hz30, Hz60).
@@ -28,6 +28,11 @@ using Portals;
 AltruistBuilder.Create(args, serviceBuilder => serviceBuilder.AddGamingSupport())
     .NoEngine()
     .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
+    .WithRedis(setup => setup
+        .AddDocument<Connection>()
+        .AddDocument<WebSocketConnection>()
+        .AddDocument<Spaceship>()
+        .AddDocument<RoomPacket>())
     .WebApp()
     .StartServer();
 ```
@@ -37,18 +42,14 @@ AltruistBuilder.Create(args, serviceBuilder => serviceBuilder.AddGamingSupport()
 
 - **Redis:** Add documents for caching and persistence.
 
-- **ScyllaDB:** Integrate with a high-speed scalable database.
-
 - **Start:** Launch your server with .StartServer().
-
-All you left to do is setting up the redis / scylladb server that Altruist can connect to. :)
 
 ## Create your portal
 
 ```csharp
 namespace GameGateway.Portals
 {
-    public class SpaceshipGamePortal : AltruistGameSessionPortal<SpaceshipPlayer>
+    public class SpaceshipGamePortal : AltruistSpaceshipGamePortal
     {
         ...
     }
