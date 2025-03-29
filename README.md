@@ -108,4 +108,4 @@ namespace GameGateway.Portals
 
 The SpaceshipGamePortal inherits from AltruistSpaceshipGamePortal. This base class provides common functionalities for handling spaceship-related game logic, like joining the game or processing interactions.
 
-When you create a portal like this, it automatically enables functionalities like room management, player session management, and the basic communication flow between the client and server. The only things you need to handle are game-specific mechanics (like what happens when a player moves their spaceship).
+When you create a portal like this, it automatically enables functionalities like room management, player session management, and the basic communication flow between the client and server. The only thing you need to know is which portal you have to plug in :)
