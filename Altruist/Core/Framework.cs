@@ -6,13 +6,14 @@ namespace Altruist
     public class AltruistServerContext : IAltruistContext
     {
         public ServerInfo ServerInfo { get; set; } = new ServerInfo("Altruist Server", "ws", "localhost", 3001);
-        public SupportedBackplane? Backplane { get; set; }
 
         public HashSet<string> Endpoints { get; set; } = new HashSet<string>();
 
         public bool EngineEnabled { get; set; }
 
         public ITransportServiceToken TransportToken { get; set; }
+        public IDatabaseServiceToken? DatabaseToken { get; set; }
+        public ICacheServiceToken? CacheToken { get; set; }
 
         public void AddEndpoint(string endpoint) => Endpoints.Add(endpoint);
 
@@ -39,9 +40,19 @@ namespace Altruist
                 lines.Add($"💻 {serverString}{endpoint}");
             }
 
-            if (!string.IsNullOrEmpty(Backplane?.ToString()))
+            if (!string.IsNullOrEmpty(TransportToken.Description))
             {
-                lines.Add(Backplane.ToString());
+                lines.Add(TransportToken.Description);
+            }
+
+            if (!string.IsNullOrEmpty(CacheToken?.Description))
+            {
+                lines.Add(CacheToken.Description);
+            }
+
+            if (!string.IsNullOrEmpty(DatabaseToken?.Description))
+            {
+                lines.Add(DatabaseToken.Description);
             }
 
             return string.Join(Environment.NewLine, lines);

@@ -4,16 +4,19 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Contracts;
 
-public interface IConfiguration {
+public interface IConfiguration
+{
     void Configure(IServiceCollection services);
 }
 
-public interface ICacheConfiguration : IConfiguration {
-    
+public interface ICacheConfiguration : IConfiguration
+{
+
 }
 
-public interface ITransportConfiguration : IConfiguration {
-    
+public interface ITransportConfiguration : IConfiguration
+{
+
 }
 
 public interface IDatabaseConfiguration : IConfiguration
@@ -21,24 +24,30 @@ public interface IDatabaseConfiguration : IConfiguration
     string DatabaseName { get; }
 }
 
-public interface IServiceToken<TConfiguration> where TConfiguration: IConfiguration  {
-    public TConfiguration Configuration {get;}
+public interface IServiceToken<TConfiguration> where TConfiguration : IConfiguration
+{
+    public string Description { get; }
+    public TConfiguration Configuration { get; }
 }
 
-public interface ICacheServiceToken : IServiceToken<ICacheConfiguration> {
-
-}
-
-public interface ITransportServiceToken : IServiceToken<ITransportConfiguration>  {
-    
-}
-
-public interface IDatabaseServiceToken : IServiceToken<IDatabaseConfiguration>  {
+public interface ICacheServiceToken : IServiceToken<ICacheConfiguration>
+{
 
 }
 
-public interface ISetup<TSelf> where TSelf : ISetup<TSelf> {
-     void Build();
+public interface ITransportServiceToken : IServiceToken<ITransportConfiguration>
+{
+
+}
+
+public interface IDatabaseServiceToken : IServiceToken<IDatabaseConfiguration>
+{
+
+}
+
+public interface ISetup<TSelf> where TSelf : ISetup<TSelf>
+{
+    void Build();
 }
 
 public interface IContactSetup<TSelf> : ISetup<TSelf> where TSelf : IContactSetup<TSelf>
@@ -47,11 +56,13 @@ public interface IContactSetup<TSelf> : ISetup<TSelf> where TSelf : IContactSetu
     TSelf AddContactPoint(string connectionString);
 }
 
-public interface IReconnectSetup<TSelf> : ISetup<TSelf> where TSelf : IReconnectSetup<TSelf> {
+public interface IReconnectSetup<TSelf> : ISetup<TSelf> where TSelf : IReconnectSetup<TSelf>
+{
     TSelf Reconnect(int afterSeconds);
 }
 
-public interface IExternalContactSetup<TSelf> : IContactSetup<TSelf>, IReconnectSetup<TSelf> where TSelf : IExternalContactSetup<TSelf> {
+public interface IExternalContactSetup<TSelf> : IContactSetup<TSelf>, IReconnectSetup<TSelf> where TSelf : IExternalContactSetup<TSelf>
+{
 
 }
 
@@ -99,7 +110,7 @@ public abstract class ConnectionSetupBase<TSelf> : IContactSetup<TSelf>
 
 public interface ICacheConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : ICacheConnectionSetup<TSelf> { }
 
-public interface ICacheConnectionSetupBase {}
+public interface ICacheConnectionSetupBase { }
 
 public abstract class CacheConnectionSetup<TSelf> : ExternalConnectionSetupBase<TSelf>, ICacheConnectionSetup<TSelf> where TSelf : CacheConnectionSetup<TSelf>
 {
@@ -108,7 +119,7 @@ public abstract class CacheConnectionSetup<TSelf> : ExternalConnectionSetupBase<
     }
 }
 
-public interface IDatabaseConnectionSetup<TSelf>  : IExternalContactSetup<TSelf>  where TSelf : IDatabaseConnectionSetup<TSelf> { }
+public interface IDatabaseConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : IDatabaseConnectionSetup<TSelf> { }
 
 public abstract class DatabaseConnectionSetup<TSelf> : ExternalConnectionSetupBase<TSelf>, IDatabaseConnectionSetup<TSelf> where TSelf : DatabaseConnectionSetup<TSelf>
 {
@@ -133,8 +144,9 @@ public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnection
 {
     public Dictionary<Type, string> Portals { get; } = new();
     protected readonly IServiceCollection _services;
-     protected readonly IAltruistContext _altruistContext;
-    public TransportConnectionSetupBase(IServiceCollection services) {
+    protected readonly IAltruistContext _altruistContext;
+    public TransportConnectionSetupBase(IServiceCollection services)
+    {
         _services = services;
         _altruistContext = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
     }
@@ -147,7 +159,7 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
     where TSelf : TransportConnectionSetup<TSelf>
 {
     private readonly IAltruistContext _settings;
-    
+
     protected TransportConnectionSetup(IServiceCollection services, IAltruistContext settings)
         : base(services)
     {
@@ -155,13 +167,13 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
     }
 
 
-    public override TSelf MapPortal<P>(string path) 
+    public override TSelf MapPortal<P>(string path)
     {
         Portals[typeof(P)] = path;
         return (TSelf)this;
     }
 
-    public override TSelf MapRelayPortal<P>(string host, int port, string eventName) 
+    public override TSelf MapRelayPortal<P>(string host, int port, string eventName)
     {
         _services.AddTransient<IRelayService, AltruistRelayService>(sp =>
         {
@@ -188,7 +200,7 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
             return instance;
         });
 
-        return (TSelf) this;
+        return (TSelf)this;
     }
 
     public override void Build()
@@ -200,7 +212,7 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
 
             _services.AddSingleton(type);
             _settings.AddEndpoint(path);
-            
+
             if (typeof(IPortal).IsAssignableFrom(type))
             {
                 _services.AddSingleton(typeof(IPortal), sp => sp.GetRequiredService(type));

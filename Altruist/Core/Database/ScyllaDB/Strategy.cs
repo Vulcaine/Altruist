@@ -20,6 +20,8 @@ public sealed class ScyllaDBToken : IDatabaseServiceToken
 {
     public static ScyllaDBToken Instance { get; } = new ScyllaDBToken();
     public IDatabaseConfiguration Configuration => new ScyllaDBConfiguration();
+
+    public string Description => "<Database> ScyllaDB";
 }
 
 public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TScyllaKeyspace> where TScyllaKeyspace : class, IScyllaKeyspace

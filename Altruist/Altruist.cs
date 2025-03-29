@@ -74,7 +74,6 @@ namespace Altruist
             }
 
             SetupTransport(token, setupInstance!);
-            Settings.TransportToken = token;
             return new AltruistCacheBuilder(Builder, Settings);
         }
 
@@ -85,6 +84,7 @@ namespace Altruist
             instance.Build();
             // readding the built instance
             Builder.Services.AddSingleton(instance);
+            Settings.TransportToken = token;
         }
 
         public void SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
@@ -138,7 +138,6 @@ namespace Altruist
             }
 
             SetupCache(token, setupInstance!);
-
             return new AltruistDatabaseBuilder(Builder, Settings);
         }
 
@@ -150,6 +149,7 @@ namespace Altruist
             instance.Build();
             // readding the built instance
             Builder.Services.AddSingleton(instance);
+            Settings.CacheToken = token;
         }
     }
 
@@ -175,14 +175,30 @@ namespace Altruist
             return new AltruistServerBuilder(Builder, Settings);
         }
 
-        public AltruistServerBuilder SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, Func<TDatabaseConnectionSetup, TDatabaseConnectionSetup> setup) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
+        public AltruistServerBuilder SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, Func<TDatabaseConnectionSetup, TDatabaseConnectionSetup>? setup = null) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
+        {
+            var serviceCollection = Builder.Services.AddSingleton<TDatabaseConnectionSetup>();
+            var setupInstance = serviceCollection.BuildServiceProvider().GetService<TDatabaseConnectionSetup>();
+
+            if (setup != null)
+            {
+                setupInstance = setup(setupInstance!);
+            }
+
+            SetupDatabase(token, setupInstance!);
+            return new AltruistServerBuilder(Builder, Settings);
+        }
+
+        private void SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, TDatabaseConnectionSetup instance) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
         {
             token.Configuration.Configure(Builder.Services);
             Builder.Services.AddSingleton<TDatabaseConnectionSetup>();
-            setup(Builder.Services.BuildServiceProvider()
-                .GetRequiredService<TDatabaseConnectionSetup>()).Build();
             Builder.Services.AddSingleton(token);
-            return new AltruistServerBuilder(Builder, Settings);
+            instance.Build();
+            // readding the built instance
+            Builder.Services.AddSingleton(instance);
+            Console.WriteLine("SETTING TOKEN: " + token);
+            Settings.DatabaseToken = token;
         }
     }
 
