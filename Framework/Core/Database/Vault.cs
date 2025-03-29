@@ -17,87 +17,87 @@ public enum QueryPosition
     SET
 }
 
-public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel : class, IVaultModel
-{
-    private readonly ILinqDatabaseProvider _databaseProvider;
-    private IQueryable<TVaultModel> _query;
+// public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel : class, IVaultModel
+// {
+//     private readonly ILinqDatabaseProvider _databaseProvider;
+//     private IQueryable<TVaultModel> _query;
 
-    public IKeyspace Keyspace { get; }
+//     public IKeyspace Keyspace { get; }
 
-    public LinqVault(ILinqDatabaseProvider databaseProvider, IKeyspace keyspace)
-    {
-        _databaseProvider = databaseProvider;
-        _query = _databaseProvider.QueryAsync<TVaultModel>(x => true).Result.AsQueryable();
-        Keyspace = keyspace;
-    }
+//     public LinqVault(ILinqDatabaseProvider databaseProvider, IKeyspace keyspace)
+//     {
+//         _databaseProvider = databaseProvider;
+//         _query = _databaseProvider.QueryAsync<TVaultModel>(x => true).Result.AsQueryable();
+//         Keyspace = keyspace;
+//     }
 
-    public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        _query = _query.Where(predicate);
-        return this;
-    }
+//     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
+//     {
+//         _query = _query.Where(predicate);
+//         return this;
+//     }
 
-    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        _query = _query.OrderBy(keySelector);
-        return this;
-    }
+//     public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+//     {
+//         _query = _query.OrderBy(keySelector);
+//         return this;
+//     }
 
-    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        _query = _query.OrderByDescending(keySelector);
-        return this;
-    }
+//     public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+//     {
+//         _query = _query.OrderByDescending(keySelector);
+//         return this;
+//     }
 
-    public IVault<TVaultModel> Take(int count)
-    {
-        _query = _query.Take(count);
-        return this;
-    }
+//     public IVault<TVaultModel> Take(int count)
+//     {
+//         _query = _query.Take(count);
+//         return this;
+//     }
 
-    public async Task<List<TVaultModel>> ToListAsync()
-    {
-        return await Task.FromResult(_query.ToList());
-    }
+//     public async Task<List<TVaultModel>> ToListAsync()
+//     {
+//         return await Task.FromResult(_query.ToList());
+//     }
 
-    public async Task<TVaultModel?> FirstOrDefaultAsync()
-    {
-        return await Task.FromResult(_query.FirstOrDefault());
-    }
+//     public async Task<TVaultModel?> FirstOrDefaultAsync()
+//     {
+//         return await Task.FromResult(_query.FirstOrDefault());
+//     }
 
-    public async Task<TVaultModel?> FirstAsync()
-    {
-        return await Task.FromResult(_query.First());
-    }
+//     public async Task<TVaultModel?> FirstAsync()
+//     {
+//         return await Task.FromResult(_query.First());
+//     }
 
-    public async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        var filteredQuery = _query.Where(predicate);
-        return await Task.FromResult(filteredQuery.ToList());
-    }
+//     public async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
+//     {
+//         var filteredQuery = _query.Where(predicate);
+//         return await Task.FromResult(filteredQuery.ToList());
+//     }
 
-    public async Task<int> CountAsync()
-    {
-        return await Task.FromResult(_query.Count());
-    }
+//     public async Task<int> CountAsync()
+//     {
+//         return await Task.FromResult(_query.Count());
+//     }
 
-    public async Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        return await _query.ExecuteUpdateAsync(setPropertyCalls);
-    }
+//     public async Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+//     {
+//         return await _query.ExecuteUpdateAsync(setPropertyCalls);
+//     }
 
-    public async Task SaveAsync(TVaultModel entity)
-    {
-        _databaseProvider.Context.Add(entity);
-        await _databaseProvider.Context.SaveChangesAsync();
-    }
+//     public async Task SaveAsync(TVaultModel entity)
+//     {
+//         _databaseProvider.Context.Add(entity);
+//         await _databaseProvider.Context.SaveChangesAsync();
+//     }
 
-    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities)
-    {
-        await _databaseProvider.Context.AddRangeAsync(entities);
-        await _databaseProvider.Context.SaveChangesAsync();
-    }
-}
+//     public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities)
+//     {
+//         await _databaseProvider.Context.AddRangeAsync(entities);
+//         await _databaseProvider.Context.SaveChangesAsync();
+//     }
+// }
 
 public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
@@ -465,7 +465,8 @@ public class VaultFactory
         }
         else if (_databaseProvider is ILinqDatabaseProvider linqDatabaseProvider)
         {
-            return new LinqVault<TVaultModel>(linqDatabaseProvider, keyspace);
+            // return new LinqVault<TVaultModel>(linqDatabaseProvider, keyspace);
+            throw new NotSupportedException($"Cannot create vault. Unsupported database provider {_databaseProvider.GetType().FullName}.");
         }
         else
         {
