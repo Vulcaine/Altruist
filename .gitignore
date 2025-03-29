@@ -1,0 +1,78 @@
+# Compiled binaries
+bin/
+obj/
+out/
+*.exe
+*.dll
+*.pdb
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+*.nupkg
+*.snupkg
+
+# User-specific files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vs/
+*.csproj.user
+
+# Rider & JetBrains
+*.sln.iml
+.idea/
+
+# Build output
+*.buildlog
+*.cache
+*.log
+*.tlog
+*.vsconfig
+
+# NuGet packages
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.assets.json
+.nuget/
+
+# .NET Core / .NET 5+ artifacts
+*.deps.json
+*.runtimeconfig.json
+*.global.json
+.DS_Store
+node_modules/
+dist/
+test-results/
+coverage/
+
+# Debugging & crash logs
+*.swp
+*.swo
+*.bak
+hs_err_pid*
+
+# Docker
+docker-compose.override.yml
+.env
+
+# Entity Framework Migrations
+Migrations/
+
+# Ignore local secrets
+secrets.json
+
+# Resharper files
+_ReSharper.Caches/
+
+# Ignore Unity files (if applicable)
+Library/
+Logs/
+Temp/
+obj/
+UserSettings/
