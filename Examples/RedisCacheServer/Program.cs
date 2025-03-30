@@ -1,10 +1,11 @@
 ﻿using Altruist;
 using Altruist.Redis;
 using Altruist.Web;
+using Microsoft.Extensions.DependencyInjection;
 using Portals;
 
 AltruistBuilder.Create(args)
     .NoEngine()
     .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
-    //.WithRedis(setup => setup.Index<Spaceship>())
+    .WithRedis(setup => setup.Index<Spaceship>())
     .StartServer();

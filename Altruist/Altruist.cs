@@ -112,6 +112,8 @@ namespace Altruist
             new AltruistServerBuilder(Builder, Settings).StartServer();
         }
 
+        public AltruistWebApplicationBuilder WebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(Builder), Settings);
+
         public AltruistDatabaseBuilder NoCache()
         {
             return new AltruistDatabaseBuilder(Builder, Settings);
@@ -169,12 +171,15 @@ namespace Altruist
             new AltruistServerBuilder(Builder, Settings).StartServer();
         }
 
-        public AltruistServerBuilder NoDatabase()
+        public AltruistWebApplicationBuilder WebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(Builder), Settings);
+
+
+        public AltruistWebApplicationBuilder NoDatabase()
         {
-            return new AltruistServerBuilder(Builder, Settings);
+            return new AltruistWebApplicationBuilder(Builder, Settings);
         }
 
-        public AltruistServerBuilder SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, Func<TDatabaseConnectionSetup, TDatabaseConnectionSetup>? setup = null) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
+        public AltruistWebApplicationBuilder SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, Func<TDatabaseConnectionSetup, TDatabaseConnectionSetup>? setup = null) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
         {
             var serviceCollection = Builder.Services.AddSingleton<TDatabaseConnectionSetup>();
             var setupInstance = serviceCollection.BuildServiceProvider().GetService<TDatabaseConnectionSetup>();
@@ -185,7 +190,7 @@ namespace Altruist
             }
 
             SetupDatabase(token, setupInstance!);
-            return new AltruistServerBuilder(Builder, Settings);
+            return new AltruistWebApplicationBuilder(Builder, Settings);
         }
 
         private void SetupDatabase<TDatabaseConnectionSetup>(IDatabaseServiceToken token, TDatabaseConnectionSetup instance) where TDatabaseConnectionSetup : class, IDatabaseConnectionSetup<TDatabaseConnectionSetup>
@@ -198,6 +203,28 @@ namespace Altruist
             Builder.Services.AddSingleton(instance);
             Console.WriteLine("SETTING TOKEN: " + token);
             Settings.DatabaseToken = token;
+        }
+    }
+
+    public class AltruistWebApplicationBuilder
+    {
+        protected readonly WebApplicationBuilder Builder;
+        protected readonly IAltruistContext Settings;
+        public AltruistWebApplicationBuilder(WebApplicationBuilder builder, IAltruistContext settings)
+        {
+            Builder = builder;
+            Settings = settings;
+        }
+
+        public AltruistServerBuilder WebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup)
+        {
+            setup(Builder);
+            return new AltruistServerBuilder(Builder, Settings);
+        }
+
+        public void StartServer()
+        {
+            new AltruistServerBuilder(Builder, Settings).StartServer();
         }
     }
 
