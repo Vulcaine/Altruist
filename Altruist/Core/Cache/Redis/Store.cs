@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.Extensions.Logging;
 using Redis.OM;
 using Redis.OM.Searching;
@@ -5,7 +6,7 @@ using StackExchange.Redis;
 
 namespace Altruist.Redis;
 
-public class RedisCacheCursor<T> : ICacheCursor<T> where T : notnull
+public class RedisCacheCursor<T> : ICacheCursor<T>, IEnumerable<T> where T : notnull
 {
     private int BatchSize { get; }
     private int CurrentIndex { get; set; }
@@ -38,9 +39,25 @@ public class RedisCacheCursor<T> : ICacheCursor<T> where T : notnull
         return true;
     }
 
+    private IEnumerable<T> FetchAllBatches()
+    {
+        do
+        {
+            foreach (var item in CurrentBatch)
+            {
+                yield return item;
+            }
+        } while (NextBatch().GetAwaiter().GetResult());
+    }
+
     public IEnumerator<T> GetEnumerator()
     {
-        return CurrentBatch.GetEnumerator();
+        return FetchAllBatches().GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
     }
 }
 

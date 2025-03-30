@@ -55,6 +55,6 @@ public class InMemoryCacheCursor<T> : ICacheCursor<T>, IEnumerable<T> where T : 
 
     IEnumerator IEnumerable.GetEnumerator()
     {
-        return FetchAllBatches().GetEnumerator();
+        return GetEnumerator();
     }
 }
