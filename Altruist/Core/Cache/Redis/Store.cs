@@ -167,7 +167,7 @@ public sealed class RedisCache : IAltruistRedisProvider
 
     public async Task<ICacheCursor<T>> GetAllAsync<T>() where T : notnull
     {
-        return await CreateCursorAsync<T>(nameof(T), 100);
+        return await CreateCursorAsync<T>(100);
     }
 
     public Task<ICacheCursor<object>> GetAllAsync(Type type)
@@ -180,7 +180,7 @@ public sealed class RedisCache : IAltruistRedisProvider
         throw new NotSupportedException("ClearAllAsync() is not supported when using Redis OM.");
     }
 
-    private Task<ICacheCursor<T>> CreateCursorAsync<T>(string baseKey, int batchSize) where T : notnull
+    private Task<ICacheCursor<T>> CreateCursorAsync<T>(int batchSize) where T : notnull
     {
         var cursor = new RedisCacheCursor<T>(_provider, batchSize);
         return Task.FromResult(cursor as ICacheCursor<T>);
