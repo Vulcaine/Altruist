@@ -209,6 +209,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         {
             return null;
         }
+        room = room.AddConnection(connectionId);
         await SaveRoom(room);
         await _memoryCache.SaveAsync(connectionId, roomId);
         return room;

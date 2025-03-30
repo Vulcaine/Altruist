@@ -21,7 +21,8 @@ public class InMemoryCache : IMemoryCache
 
     private Task<ICacheCursor<T>> CreateCursorAsync<T>(int batchSize) where T : notnull
     {
-        var cursor = new InMemoryCacheCursor<T>(_memoryCacheEntities[typeof(T)], batchSize);
+        var cacheMap = GetOrCreateCacheMap(typeof(T));
+        var cursor = new InMemoryCacheCursor<T>(cacheMap, batchSize);
         return Task.FromResult(cursor as ICacheCursor<T>);
     }
 
