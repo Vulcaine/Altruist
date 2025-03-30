@@ -112,7 +112,7 @@ namespace Altruist
             new AltruistServerBuilder(Builder, Settings).StartServer();
         }
 
-        public AltruistWebApplicationBuilder WebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(Builder), Settings);
+        public AltruistWebApplicationBuilder FlexibleWebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(Builder), Settings);
 
         public AltruistDatabaseBuilder NoCache()
         {
@@ -171,7 +171,7 @@ namespace Altruist
             new AltruistServerBuilder(Builder, Settings).StartServer();
         }
 
-        public AltruistWebApplicationBuilder WebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(Builder), Settings);
+        public AltruistWebApplicationBuilder FlexibleWebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(Builder), Settings);
 
 
         public AltruistWebApplicationBuilder NoDatabase()
@@ -216,7 +216,7 @@ namespace Altruist
             Settings = settings;
         }
 
-        public AltruistServerBuilder WebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup)
+        public AltruistServerBuilder FlexibleWebApi(Func<WebApplicationBuilder, WebApplicationBuilder> setup)
         {
             setup(Builder);
             return new AltruistServerBuilder(Builder, Settings);
@@ -317,6 +317,15 @@ namespace Altruist
         {
             _app = app;
             _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals;
+        }
+
+        public AppBuilder FlexibleWebAppBuilder(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup(_app));
+
+        public AppBuilder UseAuth()
+        {
+            _app.UseAuthentication();
+            _app.UseAuthorization();
+            return this;
         }
 
         public void StartServer(string host, int port)

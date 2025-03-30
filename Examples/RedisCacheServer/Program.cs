@@ -1,7 +1,6 @@
 ﻿using Altruist;
 using Altruist.Redis;
 using Altruist.Web;
-using Microsoft.Extensions.DependencyInjection;
 using Portals;
 
 AltruistBuilder.Create(args)
