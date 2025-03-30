@@ -12,7 +12,7 @@ namespace Altruist
 {
     public static class WebApiHelper
     {
-        public static WebApplicationBuilder Create(string[] args, ServiceCollection collection)
+        public static WebApplicationBuilder Create(string[] args, IServiceCollection collection)
         {
             var builder = WebApplication.CreateBuilder(args);
             builder.Logging.ClearProviders();
@@ -31,7 +31,7 @@ namespace Altruist
 
     public class AltruistBuilder
     {
-        private ServiceCollection Services { get; } = new ServiceCollection();
+        private IServiceCollection Services { get; } = new ServiceCollection();
         private string[] _args;
         public IAltruistContext Settings { get; } = new AltruistServerContext();
 
@@ -75,12 +75,12 @@ namespace Altruist
     // Step 1: Choose Transport
     public class AltruistConnectionBuilder
     {
-        protected readonly ServiceCollection Services;
+        protected readonly IServiceCollection Services;
         protected readonly IAltruistContext Settings;
 
         private string[] _args;
 
-        internal AltruistConnectionBuilder(ServiceCollection services, IAltruistContext settings, string[] args)
+        internal AltruistConnectionBuilder(IServiceCollection services, IAltruistContext settings, string[] args)
         {
             Services = services;
             Settings = settings;
@@ -89,6 +89,7 @@ namespace Altruist
 
         public AltruistCacheBuilder SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token, Func<TTransportConnectionSetup, TTransportConnectionSetup> setup) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
         {
+            Settings.TransportToken = token;
             var serviceCollection = Services.AddSingleton<TTransportConnectionSetup>();
             var setupInstance = serviceCollection.BuildServiceProvider().GetService<TTransportConnectionSetup>();
 
@@ -103,12 +104,12 @@ namespace Altruist
 
         private void SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token, TTransportConnectionSetup instance) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
         {
+            Settings.TransportToken = token;
             token.Configuration.Configure(Services);
             Services.AddSingleton(token);
             instance.Build(Settings);
             // readding the built instance
             Services.AddSingleton(instance);
-            Settings.TransportToken = token;
         }
 
         public void SetupTransport<TTransportConnectionSetup>(ITransportServiceToken token) where TTransportConnectionSetup : class, ITransportConnectionSetup<TTransportConnectionSetup>
@@ -123,18 +124,26 @@ namespace Altruist
     // Step 2: Choose Cache
     public class AltruistCacheBuilder
     {
-        protected readonly ServiceCollection Services;
+        protected readonly IServiceCollection Services;
         protected readonly IAltruistContext Settings;
         private string[] _args;
 
-        internal AltruistCacheBuilder(ServiceCollection services, IAltruistContext settings, string[] args)
+        internal AltruistCacheBuilder(IServiceCollection services, IAltruistContext settings, string[] args)
         {
             Services = services;
             Settings = settings;
             _args = args;
         }
 
-        public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(WebApiHelper.Create(_args, Services)), Settings);
+        public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder>? setup = null)
+        {
+            var app = WebApiHelper.Create(_args, Services);
+            if (setup != null)
+            {
+                return new AltruistWebApplicationBuilder(setup(app), Settings);
+            }
+            return new AltruistWebApplicationBuilder(app, Settings);
+        }
 
         public AltruistDatabaseBuilder NoCache()
         {
@@ -179,18 +188,26 @@ namespace Altruist
     // Step 3: Choose Database
     public class AltruistDatabaseBuilder
     {
-        protected readonly ServiceCollection Services;
+        protected readonly IServiceCollection Services;
         protected readonly IAltruistContext Settings;
         private string[] _args;
 
-        internal AltruistDatabaseBuilder(ServiceCollection services, IAltruistContext settings, string[] args)
+        internal AltruistDatabaseBuilder(IServiceCollection services, IAltruistContext settings, string[] args)
         {
             Services = services;
             Settings = settings;
             _args = args;
         }
 
-        public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistApplicationBuilder(Services, Settings, _args).WebApp(setup);
+        public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder>? setup = null)
+        {
+            var app = WebApiHelper.Create(_args, Services);
+            if (setup != null)
+            {
+                return new AltruistWebApplicationBuilder(setup(app), Settings);
+            }
+            return new AltruistWebApplicationBuilder(app, Settings);
+        }
 
 
         public AltruistApplicationBuilder NoDatabase()
@@ -226,18 +243,26 @@ namespace Altruist
 
     public class AltruistApplicationBuilder
     {
-        protected readonly ServiceCollection Services;
+        protected readonly IServiceCollection Services;
         protected readonly IAltruistContext Settings;
         private string[] _args;
 
-        public AltruistApplicationBuilder(ServiceCollection services, IAltruistContext settings, string[] args)
+        public AltruistApplicationBuilder(IServiceCollection services, IAltruistContext settings, string[] args)
         {
             Services = services;
             Settings = settings;
             _args = args;
         }
 
-        public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder> setup) => new AltruistWebApplicationBuilder(setup(WebApiHelper.Create(_args, Services)), Settings);
+        public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder>? setup = null)
+        {
+            var app = WebApiHelper.Create(_args, Services);
+            if (setup != null)
+            {
+                return new AltruistWebApplicationBuilder(setup(app), Settings);
+            }
+            return new AltruistWebApplicationBuilder(app, Settings);
+        }
     }
 
     public class AltruistWebApplicationBuilder
@@ -249,12 +274,6 @@ namespace Altruist
         {
             Builder = builder;
             Settings = settings;
-        }
-
-        public AltruistWebServerBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder> setup)
-        {
-            setup(Builder);
-            return new AltruistWebServerBuilder(Builder, Settings);
         }
 
         public void StartServer()
@@ -303,10 +322,10 @@ namespace Altruist
 
     public class AltruistEngineBuilder
     {
-        private ServiceCollection Services { get; }
+        private IServiceCollection Services { get; }
         private IAltruistContext Settings;
         private string[] _args;
-        public AltruistEngineBuilder(ServiceCollection services, IAltruistContext Settings, string[] args)
+        public AltruistEngineBuilder(IServiceCollection services, IAltruistContext Settings, string[] args)
         {
             Services = services;
             this.Settings = Settings;
@@ -356,7 +375,14 @@ namespace Altruist
             _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals;
         }
 
-        public AppBuilder WebApp(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup(_app));
+        public AppBuilder WebApp(Func<WebApplication, WebApplication>? setup = null)
+        {
+            if (setup != null)
+            {
+                return new AppBuilder(setup(_app));
+            }
+            return this;
+        }
 
         public AppBuilder UseAuth()
         {
