@@ -62,16 +62,12 @@ public sealed class RedisCache : IAltruistRedisProvider
 {
     private readonly RedisConnectionProvider _provider;
     private readonly IDatabase _redis;
-    private readonly IMessageEncoder _encoder;
-    private readonly IMessageDecoder _decoder;
 
     public RedisCache(
         RedisConnectionProvider provider,
-        IConnectionMultiplexer mux, IMessageEncoder encoder, IMessageDecoder decoder)
+        IConnectionMultiplexer mux)
     {
         _redis = mux.GetDatabase();
-        _encoder = encoder;
-        _decoder = decoder;
         _provider = provider;
     }
 
@@ -230,12 +226,12 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         }
     }
 
-    public override async Task<RoomPacket> GetRoom(string roomId)
+    public override async Task<RoomPacket> GetRoomAsync(string roomId)
     {
         return await _cache.GetAsync<RoomPacket>($"{RoomPrefix}{roomId}");
     }
 
-    public override async Task<Dictionary<string, RoomPacket>> GetAllRooms()
+    public override async Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
     {
         var rooms = new Dictionary<string, RoomPacket>();
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
@@ -253,7 +249,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         return rooms;
     }
 
-    public override async Task<RoomPacket> FindAvailableRoom()
+    public override async Task<RoomPacket> FindAvailableRoomAsync()
     {
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
         var roomKeys = server.Keys(pattern: $"{RoomPrefix}*");

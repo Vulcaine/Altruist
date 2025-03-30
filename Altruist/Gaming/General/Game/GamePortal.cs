@@ -12,6 +12,14 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         _playerService = context.GetPlayerService<TPlayerEntity>();
     }
 
+    [Gate(IngressEP.HANDSHAKE)]
+    public async virtual Task HandshakeAsync(HandshakePacket message, string clientId)
+    {
+        var rooms = await GetAllRoomsAsync();
+        var responsePacket = new HandshakePacket("server", rooms.Values.ToArray(), clientId);
+        await Router.Client.SendAsync(clientId, responsePacket);
+    }
+
     [Gate(IngressEP.LEAVE_GAME)]
     public async virtual Task ExitGameAsync(LeaveGamePacket message, string clientId)
     {
@@ -19,7 +27,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
 
         if (player != null)
         {
-            var room = await FindRoomForClient(clientId);
+            var room = await FindRoomForClientAsync(clientId);
             await _playerService.DisconnectAsync(clientId);
 
             var msg = $"Player {player.Name} left the game";
@@ -39,11 +47,11 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         RoomPacket room;
         if (!string.IsNullOrEmpty(message.RoomId))
         {
-            room = await GetRoom(message.RoomId);
+            room = await GetRoomAsync(message.RoomId);
         }
         else
         {
-            room = await FindAvailableRoom();
+            room = await FindAvailableRoomAsync();
         }
 
         if (room.Full())

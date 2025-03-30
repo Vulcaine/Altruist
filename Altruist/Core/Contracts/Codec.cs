@@ -1,5 +1,11 @@
 namespace Altruist;
 
+public interface IMessageCodec
+{
+    IMessageEncoder Encoder { get; }
+    IMessageDecoder Decoder { get; }
+}
+
 public interface IMessageEncoder
 {
     byte[] Encode<TPacket>(TPacket message);

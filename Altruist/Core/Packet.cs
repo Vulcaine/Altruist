@@ -250,6 +250,27 @@ namespace Altruist
     }
 
     [MessagePackObject]
+    public struct HandshakePacket : IPacketBase
+    {
+        [Key(0)] public PacketBase Header { get; set; }
+        [Key(1)] public RoomPacket[] Rooms { get; set; }
+
+        public HandshakePacket()
+        {
+            Header = default;
+            Rooms = Array.Empty<RoomPacket>();
+        }
+
+        public HandshakePacket(string sender, RoomPacket[] rooms, string? receiver = null)
+        {
+            Header = new PacketBase(sender, receiver);
+            Rooms = rooms;
+        }
+
+        public string Type => "HandshakePacket";
+    }
+
+    [MessagePackObject]
     public struct JoinGamePacket : IPacketBase
     {
         [Key(0)] public PacketBase Header { get; set; }

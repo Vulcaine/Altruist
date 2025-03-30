@@ -9,32 +9,32 @@ public interface IAltruistRouterSender
 
 public interface IAltruistRouter
 {
-    ClientSender Client {get;}
-    RoomSender Room {get;}
-    BroadcastSender Broadcast {get;}
-    ClientSynchronizator Synchronize{get;}
+    ClientSender Client { get; }
+    RoomSender Room { get; }
+    BroadcastSender Broadcast { get; }
+    ClientSynchronizator Synchronize { get; }
 
 }
 
-public interface IAltruistEngineRouter : IAltruistRouter {}
+public interface IAltruistEngineRouter : IAltruistRouter { }
 
 public abstract class AbstractAltruistRouter : IAltruistRouter
 {
     protected readonly IConnectionStore _connectionStore;
-    protected readonly IMessageEncoder _encoder;
+    protected readonly IMessageCodec _codec;
 
-    public ClientSender Client {get;}
+    public ClientSender Client { get; }
 
-    public RoomSender Room {get;}
+    public RoomSender Room { get; }
 
-    public BroadcastSender Broadcast {get;}
+    public BroadcastSender Broadcast { get; }
 
-    public ClientSynchronizator Synchronize {get;}
+    public ClientSynchronizator Synchronize { get; }
 
-    public AbstractAltruistRouter(IConnectionStore store, IMessageEncoder encoder, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator)
+    public AbstractAltruistRouter(IConnectionStore store, IMessageCodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator)
     {
         _connectionStore = store;
-        _encoder = encoder;
+        _codec = codec;
 
         Client = clientSender;
         Room = roomSender;
@@ -45,7 +45,7 @@ public abstract class AbstractAltruistRouter : IAltruistRouter
 
 public abstract class DirectRouter : AbstractAltruistRouter
 {
-    protected DirectRouter(IConnectionStore store, IMessageEncoder encoder, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, encoder, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    protected DirectRouter(IConnectionStore store, IMessageCodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
     }
 }
@@ -54,7 +54,7 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
 {
     private readonly IAltruistEngine _engine;
 
-    protected EngineRouter(IConnectionStore store, IMessageEncoder encoder, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, encoder, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    protected EngineRouter(IConnectionStore store, IMessageCodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
         _engine = engine;
     }
@@ -68,18 +68,18 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
 public class ClientSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
-    protected readonly IMessageEncoder _encoder;
+    protected readonly IMessageCodec _codec;
 
-    public ClientSender(IConnectionStore store, IMessageEncoder encoder)
+    public ClientSender(IConnectionStore store, IMessageCodec codec)
     {
         _store = store;
-        _encoder = encoder;
+        _codec = codec;
     }
 
     public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
     {
         var socket = await _store.GetConnection(clientId);
-        var encodedMessage = _encoder.Encode(message);
+        var encodedMessage = _codec.Encoder.Encode(message);
 
         if (socket != null && socket.IsConnected)
         {
@@ -88,16 +88,17 @@ public class ClientSender : IAltruistRouterSender
     }
 }
 
-public class EngineClientSender : ClientSender {
+public class EngineClientSender : ClientSender
+{
     private readonly IAltruistEngine _engine;
-    public EngineClientSender(IConnectionStore store, IMessageEncoder encoder, IAltruistEngine engine) : base(store, encoder)
+    public EngineClientSender(IConnectionStore store, IMessageCodec codec, IAltruistEngine engine) : base(store, codec)
     {
         _engine = engine;
     }
 
     public override Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
     {
-       _engine.SendTask(new TaskIdentifier(clientId + message.Type), () => base.SendAsync(clientId, message));
+        _engine.SendTask(new TaskIdentifier(clientId + message.Type), () => base.SendAsync(clientId, message));
         return Task.CompletedTask;
     }
 }
@@ -105,13 +106,13 @@ public class EngineClientSender : ClientSender {
 public class RoomSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
-    protected readonly IMessageEncoder _encoder;
+    protected readonly IMessageCodec _codec;
     protected readonly ClientSender _clientSender;
 
-    public RoomSender(IConnectionStore store, IMessageEncoder encoder, ClientSender clientSender)
+    public RoomSender(IConnectionStore store, IMessageCodec codec, ClientSender clientSender)
     {
         _store = store;
-        _encoder = encoder;
+        _codec = codec;
         _clientSender = clientSender;
     }
 
@@ -123,7 +124,7 @@ public class RoomSender : IAltruistRouterSender
         {
             if (socket != null && socket.IsConnected)
             {
-                await _clientSender.SendAsync(clientId,message);
+                await _clientSender.SendAsync(clientId, message);
             }
         }
     }

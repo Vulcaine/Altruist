@@ -72,3 +72,16 @@ public class MessagePackMessageDecoder : IMessageDecoder
         return MessagePackSerializer.Deserialize(type, message)!;
     }
 }
+
+
+public class JsonMessageCodec : IMessageCodec
+{
+    public IMessageEncoder Encoder { get; } = new JsonMessageEncoder();
+    public IMessageDecoder Decoder { get; } = new JsonMessageDecoder();
+}
+
+public class MessagePackMessageCodec : IMessageCodec
+{
+    public IMessageEncoder Encoder { get; } = new MessagePackMessageEncoder();
+    public IMessageDecoder Decoder { get; } = new MessagePackMessageDecoder();
+}

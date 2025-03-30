@@ -4,16 +4,16 @@ namespace Altruist.Transport;
 
 public class RelayPortal : Portal
 {
-    private IMessageDecoder Decoder { get; }
+    private IMessageCodec Codec { get; }
 
     public RelayPortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
-        Decoder = context.Decoder;
+        Codec = context.Codec;
     }
 
     public async Task Relay(byte[] message)
     {
-        AltruistPacket packet = Decoder.Decode<AltruistPacket>(message);
+        AltruistPacket packet = Codec.Decoder.Decode<AltruistPacket>(message);
         if (string.IsNullOrEmpty(packet.Event)) return;
 
         await ProcessPacket(packet, message, packet.Event, packet.Header.Receiver ?? "");
@@ -28,7 +28,7 @@ public class AltruistRelayService : IRelayService
     private ITransportClient _transportClient;
     private CancellationTokenSource _cts = new();
 
-    private IMessageEncoder _encoder { get; }
+    private IMessageCodec _codec { get; }
 
     private RelayPortal _socketPortal;
 
@@ -38,12 +38,12 @@ public class AltruistRelayService : IRelayService
 
     public AltruistRelayService(
         string protocol,
-        string host, int port, string eventName, RelayPortal socketPortal, IMessageEncoder encoder, ILoggerFactory loggerFactory, ITransportClient transportClient)
+        string host, int port, string eventName, RelayPortal socketPortal, IMessageCodec codec, ILoggerFactory loggerFactory, ITransportClient transportClient)
     {
         _gatewayUrl = $"{protocol}://{host}:{port}";
         _eventName = eventName;
         _socketPortal = socketPortal;
-        _encoder = encoder;
+        _codec = codec;
         _logger = loggerFactory.CreateLogger<AltruistRelayService>();
         _transportClient = transportClient;
     }
@@ -52,7 +52,7 @@ public class AltruistRelayService : IRelayService
     {
         if (_transportClient != null && _transportClient.IsConnected)
         {
-            var encoded = _encoder.Encode(data);
+            var encoded = _codec.Encoder.Encode(data);
             await _transportClient.SendAsync(encoded);
         }
     }

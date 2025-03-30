@@ -143,7 +143,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         {
             var subscriber = multiplexer.GetSubscriber();
             var router = serviceProvider.GetRequiredService<IAltruistRouter>();
-            var decoder = serviceProvider.GetRequiredService<IMessageDecoder>();
+            var decoder = serviceProvider.GetRequiredService<IMessageCodec>();
             var redisDatabase = multiplexer.GetDatabase();
 
             // reset indexes
@@ -164,7 +164,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         }
     }
 
-    private async Task ProcessQueuedMessagesAsync(IDatabase redisDatabase, IMessageDecoder decoder, IAltruistRouter router)
+    private async Task ProcessQueuedMessagesAsync(IDatabase redisDatabase, IMessageCodec codec, IAltruistRouter router)
     {
         while (true)
         {
@@ -172,7 +172,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
             if (!message.HasValue)
                 break;
 
-            var redisMessage = decoder.Decode<IPacketBase>(message!);
+            var redisMessage = codec.Decoder.Decode<IPacketBase>(message!);
             var clientId = redisMessage.Header.Receiver;
             await router.Client.SendAsync(clientId!, redisMessage);
         }

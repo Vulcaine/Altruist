@@ -2,14 +2,14 @@ namespace Altruist.InMemory;
 
 public class InMemoryDirectRouter : DirectRouter
 {
-    public InMemoryDirectRouter(IConnectionStore store, IMessageEncoder encoder, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, encoder, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    public InMemoryDirectRouter(IConnectionStore store, IMessageCodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
     }
 }
 
 public class InMemoryEngineRouter : EngineRouter
 {
-    public InMemoryEngineRouter(IConnectionStore store, IMessageEncoder encoder, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, encoder, clientSender, roomSender, broadcastSender, clientSynchronizator, engine)
+    public InMemoryEngineRouter(IConnectionStore store, IMessageCodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator, engine)
     {
     }
 }

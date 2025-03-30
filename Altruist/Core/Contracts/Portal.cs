@@ -4,7 +4,7 @@ public interface IPortalContext : IConnectionStore
 {
     ICache Cache { get; }
     IAltruistRouter Router { get; }
-    IMessageDecoder Decoder { get; }
+    IMessageCodec Codec { get; }
 
     IAltruistContext AltruistContext { get; }
     IServiceProvider ServiceProvider { get; }
@@ -19,7 +19,7 @@ public abstract class AbstractSocketPortalContext : IPortalContext
 {
     protected readonly IConnectionStore _connectionStore;
     public abstract IAltruistRouter Router { get; protected set; }
-    public abstract IMessageDecoder Decoder { get; protected set; }
+    public abstract IMessageCodec Codec { get; protected set; }
 
     public abstract IAltruistContext AltruistContext { get; protected set; }
     public abstract IServiceProvider ServiceProvider { get; protected set; }
@@ -28,10 +28,10 @@ public abstract class AbstractSocketPortalContext : IPortalContext
 
     public AbstractSocketPortalContext(
         IAltruistContext altruistContext,
-        IAltruistRouter router, IMessageDecoder decoder, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
+        IAltruistRouter router, IMessageCodec codec, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
     {
         AltruistContext = altruistContext;
-        Decoder = decoder ?? new JsonMessageDecoder();
+        Codec = codec ?? new JsonMessageCodec();
         _connectionStore = connectionStore;
         Router = router;
         ServiceProvider = serviceProvider;
@@ -45,9 +45,9 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return await _connectionStore.GetConnectionsInRoom(roomId);
     }
 
-    public async Task<RoomPacket> FindAvailableRoom()
+    public async Task<RoomPacket> FindAvailableRoomAsync()
     {
-        return await _connectionStore.FindAvailableRoom();
+        return await _connectionStore.FindAvailableRoomAsync();
     }
 
     public async Task<RoomPacket> CreateRoom()
@@ -85,19 +85,19 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return _connectionStore.GetAllConnections();
     }
 
-    public async Task<RoomPacket> FindRoomForClient(string clientId)
+    public async Task<RoomPacket> FindRoomForClientAsync(string clientId)
     {
-        return await _connectionStore.FindRoomForClient(clientId);
+        return await _connectionStore.FindRoomForClientAsync(clientId);
     }
 
     public abstract IPlayerService<TPlayerEntity> GetPlayerService<TPlayerEntity>() where TPlayerEntity : PlayerEntity, new();
-    public async Task<RoomPacket> GetRoom(string roomId)
+    public async Task<RoomPacket> GetRoomAsync(string roomId)
     {
-        return await _connectionStore.GetRoom(roomId);
+        return await _connectionStore.GetRoomAsync(roomId);
     }
-    public async Task<Dictionary<string, RoomPacket>> GetAllRooms()
+    public async Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
     {
-        return await _connectionStore.GetAllRooms();
+        return await _connectionStore.GetAllRoomsAsync();
     }
 
     public async Task<RoomPacket> AddClientToRoom(string connectionId, string roomId)

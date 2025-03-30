@@ -38,6 +38,8 @@ namespace Altruist
 
             Builder.Services.AddSingleton<IAltruistRouter, InMemoryDirectRouter>();
             Builder.Services.AddSingleton<IAltruistEngineRouter, InMemoryEngineRouter>();
+
+            Builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
             Builder.Services.AddSingleton<IMessageDecoder, JsonMessageDecoder>();
             Builder.Services.AddSingleton<IMessageEncoder, JsonMessageEncoder>();
             Builder.Services.AddSingleton<IConnectionStore, InMemoryConnectionStore>();

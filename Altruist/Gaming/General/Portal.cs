@@ -5,11 +5,11 @@ namespace Altruist;
 
 public class PortalContext(
     IAltruistContext altruistContext,
-    IAltruistRouter router, IMessageDecoder decoder, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
-    : AbstractSocketPortalContext(altruistContext, router, decoder, connectionStore, cache, serviceProvider)
+    IAltruistRouter router, IMessageCodec codec, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
+    : AbstractSocketPortalContext(altruistContext, router, codec, connectionStore, cache, serviceProvider)
 {
     public override IAltruistRouter Router { get; protected set; } = router;
-    public override IMessageDecoder Decoder { get; protected set; } = decoder;
+    public override IMessageCodec Codec { get; protected set; } = codec;
     public override IAltruistContext AltruistContext { get; protected set; } = altruistContext;
     public override IServiceProvider ServiceProvider { get; protected set; } = serviceProvider;
 
@@ -29,7 +29,7 @@ public abstract class Portal : IPortal, IConnectionStore
     protected readonly ILogger Logger;
 
     protected IAltruistRouter Router => _context.Router;
-    private IMessageDecoder _decoder => _context.Decoder;
+    private IMessageCodec _codec => _context.Codec;
 
     private readonly List<IInterceptor> _interceptors = new();
 
@@ -62,7 +62,7 @@ public abstract class Portal : IPortal, IConnectionStore
             var handlerMethod = @delegate.Method;
             var parameterType = handlerMethod.GetParameters()[0].ParameterType;
 
-            IPacket? message = _decoder.Decode<IPacket>(data, parameterType);
+            IPacket? message = _codec.Decoder.Decode<IPacket>(data, parameterType);
 
             var interceptorTasks = _interceptors.Select(interceptor => interceptor.Intercept(context, message));
             var interceptorExecution = Task.WhenAll(interceptorTasks);
@@ -99,7 +99,7 @@ public abstract class Portal : IPortal, IConnectionStore
                 }
                 ;
 
-                var packet = _decoder.Decode<AltruistPacket>(packetData);
+                var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
                 if (!await ProcessPacket(packet, packetData, @event, clientId)) break;
             }
         }
@@ -148,7 +148,7 @@ public abstract class Portal : IPortal, IConnectionStore
         if (connections.TryGetValue(clientId, out var connection))
         {
             var data = await connection.ReceiveAsync(CancellationToken.None);
-            return _decoder.Decode<TPacketBase>(data);
+            return _codec.Decoder.Decode<TPacketBase>(data);
         }
 
         return default!;
@@ -160,14 +160,14 @@ public abstract class Portal : IPortal, IConnectionStore
         return await _context.GetConnectionsInRoom(roomId);
     }
 
-    public async Task<RoomPacket> FindAvailableRoom()
+    public async Task<RoomPacket> FindAvailableRoomAsync()
     {
-        return await _context.FindAvailableRoom();
+        return await _context.FindAvailableRoomAsync();
     }
 
-    public async Task<RoomPacket> FindRoomForClient(string clientId)
+    public async Task<RoomPacket> FindRoomForClientAsync(string clientId)
     {
-        return await _context.FindRoomForClient(clientId);
+        return await _context.FindRoomForClientAsync(clientId);
     }
 
     public async Task<RoomPacket> CreateRoom()
@@ -180,14 +180,14 @@ public abstract class Portal : IPortal, IConnectionStore
         return _context.DeleteRoom(roomName);
     }
 
-    public Task<RoomPacket> GetRoom(string roomId)
+    public Task<RoomPacket> GetRoomAsync(string roomId)
     {
-        return _context.GetRoom(roomId);
+        return _context.GetRoomAsync(roomId);
     }
 
-    public Task<Dictionary<string, RoomPacket>> GetAllRooms()
+    public Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
     {
-        return _context.GetAllRooms();
+        return _context.GetAllRoomsAsync();
     }
 
     public Task<RoomPacket> AddClientToRoom(string connectionId, string roomId)

@@ -20,7 +20,7 @@ public abstract class AltruistShootingPortal<TPlayerEntity> : AltruistGamePortal
     [Gate("shoot")]
     public async Task HandleShooting(ShootingPacket packet)
     {
-        var room = await FindRoomForClient(packet.Header.Sender);
+        var room = await FindRoomForClientAsync(packet.Header.Sender);
         if (!room.Empty())
         {
             await Router.Room.SendAsync(room.Id, packet);

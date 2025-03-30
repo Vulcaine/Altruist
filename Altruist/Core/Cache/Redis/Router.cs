@@ -5,25 +5,25 @@ namespace Altruist.Redis;
 
 public class RedisDirectRouter : DirectRouter
 {
-    public RedisDirectRouter(IConnectionStore store, 
-        IMessageEncoder encoder, 
-        RedisSocketClientSender clientSender, 
-        RoomSender roomSender, 
-        BroadcastSender broadcastSender, 
-        ClientSynchronizator clientSynchronizator) : base(store, encoder, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    public RedisDirectRouter(IConnectionStore store,
+        IMessageCodec codec,
+        RedisSocketClientSender clientSender,
+        RoomSender roomSender,
+        BroadcastSender broadcastSender,
+        ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
     }
 }
 
 public class RedisEngineRouter : EngineRouter
 {
-    public RedisEngineRouter(IConnectionStore store, 
-    IMessageEncoder encoder, 
-    RedisEngineClientSender clientSender, 
-    RoomSender roomSender, 
-    BroadcastSender broadcastSender, 
-    ClientSynchronizator clientSynchronizator, 
-    IAltruistEngine engine) : base(store, encoder, clientSender, roomSender, broadcastSender, clientSynchronizator, engine)
+    public RedisEngineRouter(IConnectionStore store,
+    IMessageCodec codec,
+    RedisEngineClientSender clientSender,
+    RoomSender roomSender,
+    BroadcastSender broadcastSender,
+    ClientSynchronizator clientSynchronizator,
+    IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator, engine)
     {
     }
 }
@@ -34,10 +34,10 @@ public class RedisSocketClientSender : ClientSender
     private readonly ISubscriber _redisPublisher;
     private readonly ClientSender _underlying;
 
-     RedisChannel channel = RedisChannel.Literal(OutgressRedis.MessageDistributeChannel);
+    RedisChannel channel = RedisChannel.Literal(OutgressRedis.MessageDistributeChannel);
 
     public RedisSocketClientSender(
-    IConnectionStore store, IMessageEncoder encoder, IConnectionMultiplexer mux, ClientSender clientSender) : base(store, encoder)
+    IConnectionStore store, IMessageCodec codec, IConnectionMultiplexer mux, ClientSender clientSender) : base(store, codec)
     {
         _mux = mux;
         _redisPublisher = mux.GetSubscriber();
@@ -54,7 +54,7 @@ public class RedisSocketClientSender : ClientSender
         }
         else
         {
-            var redisMessage = _encoder.Encode(message);
+            var redisMessage = _codec.Encoder.Encode(message);
             await _mux.GetDatabase().ListLeftPushAsync(IngressRedis.MessageQueue, redisMessage);
             // just publishing an empty message this way we are notifying all subscribers that there are messages in the queue.
             await _redisPublisher.PublishAsync(channel, "", CommandFlags.FireAndForget);
@@ -69,7 +69,7 @@ public class RedisEngineClientSender : EngineClientSender
 
     RedisChannel channel = RedisChannel.Literal(OutgressRedis.MessageDistributeChannel);
 
-    public RedisEngineClientSender(IConnectionStore store, IMessageEncoder encoder, IConnectionMultiplexer mux, IAltruistEngine engine) : base(store, encoder, engine)
+    public RedisEngineClientSender(IConnectionStore store, IMessageCodec codec, IConnectionMultiplexer mux, IAltruistEngine engine) : base(store, codec, engine)
     {
         _redisPublisher = mux.GetSubscriber();
         _mux = mux;
@@ -85,7 +85,7 @@ public class RedisEngineClientSender : EngineClientSender
         }
         else
         {
-            var redisMessage = _encoder.Encode(message);
+            var redisMessage = _codec.Encoder.Encode(message);
             await _mux.GetDatabase().ListLeftPushAsync(IngressRedis.MessageQueue, redisMessage);
             // just publishing an empty message this way we are notifying all subscribers that there are messages in the queue.
             await _redisPublisher.PublishAsync(channel, "", CommandFlags.FireAndForget);

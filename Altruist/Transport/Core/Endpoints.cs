@@ -11,6 +11,7 @@ public static class OutgressEP
 
 public static class IngressEP
 {
+    public const string HANDSHAKE = "handshake";
     public const string JOIN_GAME = "join-game";
     public const string LEAVE_GAME = "leave-game";
     public const string SHOOT = "SHOOT";
