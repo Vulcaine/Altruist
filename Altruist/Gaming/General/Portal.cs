@@ -175,9 +175,9 @@ public abstract class Portal : IPortal, IConnectionStore
         return await _context.CreateRoom();
     }
 
-    public Task DeleteRoom(string roomName)
+    public Task DeleteRoomAsync(string roomName)
     {
-        return _context.DeleteRoom(roomName);
+        return _context.DeleteRoomAsync(roomName);
     }
 
     public Task<RoomPacket?> GetRoomAsync(string roomId)

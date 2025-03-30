@@ -25,20 +25,23 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
     {
         var player = await _playerService.GetPlayerAsync(clientId);
 
+
         if (player != null)
         {
             await _playerService.DisconnectAsync(clientId);
             var room = await FindRoomForClientAsync(clientId);
             var msg = $"Player {player.Name} left the game";
+
+            await Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId));
             if (room != null)
             {
-                await Router.Room.SendAsync(room.Id, PacketHelper.Success(msg, clientId));
+                var responsePacket = new LeaveGamePacket("server", clientId);
+                await Router.Room.SendAsync(room.Id, responsePacket);
+                if (room.Empty())
+                {
+                    await DeleteRoomAsync(room.Id);
+                }
             }
-            else
-            {
-                await Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId));
-            }
-
         }
     }
 

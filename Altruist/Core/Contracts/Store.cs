@@ -23,7 +23,7 @@ public interface IConnectionStore : ICleanUp
     Task<RoomPacket?> FindRoomForClientAsync(string clientId);
     Task<RoomPacket> CreateRoom();
     Task SaveRoom(RoomPacket room);
-    Task DeleteRoom(string roomId);
+    Task DeleteRoomAsync(string roomId);
 }
 
 
@@ -187,7 +187,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return await CreateRoom();
     }
 
-    public virtual async Task DeleteRoom(string roomId)
+    public virtual async Task DeleteRoomAsync(string roomId)
     {
         await _memoryCache.RemoveAsync<RoomPacket>(roomId);
     }

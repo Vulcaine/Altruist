@@ -55,9 +55,9 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return await _connectionStore.CreateRoom();
     }
 
-    public Task DeleteRoom(string roomName)
+    public Task DeleteRoomAsync(string roomName)
     {
-        return _connectionStore.DeleteRoom(roomName);
+        return _connectionStore.DeleteRoomAsync(roomName);
     }
 
     public Task RemoveConnection(string connectionId)

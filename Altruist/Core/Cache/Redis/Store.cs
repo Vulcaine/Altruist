@@ -308,7 +308,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         await _cache.SaveAsync($"{RoomPrefix}{roomPacket.Id}", roomPacket);
     }
 
-    public override async Task DeleteRoom(string roomId)
+    public override async Task DeleteRoomAsync(string roomId)
     {
         await _cache.RemoveAsync<RoomPacket>(roomId);
     }
