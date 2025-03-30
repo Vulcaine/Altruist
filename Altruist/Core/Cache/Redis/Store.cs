@@ -187,18 +187,32 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         _cache = cache;
     }
 
-    public override async Task AddConnection(string connectionId, IConnection socket, string? roomId = null)
+    public override async Task<bool> AddConnection(string connectionId, IConnection socket, string? roomId = null)
     {
-        await base.AddConnection(connectionId, socket);
+        if (!await base.AddConnection(connectionId, socket))
+        {
+            return false;
+        }
+
         await _redis.SetAddAsync(GlobalKey, connectionId);
 
         if (!string.IsNullOrEmpty(roomId))
         {
             var roomKey = $"{RoomPrefix}{roomId}";
             var existingRoom = await _cache.GetAsync<RoomPacket>(roomKey);
-            existingRoom.ConnectionIds.Add(connectionId);
-            await _cache.SaveAsync(roomKey, existingRoom);
+            if (existingRoom != null)
+            {
+                existingRoom.ConnectionIds.Add(connectionId);
+                await _cache.SaveAsync(roomKey, existingRoom);
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
+
+        return true;
     }
 
     public override async Task RemoveConnection(string connectionId)
@@ -211,14 +225,13 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
 
         foreach (var roomKey in roomKeys)
         {
-            var roomData = await _cache.GetAsync<RoomPacket>(roomKey!);
-            if (EqualityComparer<RoomPacket>.Default.Equals(roomData, default))
+            var room = await _cache.GetAsync<RoomPacket>(roomKey!);
+            if (room == null)
                 continue;
 
-            var room = roomData;
-            if (room.ConnectionIds.Remove(connectionId))
+            if (room.ConnectionIds.Remove(connectionId) || room.Empty())
             {
-                if (room.ConnectionIds.Count == 0)
+                if (room.Empty())
                     await _cache.RemoveAsync<RoomPacket>(roomKey!);
                 else
                     await _cache.SaveAsync(roomKey!, room);
@@ -226,9 +239,9 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         }
     }
 
-    public override async Task<RoomPacket> GetRoomAsync(string roomId)
+    public override async Task<RoomPacket?> GetRoomAsync(string roomId)
     {
-        return await _cache.GetAsync<RoomPacket>($"{RoomPrefix}{roomId}");
+        return await _cache.GetAsync<RoomPacket>(roomId);
     }
 
     public override async Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
@@ -257,7 +270,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         foreach (var roomKey in roomKeys)
         {
             var room = await _cache.GetAsync<RoomPacket>(roomKey!);
-            if (!room.Full())
+            if (room != null && !room.Full())
             {
                 return room;
             }
@@ -280,7 +293,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
 
     public override async Task DeleteRoom(string roomId)
     {
-        await _cache.RemoveAsync<RoomPacket>($"{RoomPrefix}{roomId}");
+        await _cache.RemoveAsync<RoomPacket>(roomId);
     }
 
     public IRedisCollection<TNonNullClass> RedisCollection<TNonNullClass>() where TNonNullClass : notnull

@@ -42,11 +42,18 @@ public sealed class RedisCacheServiceToken : ICacheServiceToken
 
 public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionSetup>, ICacheConnectionSetupBase
 {
+    private List<Type> indexedEntities = new List<Type>();
     public RedisConnectionSetup(IServiceCollection services) : base(services)
     {
     }
 
-    public void BuildWithOptions(ConfigurationOptions options, ILogger logger)
+    public RedisConnectionSetup Index<T>()
+    {
+        indexedEntities.Add(typeof(T));
+        return this;
+    }
+
+    private void BuildWithOptions(ConfigurationOptions options, ILogger logger, IAltruistContext settings)
     {
         if (_contactPoints.Count == 0)
         {
@@ -73,7 +80,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         multiplexer.ConnectionRestored += (sender, args) =>
         {
             logger.LogInformation("✅ Redis connection restored. Ready to store and distribute data across realms with incredible speed! 🌌");
-            ResubscribeToChannels(multiplexer, _services.BuildServiceProvider(), logger, true);
+            ResubscribeToChannels(multiplexer, _services.BuildServiceProvider(), logger, true, settings);
         };
 
         _services.AddSingleton(sp =>
@@ -83,7 +90,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
 
             if (mux.IsConnected)
             {
-                provider.Connection.CreateIndex(typeof(PlayerEntity));
+                BuildIndex(provider);
             }
 
             return provider;
@@ -95,10 +102,17 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
             return connectionMultiplexer.GetSubscriber();
         });
 
-        _services.AddSingleton<IAltruistEngineRouter, RedisEngineRouter>();
-        _services.AddSingleton<IAltruistRouter, RedisDirectRouter>();
-        _services.AddSingleton<RedisSocketClientSender>();
-        _services.AddSingleton<RedisEngineClientSender>();
+        if (settings.EngineEnabled)
+        {
+            _services.AddSingleton<IAltruistEngineRouter, RedisEngineRouter>();
+            _services.AddSingleton<RedisEngineClientSender>();
+        }
+        else
+        {
+            _services.AddSingleton<IAltruistRouter, RedisDirectRouter>();
+            _services.AddSingleton<RedisSocketClientSender>();
+        }
+
         // setup cache
         _services.AddSingleton<RedisCache>();
         _services.AddSingleton<ICache>(sp => sp.GetRequiredService<RedisCache>());
@@ -113,13 +127,22 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         var serviceProvider = _services.BuildServiceProvider();
 
         var mux = serviceProvider.GetRequiredService<IConnectionMultiplexer>();
-        ResubscribeToChannels(mux, serviceProvider, logger, false);
+        ResubscribeToChannels(mux, serviceProvider, logger, false, settings);
+    }
+
+    private void BuildIndex(RedisConnectionProvider provider)
+    {
+        foreach (var entity in indexedEntities)
+        {
+            provider.Connection.CreateIndex(entity);
+        }
     }
 
 
-    public override void Build()
+    public override void Build(IAltruistContext settings)
     {
-        ILoggerFactory factory = _services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+        var sp = _services.BuildServiceProvider();
+        ILoggerFactory factory = sp.GetRequiredService<ILoggerFactory>();
         ILogger logger = factory.CreateLogger<RedisServiceConfiguration>();
 
         if (_contactPoints.Count == 0)
@@ -134,10 +157,10 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         configOptions.ConnectTimeout = 1000;
         configOptions.SyncTimeout = 1000;
         configOptions.AsyncTimeout = 1000;
-        BuildWithOptions(configOptions, logger);
+        BuildWithOptions(configOptions, logger, settings);
     }
 
-    private void ResubscribeToChannels(IConnectionMultiplexer multiplexer, IServiceProvider serviceProvider, ILogger logger, bool resub)
+    private void ResubscribeToChannels(IConnectionMultiplexer multiplexer, IServiceProvider serviceProvider, ILogger logger, bool resub, IAltruistContext context)
     {
         if (multiplexer.IsConnected)
         {
@@ -148,7 +171,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
 
             // reset indexes
             var redisProvider = serviceProvider.GetRequiredService<RedisConnectionProvider>();
-            redisProvider.Connection.CreateIndex(typeof(PlayerEntity));
+            BuildIndex(redisProvider);
 
             if (resub)
                 logger.LogInformation("🔄 Resubscribing to Redis Pub/Sub channels..");
@@ -159,22 +182,30 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
 
             subscriber.Subscribe(channel, async (channel, message) =>
             {
-                await ProcessQueuedMessagesAsync(redisDatabase, decoder, router);
+                await ProcessQueuedMessagesAsync(multiplexer, decoder, router, context);
             });
         }
     }
 
-    private async Task ProcessQueuedMessagesAsync(IDatabase redisDatabase, IMessageCodec codec, IAltruistRouter router)
+    private async Task ProcessQueuedMessagesAsync(IConnectionMultiplexer mux, IMessageCodec codec, IAltruistRouter router, IAltruistContext context)
     {
+        var database = mux.GetDatabase();
         while (true)
         {
-            var message = await redisDatabase.ListRightPopAsync(IngressRedis.MessageQueue);
+            var message = await database.ListRightPopAsync(IngressRedis.MessageQueue);
             if (!message.HasValue)
                 break;
 
-            var redisMessage = codec.Decoder.Decode<IPacketBase>(message!);
+            var redisMessage = codec.Decoder.Decode<InterprocessPacket>(message!);
+
+            // if we are the sender of the message, we don't process it
+            if (string.IsNullOrEmpty(redisMessage.ProcessId) || redisMessage.ProcessId == context.ProcessId)
+            {
+                continue;
+            }
+
             var clientId = redisMessage.Header.Receiver;
-            await router.Client.SendAsync(clientId!, redisMessage);
+            _ = router.Client.SendAsync(clientId!, redisMessage.Message);
         }
     }
 

@@ -47,7 +47,7 @@ public interface IDatabaseServiceToken : IServiceToken<IDatabaseConfiguration>
 
 public interface ISetup<TSelf> where TSelf : ISetup<TSelf>
 {
-    void Build();
+    void Build(IAltruistContext settings);
 }
 
 public interface IContactSetup<TSelf> : ISetup<TSelf> where TSelf : IContactSetup<TSelf>
@@ -105,7 +105,7 @@ public abstract class ConnectionSetupBase<TSelf> : IContactSetup<TSelf>
         return (TSelf)this;
     }
 
-    public abstract void Build();
+    public abstract void Build(IAltruistContext settings);
 }
 
 public interface ICacheConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : ICacheConnectionSetup<TSelf> { }
@@ -152,7 +152,7 @@ public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnection
         _services = services;
         _altruistContext = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
     }
-    public abstract void Build();
+    public abstract void Build(IAltruistContext settings);
     public abstract TSelf MapPortal<P>(string path) where P : Portal, IPortal;
     public abstract TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
 
@@ -213,7 +213,7 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
         return (TSelf)this;
     }
 
-    public override void Build()
+    public override void Build(IAltruistContext settings)
     {
         foreach (var portal in Portals)
         {

@@ -76,15 +76,19 @@ public class ClientSender : IAltruistRouterSender
         _codec = codec;
     }
 
-    public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
+    public virtual async Task SendAsync(string clientId, byte[] message)
     {
         var socket = await _store.GetConnection(clientId);
-        var encodedMessage = _codec.Encoder.Encode(message);
-
         if (socket != null && socket.IsConnected)
         {
-            await socket.SendAsync(encodedMessage);
+            await socket.SendAsync(message);
         }
+    }
+
+    public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
+    {
+        var encodedMessage = _codec.Encoder.Encode(message);
+        await SendAsync(clientId, encodedMessage);
     }
 }
 

@@ -16,7 +16,7 @@ public class InMemoryPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         _logger = loggerFactory.CreateLogger<InMemoryPlayerService<TPlayerEntity>>();
     }
 
-    public async Task<TPlayerEntity> ConnectById(string roomId, string socketId, string name, float[]? position = null)
+    public async Task<TPlayerEntity?> ConnectById(string roomId, string socketId, string name, float[]? position = null)
     {
         var player = new TPlayerEntity
         {
@@ -26,9 +26,18 @@ public class InMemoryPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         };
 
         _entities[socketId] = player;
-        await _store.AddClientToRoom(socketId, roomId);
+        var room = await _store.AddClientToRoom(socketId, roomId);
 
-        _logger.LogInformation($"Connected player {socketId} to instance {roomId}");
+        if (room == null)
+        {
+            _logger.LogError($"Failed to connect player {socketId} to instance {roomId}. No such room");
+            return null;
+        }
+        else
+        {
+            _logger.LogInformation($"Connected player {socketId} to instance {roomId}");
+        }
+
         return player;
     }
 

@@ -11,6 +11,8 @@ namespace Altruist
 
         public bool EngineEnabled { get; set; }
 
+        public string ProcessId { get; } = $"{Environment.MachineName}-{Environment.ProcessId}-${Guid.NewGuid()}";
+
         public ITransportServiceToken TransportToken { get; set; }
         public IDatabaseServiceToken? DatabaseToken { get; set; }
         public ICacheServiceToken? CacheToken { get; set; }

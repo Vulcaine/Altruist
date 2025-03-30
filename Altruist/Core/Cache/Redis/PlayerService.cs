@@ -18,7 +18,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
         _logger = loggerFactory.CreateLogger<RedisPlayerService<TPlayerEntity>>();
     }
 
-    public async Task<TPlayerEntity> ConnectById(string roomId, string socketId, string name, float[]? position = null)
+    public async Task<TPlayerEntity?> ConnectById(string roomId, string socketId, string name, float[]? position = null)
     {
         var player = new TPlayerEntity
         {
@@ -27,9 +27,18 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
             Position = position ?? [0, 0]
         };
 
-        await _provider.AddClientToRoom(socketId, roomId);
-        await _entityRepo.InsertAsync(player);
-        _logger.LogInformation($"Connected player {socketId} to instance {roomId}");
+        var room = await _provider.AddClientToRoom(socketId, roomId);
+        if (room == null)
+        {
+            _logger.LogError($"Failed to connect player {socketId} to instance {roomId}. No such room");
+            return null;
+        }
+        else
+        {
+            await _entityRepo.InsertAsync(player);
+            _logger.LogInformation($"Connected player {socketId} to instance {roomId}");
+        }
+
 
         return player;
     }

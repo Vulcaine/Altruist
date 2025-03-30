@@ -1,15 +1,14 @@
-using System.Collections.Concurrent;
+using System.Collections;
 
 namespace Altruist;
 
 
-public class InMemoryCacheCursor<T> : ICacheCursor<T> where T : notnull
+public class InMemoryCacheCursor<T> : ICacheCursor<T>, IEnumerable<T> where T : notnull
 {
     private int BatchSize { get; }
     private int CurrentIndex { get; set; }
     private int TotalItems { get; }
     private List<T> CurrentBatch { get; }
-
     private readonly Dictionary<string, object> _cache;
 
     public List<T> Items => CurrentBatch;
@@ -20,14 +19,14 @@ public class InMemoryCacheCursor<T> : ICacheCursor<T> where T : notnull
         _cache = cache;
         BatchSize = batchSize;
         CurrentIndex = 0;
-        TotalItems = int.MaxValue; // You can adjust this as needed
+        TotalItems = _cache.Values.Count;
         CurrentBatch = new List<T>();
     }
 
     public Task<bool> NextBatch()
     {
         CurrentBatch.Clear();
-        var entities = _cache.Values.Select(list => list).OfType<T>().Skip(CurrentIndex).Take(BatchSize).ToList();
+        var entities = _cache.Values.OfType<T>().Skip(CurrentIndex).Take(BatchSize).ToList();
 
         if (entities.Count == 0)
             return Task.FromResult(false);
@@ -40,6 +39,22 @@ public class InMemoryCacheCursor<T> : ICacheCursor<T> where T : notnull
 
     public IEnumerator<T> GetEnumerator()
     {
-        return CurrentBatch.GetEnumerator();
+        return FetchAllBatches().GetEnumerator();
+    }
+
+    private IEnumerable<T> FetchAllBatches()
+    {
+        do
+        {
+            foreach (var item in CurrentBatch)
+            {
+                yield return item;
+            }
+        } while (NextBatch().GetAwaiter().GetResult());
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return FetchAllBatches().GetEnumerator();
     }
 }

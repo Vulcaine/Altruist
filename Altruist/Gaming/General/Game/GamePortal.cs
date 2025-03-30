@@ -27,11 +27,18 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
 
         if (player != null)
         {
-            var room = await FindRoomForClientAsync(clientId);
             await _playerService.DisconnectAsync(clientId);
-
+            var room = await FindRoomForClientAsync(clientId);
             var msg = $"Player {player.Name} left the game";
-            await Router.Room.SendAsync(room.Id, PacketHelper.Success(msg, clientId));
+            if (room != null)
+            {
+                await Router.Room.SendAsync(room.Id, PacketHelper.Success(msg, clientId));
+            }
+            else
+            {
+                await Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId));
+            }
+
         }
     }
 
@@ -44,17 +51,24 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
             return;
         }
 
-        RoomPacket room;
+        RoomPacket? room;
         if (!string.IsNullOrEmpty(message.RoomId))
         {
             room = await GetRoomAsync(message.RoomId);
+
+            if (room == null)
+            {
+                var joinFailedMsg = $"Join failed. No such room: {message.RoomId}";
+                await Router.Client.SendAsync(clientId, PacketHelper.JoinFailed(joinFailedMsg, clientId));
+                return;
+            }
         }
         else
         {
             room = await FindAvailableRoomAsync();
         }
 
-        if (room.Full())
+        if (room == null)
         {
             var msg = $"Join failed: No available rooms";
             await Router.Client.SendAsync(clientId, PacketHelper.JoinFailed(msg, clientId));
@@ -70,8 +84,18 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         {
             var msg = $"Player {message.Name} joined room {room}";
             var player = await _playerService.ConnectById(room.Id, clientId, message.Name, message.Position);
-            await Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId));
-            await Router.Synchronize.SendAsync(player);
+            if (player == null)
+            {
+                var joinFailedMsg = $"Join failed. No such room: {message.RoomId}";
+                await Router.Client.SendAsync(clientId, PacketHelper.JoinFailed(joinFailedMsg, clientId));
+            }
+            else
+            {
+                await Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId));
+                await Router.Synchronize.SendAsync(player);
+
+            }
+
             Logger.LogInformation(msg);
         }
     }

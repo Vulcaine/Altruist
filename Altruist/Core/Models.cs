@@ -6,7 +6,7 @@ using MessagePack;
 
 namespace Altruist;
 
-[Document(StorageType = StorageType.Json, IndexName = "Entities", Prefixes = new[] { "entity" })]
+[Document(StorageType = StorageType.Json, IndexName = "Players", Prefixes = new[] { "player" })]
 [Table("player")]
 [PrimaryKey(keys: [nameof(Id), nameof(Name)])]
 [MessagePackObject]
@@ -16,6 +16,7 @@ public class PlayerEntity : ISynchronizedEntity, IVaultModel
     [Indexed]
     [JsonProperty("id")]
     [Column]
+    [RedisIdField]
     public string Id { get; set; }
 
     [Key(1)]
@@ -143,7 +144,7 @@ public class PlayerEntity : ISynchronizedEntity, IVaultModel
 }
 
 
-[Document(StorageType = StorageType.Json, IndexName = "Entities", Prefixes = new[] { "entity" })]
+[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("vehicles")]
 public abstract class Vehicle : PlayerEntity
 {
@@ -193,13 +194,13 @@ public abstract class Vehicle : PlayerEntity
     }
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "Entities", Prefixes = new[] { "entity" })]
+[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("Spaceship")]
 public class Spaceship : Vehicle
 {
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "Entities", Prefixes = new[] { "entity" })]
+[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("Car")]
 public class Car : Vehicle
 {

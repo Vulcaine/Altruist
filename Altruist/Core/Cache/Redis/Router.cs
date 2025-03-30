@@ -67,12 +67,15 @@ public class RedisEngineClientSender : EngineClientSender
     private readonly ISubscriber _redisPublisher;
     private readonly IConnectionMultiplexer _mux;
 
+    private readonly IAltruistContext _context;
+
     RedisChannel channel = RedisChannel.Literal(OutgressRedis.MessageDistributeChannel);
 
-    public RedisEngineClientSender(IConnectionStore store, IMessageCodec codec, IConnectionMultiplexer mux, IAltruistEngine engine) : base(store, codec, engine)
+    public RedisEngineClientSender(IConnectionStore store, IMessageCodec codec, IConnectionMultiplexer mux, IAltruistEngine engine, IAltruistContext context) : base(store, codec, engine)
     {
         _redisPublisher = mux.GetSubscriber();
         _mux = mux;
+        _context = context;
     }
 
     public override async Task SendAsync<TPacket>(string clientId, TPacket message)
@@ -85,7 +88,8 @@ public class RedisEngineClientSender : EngineClientSender
         }
         else
         {
-            var redisMessage = _codec.Encoder.Encode(message);
+            var packet = new InterprocessPacket(_context.ProcessId, message);
+            var redisMessage = _codec.Encoder.Encode(packet);
             await _mux.GetDatabase().ListLeftPushAsync(IngressRedis.MessageQueue, redisMessage);
             // just publishing an empty message this way we are notifying all subscribers that there are messages in the queue.
             await _redisPublisher.PublishAsync(channel, "", CommandFlags.FireAndForget);

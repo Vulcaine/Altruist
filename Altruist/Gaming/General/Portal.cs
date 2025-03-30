@@ -122,7 +122,7 @@ public abstract class Portal : IPortal, IConnectionStore
         return _context.RemoveConnection(connectionId);
     }
 
-    public Task AddConnection(string connectionId, IConnection socket, string? roomId = null)
+    public Task<bool> AddConnection(string connectionId, IConnection socket, string? roomId = null)
     {
         return _context.AddConnection(connectionId, socket, roomId);
     }
@@ -165,7 +165,7 @@ public abstract class Portal : IPortal, IConnectionStore
         return await _context.FindAvailableRoomAsync();
     }
 
-    public async Task<RoomPacket> FindRoomForClientAsync(string clientId)
+    public async Task<RoomPacket?> FindRoomForClientAsync(string clientId)
     {
         return await _context.FindRoomForClientAsync(clientId);
     }
@@ -180,7 +180,7 @@ public abstract class Portal : IPortal, IConnectionStore
         return _context.DeleteRoom(roomName);
     }
 
-    public Task<RoomPacket> GetRoomAsync(string roomId)
+    public Task<RoomPacket?> GetRoomAsync(string roomId)
     {
         return _context.GetRoomAsync(roomId);
     }
@@ -190,7 +190,7 @@ public abstract class Portal : IPortal, IConnectionStore
         return _context.GetAllRoomsAsync();
     }
 
-    public Task<RoomPacket> AddClientToRoom(string connectionId, string roomId)
+    public Task<RoomPacket?> AddClientToRoom(string connectionId, string roomId)
     {
         return _context.AddClientToRoom(connectionId, roomId);
     }

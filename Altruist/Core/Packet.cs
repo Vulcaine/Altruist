@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 using Altruist;
 using MessagePack;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Redis.OM.Modeling;
 
 namespace Altruist
 {
@@ -12,9 +14,51 @@ namespace Altruist
 
     public interface IPacketBase : IPacket
     {
-        PacketBase Header { get; }
+        PacketHeader Header { get; }
 
         void SetReceiver(string clientId) => Header.SetReceiver(clientId);
+    }
+
+    [MessagePackObject]
+    public class DecodeType : IPacketBase
+    {
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+
+        [JsonPropertyName("type")][Key(1)] public string Type { get; set; }
+        public DecodeType()
+        {
+            Header = default;
+            Type = "";
+        }
+
+        public DecodeType(PacketHeader header, string type)
+        {
+            Header = header;
+            Type = type;
+        }
+    }
+
+    [MessagePackObject]
+    public struct InterprocessPacket : IPacketBase
+    {
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("processId")][Key(1)] public string ProcessId { get; set; }
+        [JsonPropertyName("message")][Key(2)] public IPacketBase Message { get; set; }
+        [JsonPropertyName("type")][Key(3)] public string Type => "InterprocessPacket";
+
+        public InterprocessPacket(string processId, IPacketBase message)
+        {
+            Header = message.Header;
+            Message = message;
+            ProcessId = processId;
+        }
+
+        public InterprocessPacket()
+        {
+            Header = default;
+            Message = default!;
+            ProcessId = "";
+        }
     }
 
     public interface IMovementPacket : IPacketBase
@@ -25,14 +69,14 @@ namespace Altruist
     // === Common Header Struct ===
 
     [MessagePackObject]
-    public struct PacketBase
+    public struct PacketHeader
     {
-        [Key(0)] public long Timestamp { get; }
+        [JsonPropertyName("header")][Key(0)] public long Timestamp { get; }
 
-        [Key(1)] public string? Receiver { get; set; }
-        [Key(2)] public string Sender { get; }
+        [JsonPropertyName("receiver")][Key(1)] public string? Receiver { get; set; }
+        [JsonPropertyName("sender")][Key(2)] public string Sender { get; }
 
-        public PacketBase()
+        public PacketHeader()
         {
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             Sender = "";
@@ -40,7 +84,7 @@ namespace Altruist
 
         public void SetReceiver(string clientId) => Receiver = clientId;
 
-        public PacketBase(string sender, string? receiver = null)
+        public PacketHeader(string sender, string? receiver = null)
         {
             Sender = sender;
             Receiver = receiver;
@@ -52,10 +96,10 @@ namespace Altruist
     [MessagePackObject]
     public struct SyncPacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
 
-        [Key(1)] public string EntityType { get; set; }
-        [Key(2)] public Dictionary<string, object?> Data { get; set; }
+        [JsonPropertyName("entityType")][Key(1)] public string EntityType { get; set; }
+        [JsonPropertyName("data")][Key(2)] public Dictionary<string, object?> Data { get; set; }
 
         public SyncPacket()
         {
@@ -66,12 +110,12 @@ namespace Altruist
 
         public SyncPacket(string sender, string entityType, Dictionary<string, object?> data, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             EntityType = entityType;
             Data = data;
         }
 
-        public string Type => "SyncPacket";
+        [JsonPropertyName("type")][Key(3)] public string Type => "SyncPacket";
 
 
     }
@@ -80,7 +124,7 @@ namespace Altruist
     [MessagePackObject]
     public struct AltruistPacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("event")][Key(1)] public string Event { get; set; }
 
         public AltruistPacket()
@@ -91,11 +135,11 @@ namespace Altruist
 
         public AltruistPacket(string sender, string eventName, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             Event = eventName;
         }
 
-        public string Type => "AltruistPacket";
+        [JsonPropertyName("type")][Key(2)] public string Type => "AltruistPacket";
 
 
     }
@@ -104,8 +148,8 @@ namespace Altruist
     [MessagePackObject]
     public struct SuccessPacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
-        [Key(1)] public string Message { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("message")][Key(1)] public string Message { get; set; }
 
         public SuccessPacket()
         {
@@ -115,11 +159,11 @@ namespace Altruist
 
         public SuccessPacket(string sender, string message, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             Message = message;
         }
 
-        public string Type => "SuccessMessage";
+        [JsonPropertyName("type")][Key(2)] public string Type => "SuccessMessage";
 
 
     }
@@ -128,8 +172,8 @@ namespace Altruist
     [MessagePackObject]
     public struct JoinFailedPacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
-        [Key(1)] public string Reason { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("reason")][Key(1)] public string Reason { get; set; }
 
         public JoinFailedPacket()
         {
@@ -139,20 +183,18 @@ namespace Altruist
 
         public JoinFailedPacket(string sender, string reason, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             Reason = reason;
         }
 
-        public string Type => "JoinFailedPacket";
-
-
+        [JsonPropertyName("type")][Key(2)] public string Type => "JoinFailedPacket";
     }
 
 
     [MessagePackObject]
     public struct ShootingPacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
 
         public ShootingPacket()
         {
@@ -161,9 +203,9 @@ namespace Altruist
 
         public ShootingPacket(string sender, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
         }
-        public string Type => "ShootingPacket";
+        [JsonPropertyName("type")][Key(1)] public string Type => "ShootingPacket";
 
 
     }
@@ -172,23 +214,23 @@ namespace Altruist
     [MessagePackObject]
     public struct ForwardMovementPacket : IMovementPacket
     {
-        [Key(0)] public PacketBase Header { get; set; }
-        [Key(1)] public bool MoveUp { get; set; }
-        [Key(2)] public bool RotateLeft { get; set; }
-        [Key(3)] public bool RotateRight { get; set; }
-        [Key(4)] public bool Turbo { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("moveUp")][Key(1)] public bool MoveUp { get; set; }
+        [JsonPropertyName("rotateLeft")][Key(2)] public bool RotateLeft { get; set; }
+        [JsonPropertyName("rotateRight")][Key(3)] public bool RotateRight { get; set; }
+        [JsonPropertyName("turbo")][Key(4)] public bool Turbo { get; set; }
 
         public ForwardMovementPacket() { }
 
         public ForwardMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool rotateLeft = false, bool rotateRight = false, bool turbo = false)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             MoveUp = moveUp;
             Turbo = turbo;
             RotateLeft = rotateLeft;
             RotateRight = rotateRight;
         }
-        public string Type => "ForwardMovementPacket";
+        [JsonPropertyName("type")][Key(5)] public string Type => "ForwardMovementPacket";
 
 
     }
@@ -198,12 +240,12 @@ namespace Altruist
     [MessagePackObject]
     public struct EightDirectionMovementPacket : IMovementPacket
     {
-        [Key(0)] public PacketBase Header { get; set; }
-        [Key(1)] public bool MoveUp { get; set; }
-        [Key(2)] public bool MoveDown { get; set; }
-        [Key(3)] public bool MoveLeft { get; set; }
-        [Key(4)] public bool MoveRight { get; set; }
-        [Key(5)] public bool Turbo { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("moveUp")][Key(1)] public bool MoveUp { get; set; }
+        [JsonPropertyName("moveDown")][Key(2)] public bool MoveDown { get; set; }
+        [JsonPropertyName("moveLeft")][Key(3)] public bool MoveLeft { get; set; }
+        [JsonPropertyName("moveRight")][Key(4)] public bool MoveRight { get; set; }
+        [JsonPropertyName("turbo")][Key(5)] public bool Turbo { get; set; }
 
         public EightDirectionMovementPacket()
         {
@@ -217,14 +259,14 @@ namespace Altruist
 
         public EightDirectionMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool moveDown = false, bool moveLeft = false, bool moveRight = false, bool turbo = false)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             MoveUp = moveUp;
             MoveDown = moveDown;
             MoveLeft = moveLeft;
             MoveRight = moveRight;
             Turbo = turbo;
         }
-        public string Type => "EightDirectionMovementPacket";
+        [JsonPropertyName("type")][Key(6)] public string Type => "EightDirectionMovementPacket";
 
 
     }
@@ -234,8 +276,8 @@ namespace Altruist
     [MessagePackObject]
     public struct Vector2Message
     {
-        [Key(0)] public float X { get; set; }
-        [Key(1)] public float Y { get; set; }
+        [JsonPropertyName("x")][Key(0)] public float X { get; set; }
+        [JsonPropertyName("y")][Key(1)] public float Y { get; set; }
 
         public Vector2Message()
         {
@@ -252,8 +294,8 @@ namespace Altruist
     [MessagePackObject]
     public struct HandshakePacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
-        [Key(1)] public RoomPacket[] Rooms { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("rooms")][Key(1)] public RoomPacket[] Rooms { get; set; }
 
         public HandshakePacket()
         {
@@ -263,20 +305,20 @@ namespace Altruist
 
         public HandshakePacket(string sender, RoomPacket[] rooms, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             Rooms = rooms;
         }
 
-        public string Type => "HandshakePacket";
+        [JsonPropertyName("type")][Key(2)] public string Type => "HandshakePacket";
     }
 
     [MessagePackObject]
     public struct JoinGamePacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
-        [Key(1)] public string Name { get; set; }
-        [Key(2)] public string? RoomId { get; set; }
-        [Key(2)] public float[]? Position { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("name")][Key(1)] public string Name { get; set; }
+        [JsonPropertyName("roomId")][Key(2)] public string? RoomId { get; set; }
+        [JsonPropertyName("position")][Key(2)] public float[]? Position { get; set; }
 
         public JoinGamePacket()
         {
@@ -288,20 +330,20 @@ namespace Altruist
 
         public JoinGamePacket(string sender, string name, string? roomid = null, float[]? position = null, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             Name = name;
             RoomId = roomid;
             Position = position ?? [0, 0];
         }
 
-        public string Type => "JoinGamePacket";
+        [JsonPropertyName("type")][Key(3)] public string Type => "JoinGamePacket";
     }
 
     [MessagePackObject]
     public struct LeaveGamePacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
-        [Key(1)] public string ClientId { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("clientId")][Key(1)] public string ClientId { get; set; }
 
         public LeaveGamePacket()
         {
@@ -311,33 +353,36 @@ namespace Altruist
 
         public LeaveGamePacket(string sender, string clientId, string? receiver = null)
         {
-            Header = new PacketBase(sender, receiver);
+            Header = new PacketHeader(sender, receiver);
             ClientId = clientId;
         }
 
-        public string Type => "LeaveGamePacket";
+        [JsonPropertyName("type")][Key(2)] public string Type => "LeaveGamePacket";
     }
 
     [MessagePackObject]
-    public struct RoomPacket : IPacketBase
+    [Document(StorageType = StorageType.Json, IndexName = "Rooms", Prefixes = new[] { "room" })]
+    public class RoomPacket : IPacketBase
     {
-        [Key(0)] public PacketBase Header { get; set; }
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
 
+        [JsonPropertyName("id")]
         [Key(1)]
+        [RedisIdField]
         public string Id { get; set; }
 
+        [JsonPropertyName("maxCapacity")]
         [Key(2)]
         public uint MaxCapactiy { get; set; }
 
+        [JsonPropertyName("connectionIds")]
         [Key(3)]
         public HashSet<string> ConnectionIds { get; set; }
 
-        public string Type => "RoomPacket";
+        [JsonPropertyName("type")][Key(4)] public string Type => "RoomPacket";
 
         [IgnoreMember]
         public int PlayerCount => (ConnectionIds ?? new HashSet<string>()).Count;
-
-
 
         public RoomPacket()
         {

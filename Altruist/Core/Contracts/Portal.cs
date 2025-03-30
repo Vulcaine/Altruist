@@ -65,7 +65,7 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return _connectionStore.RemoveConnection(connectionId);
     }
 
-    public Task AddConnection(string connectionId, IConnection socket, string? roomId = null)
+    public Task<bool> AddConnection(string connectionId, IConnection socket, string? roomId = null)
     {
         return _connectionStore.AddConnection(connectionId, socket, roomId);
     }
@@ -85,13 +85,13 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return _connectionStore.GetAllConnections();
     }
 
-    public async Task<RoomPacket> FindRoomForClientAsync(string clientId)
+    public async Task<RoomPacket?> FindRoomForClientAsync(string clientId)
     {
         return await _connectionStore.FindRoomForClientAsync(clientId);
     }
 
     public abstract IPlayerService<TPlayerEntity> GetPlayerService<TPlayerEntity>() where TPlayerEntity : PlayerEntity, new();
-    public async Task<RoomPacket> GetRoomAsync(string roomId)
+    public async Task<RoomPacket?> GetRoomAsync(string roomId)
     {
         return await _connectionStore.GetRoomAsync(roomId);
     }
@@ -100,7 +100,7 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return await _connectionStore.GetAllRoomsAsync();
     }
 
-    public async Task<RoomPacket> AddClientToRoom(string connectionId, string roomId)
+    public async Task<RoomPacket?> AddClientToRoom(string connectionId, string roomId)
     {
         return await _connectionStore.AddClientToRoom(connectionId, roomId);
     }

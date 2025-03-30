@@ -9,6 +9,7 @@ public interface IAltruistContext
     ICacheServiceToken? CacheToken { get; set; }
     ServerInfo ServerInfo { get; set; }
     HashSet<string> Endpoints { get; set; }
+    public string ProcessId { get; }
     bool EngineEnabled { get; set; }
     void AddEndpoint(string endpoint);
     void Validate();

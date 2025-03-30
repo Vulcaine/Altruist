@@ -55,7 +55,7 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
         return this;
     }
 
-    public override void Build()
+    public override void Build(IAltruistContext settings)
     {
         ILoggerFactory factory = _services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
         ILogger logger = factory.CreateLogger<ScyllaDBConnectionSetup>();

@@ -27,7 +27,7 @@ namespace Altruist
             Builder.Services.AddSingleton(Builder.Services);
             Builder.Services.AddSingleton(Settings);
             Builder.Services.AddSingleton<ClientSender>();
-            Builder.Services.AddSingleton<EngineClientSender>();
+
             Builder.Services.AddSingleton<RoomSender>();
             Builder.Services.AddSingleton<BroadcastSender>();
             Builder.Services.AddSingleton<ClientSynchronizator>();
@@ -37,8 +37,6 @@ namespace Altruist
             Builder.Services.AddSingleton<ICache>(sp => sp.GetRequiredService<InMemoryCache>());
 
             Builder.Services.AddSingleton<IAltruistRouter, InMemoryDirectRouter>();
-            Builder.Services.AddSingleton<IAltruistEngineRouter, InMemoryEngineRouter>();
-
             Builder.Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
             Builder.Services.AddSingleton<IMessageDecoder, JsonMessageDecoder>();
             Builder.Services.AddSingleton<IMessageEncoder, JsonMessageEncoder>();
@@ -47,9 +45,9 @@ namespace Altruist
             Builder.Services.AddSingleton<IPortalContext, PortalContext>();
         }
 
-        public static AltruistConnectionBuilder Create(string[] args) => new AltruistBuilder(args).ToConnectionBuilder();
+        public static AltruistEngineBuilder Create(string[] args) => new AltruistBuilder(args).ToConnectionBuilder();
 
-        private AltruistConnectionBuilder ToConnectionBuilder() => new AltruistConnectionBuilder(Builder, Settings);
+        private AltruistEngineBuilder ToConnectionBuilder() => new AltruistEngineBuilder(Builder, Settings);
     }
 
     // Step 1: Choose Transport
@@ -82,7 +80,7 @@ namespace Altruist
         {
             token.Configuration.Configure(Builder.Services);
             Builder.Services.AddSingleton(token);
-            instance.Build();
+            instance.Build(Settings);
             // readding the built instance
             Builder.Services.AddSingleton(instance);
             Settings.TransportToken = token;
@@ -147,7 +145,7 @@ namespace Altruist
             token.Configuration.Configure(Builder.Services);
             Builder.Services.AddSingleton<TCacheConnectionSetup>();
             Builder.Services.AddSingleton(token);
-            instance.Build();
+            instance.Build(Settings);
             // readding the built instance
             Builder.Services.AddSingleton(instance);
             Settings.CacheToken = token;
@@ -195,7 +193,7 @@ namespace Altruist
             token.Configuration.Configure(Builder.Services);
             Builder.Services.AddSingleton<TDatabaseConnectionSetup>();
             Builder.Services.AddSingleton(token);
-            instance.Build();
+            instance.Build(Settings);
             // readding the built instance
             Builder.Services.AddSingleton(instance);
             Console.WriteLine("SETTING TOKEN: " + token);
@@ -251,13 +249,15 @@ namespace Altruist
             this.Settings = Settings;
         }
 
-        public AltruistServerBuilder NoEngine()
+        public AltruistConnectionBuilder NoEngine()
         {
-            return new AltruistServerBuilder(Builder, Settings);
+            return new AltruistConnectionBuilder(Builder, Settings);
         }
 
-        public AltruistServerBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
+        public AltruistConnectionBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
         {
+            Builder.Services.AddSingleton<IAltruistEngineRouter, InMemoryEngineRouter>();
+            Builder.Services.AddSingleton<EngineClientSender>();
             Builder.Services.AddSingleton<IAltruistEngine>(sp =>
             {
                 var env = sp.GetRequiredService<IHostEnvironment>();
@@ -277,7 +277,7 @@ namespace Altruist
             Builder.Services.AddSingleton<IAltruistRouter>(sp => sp.GetRequiredService<IAltruistEngineRouter>());
             Builder.Services.AddSingleton<MethodScheduler>();
             Settings.EngineEnabled = true;
-            return new AltruistServerBuilder(Builder, Settings);
+            return new AltruistConnectionBuilder(Builder, Settings);
         }
     }
 
