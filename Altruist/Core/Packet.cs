@@ -102,18 +102,18 @@ namespace Altruist
 
 
     [MessagePackObject]
-    public struct SuccessMessage : IPacketBase
+    public struct SuccessPacket : IPacketBase
     {
         [Key(0)] public PacketBase Header { get; set; }
         [Key(1)] public string Message { get; set; }
 
-        public SuccessMessage()
+        public SuccessPacket()
         {
             Header = default;
             Message = "";
         }
 
-        public SuccessMessage(string sender, string message, string? receiver = null)
+        public SuccessPacket(string sender, string message, string? receiver = null)
         {
             Header = new PacketBase(sender, receiver);
             Message = message;
@@ -254,22 +254,47 @@ namespace Altruist
     {
         [Key(0)] public PacketBase Header { get; set; }
         [Key(1)] public string Name { get; set; }
+        [Key(2)] public string? RoomId { get; set; }
+        [Key(2)] public float[]? Position { get; set; }
 
         public JoinGamePacket()
         {
             Header = default;
             Name = string.Empty;
+            RoomId = string.Empty;
+            Position = [0, 0];
         }
 
-        public JoinGamePacket(string sender, string name, string? receiver = null)
+        public JoinGamePacket(string sender, string name, string? roomid = null, float[]? position = null, string? receiver = null)
         {
             Header = new PacketBase(sender, receiver);
             Name = name;
+            RoomId = roomid;
+            Position = position ?? [0, 0];
         }
 
         public string Type => "JoinGamePacket";
+    }
 
+    [MessagePackObject]
+    public struct LeaveGamePacket : IPacketBase
+    {
+        [Key(0)] public PacketBase Header { get; set; }
+        [Key(1)] public string ClientId { get; set; }
 
+        public LeaveGamePacket()
+        {
+            Header = default;
+            ClientId = string.Empty;
+        }
+
+        public LeaveGamePacket(string sender, string clientId, string? receiver = null)
+        {
+            Header = new PacketBase(sender, receiver);
+            ClientId = clientId;
+        }
+
+        public string Type => "LeaveGamePacket";
     }
 
     [MessagePackObject]
@@ -351,8 +376,8 @@ public class PacketHelper
 {
     public static JoinFailedPacket JoinFailed(string reason, string receiver) => new JoinFailedPacket("server", reason, receiver);
 
-    public static SuccessMessage Success(string message, string receiver)
+    public static SuccessPacket Success(string message, string receiver)
     {
-        return new SuccessMessage("server", message, receiver);
+        return new SuccessPacket("server", message, receiver);
     }
 }

@@ -43,7 +43,6 @@ namespace Altruist
             Builder.Services.AddSingleton<IConnectionStore, InMemoryConnectionStore>();
             Builder.Services.AddSingleton(typeof(IPlayerService<>), typeof(InMemoryPlayerService<>));
             Builder.Services.AddSingleton<IPortalContext, PortalContext>();
-            Builder.Services.AddSingleton(typeof(IPlayerService<>), typeof(InMemoryPlayerService<>));
         }
 
         public static AltruistConnectionBuilder Create(string[] args) => new AltruistBuilder(args).ToConnectionBuilder();

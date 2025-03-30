@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Gaming;
 
 public abstract class AltruistMovementPortal<TPlayerEntity, TMovementInput> : Portal
-    where TPlayerEntity : PlayerEntity
+    where TPlayerEntity : PlayerEntity, new()
     where TMovementInput : MovementInput
 {
     private readonly IPlayerService<TPlayerEntity> _playerService;
@@ -33,7 +33,7 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementInput> : Po
     protected abstract TMovementInput CreateMovementInput(IMovementPacket movement);
 }
 
-public abstract class AltruistForwardMovementPortal<TMovementInput> : AltruistMovementPortal<TMovementInput, ForwardMovementInput> where TMovementInput : PlayerEntity
+public abstract class AltruistForwardMovementPortal<TMovementInput> : AltruistMovementPortal<TMovementInput, ForwardMovementInput> where TMovementInput : PlayerEntity, new()
 {
     public AltruistForwardMovementPortal(PortalContext context, IPlayerService<TMovementInput> playerService, IMovementService<TMovementInput, ForwardMovementInput> movementService, ILoggerFactory loggerFactory)
         : base(context, playerService, movementService, loggerFactory) { }
@@ -56,7 +56,7 @@ public abstract class AltruistForwardMovementPortal<TMovementInput> : AltruistMo
 
 }
 
-public abstract class AltruistEightDirectionMovementPortal<TMovementInput> : AltruistMovementPortal<TMovementInput, EightDirectionMovementInput> where TMovementInput : PlayerEntity
+public abstract class AltruistEightDirectionMovementPortal<TMovementInput> : AltruistMovementPortal<TMovementInput, EightDirectionMovementInput> where TMovementInput : PlayerEntity, new()
 {
     public AltruistEightDirectionMovementPortal(PortalContext context, IPlayerService<TMovementInput> playerService, IMovementService<TMovementInput, EightDirectionMovementInput> movementService, ILoggerFactory loggerFactory)
         : base(context, playerService, movementService, loggerFactory) { }

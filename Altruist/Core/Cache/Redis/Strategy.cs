@@ -83,7 +83,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
 
             if (mux.IsConnected)
             {
-                provider.Connection.CreateIndex(typeof(Player));
+                provider.Connection.CreateIndex(typeof(PlayerEntity));
             }
 
             return provider;
@@ -148,7 +148,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
 
             // reset indexes
             var redisProvider = serviceProvider.GetRequiredService<RedisConnectionProvider>();
-            redisProvider.Connection.CreateIndex(typeof(Player));
+            redisProvider.Connection.CreateIndex(typeof(PlayerEntity));
 
             if (resub)
                 logger.LogInformation("🔄 Resubscribing to Redis Pub/Sub channels..");

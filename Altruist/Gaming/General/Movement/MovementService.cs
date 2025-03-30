@@ -6,7 +6,7 @@ using StackExchange.Redis;
 
 namespace Altruist.Gaming;
 
-public abstract class BaseMovementService<TPlayerEntity, MovementInput> where TPlayerEntity : PlayerEntity where MovementInput : Altruist.MovementInput
+public abstract class BaseMovementService<TPlayerEntity, MovementInput> where TPlayerEntity : PlayerEntity, new() where MovementInput : Altruist.MovementInput
 {
     protected readonly ILogger<BaseMovementService<TPlayerEntity, MovementInput>> _logger;
     protected readonly IPlayerService<TPlayerEntity> _playerService;
@@ -62,29 +62,29 @@ public abstract class BaseMovementService<TPlayerEntity, MovementInput> where TP
 
     protected virtual Body CreatePhysxBody(TPlayerEntity entity)
     {
-        return BodyFactory.CreateRectangle(null, 40f, 20f, 1f, new Vector2(entity.Position.X, entity.Position.Y), entity.Rotation);
+        return BodyFactory.CreateRectangle(null, 40f, 20f, 1f, new Vector2(entity.Position[0], entity.Position[1]), entity.Rotation);
     }
 
     protected void UpdateEntityPosition(TPlayerEntity entity, Body body)
     {
-        entity.Position = new Vector2(body.Position.X, body.Position.Y);
+        entity.Position = [body.Position.X, body.Position.Y];
         entity.Rotation = body.Rotation;
     }
 
     protected async Task StoreEntityInRedis(string playerId, TPlayerEntity entity)
     {
         var database = ConnectionMultiplexer.Connect("localhost").GetDatabase();
-        await database.HashSetAsync(playerId, new[]
-        {
-            new HashEntry("entity.position.x", entity.Position.X.ToString()),
-            new HashEntry("entity.position.y", entity.Position.Y.ToString()),
+        await database.HashSetAsync(playerId,
+        [
+            new HashEntry("entity.position.x", entity.Position[0].ToString()),
+            new HashEntry("entity.position.y", entity.Position[1].ToString()),
             new HashEntry("entity.rotation", entity.Rotation.ToString()),
             new HashEntry("entity.currentSpeed", entity.CurrentSpeed.ToString())
-        });
+        ]);
     }
 }
 
-public abstract class ForwardMovementService<T, MI> : BaseMovementService<T, MI> where T : PlayerEntity where MI : ForwardMovementInput
+public abstract class ForwardMovementService<T, MI> : BaseMovementService<T, MI> where T : PlayerEntity, new() where MI : ForwardMovementInput
 {
     public ForwardMovementService(ILogger<BaseMovementService<T, MI>> logger, PortalContext hubContext)
         : base(logger, hubContext) { }
@@ -109,7 +109,7 @@ public abstract class ForwardMovementService<T, MI> : BaseMovementService<T, MI>
     }
 }
 
-public abstract class EightDirectionMovementService<T, MI> : BaseMovementService<T, MI> where T : PlayerEntity where MI : EightDirectionMovementInput
+public abstract class EightDirectionMovementService<T, MI> : BaseMovementService<T, MI> where T : PlayerEntity, new() where MI : EightDirectionMovementInput
 {
     public EightDirectionMovementService(ILogger<BaseMovementService<T, MI>> logger, PortalContext hubContext)
         : base(logger, hubContext) { }
@@ -142,7 +142,7 @@ public abstract class EightDirectionMovementService<T, MI> : BaseMovementService
 }
 
 
-public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : EightDirectionMovementService<TPlayerEntity, VehicleMovementInput> where TPlayerEntity : Vehicle
+public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : EightDirectionMovementService<TPlayerEntity, VehicleMovementInput> where TPlayerEntity : Vehicle, new()
 {
     public EightDirectionVehicleMovementService(ILogger<BaseMovementService<TPlayerEntity, VehicleMovementInput>> logger, PortalContext hubContext)
         : base(logger, hubContext) { }
@@ -166,7 +166,7 @@ public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : Eigh
     }
 }
 
-public abstract class ForwardSpacehipMovementService<TPlayerEntity> : ForwardMovementService<TPlayerEntity, SpaceshipMovementInput> where TPlayerEntity : Spaceship
+public abstract class ForwardSpacehipMovementService<TPlayerEntity> : ForwardMovementService<TPlayerEntity, SpaceshipMovementInput> where TPlayerEntity : Spaceship, new()
 {
     protected ForwardSpacehipMovementService(ILogger<BaseMovementService<TPlayerEntity, SpaceshipMovementInput>> logger, PortalContext hubContext) : base(logger, hubContext)
     {

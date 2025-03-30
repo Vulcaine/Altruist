@@ -8,9 +8,11 @@ namespace Altruist.Networking;
 public class SyncedAttribute : Attribute
 {
     public int BitIndex { get; }
-    public SyncedAttribute(int bitIndex)
+    public bool? SyncAlways { get; }
+    public SyncedAttribute(int BitIndex, bool SyncAlways = false)
     {
-        BitIndex = bitIndex;
+        this.BitIndex = BitIndex;
+        this.SyncAlways = SyncAlways;
     }
 }
 
