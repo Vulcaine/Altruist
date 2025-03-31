@@ -5,11 +5,11 @@ namespace Altruist;
 
 public class PortalContext(
     IAltruistContext altruistContext,
-    IAltruistRouter router, IMessageCodec codec, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
+    IAltruistRouter router, ICodec codec, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
     : AbstractSocketPortalContext(altruistContext, router, codec, connectionStore, cache, serviceProvider)
 {
     public override IAltruistRouter Router { get; protected set; } = router;
-    public override IMessageCodec Codec { get; protected set; } = codec;
+    public override ICodec Codec { get; protected set; } = codec;
     public override IAltruistContext AltruistContext { get; protected set; } = altruistContext;
     public override IServiceProvider ServiceProvider { get; protected set; } = serviceProvider;
 
@@ -29,7 +29,7 @@ public abstract class Portal : IPortal, IConnectionStore
     protected readonly ILogger Logger;
 
     protected IAltruistRouter Router => _context.Router;
-    private IMessageCodec _codec => _context.Codec;
+    private ICodec _codec => _context.Codec;
 
     private readonly List<IInterceptor> _interceptors = new();
 
@@ -86,7 +86,7 @@ public abstract class Portal : IPortal, IConnectionStore
 
     public async Task HandleConnection(IConnection connection, string @event, string clientId)
     {
-        await AddConnection(clientId, connection);
+        await AddConnectionAsync(clientId, connection);
 
         try
         {
@@ -111,40 +111,40 @@ public abstract class Portal : IPortal, IConnectionStore
         finally
         {
             await OnDisconnectedAsync(clientId);
-            await RemoveConnection(clientId);
+            await RemoveConnectionAsync(clientId);
             await Cleanup();
         }
     }
 
 
-    public Task RemoveConnection(string connectionId)
+    public Task RemoveConnectionAsync(string connectionId)
     {
-        return _context.RemoveConnection(connectionId);
+        return _context.RemoveConnectionAsync(connectionId);
     }
 
-    public Task<bool> AddConnection(string connectionId, IConnection socket, string? roomId = null)
+    public Task<bool> AddConnectionAsync(string connectionId, IConnection socket, string? roomId = null)
     {
-        return _context.AddConnection(connectionId, socket, roomId);
+        return _context.AddConnectionAsync(connectionId, socket, roomId);
     }
 
-    public Task<IConnection?> GetConnection(string connectionId)
+    public Task<IConnection?> GetConnectionAsync(string connectionId)
     {
-        return _context.GetConnection(connectionId);
+        return _context.GetConnectionAsync(connectionId);
     }
 
-    public Task<IEnumerable<string>> GetAllConnectionIds()
+    public Task<IEnumerable<string>> GetAllConnectionIdsAsync()
     {
-        return _context.GetAllConnectionIds();
+        return _context.GetAllConnectionIdsAsync();
     }
 
-    public Task<Dictionary<string, IConnection>> GetAllConnections()
+    public Task<Dictionary<string, IConnection>> GetAllConnectionsAsync()
     {
-        return _context.GetAllConnections();
+        return _context.GetAllConnectionsAsync();
     }
 
     private async Task<TPacketBase> ReceiveAsync<TPacketBase>(string clientId) where TPacketBase : IPacketBase
     {
-        var connections = await GetAllConnections();
+        var connections = await GetAllConnectionsAsync();
         if (connections.TryGetValue(clientId, out var connection))
         {
             var data = await connection.ReceiveAsync(CancellationToken.None);
@@ -155,9 +155,9 @@ public abstract class Portal : IPortal, IConnectionStore
     }
 
 
-    public async Task<Dictionary<string, IConnection>> GetConnectionsInRoom(string roomId)
+    public async Task<Dictionary<string, IConnection>> GetConnectionsInRoomAsync(string roomId)
     {
-        return await _context.GetConnectionsInRoom(roomId);
+        return await _context.GetConnectionsInRoomAsync(roomId);
     }
 
     public async Task<RoomPacket> FindAvailableRoomAsync()
@@ -170,9 +170,9 @@ public abstract class Portal : IPortal, IConnectionStore
         return await _context.FindRoomForClientAsync(clientId);
     }
 
-    public async Task<RoomPacket> CreateRoom()
+    public async Task<RoomPacket> CreateRoomAsync()
     {
-        return await _context.CreateRoom();
+        return await _context.CreateRoomAsync();
     }
 
     public Task DeleteRoomAsync(string roomName)
@@ -190,14 +190,14 @@ public abstract class Portal : IPortal, IConnectionStore
         return _context.GetAllRoomsAsync();
     }
 
-    public Task<RoomPacket?> AddClientToRoom(string connectionId, string roomId)
+    public Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
     {
-        return _context.AddClientToRoom(connectionId, roomId);
+        return _context.AddClientToRoomAsync(connectionId, roomId);
     }
 
-    public async Task SaveRoom(RoomPacket room)
+    public async Task SaveRoomAsync(RoomPacket room)
     {
-        await _context.SaveRoom(room);
+        await _context.SaveRoomAsync(room);
     }
 
     [Cycle(cron: CronPresets.Hourly)]

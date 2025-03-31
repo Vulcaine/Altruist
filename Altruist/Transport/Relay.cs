@@ -4,7 +4,7 @@ namespace Altruist.Transport;
 
 public class RelayPortal : Portal
 {
-    private IMessageCodec Codec { get; }
+    private ICodec Codec { get; }
 
     public RelayPortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
@@ -28,7 +28,7 @@ public class AltruistRelayService : IRelayService
     private ITransportClient _transportClient;
     private CancellationTokenSource _cts = new();
 
-    private IMessageCodec _codec { get; }
+    private ICodec _codec { get; }
 
     private RelayPortal _socketPortal;
 
@@ -38,7 +38,7 @@ public class AltruistRelayService : IRelayService
 
     public AltruistRelayService(
         string protocol,
-        string host, int port, string eventName, RelayPortal socketPortal, IMessageCodec codec, ILoggerFactory loggerFactory, ITransportClient transportClient)
+        string host, int port, string eventName, RelayPortal socketPortal, ICodec codec, ILoggerFactory loggerFactory, ITransportClient transportClient)
     {
         _gatewayUrl = $"{protocol}://{host}:{port}";
         _eventName = eventName;

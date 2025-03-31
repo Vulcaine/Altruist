@@ -27,7 +27,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
             Position = position ?? [0, 0]
         };
 
-        var room = await _provider.AddClientToRoom(socketId, roomId);
+        var room = await _provider.AddClientToRoomAsync(socketId, roomId);
         if (room == null)
         {
             _logger.LogError($"Failed to connect player {socketId} to instance {roomId}. No such room");
@@ -97,7 +97,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
             foreach (var player in players)
             {
-                var conn = await _provider.GetConnection(player.Id);
+                var conn = await _provider.GetConnectionAsync(player.Id);
                 if (conn == null || !conn.IsConnected)
                 {
                     playersToDelete.Add(player.Id);

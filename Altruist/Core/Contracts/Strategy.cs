@@ -134,7 +134,7 @@ public interface ITransportConnectionSetup<TSelf> : ISetup<TSelf>
     TSelf MapPortal<P>(string path) where P : Portal, IPortal;
     TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
 
-    TSelf SetCodec(IMessageCodec encoder);
+    TSelf SetCodec(ICodec encoder);
 }
 
 public interface ITransportConnectionSetupBase
@@ -156,7 +156,7 @@ public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnection
     public abstract TSelf MapPortal<P>(string path) where P : Portal, IPortal;
     public abstract TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
 
-    public TSelf SetCodec(IMessageCodec codec)
+    public TSelf SetCodec(ICodec codec)
     {
         _services.AddSingleton(codec.Encoder);
         _services.AddSingleton(codec.Decoder);
@@ -194,7 +194,7 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
                 port,
                 eventName,
                 instance,
-                sp.GetService<IMessageCodec>()!,
+                sp.GetService<ICodec>()!,
                 sp.GetService<ILoggerFactory>()!,
                 sp.GetService<ITransportClient>()!
             );

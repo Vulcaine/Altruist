@@ -26,7 +26,7 @@ public class InMemoryPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         };
 
         _entities[socketId] = player;
-        var room = await _store.AddClientToRoom(socketId, roomId);
+        var room = await _store.AddClientToRoomAsync(socketId, roomId);
 
         if (room == null)
         {
@@ -90,7 +90,7 @@ public class InMemoryPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
     {
         foreach (var player in _entities.Values)
         {
-            var conn = await _store.GetConnection(player.Id);
+            var conn = await _store.GetConnectionAsync(player.Id);
             if (conn == null || !conn.IsConnected)
             {
                 await DeletePlayerAsync(player.Id);

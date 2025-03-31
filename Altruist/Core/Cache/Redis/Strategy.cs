@@ -166,7 +166,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         {
             var subscriber = multiplexer.GetSubscriber();
             var router = serviceProvider.GetRequiredService<IAltruistRouter>();
-            var decoder = serviceProvider.GetRequiredService<IMessageCodec>();
+            var decoder = serviceProvider.GetRequiredService<ICodec>();
             var redisDatabase = multiplexer.GetDatabase();
 
             // reset indexes
@@ -187,7 +187,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         }
     }
 
-    private async Task ProcessQueuedMessagesAsync(IConnectionMultiplexer mux, IMessageCodec codec, IAltruistRouter router, IAltruistContext context)
+    private async Task ProcessQueuedMessagesAsync(IConnectionMultiplexer mux, ICodec codec, IAltruistRouter router, IAltruistContext context)
     {
         var database = mux.GetDatabase();
         while (true)

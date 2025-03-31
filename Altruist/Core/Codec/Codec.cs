@@ -2,7 +2,7 @@ using System.Text.Json;
 using Altruist;
 using MessagePack;
 
-public class JsonMessageEncoder : IMessageEncoder
+public class JsonMessageEncoder : IEncoder
 {
     public byte[] Encode<TPacket>(TPacket message)
     {
@@ -16,7 +16,7 @@ public class JsonMessageEncoder : IMessageEncoder
 }
 
 
-public class MessagePackMessageEncoder : IMessageEncoder
+public class MessagePackMessageEncoder : IEncoder
 {
     public byte[] Encode<TPacket>(TPacket message)
     {
@@ -30,7 +30,7 @@ public class MessagePackMessageEncoder : IMessageEncoder
 }
 
 
-public class JsonMessageDecoder : IMessageDecoder
+public class JsonMessageDecoder : IDecoder
 {
     private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
     {
@@ -55,7 +55,7 @@ public class JsonMessageDecoder : IMessageDecoder
 }
 
 
-public class MessagePackMessageDecoder : IMessageDecoder
+public class MessagePackMessageDecoder : IDecoder
 {
     public TPacket Decode<TPacket>(byte[] message)
     {
@@ -74,14 +74,14 @@ public class MessagePackMessageDecoder : IMessageDecoder
 }
 
 
-public class JsonMessageCodec : IMessageCodec
+public class JsonCodec : ICodec
 {
-    public IMessageEncoder Encoder { get; } = new JsonMessageEncoder();
-    public IMessageDecoder Decoder { get; } = new JsonMessageDecoder();
+    public IEncoder Encoder { get; } = new JsonMessageEncoder();
+    public IDecoder Decoder { get; } = new JsonMessageDecoder();
 }
 
-public class MessagePackMessageCodec : IMessageCodec
+public class MessagePackCodec : ICodec
 {
-    public IMessageEncoder Encoder { get; } = new MessagePackMessageEncoder();
-    public IMessageDecoder Decoder { get; } = new MessagePackMessageDecoder();
+    public IEncoder Encoder { get; } = new MessagePackMessageEncoder();
+    public IDecoder Decoder { get; } = new MessagePackMessageDecoder();
 }

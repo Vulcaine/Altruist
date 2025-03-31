@@ -9,20 +9,20 @@ public interface ICleanUp
 
 public interface IConnectionStore : ICleanUp
 {
-    Task<bool> AddConnection(string connectionId, IConnection socket, string? roomId = null);
-    Task RemoveConnection(string connectionId);
-    Task<IConnection?> GetConnection(string connectionId);
-    Task<Dictionary<string, IConnection>> GetAllConnections();
-    Task<IEnumerable<string>> GetAllConnectionIds();
+    Task<bool> AddConnectionAsync(string connectionId, IConnection socket, string? roomId = null);
+    Task RemoveConnectionAsync(string connectionId);
+    Task<IConnection?> GetConnectionAsync(string connectionId);
+    Task<Dictionary<string, IConnection>> GetAllConnectionsAsync();
+    Task<IEnumerable<string>> GetAllConnectionIdsAsync();
 
     Task<RoomPacket?> GetRoomAsync(string roomId);
     Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
-    Task<Dictionary<string, IConnection>> GetConnectionsInRoom(string roomId);
+    Task<Dictionary<string, IConnection>> GetConnectionsInRoomAsync(string roomId);
     Task<RoomPacket> FindAvailableRoomAsync();
-    Task<RoomPacket?> AddClientToRoom(string connectionId, string roomId);
+    Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId);
     Task<RoomPacket?> FindRoomForClientAsync(string clientId);
-    Task<RoomPacket> CreateRoom();
-    Task SaveRoom(RoomPacket room);
+    Task<RoomPacket> CreateRoomAsync();
+    Task SaveRoomAsync(RoomPacket room);
     Task DeleteRoomAsync(string roomId);
 }
 
@@ -38,7 +38,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         _memoryCache = cache;
     }
 
-    public virtual async Task<bool> AddConnection(string connectionId, IConnection socket, string? roomId = null)
+    public virtual async Task<bool> AddConnectionAsync(string connectionId, IConnection socket, string? roomId = null)
     {
         await _memoryCache.SaveAsync(connectionId, socket);
 
@@ -60,7 +60,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return true;
     }
 
-    public virtual async Task RemoveConnection(string connectionId)
+    public virtual async Task RemoveConnectionAsync(string connectionId)
     {
         await _memoryCache.RemoveAsync<string>(connectionId);
 
@@ -98,12 +98,12 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return null;
     }
 
-    public virtual async Task<IConnection?> GetConnection(string connectionId)
+    public virtual async Task<IConnection?> GetConnectionAsync(string connectionId)
     {
         return await _memoryCache.GetAsync<IConnection>(connectionId);
     }
 
-    public virtual async Task<Dictionary<string, IConnection>> GetAllConnections()
+    public virtual async Task<Dictionary<string, IConnection>> GetAllConnectionsAsync()
     {
         var connections = new Dictionary<string, IConnection>();
 
@@ -116,7 +116,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return connections;
     }
 
-    public virtual async Task<IEnumerable<string>> GetAllConnectionIds()
+    public virtual async Task<IEnumerable<string>> GetAllConnectionIdsAsync()
     {
         var connectionIds = new List<string>();
 
@@ -129,7 +129,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return connectionIds;
     }
 
-    public virtual async Task<Dictionary<string, IConnection>> GetConnectionsInRoom(string roomId)
+    public virtual async Task<Dictionary<string, IConnection>> GetConnectionsInRoomAsync(string roomId)
     {
         var room = await _memoryCache.GetAsync<RoomPacket>(roomId);
         if (room != null)
@@ -184,7 +184,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
             }
         }
 
-        return await CreateRoom();
+        return await CreateRoomAsync();
     }
 
     public virtual async Task DeleteRoomAsync(string roomId)
@@ -192,7 +192,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         await _memoryCache.RemoveAsync<RoomPacket>(roomId);
     }
 
-    public virtual async Task<RoomPacket> CreateRoom()
+    public virtual async Task<RoomPacket> CreateRoomAsync()
     {
         var roomId = $"{Guid.NewGuid()}";
         var room = new RoomPacket(roomId);
@@ -202,7 +202,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return room;
     }
 
-    public virtual async Task<RoomPacket?> AddClientToRoom(string connectionId, string roomId)
+    public virtual async Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
     {
         var room = await GetRoomAsync(roomId);
         if (room == null)
@@ -210,12 +210,12 @@ public abstract class AbstractConnectionStore : IConnectionStore
             return null;
         }
         room = room.AddConnection(connectionId);
-        await SaveRoom(room);
+        await SaveRoomAsync(room);
         await _memoryCache.SaveAsync(connectionId, roomId);
         return room;
     }
 
-    public virtual async Task SaveRoom(RoomPacket room)
+    public virtual async Task SaveRoomAsync(RoomPacket room)
     {
         await _memoryCache.SaveAsync(room.Id, room);
     }
@@ -228,7 +228,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         {
             if (!connection.IsConnected)
             {
-                await RemoveConnection(connection.ConnectionId);
+                await RemoveConnectionAsync(connection.ConnectionId);
                 removed.Add(connection.ConnectionId);
             }
         }

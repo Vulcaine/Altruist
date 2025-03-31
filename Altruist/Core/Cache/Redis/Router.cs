@@ -6,7 +6,7 @@ namespace Altruist.Redis;
 public class RedisDirectRouter : DirectRouter
 {
     public RedisDirectRouter(IConnectionStore store,
-        IMessageCodec codec,
+        ICodec codec,
         RedisSocketClientSender clientSender,
         RoomSender roomSender,
         BroadcastSender broadcastSender,
@@ -18,7 +18,7 @@ public class RedisDirectRouter : DirectRouter
 public class RedisEngineRouter : EngineRouter
 {
     public RedisEngineRouter(IConnectionStore store,
-    IMessageCodec codec,
+    ICodec codec,
     RedisEngineClientSender clientSender,
     RoomSender roomSender,
     BroadcastSender broadcastSender,
@@ -37,7 +37,7 @@ public class RedisSocketClientSender : ClientSender
     RedisChannel channel = RedisChannel.Literal(OutgressRedis.MessageDistributeChannel);
 
     public RedisSocketClientSender(
-    IConnectionStore store, IMessageCodec codec, IConnectionMultiplexer mux, ClientSender clientSender) : base(store, codec)
+    IConnectionStore store, ICodec codec, IConnectionMultiplexer mux, ClientSender clientSender) : base(store, codec)
     {
         _mux = mux;
         _redisPublisher = mux.GetSubscriber();
@@ -46,7 +46,7 @@ public class RedisSocketClientSender : ClientSender
 
     public override async Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
     {
-        var socket = await _store.GetConnection(clientId);
+        var socket = await _store.GetConnectionAsync(clientId);
 
         if (socket != null && socket.IsConnected)
         {
@@ -71,7 +71,7 @@ public class RedisEngineClientSender : EngineClientSender
 
     RedisChannel channel = RedisChannel.Literal(OutgressRedis.MessageDistributeChannel);
 
-    public RedisEngineClientSender(IConnectionStore store, IMessageCodec codec, IConnectionMultiplexer mux, IAltruistEngine engine, IAltruistContext context) : base(store, codec, engine)
+    public RedisEngineClientSender(IConnectionStore store, ICodec codec, IConnectionMultiplexer mux, IAltruistEngine engine, IAltruistContext context) : base(store, codec, engine)
     {
         _redisPublisher = mux.GetSubscriber();
         _mux = mux;
@@ -80,7 +80,7 @@ public class RedisEngineClientSender : EngineClientSender
 
     public override async Task SendAsync<TPacket>(string clientId, TPacket message)
     {
-        var socket = await _store.GetConnection(clientId);
+        var socket = await _store.GetConnectionAsync(clientId);
 
         if (socket != null && socket.IsConnected)
         {

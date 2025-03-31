@@ -36,7 +36,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
             {
                 var broadcastPacket = new LeaveGamePacket("server", clientId);
                 room = room.RemoveConnection(clientId);
-                _ = SaveRoom(room);
+                _ = SaveRoomAsync(room);
                 _ = Router.Room.SendAsync(room.Id, broadcastPacket);
                 if (room.Empty())
                 {

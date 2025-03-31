@@ -59,9 +59,9 @@ namespace Altruist
             Services.AddSingleton<ICache>(sp => sp.GetRequiredService<InMemoryCache>());
 
             Services.AddSingleton<IAltruistRouter, InMemoryDirectRouter>();
-            Services.AddSingleton<IMessageCodec, JsonMessageCodec>();
-            Services.AddSingleton<IMessageDecoder, JsonMessageDecoder>();
-            Services.AddSingleton<IMessageEncoder, JsonMessageEncoder>();
+            Services.AddSingleton<ICodec, JsonCodec>();
+            Services.AddSingleton<IDecoder, JsonMessageDecoder>();
+            Services.AddSingleton<IEncoder, JsonMessageEncoder>();
             Services.AddSingleton<IConnectionStore, InMemoryConnectionStore>();
             Services.AddSingleton(typeof(IPlayerService<>), typeof(InMemoryPlayerService<>));
             Services.AddSingleton<IPortalContext, PortalContext>();
@@ -252,6 +252,12 @@ namespace Altruist
             Services = services;
             Settings = settings;
             _args = args;
+        }
+
+        public AltruistApplicationBuilder Codec<TCodec>() where TCodec : class, ICodec
+        {
+            Services.AddSingleton<TCodec>();
+            return this;
         }
 
         public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder>? setup = null)

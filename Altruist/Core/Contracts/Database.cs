@@ -1,10 +1,7 @@
-using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
-using Altruist.Database;
 using Altruist.ScyllaDB;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
-using Redis.OM.Modeling;
 
 public interface IKeyspace
 {
@@ -57,8 +54,8 @@ public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
     Task<TVaultModel?> FirstAsync();
     Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate);
     Task<int> CountAsync();
-    Task SaveAsync(TVaultModel entity);
-    Task SaveBatchAsync(IEnumerable<TVaultModel> entities);
+    Task SaveAsync(TVaultModel entity, bool? saveHistory = false);
+    Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false);
     Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
 }
 

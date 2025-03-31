@@ -204,9 +204,9 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         _cache = cache;
     }
 
-    public override async Task<bool> AddConnection(string connectionId, IConnection socket, string? roomId = null)
+    public override async Task<bool> AddConnectionAsync(string connectionId, IConnection socket, string? roomId = null)
     {
-        if (!await base.AddConnection(connectionId, socket))
+        if (!await base.AddConnectionAsync(connectionId, socket))
         {
             return false;
         }
@@ -232,9 +232,9 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         return true;
     }
 
-    public override async Task RemoveConnection(string connectionId)
+    public override async Task RemoveConnectionAsync(string connectionId)
     {
-        await base.RemoveConnection(connectionId);
+        await base.RemoveConnectionAsync(connectionId);
         await _redis.SetRemoveAsync(GlobalKey, connectionId);
 
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
@@ -293,17 +293,17 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
             }
         }
 
-        return await CreateRoom();
+        return await CreateRoomAsync();
     }
 
-    public override async Task<RoomPacket> CreateRoom()
+    public override async Task<RoomPacket> CreateRoomAsync()
     {
-        var newRoom = await base.CreateRoom();
+        var newRoom = await base.CreateRoomAsync();
         await _cache.SaveAsync($"{RoomPrefix}{newRoom.Id}", newRoom);
         return newRoom;
     }
 
-    public override async Task SaveRoom(RoomPacket roomPacket)
+    public override async Task SaveRoomAsync(RoomPacket roomPacket)
     {
         await _cache.SaveAsync($"{RoomPrefix}{roomPacket.Id}", roomPacket);
     }

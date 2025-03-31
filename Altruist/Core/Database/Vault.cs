@@ -135,14 +135,10 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         Keyspace = keyspace;
     }
 
-    public async Task SaveAsync(TVaultModel entity)
+    public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
+        entity.Timestamp = DateTime.UtcNow;
         var tableAttribute = typeof(TVaultModel).GetCustomAttribute<TableAttribute>();
-
-        if (tableAttribute?.StoreHistory == true)
-        {
-            entity.Timestamp = DateTime.UtcNow;
-        }
 
         var columns = string.Join(", ", _queryParts[QueryPosition.SET]);
         var placeholders = string.Join(", ", _queryParameters[QueryPosition.SET].Select(param => "?"));
@@ -152,7 +148,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         var batchQueries = new List<string> { insertQuery };
 
-        if (tableAttribute?.StoreHistory == true)
+        if (tableAttribute?.StoreHistory == true && saveHistory == true)
         {
             var historyColumns = string.Join(", ", _queryParts[QueryPosition.SET]);
             var historyPlaceholders = string.Join(", ", _queryParameters[QueryPosition.SET].Select(param => "?"));
@@ -164,13 +160,17 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             batchQueries.Add(historyQuery);
             parameters = parameters.Concat(parametersForHistory).ToArray();
         }
+        else if (saveHistory == true)
+        {
+            throw new Exception($"History is not enabled for the table {typeof(TVaultModel).Name}. Consider adding StoreHistory=true");
+        }
 
         var batchQuery = $"BEGIN BATCH {string.Join(" ", batchQueries)} APPLY BATCH;";
         await _databaseProvider.ExecuteAsync(batchQuery, parameters);
     }
 
 
-    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities)
+    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
         var tableAttribute = typeof(TVaultModel).GetCustomAttribute<TableAttribute>();
 
@@ -518,14 +518,14 @@ public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class,
         return _underlying.OrderByDescending(keySelector);
     }
 
-    public Task SaveAsync(TVaultModel entity)
+    public Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
-        return _underlying.SaveAsync(entity);
+        return _underlying.SaveAsync(entity, saveHistory);
     }
 
-    public Task SaveBatchAsync(IEnumerable<TVaultModel> entities)
+    public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
-        return _underlying.SaveBatchAsync(entities);
+        return _underlying.SaveBatchAsync(entities, saveHistory);
     }
 
     public IVault<TVaultModel> Take(int count)

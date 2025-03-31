@@ -21,7 +21,7 @@ public interface IAltruistEngineRouter : IAltruistRouter { }
 public abstract class AbstractAltruistRouter : IAltruistRouter
 {
     protected readonly IConnectionStore _connectionStore;
-    protected readonly IMessageCodec _codec;
+    protected readonly ICodec _codec;
 
     public ClientSender Client { get; }
 
@@ -31,7 +31,7 @@ public abstract class AbstractAltruistRouter : IAltruistRouter
 
     public ClientSynchronizator Synchronize { get; }
 
-    public AbstractAltruistRouter(IConnectionStore store, IMessageCodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator)
+    public AbstractAltruistRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator)
     {
         _connectionStore = store;
         _codec = codec;
@@ -45,7 +45,7 @@ public abstract class AbstractAltruistRouter : IAltruistRouter
 
 public abstract class DirectRouter : AbstractAltruistRouter
 {
-    protected DirectRouter(IConnectionStore store, IMessageCodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    protected DirectRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
     }
 }
@@ -54,7 +54,7 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
 {
     private readonly IAltruistEngine _engine;
 
-    protected EngineRouter(IConnectionStore store, IMessageCodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    protected EngineRouter(IConnectionStore store, ICodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
         _engine = engine;
     }
@@ -68,9 +68,9 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
 public class ClientSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
-    protected readonly IMessageCodec _codec;
+    protected readonly ICodec _codec;
 
-    public ClientSender(IConnectionStore store, IMessageCodec codec)
+    public ClientSender(IConnectionStore store, ICodec codec)
     {
         _store = store;
         _codec = codec;
@@ -78,7 +78,7 @@ public class ClientSender : IAltruistRouterSender
 
     public virtual async Task SendAsync(string clientId, byte[] message)
     {
-        var socket = await _store.GetConnection(clientId);
+        var socket = await _store.GetConnectionAsync(clientId);
         if (socket != null && socket.IsConnected)
         {
             await socket.SendAsync(message);
@@ -95,7 +95,7 @@ public class ClientSender : IAltruistRouterSender
 public class EngineClientSender : ClientSender
 {
     private readonly IAltruistEngine _engine;
-    public EngineClientSender(IConnectionStore store, IMessageCodec codec, IAltruistEngine engine) : base(store, codec)
+    public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine) : base(store, codec)
     {
         _engine = engine;
     }
@@ -110,10 +110,10 @@ public class EngineClientSender : ClientSender
 public class RoomSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
-    protected readonly IMessageCodec _codec;
+    protected readonly ICodec _codec;
     protected readonly ClientSender _clientSender;
 
-    public RoomSender(IConnectionStore store, IMessageCodec codec, ClientSender clientSender)
+    public RoomSender(IConnectionStore store, ICodec codec, ClientSender clientSender)
     {
         _store = store;
         _codec = codec;
@@ -122,7 +122,7 @@ public class RoomSender : IAltruistRouterSender
 
     public virtual async Task SendAsync<TPacketBase>(string roomId, TPacketBase message) where TPacketBase : IPacketBase
     {
-        var connections = await _store.GetConnectionsInRoom(roomId);
+        var connections = await _store.GetConnectionsInRoomAsync(roomId);
 
         foreach (var (clientId, socket) in connections)
         {
@@ -167,7 +167,7 @@ public class BroadcastSender
 
     public async Task SendAsync<TPacketBase>(TPacketBase message, string? excludeClientId = null) where TPacketBase : IPacketBase
     {
-        var connections = await _store.GetAllConnections();
+        var connections = await _store.GetAllConnectionsAsync();
 
         foreach (var (clientId, socket) in connections)
         {
