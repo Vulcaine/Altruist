@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Framework\Altruist.csproj" />
+    <ProjectReference Include="..\Altruist\Altruist.csproj" />
   </ItemGroup>
 
 </Project>
