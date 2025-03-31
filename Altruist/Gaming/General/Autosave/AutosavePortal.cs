@@ -1,3 +1,4 @@
+using Altruist.Contracts;
 using Altruist.Database;
 using Microsoft.Extensions.Logging;
 
@@ -17,18 +18,24 @@ public class PeriodicSaveStrategy : IAutosaveStrategy
     public PeriodicSaveStrategy(string cronExpression) => CronExpression = cronExpression;
 }
 
-public abstract class AltruistAutosavePortal<TKeyspace> : Portal where TKeyspace : class, IKeyspace
+public abstract class AltruistAutosavePortal<TKeyspace> : Portal where TKeyspace : class, IKeyspace, new()
 {
     protected ICache Cache { get; }
-    protected AltruistAutosavePortal(IPortalContext context, ILoggerFactory loggerFactory)
+    protected IDatabaseServiceToken Token { get; }
+
+    protected IVaultRepository<TKeyspace> Repository { get; }
+
+    protected AltruistAutosavePortal(IPortalContext context, IDatabaseServiceToken token, VaultRepositoryFactory vaultRepository, ILoggerFactory loggerFactory)
         : base(context, loggerFactory)
     {
         Cache = context.Cache;
+        Token = token;
+        Repository = vaultRepository.Make<TKeyspace>(token);
     }
 
     public abstract List<Type> GetPersistedEntities();
 
-    public virtual async Task Save(IVaultRepository<TKeyspace> vaultRepository)
+    public virtual async Task Save()
     {
         var entities = GetPersistedEntities();
 
@@ -40,7 +47,7 @@ public abstract class AltruistAutosavePortal<TKeyspace> : Portal where TKeyspace
         var tasks = new List<Task>();
         foreach (var entity in entities)
         {
-            tasks.Add(SaveEntity(entity, vaultRepository));
+            tasks.Add(SaveEntity(entity, Repository));
         }
 
         await Task.WhenAll(tasks);
@@ -63,19 +70,20 @@ public abstract class AltruistAutosavePortal<TKeyspace> : Portal where TKeyspace
     }
 }
 
-public abstract class RealtimeAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace> where TKeyspace : class, IKeyspace
+public abstract class RealtimeAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace> where TKeyspace : class, IKeyspace, new()
 {
-    protected RealtimeAutosavePortal(IPortalContext context, RealtimeSaveStrategy saveStrategy, IAltruistEngine engine, ILoggerFactory loggerFactory)
-        : base(context, loggerFactory)
+    protected RealtimeAutosavePortal(IPortalContext context, IDatabaseServiceToken token, VaultRepositoryFactory vaultRepository, RealtimeSaveStrategy saveStrategy, IAltruistEngine engine, ILoggerFactory loggerFactory)
+        : base(context, token, vaultRepository, loggerFactory)
     {
         engine.ScheduleTask(Save, saveStrategy.SaveRate);
     }
 }
 
-public abstract class PeriodicAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace> where TKeyspace : class, IKeyspace
+public abstract class PeriodicAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace> where TKeyspace : class, IKeyspace, new()
 {
-    protected PeriodicAutosavePortal(IPortalContext context, PeriodicSaveStrategy saveStrategy, IAltruistEngine engine, ILoggerFactory loggerFactory)
-        : base(context, loggerFactory)
+    protected PeriodicAutosavePortal(IPortalContext context,
+    IDatabaseServiceToken token, VaultRepositoryFactory vaultRepository, PeriodicSaveStrategy saveStrategy, IAltruistEngine engine, ILoggerFactory loggerFactory)
+        : base(context, token, vaultRepository, loggerFactory)
     {
         engine.RegisterCronJob(Save, saveStrategy.CronExpression);
     }

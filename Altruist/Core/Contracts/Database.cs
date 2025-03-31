@@ -1,16 +1,23 @@
 using System.Linq.Expressions;
-using Altruist.ScyllaDB;
+using Altruist.Contracts;
+using Altruist.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 
 public interface IKeyspace
 {
-    string Name { get; set; }
+    string Name { get; }
 }
 
 public interface IModel
 {
 
+}
+
+public interface IVaultFactory
+{
+    public IDatabaseServiceToken Token { get; }
+    IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel;
 }
 
 public interface IVaultModel : IModel
@@ -20,6 +27,7 @@ public interface IVaultModel : IModel
 
 public interface IGeneralDatabaseProvider
 {
+    IDatabaseServiceToken Token { get; }
     Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel;
     Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null);
     Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null);

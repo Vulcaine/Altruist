@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using Altruist.Contracts;
+using Altruist.Database;
 using Altruist.InMemory;
 using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
@@ -16,9 +17,6 @@ namespace Altruist
         {
             var builder = WebApplication.CreateBuilder(args);
             builder.Logging.ClearProviders();
-
-            var frameworkVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1";
-            builder.Logging.AddProvider(new AltruistLoggerProvider(frameworkVersion));
 
             foreach (var service in collection)
             {
@@ -65,6 +63,8 @@ namespace Altruist
             Services.AddSingleton<IConnectionStore, InMemoryConnectionStore>();
             Services.AddSingleton(typeof(IPlayerService<>), typeof(InMemoryPlayerService<>));
             Services.AddSingleton<IPortalContext, PortalContext>();
+            Services.AddSingleton<VaultRepositoryFactory>();
+            Services.AddSingleton<DatabaseProviderFactory>();
         }
 
         public static AltruistEngineBuilder Create(string[] args) => new AltruistBuilder(args).ToConnectionBuilder();

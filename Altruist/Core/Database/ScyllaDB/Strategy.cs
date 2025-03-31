@@ -1,7 +1,6 @@
 
 using Altruist.Contracts;
 using Altruist.Database;
-using Cassandra;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -27,33 +26,42 @@ public sealed class ScyllaDBToken : IDatabaseServiceToken
 
 public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TScyllaKeyspace> where TScyllaKeyspace : class, IScyllaKeyspace
 {
-    public ScyllaVaultRepository(IServiceProvider provider, IGeneralDatabaseProvider databaseProvider, TScyllaKeyspace keyspace) : base(provider, databaseProvider, keyspace)
+    public ScyllaVaultRepository(IServiceProvider provider, IScyllaDbProvider databaseProvider, TScyllaKeyspace keyspace) : base(provider, databaseProvider, keyspace)
     {
     }
 }
 
 public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBConnectionSetup>
 {
-    private readonly Dictionary<string, IKeyspaceSetup> _keyspaces = new();
 
-    public ScyllaDBConnectionSetup(IServiceCollection services) : base(services)
+    public ScyllaDBConnectionSetup(IServiceCollection services, IDatabaseServiceToken token) : base(services, token)
     {
     }
 
-    public ScyllaDBConnectionSetup CreateKeyspace<TScyllaKeyspace>(Func<KeyspaceSetup<TScyllaKeyspace>, KeyspaceSetup<TScyllaKeyspace>>? setupAction = null) where TScyllaKeyspace : class, IScyllaKeyspace, new()
+    public override ScyllaDBConnectionSetup CreateKeyspace<TKeyspace>(
+    Func<KeyspaceSetup<TKeyspace>, KeyspaceSetup<TKeyspace>>? setupAction = null)
     {
-        var keyspaceInstance = new TScyllaKeyspace();
-        var keyspaceName = keyspaceInstance.Name;
-
-        if (!_keyspaces.TryGetValue(keyspaceName, out var keyspaceSetup))
+        if (!typeof(IScyllaKeyspace).IsAssignableFrom(typeof(TKeyspace)))
         {
-            keyspaceSetup = new KeyspaceSetup<TScyllaKeyspace>(_services, keyspaceInstance);
-            _keyspaces[keyspaceName] = keyspaceSetup;
+            throw new InvalidOperationException($"TKeyspace must implement IScyllaKeyspace, but {typeof(TKeyspace).Name} does not.");
         }
 
-        setupAction?.Invoke((KeyspaceSetup<TScyllaKeyspace>)keyspaceSetup);
+        var keyspaceInstance = new TKeyspace();
+        var keyspaceName = keyspaceInstance!.Name;
+
+        if (!Keyspaces.TryGetValue(keyspaceName, out var keyspaceSetup))
+        {
+            keyspaceSetup = (KeyspaceSetup<TKeyspace>)Activator.CreateInstance(
+                typeof(ScyllaKeyspaceSetup<>).MakeGenericType(typeof(TKeyspace)),
+                _services, keyspaceInstance)!;
+
+            Keyspaces[keyspaceName] = keyspaceSetup;
+        }
+
+        setupAction?.Invoke((KeyspaceSetup<TKeyspace>)keyspaceSetup);
         return this;
     }
+
 
     public override void Build(IAltruistContext settings)
     {
@@ -65,18 +73,18 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
             _contactPoints.Add("localhost:9042");
         }
 
-        _services.AddSingleton<IScyllaDbProvider>(sp => new ScyllaDbProvider(_contactPoints));
-        _services.AddSingleton(sp => new VaultFactory(sp.GetRequiredService<IScyllaDbProvider>()));
+        _services.AddSingleton<IScyllaDbProvider>(sp => new ScyllaDbProvider(_contactPoints, Token));
+        _services.AddSingleton<IVaultFactory>(sp => new VaultFactory(sp.GetRequiredService<IScyllaDbProvider>()));
 
-        if (_keyspaces.Count == 0)
+        if (Keyspaces.Count == 0)
         {
-            new KeyspaceSetup<DefaultScyllaKeyspace>(_services, new DefaultScyllaKeyspace()).BuildInternal();
+            new ScyllaKeyspaceSetup<DefaultScyllaKeyspace>(_services, new DefaultScyllaKeyspace(), Token).Build();
         }
         else
         {
-            foreach (var keyspaceSetup in _keyspaces.Values)
+            foreach (var keyspaceSetup in Keyspaces.Values)
             {
-                keyspaceSetup.BuildInternal();
+                keyspaceSetup.Build();
             }
         }
 
@@ -84,55 +92,34 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
     }
 }
 
-
-internal interface IKeyspaceSetup
+public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKeyspace : class, IScyllaKeyspace, new()
 {
-    internal void BuildInternal();
-}
-
-
-public sealed class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace : class, IScyllaKeyspace
-{
-    private readonly IServiceCollection _services;
-    private readonly List<Type> _vaultModels = new();
-    private readonly TKeyspace _instance;
-
-    internal KeyspaceSetup(IServiceCollection services, TKeyspace instance)
+    public ScyllaKeyspaceSetup(IServiceCollection services, TKeyspace instance, IDatabaseServiceToken token) : base(services, instance, token)
     {
-        _services = services;
-        _instance = instance;
-
-        _services.AddSingleton<IVaultRepository<TKeyspace>>(sp =>
+        services.AddSingleton<IVaultRepository<TKeyspace>>(sp =>
         {
             var provider = sp.GetRequiredService<IScyllaDbProvider>();
-            return new ScyllaVaultRepository<TKeyspace>(sp, provider, _instance);
+            return new ScyllaVaultRepository<TKeyspace>(sp, provider, instance);
         });
 
-        _services.AddSingleton(typeof(ScyllaVaultRepository<TKeyspace>), sp => sp.GetRequiredService<IVaultRepository<TKeyspace>>());
+        services.AddSingleton(typeof(ScyllaVaultRepository<TKeyspace>), sp => sp.GetRequiredService<IVaultRepository<TKeyspace>>());
     }
 
-    public KeyspaceSetup<TKeyspace> AddVault<TVaultModel>() where TVaultModel : class, IVaultModel
+    public override void Build()
     {
-        _vaultModels.Add(typeof(TVaultModel));
-        _services.AddSingleton<IVault<TVaultModel>>(sp => new Vault<TVaultModel>(sp.GetRequiredService<VaultFactory>(), _instance));
-        return this;
-    }
-
-    public void BuildInternal()
-    {
-        var provider = _services
-            .BuildServiceProvider()
-            .GetService<IScyllaDbProvider>();
+        var provider = Services
+                .BuildServiceProvider()
+                .GetService<IScyllaDbProvider>();
 
         if (provider == null)
         {
             throw new InvalidOperationException("ScyllaDB provider is not registered.");
         }
 
-        provider.CreateKeySpaceAsync(_instance.Name, _instance.Options);
-        foreach (var vault in _vaultModels)
+        provider.CreateKeySpaceAsync(Instance.Name, Instance.Options);
+        foreach (var vault in VaultModels)
         {
-            provider.CreateTableAsync(vault, _instance);
+            provider.CreateTableAsync(vault, Instance);
         }
     }
 }

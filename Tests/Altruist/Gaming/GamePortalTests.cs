@@ -96,6 +96,77 @@ public class AltruistGamePortalTests
         _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
     }
 
+    private void SetupMockPlayerService(string clientId, PlayerEntity? player = null)
+    {
+        _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(player);
+        _mockPlayerService.Setup(s => s.DisconnectAsync(clientId)).Returns(Task.CompletedTask);
+    }
+
+
+
+    private void SetupMockRoomDeletion(string clientId, bool roomIsEmpty)
+    {
+        if (roomIsEmpty)
+        {
+            _mockContext.Setup(s => s.DeleteRoomAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
+        }
+        else
+        {
+            _mockContext.Setup(s => s.DeleteRoomAsync(It.IsAny<string>())).Verifiable();
+        }
+    }
+
+    private void SetupMockPlayerServiceNotFound(string clientId)
+    {
+        _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync((PlayerEntity)null!);
+    }
+
+    private void SetupMockRoomService(string clientId, RoomPacket roomMock)
+    {
+        _mockContext.Setup(s => s.FindRoomForClientAsync(clientId)).ReturnsAsync(roomMock);
+        _mockContext.Setup(s => s.SaveRoomAsync(It.IsAny<RoomPacket>())).Returns(Task.CompletedTask);
+    }
+
+    private void SetupMockNoRoomService(string clientId)
+    {
+        _mockContext.Setup(s => s.FindRoomForClientAsync(clientId)).ReturnsAsync((RoomPacket)null!);
+    }
+
+    private void VerifyClientSendSuccess(string clientId)
+    {
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.Is<IPacketBase>(p => p is SuccessPacket)), Times.Once);
+    }
+
+    private void VerifyRoomSendAsync(string roomId)
+    {
+        _mockRouter.Verify(r => r.Room.SendAsync(roomId, It.IsAny<IPacketBase>()), Times.Once);
+    }
+
+    private void VerifyClientSendAsync(string clientId)
+    {
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
+    }
+
+    private void VerifyRoomNotDeleted()
+    {
+        _mockContext.Verify(c => c.DeleteRoomAsync(It.IsAny<string>()), Times.Never);
+    }
+
+
+    private void ArrangeExitGameTests(string clientId, string roomId = "room1", bool playerExists = true)
+    {
+        var playerMock = playerExists ? new PlayerEntity { Name = "Player1" } : null;
+        SetupMockPlayerService(clientId, playerMock);
+
+        var roomMock = new RoomPacket { Id = roomId };
+        if (playerExists)
+        {
+            roomMock.AddConnection(clientId);  // Player is in the room
+        }
+        SetupMockRoomService(clientId, roomMock);
+    }
+
+
     [Fact]
     public async Task JoinGameAsync_ShouldSendJoinFailed_WhenUsernameIsEmpty()
     {
@@ -123,8 +194,9 @@ public class AltruistGamePortalTests
         await _gamePortal.JoinGameAsync(message, clientId);
 
         // Assert
-        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
+        VerifyClientSendAsync(clientId);
     }
+
 
     [Fact]
     public async Task JoinGameAsync_ShouldSendJoinFailed_WhenPlayerAlreadyInGame()
@@ -141,8 +213,9 @@ public class AltruistGamePortalTests
         await _gamePortal.JoinGameAsync(message, clientId);
 
         // Assert
-        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
+        VerifyClientSendAsync(clientId);
     }
+
 
     [Fact]
     public async Task JoinGameAsync_ShouldSendSuccess_WhenPlayerJoinsSuccessfully()
@@ -161,9 +234,175 @@ public class AltruistGamePortalTests
         await _gamePortal.JoinGameAsync(message, clientId);
 
         // Assert
-        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
+        VerifyClientSendSuccess(clientId);
         _mockRouter.Verify(r => r.Synchronize.SendAsync(It.IsAny<ISynchronizedEntity>()), Times.Once);
     }
+
+
+    [Fact]
+    public async Task ExitGameAsync_ShouldSendSuccess_WhenPlayerLeavesSuccessfully()
+    {
+        // Arrange
+        var message = new LeaveGamePacket();
+        var clientId = "client1";
+        ArrangeExitGameTests(clientId);
+
+        // Act
+        await _gamePortal.ExitGameAsync(message, clientId);
+
+        // Assert
+        VerifyClientSendSuccess(clientId);
+        _mockPlayerService.Verify(s => s.DisconnectAsync(clientId), Times.Once);
+        _mockContext.Verify(c => c.SaveRoomAsync(It.IsAny<RoomPacket>()), Times.Once);
+        VerifyRoomSendAsync("room1");
+    }
+
+
+    [Fact]
+    public async Task ExitGameAsync_ShouldNotDoAnything_WhenPlayerDoesNotExist()
+    {
+        // Arrange
+        var message = new LeaveGamePacket();
+        var clientId = "client1";
+
+        SetupMockPlayerServiceNotFound(clientId);
+
+        // Act
+        await _gamePortal.ExitGameAsync(message, clientId);
+
+        // Assert
+        _mockPlayerService.Verify(s => s.DisconnectAsync(It.IsAny<string>()), Times.Never);
+        _mockRouter.Verify(r => r.Client.SendAsync(It.IsAny<string>(), It.IsAny<IPacketBase>()), Times.Never);
+    }
+
+
+    [Fact]
+    public async Task ExitGameAsync_ShouldDeleteRoom_WhenRoomIsEmptyAfterPlayerLeaves()
+    {
+        // Arrange
+        var message = new LeaveGamePacket();
+        var clientId = "client1";
+        var playerMock = new PlayerEntity { Name = "Player1" };
+
+        // Mock player service to return a player
+        _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(playerMock);
+        _mockPlayerService.Setup(s => s.DisconnectAsync(clientId)).Returns(Task.CompletedTask);
+
+        // Mock room with just one connection
+        var roomMock = new RoomPacket { Id = "room1" };
+        roomMock.AddConnection(clientId);  // Player is the only one in the room
+        _mockContext.Setup(s => s.FindRoomForClientAsync(clientId)).ReturnsAsync(roomMock);
+        _mockContext.Setup(s => s.SaveRoomAsync(It.IsAny<RoomPacket>())).Returns(Task.CompletedTask);
+
+        // Mock that the room becomes empty after removal
+        roomMock.RemoveConnection(clientId);  // Remove the player
+
+        // Act
+        await _gamePortal.ExitGameAsync(message, clientId);
+
+        // Assert
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.Is<IPacketBase>(p => p is SuccessPacket)), Times.Once);
+        _mockPlayerService.Verify(s => s.DisconnectAsync(clientId), Times.Once);
+        _mockContext.Verify(c => c.SaveRoomAsync(It.IsAny<RoomPacket>()), Times.Once);
+        _mockRouter.Verify(r => r.Room.SendAsync(roomMock.Id, It.IsAny<IPacketBase>()), Times.Once);
+        _mockContext.Verify(c => c.DeleteRoomAsync(roomMock.Id), Times.Once);  // Ensure the room is deleted
+    }
+
+    [Fact]
+    public async Task ExitGameAsync_ShouldNotDeleteRoom_WhenRoomIsNotEmpty()
+    {
+        // Arrange
+        var message = new LeaveGamePacket();
+        var clientId = "client1";
+        var playerMock = new PlayerEntity { Name = "Player1" };
+
+        // Mock player service to return a player
+        _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(playerMock);
+        _mockPlayerService.Setup(s => s.DisconnectAsync(clientId)).Returns(Task.CompletedTask);
+
+        // Mock room with multiple connections
+        var roomMock = new RoomPacket { Id = "room1" };
+        roomMock.AddConnection("client2");  // Another player remains in the room
+        _mockContext.Setup(s => s.FindRoomForClientAsync(clientId)).ReturnsAsync(roomMock);
+        _mockContext.Setup(s => s.SaveRoomAsync(It.IsAny<RoomPacket>())).Returns(Task.CompletedTask);
+
+        // Act
+        await _gamePortal.ExitGameAsync(message, clientId);
+
+        // Assert
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.Is<IPacketBase>(p => p is SuccessPacket)), Times.Once);
+        _mockPlayerService.Verify(s => s.DisconnectAsync(clientId), Times.Once);
+        _mockContext.Verify(c => c.SaveRoomAsync(It.IsAny<RoomPacket>()), Times.Once);
+        _mockRouter.Verify(r => r.Room.SendAsync(roomMock.Id, It.IsAny<IPacketBase>()), Times.Once);
+        _mockContext.Verify(c => c.DeleteRoomAsync(It.IsAny<string>()), Times.Never);  // Ensure the room is not deleted
+    }
+
+    [Fact]
+    public async Task ExitGameAsync_ShouldNotSendRoomUpdate_WhenRoomDoesNotExist()
+    {
+        // Arrange
+        var message = new LeaveGamePacket();
+        var clientId = "client1";
+        var playerMock = new PlayerEntity { Name = "Player1" };
+
+        // Mock player service to return a player
+        _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(playerMock);
+        _mockPlayerService.Setup(s => s.DisconnectAsync(clientId)).Returns(Task.CompletedTask);
+
+        // Mock that no room is found for the client
+        _mockContext.Setup(s => s.FindRoomForClientAsync(clientId)).ReturnsAsync((RoomPacket)null!);
+
+        // Act
+        await _gamePortal.ExitGameAsync(message, clientId);
+
+        // Assert
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.Is<IPacketBase>(p => p is SuccessPacket)), Times.Once);
+        _mockPlayerService.Verify(s => s.DisconnectAsync(clientId), Times.Once);
+        _mockContext.Verify(c => c.SaveRoomAsync(It.IsAny<RoomPacket>()), Times.Never);  // No room to save
+        _mockRouter.Verify(r => r.Room.SendAsync(It.IsAny<string>(), It.IsAny<IPacketBase>()), Times.Never);  // No room to send to
+    }
+
+    [Fact]
+    public async Task HandshakeAsync_ShouldSendHandshakePacket_WithRooms()
+    {
+        // Arrange
+        var clientId = "client1";
+        var rooms = new Dictionary<string, RoomPacket>
+    {
+        { "room1", new RoomPacket { Id = "room1" } },
+        { "room2", new RoomPacket { Id = "room2" } }
+    };
+
+        // Mock the GetAllRoomsAsync method to return the rooms
+        _mockContext.Setup(s => s.GetAllRoomsAsync()).ReturnsAsync(rooms);
+
+        var message = new HandshakePacket("server", null!, clientId); // Just to pass into the method
+
+        // Act
+        await _gamePortal.HandshakeAsync(message, clientId);
+
+        // Assert
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.Is<HandshakePacket>(p => p.Rooms.Length == rooms.Count)), Times.Once); // Verify the correct number of rooms is sent
+    }
+
+    [Fact]
+    public async Task HandshakeAsync_ShouldSendHandshakePacket_WithEmptyRoomList_WhenNoRoomsExist()
+    {
+        // Arrange
+        var clientId = "client1";
+        var rooms = new Dictionary<string, RoomPacket>();  // No rooms
+
+        _mockContext.Setup(s => s.GetAllRoomsAsync()).ReturnsAsync(rooms);
+
+        var message = new HandshakePacket("server", null!, clientId); // Just to pass into the method
+
+        // Act
+        await _gamePortal.HandshakeAsync(message, clientId);
+
+        // Assert
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.Is<HandshakePacket>(p => p.Rooms.Length == 0)), Times.Once);
+    }
+
 }
 
 // Test Portal that extends the real portal to expose methods for testing

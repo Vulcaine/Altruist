@@ -150,17 +150,20 @@ namespace Altruist
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("message")][Key(1)] public string Message { get; set; }
+        [JsonPropertyName("message")][Key(2)] public string SuccessType { get; set; }
 
         public SuccessPacket()
         {
             Header = default;
             Message = "";
+            SuccessType = "";
         }
 
-        public SuccessPacket(string sender, string message, string? receiver = null)
+        public SuccessPacket(string sender, string message, string successType, string? receiver = null)
         {
             Header = new PacketHeader(sender, receiver);
             Message = message;
+            SuccessType = successType;
         }
 
         [JsonPropertyName("type")][Key(2)] public string Type => "SuccessMessage";
@@ -170,24 +173,28 @@ namespace Altruist
 
 
     [MessagePackObject]
-    public struct JoinFailedPacket : IPacketBase
+    public struct FailedPacket : IPacketBase
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("reason")][Key(1)] public string Reason { get; set; }
 
-        public JoinFailedPacket()
+        [JsonPropertyName("message")][Key(2)] public string FailType { get; set; }
+
+        public FailedPacket()
         {
             Header = default;
             Reason = "";
+            FailType = "";
         }
 
-        public JoinFailedPacket(string sender, string reason, string? receiver = null)
+        public FailedPacket(string sender, string reason, string failType, string? receiver = null)
         {
             Header = new PacketHeader(sender, receiver);
             Reason = reason;
+            FailType = failType;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type => "JoinFailedPacket";
+        [JsonPropertyName("type")][Key(2)] public string Type => "FailedPacket";
     }
 
 
@@ -440,10 +447,10 @@ namespace Altruist
 
 public class PacketHelper
 {
-    public static JoinFailedPacket JoinFailed(string reason, string receiver) => new JoinFailedPacket("server", reason, receiver);
+    public static FailedPacket Failed(string reason, string receiver, string failType) => new FailedPacket("server", reason, failType, receiver);
 
-    public static SuccessPacket Success(string message, string receiver)
+    public static SuccessPacket Success(string message, string receiver, string successType)
     {
-        return new SuccessPacket("server", message, receiver);
+        return new SuccessPacket("server", message, successType, receiver);
     }
 }

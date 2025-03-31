@@ -60,7 +60,7 @@ AltruistBuilder.Create(args)
     {
         return setup
             .AddContactPoint("localhost", 9042)
-            .CreateKeyspace<DefaultScyllaKeyspace>(setup => setup.AddVault<Player>());
+            .CreateKeyspaceAsync<DefaultScyllaKeyspace>(setup => setup.AddVault<Player>());
     })
     .UseCache<RedisConnectionSetup>(RedisCacheServiceToken.Instance)
     .EnableEngine(FrameRate.Hz30)

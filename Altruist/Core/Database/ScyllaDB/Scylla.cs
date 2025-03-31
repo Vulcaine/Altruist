@@ -1,6 +1,7 @@
 using System.Net;
 using System.Reflection;
 using System.Text;
+using Altruist.Contracts;
 using Altruist.Database;
 using Cassandra;
 using Cassandra.Mapping;
@@ -14,33 +15,24 @@ public enum ReplicationStrategy
 }
 
 
-public class ReplicationOptions
+public class ScyllaReplicationOptions : ReplicationOptions
 {
     public ReplicationStrategy Strategy { get; set; } = ReplicationStrategy.SimpleStrategy;
-
-    public int ReplicationFactor { get; set; } = 1;
-
-    /// <summary>
-    /// Defines replication per data center (Only used for NetworkTopologyStrategy).
-    /// The key is the Data Center name (configured in ScyllaDB).
-    /// </summary>
-    public Dictionary<string, int>? DataCenters { get; set; }
 }
 
 public interface IScyllaKeyspace : IKeyspace
 {
-    ReplicationOptions? Options { get; set; }
+    ScyllaReplicationOptions? Options { get; set; }
 }
 
 public abstract class ScyllaKeyspace : IScyllaKeyspace
 {
     public string Name { get; set; } = "altruist";
-    public ReplicationOptions? Options { get; set; } = new ReplicationOptions();
+    public ScyllaReplicationOptions? Options { get; set; } = new ScyllaReplicationOptions();
 }
 
 public class DefaultScyllaKeyspace : ScyllaKeyspace
 {
-
 }
 
 public interface IScyllaDbProvider : ICqlDatabaseProvider
@@ -53,7 +45,9 @@ public class ScyllaDbProvider : IScyllaDbProvider
     private readonly ISession _session;
     private readonly IMapper _mapper;
 
-    public ScyllaDbProvider(List<string> contactPoints)
+    public IDatabaseServiceToken Token { get; }
+
+    public ScyllaDbProvider(List<string> contactPoints, IDatabaseServiceToken token)
     {
         var clusterBuilder = Cluster.Builder().WithDefaultKeyspace("altruist");
 
@@ -72,6 +66,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
         var cluster = clusterBuilder.Build();
         _session = cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
         _mapper = new Mapper(_session);
+        Token = token;
     }
 
 
@@ -128,7 +123,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
     {
-        var actualOptions = options ?? new ReplicationOptions();
+        var actualOptions = options as ScyllaReplicationOptions ?? new ScyllaReplicationOptions();
 
         // Build the replication configuration
         Dictionary<string, string> replicationConfig;

@@ -151,13 +151,6 @@ public sealed class RedisCache : IAltruistRedisProvider
         throw new NotSupportedException("RemoveAsync(string key, Type type) is not supported when using Redis OM.");
     }
 
-    // public async Task<ICacheCursor<string>> GetBatchKeysAsync(string baseKey, int skip, int take)
-    // {
-    //     var repo = _provider.RedisCollection<object>();
-    //     var keys = await repo.KeysAsync(baseKey);
-    //     return keys.Skip(skip).Take(take).ToList();
-    // }
-
     public async Task ClearAsync<T>() where T : notnull
     {
         var repo = _provider.RedisCollection<T>();

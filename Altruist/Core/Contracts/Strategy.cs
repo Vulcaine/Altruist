@@ -1,3 +1,4 @@
+using Altruist.Database;
 using Altruist.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -123,9 +124,15 @@ public interface IDatabaseConnectionSetup<TSelf> : IExternalContactSetup<TSelf> 
 
 public abstract class DatabaseConnectionSetup<TSelf> : ExternalConnectionSetupBase<TSelf>, IDatabaseConnectionSetup<TSelf> where TSelf : DatabaseConnectionSetup<TSelf>
 {
-    protected DatabaseConnectionSetup(IServiceCollection services) : base(services)
+    protected Dictionary<string, IKeyspaceSetup> Keyspaces { get; } = new();
+    protected IDatabaseServiceToken Token { get; }
+
+    protected DatabaseConnectionSetup(IServiceCollection services, IDatabaseServiceToken token) : base(services)
     {
+        Token = token;
     }
+
+    public abstract TSelf CreateKeyspace<TKeyspace>(Func<KeyspaceSetup<TKeyspace>, KeyspaceSetup<TKeyspace>>? setupAction = null) where TKeyspace : class, IKeyspace, new();
 }
 
 public interface ITransportConnectionSetup<TSelf> : ISetup<TSelf>
