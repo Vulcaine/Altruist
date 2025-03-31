@@ -1,44 +1,84 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Authentication;
 
-public class JWTShield : IShield
+public class JwtAuth : IShieldAuth
 {
-    private readonly IConfiguration _config;
+    private readonly ITokenValidator _tokenValidator;
 
-    public JWTShield(IConfiguration config)
+    public JwtAuth(ITokenValidator tokenValidator)
     {
-        _config = config;
+        _tokenValidator = tokenValidator;
     }
 
-    public virtual Task<bool> AuthenticateAsync(HttpContext context)
+    public Task<AuthorizationResult> HandleAuthAsync(HttpContext context)
     {
-        if (!context.Request.Headers.TryGetValue("Authorization", out var tokenHeader))
-            return Task.FromResult(false);
+        var token = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (string.IsNullOrEmpty(token) || !_tokenValidator.ValidateToken(token))
+        {
+            return Task.FromResult(AuthorizationResult.Failed());
+        }
 
-        var token = tokenHeader.ToString().Replace("Bearer ", "");
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.ASCII.GetBytes(_config["JwtSecretKey"]!);
+        return Task.FromResult(AuthorizationResult.Success());
+    }
+}
 
+public class JwtTokenValidator : ITokenValidator
+{
+    private readonly JwtSecurityTokenHandler _tokenHandler;
+    private readonly TokenValidationParameters _validationParams;
+
+    public JwtTokenValidator(IConfiguration configuration)
+    {
+        _tokenHandler = new JwtSecurityTokenHandler();
+
+        _validationParams = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = configuration["Jwt:Issuer"],
+            ValidAudience = configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(configuration["Jwt:SecretKey"]!)
+            )
+        };
+    }
+
+    public bool ValidateToken(string token)
+    {
         try
         {
-            tokenHandler.ValidateToken(token, new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(key),
-                ValidateIssuer = false,
-                ValidateAudience = false
-            }, out _);
-
-            return Task.FromResult(true);
+            _tokenHandler.ValidateToken(token, _validationParams, out _);
+            return true;
         }
         catch
         {
-            return Task.FromResult(false);
+            return false;
         }
+    }
+}
+
+public static class WebAppExtensions
+{
+    public static WebApplicationBuilder AddJwtAuth(this WebApplicationBuilder builder, Action<JwtBearerOptions> configureOptions)
+    {
+        builder.Services.AddAuthentication()
+            .AddJwtBearer(configureOptions);
+        builder.Services.AddAuthorization();
+
+        builder.Services.AddSingleton<ITokenValidator, JwtTokenValidator>();
+        builder.Services.AddSingleton<IShieldAuth, JwtAuth>();
+        return builder;
     }
 }

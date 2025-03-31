@@ -260,14 +260,14 @@ namespace Altruist
             return this;
         }
 
-        public AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder>? setup = null)
+        public AltruistWebServerBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder>? setup = null)
         {
             var app = WebApiHelper.Create(_args, Services);
             if (setup != null)
             {
-                return new AltruistWebApplicationBuilder(setup(app), Settings);
+                return new AltruistWebServerBuilder(setup(app), Settings);
             }
-            return new AltruistWebApplicationBuilder(app, Settings);
+            return new AltruistWebServerBuilder(app, Settings);
         }
     }
 
@@ -281,6 +281,8 @@ namespace Altruist
             Builder = builder;
             Settings = settings;
         }
+
+        public AppBuilder Configure(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup!(Builder.Build()));
 
         public void StartServer()
         {
@@ -298,6 +300,8 @@ namespace Altruist
             altruistContext.Validate();
         }
 
+        public AppBuilder Configure(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup!(App!));
+
         public void StartServer()
         {
             StartServer("localhost", 8080);
@@ -305,11 +309,11 @@ namespace Altruist
 
         public void StartServer(string host, int port)
         {
-            EnsureAppBuilt();
+            BuildApp();
             new AppBuilder(App!).StartServer(host, port);
         }
 
-        private void EnsureAppBuilt()
+        public AppBuilder BuildApp()
         {
             if (App == null)
             {
@@ -323,6 +327,8 @@ namespace Altruist
                 App.UseWebSockets(webSocketOptions);
                 App.UseRouting();
             }
+
+            return new AppBuilder(App!);
         }
     }
 
@@ -381,7 +387,7 @@ namespace Altruist
             _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals;
         }
 
-        public AppBuilder WebApp(Func<WebApplication, WebApplication>? setup = null)
+        public AppBuilder Configure(Func<WebApplication, WebApplication> setup)
         {
             if (setup != null)
             {
@@ -395,6 +401,11 @@ namespace Altruist
             _app.UseAuthentication();
             _app.UseAuthorization();
             return this;
+        }
+
+        public void StartServer()
+        {
+            StartServer("localhost", 8080);
         }
 
         public void StartServer(string host, int port)
