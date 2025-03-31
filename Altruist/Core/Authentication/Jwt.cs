@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -71,14 +70,32 @@ public class JwtTokenValidator : ITokenValidator
 
 public static class WebAppExtensions
 {
-    public static WebApplicationBuilder AddJwtAuth(this WebApplicationBuilder builder, Action<JwtBearerOptions> configureOptions)
+    public static WebApplicationBuilder AddJwtAuth(
+        this WebApplicationBuilder builder,
+        Action<JwtBearerOptions>? configureOptions = null,
+        Action<AuthorizationOptions>? authorizationOptions = null)
     {
-        builder.Services.AddAuthentication()
-            .AddJwtBearer(configureOptions);
-        builder.Services.AddAuthorization();
 
-        builder.Services.AddSingleton<ITokenValidator, JwtTokenValidator>();
-        builder.Services.AddSingleton<IShieldAuth, JwtAuth>();
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                configureOptions?.Invoke(options);
+            });
+
+        builder.Services.AddAuthorization(options =>
+        {
+            authorizationOptions?.Invoke(options);
+        });
+
+        builder.Services.AddScoped<ITokenValidator, JwtTokenValidator>();
+        builder.Services.AddScoped<IShieldAuth, JwtAuth>();
+
         return builder;
     }
+}
+
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
+public class JwtShieldAttribute : ShieldAttribute
+{
+    public JwtShieldAttribute() : base(typeof(JwtAuth)) { }
 }
