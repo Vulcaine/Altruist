@@ -143,7 +143,7 @@ public class ClientSynchronizator
         _broadcast = broadcastSender;
     }
 
-    public async Task SendAsync(ISynchronizedEntity entity)
+    public virtual async Task SendAsync(ISynchronizedEntity entity)
     {
         var (changeMask, changedProperties) = Synchronization.GetChangedData(entity, entity.ConnectionId);
         if (changeMask == 0)

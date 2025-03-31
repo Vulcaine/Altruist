@@ -1,3 +1,4 @@
+using Altruist.Networking;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -34,23 +35,30 @@ public class AltruistGamePortalTests
     {
         // Mock the necessary dependencies for RoomSender and ClientSender
         var mockStore = Mock.Of<IConnectionStore>();
-        var mockEncoder = Mock.Of<IMessageEncoder>();
+        var mockCodec = Mock.Of<ICodec>();
 
         // Mock the ClientSender as it is a dependency for RoomSender
-        var clientMock = new Mock<ClientSender>(mockStore, mockEncoder);
+        var clientMock = new Mock<ClientSender>(mockStore, mockCodec);
+
+        // Mock the BroadcastSender with the necessary dependencies
+        var broadcastMock = new Mock<BroadcastSender>(mockStore, clientMock.Object);
+
+        // Mock the ClientSynchronizator with BroadcastSender
+        var clientSyncMock = new Mock<ClientSynchronizator>(broadcastMock.Object);
 
         // Mock the RoomSender and its methods like SendAsync
-        var roomSenderMock = new Mock<RoomSender>(mockStore, mockEncoder, clientMock.Object) { CallBase = true }; // CallBase allows us to use the real implementation for non-mocked methods
-        roomSenderMock.Setup(r => r.SendAsync(It.IsAny<string>(), It.IsAny<IPacketBase>())).Returns(Task.CompletedTask); // Mock SendAsync to not do actual work
+        var roomSenderMock = new Mock<RoomSender>(mockStore, mockCodec, clientMock.Object) { CallBase = true };
+        roomSenderMock.Setup(r => r.SendAsync(It.IsAny<string>(), It.IsAny<IPacketBase>())).Returns(Task.CompletedTask);
 
         // Mock the IAltruistRouter and set up the mock behavior for Client and Room properties
         var routerMock = new Mock<IAltruistRouter>();
         routerMock.Setup(r => r.Client).Returns(clientMock.Object);
-        routerMock.Setup(r => r.Room).Returns(roomSenderMock.Object); // Return the mocked RoomSender instance
+        routerMock.Setup(r => r.Room).Returns(roomSenderMock.Object);
+        routerMock.Setup(r => r.Synchronize).Returns(clientSyncMock.Object);
+        routerMock.Setup(r => r.Broadcast).Returns(broadcastMock.Object);
 
         return routerMock;
     }
-
 
 
     [Fact]
@@ -79,7 +87,7 @@ public class AltruistGamePortalTests
         }
         roomMock.ConnectionIds = ids;
 
-        _mockContext.Setup(p => p.FindAvailableRoom()).ReturnsAsync(roomMock);
+        _mockContext.Setup(p => p.FindAvailableRoomAsync()).ReturnsAsync(roomMock);
 
         // Act
         await _gamePortal.JoinGameAsync(message, clientId);
@@ -103,27 +111,59 @@ public class AltruistGamePortalTests
     }
 
     [Fact]
-    public async Task JoinGameAsync_ShouldSendSuccess_WhenPlayerJoins()
+    public async Task JoinGameAsync_ShouldSendJoinFailed_WhenRoomNotFound()
     {
-
         // Arrange
-        var message = new JoinGamePacket { Name = "Player1" };
+        var message = new JoinGamePacket { Name = "Player1", RoomId = "non-existing-room" };
         var clientId = "client1";
-        var roomMock = new RoomPacket();
 
-        _mockContext.Setup(s => s.FindAvailableRoom()).ReturnsAsync(roomMock);
-
-        var routerMock = SetupRouterMock();
-        _mockContext.Setup(p => p.Router).Returns(routerMock.Object);
+        _mockContext.Setup(s => s.GetRoomAsync(message.RoomId)).ReturnsAsync((RoomPacket?)null);
 
         // Act
         await _gamePortal.JoinGameAsync(message, clientId);
 
         // Assert
-        routerMock.Verify(r => r.Room.SendAsync(roomMock.Id, It.IsAny<IPacketBase>()), Times.Once);
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
     }
 
-    // You can add more tests similarly...
+    [Fact]
+    public async Task JoinGameAsync_ShouldSendJoinFailed_WhenPlayerAlreadyInGame()
+    {
+        // Arrange
+        var message = new JoinGamePacket { Name = "Player1" };
+        var clientId = "client1";
+        var roomMock = new RoomPacket();
+        roomMock.ConnectionIds.Add(clientId); // Player is already in room
+
+        _mockContext.Setup(s => s.FindAvailableRoomAsync()).ReturnsAsync(roomMock);
+
+        // Act
+        await _gamePortal.JoinGameAsync(message, clientId);
+
+        // Assert
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task JoinGameAsync_ShouldSendSuccess_WhenPlayerJoinsSuccessfully()
+    {
+        // Arrange
+        var message = new JoinGamePacket { Name = "Player1" };
+        var clientId = "client1";
+        var roomMock = new RoomPacket { Id = "room1" };
+
+        _mockContext.Setup(s => s.FindAvailableRoomAsync()).ReturnsAsync(roomMock);
+
+        var playerMock = new PlayerEntity { Name = "Player1" };
+        _mockPlayerService.Setup(s => s.ConnectById(roomMock.Id, clientId, message.Name, message.Position)).ReturnsAsync(playerMock);
+
+        // Act
+        await _gamePortal.JoinGameAsync(message, clientId);
+
+        // Assert
+        _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
+        _mockRouter.Verify(r => r.Synchronize.SendAsync(It.IsAny<ISynchronizedEntity>()), Times.Once);
+    }
 }
 
 // Test Portal that extends the real portal to expose methods for testing

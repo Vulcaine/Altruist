@@ -6,7 +6,7 @@ namespace Altruist.Redis;
 public class RedisSocketClientSenderTests
 {
     private readonly Mock<IConnectionStore> _mockStore;
-    private readonly Mock<IMessageEncoder> _mockEncoder;
+    private readonly Mock<ICodec> _mockCodec;
     private readonly Mock<IConnectionMultiplexer> _mockMux;
     private readonly Mock<ISubscriber> _mockRedisPublisher;
     private readonly Mock<ClientSender> _mockClientSender;
@@ -16,13 +16,13 @@ public class RedisSocketClientSenderTests
     public RedisSocketClientSenderTests()
     {
         _mockStore = new Mock<IConnectionStore>();
-        _mockEncoder = new Mock<IMessageEncoder>();
+        _mockCodec = new Mock<ICodec>();
         _mockMux = new Mock<IConnectionMultiplexer>();
         _mockRedisPublisher = new Mock<ISubscriber>();
         _mockRedisDatabase = new Mock<IDatabase>();
 
         // Mock ClientSender and its SendAsync method
-        _mockClientSender = new Mock<ClientSender>(_mockStore.Object, _mockEncoder.Object);
+        _mockClientSender = new Mock<ClientSender>(_mockStore.Object, _mockCodec.Object);
         _mockClientSender.Setup(c => c.SendAsync(It.IsAny<string>(), It.IsAny<IPacketBase>()))
                          .Returns(Task.CompletedTask); // Mock SendAsync method
 
@@ -32,7 +32,7 @@ public class RedisSocketClientSenderTests
         // Set up the RedisSocketClientSender instance
         _redisSocketClientSender = new RedisSocketClientSender(
             _mockStore.Object,
-            _mockEncoder.Object,
+            _mockCodec.Object,
             _mockMux.Object,
             _mockClientSender.Object
         );
@@ -47,7 +47,7 @@ public class RedisSocketClientSenderTests
         var mockConnection = new Mock<IConnection>();
         mockConnection.Setup(c => c.IsConnected).Returns(true);
 
-        _mockStore.Setup(s => s.GetConnection(clientId)).ReturnsAsync(mockConnection.Object);
+        _mockStore.Setup(s => s.GetConnectionAsync(clientId)).ReturnsAsync(mockConnection.Object);
 
         // Act
         await _redisSocketClientSender.SendAsync(clientId, message);
@@ -66,8 +66,8 @@ public class RedisSocketClientSenderTests
         var mockConnection = new Mock<IConnection>();
         mockConnection.Setup(c => c.IsConnected).Returns(false);
 
-        _mockStore.Setup(s => s.GetConnection(clientId)).ReturnsAsync(mockConnection.Object);
-        _mockEncoder.Setup(e => e.Encode(It.IsAny<IPacketBase>())).Returns(new byte[] { 10 });
+        _mockStore.Setup(s => s.GetConnectionAsync(clientId)).ReturnsAsync(mockConnection.Object);
+        _mockCodec.Setup(e => e.Encoder.Encode(It.IsAny<IPacketBase>())).Returns([10]);
 
         // Act
         await _redisSocketClientSender.SendAsync(clientId, message);
@@ -86,7 +86,7 @@ public class RedisSocketClientSenderTests
         var mockConnection = new Mock<IConnection>();
         mockConnection.Setup(c => c.IsConnected).Returns(true);
 
-        _mockStore.Setup(s => s.GetConnection(clientId)).ReturnsAsync(mockConnection.Object);
+        _mockStore.Setup(s => s.GetConnectionAsync(clientId)).ReturnsAsync(mockConnection.Object);
 
         // Act
         await _redisSocketClientSender.SendAsync(clientId, message);
