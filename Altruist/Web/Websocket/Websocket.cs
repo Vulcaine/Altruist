@@ -6,6 +6,10 @@ using System.Reflection;
 using Altruist.Authentication;
 using Altruist.Contracts;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc.Abstractions;
 
 namespace Altruist.Web;
 
@@ -21,25 +25,31 @@ public sealed class WebSocketTransport : ITransport
         UseWebSocketEndpoint(app, path, (app.ApplicationServices.GetRequiredService(type) as IConnectionManager)!, app.ApplicationServices);
     }
 
-    private void UseWebSocketEndpoint(
+    private static readonly ActionDescriptor SharedActionDescriptor = new ActionDescriptor();
+    private static readonly List<IFilterMetadata> SharedFilters = new List<IFilterMetadata>();
+
+    private Task UseWebSocketEndpoint(
         IApplicationBuilder app, string path, IConnectionManager wsManager, IServiceProvider serviceProvider)
     {
         var shieldAttribute = wsManager.GetType().GetCustomAttribute<ShieldAttribute>();
-        IShield shieldInstance = null!;
-
-        if (shieldAttribute != null)
-        {
-            // shieldInstance = (IShield)serviceProvider.GetRequiredService(shieldAttribute.);
-        }
 
         app.Use(async (context, next) =>
         {
             if (context.Request.Path == path && context.WebSockets.IsWebSocketRequest)
             {
-                if (shieldInstance != null && !await shieldInstance.AuthenticateAsync(context))
+                if (shieldAttribute != null)
                 {
-                    context.Response.StatusCode = 401;
-                    return;
+                    var actionContext = new ActionContext(context, context.GetRouteData(), SharedActionDescriptor);
+
+                    var authorizationContext = new AuthorizationFilterContext(actionContext, SharedFilters);
+
+                    await shieldAttribute.OnAuthorizationAsync(authorizationContext);
+
+                    if (authorizationContext.Result is UnauthorizedResult)
+                    {
+                        context.Response.StatusCode = 401;
+                        return;
+                    }
                 }
 
                 var clientId = Guid.NewGuid().ToString();
@@ -52,6 +62,8 @@ public sealed class WebSocketTransport : ITransport
                 await next();
             }
         });
+
+        return Task.CompletedTask;
     }
 }
 
