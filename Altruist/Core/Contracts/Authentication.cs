@@ -1,7 +1,18 @@
+using Altruist.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 
 namespace Altruist;
+
+public class AuthResult {
+    public AuthorizationResult AuthorizationResult { get; }
+    public AuthDetails? AuthDetails { get; }
+
+    public AuthResult(AuthorizationResult authorizationResult, AuthDetails? authDetails){
+        AuthorizationResult = authorizationResult;
+        AuthDetails = authDetails;
+    }
+}
 
 public interface ITokenValidator
 {
@@ -11,7 +22,7 @@ public interface ITokenValidator
 
 public interface IShieldAuth
 {
-    Task<AuthorizationResult> HandleAuthAsync(HttpContext context);
+    Task<AuthResult> HandleAuthAsync(HttpContext context);
 }
 
 

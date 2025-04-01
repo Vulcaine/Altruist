@@ -19,17 +19,37 @@ public class JwtAuth : IShieldAuth
         _tokenValidator = tokenValidator;
     }
 
-    public Task<AuthorizationResult> HandleAuthAsync(HttpContext context)
+    private readonly JwtSecurityTokenHandler _tokenHandler = new();
+
+    public Task<AuthResult> HandleAuthAsync(HttpContext context)
     {
         var token = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
         if (string.IsNullOrEmpty(token) || !_tokenValidator.ValidateToken(token))
         {
-            return Task.FromResult(AuthorizationResult.Failed());
+            return Task.FromResult(new AuthResult(AuthorizationResult.Failed(), null!));
         }
 
-        return Task.FromResult(AuthorizationResult.Success());
+        var authDetails = ExtractAuthDetails(token);
+        return Task.FromResult(new AuthResult(AuthorizationResult.Success(), authDetails));
     }
-}
+
+    private AuthDetails ExtractAuthDetails(string token)
+    {
+        var jwt = _tokenHandler.ReadJwtToken(token);
+        var expClaim = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Exp);
+
+        if (expClaim == null || !long.TryParse(expClaim.Value, out long expUnix))
+        {
+            throw new Exception("Invalid JWT: Missing or malformed expiration claim.");
+        }
+
+        var expirationTime = DateTimeOffset.FromUnixTimeSeconds(expUnix);
+        var remainingTime = expirationTime - DateTimeOffset.UtcNow;
+
+        return new AuthDetails(token, remainingTime);
+    }
+  }
+
 
 public class JwtTokenValidator : ITokenValidator
 {

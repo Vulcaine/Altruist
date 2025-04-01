@@ -4,8 +4,24 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
-[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
+public class AuthDetails
+{
+    public string Token { get; set; }
+    public DateTimeOffset Expiry { get; set; }
 
+    public AuthDetails(string token, TimeSpan validityPeriod)
+    {
+        Token = token;
+        Expiry = DateTimeOffset.UtcNow.Add(validityPeriod);
+    }
+
+    public bool IsAlive() => DateTimeOffset.UtcNow < Expiry;
+
+    public double TimeLeftSeconds() => (Expiry - DateTimeOffset.UtcNow).TotalSeconds;
+}
+
+
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
 public class ShieldAttribute : AuthorizeAttribute, IAsyncAuthorizationFilter
 {
     private readonly Type? _authHandlerType;
@@ -27,7 +43,11 @@ public class ShieldAttribute : AuthorizeAttribute, IAsyncAuthorizationFilter
             if (authHandler != null)
             {
                 var result = await authHandler.HandleAuthAsync(context.HttpContext);
-                if (!result.Succeeded)
+
+                // Store the authentication result in HttpContext.Items
+                context.HttpContext.Items["AuthResult"] = result;
+
+                if (!result.AuthorizationResult.Succeeded)
                 {
                     context.Result = new UnauthorizedResult();
                     return;

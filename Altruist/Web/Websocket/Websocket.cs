@@ -37,6 +37,7 @@ public sealed class WebSocketTransport : ITransport
         {
             if (context.Request.Path == path && context.WebSockets.IsWebSocketRequest)
             {
+                AuthDetails? authDetails = null;
                 if (shieldAttribute != null)
                 {
                     var actionContext = new ActionContext(context, context.GetRouteData(), SharedActionDescriptor);
@@ -49,12 +50,14 @@ public sealed class WebSocketTransport : ITransport
                     {
                         context.Response.StatusCode = 401;
                         return;
+                    } else {
+                        authDetails = (authorizationContext.HttpContext.Items["AuthResult"] as AuthResult)!.AuthDetails;
                     }
                 }
 
                 var clientId = Guid.NewGuid().ToString();
                 var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                var webSocketConnection = new WebSocketConnection(webSocket, clientId);
+                var webSocketConnection = new WebSocketConnection(webSocket, clientId, authDetails);
                 await wsManager.HandleConnection(webSocketConnection, path, clientId);
             }
             else
@@ -108,10 +111,13 @@ public sealed class WebSocketConnection : IConnection
 
     public bool IsConnected => _webSocket.State == WebSocketState.Open;
 
-    public WebSocketConnection(WebSocket webSocket, string connectionId)
+    public AuthDetails? AuthDetails{get;}
+
+    public WebSocketConnection(WebSocket webSocket, string connectionId, AuthDetails? authDetails)
     {
         _webSocket = webSocket;
         ConnectionId = connectionId;
+        AuthDetails = authDetails;
     }
 
     public async Task SendAsync(byte[] data)

@@ -1,11 +1,16 @@
+using Altruist.Authentication;
+
 namespace Altruist;
 
 public interface IConnection
 {
+    AuthDetails? AuthDetails {get;}
     string ConnectionId { get; }
     Task SendAsync(byte[] data);
     Task<byte[]> ReceiveAsync(CancellationToken cancellationToken);
     Task CloseAsync();
+
+   bool Authenticated => AuthDetails!= null && AuthDetails.IsAlive();
 
     bool IsConnected { get; }
 }
