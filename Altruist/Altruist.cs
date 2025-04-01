@@ -75,7 +75,7 @@ namespace Altruist
     // Step 1: Choose Transport
     public class AltruistConnectionBuilder
     {
-        protected readonly IServiceCollection Services;
+        public readonly IServiceCollection Services;
         protected readonly IAltruistContext Settings;
 
         private string[] _args;
@@ -121,8 +121,13 @@ namespace Altruist
         }
     }
 
+    public interface IAfterConnectionBuilder
+    {
+
+    }
+
     // Step 2: Choose Cache
-    public class AltruistCacheBuilder
+    public class AltruistCacheBuilder : IAfterConnectionBuilder
     {
         protected readonly IServiceCollection Services;
         protected readonly IAltruistContext Settings;

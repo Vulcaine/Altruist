@@ -304,16 +304,20 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("rooms")][Key(1)] public RoomPacket[] Rooms { get; set; }
 
+        [JsonPropertyName("token")][Key(1)] public string? Token { get; set; }
+
         public HandshakePacket()
         {
             Header = default;
             Rooms = Array.Empty<RoomPacket>();
+            Token = string.Empty;
         }
 
-        public HandshakePacket(string sender, RoomPacket[] rooms, string? receiver = null)
+        public HandshakePacket(string sender, RoomPacket[] rooms, string? token = null, string? receiver = null)
         {
             Header = new PacketHeader(sender, receiver);
             Rooms = rooms;
+            Token = token;
         }
 
         [JsonPropertyName("type")][Key(2)] public string Type => "HandshakePacket";

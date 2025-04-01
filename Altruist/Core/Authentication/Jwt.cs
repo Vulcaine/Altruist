@@ -21,9 +21,9 @@ public class JwtAuth : IShieldAuth
 
     private readonly JwtSecurityTokenHandler _tokenHandler = new();
 
-    public Task<AuthResult> HandleAuthAsync(HttpContext context)
+    public Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
-        var token = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var token = GetTokenFromRequest(context);
         if (string.IsNullOrEmpty(token) || !_tokenValidator.ValidateToken(token))
         {
             return Task.FromResult(new AuthResult(AuthorizationResult.Failed(), null!));
@@ -31,6 +31,19 @@ public class JwtAuth : IShieldAuth
 
         var authDetails = ExtractAuthDetails(token);
         return Task.FromResult(new AuthResult(AuthorizationResult.Success(), authDetails));
+    }
+
+    private string GetTokenFromRequest(IAuthContext context)
+    {
+        if (context is HttpAuthContext httpAuthContext)
+        {
+            var request = httpAuthContext.HttpContext.Request;
+            return request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        }
+        else
+        {
+            throw new NotSupportedException($"Unsupported authentication context type {context.GetType().Name}.");
+        }
     }
 
     private AuthDetails ExtractAuthDetails(string token)
@@ -48,7 +61,7 @@ public class JwtAuth : IShieldAuth
 
         return new AuthDetails(token, remainingTime);
     }
-  }
+}
 
 
 public class JwtTokenValidator : ITokenValidator

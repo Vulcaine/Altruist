@@ -80,6 +80,8 @@ public sealed class RedisCache : IAltruistRedisProvider
     private readonly RedisConnectionProvider _provider;
     private readonly IDatabase _redis;
 
+    private readonly Dictionary<Type, IRedisCollection<object>> _redisCollections = new();
+
     public RedisCache(
         RedisConnectionProvider provider,
         IConnectionMultiplexer mux)
@@ -88,9 +90,20 @@ public sealed class RedisCache : IAltruistRedisProvider
         _provider = provider;
     }
 
+    private IRedisCollection<T> GetCollection<T>() where T : notnull
+    {
+        var type = typeof(T);
+        if (!_redisCollections.TryGetValue(type, out var collection))
+        {
+            collection = _provider.RedisCollection<T>() as IRedisCollection<object>;
+            _redisCollections[type] = collection!;
+        }
+
+        return (IRedisCollection<T>)collection!;
+    }
     public async Task<T?> GetAsync<T>(string key) where T : notnull
     {
-        var repo = _provider.RedisCollection<T>();
+        var repo = GetCollection<T>();
         var entity = await repo.FindByIdAsync(key);
         return entity;
     }
@@ -108,7 +121,7 @@ public sealed class RedisCache : IAltruistRedisProvider
 
     public async Task SaveAsync<T>(string key, T entity) where T : notnull
     {
-        var repo = _provider.RedisCollection<T>();
+        var repo = GetCollection<T>();
         await repo.InsertAsync(entity);
         await repo.SaveAsync();
     }
@@ -120,7 +133,7 @@ public sealed class RedisCache : IAltruistRedisProvider
 
     public async Task SaveBatchAsync<T>(Dictionary<string, T> entities) where T : notnull
     {
-        var repo = _provider.RedisCollection<T>();
+        var repo = GetCollection<T>();
         foreach (var (key, entity) in entities)
         {
             await repo.InsertAsync(entity);
@@ -135,7 +148,7 @@ public sealed class RedisCache : IAltruistRedisProvider
 
     public async Task<T?> RemoveAsync<T>(string key) where T : notnull
     {
-        var repo = _provider.RedisCollection<T>();
+        var repo = GetCollection<T>();
 
         var element = await repo.FindByIdAsync(key);
         if (element != null)
@@ -153,7 +166,7 @@ public sealed class RedisCache : IAltruistRedisProvider
 
     public async Task ClearAsync<T>() where T : notnull
     {
-        var repo = _provider.RedisCollection<T>();
+        var repo = GetCollection<T>();
         var allItems = await repo.ToListAsync();
         await repo.DeleteAsync(allItems);
     }
@@ -178,6 +191,11 @@ public sealed class RedisCache : IAltruistRedisProvider
         var cursor = new RedisCacheCursor<T>(_provider, batchSize);
         return Task.FromResult(cursor as ICacheCursor<T>);
     }
+
+    public Task<bool> ContainsAsync<T>(string key) where T : notnull
+    {
+        throw new NotSupportedException("ContainsAsync<T>(string key) is not supported when using Redis OM.");
+    }
 }
 
 public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistRedisConnectionProvider
@@ -185,7 +203,6 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
     private readonly RedisCache _cache;
     private readonly IDatabase _redis;
     private readonly RedisConnectionProvider _provider;
-    private const string GlobalKey = "AltruistConnections";
     private const string RoomPrefix = "room:";
 
     public RedisConnectionService(RedisConnectionProvider provider, IConnectionMultiplexer redis,
@@ -197,6 +214,20 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         _cache = cache;
     }
 
+    public override async Task<IConnection?> GetConnectionAsync(string connectionId)
+    {
+        var inMemoryConn = await base.GetConnectionAsync(connectionId);
+
+        if (inMemoryConn != null)
+        {
+            return inMemoryConn;
+        }
+
+        return await _cache.GetAsync<IConnection>(connectionId);
+    }
+
+    public override async Task<bool> IsConnectionExistsAsync(string connectionId) => await _cache.ContainsAsync<IConnection>(connectionId);
+
     public override async Task<bool> AddConnectionAsync(string connectionId, IConnection socket, string? roomId = null)
     {
         if (!await base.AddConnectionAsync(connectionId, socket))
@@ -204,7 +235,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
             return false;
         }
 
-        await _redis.SetAddAsync(GlobalKey, connectionId);
+        await _cache.SaveAsync(connectionId, socket);
 
         if (!string.IsNullOrEmpty(roomId))
         {
@@ -228,7 +259,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
     public override async Task RemoveConnectionAsync(string connectionId)
     {
         await base.RemoveConnectionAsync(connectionId);
-        await _redis.SetRemoveAsync(GlobalKey, connectionId);
+        await _cache.RemoveAsync<IConnection>(connectionId);
 
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
         var roomKeys = server.Keys(pattern: $"{RoomPrefix}*");

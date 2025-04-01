@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc.Abstractions;
+using Redis.OM.Modeling;
+using System.Text.Json.Serialization;
 
 namespace Altruist.Web;
 
@@ -50,7 +52,9 @@ public sealed class WebSocketTransport : ITransport
                     {
                         context.Response.StatusCode = 401;
                         return;
-                    } else {
+                    }
+                    else
+                    {
                         authDetails = (authorizationContext.HttpContext.Items["AuthResult"] as AuthResult)!.AuthDetails;
                     }
                 }
@@ -103,15 +107,18 @@ public sealed class WebSocketTransportToken : ITransportServiceToken
 }
 
 
+[Document(StorageType = StorageType.Json, IndexName = "Connections", Prefixes = new[] { "ws" })]
 public sealed class WebSocketConnection : IConnection
 {
-    private readonly WebSocket _webSocket;
+    [JsonIgnore]
+    private readonly WebSocket? _webSocket;
 
     public string ConnectionId { get; }
 
-    public bool IsConnected => _webSocket.State == WebSocketState.Open;
+    public bool IsConnected => _webSocket != null && _webSocket.State == WebSocketState.Open;
 
-    public AuthDetails? AuthDetails{get;}
+    [JsonIgnore]
+    public AuthDetails? AuthDetails { get; }
 
     public WebSocketConnection(WebSocket webSocket, string connectionId, AuthDetails? authDetails)
     {
@@ -124,7 +131,7 @@ public sealed class WebSocketConnection : IConnection
     {
         if (IsConnected)
         {
-            await _webSocket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
+            await _webSocket!.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
         }
         else
         {
@@ -134,12 +141,15 @@ public sealed class WebSocketConnection : IConnection
 
     public async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
-        var buffer = new byte[1024];
-        var result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-
-        if (result.MessageType == WebSocketMessageType.Text)
+        if (IsConnected)
         {
-            return buffer.Take(result.Count).ToArray();
+            var buffer = new byte[1024];
+            var result = await _webSocket!.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+
+            if (result.MessageType == WebSocketMessageType.Text)
+            {
+                return buffer.Take(result.Count).ToArray();
+            }
         }
 
         return Array.Empty<byte>();
@@ -147,7 +157,10 @@ public sealed class WebSocketConnection : IConnection
 
     public async Task CloseAsync()
     {
-        await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
+        if (IsConnected)
+        {
+            await _webSocket!.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
+        }
     }
 }
 

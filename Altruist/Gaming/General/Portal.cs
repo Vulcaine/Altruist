@@ -212,4 +212,9 @@ public abstract class Portal : IPortal, IConnectionStore
             Logger.LogError($"Error cleaning up connections: {ex}");
         }
     }
+
+    public Task<bool> IsConnectionExistsAsync(string connectionId)
+    {
+        return _context.IsConnectionExistsAsync(connectionId);
+    }
 }

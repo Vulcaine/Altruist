@@ -9,6 +9,7 @@ public interface ICleanUp
 
 public interface IConnectionStore : ICleanUp
 {
+    Task<bool> IsConnectionExistsAsync(string connectionId);
     Task<bool> AddConnectionAsync(string connectionId, IConnection socket, string? roomId = null);
     Task RemoveConnectionAsync(string connectionId);
     Task<IConnection?> GetConnectionAsync(string connectionId);
@@ -237,5 +238,10 @@ public abstract class AbstractConnectionStore : IConnectionStore
         {
             _logger.LogInformation("Inactive connections have been removed from memory.");
         }
+    }
+
+    public virtual Task<bool> IsConnectionExistsAsync(string connectionId)
+    {
+        return _memoryCache.ContainsAsync<IConnection>(connectionId);
     }
 }

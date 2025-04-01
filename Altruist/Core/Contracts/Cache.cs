@@ -11,6 +11,8 @@ public interface ICacheCursor<T> where T : notnull
 
 public interface ICache
 {
+
+    Task<bool> ContainsAsync<T>(string key) where T : notnull;
     Task<T?> GetAsync<T>(string key) where T : notnull;
     Task<ICacheCursor<T>> GetAllAsync<T>() where T : notnull;
     Task<ICacheCursor<object>> GetAllAsync(Type type);
