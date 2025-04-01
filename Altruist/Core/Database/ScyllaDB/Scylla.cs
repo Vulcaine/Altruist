@@ -1,10 +1,10 @@
-using System.Net;
 using System.Reflection;
 using System.Text;
 using Altruist.Contracts;
 using Altruist.Database;
 using Cassandra;
 using Cassandra.Mapping;
+using Altruist.UORM;
 
 namespace Altruist.ScyllaDB;
 
@@ -178,7 +178,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
         string tableName = tableAttribute.Name;
         bool storeHistory = tableAttribute.StoreHistory;
 
-        var primaryKeyAttr = entityType.GetCustomAttribute<Database.PrimaryKeyAttribute>();
+        var primaryKeyAttr = entityType.GetCustomAttribute<Altruist.UORM.PrimaryKeyAttribute>();
         if (primaryKeyAttr == null || primaryKeyAttr.Keys.Length == 0)
         {
             throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}'.");

@@ -40,7 +40,7 @@ public abstract class AbstractSocketPortalContext : IPortalContext
 
     public abstract void Initialize();
 
-    public async Task<Dictionary<string, IConnection>> GetConnectionsInRoomAsync(string roomId)
+    public async Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId)
     {
         return await _connectionStore.GetConnectionsInRoomAsync(roomId);
     }
@@ -65,12 +65,12 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return _connectionStore.RemoveConnectionAsync(connectionId);
     }
 
-    public Task<bool> AddConnectionAsync(string connectionId, IConnection socket, string? roomId = null)
+    public Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null)
     {
         return _connectionStore.AddConnectionAsync(connectionId, socket, roomId);
     }
 
-    public Task<IConnection?> GetConnectionAsync(string connectionId)
+    public Task<Connection?> GetConnectionAsync(string connectionId)
     {
         return _connectionStore.GetConnectionAsync(connectionId);
     }
@@ -80,7 +80,7 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return _connectionStore.GetAllConnectionIdsAsync();
     }
 
-    public Task<Dictionary<string, IConnection>> GetAllConnectionsAsync()
+    public Task<Dictionary<string, Connection>> GetAllConnectionsAsync()
     {
         return _connectionStore.GetAllConnectionsAsync();
     }
@@ -113,5 +113,10 @@ public abstract class AbstractSocketPortalContext : IPortalContext
     public Task Cleanup()
     {
         return _connectionStore.Cleanup();
+    }
+
+    public Task<bool> IsConnectionExistsAsync(string connectionId)
+    {
+        return _connectionStore.IsConnectionExistsAsync(connectionId);
     }
 }

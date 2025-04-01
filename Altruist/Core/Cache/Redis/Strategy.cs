@@ -23,33 +23,43 @@ public sealed class InfiniteReconnectRetryPolicy : IReconnectRetryPolicy
 
 public sealed class RedisServiceConfiguration : ICacheConfiguration
 {
+    public readonly List<Type> Documents = new List<Type>();
     public void Configure(IServiceCollection services)
     {
         services.AddSingleton<RedisConnectionSetup>();
         services.AddSingleton<ICacheConnectionSetupBase, RedisConnectionSetup>();
+    }
 
-        services.AddSingleton<ICacheServiceToken, RedisCacheServiceToken>();
+    public void AddDocument<T>()
+    {
+        Documents.Add(typeof(T));
     }
 }
 
 public sealed class RedisCacheServiceToken : ICacheServiceToken
 {
     public static readonly RedisCacheServiceToken Instance = new();
-    public ICacheConfiguration Configuration => new RedisServiceConfiguration();
+    public ICacheConfiguration Configuration { get; }
+
+    private RedisCacheServiceToken()
+    {
+        Configuration = new RedisServiceConfiguration();
+    }
 
     public string Description => "💾 Cache: Redis";
 }
 
 public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionSetup>, ICacheConnectionSetupBase
 {
-    private List<Type> indexedEntities = new List<Type>();
+    RedisServiceConfiguration _config;
     public RedisConnectionSetup(IServiceCollection services) : base(services)
     {
+        _config = (RedisCacheServiceToken.Instance.Configuration as RedisServiceConfiguration)!;
     }
 
-    public RedisConnectionSetup Index<T>()
+    public RedisConnectionSetup AddDocument<T>()
     {
-        indexedEntities.Add(typeof(T));
+        _config.AddDocument<T>();
         return this;
     }
 
@@ -83,18 +93,18 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
             ResubscribeToChannels(multiplexer, _services.BuildServiceProvider(), logger, true, settings);
         };
 
-        _services.AddSingleton(sp =>
-        {
-            var mux = sp.GetRequiredService<IConnectionMultiplexer>();
-            var provider = new RedisConnectionProvider(mux);
+        // _services.AddSingleton(sp =>
+        // {
+        //     var mux = sp.GetRequiredService<IConnectionMultiplexer>();
+        //     //var provider = new RedisConnectionProvider(mux);
 
-            if (mux.IsConnected)
-            {
-                BuildIndex(provider);
-            }
+        //     if (mux.IsConnected)
+        //     {
+        //         BuildIndex(provider);
+        //     }
 
-            return provider;
-        });
+        //     return provider;
+        // });
 
         _services.AddSingleton(sp =>
         {
@@ -113,15 +123,14 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
             _services.AddSingleton<RedisSocketClientSender>();
         }
 
-        // setup cache
         _services.AddSingleton<RedisCache>();
         _services.AddSingleton<ICache>(sp => sp.GetRequiredService<RedisCache>());
         _services.AddSingleton<IAltruistRedisProvider>(sp => sp.GetRequiredService<RedisCache>());
-        // setup connection store
+
         _services.AddSingleton<RedisConnectionService>();
         _services.AddSingleton<IConnectionStore, RedisConnectionService>(sp => sp.GetRequiredService<RedisConnectionService>());
         _services.AddSingleton<IAltruistRedisConnectionProvider>(sp => sp.GetRequiredService<RedisConnectionService>());
-        // setup dedicated player service for player connection handling
+
         _services.AddSingleton(typeof(IPlayerService<>), typeof(RedisPlayerService<>));
 
         var serviceProvider = _services.BuildServiceProvider();
@@ -130,14 +139,13 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         ResubscribeToChannels(mux, serviceProvider, logger, false, settings);
     }
 
-    private void BuildIndex(RedisConnectionProvider provider)
-    {
-        foreach (var entity in indexedEntities)
-        {
-            provider.Connection.CreateIndex(entity);
-        }
-    }
-
+    // private void BuildIndex(RedisConnectionProvider provider)
+    // {
+    //     foreach (var entity in _config.Documents)
+    //     {
+    //         provider.Connection.CreateIndex(entity);
+    //     }
+    // }
 
     public override void Build(IAltruistContext settings)
     {
@@ -170,8 +178,8 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
             var redisDatabase = multiplexer.GetDatabase();
 
             // reset indexes
-            var redisProvider = serviceProvider.GetRequiredService<RedisConnectionProvider>();
-            BuildIndex(redisProvider);
+            // var redisProvider = serviceProvider.GetRequiredService<RedisConnectionProvider>();
+            // BuildIndex(redisProvider);
 
             if (resub)
                 logger.LogInformation("🔄 Resubscribing to Redis Pub/Sub channels..");

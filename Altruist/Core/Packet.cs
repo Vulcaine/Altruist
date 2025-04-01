@@ -372,7 +372,7 @@ namespace Altruist
     }
 
     [MessagePackObject]
-    [Document(StorageType = StorageType.Json, IndexName = "Rooms", Prefixes = new[] { "room" })]
+    [Document(StorageType = StorageType.Json, IndexName = "rooms", Prefixes = new[] { "room" })]
     public class RoomPacket : IPacketBase
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }

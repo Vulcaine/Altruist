@@ -91,14 +91,72 @@ public sealed class TcpTransport : ITransport
             }
         }
 
-        var connection = new TcpConnection(client, authContext.ClientId, authDetails);
+        var connection = new CachedTcpConnection(new TcpConnection(client, authContext.ClientId, authDetails));
 
         await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
     }
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "Connections", Prefixes = new[] { "tcp" })]
-public sealed class TcpConnection : IConnection
+[Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connection" })]
+public sealed class CachedTcpConnection : Connection
+{
+    [JsonIgnore]
+    private TcpConnection? _connection;
+
+    public new string Type { get; } = "tcp";
+
+    public CachedTcpConnection(TcpConnection udpConnection)
+    {
+        _connection = udpConnection;
+        ConnectionId = udpConnection.ConnectionId;
+        AuthDetails = udpConnection.AuthDetails;
+        LastActivity = udpConnection.LastActivity;
+    }
+
+    public CachedTcpConnection(Connection connection)
+    {
+        ConnectionId = connection.ConnectionId;
+        AuthDetails = connection.AuthDetails;
+        LastActivity = connection.LastActivity;
+    }
+
+    [JsonIgnore]
+    public new bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
+
+    public override async Task SendAsync(byte[] data)
+    {
+        if (_connection != null)
+        {
+            await _connection.SendAsync(data);
+        }
+    }
+
+    public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
+    {
+        if (_connection != null)
+        {
+            return await _connection.ReceiveAsync(cancellationToken);
+        }
+        else
+        {
+            return Array.Empty<byte>();
+        }
+    }
+
+    public override Task CloseAsync()
+    {
+        if (_connection != null)
+        {
+            return _connection.CloseAsync();
+        }
+        else
+        {
+            return Task.CompletedTask;
+        }
+    }
+}
+
+public sealed class TcpConnection : Connection
 {
     [JsonIgnore]
     private readonly TcpClient _client;
@@ -106,12 +164,7 @@ public sealed class TcpConnection : IConnection
     [JsonIgnore]
     private readonly NetworkStream _networkStream;
 
-    public string ConnectionId { get; }
-
-    public bool IsConnected => _client.Connected;
-
-    [JsonIgnore]
-    public AuthDetails? AuthDetails { get; }
+    public new string Type { get; } = "tcp";
 
     public TcpConnection(TcpClient client, string connectionId, AuthDetails? authDetails)
     {
@@ -121,7 +174,7 @@ public sealed class TcpConnection : IConnection
         AuthDetails = authDetails;
     }
 
-    public async Task SendAsync(byte[] data)
+    public override async Task SendAsync(byte[] data)
     {
         if (IsConnected)
         {
@@ -129,14 +182,14 @@ public sealed class TcpConnection : IConnection
         }
     }
 
-    public async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
+    public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
         var buffer = new byte[1024];
         int bytesRead = await _networkStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
         return buffer.Take(bytesRead).ToArray();
     }
 
-    public Task CloseAsync()
+    public override Task CloseAsync()
     {
         _networkStream.Close();
         _client.Close();
@@ -155,7 +208,7 @@ public sealed class TcpConnectionSetup : TransportConnectionSetup<TcpConnectionS
 public sealed class TcpTransportToken : ITransportServiceToken
 {
     public static TcpTransportToken Instance = new TcpTransportToken();
-    public ITransportConfiguration Configuration => new TcpSocketConfiguration();
+    public ITransportConfiguration Configuration { get; } = new TcpSocketConfiguration();
 
     public string Description => "📡 Transport: Tcp Socket";
 }

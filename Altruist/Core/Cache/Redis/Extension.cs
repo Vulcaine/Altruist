@@ -2,12 +2,12 @@ namespace Altruist.Redis;
 
 public static class Extensions
 {
-    public static AltruistDatabaseBuilder WithRedis(this AltruistCacheBuilder builder)
+    public static AltruistDatabaseBuilder WithRedis(this IAfterConnectionBuilder builder)
     {
         return builder.SetupCache<RedisConnectionSetup>(RedisCacheServiceToken.Instance);
     }
 
-    public static AltruistDatabaseBuilder WithRedis(this AltruistCacheBuilder builder, Func<RedisConnectionSetup, RedisConnectionSetup>? setup)
+    public static AltruistDatabaseBuilder WithRedis(this IAfterConnectionBuilder builder, Func<RedisConnectionSetup, RedisConnectionSetup>? setup)
     {
         return builder.SetupCache(RedisCacheServiceToken.Instance, setup);
     }

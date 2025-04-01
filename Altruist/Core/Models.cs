@@ -1,12 +1,12 @@
 using Redis.OM.Modeling;
 using Altruist.Networking;
 using Newtonsoft.Json;
-using Altruist.Database;
+using Altruist.UORM;
 using MessagePack;
 
 namespace Altruist;
 
-[Document(StorageType = StorageType.Json, IndexName = "Players", Prefixes = new[] { "player" })]
+[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("player")]
 [PrimaryKey(keys: [nameof(Id), nameof(Name)])]
 [MessagePackObject]

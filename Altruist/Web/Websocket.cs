@@ -61,7 +61,7 @@ public sealed class WebSocketTransport : ITransport
 
                 var clientId = Guid.NewGuid().ToString();
                 var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                var webSocketConnection = new WebSocketConnection(webSocket, clientId, authDetails);
+                var webSocketConnection = new CachedWebSocketConnection(new WebSocketConnection(webSocket, clientId, authDetails));
                 await wsManager.HandleConnection(webSocketConnection, path, clientId);
             }
             else
@@ -101,24 +101,76 @@ public sealed class WebSocketConnectionSetup : TransportConnectionSetup<WebSocke
 public sealed class WebSocketTransportToken : ITransportServiceToken
 {
     public static WebSocketTransportToken Instance = new WebSocketTransportToken();
-    public ITransportConfiguration Configuration => new WebSocketConfiguration();
+    public ITransportConfiguration Configuration { get; } = new WebSocketConfiguration();
 
     public string Description => "📡 Transport: WebSocket";
 }
 
+[Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connection" })]
+public sealed class CachedWebSocketConnection : Connection
+{
+    [JsonIgnore]
+    private WebSocketConnection? _connection;
 
-[Document(StorageType = StorageType.Json, IndexName = "Connections", Prefixes = new[] { "ws" })]
-public sealed class WebSocketConnection : IConnection
+    public new string Type { get; } = "tcp";
+
+    public CachedWebSocketConnection(WebSocketConnection connection)
+    {
+        _connection = connection;
+        ConnectionId = connection.ConnectionId;
+        AuthDetails = connection.AuthDetails;
+        LastActivity = connection.LastActivity;
+    }
+
+    public CachedWebSocketConnection(Connection connection)
+    {
+        ConnectionId = connection.ConnectionId;
+        AuthDetails = connection.AuthDetails;
+        LastActivity = connection.LastActivity;
+    }
+
+    [JsonIgnore]
+    public new bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
+
+    public override async Task SendAsync(byte[] data)
+    {
+        if (_connection != null)
+        {
+            await _connection.SendAsync(data);
+        }
+    }
+
+    public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
+    {
+        if (_connection != null)
+        {
+            return await _connection.ReceiveAsync(cancellationToken);
+        }
+        else
+        {
+            return Array.Empty<byte>();
+        }
+    }
+
+    public override Task CloseAsync()
+    {
+        if (_connection != null)
+        {
+            return _connection.CloseAsync();
+        }
+        else
+        {
+            return Task.CompletedTask;
+        }
+    }
+}
+
+public sealed class WebSocketConnection : Connection
 {
     [JsonIgnore]
     private readonly WebSocket? _webSocket;
 
-    public string ConnectionId { get; }
-
-    public bool IsConnected => _webSocket != null && _webSocket.State == WebSocketState.Open;
-
-    [JsonIgnore]
-    public AuthDetails? AuthDetails { get; }
+    public new bool IsConnected => _webSocket != null && _webSocket.State == WebSocketState.Open;
 
     public WebSocketConnection(WebSocket webSocket, string connectionId, AuthDetails? authDetails)
     {
@@ -127,7 +179,7 @@ public sealed class WebSocketConnection : IConnection
         AuthDetails = authDetails;
     }
 
-    public async Task SendAsync(byte[] data)
+    public override async Task SendAsync(byte[] data)
     {
         if (IsConnected)
         {
@@ -139,7 +191,7 @@ public sealed class WebSocketConnection : IConnection
         }
     }
 
-    public async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
+    public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
         if (IsConnected)
         {
@@ -155,7 +207,7 @@ public sealed class WebSocketConnection : IConnection
         return Array.Empty<byte>();
     }
 
-    public async Task CloseAsync()
+    public override async Task CloseAsync()
     {
         if (IsConnected)
         {

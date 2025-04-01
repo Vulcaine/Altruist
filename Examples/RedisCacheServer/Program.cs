@@ -6,6 +6,6 @@ using Portals;
 AltruistBuilder.Create(args)
     .NoEngine()
     .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
-    .WithRedis(setup => setup.Index<Spaceship>())
+    .WithRedis(setup => setup.AddDocument<Connection>())
     .WebApp()
     .StartServer();

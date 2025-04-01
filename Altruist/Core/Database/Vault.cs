@@ -2,9 +2,9 @@ using System.Linq.Expressions;
 using System.Reflection;
 using Altruist.Contracts;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.DependencyInjection;
+using Altruist.UORM;
 
 namespace Altruist.Database;
 

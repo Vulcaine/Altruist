@@ -108,6 +108,12 @@ public class InMemoryCache : IMemoryCache
         _memoryCacheEntities.Clear();
         return Task.CompletedTask;
     }
+
+    public Task<bool> ContainsAsync<T>(string key) where T : notnull
+    {
+        var cacheMap = GetOrCreateCacheMap(typeof(T));
+        return Task.FromResult(cacheMap.ContainsKey(key));
+    }
 }
 
 

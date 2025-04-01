@@ -1,4 +1,4 @@
-namespace Altruist.Database;
+namespace Altruist.UORM;
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public class TableAttribute : Attribute

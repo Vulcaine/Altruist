@@ -14,7 +14,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
     public RedisPlayerService(IAltruistRedisConnectionProvider provider, ILoggerFactory loggerFactory)
     {
         _provider = provider;
-        _entityRepo = _provider.RedisCollection<TPlayerEntity>();
+        // _entityRepo = _provider.RedisCollection<TPlayerEntity>();
         _logger = loggerFactory.CreateLogger<RedisPlayerService<TPlayerEntity>>();
     }
 
@@ -62,7 +62,8 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
     public Task<TPlayerEntity?> GetPlayer(string socketId)
     {
-        return _provider.RedisCollection<TPlayerEntity>().FindByIdAsync(socketId);
+        // return _provider.RedisCollection<TPlayerEntity>().FindByIdAsync(socketId);
+        return null;
     }
 
     public async Task DeletePlayerAsync(string playerId)

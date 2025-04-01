@@ -106,14 +106,72 @@ public sealed class UdpTransport : ITransport
             }
         }
 
-        var connection = new UdpConnection(_udpClient!, clientId, authDetails, clientIp);
+        var connection = new CachedUdpConnection(new UdpConnection(_udpClient!, clientId, authDetails, clientIp));
         await connectionManager.HandleConnection(connection, _endpoint, clientId);
     }
 }
 
 
-[Document(StorageType = StorageType.Json, IndexName = "Connections", Prefixes = new[] { "udp" })]
-public sealed class UdpConnection : IConnection
+[Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connection" })]
+public sealed class CachedUdpConnection : Connection
+{
+    [JsonIgnore]
+    private UdpConnection? _udpConnection;
+
+    public new string Type { get; } = "udp";
+
+    public CachedUdpConnection(UdpConnection udpConnection)
+    {
+        _udpConnection = udpConnection;
+        ConnectionId = udpConnection.ConnectionId;
+        AuthDetails = udpConnection.AuthDetails;
+        LastActivity = udpConnection.LastActivity;
+    }
+
+    public CachedUdpConnection(Connection connection)
+    {
+        ConnectionId = connection.ConnectionId;
+        AuthDetails = connection.AuthDetails;
+        LastActivity = connection.LastActivity;
+    }
+
+    [JsonIgnore]
+    public new bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
+
+    public override async Task SendAsync(byte[] data)
+    {
+        if (_udpConnection != null)
+        {
+            await _udpConnection.SendAsync(data);
+        }
+    }
+
+    public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
+    {
+        if (_udpConnection != null)
+        {
+            return await _udpConnection.ReceiveAsync(cancellationToken);
+        }
+        else
+        {
+            return Array.Empty<byte>();
+        }
+    }
+
+    public override Task CloseAsync()
+    {
+        if (_udpConnection != null)
+        {
+            return _udpConnection.CloseAsync();
+        }
+        else
+        {
+            return Task.CompletedTask;
+        }
+    }
+}
+
+public sealed class UdpConnection : Connection
 {
     [JsonIgnore]
     private readonly UdpClient? _client;
@@ -121,25 +179,20 @@ public sealed class UdpConnection : IConnection
     [JsonIgnore]
     private readonly IPEndPoint? _remoteEndPoint;
 
-    public string ConnectionId { get; }
-
     [JsonIgnore]
-    public AuthDetails? AuthDetails { get; }
+    public new bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
 
-    public DateTime LastActivity { get; }
-
-    [JsonIgnore]
-    public bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
+    public new string Type { get; } = "udp";
 
     public UdpConnection(UdpClient client, string connectionId, AuthDetails? authDetails, IPEndPoint remoteEndPoint)
     {
         _client = client;
         ConnectionId = connectionId;
         AuthDetails = authDetails;
-        _remoteEndPoint = remoteEndPoint; // Store the remote client’s endpoint
+        _remoteEndPoint = remoteEndPoint;
     }
 
-    public async Task SendAsync(byte[] data)
+    public override async Task SendAsync(byte[] data)
     {
         if (IsConnected && _client != null)
         {
@@ -151,7 +204,7 @@ public sealed class UdpConnection : IConnection
         }
     }
 
-    public async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
+    public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
         if (IsConnected && _client != null)
         {
@@ -166,7 +219,7 @@ public sealed class UdpConnection : IConnection
         return Array.Empty<byte>();
     }
 
-    public Task CloseAsync()
+    public override Task CloseAsync()
     {
         // UDP is connectionless, so we don’t explicitly "close" connections.
         return Task.CompletedTask;

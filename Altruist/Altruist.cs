@@ -106,7 +106,6 @@ namespace Altruist
         {
             Settings.TransportToken = token;
             token.Configuration.Configure(Services);
-            Services.AddSingleton(token);
             instance.Build(Settings);
             // readding the built instance
             Services.AddSingleton(instance);
@@ -123,7 +122,10 @@ namespace Altruist
 
     public interface IAfterConnectionBuilder
     {
-
+        AltruistWebApplicationBuilder WebApp(Func<WebApplicationBuilder, WebApplicationBuilder>? setup = null);
+        AltruistDatabaseBuilder NoCache();
+        AltruistDatabaseBuilder SetupCache<TCacheConnectionSetup>(ICacheServiceToken token) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>;
+        AltruistDatabaseBuilder SetupCache<TCacheConnectionSetup>(ICacheServiceToken token, Func<TCacheConnectionSetup, TCacheConnectionSetup>? setup) where TCacheConnectionSetup : class, ICacheConnectionSetup<TCacheConnectionSetup>;
     }
 
     // Step 2: Choose Cache
@@ -182,7 +184,6 @@ namespace Altruist
         {
             token.Configuration.Configure(Services);
             Services.AddSingleton<TCacheConnectionSetup>();
-            Services.AddSingleton(token);
             instance.Build(Settings);
             // readding the built instance
             Services.AddSingleton(instance);
@@ -238,7 +239,6 @@ namespace Altruist
         {
             token.Configuration.Configure(Services);
             Services.AddSingleton<TDatabaseConnectionSetup>();
-            Services.AddSingleton(token);
             instance.Build(Settings);
             // readding the built instance
             Services.AddSingleton(instance);
