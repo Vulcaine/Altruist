@@ -4,7 +4,7 @@ using Redis.OM.Modeling;
 
 namespace Altruist;
 
-public interface IConnection
+public interface IConnection : IModel
 {
     AuthDetails? AuthDetails { get; }
     string ConnectionId { get; }
@@ -24,7 +24,7 @@ public class Connection : IConnection
     public AuthDetails? AuthDetails { get; set; }
 
     [RedisField]
-    public string Type { get; } = "Websocket";
+    public string Type { get; set; } = "Websocket";
 
     [Indexed]
     [RedisIdField]

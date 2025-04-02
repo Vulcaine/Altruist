@@ -44,7 +44,7 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("processId")][Key(1)] public string ProcessId { get; set; }
         [JsonPropertyName("message")][Key(2)] public IPacketBase Message { get; set; }
-        [JsonPropertyName("type")][Key(3)] public string Type => "InterprocessPacket";
+        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "InterprocessPacket";
 
         public InterprocessPacket(string processId, IPacketBase message)
         {
@@ -115,7 +115,7 @@ namespace Altruist
             Data = data;
         }
 
-        [JsonPropertyName("type")][Key(3)] public string Type => "SyncPacket";
+        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "SyncPacket";
 
 
     }
@@ -139,7 +139,7 @@ namespace Altruist
             Event = eventName;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type => "AltruistPacket";
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "AltruistPacket";
 
 
     }
@@ -166,7 +166,7 @@ namespace Altruist
             SuccessType = successType;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type => "SuccessMessage";
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "SuccessMessage";
 
 
     }
@@ -194,7 +194,7 @@ namespace Altruist
             FailType = failType;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type => "FailedPacket";
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "FailedPacket";
     }
 
 
@@ -212,7 +212,7 @@ namespace Altruist
         {
             Header = new PacketHeader(sender, receiver);
         }
-        [JsonPropertyName("type")][Key(1)] public string Type => "ShootingPacket";
+        [JsonPropertyName("type")][Key(1)] public string Type { get; set; } = "ShootingPacket";
 
 
     }
@@ -237,7 +237,7 @@ namespace Altruist
             RotateLeft = rotateLeft;
             RotateRight = rotateRight;
         }
-        [JsonPropertyName("type")][Key(5)] public string Type => "ForwardMovementPacket";
+        [JsonPropertyName("type")][Key(5)] public string Type { get; set; } = "ForwardMovementPacket";
 
 
     }
@@ -273,7 +273,7 @@ namespace Altruist
             MoveRight = moveRight;
             Turbo = turbo;
         }
-        [JsonPropertyName("type")][Key(6)] public string Type => "EightDirectionMovementPacket";
+        [JsonPropertyName("type")][Key(6)] public string Type { get; set; } = "EightDirectionMovementPacket";
 
 
     }
@@ -320,7 +320,7 @@ namespace Altruist
             Token = token;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type => "HandshakePacket";
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "HandshakePacket";
     }
 
     [MessagePackObject]
@@ -347,7 +347,7 @@ namespace Altruist
             Position = position ?? [0, 0];
         }
 
-        [JsonPropertyName("type")][Key(3)] public string Type => "JoinGamePacket";
+        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "JoinGamePacket";
     }
 
     [MessagePackObject]
@@ -368,7 +368,7 @@ namespace Altruist
             ClientId = clientId;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type => "LeaveGamePacket";
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "LeaveGamePacket";
     }
 
     [MessagePackObject]
@@ -390,7 +390,7 @@ namespace Altruist
         [Key(3)]
         public HashSet<string> ConnectionIds { get; set; }
 
-        [JsonPropertyName("type")][Key(4)] public string Type => "RoomPacket";
+        [JsonPropertyName("type")][Key(4)] public string Type { get; set; } = "RoomPacket";
 
         [IgnoreMember]
         public int PlayerCount => (ConnectionIds ?? new HashSet<string>()).Count;

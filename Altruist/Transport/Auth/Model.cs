@@ -17,6 +17,7 @@ public abstract class Account : IVaultModel
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string Type { get; set; } = "Account";
 }
 
 
@@ -24,12 +25,16 @@ public class UsernamePasswordAccount : Account
 {
     public required string Username { get; set; }
     public required string PasswordHash { get; set; }
+
+    public new string Type { get; set; } = "UsernamePasswordAccount";
 }
 
 public class EmailPasswordAccount : Account
 {
     public required string Email { get; set; }
     public required string PasswordHash { get; set; }
+
+    public new string Type { get; set; } = "EmailPasswordAccount";
 }
 
 
@@ -38,6 +43,8 @@ public class HybridAccount : Account
     public required string Username { get; set; }
     public required string Email { get; set; }
     public required string PasswordHash { get; set; }
+
+    public new string Type { get; set; } = "HybridAccount";
 }
 
 

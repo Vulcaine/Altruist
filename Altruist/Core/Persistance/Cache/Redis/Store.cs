@@ -155,7 +155,7 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
 
         while (reader.Read())
         {
-            if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals("TypeInfo"))
+            if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals("Type"))
             {
                 reader.Read();
                 typeInfo = reader.GetString();

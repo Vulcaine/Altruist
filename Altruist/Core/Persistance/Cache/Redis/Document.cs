@@ -30,12 +30,7 @@ public class RedisDocumentHelper
                 .Select(prop => prop.Name)
                 .ToList();
 
-            documents.Add(new RedisDocument()
-            {
-                Type = document,
-                Name = tableAttribute?.Name ?? document.Name,
-                Indexes = indexedFields
-            });
+            documents.Add(new RedisDocument(document, tableAttribute?.Name ?? document.Name, indexedFields));
         }
 
         return documents;
@@ -44,7 +39,23 @@ public class RedisDocumentHelper
 
 public class RedisDocument
 {
-    public Type Type { get; set; } = null!;
-    public string Name { get; set; } = string.Empty;
+    public Type Type { get; set; }
+    public string Name { get; set; }
     public List<string> Indexes { get; set; } = new();
+
+    public RedisDocument(Type type, string name, List<string> indexes)
+    {
+        Type = type;
+        Name = name;
+        Indexes = indexes;
+        Validate();
+    }
+
+    public void Validate()
+    {
+        if (!typeof(IModel).IsAssignableFrom(Type))
+        {
+            throw new InvalidOperationException($"The type {Type.FullName} must implement IModel.");
+        }
+    }
 }

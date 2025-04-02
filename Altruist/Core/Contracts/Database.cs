@@ -12,7 +12,7 @@ public interface IKeyspace
 
 public interface IModel
 {
-
+    public string Type { get; set; }
 }
 
 public interface IVaultFactory<TToken, TConfig> where TConfig : IConfiguration where TToken : IServiceToken<TConfig>
