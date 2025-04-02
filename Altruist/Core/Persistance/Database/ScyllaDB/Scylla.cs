@@ -268,3 +268,11 @@ public class ScyllaDbProvider : IScyllaDbProvider
         await _session.ExecuteAsync(new SimpleStatement(query));
     }
 }
+
+
+public class ScyllaVaultFactory : VaultFactory
+{
+    public ScyllaVaultFactory(IScyllaDbProvider databaseProvider) : base(databaseProvider)
+    {
+    }
+}

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.DependencyInjection;
 using Altruist.UORM;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Altruist.Database;
 
@@ -18,6 +19,7 @@ public enum QueryPosition
     UPDATE,
     SET
 }
+
 
 public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
@@ -108,6 +110,30 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
     public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
         throw new NotImplementedException();
+    }
+
+    public async Task<bool> DeleteAsync()
+    {
+        int affectedRows = await _query.ExecuteDeleteAsync();
+        return affectedRows > 0;
+    }
+
+    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    {
+        return await _query.AnyAsync(predicate);
+    }
+
+
+    public IVault<TVaultModel> Skip(int count)
+    {
+        _query = _query.Skip(count);
+        return this;
+    }
+
+
+    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
+    {
+        return await _query.Select(selector).ToListAsync();
     }
 }
 
@@ -458,41 +484,60 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         return string.Join(", ", bindings);
     }
-}
 
-public class VaultFactory : IVaultFactory
-{
-    private readonly IGeneralDatabaseProvider _databaseProvider;
-
-    public IDatabaseServiceToken Token => _databaseProvider.Token;
-
-    public VaultFactory(IGeneralDatabaseProvider databaseProvider)
+    public async Task<bool> DeleteAsync()
     {
-        _databaseProvider = databaseProvider;
+        string deleteQuery = $"DELETE FROM {typeof(TVaultModel).Name}";
+
+        string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
+        if (!string.IsNullOrEmpty(whereClause))
+        {
+            deleteQuery += $" WHERE {whereClause}";
+        }
+
+        int affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _queryParameters[QueryPosition.WHERE]);
+        return affectedRows > 0;
     }
 
-    public virtual IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel
+    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
     {
-        if (_databaseProvider is ICqlDatabaseProvider cqlDatabaseProvider)
-        {
-            return new CqlVault<TVaultModel>(cqlDatabaseProvider, keyspace);
-        }
-        else if (_databaseProvider is ILinqDatabaseProvider linqDatabaseProvider)
-        {
-            return new LinqVault<TVaultModel>(linqDatabaseProvider, keyspace);
-        }
-        else
-        {
-            throw new NotSupportedException($"Cannot create vault. Unsupported database provider {_databaseProvider.GetType().FullName}.");
-        }
+        Where(predicate); // Reuse existing Where() method
+
+        string query = $"SELECT COUNT(*) FROM {typeof(TVaultModel).Name} WHERE {string.Join(" AND ", _queryParts[QueryPosition.WHERE])}";
+        int count = await _databaseProvider.ExecuteAsync(query, _queryParameters[QueryPosition.WHERE]);
+
+        return count > 0;
     }
+
+
+    public IVault<TVaultModel> Skip(int count)
+    {
+        // No native OFFSET in Cassandra, must be handled at the application level
+        throw new NotSupportedException("Cassandra does not support skipping rows. Use paging with a WHERE clause instead.");
+    }
+
+
+    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
+    {
+        string selectedColumns = ConvertSelectExpressionToString(selector);
+        AddToQuery(QueryPosition.SELECT, selectedColumns);
+
+        string query = BuildSelectQuery();
+        return await _databaseProvider.QueryAsync<TResult>(query, _queryParameters[QueryPosition.SELECT]);
+    }
+
+    private string ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
+    {
+        if (selector.Body is NewExpression newExpression)
+        {
+            return string.Join(", ", newExpression.Members!.Select(m => m.Name));
+        }
+
+        throw new NotSupportedException("Unsupported expression type for SELECT.");
+    }
+
 }
 
-
-public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
-{
-
-}
 
 public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
@@ -506,9 +551,19 @@ public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class,
 
     public IKeyspace Keyspace { get; }
 
+    public Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    {
+        return _underlying.AnyAsync(predicate);
+    }
+
     public Task<int> CountAsync()
     {
         return _underlying.CountAsync();
+    }
+
+    public Task<bool> DeleteAsync()
+    {
+        return _underlying.DeleteAsync();
     }
 
     public Task<TVaultModel?> FirstAsync()
@@ -541,6 +596,16 @@ public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class,
         return _underlying.SaveBatchAsync(entities, saveHistory);
     }
 
+    public Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
+    {
+        return _underlying.SelectAsync(selector);
+    }
+
+    public IVault<TVaultModel> Skip(int count)
+    {
+        return _underlying.Skip(count);
+    }
+
     public IVault<TVaultModel> Take(int count)
     {
         return _underlying.Take(count);
@@ -567,12 +632,6 @@ public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class,
     }
 }
 
-public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
-{
-    IDatabaseServiceToken Token { get; }
-    IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-    IVault<IVaultModel> Select(Type type);
-}
 
 /// <summary>
 /// Repository defining a set of vaults and the keyspace they belong to
@@ -625,3 +684,31 @@ public abstract class VaultRepository<TKeyspace> : IVaultRepository<TKeyspace> w
     }
 }
 
+public abstract class VaultFactory : IVaultFactory
+{
+    private readonly IGeneralDatabaseProvider _databaseProvider;
+
+    public IDatabaseServiceToken Token => _databaseProvider.Token;
+
+    public VaultFactory(
+        IGeneralDatabaseProvider databaseProvider)
+    {
+        _databaseProvider = databaseProvider;
+    }
+
+    public virtual IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel
+    {
+        if (_databaseProvider is ICqlDatabaseProvider cqlDatabaseProvider)
+        {
+            return new CqlVault<TVaultModel>(cqlDatabaseProvider, keyspace);
+        }
+        else if (_databaseProvider is ILinqDatabaseProvider linqDatabaseProvider)
+        {
+            return new LinqVault<TVaultModel>(linqDatabaseProvider, keyspace);
+        }
+        else
+        {
+            throw new NotSupportedException($"Cannot create vault. Unsupported database provider {_databaseProvider.GetType().FullName}.");
+        }
+    }
+}

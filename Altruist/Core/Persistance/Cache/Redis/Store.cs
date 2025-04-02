@@ -4,8 +4,8 @@ using Altruist.Web;
 using Microsoft.Extensions.Logging;
 using Redis.OM;
 using StackExchange.Redis;
-using System.Text.Json.Serialization;
 using System.Text.Json;
+using System.Text;
 
 namespace Altruist.Redis;
 
@@ -94,8 +94,6 @@ public interface IAltruistRedisProvider : IExternalCache
 
 public interface IAltruistRedisConnectionProvider : IConnectionStore
 {
-    // Task<bool> CreateIndexAsync(Type type);
-    // IRedisCollection<TNonNullType> RedisCollection<TNonNullType>() where TNonNullType : notnull;
     RedisResult ScriptEvaluate(string script, RedisKey[]? keys = null, RedisValue[]? values = null, CommandFlags flags = CommandFlags.None);
 }
 
@@ -104,12 +102,15 @@ public sealed class RedisCache : IAltruistRedisProvider
     private readonly IDatabase _redis;
     private readonly Dictionary<Type, RedisDocument> _documents = new();
 
+    private readonly Dictionary<string, RedisDocument> _typeLookup = new();
+
     public RedisCache(IConnectionMultiplexer mux)
     {
         _redis = mux.GetDatabase();
         var documentHelper = new RedisDocumentHelper(mux);
         var documents = documentHelper.CreateDocuments();
         _documents = documents.ToDictionary(doc => doc.Type);
+        _typeLookup = documents.ToDictionary(doc => doc.Name);
     }
 
     private RedisDocument GetDocumentOrFail<T>()
@@ -119,23 +120,50 @@ public sealed class RedisCache : IAltruistRedisProvider
         return document;
     }
 
+    [ThreadStatic]
+    private static MemoryStream _memoryStream = new MemoryStream();
+
     private async Task SaveObjectAsync<T>(string key, T entity) where T : notnull
     {
         var document = GetDocumentOrFail<T>();
-        var serializedEntity = JsonSerializer.Serialize(entity);
-        await _redis.StringSetAsync($"{document.Name}:{key}", serializedEntity);
+        _memoryStream.Seek(0, SeekOrigin.Begin);
+        _memoryStream.SetLength(0);
+        using (var writer = new Utf8JsonWriter(_memoryStream, new JsonWriterOptions { SkipValidation = true }))
+        {
+            JsonSerializer.Serialize(writer, entity);
+        }
+
+        await _redis.StringSetAsync($"{document.Name}:{key}", _memoryStream.ToArray());
     }
 
-    private async Task<T?> GetObjectAsync<T>(string key) where T : notnull
+    private async Task<T?> GetObjectAsync<T>(string key)
     {
-        var serializedEntity = await _redis.StringGetAsync($"{typeof(T).Name}:{key}");
-        if (serializedEntity.IsNullOrEmpty)
+        var json = await _redis.StringGetAsync(key);
+        if (json.IsNullOrEmpty) return default;
+
+        ReadOnlyMemory<byte> jsonMemory = Encoding.UTF8.GetBytes(json.ToString()).AsMemory();
+
+        var jsonSpan = jsonMemory.Span;
+        var reader = new Utf8JsonReader(jsonSpan);
+
+        string? typeInfo = null;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals("TypeInfo"))
+            {
+                reader.Read();
+                typeInfo = reader.GetString();
+                break;
+            }
+        }
+
+        if (typeInfo == null || !_typeLookup.TryGetValue(typeInfo, out var document))
             return default;
 
-        return JsonSerializer.Deserialize<T>(serializedEntity!);
+        return (T)JsonSerializer.Deserialize(jsonSpan, document.Type)!;
     }
 
-    // Retrieve object from Redis using a general key
     public async Task<T?> GetAsync<T>(string key) where T : notnull
     {
         return await GetObjectAsync<T>(key);
@@ -230,137 +258,10 @@ public sealed class RedisCache : IAltruistRedisProvider
 }
 
 
-
-// public sealed class RedisCache : IAltruistRedisProvider
-// {
-//     private readonly RedisConnectionProvider _provider;
-//     private readonly IDatabase _redis;
-
-//     private readonly Dictionary<Type, object> _redisCollections = new();
-
-//     public RedisCache(
-//         RedisConnectionProvider provider,
-//         IConnectionMultiplexer mux)
-//     {
-//         _redis = mux.GetDatabase();
-//         _provider = provider;
-//     }
-
-//     private IRedisCollection<T> GetCollection<T>() where T : notnull
-//     {
-//         var type = typeof(T);
-
-//         if (!_redisCollections.TryGetValue(type, out var collection))
-//         {
-//             collection = _provider.RedisCollection<T>();
-//             _redisCollections[type] = collection;
-//         }
-
-//         return (IRedisCollection<T>)collection;
-//     }
-
-//     public async Task<T?> GetAsync<T>(string key) where T : notnull
-//     {
-//         var repo = GetCollection<T>();
-//         var entity = await repo.FindByIdAsync(key);
-//         return entity;
-//     }
-
-//     public Task<ICacheCursor<T>> GetAllAsync<T>(int batchSize = 100) where T : notnull
-//     {
-//         var cursor = new RedisCacheCursor<T>(_provider, batchSize);
-//         return Task.FromResult(cursor as ICacheCursor<T>);
-//     }
-
-//     public Task<object?> GetAsync(string key, Type type)
-//     {
-//         throw new NotSupportedException("GetAsync(string key, Type type) is not supported when using Redis OM.");
-//     }
-
-//     public async Task SaveAsync<T>(string key, T entity) where T : notnull
-//     {
-//         var repo = GetCollection<T>();
-//         await repo.InsertAsync(entity);
-//         await repo.SaveAsync();
-//     }
-
-//     public Task SaveAsync(string key, object entity, Type type)
-//     {
-//         throw new NotSupportedException("SaveAsync(string key, object entity, Type type) is not supported when using Redis OM.");
-//     }
-
-//     public async Task SaveBatchAsync<T>(Dictionary<string, T> entities) where T : notnull
-//     {
-//         var repo = GetCollection<T>();
-//         foreach (var (key, entity) in entities)
-//         {
-//             await repo.InsertAsync(entity);
-//         }
-//         await repo.SaveAsync();
-//     }
-
-//     public Task SaveBatchAsync(Dictionary<string, object> entities, Type type)
-//     {
-//         throw new NotSupportedException("SaveBatchAsync(Dictionary<string, object> entities, Type type) is not supported when using Redis OM.");
-//     }
-
-//     public async Task<T?> RemoveAsync<T>(string key) where T : notnull
-//     {
-//         var repo = GetCollection<T>();
-
-//         var element = await repo.FindByIdAsync(key);
-//         if (element != null)
-//         {
-//             await repo.DeleteAsync(element);
-//         }
-
-//         return element;
-//     }
-
-//     public Task RemoveAsync(string key, Type type)
-//     {
-//         throw new NotSupportedException("RemoveAsync(string key, Type type) is not supported when using Redis OM.");
-//     }
-
-//     public async Task ClearAsync<T>() where T : notnull
-//     {
-//         var repo = GetCollection<T>();
-//         var allItems = await repo.ToListAsync();
-//         await repo.DeleteAsync(allItems);
-//     }
-
-//     public async Task<ICacheCursor<T>> GetAllAsync<T>() where T : notnull
-//     {
-//         return await CreateCursorAsync<T>(100);
-//     }
-
-//     public Task<ICacheCursor<object>> GetAllAsync(Type type)
-//     {
-//         throw new NotSupportedException("GetAllAsync(Type type) is not supported when using Redis OM.");
-//     }
-
-//     public Task ClearAllAsync()
-//     {
-//         throw new NotSupportedException("ClearAllAsync() is not supported when using Redis OM.");
-//     }
-
-//     private Task<ICacheCursor<T>> CreateCursorAsync<T>(int batchSize) where T : notnull
-//     {
-//         var cursor = new RedisCacheCursor<T>(_provider, batchSize);
-//         return Task.FromResult(cursor as ICacheCursor<T>);
-//     }
-
-//     public Task<bool> ContainsAsync<T>(string key) where T : notnull
-//     {
-//         throw new NotSupportedException("ContainsAsync<T>(string key) is not supported when using Redis OM.");
-//     }
-// }
-
 public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistRedisConnectionProvider
 {
     private readonly RedisCache _cache;
     private readonly IDatabase _redis;
-    // private readonly RedisConnectionProvider _provider;
     private const string RoomPrefix = "room:";
 
     public RedisConnectionService(IConnectionMultiplexer redis,
@@ -510,18 +411,8 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         await _cache.RemoveAsync<RoomPacket>(roomId);
     }
 
-    // public IRedisCollection<TNonNullClass> RedisCollection<TNonNullClass>() where TNonNullClass : notnull
-    // {
-    //     return _provider.RedisCollection<TNonNullClass>();
-    // }
-
     public RedisResult ScriptEvaluate(string script, RedisKey[]? keys = null, RedisValue[]? values = null, CommandFlags flags = CommandFlags.None)
     {
         return _redis.ScriptEvaluate(script, keys, values, flags);
     }
-
-    // public async Task<bool> CreateIndexAsync(Type type)
-    // {
-    //     return await _provider.Connection.CreateIndexAsync(type);
-    // }
 }
