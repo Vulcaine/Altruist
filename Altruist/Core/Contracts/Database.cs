@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Altruist;
 using Altruist.Contracts;
 using Altruist.Database;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,19 @@ public interface IModel
 
 }
 
-public interface IVaultFactory
+public interface IVaultFactory<TToken, TConfig> where TConfig : IConfiguration where TToken : IServiceToken<TConfig>
 {
-    public IDatabaseServiceToken Token { get; }
+    public TToken Token { get; }
+}
+
+public interface IDatabaseVaultFactory : IVaultFactory<IDatabaseServiceToken, IDatabaseConfiguration>
+{
     IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel;
+}
+
+public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheConfiguration>
+{
+    IVault<TVaultModel> Make<TVaultModel>() where TVaultModel : class, IVaultModel;
 }
 
 public interface IVaultModel : IModel

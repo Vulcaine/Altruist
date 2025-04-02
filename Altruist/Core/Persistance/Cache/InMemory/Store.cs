@@ -4,26 +4,26 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.InMemory;
 
-public class InMemoryCache : IMemoryCache
+public class InMemoryCache : IMemoryCacheProvider
 {
     private readonly ConcurrentDictionary<Type, Dictionary<string, object>> _memoryCacheEntities = new();
 
 
-    public Task<ICacheCursor<T>> GetAllAsync<T>() where T : notnull
+    public Task<ICursor<T>> GetAllAsync<T>() where T : notnull
     {
         return CreateCursorAsync<T>(int.MaxValue);
     }
 
-    public Task<ICacheCursor<object>> GetAllAsync(Type type)
+    public Task<ICursor<object>> GetAllAsync(Type type)
     {
         return CreateCursorAsync<object>(int.MaxValue);
     }
 
-    private Task<ICacheCursor<T>> CreateCursorAsync<T>(int batchSize) where T : notnull
+    private Task<ICursor<T>> CreateCursorAsync<T>(int batchSize) where T : notnull
     {
         var cacheMap = GetOrCreateCacheMap(typeof(T));
         var cursor = new InMemoryCacheCursor<T>(cacheMap, batchSize);
-        return Task.FromResult(cursor as ICacheCursor<T>);
+        return Task.FromResult(cursor as ICursor<T>);
     }
 
     public Task<T?> GetAsync<T>(string key) where T : notnull
@@ -119,7 +119,7 @@ public class InMemoryCache : IMemoryCache
 
 public class InMemoryConnectionStore : AbstractConnectionStore
 {
-    public InMemoryConnectionStore(IMemoryCache memoryCache, ILoggerFactory loggerFactory) : base(memoryCache, loggerFactory)
+    public InMemoryConnectionStore(IMemoryCacheProvider memoryCache, ILoggerFactory loggerFactory) : base(memoryCache, loggerFactory)
     {
     }
 }

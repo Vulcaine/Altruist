@@ -2,7 +2,7 @@ namespace Altruist;
 
 public interface IPortalContext : IConnectionStore
 {
-    ICache Cache { get; }
+    ICacheProvider Cache { get; }
     IAltruistRouter Router { get; }
     ICodec Codec { get; }
 
@@ -24,11 +24,11 @@ public abstract class AbstractSocketPortalContext : IPortalContext
     public abstract IAltruistContext AltruistContext { get; protected set; }
     public abstract IServiceProvider ServiceProvider { get; protected set; }
 
-    public abstract ICache Cache { get; protected set; }
+    public abstract ICacheProvider Cache { get; protected set; }
 
     public AbstractSocketPortalContext(
         IAltruistContext altruistContext,
-        IAltruistRouter router, ICodec codec, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
+        IAltruistRouter router, ICodec codec, IConnectionStore connectionStore, ICacheProvider cache, IServiceProvider serviceProvider)
     {
         AltruistContext = altruistContext;
         Codec = codec ?? new JsonCodec();

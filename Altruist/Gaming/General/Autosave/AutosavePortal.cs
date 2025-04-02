@@ -20,7 +20,7 @@ public class PeriodicSaveStrategy : IAutosaveStrategy
 
 public abstract class AltruistAutosavePortal<TKeyspace> : Portal where TKeyspace : class, IKeyspace, new()
 {
-    protected ICache Cache { get; }
+    protected ICacheProvider Cache { get; }
     protected IDatabaseServiceToken Token { get; }
 
     protected IVaultRepository<TKeyspace> Repository { get; }

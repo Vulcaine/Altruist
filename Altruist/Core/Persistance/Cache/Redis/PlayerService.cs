@@ -1,21 +1,22 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Redis.OM.Searching;
 
 namespace Altruist.Redis;
 
 public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
     private IAltruistRedisConnectionProvider _provider;
-    private IRedisCollection<TPlayerEntity> _entityRepo;
+    private RedisCacheProvider _cacheProvider;
+    // private IRedisCollection<TPlayerEntity> _entityRepo;
 
     private ILogger<RedisPlayerService<TPlayerEntity>> _logger;
 
-    public RedisPlayerService(IAltruistRedisConnectionProvider provider, ILoggerFactory loggerFactory)
+    public RedisPlayerService(IAltruistRedisConnectionProvider provider,
+    RedisCacheProvider cacheProvider, ILoggerFactory loggerFactory)
     {
         _provider = provider;
         // _entityRepo = _provider.RedisCollection<TPlayerEntity>();
         _logger = loggerFactory.CreateLogger<RedisPlayerService<TPlayerEntity>>();
+        _cacheProvider = cacheProvider;
     }
 
     public async Task<TPlayerEntity?> ConnectById(string roomId, string socketId, string name, float[]? position = null)
@@ -35,7 +36,8 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
         }
         else
         {
-            await _entityRepo.InsertAsync(player);
+            await _cacheProvider.SaveAsync(socketId, player);
+            // await _entityRepo.InsertAsync(player);
             _logger.LogInformation($"Connected player {socketId} to instance {roomId}");
         }
 
@@ -45,7 +47,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
     public Task<TPlayerEntity?> FindEntityAsync(string playerId)
     {
-        return _entityRepo.FindByIdAsync(playerId);
+        return _cacheProvider.GetAsync<TPlayerEntity>(playerId);
     }
 
     public async Task DisconnectAsync(string socketId)
@@ -56,23 +58,23 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
     public async Task UpdatePlayerAsync(TPlayerEntity player)
     {
-        await _entityRepo.UpdateAsync(player);
+        await _cacheProvider.SaveAsync(player.Id, player);
         _logger.LogInformation($"Player {player.Id} updated in Redis.");
     }
 
     public Task<TPlayerEntity?> GetPlayer(string socketId)
     {
         // return _provider.RedisCollection<TPlayerEntity>().FindByIdAsync(socketId);
-        return null;
+        return _cacheProvider.GetAsync<TPlayerEntity>(socketId);
     }
 
     public async Task DeletePlayerAsync(string playerId)
     {
-        var player = await _entityRepo.FindByIdAsync(playerId);
+        var player = await FindEntityAsync(playerId);
 
         if (player != null)
         {
-            await _entityRepo.DeleteAsync(player);
+            await _cacheProvider.RemoveAsync<TPlayerEntity>(playerId);
 
             _logger.LogInformation($"Player and associated spaceship with ID {player.Id} deleted.");
         }
@@ -80,7 +82,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
     public async Task<TPlayerEntity?> GetPlayerAsync(string playerId)
     {
-        return await _entityRepo.FindByIdAsync(playerId);
+        return await FindEntityAsync(playerId);
     }
 
     public async Task Cleanup()
@@ -88,31 +90,24 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
         int cursor = 0;
         int batchSize = 100;
 
-        do
+        var players = await _cacheProvider.GetAllAsync<TPlayerEntity>();
+        var playersToDelete = new List<string>();
+
+        foreach (var player in players)
         {
-            var players = await _entityRepo.Skip(cursor).Take(batchSize).ToListAsync();
-
-            if (!players.Any()) break;
-
-            var playersToDelete = new List<string>();
-
-            foreach (var player in players)
+            var conn = await _provider.GetConnectionAsync(player.Id);
+            if (conn == null || !conn.IsConnected)
             {
-                var conn = await _provider.GetConnectionAsync(player.Id);
-                if (conn == null || !conn.IsConnected)
-                {
-                    playersToDelete.Add(player.Id);
-                }
+                playersToDelete.Add(player.Id);
             }
+        }
 
-            if (playersToDelete.Any())
-            {
-                await Task.WhenAll(playersToDelete.Select(id => DeletePlayerAsync(id)));
-            }
+        if (playersToDelete.Any())
+        {
+            await Task.WhenAll(playersToDelete.Select(id => DeletePlayerAsync(id)));
+        }
 
-            cursor += batchSize;
-
-        } while (true);
+        cursor += batchSize;
 
         _logger.LogInformation("Player cleanup completed.");
     }

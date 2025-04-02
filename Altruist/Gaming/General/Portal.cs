@@ -5,7 +5,7 @@ namespace Altruist;
 
 public class PortalContext(
     IAltruistContext altruistContext,
-    IAltruistRouter router, ICodec codec, IConnectionStore connectionStore, ICache cache, IServiceProvider serviceProvider)
+    IAltruistRouter router, ICodec codec, IConnectionStore connectionStore, ICacheProvider cache, IServiceProvider serviceProvider)
     : AbstractSocketPortalContext(altruistContext, router, codec, connectionStore, cache, serviceProvider)
 {
     public override IAltruistRouter Router { get; protected set; } = router;
@@ -13,7 +13,7 @@ public class PortalContext(
     public override IAltruistContext AltruistContext { get; protected set; } = altruistContext;
     public override IServiceProvider ServiceProvider { get; protected set; } = serviceProvider;
 
-    public override ICache Cache { get; protected set; } = cache;
+    public override ICacheProvider Cache { get; protected set; } = cache;
 
     public override void Initialize() { }
 

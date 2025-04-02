@@ -9,7 +9,7 @@ using System.Text;
 
 namespace Altruist.Redis;
 
-public class RedisCacheCursor<T> : ICacheCursor<T>, IEnumerable<T> where T : notnull
+public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
 {
     private int BatchSize { get; }
     private int CurrentIndex { get; set; }
@@ -87,7 +87,7 @@ public class RedisCacheCursor<T> : ICacheCursor<T>, IEnumerable<T> where T : not
 }
 
 
-public interface IAltruistRedisProvider : IExternalCache
+public interface IAltruistRedisProvider : IExternalCacheProvider
 {
 
 }
@@ -97,20 +97,25 @@ public interface IAltruistRedisConnectionProvider : IConnectionStore
     RedisResult ScriptEvaluate(string script, RedisKey[]? keys = null, RedisValue[]? values = null, CommandFlags flags = CommandFlags.None);
 }
 
-public sealed class RedisCache : IAltruistRedisProvider
+public sealed class RedisCacheProvider : IAltruistRedisProvider
 {
     private readonly IDatabase _redis;
     private readonly Dictionary<Type, RedisDocument> _documents = new();
 
     private readonly Dictionary<string, RedisDocument> _typeLookup = new();
 
-    public RedisCache(IConnectionMultiplexer mux)
+    public RedisCacheProvider(IConnectionMultiplexer mux)
     {
         _redis = mux.GetDatabase();
         var documentHelper = new RedisDocumentHelper(mux);
         var documents = documentHelper.CreateDocuments();
         _documents = documents.ToDictionary(doc => doc.Type);
         _typeLookup = documents.ToDictionary(doc => doc.Name);
+    }
+
+    public IDatabase GetDatabase()
+    {
+        return _redis;
     }
 
     private RedisDocument GetDocumentOrFail<T>()
@@ -213,10 +218,10 @@ public sealed class RedisCache : IAltruistRedisProvider
     }
 
 
-    public Task<ICacheCursor<T>> GetAllAsync<T>(int batchSize = 100) where T : notnull
+    public Task<ICursor<T>> GetAllAsync<T>(int batchSize = 100) where T : notnull
     {
         var cursor = new RedisCacheCursor<T>(_redis, GetDocumentOrFail<T>(), batchSize);
-        return Task.FromResult(cursor as ICacheCursor<T>);
+        return Task.FromResult(cursor as ICursor<T>);
     }
 
     public Task<bool> ContainsAsync<T>(string key) where T : notnull
@@ -224,12 +229,12 @@ public sealed class RedisCache : IAltruistRedisProvider
         return _redis.KeyExistsAsync(key);
     }
 
-    public async Task<ICacheCursor<T>> GetAllAsync<T>() where T : notnull
+    public async Task<ICursor<T>> GetAllAsync<T>() where T : notnull
     {
         return await GetAllAsync<T>(100);
     }
 
-    public Task<ICacheCursor<object>> GetAllAsync(Type type)
+    public Task<ICursor<object>> GetAllAsync(Type type)
     {
         if (!_documents.TryGetValue(type, out var document))
         {
@@ -239,7 +244,7 @@ public sealed class RedisCache : IAltruistRedisProvider
         var cursorType = typeof(RedisCacheCursor<>).MakeGenericType(type);
         var cursor = Activator.CreateInstance(cursorType, _redis, document, 100);
 
-        return Task.FromResult((cursor as ICacheCursor<object>)!) ?? throw new InvalidOperationException("Failed to create cursor.");
+        return Task.FromResult((cursor as ICursor<object>)!) ?? throw new InvalidOperationException("Failed to create cursor.");
     }
 
     public async Task ClearAllAsync()
@@ -260,13 +265,13 @@ public sealed class RedisCache : IAltruistRedisProvider
 
 public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistRedisConnectionProvider
 {
-    private readonly RedisCache _cache;
+    private readonly RedisCacheProvider _cache;
     private readonly IDatabase _redis;
     private const string RoomPrefix = "room:";
 
     public RedisConnectionService(IConnectionMultiplexer redis,
-        IMemoryCache memoryCache,
-        RedisCache cache, ILoggerFactory loggerFactory) : base(memoryCache, loggerFactory)
+        IMemoryCacheProvider memoryCache,
+        RedisCacheProvider cache, ILoggerFactory loggerFactory) : base(memoryCache, loggerFactory)
     {
         _redis = redis.GetDatabase();
         _cache = cache;

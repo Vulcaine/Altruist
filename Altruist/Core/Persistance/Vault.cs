@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.DependencyInjection;
 using Altruist.UORM;
 using Microsoft.AspNetCore.Mvc;
+using Altruist.Redis;
 
 namespace Altruist.Database;
 
@@ -543,7 +544,7 @@ public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class,
 {
     private readonly IVault<TVaultModel> _underlying;
 
-    public Vault(IVaultFactory vaultMaker, IKeyspace keyspace)
+    public Vault(IDatabaseVaultFactory vaultMaker, IKeyspace keyspace)
     {
         _underlying = vaultMaker.Make<TVaultModel>(keyspace);
         Keyspace = keyspace;
@@ -684,13 +685,33 @@ public abstract class VaultRepository<TKeyspace> : IVaultRepository<TKeyspace> w
     }
 }
 
-public abstract class VaultFactory : IVaultFactory
+// public abstract class CacheVaultFactory : ICacheVaultFactory
+// {
+//     private readonly ICacheProvider _cacheProvider;
+//     public ICacheServiceToken Token => throw new NotImplementedException();
+
+//     public CacheVaultFactory(ICacheProvider cacheProvider) => _cacheProvider = cacheProvider;
+
+//     IVault<TVaultModel> ICacheVaultFactory.Make<TVaultModel>()
+//     {
+//         if (_cacheProvider is RedisCacheProvider redisCacheProvider)
+//         {
+//             return new RedisVault<TVaultModel>(redisCacheProvider);
+//         }
+//         else
+//         {
+//             throw new NotSupportedException($"Cannot create vault. Unsupported cache provider {_cacheProvider.GetType().FullName}. If you got a custom provider, make sure you've overridden the CacheVaultFactory implementation.");
+//         }
+//     }
+// }
+
+public abstract class DatabaseVaultFactory : IDatabaseVaultFactory
 {
     private readonly IGeneralDatabaseProvider _databaseProvider;
 
     public IDatabaseServiceToken Token => _databaseProvider.Token;
 
-    public VaultFactory(
+    public DatabaseVaultFactory(
         IGeneralDatabaseProvider databaseProvider)
     {
         _databaseProvider = databaseProvider;
@@ -708,7 +729,7 @@ public abstract class VaultFactory : IVaultFactory
         }
         else
         {
-            throw new NotSupportedException($"Cannot create vault. Unsupported database provider {_databaseProvider.GetType().FullName}.");
+            throw new NotSupportedException($"Cannot create vault. Unsupported database provider {_databaseProvider.GetType().FullName}. If you got a custom provider, make sure you've overridden the DatabaseVaultFactory implementation.");
         }
     }
 }

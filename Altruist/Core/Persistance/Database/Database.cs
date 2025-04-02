@@ -33,7 +33,7 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
     public KeyspaceSetup<TKeyspace> AddVault<TVaultModel>() where TVaultModel : class, IVaultModel
     {
         VaultModels.Add(typeof(TVaultModel));
-        Services.AddSingleton<IVault<TVaultModel>>(sp => new Vault<TVaultModel>(sp.GetServices<IVaultFactory>().Where(s => s.Token == Token).First(), Instance));
+        Services.AddSingleton<IVault<TVaultModel>>(sp => new Vault<TVaultModel>(sp.GetServices<IDatabaseVaultFactory>().Where(s => s.Token == Token).First(), Instance));
         return this;
     }
 

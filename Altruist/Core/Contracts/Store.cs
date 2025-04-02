@@ -30,10 +30,10 @@ public interface IConnectionStore : ICleanUp
 
 public abstract class AbstractConnectionStore : IConnectionStore
 {
-    protected readonly IMemoryCache _memoryCache;
+    protected readonly IMemoryCacheProvider _memoryCache;
     protected readonly ILogger _logger;
 
-    public AbstractConnectionStore(IMemoryCache cache, ILoggerFactory loggerFactory)
+    public AbstractConnectionStore(IMemoryCacheProvider cache, ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<AbstractConnectionStore>();
         _memoryCache = cache;

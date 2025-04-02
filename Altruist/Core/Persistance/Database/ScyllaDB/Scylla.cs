@@ -270,7 +270,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 }
 
 
-public class ScyllaVaultFactory : VaultFactory
+public class ScyllaVaultFactory : DatabaseVaultFactory
 {
     public ScyllaVaultFactory(IScyllaDbProvider databaseProvider) : base(databaseProvider)
     {

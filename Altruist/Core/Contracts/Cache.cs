@@ -1,6 +1,6 @@
 namespace Altruist;
 
-public interface ICacheCursor<T> where T : notnull
+public interface ICursor<T> where T : notnull
 {
     List<T> Items { get; }
     bool HasNext { get; }
@@ -9,13 +9,13 @@ public interface ICacheCursor<T> where T : notnull
 }
 
 
-public interface ICache
+public interface ICacheProvider
 {
 
     Task<bool> ContainsAsync<T>(string key) where T : notnull;
     Task<T?> GetAsync<T>(string key) where T : notnull;
-    Task<ICacheCursor<T>> GetAllAsync<T>() where T : notnull;
-    Task<ICacheCursor<object>> GetAllAsync(Type type);
+    Task<ICursor<T>> GetAllAsync<T>() where T : notnull;
+    Task<ICursor<object>> GetAllAsync(Type type);
     Task SaveAsync<T>(string key, T entity) where T : notnull;
     Task SaveBatchAsync<T>(Dictionary<string, T> entities) where T : notnull;
     Task<T?> RemoveAsync<T>(string key) where T : notnull;
@@ -24,11 +24,11 @@ public interface ICache
     // Task<List<string>> GetBatchKeysAsync(string baseKey, int skip, int take);
 }
 
-public interface IExternalCache : ICache
+public interface IExternalCacheProvider : ICacheProvider
 {
 }
 
 
-public interface IMemoryCache : ICache
+public interface IMemoryCacheProvider : ICacheProvider
 {
 }

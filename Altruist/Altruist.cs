@@ -53,8 +53,8 @@ namespace Altruist
             Services.AddSingleton<ClientSynchronizator>();
             // Setup cache
             Services.AddSingleton<InMemoryCache>();
-            Services.AddSingleton<IMemoryCache>(sp => sp.GetRequiredService<InMemoryCache>());
-            Services.AddSingleton<ICache>(sp => sp.GetRequiredService<InMemoryCache>());
+            Services.AddSingleton<IMemoryCacheProvider>(sp => sp.GetRequiredService<InMemoryCache>());
+            Services.AddSingleton<ICacheProvider>(sp => sp.GetRequiredService<InMemoryCache>());
 
             Services.AddSingleton<IAltruistRouter, InMemoryDirectRouter>();
             Services.AddSingleton<ICodec, JsonCodec>();
