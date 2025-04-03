@@ -44,7 +44,7 @@ public class RedisSocketClientSenderTests
         // Arrange
         var clientId = "client1";
         var message = new JoinGamePacket(); // Example message
-        var mockConnection = new Mock<IConnection>();
+        var mockConnection = new Mock<Connection>();
         mockConnection.Setup(c => c.IsConnected).Returns(true);
 
         _mockStore.Setup(s => s.GetConnectionAsync(clientId)).ReturnsAsync(mockConnection.Object);
@@ -60,10 +60,9 @@ public class RedisSocketClientSenderTests
     [Fact]
     public async Task SendAsync_ShouldPushToRedis_WhenSocketIsNotConnected()
     {
-        // Arrange
         var clientId = "client1";
-        var message = new JoinGamePacket(); // Example message
-        var mockConnection = new Mock<IConnection>();
+        var message = new JoinGamePacket();
+        var mockConnection = new Mock<Connection>();
         mockConnection.Setup(c => c.IsConnected).Returns(false);
 
         _mockStore.Setup(s => s.GetConnectionAsync(clientId)).ReturnsAsync(mockConnection.Object);
@@ -83,7 +82,7 @@ public class RedisSocketClientSenderTests
         // Arrange
         var clientId = "client1";
         var message = new JoinGamePacket(); // Example message
-        var mockConnection = new Mock<IConnection>();
+        var mockConnection = new Mock<Connection>();
         mockConnection.Setup(c => c.IsConnected).Returns(true);
 
         _mockStore.Setup(s => s.GetConnectionAsync(clientId)).ReturnsAsync(mockConnection.Object);

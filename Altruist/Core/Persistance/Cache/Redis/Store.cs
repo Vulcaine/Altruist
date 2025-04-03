@@ -103,9 +103,16 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         _redis = mux.GetDatabase();
         var documentHelper = new RedisDocumentHelper(mux);
         var documents = documentHelper.CreateDocuments();
-        _documents = documents.ToDictionary(doc => doc.Type);
-        _typeLookup = documents.ToDictionary(doc => doc.Name);
+
+        _documents = documents
+            .GroupBy(doc => doc.Type)
+            .ToDictionary(g => g.Key, g => g.Last());
+
+        _typeLookup = documents
+            .GroupBy(doc => doc.Name)
+            .ToDictionary(g => g.Key, g => g.Last());
     }
+
 
     public IDatabase GetDatabase()
     {
@@ -231,7 +238,8 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
 
     public Task<bool> ContainsAsync<T>(string key) where T : notnull
     {
-        return _redis.KeyExistsAsync(key);
+        var document = GetDocumentOrFail<T>();
+        return _redis.KeyExistsAsync($"{document.Name}:{key}");
     }
 
     public async Task<ICursor<T>> GetAllAsync<T>() where T : notnull
