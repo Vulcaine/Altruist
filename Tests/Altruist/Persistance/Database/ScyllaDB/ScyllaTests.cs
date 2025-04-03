@@ -144,7 +144,7 @@ public class ScyllaDbProviderTests
 public class TestModel : IVaultModel
 {
     public int Id { get; set; }
-    public string Name { get; set; }
+    public string Name { get; set; } = "";
     public DateTime Timestamp { get; set; }
-    public string Type { get; set; }
+    public string Type { get; set; } = "";
 }

@@ -141,7 +141,7 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
 public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     private readonly ICqlDatabaseProvider _databaseProvider;
-    private Dictionary<QueryPosition, List<string>> _queryParts;
+    private Dictionary<QueryPosition, HashSet<string>> _queryParts;
     private Dictionary<QueryPosition, List<object>> _queryParameters;
 
     public IKeyspace Keyspace { get; }
@@ -149,15 +149,15 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace)
     {
         _databaseProvider = databaseProvider;
-        _queryParts = new Dictionary<QueryPosition, List<string>>()
+        _queryParts = new Dictionary<QueryPosition, HashSet<string>>()
         {
-            { QueryPosition.SELECT, new List<string>() },
-            { QueryPosition.FROM, new List<string>() },
-            { QueryPosition.WHERE, new List<string>() },
-            { QueryPosition.ORDER_BY, new List<string>() },
-            { QueryPosition.LIMIT, new List<string>() },
-            { QueryPosition.UPDATE, new List<string>() },
-            { QueryPosition.SET, new List<string>() }
+            { QueryPosition.SELECT, new HashSet<string>() },
+            { QueryPosition.FROM, new HashSet<string>() },
+            { QueryPosition.WHERE, new HashSet<string>() },
+            { QueryPosition.ORDER_BY, new HashSet<string>() },
+            { QueryPosition.LIMIT, new HashSet<string>() },
+            { QueryPosition.UPDATE, new HashSet<string>() },
+            { QueryPosition.SET, new HashSet<string>() }
         };
 
         _queryParameters = new Dictionary<QueryPosition, List<object>>()
@@ -228,6 +228,10 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
                 var historyQuery = $"INSERT INTO {typeof(TVaultModel).Name}_history ({columnNames}, timestamp) VALUES ({valuePlaceholders}, ?)";
                 batchQueries.Add(historyQuery);
             }
+            else if (saveHistory == true)
+            {
+                throw new Exception($"History is not enabled for the table {typeof(TVaultModel).Name}. Consider adding StoreHistory=true");
+            }
         }
 
         var upsertBatchQuery = $"BEGIN BATCH {string.Join(" ", batchQueries)} APPLY BATCH;";
@@ -265,6 +269,10 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         string whereClause = ConvertWherePredicateToString(predicate);
         AddToQuery(QueryPosition.WHERE, whereClause);
+        if (_queryParts[QueryPosition.SELECT].Count == 0)
+        {
+            AddToQuery(QueryPosition.SELECT, "*");
+        }
         return this;
     }
 
@@ -272,19 +280,26 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         string orderByClause = ConvertOrderByToString(keySelector);
         AddToQuery(QueryPosition.ORDER_BY, orderByClause);
+        // we have to make sure the ordered property is selected
+        AddToQuery(QueryPosition.SELECT, orderByClause);
         return this;
     }
 
     public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         string orderByDescClause = ConvertOrderByDescendingToString(keySelector);
-        AddToQuery(QueryPosition.ORDER_BY, orderByDescClause);
+        AddToQuery(QueryPosition.ORDER_BY, orderByDescClause + " DESC");
+        AddToQuery(QueryPosition.SELECT, orderByDescClause);
         return this;
     }
 
     public IVault<TVaultModel> Take(int count)
     {
         AddToQuery(QueryPosition.LIMIT, $"LIMIT {count}");
+        if (_queryParts[QueryPosition.SELECT].Count == 0)
+        {
+            AddToQuery(QueryPosition.SELECT, "*");
+        }
         return this;
     }
 
@@ -366,7 +381,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     }
 
 
-    private string BuildSelectQuery()
+    public string BuildSelectQuery()
     {
         string selectQuery = $"SELECT {string.Join(", ", _queryParts[QueryPosition.SELECT])} FROM {typeof(TVaultModel).Name}";
 
@@ -391,7 +406,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         return selectQuery;
     }
 
-    private string BuildUpdateQuery()
+    public string BuildUpdateQuery()
     {
         string updateQuery = $"UPDATE {typeof(TVaultModel).Name} SET {string.Join(", ", _queryParts[QueryPosition.SET])}";
 
@@ -427,7 +442,20 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         if (expression is ConstantExpression constantExpression && constantExpression.Value != null)
         {
-            return constantExpression.Value!.ToString()!;
+            var value = constantExpression.Value;
+            switch (value)
+            {
+                case string stringValue:
+                    return $"'{stringValue}'";
+                case bool boolValue:
+                    return boolValue ? "TRUE" : "FALSE";
+                case DateTime dateTimeValue:
+                    return $"'{dateTimeValue:yyyy-MM-dd HH:mm:ss}'";
+                case null:
+                    return "NULL";
+                default:
+                    return value.ToString()!;
+            }
         }
 
         throw new NotSupportedException("Unsupported expression type.");
@@ -460,7 +488,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         if (keySelector.Body is MemberExpression memberExpression)
         {
-            return $"{memberExpression.Member.Name} DESC";
+            return $"{memberExpression.Member.Name}";
         }
 
         throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
@@ -520,18 +548,26 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public async Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
     {
-        string selectedColumns = ConvertSelectExpressionToString(selector);
-        AddToQuery(QueryPosition.SELECT, selectedColumns);
+        if (_queryParts[QueryPosition.SELECT].Contains("*"))
+        {
+            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
+        }
+
+        IEnumerable<string> selectedColumns = ConvertSelectExpressionToString(selector);
+        foreach (var column in selectedColumns)
+        {
+            AddToQuery(QueryPosition.SELECT, column);
+        }
 
         string query = BuildSelectQuery();
         return await _databaseProvider.QueryAsync<TResult>(query, _queryParameters[QueryPosition.SELECT]);
     }
 
-    private string ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
+    private IEnumerable<string> ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
     {
         if (selector.Body is NewExpression newExpression)
         {
-            return string.Join(", ", newExpression.Members!.Select(m => m.Name));
+            return newExpression.Members!.Select(m => m.Name);
         }
 
         throw new NotSupportedException("Unsupported expression type for SELECT.");
