@@ -69,6 +69,12 @@ public class ScyllaDbProvider : IScyllaDbProvider
         Token = token;
     }
 
+    public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
+    {
+        _session = session;
+        _mapper = mapper;
+        Token = token;
+    }
 
     public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel
     {

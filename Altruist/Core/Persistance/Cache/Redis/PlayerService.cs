@@ -37,7 +37,6 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
         else
         {
             await _cacheProvider.SaveAsync(socketId, player);
-            // await _entityRepo.InsertAsync(player);
             _logger.LogInformation($"Connected player {socketId} to instance {roomId}");
         }
 
