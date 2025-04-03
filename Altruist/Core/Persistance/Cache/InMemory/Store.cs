@@ -114,6 +114,13 @@ public class InMemoryCache : IMemoryCacheProvider
         var cacheMap = GetOrCreateCacheMap(typeof(T));
         return Task.FromResult(cacheMap.ContainsKey(key));
     }
+
+    public Task RemoveAndForgetAsync<T>(string key) where T : notnull
+    {
+        var cacheMap = GetOrCreateCacheMap(typeof(T));
+        cacheMap.Remove(key);
+        return Task.CompletedTask;
+    }
 }
 
 

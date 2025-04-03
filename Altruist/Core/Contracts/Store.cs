@@ -63,7 +63,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
 
     public virtual async Task RemoveConnectionAsync(string connectionId)
     {
-        await _memoryCache.RemoveAsync<Connection>(connectionId);
+        await _memoryCache.RemoveAndForgetAsync<Connection>(connectionId);
 
         var roomId = await _memoryCache.GetAsync<string>(connectionId);
         if (!string.IsNullOrEmpty(roomId))
@@ -74,7 +74,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
                 room.ConnectionIds.Remove(connectionId);
                 if (room.ConnectionIds.Count == 0)
                 {
-                    await _memoryCache.RemoveAsync<RoomPacket>(roomId);
+                    await _memoryCache.RemoveAndForgetAsync<RoomPacket>(roomId);
                 }
                 else
                 {
@@ -190,7 +190,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
 
     public virtual async Task DeleteRoomAsync(string roomId)
     {
-        await _memoryCache.RemoveAsync<RoomPacket>(roomId);
+        await _memoryCache.RemoveAndForgetAsync<RoomPacket>(roomId);
     }
 
     public virtual async Task<RoomPacket> CreateRoomAsync()

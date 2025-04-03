@@ -120,30 +120,37 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
 
     private RedisDocument GetDocumentOrFail<T>()
     {
-        var document = _documents[typeof(T)];
-        if (document == null) throw new KeyNotFoundException("Document not found for type " + typeof(T).Name);
-        return document;
+        if (_documents.TryGetValue(typeof(T), out var document) && document != null)
+        {
+            return document;
+        }
+        else
+        {
+            throw new KeyNotFoundException("Document not found for type " + typeof(T).Name);
+        }
     }
 
-    [ThreadStatic]
-    private static MemoryStream _memoryStream = new MemoryStream();
+    private static ThreadLocal<MemoryStream> _memoryStream = new(() => new MemoryStream());
 
     private async Task SaveObjectAsync<T>(string key, T entity) where T : notnull
     {
         var document = GetDocumentOrFail<T>();
-        _memoryStream.Seek(0, SeekOrigin.Begin);
-        _memoryStream.SetLength(0);
-        using (var writer = new Utf8JsonWriter(_memoryStream, new JsonWriterOptions { SkipValidation = true }))
+        var memoryStream = _memoryStream.Value!;
+        memoryStream.Seek(0, SeekOrigin.Begin);
+        memoryStream.SetLength(0);
+
+        using (var writer = new Utf8JsonWriter(memoryStream, new JsonWriterOptions { SkipValidation = true }))
         {
             JsonSerializer.Serialize(writer, entity);
         }
 
-        await _redis.StringSetAsync($"{document.Name}:{key}", _memoryStream.ToArray());
+        await _redis.StringSetAsync($"{document.Name}:{key}", memoryStream.ToArray());
     }
 
     private async Task<T?> GetObjectAsync<T>(string key)
     {
-        var json = await _redis.StringGetAsync(key);
+        var document = GetDocumentOrFail<T>();
+        var json = await _redis.StringGetAsync($"{document.Name}:{key}");
         if (json.IsNullOrEmpty) return default;
 
         ReadOnlyMemory<byte> jsonMemory = Encoding.UTF8.GetBytes(json.ToString()).AsMemory();
@@ -163,10 +170,10 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
             }
         }
 
-        if (typeInfo == null || !_typeLookup.TryGetValue(typeInfo, out var document))
+        if (typeInfo == null || !_typeLookup.TryGetValue(typeInfo, out var typeDoc))
             return default;
 
-        return (T)JsonSerializer.Deserialize(jsonSpan, document.Type)!;
+        return (T)JsonSerializer.Deserialize(jsonSpan, typeDoc.Type)!;
     }
 
     public async Task<T?> GetAsync<T>(string key) where T : notnull
@@ -199,8 +206,7 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
         var entity = await GetObjectAsync<T>(key);
         if (entity != null)
         {
-            var document = GetDocumentOrFail<T>();
-            await _redis.KeyDeleteAsync($"{document.Name}:{key}");
+            _ = RemoveAndForgetAsync<T>(key);
         }
         return entity;
     }
@@ -260,6 +266,12 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
             }
         }
     }
+
+    public async Task RemoveAndForgetAsync<T>(string key) where T : notnull
+    {
+        var document = GetDocumentOrFail<T>();
+        await _redis.KeyDeleteAsync($"{document.Name}:{key}");
+    }
 }
 
 
@@ -313,8 +325,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
             return false;
         }
 
-        Connection conn = socket; // force downcast
-        await _cache.SaveAsync(connectionId, conn);
+        await _cache.SaveAsync(connectionId, socket);
 
         if (!string.IsNullOrEmpty(roomId))
         {
@@ -338,7 +349,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
     public override async Task RemoveConnectionAsync(string connectionId)
     {
         await base.RemoveConnectionAsync(connectionId);
-        await _cache.RemoveAsync<Connection>(connectionId);
+        await _cache.RemoveAndForgetAsync<Connection>(connectionId);
 
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
         var roomKeys = server.Keys(pattern: $"{RoomPrefix}*");
@@ -352,7 +363,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
             if (room.ConnectionIds.Remove(connectionId) || room.Empty())
             {
                 if (room.Empty())
-                    await _cache.RemoveAsync<RoomPacket>(roomKey!);
+                    await _cache.RemoveAndForgetAsync<RoomPacket>(roomKey!);
                 else
                     await _cache.SaveAsync(roomKey!, room);
             }
@@ -413,7 +424,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
 
     public override async Task DeleteRoomAsync(string roomId)
     {
-        await _cache.RemoveAsync<RoomPacket>(roomId);
+        await _cache.RemoveAndForgetAsync<RoomPacket>(roomId);
     }
 
     public RedisResult ScriptEvaluate(string script, RedisKey[]? keys = null, RedisValue[]? values = null, CommandFlags flags = CommandFlags.None)

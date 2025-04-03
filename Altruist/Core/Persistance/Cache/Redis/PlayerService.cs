@@ -74,7 +74,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
         if (player != null)
         {
-            await _cacheProvider.RemoveAsync<TPlayerEntity>(playerId);
+            await _cacheProvider.RemoveAndForgetAsync<TPlayerEntity>(playerId);
 
             _logger.LogInformation($"Player and associated spaceship with ID {player.Id} deleted.");
         }

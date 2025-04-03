@@ -16,7 +16,7 @@ public class PlayerEntity : ISynchronizedEntity, IVaultModel
     [Indexed]
     [JsonProperty("id")]
     [Column]
-    [RedisIdField]
+
     public string Id { get; set; }
 
     [Key(1)]
@@ -211,7 +211,7 @@ public class Car : Vehicle
 // [PrimaryKey(keys: [nameof(Id), nameof(Name)])]
 // public class Player : IVaultModel
 // {
-//     [RedisIdField]
+//     
 //     [Indexed]
 //     [Column]
 //     public string Id { get; set; }

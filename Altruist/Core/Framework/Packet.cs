@@ -379,7 +379,7 @@ namespace Altruist
 
         [JsonPropertyName("id")]
         [Key(1)]
-        [RedisIdField]
+
         public string Id { get; set; }
 
         [JsonPropertyName("maxCapacity")]

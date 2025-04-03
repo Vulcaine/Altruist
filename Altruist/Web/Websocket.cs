@@ -61,7 +61,7 @@ public sealed class WebSocketTransport : ITransport
 
                 var clientId = Guid.NewGuid().ToString();
                 var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                var webSocketConnection = new CachedWebSocketConnection(new WebSocketConnection(webSocket, clientId, authDetails));
+                var webSocketConnection = new WebSocketConnection(webSocket, clientId, authDetails);
                 await wsManager.HandleConnection(webSocketConnection, path, clientId);
             }
             else
@@ -111,8 +111,6 @@ public sealed class CachedWebSocketConnection : Connection
 {
     [JsonIgnore]
     private WebSocketConnection? _connection;
-
-    public new string Type { get; } = "tcp";
 
     public CachedWebSocketConnection(WebSocketConnection connection)
     {
@@ -170,7 +168,10 @@ public sealed class WebSocketConnection : Connection
     [JsonIgnore]
     private readonly WebSocket? _webSocket;
 
+    [JsonPropertyName("IsConnected")]
     public new bool IsConnected => _webSocket != null && _webSocket.State == WebSocketState.Open;
+
+    public WebSocketConnection() { } // for json deserialization
 
     public WebSocketConnection(WebSocket webSocket, string connectionId, AuthDetails? authDetails)
     {
