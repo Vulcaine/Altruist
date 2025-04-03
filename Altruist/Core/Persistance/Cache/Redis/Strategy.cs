@@ -125,7 +125,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
 
         _services.AddSingleton<RedisCacheProvider>();
         _services.AddSingleton<ICacheProvider>(sp => sp.GetRequiredService<RedisCacheProvider>());
-        _services.AddSingleton<IAltruistRedisProvider>(sp => sp.GetRequiredService<RedisCacheProvider>());
+        _services.AddSingleton<IRedisCacheProvider>(sp => sp.GetRequiredService<RedisCacheProvider>());
 
         _services.AddSingleton<RedisConnectionService>();
         _services.AddSingleton<IConnectionStore, RedisConnectionService>(sp => sp.GetRequiredService<RedisConnectionService>());

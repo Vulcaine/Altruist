@@ -106,7 +106,6 @@ public sealed class WebSocketTransportToken : ITransportServiceToken
     public string Description => "📡 Transport: WebSocket";
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connection" })]
 public sealed class CachedWebSocketConnection : Connection
 {
     [JsonIgnore]
@@ -169,7 +168,7 @@ public sealed class WebSocketConnection : Connection
     private readonly WebSocket? _webSocket;
 
     [JsonPropertyName("IsConnected")]
-    public new bool IsConnected => _webSocket != null && _webSocket.State == WebSocketState.Open;
+    public override bool IsConnected => _webSocket != null && _webSocket.State == WebSocketState.Open;
 
     public WebSocketConnection() { } // for json deserialization
 

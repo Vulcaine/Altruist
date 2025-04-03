@@ -17,7 +17,7 @@ public interface IConnection : IModel
     bool IsConnected { get; }
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connections" })]
+// [Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connections" })]
 public class Connection : IConnection
 {
     [JsonIgnore] // Not serialized
@@ -32,7 +32,7 @@ public class Connection : IConnection
     public string ConnectionId { get; set; } = string.Empty;
 
     [JsonPropertyName("IsConnected")]
-    public bool IsConnected { get; set; }
+    public virtual bool IsConnected { get; set; }
 
     [JsonPropertyName("LastActivity")]
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;

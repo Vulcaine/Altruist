@@ -97,7 +97,6 @@ public sealed class TcpTransport : ITransport
     }
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connection" })]
 public sealed class CachedTcpConnection : Connection
 {
     [JsonIgnore]

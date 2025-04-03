@@ -2,14 +2,12 @@ using System.Text.Json.Serialization;
 using Altruist;
 using MessagePack;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
-using Redis.OM.Modeling;
 
 namespace Altruist
 {
     // === Base Interfaces ===
     public interface IPacket : IModel
     {
-        string Type { get; }
     }
 
     public interface IPacketBase : IPacket
@@ -150,7 +148,9 @@ namespace Altruist
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("message")][Key(1)] public string Message { get; set; }
-        [JsonPropertyName("message")][Key(2)] public string SuccessType { get; set; }
+        [JsonPropertyName("successType")][Key(2)] public string SuccessType { get; set; }
+
+        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "SuccessMessage";
 
         public SuccessPacket()
         {
@@ -166,7 +166,7 @@ namespace Altruist
             SuccessType = successType;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "SuccessMessage";
+
 
 
     }
@@ -372,7 +372,7 @@ namespace Altruist
     }
 
     [MessagePackObject]
-    [Document(StorageType = StorageType.Json, IndexName = "rooms", Prefixes = new[] { "room" })]
+    // [Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connections" })]
     public class RoomPacket : IPacketBase
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }

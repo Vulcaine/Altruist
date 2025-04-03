@@ -86,18 +86,12 @@ public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
     }
 }
 
-
-public interface IAltruistRedisProvider : IExternalCacheProvider
-{
-
-}
-
 public interface IAltruistRedisConnectionProvider : IConnectionStore
 {
     RedisResult ScriptEvaluate(string script, RedisKey[]? keys = null, RedisValue[]? values = null, CommandFlags flags = CommandFlags.None);
 }
 
-public sealed class RedisCacheProvider : IAltruistRedisProvider
+public sealed class RedisCacheProvider : IRedisCacheProvider
 {
     private readonly IDatabase _redis;
     private readonly Dictionary<Type, RedisDocument> _documents = new();
@@ -162,7 +156,7 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
 
         while (reader.Read())
         {
-            if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals("Type"))
+            if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals(document.TypePropertyName))
             {
                 reader.Read();
                 typeInfo = reader.GetString();
@@ -170,8 +164,13 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
             }
         }
 
+        if (typeInfo == null)
+        {
+            throw new TypeAccessException("Cannot deserialize redis data. Could not find type info for document " + typeof(T).Name + ". Make sure your model contains Type property. The type property we found in model: " + document.TypePropertyName);
+        }
+
         if (typeInfo == null || !_typeLookup.TryGetValue(typeInfo, out var typeDoc))
-            return default;
+            throw new TypeAccessException("Cannot deserialize redis data. Could not find document for type " + typeInfo + ". Make sure it is registered.");
 
         return (T)JsonSerializer.Deserialize(jsonSpan, typeDoc.Type)!;
     }
@@ -255,11 +254,9 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
 
     public async Task ClearAllAsync()
     {
-        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
-
         foreach (var document in _documents.Values)
         {
-            var keys = server.Keys(pattern: $"{document.Name}:*").ToArray();
+            var keys = (await Keys($"{document.Name}:*")).ToArray();
             if (keys.Length > 0)
             {
                 await _redis.KeyDeleteAsync(keys);
@@ -272,6 +269,27 @@ public sealed class RedisCacheProvider : IAltruistRedisProvider
         var document = GetDocumentOrFail<T>();
         await _redis.KeyDeleteAsync($"{document.Name}:{key}");
     }
+
+    public async Task<IEnumerable<RedisKey>> Keys(string pattern)
+    {
+        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
+
+        var keys = new List<RedisKey>();
+
+        await foreach (var key in server.KeysAsync(pattern: pattern))
+        {
+            keys.Add(key);
+        }
+
+        return keys;
+    }
+
+
+    public async Task<IEnumerable<RedisKey>> KeysAsync<T>() where T : notnull
+    {
+        var document = GetDocumentOrFail<T>();
+        return await Keys(pattern: $"{document.Name}:*");
+    }
 }
 
 
@@ -279,7 +297,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
 {
     private readonly RedisCacheProvider _cache;
     private readonly IDatabase _redis;
-    private const string RoomPrefix = "room:";
+    // private const string RoomPrefix = "room:";
 
     public RedisConnectionService(IConnectionMultiplexer redis,
         IMemoryCacheProvider memoryCache,
@@ -329,12 +347,11 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
 
         if (!string.IsNullOrEmpty(roomId))
         {
-            var roomKey = $"{RoomPrefix}{roomId}";
-            var existingRoom = await _cache.GetAsync<RoomPacket>(roomKey);
+            var existingRoom = await _cache.GetAsync<RoomPacket>(roomId);
             if (existingRoom != null)
             {
                 existingRoom.ConnectionIds.Add(connectionId);
-                await _cache.SaveAsync(roomKey, existingRoom);
+                await _cache.SaveAsync(roomId, existingRoom);
                 return true;
             }
             else
@@ -350,9 +367,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
     {
         await base.RemoveConnectionAsync(connectionId);
         await _cache.RemoveAndForgetAsync<Connection>(connectionId);
-
-        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
-        var roomKeys = server.Keys(pattern: $"{RoomPrefix}*");
+        var roomKeys = (await _cache.KeysAsync<RoomPacket>()).ToArray();
 
         foreach (var roomKey in roomKeys)
         {
@@ -378,8 +393,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
     public override async Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
     {
         var rooms = new Dictionary<string, RoomPacket>();
-        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
-        var roomKeys = server.Keys(pattern: $"{RoomPrefix}*");
+        var roomKeys = await _cache.KeysAsync<RoomPacket>();
 
         foreach (var key in roomKeys)
         {
@@ -395,8 +409,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
 
     public override async Task<RoomPacket> FindAvailableRoomAsync()
     {
-        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints()[0]);
-        var roomKeys = server.Keys(pattern: $"{RoomPrefix}*");
+        var roomKeys = await _cache.KeysAsync<RoomPacket>();
 
         foreach (var roomKey in roomKeys)
         {
@@ -413,13 +426,13 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
     public override async Task<RoomPacket> CreateRoomAsync()
     {
         var newRoom = await base.CreateRoomAsync();
-        await _cache.SaveAsync($"{RoomPrefix}{newRoom.Id}", newRoom);
+        await _cache.SaveAsync(newRoom.Id, newRoom);
         return newRoom;
     }
 
     public override async Task SaveRoomAsync(RoomPacket roomPacket)
     {
-        await _cache.SaveAsync($"{RoomPrefix}{roomPacket.Id}", roomPacket);
+        await _cache.SaveAsync(roomPacket.Id, roomPacket);
     }
 
     public override async Task DeleteRoomAsync(string roomId)

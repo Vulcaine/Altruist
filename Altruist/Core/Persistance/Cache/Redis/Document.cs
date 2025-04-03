@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json.Serialization;
 using Altruist.UORM;
 using StackExchange.Redis;
 
@@ -43,11 +44,14 @@ public class RedisDocument
     public string Name { get; set; }
     public List<string> Indexes { get; set; } = new();
 
+    public string TypePropertyName;
+
     public RedisDocument(Type type, string name, List<string> indexes)
     {
         Type = type;
         Name = name;
         Indexes = indexes;
+        TypePropertyName = "";
         Validate();
     }
 
@@ -56,6 +60,22 @@ public class RedisDocument
         if (!typeof(IModel).IsAssignableFrom(Type))
         {
             throw new InvalidOperationException($"The type {Type.FullName} must implement IModel.");
+        }
+
+        var typeProperty = Type.GetProperty("Type");
+        if (typeProperty == null)
+        {
+            throw new InvalidOperationException($"The type {Type.FullName} must have a 'Type' property.");
+        }
+
+        var jsonPropertyNameAttr = typeProperty.GetCustomAttribute<JsonPropertyNameAttribute>();
+        if (jsonPropertyNameAttr != null)
+        {
+            TypePropertyName = jsonPropertyNameAttr.Name;
+        }
+        else
+        {
+            TypePropertyName = "Type";
         }
     }
 }

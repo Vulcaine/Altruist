@@ -1,3 +1,5 @@
+using StackExchange.Redis;
+
 namespace Altruist;
 
 public interface ICursor<T> where T : notnull
@@ -93,8 +95,14 @@ public interface ICacheProvider
     /// </summary>
     /// <returns>A task representing the asynchronous clear operation.</returns>
     Task ClearAllAsync();
+
 }
 
+
+public interface IRedisCacheProvider : IExternalCacheProvider
+{
+    Task<IEnumerable<RedisKey>> KeysAsync<T>() where T : notnull;
+}
 
 public interface IExternalCacheProvider : ICacheProvider
 {

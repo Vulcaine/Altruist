@@ -111,8 +111,6 @@ public sealed class UdpTransport : ITransport
     }
 }
 
-
-[Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connection" })]
 public sealed class CachedUdpConnection : Connection
 {
     [JsonIgnore]
