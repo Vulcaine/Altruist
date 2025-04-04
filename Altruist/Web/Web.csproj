@@ -8,6 +8,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>Altruist.Web</PackageId>
+    <Description>Web module for Altruist framework.</Description>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

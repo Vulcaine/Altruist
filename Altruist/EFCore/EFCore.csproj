@@ -8,6 +8,13 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>Altruist.EFCore</PackageId>
+    <Description>EFCore module for Altruist framework.</Description>
+    <Version>1.0.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Altruist" Version="1.0.0" />
+  </ItemGroup>
 
 </Project>

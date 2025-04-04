@@ -1,3 +1,5 @@
+using Altruist.Codec;
+
 namespace Altruist;
 
 public interface IPortalContext : IConnectionStore

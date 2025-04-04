@@ -1,7 +1,3 @@
-using System.Linq.Expressions;
-using Altruist.ScyllaDB;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Query;
 
 namespace Altruist.EFCore;
 
