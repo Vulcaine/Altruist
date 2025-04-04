@@ -1,4 +1,3 @@
-using Redis.OM.Modeling;
 using Altruist.Networking;
 using Newtonsoft.Json;
 using Altruist.UORM;
@@ -6,35 +5,30 @@ using MessagePack;
 
 namespace Altruist;
 
-[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("player")]
 [PrimaryKey(keys: [nameof(Id), nameof(Name)])]
 [MessagePackObject]
 public class PlayerEntity : ISynchronizedEntity, IVaultModel
 {
     [Key(0)]
-    [Indexed]
     [JsonProperty("id")]
     [Column]
 
     public string Id { get; set; }
 
     [Key(1)]
-    [Indexed]
     [Synced(0, SyncAlways: true)]
     [JsonProperty("connectionId")]
     [Column]
     public string ConnectionId { get; set; }
 
     [Key(2)]
-    [Indexed]
     [Synced(1, SyncAlways: true)]
     [JsonProperty("name")]
     [Column]
     public string Name { get; set; }
 
     [Key(3)]
-    [Indexed]
     [Synced(2, SyncAlways: true)]
     [JsonProperty("type")]
     [Column]
@@ -143,8 +137,6 @@ public class PlayerEntity : ISynchronizedEntity, IVaultModel
     }
 }
 
-
-[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("vehicles")]
 public abstract class Vehicle : PlayerEntity
 {
@@ -194,13 +186,11 @@ public abstract class Vehicle : PlayerEntity
     }
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("Spaceship")]
 public class Spaceship : Vehicle
 {
 }
 
-[Document(StorageType = StorageType.Json, IndexName = "players", Prefixes = new[] { "player" })]
 [Table("Car")]
 public class Car : Vehicle
 {

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using Altruist.Codec;
 using Altruist.Contracts;
 using Altruist.Database;
 using Altruist.InMemory;

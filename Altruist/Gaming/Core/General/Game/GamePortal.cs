@@ -12,7 +12,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         _playerService = context.GetPlayerService<TPlayerEntity>();
     }
 
-    [Gate(IngressEP.HANDSHAKE)]
+    [Gate(IngressEP.Handshake)]
     public async virtual Task HandshakeAsync(HandshakePacket message, string clientId)
     {
         var rooms = await GetAllRoomsAsync();
@@ -20,7 +20,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         await Router.Client.SendAsync(clientId, responsePacket);
     }
 
-    [Gate(IngressEP.LEAVE_GAME)]
+    [Gate(IngressEP.LeaveGame)]
     public async virtual Task ExitGameAsync(LeaveGamePacket message, string clientId)
     {
         var player = await _playerService.GetPlayerAsync(clientId);
@@ -46,7 +46,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         }
     }
 
-    [Gate(IngressEP.JOIN_GAME)]
+    [Gate(IngressEP.JoinGame)]
     public async virtual Task JoinGameAsync(JoinGamePacket message, string clientId)
     {
         if (string.IsNullOrEmpty(message.Name))

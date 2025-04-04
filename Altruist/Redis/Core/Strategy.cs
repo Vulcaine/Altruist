@@ -1,7 +1,6 @@
 using Altruist.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Redis.OM;
 using StackExchange.Redis;
 
 namespace Altruist.Redis;

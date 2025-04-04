@@ -22,7 +22,7 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
 
     public IDatabaseServiceToken Token { get; }
 
-    internal KeyspaceSetup(IServiceCollection services, TKeyspace instance, IDatabaseServiceToken token)
+    public KeyspaceSetup(IServiceCollection services, TKeyspace instance, IDatabaseServiceToken token)
     {
         Services = services;
         Instance = instance;

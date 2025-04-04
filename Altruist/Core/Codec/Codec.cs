@@ -1,6 +1,7 @@
 using System.Text.Json;
-using Altruist;
 using MessagePack;
+
+namespace Altruist.Codec;
 
 public class JsonMessageEncoder : IEncoder
 {

@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc.Abstractions;
-using Redis.OM.Modeling;
 using System.Text.Json.Serialization;
 
 namespace Altruist.Web;

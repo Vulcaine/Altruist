@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Transport;
 
-public class RelayPortal : Portal
+public abstract class RelayPortal : Portal
 {
     private ICodec Codec { get; }
 

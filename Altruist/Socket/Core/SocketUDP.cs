@@ -10,7 +10,6 @@ using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Redis.OM.Modeling;
 
 namespace Altruist.Socket;
 

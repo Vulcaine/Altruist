@@ -2,7 +2,6 @@ using System.Collections;
 using Altruist.Socket;
 using Altruist.Web;
 using Microsoft.Extensions.Logging;
-using Redis.OM;
 using StackExchange.Redis;
 using System.Text.Json;
 using System.Text;

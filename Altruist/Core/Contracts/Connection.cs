@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using Altruist.Authentication;
-using Redis.OM.Modeling;
 
 namespace Altruist;
 
@@ -27,7 +26,6 @@ public class Connection : IConnection
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string Type => GetType().Name;
 
-    [Indexed]
     [JsonPropertyName("ConnectionId")]
     public string ConnectionId { get; set; } = string.Empty;
 
