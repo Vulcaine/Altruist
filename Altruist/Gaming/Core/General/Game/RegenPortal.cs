@@ -16,7 +16,7 @@ namespace Altruist.Gaming;
 /// to the players, ensuring they receive the latest changes immediately. 
 /// 
 /// It is designed to be used as a base class for more specific game systems that involve regeneration
-/// mechanics. Derived classes are expected to implement the <see cref="CalculateRegen"/> method to 
+/// mechanics. Derived classes are expected to implement the <see cref="CalculateRegenOneFrame"/> method to 
 /// define the actual regeneration logic and the list of players to be updated.
 /// </remarks>
 public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
@@ -35,14 +35,14 @@ public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TP
     /// </summary>
     /// <remarks>
     /// This method calculates the regeneration for players (such as health, mana, or other attributes),
-    /// and sends updates to the players through real-time communication. The method uses the <see cref="CalculateRegen"/>
+    /// and sends updates to the players through real-time communication. The method uses the <see cref="CalculateRegenOneFrame"/>
     /// method to retrieve the players requiring updates, and then synchronizes the updates via the router to 
     /// ensure the changes are sent to the players in real-time.
     /// </remarks>
     [Cycle()]
     public async virtual Task Regen()
     {
-        var players = await CalculateRegen();
+        var players = await CalculateRegenOneFrame();
         var tasks = players.Select(Router.Synchronize.SendAsync).ToList();
         await Task.WhenAll(tasks);
     }
@@ -60,6 +60,6 @@ public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TP
     /// regeneration state has been updated. The returned list will be used by the calling method 
     /// (e.g., <see cref="Regen()"/>) to synchronize or send updates to those players.
     /// </remarks>
-    public abstract Task<List<TPlayerEntity>> CalculateRegen();
+    public abstract Task<List<TPlayerEntity>> CalculateRegenOneFrame();
 }
 
