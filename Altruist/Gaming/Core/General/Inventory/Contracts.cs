@@ -22,7 +22,7 @@ public interface IItemStoreService
         short count = 1
     );
 
-    Task<ItemStorage?> FindStorageAsync(string storageId);
+    Task<ItemStorageProvider?> FindStorageAsync(string storageId);
 
     Task SortStorageAsync(string storageId); // Optional, for InventorySortPacket
 }

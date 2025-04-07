@@ -8,28 +8,25 @@ namespace Altruist.Gaming;
 /// such as picking up, moving, dropping, and sorting items.
 /// </summary>
 /// <typeparam name="TPlayerEntity">The type of the player entity associated with the inventory. Must inherit from PlayerEntity.</typeparam>
-public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
+public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
 {
     /// <summary>
     /// The inventory service used to handle inventory operations like adding, moving, and removing items.
     /// </summary>
     protected readonly IItemStoreService _itemStoreService;
 
-    /// <summary>
-    /// Used to optimize item storage in the world
-    /// </summary>
-    private readonly World _world;
+    protected readonly GameWorld _world;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="AltruistInventoryPortal{TPlayerEntity}"/> class.
+    /// Initializes a new instance of the <see cref="AltruistItemPortal{TPlayerEntity}"/> class.
     /// </summary>
     /// <param name="context">The portal context, providing access to the current routing and cache systems.</param>
     /// <param name="itemStoreService">The inventory service that interacts with the inventory system.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
-    protected AltruistInventoryPortal(IPortalContext context, World world, IItemStoreService itemStoreService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistItemPortal(IPortalContext context, IItemStoreService itemStoreService, GameWorld gameWorld, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
         _itemStoreService = itemStoreService;
-        _world = world;
+        _world = gameWorld;
     }
 
     [Gate("destroy-item")]
@@ -67,7 +64,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
         await _itemStoreService.MoveItemAsync(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
         var playerRoom = await FindRoomForClientAsync(clientId);
 
-        // Notify all players, all clients must remove picked up items from the world.
+        // Notify all players, all clients must remove picked up items from the ground.
         if (playerRoom != null)
         {
             var updatedPacket = packet;

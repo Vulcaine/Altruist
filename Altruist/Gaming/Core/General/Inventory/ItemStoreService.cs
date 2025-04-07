@@ -11,10 +11,10 @@ public class ItemStoreService : IItemStoreService
 
     private string GetStorageKey(string storageId) => $"storage:{storageId}";
 
-    public async Task<ItemStorage?> FindStorageAsync(string storageId)
+    public async Task<ItemStorageProvider?> FindStorageAsync(string storageId)
     {
         var key = GetStorageKey(storageId);
-        var storage = await _cache.GetAsync<ItemStorage>(key);
+        var storage = await _cache.GetAsync<ItemStorageProvider>(key);
         if (storage == null)
         {
             return null;

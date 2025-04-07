@@ -6,10 +6,12 @@ namespace Altruist.Gaming;
 public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
 {
     protected readonly IPlayerService<TPlayerEntity> _playerService;
+    protected readonly GameWorld _world;
 
-    protected AltruistGamePortal(IPortalContext context, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistGamePortal(IPortalContext context, GameWorld gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
         _playerService = playerService;
+        _world = gameWorld;
     }
 
     [Gate(IngressEP.Handshake)]
