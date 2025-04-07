@@ -14,6 +14,10 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     /// The inventory service used to handle inventory operations like adding, moving, and removing items.
     /// </summary>
     protected readonly IItemStoreService _itemStoreService;
+
+    /// <summary>
+    /// Used to optimize item storage in the world
+    /// </summary>
     private readonly World _world;
 
     /// <summary>
@@ -26,6 +30,27 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     {
         _itemStoreService = itemStoreService;
         _world = world;
+    }
+
+    [Gate("destroy-item")]
+    public virtual async void DestroyItem(ItemRemovePacket packet, string clientId)
+    {
+        await _itemStoreService.RemoveItemAsync(packet.SlotKey);
+        var updatedPacket = packet;
+        if (packet.SlotKey.Id == "ground")
+        {
+            updatedPacket.Header = new PacketHeader("server");
+            var playerRoom = await FindRoomForClientAsync(clientId);
+            if (playerRoom != null)
+            {
+                _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
+            }
+        }
+        else
+        {
+            updatedPacket.Header = new PacketHeader("server", clientId);
+            _ = Router.Client.SendAsync(clientId, updatedPacket);
+        }
     }
 
     /// <summary>
@@ -62,28 +87,21 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     {
         await _itemStoreService.MoveItemAsync(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
         var updatedPacket = packet;
-        updatedPacket.Header = new PacketHeader("server", clientId);
-        _ = Router.Client.SendAsync(clientId, updatedPacket);
-    }
 
-    /// <summary>
-    /// Handles the "drop-item" request by removing an item from the player's inventory and adding it to the world.
-    /// The method updates the inventory and informs other players in the room about the dropped item.
-    /// </summary>
-    /// <param name="packet">The packet containing information about the item to be dropped.</param>
-    /// <param name="clientId">The unique identifier of the client making the request.</param>
-    [Gate("drop-item")]
-    public virtual async void DropItem(ItemRemovePacket packet, string clientId)
-    {
-        await _itemStoreService.RemoveItemAsync(packet.SlotKey);
-
-        // Notify all players, all clients must add dropped items to the world.
-        var playerRoom = await FindRoomForClientAsync(clientId);
-        if (playerRoom != null)
+        // if target is ground, we are dropping the item, should notify everyone around
+        if (packet.TargetSlotKey.Id == "ground")
         {
-            var updatedPacket = packet;
             updatedPacket.Header = new PacketHeader("server");
-            _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
+            var playerRoom = await FindRoomForClientAsync(clientId);
+            if (playerRoom != null)
+            {
+                _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
+            }
+        }
+        else
+        {
+            updatedPacket.Header = new PacketHeader("server", clientId);
+            _ = Router.Client.SendAsync(clientId, updatedPacket);
         }
     }
 

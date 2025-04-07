@@ -22,11 +22,6 @@ public interface IItemStoreService
         short count = 1
     );
 
-    Task UseItemAsync(
-        SlotKey slot,
-        long itemId
-    );
-
     Task<ItemStorage?> FindStorageAsync(string storageId);
 
     Task SortStorageAsync(string storageId); // Optional, for InventorySortPacket

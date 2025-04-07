@@ -1,6 +1,3 @@
-using Altruist.Database;
-using Microsoft.VisualBasic;
-
 namespace Altruist.Gaming;
 
 public class ItemStorage
@@ -21,34 +18,14 @@ public class ItemStorage
         MaxHeight = maxHeight;
     }
 
-    // Returns the key for a slot based on its coordinates (x, y) and optional slotId
-    private SlotKey GetSlotKey(short x, short y, string slotId = "inventory") =>
-        new SlotKey(x, y, slotId, StorageId);
-
-    // Ensures that we do not exceed the storage capacity by checking the grid boundaries
-    private bool IsSlotAvailable(short x, short y, int width, int height, string slotId)
-    {
-        for (short i = x; i < x + width; i++)
-        {
-            for (short j = y; j < y + height; j++)
-            {
-                if (i >= MaxWidth || j >= MaxHeight || SlotMap.ContainsKey(GetSlotKey(i, j, slotId)))
-                {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     /// <summary>
     /// Finds an item by its id.
     /// </summary>
     /// <param name="itemId">The id of the item to find.</param>
     /// <returns>The item with the given id if it exists, null otherwise.</returns>
-    public async Task<InventoryItem?> FindItemAsync(long itemId)
+    public async Task<StorageItem?> FindItemAsync(long itemId)
     {
-        return await _cache.GetAsync<InventoryItem>($"item:{StorageId}:{itemId}");
+        return await _cache.GetAsync<StorageItem>($"item:{StorageId}:{itemId}");
     }
 
     /// <summary>
@@ -89,7 +66,7 @@ public class ItemStorage
     /// <param name="itemCount">The number of items to add to the storage.</param>
     /// <param name="slotId">The slotId of the storage to add the item to. Defaults to "inventory".</param>
     /// <returns>true if the item was successfully added, false otherwise.</returns>
-    public bool AddItemAsync(InventoryItem item, short itemCount, string slotId)
+    public bool AddItem(StorageItem item, short itemCount, string slotId)
     {
         for (short y = 0; y <= MaxHeight - item.Height; y++)
         {
@@ -125,7 +102,7 @@ public class ItemStorage
         return false;
     }
 
-    private void PlaceItemAt(SlotKey key, InventoryItem item, short itemCount)
+    private void PlaceItemAt(SlotKey key, StorageItem item, short itemCount)
     {
         var startX = key.X;
         var startY = key.Y;
@@ -171,16 +148,6 @@ public class ItemStorage
         return true;
     }
 
-    // public StorageSlot? RemoveItemAsync(SlotKey slotKey, short count = 1)
-    // {
-    //     if (SlotMap.TryGetValue(slotKey, out var slot))
-    //     {
-    //         return RemoveItemAsync(slotKey, count);
-    //     }
-
-    //     return null;
-    // }
-
     /// <summary>
     /// Removes the specified number of items from the slot at the given coordinates in the given storage.
     /// If the item count reaches zero, the item is removed from the storage.
@@ -190,9 +157,8 @@ public class ItemStorage
     /// <param name="slotId">The slotId of the storage to remove the item from. Defaults to "inventory".</param>
     /// <param name="count">The number of items to remove. Defaults to 1.</param>
     /// <returns>true if the item was successfully removed, false otherwise.</returns>
-    public StorageSlot? RemoveItemAsync(SlotKey key, short count = 1)
+    public StorageSlot? RemoveItem(SlotKey key, short count = 1)
     {
-        // string key = GetSlotKey(x, y, slotId);
         var slot = SlotMap.GetValueOrDefault(key);
         if (slot == null || slot.ItemCount < count)
         {
@@ -227,6 +193,11 @@ public class ItemStorage
         var item = await FindItemAsync(itemId);
         if (item == null)
             return false;
+
+        if (!CanFitAt(toSlotKey, item.Width, item.Height))
+        {
+            return false;
+        }
 
         if (!SlotMap.TryGetValue(fromSlotKey, out var fromSlot) || !SlotMap.TryGetValue(toSlotKey, out var toSlot))
             return false;

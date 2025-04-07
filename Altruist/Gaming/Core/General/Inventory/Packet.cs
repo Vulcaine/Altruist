@@ -3,6 +3,63 @@ using MessagePack;
 
 namespace Altruist.Gaming;
 
+[MessagePackObject]
+public struct SlotKey
+{
+    [Key(0)][JsonPropertyName("type")] public string Type = "SlotKey";
+    [Key(1)][JsonPropertyName("x")] public short X;
+    [Key(2)][JsonPropertyName("y")] public short Y;
+    [Key(3)][JsonPropertyName("id")] public string Id;
+    [Key(4)][JsonPropertyName("storageId")] public string StorageId;
+
+    public SlotKey(short x, short y, string id = "inventory", string storageId = "inventory")
+    {
+        Id = id;
+        X = x;
+        Y = y;
+        StorageId = storageId;
+    }
+
+    public string ToKey()
+    {
+        return $"slot:{StorageId}:{Id}:{X}:{Y}";
+    }
+}
+
+[MessagePackObject]
+public struct ItemDropPacket : IPacketBase
+{
+    /// <summary>Packet routing header.</summary>
+    [JsonPropertyName("header")]
+    [Key(0)]
+    public PacketHeader Header { get; set; }
+
+    [JsonPropertyName("itemId")]
+    [Key(1)]
+    public long ItemId { get; set; }
+
+    [JsonPropertyName("properties")]
+    [Key(2)]
+    public int[] Properties { get; set; }
+
+    /// <summary>Type identifier of the packet.</summary>
+    [JsonPropertyName("type")]
+    [Key(3)]
+    public string Type { get; set; } = "ItemDropPacket";
+
+    public ItemDropPacket()
+    {
+        Properties = Array.Empty<int>();
+    }
+
+    public ItemDropPacket(string sender, long itemId, int[] properties, string? receiver = null)
+    {
+        Header = new PacketHeader(sender, receiver);
+        ItemId = itemId;
+        Properties = properties;
+    }
+}
+
 /// <summary>
 /// Removes an item from the specified storage location, either via grid coordinates or slot ID.
 /// </summary>
@@ -215,34 +272,6 @@ public struct InventorySortPacket : IPacketBase
     public InventorySortPacket(string sender, string storageId, string? receiver = null)
     {
         StorageId = storageId;
-        Header = new PacketHeader(sender, receiver);
-    }
-}
-
-/// <summary>
-/// Packet sent to request using an item from a specific storage (e.g., inventory, bank).
-/// </summary>
-[MessagePackObject]
-public struct UseItemPacket : IPacketBase
-{
-    [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
-
-    /// <summary>
-    /// Storage the item is located in, e.g., "inventory", "bank", "equipment".
-    /// </summary>
-    [JsonPropertyName("storageId")][Key(1)] public string StorageId { get; set; }
-
-    /// <summary>
-    /// Unique item identifier to be used.
-    /// </summary>
-    [JsonPropertyName("itemId")][Key(2)] public long ItemId { get; set; }
-
-    [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "UseItemPacket";
-
-    public UseItemPacket(string sender, string storageId, long itemId, string? receiver = null)
-    {
-        StorageId = storageId;
-        ItemId = itemId;
         Header = new PacketHeader(sender, receiver);
     }
 }

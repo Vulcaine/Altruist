@@ -1,6 +1,5 @@
 namespace Altruist.Gaming;
 
-
 public class ItemStoreService : IItemStoreService
 {
     private readonly ICacheProvider _cache;
@@ -11,9 +10,6 @@ public class ItemStoreService : IItemStoreService
     }
 
     private string GetStorageKey(string storageId) => $"storage:{storageId}";
-    private SlotKey GetSlotKey(short x, short y, string slotId = "inventory", string storageId = "inventory") => new SlotKey(
-        x, y, slotId, storageId
-    );
 
     public async Task<ItemStorage?> FindStorageAsync(string storageId)
     {
@@ -42,7 +38,7 @@ public class ItemStoreService : IItemStoreService
             ItemCount = itemCount
         };
 
-        await _cache.SaveAsync(GetStorageKey(slotKey.StorageId), storage);
+        await storage.SaveAsync();
     }
 
     public async Task MoveItemAsync(
@@ -57,7 +53,7 @@ public class ItemStoreService : IItemStoreService
         if (sourceStorage == null || targetStorage == null)
             return;
 
-        var sourceSlot = sourceStorage.RemoveItemAsync(fromSlotKey, count);
+        var sourceSlot = sourceStorage.RemoveItem(fromSlotKey, count);
         if (sourceSlot != null && Equals(fromSlotKey, toSlotKey))
         {
             // Move within same storage
@@ -77,19 +73,9 @@ public class ItemStoreService : IItemStoreService
         var storage = await FindStorageAsync(slotKey.StorageId);
         if (storage == null)
             return null;
-        return storage.RemoveItemAsync(slotKey, count);
-    }
-
-    public async Task UseItemAsync(SlotKey slot, long itemId)
-    {
-        var storage = await FindStorageAsync(slot.StorageId);
-
-        if (storage == null)
-            return;
-
-        var kvp = storage.SlotMap.FirstOrDefault(kvp => kvp.Value.ItemId == itemId);
-        storage.SlotMap.Remove(kvp.Key);
-        await _cache.SaveAsync(GetStorageKey(slot.StorageId), storage);
+        var removed = storage.RemoveItem(slotKey, count);
+        await storage.SaveAsync();
+        return removed;
     }
 
     public async Task SortStorageAsync(string storageId)
