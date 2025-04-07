@@ -96,11 +96,6 @@ public class StorageItem : BasicItemProperties
     }
 }
 
-public class WorldStorageItem : StorageItem
-{
-    public (int X, int Y) WorldPosition { get; set; }
-}
-
 
 /// <summary>
 /// Represents a single grid slot in a storage. 

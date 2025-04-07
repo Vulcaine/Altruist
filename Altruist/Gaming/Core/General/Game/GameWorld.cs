@@ -66,9 +66,9 @@ public class GameWorldManager
         return partition;
     }
 
-    public void RemoveObject(ObjectTypeKey objectType, string instanceId)
+    public ObjectMetadata? RemoveObject(ObjectTypeKey objectType, string instanceId)
     {
-        _partitions.ForEach(p => p.RemoveObject(objectType, instanceId));
+        return _partitions.Select(p => p.RemoveObject(objectType, instanceId)).FirstOrDefault(m => m != null);
     }
 
     public List<string> GetNearbyObjectIds(ObjectTypeKey objectType, int x, int y, float radius)

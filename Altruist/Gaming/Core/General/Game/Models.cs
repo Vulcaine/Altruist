@@ -102,6 +102,7 @@ public record ObjectTypeKey(string Value);
 public static class ObjectTypeKeys
 {
     public static readonly ObjectTypeKey Client = new("client");
+    public static readonly ObjectTypeKey Item = new("item");
 }
 
 public class ObjectTypeMap
@@ -118,13 +119,17 @@ public class ObjectTypeMap
         set.Add(objectMetadata.ObjectId, objectMetadata);
     }
 
-    public void Remove(ObjectTypeKey type, string id)
+    public ObjectMetadata? Remove(ObjectTypeKey type, string id)
     {
         if (_data.TryGetValue(type, out var set))
         {
+            set.TryGetValue(id, out var metadata);
             set.Remove(id);
             if (set.Count == 0) _data.Remove(type);
+            return metadata;
         }
+
+        return null;
     }
 
     public HashSet<string> GetByType(ObjectTypeKey type) =>
@@ -152,9 +157,9 @@ public class Partition
         _objectMap.Add(objectType, objectMetadata);
     }
 
-    public void RemoveObject(ObjectTypeKey objectType, string id)
+    public ObjectMetadata? RemoveObject(ObjectTypeKey objectType, string id)
     {
-        _objectMap.Remove(objectType, id);
+        return _objectMap.Remove(objectType, id);
     }
 
     public HashSet<string> GetObjectIdsByType(ObjectTypeKey objectType)

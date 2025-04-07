@@ -38,16 +38,23 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
     public virtual async void DestroyItem(ItemRemovePacket packet, string clientId)
     {
         var removedItem = await _itemStoreService.RemoveItemAsync(packet.SlotKey);
-        var updatedPacket = packet;
-
-        if (packet.SlotKey.Id == "ground" && removedItem is WorldStorageItem worldStorageItem)
+        if (packet.SlotKey.Id == "ground" && removedItem != null)
         {
-            _ = SmartBroadcast(clientId, worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, updatedPacket);
+            var removedObject = _world.RemoveObject(ObjectTypeKeys.Item, removedItem.Id + "");
+            if (removedObject != null)
+            {
+                var destroyPacket = new DestroyObjectPacket("server", removedObject.ObjectId);
+                _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
+            }
+        }
+        else if (removedItem != null)
+        {
+            packet.Header = new PacketHeader("server", clientId);
+            _ = Router.Client.SendAsync(clientId, packet);
         }
         else
         {
-            updatedPacket.Header = new PacketHeader("server", clientId);
-            _ = Router.Client.SendAsync(clientId, updatedPacket);
+            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed("Item not found", packet.Type, clientId));
         }
     }
 
@@ -64,14 +71,18 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
         var toSlot = SlotKeys.GroundAnyPos;
         var movedItem = await _itemStoreService.MoveItemAsync(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
 
-        if (movedItem is WorldStorageItem worldStorageItem)
+        if (movedItem != null)
         {
-            _ = SmartBroadcast(clientId, worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, packet);
+            var removedObject = _world.RemoveObject(ObjectTypeKeys.Item, movedItem.Id + "");
+            if (removedObject != null)
+            {
+                var destroyPacket = new DestroyObjectPacket("server", removedObject.ObjectId);
+                _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
+            }
         }
         else
         {
-            packet.Header = new PacketHeader("server", clientId);
-            _ = Router.Client.SendAsync(clientId, packet);
+            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed("Item not found", packet.Type, clientId));
         }
     }
 
@@ -86,14 +97,23 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
     {
         var movedItem = await _itemStoreService.MoveItemAsync(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
 
-        if (packet.TargetSlotKey.Id == "ground" && movedItem is WorldStorageItem worldStorageItem)
+        if (movedItem != null && packet.TargetSlotKey.Id == "ground")
         {
-            BroadcastToNearbyClients(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, packet);
+            var removedObject = _world.RemoveObject(ObjectTypeKeys.Item, movedItem.Id + "");
+            if (removedObject != null)
+            {
+                var destroyPacket = new DestroyObjectPacket("server", removedObject.ObjectId);
+                _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
+            }
         }
-        else
+        else if (movedItem != null)
         {
             packet.Header = new PacketHeader("server", clientId);
             _ = Router.Client.SendAsync(clientId, packet);
+        }
+        else
+        {
+            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed("Item not found", packet.Type, clientId));
         }
     }
 
