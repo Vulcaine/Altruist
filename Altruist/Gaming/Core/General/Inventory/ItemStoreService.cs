@@ -14,12 +14,12 @@ public class ItemStoreService : IItemStoreService
     public async Task<ItemStorageProvider?> FindStorageAsync(string storageId)
     {
         var key = GetStorageKey(storageId);
-        var storage = await _cache.GetAsync<ItemStorageProvider>(key);
+        var storage = await _cache.GetAsync<ItemStorage>(key);
         if (storage == null)
         {
             return null;
         }
-        return storage;
+        return new ItemStorageProvider(storage.StorageId, storage.MaxWidth, storage.MaxHeight, _cache);
     }
 
     public async Task SetItemAsync(SlotKey slotKey, long itemId, short itemCount)
@@ -31,13 +31,7 @@ public class ItemStoreService : IItemStoreService
             return;
         }
 
-        storage.SlotMap[slotKey] = new StorageSlot
-        {
-            SlotKey = slotKey,
-            ItemId = itemId,
-            ItemCount = itemCount
-        };
-
+        await storage.SetItemAsync(itemId, itemCount, slotKey);
         await storage.SaveAsync();
     }
 
@@ -68,14 +62,14 @@ public class ItemStoreService : IItemStoreService
         await sourceStorage.SaveAsync();
     }
 
-    public async Task<StorageSlot?> RemoveItemAsync(SlotKey slotKey, short count = 1)
+    public async Task<StorageItem?> RemoveItemAsync(SlotKey slotKey, short count = 1)
     {
         var storage = await FindStorageAsync(slotKey.StorageId);
         if (storage == null)
             return null;
         var removed = storage.RemoveItem(slotKey, count);
         await storage.SaveAsync();
-        return removed;
+        return await storage.FindItemAsync(removed!.ItemId);
     }
 
     public async Task SortStorageAsync(string storageId)

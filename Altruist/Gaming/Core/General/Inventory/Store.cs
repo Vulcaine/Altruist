@@ -58,7 +58,7 @@ public class ItemStorageProvider
             return false;
 
         // If position is specified
-        if (!CanFitAt(slotKey, item.Width, item.Height))
+        if (!CanFitAt(slotKey, item.Size.Width, item.Size.Height))
             return false;
 
         PlaceItemAt(slotKey, item, itemCount);
@@ -77,18 +77,18 @@ public class ItemStorageProvider
     /// <returns>true if the item was successfully added, false otherwise.</returns>
     public bool AddItem(StorageItem item, short itemCount, string slotId)
     {
-        for (short y = 0; y <= _storage.MaxHeight - item.Height; y++)
+        for (short y = 0; y <= _storage.MaxHeight - item.Size.Height; y++)
         {
-            for (short x = 0; x <= _storage.MaxWidth - item.Width; x++)
+            for (short x = 0; x <= _storage.MaxWidth - item.Size.Width; x++)
             {
                 var atSlotKey = new SlotKey(x, y, slotId, _storage.StorageId);
-                if (!CanFitAt(atSlotKey, item.Width, item.Height))
+                if (!CanFitAt(atSlotKey, item.Size.Width, item.Size.Height))
                     continue;
 
                 // Reserve all the slots for the item
-                for (short dy = 0; dy < item.Height; dy++)
+                for (short dy = 0; dy < item.Size.Height; dy++)
                 {
-                    for (short dx = 0; dx < item.Width; dx++)
+                    for (short dx = 0; dx < item.Size.Width; dx++)
                     {
                         short slotX = (short)(x + dx);
                         short slotY = (short)(y + dy);
@@ -115,9 +115,9 @@ public class ItemStorageProvider
     {
         var startX = key.X;
         var startY = key.Y;
-        for (short dy = 0; dy < item.Height; dy++)
+        for (short dy = 0; dy < item.Size.Height; dy++)
         {
-            for (short dx = 0; dx < item.Width; dx++)
+            for (short dx = 0; dx < item.Size.Width; dx++)
             {
                 short x = (short)(startX + dx);
                 short y = (short)(startY + dy);
@@ -203,7 +203,7 @@ public class ItemStorageProvider
         if (item == null)
             return false;
 
-        if (!CanFitAt(toSlotKey, item.Width, item.Height))
+        if (!CanFitAt(toSlotKey, item.Size.Width, item.Size.Height))
         {
             return false;
         }

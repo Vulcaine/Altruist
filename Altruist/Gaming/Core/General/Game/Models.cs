@@ -99,6 +99,11 @@ public class ObjectMetadata
 
 public record ObjectTypeKey(string Value);
 
+public static class ObjectTypeKeys
+{
+    public static readonly ObjectTypeKey Client = new("client");
+}
+
 public class ObjectTypeMap
 {
     private readonly Dictionary<ObjectTypeKey, Dictionary<string, ObjectMetadata>> _data = new();

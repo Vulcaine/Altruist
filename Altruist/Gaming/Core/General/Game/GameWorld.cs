@@ -1,9 +1,7 @@
 
-using System.Runtime.CompilerServices;
-
 namespace Altruist.Gaming;
 
-public class GameWorld
+public class GameWorldManager
 {
     protected readonly WorldSettings _world;
     protected readonly List<Partition> _partitions;
@@ -12,7 +10,7 @@ public class GameWorld
     private readonly IWorldPartitioner _worldPartitioner;
     private readonly Dictionary<PartitionIndex, Partition> _partitionMap = new();
 
-    public GameWorld(WorldSettings world, IWorldPartitioner worldPartitioner, ICacheProvider cacheProvider)
+    public GameWorldManager(WorldSettings world, IWorldPartitioner worldPartitioner, ICacheProvider cacheProvider)
     {
         _world = world;
         _partitions = new List<Partition>();

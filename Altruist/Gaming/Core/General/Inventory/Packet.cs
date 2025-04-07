@@ -26,6 +26,13 @@ public struct SlotKey
     }
 }
 
+public static class SlotKeys
+{
+    public static SlotKey InventoryAnyPos = new SlotKey(-1, -1);
+    public static SlotKey GroundAnyPos = new SlotKey(-1, -1, "ground", "ground");
+}
+
+
 [MessagePackObject]
 public struct ItemDropPacket : IPacketBase
 {

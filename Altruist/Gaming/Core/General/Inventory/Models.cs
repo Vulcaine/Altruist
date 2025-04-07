@@ -8,46 +8,35 @@ public abstract class BasicItemProperties
     /// <summary>
     /// Number of units of this item. Typically used for stackable items like potions.
     /// </summary>
-    [JsonPropertyName("count")]
     public short Count { get; set; }
 
     /// <summary>
     /// Array of item-specific dynamic properties such as durability, charges, or enchantments.
     /// Size is determined during item creation.
     /// </summary>
-    [JsonPropertyName("properties")]
     public int[] Properties { get; set; }
 
     /// <summary>
     /// Category of the item, e.g., "weapon", "armor", "consumable".
     /// Used for filtering and sorting in UI and storage.
     /// </summary>
-    [JsonPropertyName("category")]
     public string Category { get; set; }
 
     /// <summary>
     /// Optional expiration date. Primarily used for consumables or timed buffs.
     /// </summary>
-    [JsonPropertyName("expiryDate")]
     public DateTime? ExpiryDate { get; set; }
 
     /// <summary>
     /// Indicates whether this item can be stacked with others of the same type.
     /// </summary>
-    [JsonPropertyName("stackable")]
     public bool Stackable { get; set; } = false;
 
     /// <summary>
-    /// Width of the item in inventory slots.
+    /// Size of the item in inventory slots.
     /// </summary>
-    [JsonPropertyName("width")]
-    public byte Width { get; set; }
+    public (byte Width, byte Height) Size { get; set; }
 
-    /// <summary>
-    /// Height of the item in inventory slots.
-    /// </summary>
-    [JsonPropertyName("height")]
-    public byte Height { get; set; }
 
     /// <summary>
     /// Constructs a new inventory item with customizable dimensions, category, and properties.
@@ -64,8 +53,7 @@ public abstract class BasicItemProperties
         Category = itemType;
         Stackable = isStackable;
         ExpiryDate = expiryDate;
-        Width = width;
-        Height = height;
+        Size = (width, height);
     }
 }
 
@@ -104,9 +92,13 @@ public class StorageItem : BasicItemProperties
         Category = itemType;
         Stackable = isStackable;
         ExpiryDate = expiryDate;
-        Width = width;
-        Height = height;
+        Size = (width, height);
     }
+}
+
+public class WorldStorageItem : StorageItem
+{
+    public (int X, int Y) WorldPosition { get; set; }
 }
 
 

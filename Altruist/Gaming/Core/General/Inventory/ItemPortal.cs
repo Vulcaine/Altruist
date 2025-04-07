@@ -15,7 +15,7 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
     /// </summary>
     protected readonly IItemStoreService _itemStoreService;
 
-    protected readonly GameWorld _world;
+    protected readonly GameWorldManager _world;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AltruistItemPortal{TPlayerEntity}"/> class.
@@ -23,7 +23,10 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
     /// <param name="context">The portal context, providing access to the current routing and cache systems.</param>
     /// <param name="itemStoreService">The inventory service that interacts with the inventory system.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
-    protected AltruistItemPortal(IPortalContext context, IItemStoreService itemStoreService, GameWorld gameWorld, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistItemPortal(IPortalContext context,
+        IItemStoreService itemStoreService,
+        GameWorldManager gameWorld,
+        ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
         _itemStoreService = itemStoreService;
         _world = gameWorld;
@@ -32,15 +35,22 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
     [Gate("destroy-item")]
     public virtual async void DestroyItem(ItemRemovePacket packet, string clientId)
     {
-        await _itemStoreService.RemoveItemAsync(packet.SlotKey);
+        var removedItem = await _itemStoreService.RemoveItemAsync(packet.SlotKey);
         var updatedPacket = packet;
         if (packet.SlotKey.Id == "ground")
         {
-            updatedPacket.Header = new PacketHeader("server");
-            var playerRoom = await FindRoomForClientAsync(clientId);
-            if (playerRoom != null)
+            if (removedItem is WorldStorageItem worldStorageItem)
             {
-                _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
+                var partitions = _world.FindPartitionsForPosition(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, 0);
+                updatedPacket.Header = PacketHeaders.Broadcast;
+                foreach (var partition in partitions)
+                {
+                    var clients = partition.GetObjectIdsByType(ObjectTypeKeys.Client);
+                    foreach (var client in clients)
+                    {
+                        _ = Router.Client.SendAsync(client, updatedPacket);
+                    }
+                }
             }
         }
         else
@@ -59,8 +69,8 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
     [Gate("pickup-item")]
     public virtual async void PickupItem(ItemPickUpPacket packet, string clientId)
     {
-        var fromSlot = new SlotKey(-1, -1, "ground", "ground");
-        var toSlot = new SlotKey(-1, -1, "inventory", "inventory");
+        var fromSlot = SlotKeys.InventoryAnyPos;
+        var toSlot = SlotKeys.GroundAnyPos;
         await _itemStoreService.MoveItemAsync(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
         var playerRoom = await FindRoomForClientAsync(clientId);
 
@@ -68,7 +78,7 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
         if (playerRoom != null)
         {
             var updatedPacket = packet;
-            updatedPacket.Header = new PacketHeader("server");
+            updatedPacket.Header = PacketHeaders.Broadcast;
             _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
         }
     }
@@ -88,7 +98,7 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
         // if target is ground, we are dropping the item, should notify everyone around
         if (packet.TargetSlotKey.Id == "ground")
         {
-            updatedPacket.Header = new PacketHeader("server");
+            updatedPacket.Header = PacketHeaders.Broadcast;
             var playerRoom = await FindRoomForClientAsync(clientId);
             if (playerRoom != null)
             {

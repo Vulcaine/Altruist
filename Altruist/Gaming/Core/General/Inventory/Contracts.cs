@@ -17,7 +17,7 @@ public interface IItemStoreService
         short count = 1
     );
 
-    Task<StorageSlot?> RemoveItemAsync(
+    Task<StorageItem?> RemoveItemAsync(
         SlotKey slotKey,
         short count = 1
     );
