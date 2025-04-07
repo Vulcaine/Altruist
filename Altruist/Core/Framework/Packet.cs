@@ -18,7 +18,7 @@ namespace Altruist
 
     public interface IPacketBase : IPacket
     {
-        PacketHeader Header { get; }
+        PacketHeader Header { get; set; }
 
         void SetReceiver(string clientId) => Header.SetReceiver(clientId);
     }

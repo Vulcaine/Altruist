@@ -2,12 +2,41 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
-
 public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
 {
-    protected readonly IPlayerService<TPlayerEntity> _playerService;
+    protected readonly GameWorldManager _world;
 
-    protected AltruistGamePortal(IPortalContext context, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistGamePortal(IPortalContext context, GameWorldManager gameWorld, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    {
+        _world = gameWorld;
+    }
+
+    /// <summary>
+    /// Broadcasts a packet to all clients in nearby partitions based on world position.
+    /// </summary>
+    /// <param name="x">The X coordinate in the world.</param>
+    /// <param name="y">The Y coordinate in the world.</param>
+    /// <param name="packet">The packet to be broadcasted.</param>
+    protected void BroadcastToNearbyClients(int x, int y, IPacketBase packet)
+    {
+        var partitions = _world.FindPartitionsForPosition(x, y, 0);
+        packet.Header = PacketHeaders.Broadcast;
+
+        foreach (var partition in partitions)
+        {
+            var clients = partition.GetObjectIdsByType(ObjectTypeKeys.Client);
+            foreach (var client in clients)
+            {
+                _ = Router.Client.SendAsync(client, packet);
+            }
+        }
+    }
+}
+
+public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
+{
+    protected readonly IPlayerService<TPlayerEntity> _playerService;
+    protected AltruistGameSessionPortal(IPortalContext context, GameWorldManager gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, loggerFactory)
     {
         _playerService = playerService;
     }
@@ -110,6 +139,4 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         await base.Cleanup();
         await _playerService.Cleanup();
     }
-
 }
-

@@ -35,7 +35,7 @@ public class ItemStoreService : IItemStoreService
         await storage.SaveAsync();
     }
 
-    public async Task MoveItemAsync(
+    public async Task<StorageItem?> MoveItemAsync(
      long itemId,
      SlotKey fromSlotKey,
      SlotKey toSlotKey,
@@ -45,7 +45,7 @@ public class ItemStoreService : IItemStoreService
         var sourceStorage = await FindStorageAsync(fromSlotKey.StorageId);
         var targetStorage = await FindStorageAsync(toSlotKey.StorageId);
         if (sourceStorage == null || targetStorage == null)
-            return;
+            return null;
 
         var sourceSlot = sourceStorage.RemoveItem(fromSlotKey, count);
         if (sourceSlot != null && Equals(fromSlotKey, toSlotKey))
@@ -60,6 +60,7 @@ public class ItemStoreService : IItemStoreService
         }
 
         await sourceStorage.SaveAsync();
+        return await targetStorage.FindItemAsync(itemId);
     }
 
     public async Task<StorageItem?> RemoveItemAsync(SlotKey slotKey, short count = 1)

@@ -8,14 +8,12 @@ namespace Altruist.Gaming;
 /// such as picking up, moving, dropping, and sorting items.
 /// </summary>
 /// <typeparam name="TPlayerEntity">The type of the player entity associated with the inventory. Must inherit from PlayerEntity.</typeparam>
-public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
+public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
     /// <summary>
     /// The inventory service used to handle inventory operations like adding, moving, and removing items.
     /// </summary>
     protected readonly IItemStoreService _itemStoreService;
-
-    protected readonly GameWorldManager _world;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AltruistItemPortal{TPlayerEntity}"/> class.
@@ -24,34 +22,27 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
     /// <param name="itemStoreService">The inventory service that interacts with the inventory system.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
     protected AltruistItemPortal(IPortalContext context,
-        IItemStoreService itemStoreService,
         GameWorldManager gameWorld,
-        ILoggerFactory loggerFactory) : base(context, loggerFactory)
+        IItemStoreService itemStoreService,
+        ILoggerFactory loggerFactory) : base(context, gameWorld, loggerFactory)
     {
         _itemStoreService = itemStoreService;
-        _world = gameWorld;
     }
 
+    /// <summary>
+    /// Handles the "destroy-item" request by removing an item and notifying nearby clients if necessary.
+    /// </summary>
+    /// <param name="packet">The packet representing the item to remove.</param>
+    /// <param name="clientId">The client initiating the request.</param>
     [Gate("destroy-item")]
     public virtual async void DestroyItem(ItemRemovePacket packet, string clientId)
     {
         var removedItem = await _itemStoreService.RemoveItemAsync(packet.SlotKey);
         var updatedPacket = packet;
-        if (packet.SlotKey.Id == "ground")
+
+        if (packet.SlotKey.Id == "ground" && removedItem is WorldStorageItem worldStorageItem)
         {
-            if (removedItem is WorldStorageItem worldStorageItem)
-            {
-                var partitions = _world.FindPartitionsForPosition(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, 0);
-                updatedPacket.Header = PacketHeaders.Broadcast;
-                foreach (var partition in partitions)
-                {
-                    var clients = partition.GetObjectIdsByType(ObjectTypeKeys.Client);
-                    foreach (var client in clients)
-                    {
-                        _ = Router.Client.SendAsync(client, updatedPacket);
-                    }
-                }
-            }
+            BroadcastToNearbyClients(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, updatedPacket);
         }
         else
         {
@@ -62,68 +53,60 @@ public abstract class AltruistItemPortal<TPlayerEntity> : Portal where TPlayerEn
 
     /// <summary>
     /// Handles the "pickup-item" request by setting an item in the player's inventory.
-    /// This method updates the inventory state and sends a packet with the updated item data to other players in the room.
+    /// Broadcasts the pickup to nearby players if the item was on the ground.
     /// </summary>
-    /// <param name="packet">The packet containing information about the item to be picked up.</param>
-    /// <param name="clientId">The unique identifier of the client making the request.</param>
+    /// <param name="packet">The packet describing the pickup action.</param>
+    /// <param name="clientId">The client performing the action.</param>
     [Gate("pickup-item")]
     public virtual async void PickupItem(ItemPickUpPacket packet, string clientId)
     {
         var fromSlot = SlotKeys.InventoryAnyPos;
         var toSlot = SlotKeys.GroundAnyPos;
-        await _itemStoreService.MoveItemAsync(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
-        var playerRoom = await FindRoomForClientAsync(clientId);
+        var movedItem = await _itemStoreService.MoveItemAsync(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
 
-        // Notify all players, all clients must remove picked up items from the ground.
-        if (playerRoom != null)
+        if (movedItem is WorldStorageItem worldStorageItem)
         {
-            var updatedPacket = packet;
-            updatedPacket.Header = PacketHeaders.Broadcast;
-            _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
-        }
-    }
-
-    /// <summary>
-    /// Handles the "move-item" request by moving an item from one storage location to another.
-    /// This method updates the inventory and sends the updated packet back to the client.
-    /// </summary>
-    /// <param name="packet">The packet containing information about the item to be moved.</param>
-    /// <param name="clientId">The unique identifier of the client making the request.</param>
-    [Gate("move-item")]
-    public virtual async void MoveItem(InventoryMoveItemPacket packet, string clientId)
-    {
-        await _itemStoreService.MoveItemAsync(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
-        var updatedPacket = packet;
-
-        // if target is ground, we are dropping the item, should notify everyone around
-        if (packet.TargetSlotKey.Id == "ground")
-        {
-            updatedPacket.Header = PacketHeaders.Broadcast;
-            var playerRoom = await FindRoomForClientAsync(clientId);
-            if (playerRoom != null)
-            {
-                _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
-            }
+            BroadcastToNearbyClients(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, packet);
         }
         else
         {
-            updatedPacket.Header = new PacketHeader("server", clientId);
-            _ = Router.Client.SendAsync(clientId, updatedPacket);
+            packet.Header = new PacketHeader("server", clientId);
+            _ = Router.Client.SendAsync(clientId, packet);
         }
     }
 
     /// <summary>
-    /// Handles the "sort-items" request to sort items in a given storage. 
-    /// This method updates the inventory sorting order and informs the client about the updated state.
+    /// Handles the "move-item" request by moving an item between storages.
+    /// Broadcasts the move to nearby players if the item is dropped to the ground.
     /// </summary>
-    /// <param name="packet">The packet containing information about the sorting operation.</param>
-    /// <param name="clientId">The unique identifier of the client making the request.</param>
+    /// <param name="packet">The move request packet.</param>
+    /// <param name="clientId">The client performing the move.</param>
+    [Gate("move-item")]
+    public virtual async void MoveItem(InventoryMoveItemPacket packet, string clientId)
+    {
+        var movedItem = await _itemStoreService.MoveItemAsync(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
+
+        if (packet.TargetSlotKey.Id == "ground" && movedItem is WorldStorageItem worldStorageItem)
+        {
+            BroadcastToNearbyClients(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, packet);
+        }
+        else
+        {
+            packet.Header = new PacketHeader("server", clientId);
+            _ = Router.Client.SendAsync(clientId, packet);
+        }
+    }
+
+    /// <summary>
+    /// Handles the "sort-items" request by sorting the contents of a storage and returning the result to the client.
+    /// </summary>
+    /// <param name="packet">The sort request packet.</param>
+    /// <param name="clientId">The client making the request.</param>
     [Gate("sort-items")]
     public virtual async Task SortItems(InventorySortPacket packet, string clientId)
     {
         await _itemStoreService.SortStorageAsync(packet.StorageId);
-        var updatedPacket = packet;
-        updatedPacket.Header = new PacketHeader("server", clientId);
-        _ = Router.Client.SendAsync(clientId, updatedPacket);
+        packet.Header = new PacketHeader("server", clientId);
+        _ = Router.Client.SendAsync(clientId, packet);
     }
 }
