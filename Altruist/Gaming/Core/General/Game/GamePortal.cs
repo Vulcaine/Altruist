@@ -7,9 +7,9 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
 {
     protected readonly IPlayerService<TPlayerEntity> _playerService;
 
-    protected AltruistGamePortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistGamePortal(IPortalContext context, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
-        _playerService = context.GetPlayerService<TPlayerEntity>();
+        _playerService = playerService;
     }
 
     [Gate(IngressEP.Handshake)]

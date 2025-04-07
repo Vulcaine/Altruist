@@ -19,7 +19,7 @@ namespace Altruist.Gaming;
 /// mechanics. Derived classes are expected to implement the <see cref="CalculateRegenOneFrame"/> method to 
 /// define the actual regeneration logic and the list of players to be updated.
 /// </remarks>
-public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
+public abstract class AltruistRegenPortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="AltruistRegenPortal{T}"/> class with the specified context and logger factory.

@@ -1,45 +1,62 @@
+using Altruist;
+using MessagePack;
 
-public class InventoryStorage
+namespace Altruist.Gaming;
+
+public class InventoryItem
 {
-    public string StorageId { get; set; }
-    public Dictionary<string, StorageSlot> SlotMap { get; set; } = new();
+    public long Id { get; set; }
+    public short Count { get; set; }
+    public int[] Properties { get; set; }
 
-    public InventoryStorage(string storageId)
+    public string Category { get; set; }
+
+    public DateTime? ExpiryDate { get; set; } // Optional: For consumables
+    public bool Stackable { get; set; } = false;
+
+    public byte Width { get; set; }
+    public byte Height { get; set; }
+
+    public InventoryItem(int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
     {
+        Properties = new int[itemPropertySize];
+        Category = itemType;
+        Stackable = isStackable;
+        ExpiryDate = expiryDate;
+        Width = width;
+        Height = height;
+    }
+}
+
+
+[MessagePackObject]
+public struct SlotKey
+{
+    [Key(0)] public string Type = "SlotKey";
+    [Key(1)] public short X;
+    [Key(2)] public short Y;
+    [Key(3)] public string Id;
+    [Key(4)] public string StorageId;
+
+    public SlotKey(short x, short y, string id = "inventory", string storageId = "inventory")
+    {
+        Id = id;
+        X = x;
+        Y = y;
         StorageId = storageId;
+    }
+
+    public string ToKey()
+    {
+        return $"slot:{StorageId}:{Id}:{X}:{Y}";
     }
 }
 
 public class StorageSlot
 {
-    public short X { get; set; }
-    public short Y { get; set; }
-    public string StorageId { get; set; } = "inventory";
-    public string? SlotId { get; set; }
+    public SlotKey SlotKey { get; set; }
     public long ItemId { get; set; }
     public short ItemCount { get; set; }
 
-    public string GetKey() {
-        return $"slot:{StorageId}:{SlotId ?? ""}:{X}:{Y}";
-    }
-}
-
-public class InventoryItem<T> where T : Enum
-{
-    public long ItemId { get; set; }
-    public int Count { get; set; }
-    public int[] Properties { get; set; }
-
-    public T ItemType { get; set; }
-
-    public DateTime? ExpiryDate { get; set; } // Optional: For consumables
-    public bool IsStackable { get; set; } = false;
-
-    public InventoryItem(int itemPropertySize = 4, T itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
-    {
-        Properties = new int[itemPropertySize];
-        ItemType = itemType;
-        IsStackable = isStackable;
-        ExpiryDate = expiryDate;
-    }
+    public short MaxCapacity { get; set; } = 1;
 }

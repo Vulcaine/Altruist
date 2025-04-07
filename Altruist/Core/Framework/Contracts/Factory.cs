@@ -11,7 +11,7 @@ public interface IFactory<TType>
     TType Get(SupportedBackplane backplane);
 }
 
-public interface IPlayerServiceFactory : IFactory<IPlayerService>
-{
-    IPlayerService<TPlayerEntity> Get<TPlayerEntity>(SupportedBackplane backplane) where TPlayerEntity : PlayerEntity, new();
-}
+// public interface IPlayerServiceFactory : IFactory<IPlayerService>
+// {
+//     IPlayerService<TPlayerEntity> Get<TPlayerEntity>(SupportedBackplane backplane) where TPlayerEntity : PlayerEntity, new();
+// }

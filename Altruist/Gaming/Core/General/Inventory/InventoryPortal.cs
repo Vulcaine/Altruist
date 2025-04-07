@@ -13,17 +13,19 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     /// <summary>
     /// The inventory service used to handle inventory operations like adding, moving, and removing items.
     /// </summary>
-    protected readonly IInventoryService _inventory;
+    protected readonly IItemStoreService _itemStoreService;
+    private readonly World _world;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AltruistInventoryPortal{TPlayerEntity}"/> class.
     /// </summary>
     /// <param name="context">The portal context, providing access to the current routing and cache systems.</param>
-    /// <param name="inventoryService">The inventory service that interacts with the inventory system.</param>
+    /// <param name="itemStoreService">The inventory service that interacts with the inventory system.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
-    protected AltruistInventoryPortal(IPortalContext context, IInventoryService inventoryService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistInventoryPortal(IPortalContext context, World world, IItemStoreService itemStoreService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
-       _inventory = inventoryService;
+        _itemStoreService = itemStoreService;
+        _world = world;
     }
 
     /// <summary>
@@ -33,13 +35,16 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     /// <param name="packet">The packet containing information about the item to be picked up.</param>
     /// <param name="clientId">The unique identifier of the client making the request.</param>
     [Gate("pickup-item")]
-    public virtual async void PickupItem(InventorySetItemPacket packet, string clientId)
+    public virtual async void PickupItem(ItemPickUpPacket packet, string clientId)
     {
-        await _inventory.SetItemAsync(packet.StorageId, packet.ItemId, packet.ItemCount, packet.X, packet.Y, packet.SlotId);
+        var fromSlot = new SlotKey(-1, -1, "ground", "ground");
+        var toSlot = new SlotKey(-1, -1, "inventory", "inventory");
+        await _itemStoreService.MoveItemAsync(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
         var playerRoom = await FindRoomForClientAsync(clientId);
 
         // Notify all players, all clients must remove picked up items from the world.
-        if (playerRoom != null) {
+        if (playerRoom != null)
+        {
             var updatedPacket = packet;
             updatedPacket.Header = new PacketHeader("server");
             _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
@@ -55,7 +60,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     [Gate("move-item")]
     public virtual async void MoveItem(InventoryMoveItemPacket packet, string clientId)
     {
-        await _inventory.MoveItemAsync(packet.ItemId, packet.StorageId, packet.TargetStorageId, packet.X, packet.Y, packet.SlotId, packet.TargetSlotId);
+        await _itemStoreService.MoveItemAsync(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
         var updatedPacket = packet;
         updatedPacket.Header = new PacketHeader("server", clientId);
         _ = Router.Client.SendAsync(clientId, updatedPacket);
@@ -68,13 +73,14 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     /// <param name="packet">The packet containing information about the item to be dropped.</param>
     /// <param name="clientId">The unique identifier of the client making the request.</param>
     [Gate("drop-item")]
-    public virtual async void DropItem(InventoryRemoveItemPacket packet, string clientId)
+    public virtual async void DropItem(ItemRemovePacket packet, string clientId)
     {
-        await _inventory.RemoveItemAsync(packet.StorageId, packet.X, packet.Y, packet.SlotId);
+        await _itemStoreService.RemoveItemAsync(packet.SlotKey);
 
         // Notify all players, all clients must add dropped items to the world.
         var playerRoom = await FindRoomForClientAsync(clientId);
-        if (playerRoom != null) {
+        if (playerRoom != null)
+        {
             var updatedPacket = packet;
             updatedPacket.Header = new PacketHeader("server");
             _ = Router.Room.SendAsync(playerRoom.Id, updatedPacket);
@@ -88,8 +94,9 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : Portal where TPla
     /// <param name="packet">The packet containing information about the sorting operation.</param>
     /// <param name="clientId">The unique identifier of the client making the request.</param>
     [Gate("sort-items")]
-    public virtual async Task PickupItem(InventorySortPacket packet, string clientId) {
-        await _inventory.SortStorageAsync(packet.StorageId);
+    public virtual async Task SortItems(InventorySortPacket packet, string clientId)
+    {
+        await _itemStoreService.SortStorageAsync(packet.StorageId);
         var updatedPacket = packet;
         updatedPacket.Header = new PacketHeader("server", clientId);
         _ = Router.Client.SendAsync(clientId, updatedPacket);

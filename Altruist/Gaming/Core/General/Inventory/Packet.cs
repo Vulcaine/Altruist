@@ -7,48 +7,76 @@ namespace Altruist.Gaming;
 /// Removes an item from the specified storage location, either via grid coordinates or slot ID.
 /// </summary>
 [MessagePackObject]
-public struct InventoryRemoveItemPacket : IPacketBase
+public struct ItemRemovePacket : IPacketBase
 {
     /// <summary>Packet routing header.</summary>
-    [JsonPropertyName("header")][Key(0)]
+    [JsonPropertyName("header")]
+    [Key(0)]
     public PacketHeader Header { get; set; }
 
-    /// <summary>Target storage ID (e.g., "inventory", "equipment").</summary>
-    [JsonPropertyName("storageId")][Key(1)]
-    public string StorageId { get; set; }
-
     /// <summary>Target slot identifier, used for fixed-slot storages like "helmet".</summary>
-    [JsonPropertyName("slotId")][Key(6)]
-    public string? SlotId { get; set; }
-
-    /// <summary>X position of item in grid-based storage.</summary>
-    [JsonPropertyName("x")][Key(2)]
-    public int X { get; set; }
-
-    /// <summary>Y position of item in grid-based storage.</summary>
-    [JsonPropertyName("y")][Key(3)]
-    public int Y { get; set; }
+    [JsonPropertyName("slotKey")]
+    [Key(1)]
+    public SlotKey SlotKey { get; set; }
 
     /// <summary>Type identifier of the packet.</summary>
-    [JsonPropertyName("type")][Key(4)]
+    [JsonPropertyName("type")]
+    [Key(2)]
     public string Type { get; set; } = "InventoryRemoveItemPacket";
 
-    public InventoryRemoveItemPacket()
+    public ItemRemovePacket()
     {
-        StorageId = "inventory";
-        SlotId = "inventory";
+
     }
 
-    public InventoryRemoveItemPacket(string sender, string storagetId, string slotId, int x = 0, int y = 0, string? receiver = null)
+    public ItemRemovePacket(string sender, SlotKey slotKey, string? receiver = null)
     {
-        X = x;
-        Y = y;
-        StorageId = storagetId;
-        SlotId = slotId;
+        SlotKey = slotKey;
         Header = new PacketHeader(sender, receiver);
     }
 }
 
+
+[MessagePackObject]
+public struct ItemPickUpPacket : IPacketBase
+{
+    [JsonPropertyName("header")]
+    [Key(0)]
+    public PacketHeader Header { get; set; }
+
+    [JsonPropertyName("itemId")]
+    [Key(1)]
+    public long ItemId { get; set; }
+
+    [JsonPropertyName("itemCount")]
+    [Key(2)]
+    public short ItemCount { get; set; }
+
+    [JsonPropertyName("storageId")]
+    [Key(3)]
+    public string? TargetStorageId { get; set; } = "inventory";
+
+    [JsonPropertyName("slotId")]
+    [Key(4)]
+    public string? TargetSlotId { get; set; } = "inventory";
+
+    [JsonPropertyName("type")]
+    [Key(5)]
+    public string Type { get; set; } = "ItemPickUpPacket";
+
+    public ItemPickUpPacket()
+    {
+    }
+
+    public ItemPickUpPacket(string sender, long itemId, short itemCount, string? targetStorageId = "inventory", string? targetSlotId = "inventory", string? receiver = null)
+    {
+        ItemId = itemId;
+        ItemCount = itemCount;
+        TargetSlotId = targetSlotId;
+        TargetStorageId = targetStorageId;
+        Header = new PacketHeader(sender, receiver);
+    }
+}
 
 
 /// <summary>
@@ -56,51 +84,47 @@ public struct InventoryRemoveItemPacket : IPacketBase
 /// Can place items using grid coordinates (x, y) or specific slotId for fixed-slot storage.
 /// </summary>
 [MessagePackObject]
-public struct InventorySetItemPacket : IPacketBase
+public struct ItemSetPacket : IPacketBase
 {
     /// <summary>Packet routing header.</summary>
-    [JsonPropertyName("header")][Key(0)]
+    [JsonPropertyName("header")]
+    [Key(0)]
     public PacketHeader Header { get; set; }
 
     /// <summary>Target storage ID (e.g., "inventory", "equipment").</summary>
-    [JsonPropertyName("storageId")][Key(1)]
+    [JsonPropertyName("storageId")]
+    [Key(1)]
     public string StorageId { get; set; }
 
     /// <summary>ID of the item to set.</summary>
-    [JsonPropertyName("itemId")][Key(2)]
+    [JsonPropertyName("itemId")]
+    [Key(2)]
     public long ItemId { get; set; }
 
     /// <summary>Count of the item.</summary>
-    [JsonPropertyName("itemCount")][Key(3)]
+    [JsonPropertyName("itemCount")]
+    [Key(3)]
     public short ItemCount { get; set; }
 
-    /// <summary>X position in a grid-based inventory. Optional.</summary>
-    [JsonPropertyName("x")][Key(4)]
-    public short? X { get; set; }
-
-    /// <summary>Y position in a grid-based inventory. Optional.</summary>
-    [JsonPropertyName("y")][Key(5)]
-    public short? Y { get; set; }
-
     /// <summary>Target slot identifier for fixed-slot storages like equipment (e.g., "helmet", "amulet").</summary>
-    [JsonPropertyName("slotId")][Key(6)]
-    public string? SlotId { get; set; }
+    [JsonPropertyName("slotKey")]
+    [Key(4)]
+    public SlotKey SlotKey { get; set; }
 
     /// <summary>Type identifier of the packet.</summary>
-    [JsonPropertyName("type")][Key(7)]
+    [JsonPropertyName("type")]
+    [Key(5)]
     public string Type { get; set; } = "InventorySetItemPacket";
 
-    public InventorySetItemPacket()
+    public ItemSetPacket()
     {
         StorageId = "inventory";
-        SlotId = "inventory";
         ItemId = 0;
     }
 
-    public InventorySetItemPacket(string sender, string storageId, long itemId, short itemCount = 1, short? x = null, short? y = null, string? receiver = null)
+    public ItemSetPacket(string sender, string storageId, long itemId, SlotKey slotKey, short itemCount = 1, string? receiver = null)
     {
-        X = x;
-        Y = y;
+        SlotKey = slotKey;
         StorageId = storageId;
         ItemId = itemId;
         ItemCount = itemCount;
@@ -116,61 +140,44 @@ public struct InventorySetItemPacket : IPacketBase
 public struct InventoryMoveItemPacket : IPacketBase
 {
     /// <summary>Packet routing header.</summary>
-    [JsonPropertyName("header")][Key(0)]
+    [JsonPropertyName("header")]
+    [Key(0)]
     public PacketHeader Header { get; set; }
 
-    /// <summary>Source storage ID for the move (e.g., "inventory", "equipment").</summary>
-    [JsonPropertyName("storageId")][Key(1)]
-    public string StorageId { get; set; }
-
-     /// <summary>Target storage ID for the move (e.g., "inventory", "equipment").</summary>
-    [JsonPropertyName("targetDtorageId")][Key(2)]
-    public string TargetStorageId { get; set; }
-
     /// <summary>ID of the item to move. The server uses this to locate the original position.</summary>
-    [JsonPropertyName("itemId")][Key(3)]
+    [JsonPropertyName("itemId")]
+    [Key(1)]
     public long ItemId { get; set; }
 
     /// <summary>Amount of the item to move (if stackable).</summary>
-    [JsonPropertyName("itemCount")][Key(4)]
+    [JsonPropertyName("itemCount")]
+    [Key(2)]
     public short ItemCount { get; set; }
 
-    /// <summary>Target X coordinate (for grid-style storage).</summary>
-    [JsonPropertyName("x")][Key(5)]
-    public short X { get; set; }
-
-    /// <summary>Target Y coordinate (for grid-style storage).</summary>
-    [JsonPropertyName("y")][Key(6)]
-    public short Y { get; set; }
-
     /// <summary>Source slot ID (used for fixed slot destinations like "ring", "helmet").</summary>
-    [JsonPropertyName("slotId")][Key(7)]
-    public string? SlotId { get; set; }
+    [JsonPropertyName("slotKey")]
+    [Key(3)]
+    public SlotKey SlotKey { get; set; }
 
     /// <summary>Target slot ID (used for fixed slot destinations like "ring", "helmet").</summary>
-    [JsonPropertyName("targetSlotId")][Key(8)]
-    public string? TargetSlotId { get; set; }
+    [JsonPropertyName("targetSlotKey")]
+    [Key(4)]
+    public SlotKey TargetSlotKey { get; set; }
 
     /// <summary>Type identifier of the packet.</summary>
-    [JsonPropertyName("type")][Key(8)]
+    [JsonPropertyName("type")]
+    [Key(5)]
     public string Type { get; set; } = "InventoryMoveItemPacket";
 
     public InventoryMoveItemPacket()
     {
-        StorageId = "inventory";
-        TargetStorageId = "inventory";
-        SlotId = "inventory";
         ItemId = 0;
     }
 
-    public InventoryMoveItemPacket(string sender, string storageId, string targetStorageId, string slotId, string targetSlotId, long itemId, short itemCount = 1, short x = 0, short y = 0, string? receiver = null)
+    public InventoryMoveItemPacket(string sender, SlotKey fromSlot, SlotKey toSlot, long itemId, short itemCount = 1, string? receiver = null)
     {
-        X = x;
-        Y = y;
-        StorageId = storageId;
-        TargetStorageId = targetStorageId;
-        SlotId = slotId;
-        TargetSlotId = targetSlotId;
+        SlotKey = fromSlot;
+        TargetSlotKey = toSlot;
         ItemId = itemId;
         ItemCount = itemCount;
         Header = new PacketHeader(sender, receiver);
@@ -186,15 +193,18 @@ public struct InventoryMoveItemPacket : IPacketBase
 public struct InventorySortPacket : IPacketBase
 {
     /// <summary>Packet routing header.</summary>
-    [JsonPropertyName("header")][Key(0)]
+    [JsonPropertyName("header")]
+    [Key(0)]
     public PacketHeader Header { get; set; }
 
     /// <summary>Target storage to sort (e.g., "inventory", "bank").</summary>
-    [JsonPropertyName("storageId")][Key(1)]
+    [JsonPropertyName("storageId")]
+    [Key(1)]
     public string StorageId { get; set; }
 
     /// <summary>Type identifier of the packet.</summary>
-    [JsonPropertyName("type")][Key(2)]
+    [JsonPropertyName("type")]
+    [Key(2)]
     public string Type { get; set; } = "InventorySortPacket";
 
     public InventorySortPacket()

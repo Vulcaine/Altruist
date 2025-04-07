@@ -1,124 +1,102 @@
 namespace Altruist.Gaming;
 
 
-public class InventoryService : IInventoryService
+public class ItemStoreService : IItemStoreService
 {
     private readonly ICacheProvider _cache;
 
-    public InventoryService(ICacheProvider cacheProvider)
+    public ItemStoreService(ICacheProvider cacheProvider)
     {
         _cache = cacheProvider;
     }
 
-    private string GetKey(string storageId) => $"storage:{storageId}";
-    private string GetSlotKey(string storageId, int x, int y, string? slotId = "inventory") => $"slot:{storageId}:{slotId}:{x}:{y}";
+    private string GetStorageKey(string storageId) => $"storage:{storageId}";
+    private SlotKey GetSlotKey(short x, short y, string slotId = "inventory", string storageId = "inventory") => new SlotKey(
+        x, y, slotId, storageId
+    );
 
-    public async Task<InventoryStorage> GetStorageAsync(string storageId)
+    public async Task<ItemStorage?> FindStorageAsync(string storageId)
     {
-        var key = GetKey(storageId);
-        var storage = await _cache.GetAsync<InventoryStorage>(key);
+        var key = GetStorageKey(storageId);
+        var storage = await _cache.GetAsync<ItemStorage>(key);
         if (storage == null)
         {
-            storage = new InventoryStorage(storageId);
-            await _cache.SaveAsync(key, storage);
+            return null;
         }
         return storage;
     }
 
-    public async Task SetItemAsync(string storageId, long itemId, short itemCount, short? x = null, short? y = null,  string? slotId = "inventory")
+    public async Task SetItemAsync(SlotKey slotKey, long itemId, short itemCount)
     {
-        var storage = await GetStorageAsync(storageId);
-        string key = GetSlotKey(storageId, x ?? 0, y ?? 0, slotId);
+        var storage = await FindStorageAsync(slotKey.StorageId);
 
-        storage.SlotMap[key] = new StorageSlot
+        if (storage == null)
         {
-            X = x ?? 0,
-            Y = y ?? 0,
-            StorageId = storageId,
-            SlotId = key,
+            return;
+        }
+
+        storage.SlotMap[slotKey] = new StorageSlot
+        {
+            SlotKey = slotKey,
             ItemId = itemId,
             ItemCount = itemCount
         };
 
-        await _cache.SaveAsync(GetKey(storageId), storage);
+        await _cache.SaveAsync(GetStorageKey(slotKey.StorageId), storage);
     }
 
-    public async Task MoveItemAsync(long itemId, string storageId, string targetStorageId, short x, short y, string? fromSlotId = "inventory",  string? slotId = "inventory")
+    public async Task MoveItemAsync(
+     long itemId,
+     SlotKey fromSlotKey,
+     SlotKey toSlotKey,
+     short count = 1
+    )
     {
-        // Search item in all storages
-        var currentStorage = await GetStorageAsync(storageId);
-        var targetStorage = await GetStorageAsync(targetStorageId);
-       
-        if (currentStorage == null || targetStorage == null)
+        var sourceStorage = await FindStorageAsync(fromSlotKey.StorageId);
+        var targetStorage = await FindStorageAsync(toSlotKey.StorageId);
+        if (sourceStorage == null || targetStorage == null)
             return;
 
-        var currentKey = GetSlotKey(storageId, x, y, fromSlotId);
-
-        if (currentKey == null) {
-            return;
+        var sourceSlot = sourceStorage.RemoveItemAsync(fromSlotKey, count);
+        if (sourceSlot != null && Equals(fromSlotKey, toSlotKey))
+        {
+            // Move within same storage
+            var success = await targetStorage.SetItemAsync(itemId, sourceSlot.ItemCount, toSlotKey);
+            if (!success)
+            {
+                // Revert: put it back
+                await sourceStorage.SetItemAsync(sourceSlot.ItemId, sourceSlot.ItemCount, fromSlotKey);
+            }
         }
 
-        var item = currentStorage.SlotMap[currentKey];
-        currentStorage.SlotMap.Remove(currentKey);
-        await _cache.SaveAsync(GetKey(currentStorage.StorageId), currentStorage);
-
-        var newKey = GetSlotKey(targetStorageId, x, y, slotId);
-        targetStorage.SlotMap[newKey] = new StorageSlot
-        {
-            X = x,
-            Y = y,
-            SlotId = newKey,
-            ItemId = item.ItemId,
-            ItemCount = item.ItemCount
-        };
-
-        await _cache.SaveAsync(GetKey(targetStorageId), targetStorage);
+        await sourceStorage.SaveAsync();
     }
 
-    public async Task RemoveItemAsync(string storageId, int x, int y, string? slotId = "inventory")
+    public async Task<StorageSlot?> RemoveItemAsync(SlotKey slotKey, short count = 1)
     {
-        var storage = await GetStorageAsync(storageId);
-        string key = GetSlotKey(storageId, x, y, slotId);
-        storage.SlotMap.Remove(key);
-        await _cache.SaveAsync(GetKey(storageId), storage);
+        var storage = await FindStorageAsync(slotKey.StorageId);
+        if (storage == null)
+            return null;
+        return storage.RemoveItemAsync(slotKey, count);
     }
 
-    public async Task UseItemAsync(string storageId, long itemId)
+    public async Task UseItemAsync(SlotKey slot, long itemId)
     {
-        var storage = await GetStorageAsync(storageId);
+        var storage = await FindStorageAsync(slot.StorageId);
+
+        if (storage == null)
+            return;
+
         var kvp = storage.SlotMap.FirstOrDefault(kvp => kvp.Value.ItemId == itemId);
-        if (!string.IsNullOrEmpty(kvp.Key))
-        {
-            storage.SlotMap.Remove(kvp.Key);
-            await _cache.SaveAsync(GetKey(storageId), storage);
-        }
+        storage.SlotMap.Remove(kvp.Key);
+        await _cache.SaveAsync(GetStorageKey(slot.StorageId), storage);
     }
 
     public async Task SortStorageAsync(string storageId)
     {
-        var storage = await GetStorageAsync(storageId);
-        var sorted = storage.SlotMap.Values.OrderBy(s => s.ItemId).ToList();
-
-        storage.SlotMap.Clear();
-
-        short index = 0;
-        foreach (var slot in sorted)
-        {
-            short x = (short)(index % 10);
-            short y = (short)(index / 10);
-            var key = $"{x}:{y}";
-
-            storage.SlotMap[key] = new StorageSlot
-            {
-                X = x,
-                Y = y,
-                SlotId = null,
-                ItemId = slot.ItemId,
-                ItemCount = slot.ItemCount
-            };
-            index++;
-        }
-
-        await _cache.SaveAsync(GetKey(storageId), storage);
+        var storage = await FindStorageAsync(storageId);
+        if (storage == null)
+            return;
+        await storage.SortStorageAsync();
     }
 }

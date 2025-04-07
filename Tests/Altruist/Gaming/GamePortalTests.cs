@@ -1,3 +1,4 @@
+
 using Altruist.Networking;
 using Microsoft.Extensions.Logging;
 using Moq;

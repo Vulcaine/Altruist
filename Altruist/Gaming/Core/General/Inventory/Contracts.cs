@@ -2,40 +2,32 @@ namespace Altruist.Gaming;
 
 
 
-public interface IInventoryService
+public interface IItemStoreService
 {
     Task SetItemAsync(
-        string storageId,
+        SlotKey slotKey,
         long itemId,
-        short itemCount,
-        short? x = null,
-        short? y = null,
-        string? slotId = "inventory"
+        short itemCount
     );
 
     Task MoveItemAsync(
         long itemId,
-        string storageId,
-        string targetStorageId,
-        short x,
-        short y,
-        string? fromSlotId = "inventory", 
-        string? slotId = "inventory"
+        SlotKey fromSlotKey,
+        SlotKey toSlotKey,
+        short count = 1
     );
 
-    Task RemoveItemAsync(
-        string storageId,
-        int x,
-        int y,
-        string? slotId = "inventory"
+    Task<StorageSlot?> RemoveItemAsync(
+        SlotKey slotKey,
+        short count = 1
     );
 
     Task UseItemAsync(
-        string storageId,
+        SlotKey slot,
         long itemId
     );
 
-    Task<InventoryStorage> GetStorageAsync(string storageId);
+    Task<ItemStorage?> FindStorageAsync(string storageId);
 
     Task SortStorageAsync(string storageId); // Optional, for InventorySortPacket
 }
