@@ -24,10 +24,10 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
 
         foreach (var partition in partitions)
         {
-            var clients = partition.GetObjectIdsByType(ObjectTypeKeys.Client);
+            var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
             foreach (var client in clients)
             {
-                _ = Router.Client.SendAsync(client, packet);
+                _ = Router.Client.SendAsync(client.InstanceId, packet);
             }
         }
     }

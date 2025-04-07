@@ -10,14 +10,14 @@ public interface IItemStoreService
         short itemCount
     );
 
-    Task<StorageItem?> MoveItemAsync(
+    Task<GameItem?> MoveItemAsync(
         long itemId,
         SlotKey fromSlotKey,
         SlotKey toSlotKey,
         short count = 1
     );
 
-    Task<StorageItem?> RemoveItemAsync(
+    Task<GameItem?> RemoveItemAsync(
         SlotKey slotKey,
         short count = 1
     );

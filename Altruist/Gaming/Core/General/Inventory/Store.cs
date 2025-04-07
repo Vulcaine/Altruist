@@ -32,9 +32,9 @@ public class ItemStorageProvider
     /// </summary>
     /// <param name="itemId">The id of the item to find.</param>
     /// <returns>The item with the given id if it exists, null otherwise.</returns>
-    public async Task<StorageItem?> FindItemAsync(long itemId)
+    public async Task<GameItem?> FindItemAsync(long itemId)
     {
-        return await _cache.GetAsync<StorageItem>($"item:{_storage.StorageId}:{itemId}");
+        return await _cache.GetAsync<GameItem>($"item:{_storage.StorageId}:{itemId}");
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ public class ItemStorageProvider
     /// <param name="itemCount">The number of items to add to the storage.</param>
     /// <param name="slotId">The slotId of the storage to add the item to. Defaults to "inventory".</param>
     /// <returns>true if the item was successfully added, false otherwise.</returns>
-    public bool AddItem(StorageItem item, short itemCount, string slotId)
+    public bool AddItem(GameItem item, short itemCount, string slotId)
     {
         for (short y = 0; y <= _storage.MaxHeight - item.Size.Height; y++)
         {
@@ -111,7 +111,7 @@ public class ItemStorageProvider
         return false;
     }
 
-    private void PlaceItemAt(SlotKey key, StorageItem item, short itemCount)
+    private void PlaceItemAt(SlotKey key, GameItem item, short itemCount)
     {
         var startX = key.X;
         var startY = key.Y;

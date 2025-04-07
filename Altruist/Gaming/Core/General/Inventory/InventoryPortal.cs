@@ -8,7 +8,7 @@ namespace Altruist.Gaming;
 /// such as picking up, moving, dropping, and sorting items.
 /// </summary>
 /// <typeparam name="TPlayerEntity">The type of the player entity associated with the inventory. Must inherit from PlayerEntity.</typeparam>
-public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
+public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
     /// <summary>
     /// The inventory service used to handle inventory operations like adding, moving, and removing items.
@@ -16,12 +16,12 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
     protected readonly IItemStoreService _itemStoreService;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="AltruistItemPortal{TPlayerEntity}"/> class.
+    /// Initializes a new instance of the <see cref="AltruistInventoryPortal{TPlayerEntity}"/> class.
     /// </summary>
     /// <param name="context">The portal context, providing access to the current routing and cache systems.</param>
     /// <param name="itemStoreService">The inventory service that interacts with the inventory system.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
-    protected AltruistItemPortal(IPortalContext context,
+    protected AltruistInventoryPortal(IPortalContext context,
         GameWorldManager gameWorld,
         IItemStoreService itemStoreService,
         ILoggerFactory loggerFactory) : base(context, gameWorld, loggerFactory)
@@ -40,10 +40,10 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
         var removedItem = await _itemStoreService.RemoveItemAsync(packet.SlotKey);
         if (packet.SlotKey.Id == "ground" && removedItem != null)
         {
-            var removedObject = _world.RemoveObject(ObjectTypeKeys.Item, removedItem.Id + "");
+            var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, removedItem.Id + "");
             if (removedObject != null)
             {
-                var destroyPacket = new DestroyObjectPacket("server", removedObject.ObjectId);
+                var destroyPacket = new DestroyObjectPacket("server", removedObject.InstanceId);
                 _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
             }
         }
@@ -73,10 +73,10 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
 
         if (movedItem != null)
         {
-            var removedObject = _world.RemoveObject(ObjectTypeKeys.Item, movedItem.Id + "");
+            var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, movedItem.Id + "");
             if (removedObject != null)
             {
-                var destroyPacket = new DestroyObjectPacket("server", removedObject.ObjectId);
+                var destroyPacket = new DestroyObjectPacket("server", removedObject.InstanceId);
                 _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
             }
         }
@@ -99,10 +99,10 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
 
         if (movedItem != null && packet.TargetSlotKey.Id == "ground")
         {
-            var removedObject = _world.RemoveObject(ObjectTypeKeys.Item, movedItem.Id + "");
+            var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, movedItem.Id + "");
             if (removedObject != null)
             {
-                var destroyPacket = new DestroyObjectPacket("server", removedObject.ObjectId);
+                var destroyPacket = new DestroyObjectPacket("server", removedObject.InstanceId);
                 _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
             }
         }

@@ -36,15 +36,15 @@ public class GameWorldManager
         await Task.WhenAll(saveTasks);
     }
 
-    public List<Partition> UpdateObjectPosition(ObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
+    public List<Partition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
     {
-        RemoveObject(objectType, objectMetadata.ObjectId);
+        DestroyObject(objectType, objectMetadata.InstanceId);
         var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
         AddObjectToPartitions(objectType, objectMetadata, partitions);
         return partitions;
     }
 
-    private List<Partition> AddObjectToPartitions(ObjectTypeKey objectType, ObjectMetadata objectMetadata, List<Partition> partitions)
+    private List<Partition> AddObjectToPartitions(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, List<Partition> partitions)
     {
         foreach (var partition in partitions)
         {
@@ -53,31 +53,54 @@ public class GameWorldManager
         return partitions;
     }
 
-    public void AddDynamicObject(ObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
+    public void AddDynamicObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
     {
         var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
         AddObjectToPartitions(objectType, objectMetadata, partitions);
     }
 
-    public Partition? AddStaticObject(ObjectTypeKey objectType, ObjectMetadata objectMetadata)
+    public Partition? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
     {
         var partition = FindPartitionForPosition(objectMetadata.Position.X, objectMetadata.Position.Y);
         partition?.AddObject(objectType, objectMetadata);
         return partition;
     }
 
-    public ObjectMetadata? RemoveObject(ObjectTypeKey objectType, string instanceId)
+    public ObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
     {
-        return _partitions.Select(p => p.RemoveObject(objectType, instanceId)).FirstOrDefault(m => m != null);
+        return _partitions.Select(p => p.DestroyObject(objectType, instanceId)).FirstOrDefault(m => m != null);
     }
 
-    public List<string> GetNearbyObjectIds(ObjectTypeKey objectType, int x, int y, float radius)
+    /// <summary>
+    /// Retrieves the IDs of objects of the specified type within a given radius of a position.
+    /// First filters by partitions, then filters individual object positions for accurate proximity.
+    /// </summary>
+    /// <param name="objectType">Type of objects to search for.</param>
+    /// <param name="x">X coordinate of the center point.</param>
+    /// <param name="y">Y coordinate of the center point.</param>
+    /// <param name="radius">Radius around the point to search.</param>
+    /// <returns>List of object instance IDs within the specified radius.</returns>
+    public List<ObjectMetadata> GetNearbyObjects(WorldObjectTypeKey objectType, int x, int y, float radius)
     {
-        var nearbyPartitions = FindPartitionsForPosition(x, y, radius);
-        return nearbyPartitions
-            .SelectMany(p => p.GetObjectIdsByType(objectType))
-            .Distinct()
-            .ToList();
+        var result = new List<ObjectMetadata>();
+        float sqrRadius = radius * radius;
+
+        foreach (var partition in FindPartitionsForPosition(x, y, radius))
+        {
+            var objects = partition.GetObjectsByType(objectType);
+            foreach (var obj in objects)
+            {
+                float dx = obj.Position.X - x;
+                float dy = obj.Position.Y - y;
+
+                if (dx * dx + dy * dy <= sqrRadius)
+                {
+                    result.Add(obj);
+                }
+            }
+        }
+
+        return [.. result.Distinct()];
     }
 
     public Partition? FindPartitionForPosition(int x, int y)
@@ -87,27 +110,25 @@ public class GameWorldManager
         return _partitionMap.TryGetValue(new PartitionIndex(indexX, indexY), out var p) ? p : null;
     }
 
+    /// <summary>
+    /// Finds partitions that intersect with a circular area defined by position and radius.
+    /// </summary>
+    /// <param name="x">Center X coordinate.</param>
+    /// <param name="y">Center Y coordinate.</param>
+    /// <param name="radius">Radius of the area.</param>
+    /// <returns>List of partitions intersecting the given area.</returns>
     public List<Partition> FindPartitionsForPosition(int x, int y, float radius)
     {
-        var result = new List<Partition>();
-
         float minX = x - radius;
         float maxX = x + radius;
         float minY = y - radius;
         float maxY = y + radius;
 
-        foreach (var partition in _partitions)
-        {
-            bool intersects =
-                maxX >= partition.Position.X &&
-                minX <= partition.Position.X + partition.Size.Width &&
-                maxY >= partition.Position.Y &&
-                minY <= partition.Position.Y + partition.Size.Height;
-
-            if (intersects)
-                result.Add(partition);
-        }
-
-        return result;
+        return [.. _partitions.Where(partition =>
+            maxX >= partition.Position.X &&
+            minX <= partition.Position.X + partition.Size.Width &&
+            maxY >= partition.Position.Y &&
+            minY <= partition.Position.Y + partition.Size.Height
+        )];
     }
 }

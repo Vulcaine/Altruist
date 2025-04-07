@@ -61,7 +61,7 @@ public abstract class BasicItemProperties
 /// Represents an item instance in the inventory. Each item is based on a template
 /// and contains dynamic properties such as count, dimensions, category, and expiry.
 /// </summary>
-public class StorageItem : BasicItemProperties
+public abstract class GameItem : BasicItemProperties
 {
     /// <summary>
     /// Unique identifier for this constructed item instance. 
@@ -86,7 +86,7 @@ public class StorageItem : BasicItemProperties
     /// <param name="itemType">Category or type label.</param>
     /// <param name="isStackable">True if the item is stackable.</param>
     /// <param name="expiryDate">Optional expiration date.</param>
-    public StorageItem(int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
+    public GameItem(int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
     {
         Properties = new int[itemPropertySize];
         Category = itemType;
