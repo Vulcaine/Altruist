@@ -42,7 +42,7 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
 
         if (packet.SlotKey.Id == "ground" && removedItem is WorldStorageItem worldStorageItem)
         {
-            BroadcastToNearbyClients(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, updatedPacket);
+            _ = SmartBroadcast(clientId, worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, updatedPacket);
         }
         else
         {
@@ -66,7 +66,7 @@ public abstract class AltruistItemPortal<TPlayerEntity> : AltruistGamePortal<TPl
 
         if (movedItem is WorldStorageItem worldStorageItem)
         {
-            BroadcastToNearbyClients(worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, packet);
+            _ = SmartBroadcast(clientId, worldStorageItem.WorldPosition.X, worldStorageItem.WorldPosition.Y, packet);
         }
         else
         {

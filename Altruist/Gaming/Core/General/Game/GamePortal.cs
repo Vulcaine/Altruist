@@ -31,6 +31,34 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
             }
         }
     }
+
+    /// <summary>
+    /// Sends a packet to clients intelligently based on room size.
+    /// If the room the sender belongs to has fewer players than the specified threshold,
+    /// the packet is broadcast to the entire room. Otherwise, the packet is sent only
+    /// to nearby clients using spatial partitioning based on the provided coordinates.
+    /// </summary>
+    /// <param name="senderClientId">The ID of the client sending the packet.</param>
+    /// <param name="x">The X coordinate for spatial partition lookup.</param>
+    /// <param name="y">The Y coordinate for spatial partition lookup.</param>
+    /// <param name="packet">The packet to be sent to clients.</param>
+    /// <param name="threshold">
+    /// The maximum number of players in a room before switching to spatial broadcast.
+    /// Defaults to 100.
+    /// </param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    protected async Task SmartBroadcast(string senderClientId, int x, int y, IPacketBase packet, int threshold = 100)
+    {
+        var room = await FindRoomForClientAsync(senderClientId);
+        if (room != null && room.PlayerCount < threshold)
+        {
+            _ = Router.Room.SendAsync(room.Id, packet);
+        }
+        else
+        {
+            BroadcastToNearbyClients(x, y, packet);
+        }
+    }
 }
 
 public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
