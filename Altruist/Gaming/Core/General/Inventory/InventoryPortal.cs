@@ -29,6 +29,25 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         _itemStoreService = itemStoreService;
     }
 
+    private void RemoveItemFromWorldAndNotifyClient(GameItem item, string clientId)
+    {
+        var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, item.Id + "");
+        if (removedObject != null)
+        {
+            _ = DispatchDestroyItemPacket(item.Id + "", clientId);
+        }
+    }
+
+    private async Task DispatchDestroyItemPacket(string objectId, string clientId)
+    {
+        var room = await FindRoomForClientAsync(clientId);
+        if (room != null)
+        {
+            var destroyPacket = new DestroyObjectPacket("server", objectId);
+            _ = Router.Room.SendAsync(room.Id, destroyPacket);
+        }
+    }
+
     /// <summary>
     /// Handles the "destroy-item" request by removing an item and notifying nearby clients if necessary.
     /// </summary>
@@ -40,12 +59,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         var removedItem = await _itemStoreService.RemoveItemAsync(packet.SlotKey);
         if (packet.SlotKey.Id == "ground" && removedItem != null)
         {
-            var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, removedItem.Id + "");
-            if (removedObject != null)
-            {
-                var destroyPacket = new DestroyObjectPacket("server", removedObject.InstanceId);
-                _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
-            }
+            RemoveItemFromWorldAndNotifyClient(removedItem, clientId);
         }
         else if (removedItem != null)
         {
@@ -73,12 +87,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
 
         if (movedItem != null)
         {
-            var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, movedItem.Id + "");
-            if (removedObject != null)
-            {
-                var destroyPacket = new DestroyObjectPacket("server", removedObject.InstanceId);
-                _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
-            }
+            RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
         }
         else
         {
@@ -99,12 +108,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
 
         if (movedItem != null && packet.TargetSlotKey.Id == "ground")
         {
-            var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, movedItem.Id + "");
-            if (removedObject != null)
-            {
-                var destroyPacket = new DestroyObjectPacket("server", removedObject.InstanceId);
-                _ = SmartBroadcast(clientId, removedObject.Position.X, removedObject.Position.Y, destroyPacket);
-            }
+            RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
         }
         else if (movedItem != null)
         {
