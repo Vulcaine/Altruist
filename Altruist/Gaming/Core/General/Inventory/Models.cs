@@ -135,10 +135,17 @@ public class StorageSlot
 
     /// <summary>
     /// ID of the item currently occupying this slot.
-    /// A value of 0 typically means the slot is empty.
+    /// A value of "" typically means the slot is empty.
     /// </summary>
     [JsonPropertyName("itemInstanceId")]
     public string ItemInstanceId { get; set; } = "";
+
+    /// <summary>
+    /// The template ID of the item currently occupying this slot.
+    /// A value of 0 typically means the slot is empty.
+    /// </summary>
+    [JsonPropertyName("itemTemplateId")]
+    public long ItemTemplateId { get; set; }
 
     /// <summary>
     /// The number of items currently in this slot.
@@ -156,4 +163,12 @@ public class StorageSlot
 
     [JsonPropertyName("slotLink")]
     public IntVector2? SlotLink { get; set; }
+
+    public void ClearSlot()
+    {
+        ItemInstanceId = "";
+        ItemTemplateId = 0;
+        ItemCount = 0;
+        SlotLink = null;
+    }
 }

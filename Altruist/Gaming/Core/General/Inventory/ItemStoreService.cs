@@ -11,11 +11,11 @@ public class ItemStoreService : IItemStoreService
 
     private string GetStorageKey(string storageId) => $"storage:{storageId}";
 
-    public ItemStorageProvider CreateStorage(IStoragePrincipal principal, string storageId, (short Width, short Height) size)
+    public ItemStorageProvider CreateStorage(IStoragePrincipal principal, string storageId, (short Width, short Height) size, short slotCapacity = 1)
     {
         return new ItemStorageProvider(
             principal,
-            storageId, size.Width, size.Height, _cache);
+            storageId, size.Width, size.Height, slotCapacity, _cache);
     }
 
     public async Task<ItemStorageProvider?> FindStorageAsync(string storageId)
@@ -28,7 +28,7 @@ public class ItemStoreService : IItemStoreService
         }
         return new ItemStorageProvider(
             storage.Principal,
-            storage.StorageId, storage.MaxWidth, storage.MaxHeight, _cache);
+            storage.StorageId, storage.MaxWidth, storage.MaxHeight, storage.SlotCapacity, _cache);
     }
 
     public async Task SetItemAsync(SlotKey slotKey, string itemId, short itemCount)

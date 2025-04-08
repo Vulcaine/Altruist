@@ -4,7 +4,7 @@ namespace Altruist.Gaming;
 
 public interface IItemStoreService
 {
-    ItemStorageProvider CreateStorage(IStoragePrincipal principal, string storageId, (short Width, short Height) size);
+    ItemStorageProvider CreateStorage(IStoragePrincipal principal, string storageId, (short Width, short Height) size, short slotCapacity);
 
     Task<ItemStorageProvider?> FindStorageAsync(string storageId);
 

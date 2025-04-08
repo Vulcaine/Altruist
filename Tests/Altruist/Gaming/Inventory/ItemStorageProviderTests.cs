@@ -21,7 +21,7 @@ public class ItemStorageProviderTests
         _cacheMock = new Mock<ICacheProvider>();
         _storageProvider = new ItemStorageProvider(
             new WorldStoragePrincipal("world"),
-            "inventory", 5, 5, _cacheMock.Object);
+            "inventory", 5, 5, 5, _cacheMock.Object);
         _testSlotKey = new SlotKey(0, 0, "inventory", "inventory");
     }
 
@@ -72,11 +72,11 @@ public class ItemStorageProviderTests
     {
         // Arrange
         var mockItem = new TestGameItem(
-            new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
+            new SlotKey(0, 0, "inventory", "inventory"), 4, 1, 1, "type", true);
         _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.Id)).ReturnsAsync(mockItem);
         _storageProvider.AddItem(mockItem, 1, "inventory");
         // Act
-        var result = await _storageProvider.SetItemAsync(mockItem.Id, 1, _testSlotKey);
+        var result = await _storageProvider.SetItemAsync(mockItem.Id, 6, _testSlotKey);
 
         // Assert
         result.Should().BeFalse();
@@ -112,6 +112,32 @@ public class ItemStorageProviderTests
 
     [Fact]
     public void AddItem_ShouldAddItem_WhenSpaceAvailable()
+    {
+        // Arrange
+        var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
+
+        // Act
+        var result = _storageProvider.AddItem(item, 1, "inventory");
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AddItem_ShouldAddItem_WhenSpaceAvailable_AndItemStackable()
+    {
+        // Arrange
+        var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", true);
+
+        // Act
+        var result = _storageProvider.AddItem(item, 5, "inventory");
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AddItem_ShouldAddItem_WhenSpaceBarelyAvailable()
     {
         // Arrange
         var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
