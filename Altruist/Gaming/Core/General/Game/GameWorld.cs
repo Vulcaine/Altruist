@@ -1,19 +1,20 @@
 
 namespace Altruist.Gaming;
 
+
 public class GameWorldManager
 {
-    protected readonly WorldSettings _world;
-    protected readonly List<Partition> _partitions;
+    protected readonly WorldIndex _world;
+    protected readonly List<WorldPartition> _partitions;
     protected readonly ICacheProvider _cache;
 
     private readonly IWorldPartitioner _worldPartitioner;
-    private readonly Dictionary<PartitionIndex, Partition> _partitionMap = new();
+    private readonly Dictionary<PartitionIndex, WorldPartition> _partitionMap = new();
 
-    public GameWorldManager(WorldSettings world, IWorldPartitioner worldPartitioner, ICacheProvider cacheProvider)
+    public GameWorldManager(WorldIndex world, IWorldPartitioner worldPartitioner, ICacheProvider cacheProvider)
     {
         _world = world;
-        _partitions = new List<Partition>();
+        _partitions = new List<WorldPartition>();
         _cache = cacheProvider;
         _worldPartitioner = worldPartitioner;
     }
@@ -36,7 +37,7 @@ public class GameWorldManager
         await Task.WhenAll(saveTasks);
     }
 
-    public List<Partition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
+    public List<WorldPartition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
     {
         DestroyObject(objectType, objectMetadata.InstanceId);
         var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
@@ -44,7 +45,7 @@ public class GameWorldManager
         return partitions;
     }
 
-    private List<Partition> AddObjectToPartitions(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, List<Partition> partitions)
+    private List<WorldPartition> AddObjectToPartitions(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, List<WorldPartition> partitions)
     {
         foreach (var partition in partitions)
         {
@@ -59,7 +60,7 @@ public class GameWorldManager
         AddObjectToPartitions(objectType, objectMetadata, partitions);
     }
 
-    public Partition? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
+    public WorldPartition? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
     {
         var partition = FindPartitionForPosition(objectMetadata.Position.X, objectMetadata.Position.Y);
         partition?.AddObject(objectType, objectMetadata);
@@ -80,30 +81,19 @@ public class GameWorldManager
     /// <param name="y">Y coordinate of the center point.</param>
     /// <param name="radius">Radius around the point to search.</param>
     /// <returns>List of object instance IDs within the specified radius.</returns>
-    public List<ObjectMetadata> GetNearbyObjects(WorldObjectTypeKey objectType, int x, int y, float radius)
+    public List<ObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
     {
         var result = new List<ObjectMetadata>();
-        float sqrRadius = radius * radius;
 
         foreach (var partition in FindPartitionsForPosition(x, y, radius))
         {
-            var objects = partition.GetObjectsByType(objectType);
-            foreach (var obj in objects)
-            {
-                float dx = obj.Position.X - x;
-                float dy = obj.Position.Y - y;
-
-                if (dx * dx + dy * dy <= sqrRadius)
-                {
-                    result.Add(obj);
-                }
-            }
+            result.AddRange(partition.GetObjectsByTypeInRadius(objectType, x, y, radius, roomId));
         }
 
         return [.. result.Distinct()];
     }
 
-    public Partition? FindPartitionForPosition(int x, int y)
+    public WorldPartition? FindPartitionForPosition(int x, int y)
     {
         int indexX = x / _worldPartitioner.PartitionWidth;
         int indexY = y / _worldPartitioner.PartitionHeight;
@@ -117,7 +107,7 @@ public class GameWorldManager
     /// <param name="y">Center Y coordinate.</param>
     /// <param name="radius">Radius of the area.</param>
     /// <returns>List of partitions intersecting the given area.</returns>
-    public List<Partition> FindPartitionsForPosition(int x, int y, float radius)
+    public List<WorldPartition> FindPartitionsForPosition(int x, int y, float radius)
     {
         float minX = x - radius;
         float maxX = x + radius;
@@ -131,4 +121,52 @@ public class GameWorldManager
             minY <= partition.Position.Y + partition.Size.Height
         )];
     }
+}
+
+
+public class GameWorldCoordinator
+{
+    private readonly Dictionary<int, GameWorldManager> _worlds = new();
+    private readonly IWorldPartitioner _partitioner;
+    private readonly ICacheProvider _cache;
+
+    public GameWorldCoordinator(IWorldPartitioner partitioner, ICacheProvider cache)
+    {
+        _partitioner = partitioner;
+        _cache = cache;
+    }
+
+    /// <summary>
+    /// Adds a new game world and initializes it.
+    /// </summary>
+    public void AddWorld(WorldIndex index)
+    {
+        if (_worlds.ContainsKey(index.Index))
+            throw new InvalidOperationException($"World {index.Index} already exists.");
+
+        var manager = new GameWorldManager(index, _partitioner, _cache);
+        manager.Initialize();
+        _worlds[index.Index] = manager;
+    }
+
+    /// <summary>
+    /// Removes the specified world by index.
+    /// </summary>
+    public void RemoveWorld(int index)
+    {
+        _worlds.Remove(index);
+    }
+
+    /// <summary>
+    /// Gets the GameWorldManager for a given world index.
+    /// </summary>
+    public GameWorldManager? GetWorld(int index)
+    {
+        return _worlds.TryGetValue(index, out var manager) ? manager : null;
+    }
+
+    /// <summary>
+    /// Lists all currently loaded world indices.
+    /// </summary>
+    public IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 }

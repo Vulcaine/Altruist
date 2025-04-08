@@ -1,15 +1,20 @@
-using System;
-using System.Text.Json.Serialization;
+
+using Altruist.UORM;
 
 namespace Altruist.Gaming;
 
-public class WorldSettings
+[Table("world_index")]
+public class WorldIndex : IVaultModel
 {
+    public int Index { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string Type { get; set; } = "WorldIndex";
 
-    public WorldSettings(int width, int height)
+    public WorldIndex(int index, int width, int height)
     {
+        Index = index;
         Width = width;
         Height = height;
     }
@@ -19,7 +24,7 @@ public interface IWorldPartitioner
 {
     int PartitionWidth { get; }
     int PartitionHeight { get; }
-    List<Partition> CalculatePartitions(WorldSettings world);
+    List<WorldPartition> CalculatePartitions(WorldIndex world);
 }
 
 public class WorldPartitioner : IWorldPartitioner
@@ -33,9 +38,9 @@ public class WorldPartitioner : IWorldPartitioner
         PartitionHeight = partitionHeight;
     }
 
-    public List<Partition> CalculatePartitions(WorldSettings world)
+    public List<WorldPartition> CalculatePartitions(WorldIndex world)
     {
-        var partitions = new List<Partition>();
+        var partitions = new List<WorldPartition>();
 
         int columns = (int)Math.Ceiling((double)world.Width / PartitionWidth);
         int rows = (int)Math.Ceiling((double)world.Height / PartitionHeight);
@@ -50,7 +55,7 @@ public class WorldPartitioner : IWorldPartitioner
                 int width = Math.Min(PartitionWidth, world.Width - x);
                 int height = Math.Min(PartitionHeight, world.Height - y);
 
-                var partition = new Partition
+                var partition = new WorldPartition
                 {
                     Index = (col, row),
                     Position = (x, y),
@@ -91,12 +96,43 @@ public class PartitionIndex
     public override int GetHashCode() => HashCode.Combine(X, Y);
 }
 
+/// <summary>
+/// Represents metadata about a world object, including its type, position,
+/// instance identifier, associated room, and nearby/connected clients.
+/// </summary>
 public class ObjectMetadata
 {
+    /// <summary>
+    /// The type of the world object (e.g., player, NPC, item).
+    /// </summary>
     public WorldObjectTypeKey Type { get; set; } = default!;
+
+    /// <summary>
+    /// A unique identifier for this specific instance of the object.
+    /// </summary>
     public string InstanceId { get; set; } = "";
+
+    /// <summary>
+    /// The identifier of the room this object belongs to.
+    /// </summary>
+    public string RoomId { get; set; } = "";
+
+    /// <summary>
+    /// A set of client IDs that have received this object.
+    /// 
+    /// This is used to:
+    /// - Track which connected clients are aware of this object,
+    /// - Determine which clients should be notified when the object is removed,
+    /// - Track client proximity or visibility to this object.
+    /// </summary>
+    public HashSet<string> ReceiverClientIds { get; set; } = new();
+
+    /// <summary>
+    /// The (X, Y) position of the object in the world/grid.
+    /// </summary>
     public (int X, int Y) Position { get; set; }
 }
+
 
 public record WorldObjectTypeKey(string Value);
 
@@ -106,52 +142,19 @@ public static class WorldObjectTypeKeys
     public static readonly WorldObjectTypeKey Item = new("item");
 }
 
-public class ObjectTypeMap
-{
-    private readonly Dictionary<WorldObjectTypeKey, Dictionary<string, ObjectMetadata>> _data = new();
-
-    public void Add(WorldObjectTypeKey type, ObjectMetadata objectMetadata)
-    {
-        if (!_data.TryGetValue(type, out var set))
-        {
-            set = new Dictionary<string, ObjectMetadata>();
-            _data[type] = set;
-        }
-        set.Add(objectMetadata.InstanceId, objectMetadata);
-    }
-
-    public ObjectMetadata? Remove(WorldObjectTypeKey type, string id)
-    {
-        if (_data.TryGetValue(type, out var set))
-        {
-            set.TryGetValue(id, out var metadata);
-            set.Remove(id);
-            if (set.Count == 0) _data.Remove(type);
-            return metadata;
-        }
-
-        return null;
-    }
-
-    public HashSet<string> GetByType(WorldObjectTypeKey type) =>
-        _data.TryGetValue(type, out var set) ? set.Keys.ToHashSet() : new HashSet<string>();
-
-    public Dictionary<WorldObjectTypeKey, Dictionary<string, ObjectMetadata>> GetAll() =>
-        _data.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-}
-
 public class SpatialGridIndex
 {
     public int CellSize { get; set; }
 
     // Use stringified keys like "x:y" to allow JSON serialization
-    public Dictionary<string, List<ObjectMetadata>> Grid { get; set; } = new();
-
     // Optional, flatten all objects by ID if needed
     public Dictionary<string, ObjectMetadata> InstanceMap { get; set; } = new();
 
-    // Optional, used for type filtering
-    public Dictionary<string, Dictionary<string, ObjectMetadata>> TypeMap { get; set; } = new();
+    // grid key => metadata id string
+    public Dictionary<string, HashSet<string>> Grid { get; set; } = new();
+
+    // Optional, used for type filtering, type string => metadata id string
+    public Dictionary<string, HashSet<string>> TypeMap { get; set; } = new();
 
     public SpatialGridIndex() { }
 
@@ -167,16 +170,16 @@ public class SpatialGridIndex
         string key = GetKey(obj.Position.X / CellSize, obj.Position.Y / CellSize);
 
         if (!Grid.TryGetValue(key, out var list))
-            Grid[key] = list = new List<ObjectMetadata>();
+            Grid[key] = list = new HashSet<string>();
 
-        list.Add(obj);
+        list.Add(obj.InstanceId);
         InstanceMap[obj.InstanceId] = obj;
 
         var typeKey = type.ToString();
         if (!TypeMap.TryGetValue(typeKey, out var typeDict))
-            TypeMap[typeKey] = typeDict = new Dictionary<string, ObjectMetadata>();
+            TypeMap[typeKey] = typeDict = new HashSet<string>();
 
-        typeDict[obj.InstanceId] = obj;
+        typeDict.Add(obj.InstanceId);
     }
 
     public ObjectMetadata? Remove(WorldObjectTypeKey type, string instanceId)
@@ -185,7 +188,7 @@ public class SpatialGridIndex
             return null;
 
         string key = GetKey(obj.Position.X / CellSize, obj.Position.Y / CellSize);
-        Grid[key]?.Remove(obj);
+        Grid[key]?.Remove(instanceId);
 
         TypeMap[type.ToString()]?.Remove(instanceId);
         InstanceMap.Remove(instanceId);
@@ -193,7 +196,7 @@ public class SpatialGridIndex
         return obj;
     }
 
-    public IEnumerable<ObjectMetadata> Query(WorldObjectTypeKey type, int x, int y, float radius)
+    public IEnumerable<ObjectMetadata> Query(WorldObjectTypeKey type, int x, int y, float radius, string roomId)
     {
         int minX = (int)((x - radius) / CellSize);
         int maxX = (int)((x + radius) / CellSize);
@@ -201,8 +204,7 @@ public class SpatialGridIndex
         int maxY = (int)((y + radius) / CellSize);
 
         float sqrRadius = radius * radius;
-        var result = new List<ObjectMetadata>();
-        var typeKey = type.ToString();
+        var result = new HashSet<ObjectMetadata>();
 
         for (int cx = minX; cx <= maxX; cx++)
         {
@@ -211,9 +213,11 @@ public class SpatialGridIndex
                 string key = GetKey(cx, cy);
                 if (!Grid.TryGetValue(key, out var list)) continue;
 
-                foreach (var obj in list)
+                var instanceList = list.Select(e => InstanceMap[e]).Where(e => e.RoomId == roomId).ToList();
+
+                foreach (var obj in instanceList)
                 {
-                    if (obj.Type.ToString() != typeKey) continue;
+                    if (obj.Type != type) continue;
 
                     float dx = obj.Position.X - x;
                     float dy = obj.Position.Y - y;
@@ -229,7 +233,7 @@ public class SpatialGridIndex
 
     public Dictionary<string, ObjectMetadata> GetByType(WorldObjectTypeKey type)
     {
-        return TypeMap.TryGetValue(type.Value, out var map) ? map : new();
+        return (TypeMap.TryGetValue(type.Value, out var map) ? map : new()).ToDictionary(x => x, x => InstanceMap[x]);
     }
 
     public HashSet<ObjectMetadata> GetAllByType(WorldObjectTypeKey type)
@@ -238,7 +242,7 @@ public class SpatialGridIndex
     }
 }
 
-public class Partition
+public class WorldPartition : IModel
 {
     private readonly SpatialGridIndex _spatialIndex = new(cellSize: 16);
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -247,7 +251,7 @@ public class Partition
     public (int X, int Y) Position { get; set; }
     public (int Width, int Height) Size { get; set; }
     public (int X, int Y) Epicenter { get; set; }
-
+    public string Type { get; set; } = "WorldPartition";
 
     public void AddObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
     {
@@ -259,11 +263,14 @@ public class Partition
         return _spatialIndex.Remove(objectType, id);
     }
 
-    public IEnumerable<ObjectMetadata> GetObjectsByTypeInRadius(WorldObjectTypeKey objectType, int x, int y, float radius)
+    public IEnumerable<ObjectMetadata> GetObjectsByTypeInRadius(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
     {
-        return _spatialIndex.Query(objectType, x, y, radius);
+        return _spatialIndex.Query(objectType, x, y, radius, roomId);
     }
 
     public HashSet<ObjectMetadata> GetObjectsByType(WorldObjectTypeKey objectType) =>
         _spatialIndex.GetAllByType(objectType);
+
+    public HashSet<ObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
+        _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
 }

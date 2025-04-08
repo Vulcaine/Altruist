@@ -95,6 +95,11 @@ public class PlayerEntity : ISynchronizedEntity, IVaultModel
     public float MaxAcceleration { get; set; }
 
     [Key(14)]
+    [JsonProperty("worldIndex")]
+    [Column]
+    public int WorldIndex { get; set; }
+
+    [Key(15)]
     [JsonIgnore]
     [Ignore]
     [IgnoreMember]

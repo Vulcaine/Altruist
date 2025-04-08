@@ -57,11 +57,25 @@ public abstract class BasicItemProperties
     }
 }
 
+[Table("item-template")]
+public abstract class ItemTemplate : BasicItemProperties, IVaultModel
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("timestamp")]
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [JsonPropertyName("baseItem")]
+    public string Type { get; set; } = "BaseItem";
+}
+
 /// <summary>
 /// Represents an item instance in the inventory. Each item is based on a template
 /// and contains dynamic properties such as count, dimensions, category, and expiry.
 /// </summary>
-public abstract class GameItem : BasicItemProperties
+[Table("item")]
+public abstract class GameItem : BasicItemProperties, IVaultModel
 {
     /// <summary>
     /// Unique identifier for this constructed item instance. 
@@ -77,6 +91,14 @@ public abstract class GameItem : BasicItemProperties
     [JsonPropertyName("templateId")]
     public long TemplateId { get; set; }
 
+    [JsonPropertyName("timestamp")]
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [JsonPropertyName("gameItem")]
+    public string Type { get; set; } = "GameItem";
+
+    [JsonPropertyName("slotKey")]
+    public SlotKey SlotKey { get; }
     /// <summary>
     /// Constructs a new inventory item with customizable dimensions, category, and properties.
     /// </summary>
@@ -86,8 +108,9 @@ public abstract class GameItem : BasicItemProperties
     /// <param name="itemType">Category or type label.</param>
     /// <param name="isStackable">True if the item is stackable.</param>
     /// <param name="expiryDate">Optional expiration date.</param>
-    public GameItem(int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
+    public GameItem(SlotKey slotKey, int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
     {
+        SlotKey = slotKey;
         Properties = new int[itemPropertySize];
         Category = itemType;
         Stackable = isStackable;
@@ -129,12 +152,4 @@ public class StorageSlot
     /// </summary>
     [JsonPropertyName("maxCapacity")]
     public short MaxCapacity { get; set; } = 1;
-}
-
-
-[Table("item-base")]
-public class BaseItem : BasicItemProperties
-{
-    [JsonPropertyName("templateId")]
-    public long Id { get; set; }
 }

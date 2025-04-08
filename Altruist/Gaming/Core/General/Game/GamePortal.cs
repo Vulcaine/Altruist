@@ -4,11 +4,16 @@ namespace Altruist.Gaming;
 
 public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
 {
-    protected readonly GameWorldManager _world;
+    protected readonly GameWorldCoordinator _worldCoordinator;
+    protected readonly IPlayerService<TPlayerEntity> _playerService;
 
-    protected AltruistGamePortal(IPortalContext context, GameWorldManager gameWorld, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistGamePortal(IPortalContext context,
+        GameWorldCoordinator worldCoordinator,
+        IPlayerService<TPlayerEntity> playerService,
+        ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
-        _world = gameWorld;
+        _worldCoordinator = worldCoordinator;
+        _playerService = playerService;
     }
 
     /// <summary>
@@ -17,17 +22,25 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
     /// <param name="x">The X coordinate in the world.</param>
     /// <param name="y">The Y coordinate in the world.</param>
     /// <param name="packet">The packet to be broadcasted.</param>
-    protected void BroadcastToNearbyClients(int x, int y, IPacketBase packet)
+    protected async Task BroadcastToNearbyClients(string initiatorClientId, int x, int y, IPacketBase packet)
     {
-        var partitions = _world.FindPartitionsForPosition(x, y, 0);
-        packet.Header = PacketHeaders.Broadcast;
-
-        foreach (var partition in partitions)
+        var player = await _playerService.FindEntityAsync(initiatorClientId);
+        if (player != null)
         {
-            var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
-            foreach (var client in clients)
+            var world = _worldCoordinator.GetWorld(player.WorldIndex);
+            if (world != null)
             {
-                _ = Router.Client.SendAsync(client.InstanceId, packet);
+                var partitions = world.FindPartitionsForPosition(x, y, 0);
+                packet.Header = PacketHeaders.Broadcast;
+
+                foreach (var partition in partitions)
+                {
+                    var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
+                    foreach (var client in clients)
+                    {
+                        _ = Router.Client.SendAsync(client.InstanceId, packet);
+                    }
+                }
             }
         }
     }
@@ -56,17 +69,15 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         }
         else
         {
-            BroadcastToNearbyClients(x, y, packet);
+            _ = BroadcastToNearbyClients(senderClientId, x, y, packet);
         }
     }
 }
 
 public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
-    protected readonly IPlayerService<TPlayerEntity> _playerService;
-    protected AltruistGameSessionPortal(IPortalContext context, GameWorldManager gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, loggerFactory)
+    protected AltruistGameSessionPortal(IPortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
-        _playerService = playerService;
     }
 
     [Gate(IngressEP.Handshake)]

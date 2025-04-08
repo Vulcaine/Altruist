@@ -22,19 +22,28 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     /// <param name="itemStoreService">The inventory service that interacts with the inventory system.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
     protected AltruistInventoryPortal(IPortalContext context,
-        GameWorldManager gameWorld,
+        GameWorldCoordinator worldCoordinator,
+        IPlayerService<TPlayerEntity> playerService,
         IItemStoreService itemStoreService,
-        ILoggerFactory loggerFactory) : base(context, gameWorld, loggerFactory)
+        ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
     {
         _itemStoreService = itemStoreService;
     }
 
-    private void RemoveItemFromWorldAndNotifyClient(GameItem item, string clientId)
+    private async Task RemoveItemFromWorldAndNotifyClient(GameItem item, string clientId)
     {
-        var removedObject = _world.DestroyObject(WorldObjectTypeKeys.Item, item.Id + "");
-        if (removedObject != null)
+        var player = await _playerService.GetPlayerAsync(clientId);
+        if (player != null)
         {
-            _ = DispatchDestroyItemPacket(item.Id + "", clientId);
+            var world = _worldCoordinator.GetWorld(player.WorldIndex);
+            if (world != null)
+            {
+                var removedObject = world.DestroyObject(WorldObjectTypeKeys.Item, item.Id + "");
+                if (removedObject != null)
+                {
+                    _ = DispatchDestroyItemPacket(item.Id + "", clientId);
+                }
+            }
         }
     }
 
@@ -59,7 +68,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         var removedItem = await _itemStoreService.RemoveItemAsync(packet.SlotKey);
         if (packet.SlotKey.Id == "ground" && removedItem != null)
         {
-            RemoveItemFromWorldAndNotifyClient(removedItem, clientId);
+            _ = RemoveItemFromWorldAndNotifyClient(removedItem, clientId);
         }
         else if (removedItem != null)
         {
@@ -87,7 +96,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
 
         if (movedItem != null)
         {
-            RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
+            _ = RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
         }
         else
         {
@@ -108,7 +117,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
 
         if (movedItem != null && packet.TargetSlotKey.Id == "ground")
         {
-            RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
+            _ = RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
         }
         else if (movedItem != null)
         {
@@ -122,7 +131,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     }
 
     /// <summary>
-    /// Handles the "sort-items" request by sorting the contents of a storage and returning the result to the client.
+    /// Handles the "sort-items" request by sorting the contents of a storage and notifying the client as well
     /// </summary>
     /// <param name="packet">The sort request packet.</param>
     /// <param name="clientId">The client making the request.</param>
