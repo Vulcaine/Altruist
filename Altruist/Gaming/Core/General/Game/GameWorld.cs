@@ -18,7 +18,7 @@ public class GameWorldManager
         _worldPartitioner = worldPartitioner;
     }
 
-    public void Initialize()
+    public virtual void Initialize()
     {
         var partitions = _worldPartitioner.CalculatePartitions(_world);
         foreach (var partition in partitions)
@@ -30,13 +30,13 @@ public class GameWorldManager
         _ = SaveAsync();
     }
 
-    public async Task SaveAsync()
+    public virtual async Task SaveAsync()
     {
         var saveTasks = _partitions.Select(p => _cache.SaveAsync(p.Id, p));
         await Task.WhenAll(saveTasks);
     }
 
-    public IEnumerable<WorldPartition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
+    public virtual IEnumerable<WorldPartition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
     {
         DestroyObject(objectType, objectMetadata.InstanceId);
         var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
@@ -53,20 +53,20 @@ public class GameWorldManager
         return partitions;
     }
 
-    public void AddDynamicObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
+    public virtual void AddDynamicObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
     {
         var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
         AddObjectToPartitions(objectType, objectMetadata, partitions);
     }
 
-    public WorldPartition? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
+    public virtual WorldPartition? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
     {
         var partition = FindPartitionForPosition(objectMetadata.Position.X, objectMetadata.Position.Y);
         partition?.AddObject(objectType, objectMetadata);
         return partition;
     }
 
-    public ObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
+    public virtual ObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
     {
         return _partitions.Select(p => p.DestroyObject(objectType, instanceId)).FirstOrDefault(m => m != null);
     }
@@ -80,11 +80,11 @@ public class GameWorldManager
     /// <param name="y">Y coordinate of the center point.</param>
     /// <param name="radius">Radius around the point to search.</param>
     /// <returns>List of object instance IDs within the specified radius.</returns>
-    public IEnumerable<ObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
+    public virtual IEnumerable<ObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
     {
         var result = new List<ObjectMetadata>();
-
-        foreach (var partition in FindPartitionsForPosition(x, y, radius))
+        var partitions = FindPartitionsForPosition(x, y, radius);
+        foreach (var partition in partitions)
         {
             result.AddRange(partition.GetObjectsByTypeInRadius(objectType, x, y, radius, roomId));
         }
@@ -92,10 +92,12 @@ public class GameWorldManager
         return result.Distinct();
     }
 
-    public WorldPartition? FindPartitionForPosition(int x, int y)
+    public virtual WorldPartition? FindPartitionForPosition(int x, int y)
     {
-        int indexX = x / _worldPartitioner.PartitionWidth;
-        int indexY = y / _worldPartitioner.PartitionHeight;
+        // Round the division result to the nearest integer and convert to int
+        int indexX = (int)Math.Round(x / (double)_worldPartitioner.PartitionWidth);
+        int indexY = (int)Math.Round(y / (double)_worldPartitioner.PartitionHeight);
+
         return _partitionMap.TryGetValue(new PartitionIndex(indexX, indexY), out var p) ? p : null;
     }
 
@@ -106,7 +108,7 @@ public class GameWorldManager
     /// <param name="y">Center Y coordinate.</param>
     /// <param name="radius">Radius of the area.</param>
     /// <returns>List of partitions intersecting the given area.</returns>
-    public IEnumerable<WorldPartition> FindPartitionsForPosition(int x, int y, float radius)
+    public virtual IEnumerable<WorldPartition> FindPartitionsForPosition(int x, int y, float radius)
     {
         float minX = x - radius;
         float maxX = x + radius;
@@ -115,9 +117,9 @@ public class GameWorldManager
 
         return _partitions.Where(partition =>
             maxX >= partition.Position.X &&
-            minX <= partition.Position.X + partition.Size.Width &&
+            minX <= partition.Position.X + partition.Size.X &&
             maxY >= partition.Position.Y &&
-            minY <= partition.Position.Y + partition.Size.Height
+            minY <= partition.Position.Y + partition.Size.Y
         );
     }
 }
@@ -138,7 +140,7 @@ public class GameWorldCoordinator
     /// <summary>
     /// Adds a new game world and initializes it.
     /// </summary>
-    public void AddWorld(WorldIndex index)
+    public virtual void AddWorld(WorldIndex index)
     {
         if (_worlds.ContainsKey(index.Index))
             throw new InvalidOperationException($"World {index.Index} already exists.");
@@ -151,7 +153,7 @@ public class GameWorldCoordinator
     /// <summary>
     /// Removes the specified world by index.
     /// </summary>
-    public void RemoveWorld(int index)
+    public virtual void RemoveWorld(int index)
     {
         _worlds.Remove(index);
     }
@@ -159,7 +161,7 @@ public class GameWorldCoordinator
     /// <summary>
     /// Gets the GameWorldManager for a given world index.
     /// </summary>
-    public GameWorldManager? GetWorld(int index)
+    public virtual GameWorldManager? GetWorld(int index)
     {
         return _worlds.TryGetValue(index, out var manager) ? manager : null;
     }
@@ -167,5 +169,5 @@ public class GameWorldCoordinator
     /// <summary>
     /// Lists all currently loaded world indices.
     /// </summary>
-    public IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
+    public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 }

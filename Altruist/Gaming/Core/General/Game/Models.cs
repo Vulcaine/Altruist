@@ -1,7 +1,47 @@
 
+using System.Numerics;
 using Altruist.UORM;
 
 namespace Altruist.Gaming;
+
+public struct IntVector2
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+
+    public IntVector2(int x, int y)
+    {
+        X = x;
+        Y = y;
+    }
+
+    // You can add operators, methods, etc. as needed
+    public static IntVector2 operator +(IntVector2 a, IntVector2 b)
+    {
+        return new IntVector2(a.X + b.X, a.Y + b.Y);
+    }
+
+    public static IntVector2 operator -(IntVector2 a, IntVector2 b)
+    {
+        return new IntVector2(a.X - b.X, a.Y - b.Y);
+    }
+
+    public static IntVector2 operator *(IntVector2 v, int scalar)
+    {
+        return new IntVector2(v.X * scalar, v.Y * scalar);
+    }
+
+    public static IntVector2 operator /(IntVector2 v, int scalar)
+    {
+        return new IntVector2(v.X / scalar, v.Y / scalar);
+    }
+
+    public override string ToString()
+    {
+        return $"({X}, {Y})";
+    }
+}
+
 
 [Table("world_index")]
 public class WorldIndex : IVaultModel
@@ -55,13 +95,12 @@ public class WorldPartitioner : IWorldPartitioner
                 int width = Math.Min(PartitionWidth, world.Width - x);
                 int height = Math.Min(PartitionHeight, world.Height - y);
 
-                var partition = new WorldPartition
-                {
-                    Index = (col, row),
-                    Position = (x, y),
-                    Size = (width, height),
-                    Epicenter = (x + width / 2, y + height / 2)
-                };
+                var partition = new WorldPartition(
+                    id: Guid.NewGuid().ToString(),
+                    index: new IntVector2(col, row),
+                    position: new IntVector2(x, y),
+                    size: new IntVector2(width, height)
+                );
 
                 partitions.Add(partition);
             }
@@ -130,7 +169,9 @@ public class ObjectMetadata
     /// <summary>
     /// The (X, Y) position of the object in the world/grid.
     /// </summary>
-    public (int X, int Y) Position { get; set; }
+    public IntVector2 Position { get; set; }
+
+    public float Rotation { get; set; }
 }
 
 
@@ -165,9 +206,9 @@ public class SpatialGridIndex
 
     private static string GetKey(int x, int y) => $"{x}:{y}";
 
-    public void Add(WorldObjectTypeKey type, ObjectMetadata obj)
+    public virtual void Add(WorldObjectTypeKey type, ObjectMetadata obj)
     {
-        string key = GetKey(obj.Position.X / CellSize, obj.Position.Y / CellSize);
+        string key = GetKey((int)(obj.Position.X / CellSize), (int)(obj.Position.Y / CellSize));
 
         if (!Grid.TryGetValue(key, out var list))
             Grid[key] = list = new HashSet<string>();
@@ -182,12 +223,12 @@ public class SpatialGridIndex
         typeDict.Add(obj.InstanceId);
     }
 
-    public ObjectMetadata? Remove(WorldObjectTypeKey type, string instanceId)
+    public virtual ObjectMetadata? Remove(WorldObjectTypeKey type, string instanceId)
     {
         if (!InstanceMap.TryGetValue(instanceId, out var obj))
             return null;
 
-        string key = GetKey(obj.Position.X / CellSize, obj.Position.Y / CellSize);
+        string key = GetKey((int)(obj.Position.X / CellSize), (int)(obj.Position.Y / CellSize));
         if (Grid.TryGetValue(key, out var list))
         {
             list.Remove(instanceId);
@@ -203,7 +244,7 @@ public class SpatialGridIndex
         return obj;
     }
 
-    public IEnumerable<ObjectMetadata> Query(WorldObjectTypeKey type, int x, int y, float radius, string roomId)
+    public virtual IEnumerable<ObjectMetadata> Query(WorldObjectTypeKey type, int x, int y, float radius, string roomId)
     {
         int minX = (int)((x - radius) / CellSize);
         int maxX = (int)((x + radius) / CellSize);
@@ -238,12 +279,12 @@ public class SpatialGridIndex
         return result;
     }
 
-    public Dictionary<string, ObjectMetadata> GetByType(WorldObjectTypeKey type)
+    public virtual Dictionary<string, ObjectMetadata> GetByType(WorldObjectTypeKey type)
     {
         return (TypeMap.TryGetValue(type.Value, out var map) ? map : new()).ToDictionary(x => x, x => InstanceMap[x]);
     }
 
-    public HashSet<ObjectMetadata> GetAllByType(WorldObjectTypeKey type)
+    public virtual HashSet<ObjectMetadata> GetAllByType(WorldObjectTypeKey type)
     {
         return GetByType(type).Values.ToHashSet();
     }
@@ -254,30 +295,41 @@ public class WorldPartition : IModel
     private readonly SpatialGridIndex _spatialIndex = new(cellSize: 16);
     public string Id { get; set; } = Guid.NewGuid().ToString();
 
-    public (int X, int Y) Index { get; set; }
-    public (int X, int Y) Position { get; set; }
-    public (int Width, int Height) Size { get; set; }
-    public (int X, int Y) Epicenter { get; set; }
+    public IntVector2 Index { get; set; }
+    public IntVector2 Position { get; set; }
+    public IntVector2 Size { get; set; }
+    public IntVector2 Epicenter { get; set; }
     public string Type { get; set; } = "WorldPartition";
 
-    public void AddObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
+    public WorldPartition(
+        string id,
+        IntVector2 index, IntVector2 position, IntVector2 size)
+    {
+        Id = id;
+        Index = index;
+        Position = position;
+        Size = size;
+        Epicenter = position + size / 2;
+    }
+
+    public virtual void AddObject(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata)
     {
         _spatialIndex.Add(objectType, objectMetadata);
     }
 
-    public ObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string id)
+    public virtual ObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string id)
     {
         return _spatialIndex.Remove(objectType, id);
     }
 
-    public IEnumerable<ObjectMetadata> GetObjectsByTypeInRadius(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
+    public virtual IEnumerable<ObjectMetadata> GetObjectsByTypeInRadius(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
     {
         return _spatialIndex.Query(objectType, x, y, radius, roomId);
     }
 
-    public HashSet<ObjectMetadata> GetObjectsByType(WorldObjectTypeKey objectType) =>
+    public virtual HashSet<ObjectMetadata> GetObjectsByType(WorldObjectTypeKey objectType) =>
         _spatialIndex.GetAllByType(objectType);
 
-    public HashSet<ObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
+    public virtual HashSet<ObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
         _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
 }
