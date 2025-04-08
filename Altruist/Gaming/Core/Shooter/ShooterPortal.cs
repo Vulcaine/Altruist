@@ -5,7 +5,8 @@ namespace Altruist.Gaming.Shooter;
 
 public abstract class AltruistSpaceshipGamePortal : AltruistGamePortal<Spaceship>
 {
-    public AltruistSpaceshipGamePortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    public AltruistSpaceshipGamePortal(IPortalContext context, GameWorldCoordinator gameWorldCoordinator, IPlayerService<Spaceship> playerService, ILoggerFactory loggerFactory)
+        : base(context, gameWorldCoordinator, playerService, loggerFactory)
     {
     }
 }
@@ -13,7 +14,8 @@ public abstract class AltruistSpaceshipGamePortal : AltruistGamePortal<Spaceship
 
 public abstract class AltruistShootingPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
-    public AltruistShootingPortal(PortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    public AltruistShootingPortal(PortalContext context, GameWorldCoordinator gameWorldCoordinator, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory)
+        : base(context, gameWorldCoordinator, playerService, loggerFactory)
     {
     }
 

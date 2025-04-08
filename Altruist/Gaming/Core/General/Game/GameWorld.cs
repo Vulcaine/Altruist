@@ -1,7 +1,6 @@
 
 namespace Altruist.Gaming;
 
-
 public class GameWorldManager
 {
     protected readonly WorldIndex _world;
@@ -37,7 +36,7 @@ public class GameWorldManager
         await Task.WhenAll(saveTasks);
     }
 
-    public List<WorldPartition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
+    public IEnumerable<WorldPartition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, float radius)
     {
         DestroyObject(objectType, objectMetadata.InstanceId);
         var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
@@ -45,7 +44,7 @@ public class GameWorldManager
         return partitions;
     }
 
-    private List<WorldPartition> AddObjectToPartitions(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, List<WorldPartition> partitions)
+    private IEnumerable<WorldPartition> AddObjectToPartitions(WorldObjectTypeKey objectType, ObjectMetadata objectMetadata, IEnumerable<WorldPartition> partitions)
     {
         foreach (var partition in partitions)
         {
@@ -81,7 +80,7 @@ public class GameWorldManager
     /// <param name="y">Y coordinate of the center point.</param>
     /// <param name="radius">Radius around the point to search.</param>
     /// <returns>List of object instance IDs within the specified radius.</returns>
-    public List<ObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
+    public IEnumerable<ObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
     {
         var result = new List<ObjectMetadata>();
 
@@ -90,7 +89,7 @@ public class GameWorldManager
             result.AddRange(partition.GetObjectsByTypeInRadius(objectType, x, y, radius, roomId));
         }
 
-        return [.. result.Distinct()];
+        return result.Distinct();
     }
 
     public WorldPartition? FindPartitionForPosition(int x, int y)
@@ -107,19 +106,19 @@ public class GameWorldManager
     /// <param name="y">Center Y coordinate.</param>
     /// <param name="radius">Radius of the area.</param>
     /// <returns>List of partitions intersecting the given area.</returns>
-    public List<WorldPartition> FindPartitionsForPosition(int x, int y, float radius)
+    public IEnumerable<WorldPartition> FindPartitionsForPosition(int x, int y, float radius)
     {
         float minX = x - radius;
         float maxX = x + radius;
         float minY = y - radius;
         float maxY = y + radius;
 
-        return [.. _partitions.Where(partition =>
+        return _partitions.Where(partition =>
             maxX >= partition.Position.X &&
             minX <= partition.Position.X + partition.Size.Width &&
             maxY >= partition.Position.Y &&
             minY <= partition.Position.Y + partition.Size.Height
-        )];
+        );
     }
 }
 
