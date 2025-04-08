@@ -2,17 +2,59 @@ namespace Altruist.Gaming;
 
 public class ItemStorage
 {
+    public IStoragePrincipal Principal { get; }
     public string StorageId { get; set; }
-    public Dictionary<SlotKey, StorageSlot> SlotMap { get; set; } = new();
+    public Dictionary<SlotKey, StorageSlot> SlotMap { get; set; }
 
     public short MaxWidth { get; set; } = 10;
     public short MaxHeight { get; set; } = 10;
 
-    public ItemStorage(string storageId, short maxWidth, short maxHeight)
+    public ItemStorage(
+        IStoragePrincipal principal,
+        string storageId, short maxWidth, short maxHeight)
     {
+        Principal = principal;
         StorageId = storageId;
         MaxWidth = maxWidth;
         MaxHeight = maxHeight;
+
+        SlotMap = new Dictionary<SlotKey, StorageSlot>();
+
+        for (short y = 0; y < MaxHeight; y++)
+        {
+            for (short x = 0; x < MaxWidth; x++)
+            {
+                var slotKey = new SlotKey(x, y, id: storageId, storageId: storageId);
+                var slot = new StorageSlot
+                {
+                    SlotKey = slotKey,
+                    ItemCount = 0,
+                    MaxCapacity = 1
+                };
+                SlotMap[slotKey] = slot;
+            }
+        }
+    }
+
+    public StorageSlot? FindSlot(SlotKey key)
+    {
+        SlotMap.TryGetValue(key, out var slot);
+        return slot;
+    }
+
+    public void AddSlot(SlotKey key, StorageSlot slot)
+    {
+        SlotMap.Add(key, slot);
+    }
+
+    public void RemoveSlot(SlotKey key)
+    {
+        SlotMap.Remove(key);
+    }
+
+    public void Clear()
+    {
+        SlotMap.Clear();
     }
 }
 
@@ -21,10 +63,12 @@ public class ItemStorageProvider
     private readonly ICacheProvider _cache;
     private readonly ItemStorage _storage;
 
-    public ItemStorageProvider(string storageId, short maxWidth, short maxHeight, ICacheProvider cacheProvider)
+    public ItemStorageProvider(
+        IStoragePrincipal principal,
+        string storageId, short maxWidth, short maxHeight, ICacheProvider cacheProvider)
     {
         _cache = cacheProvider;
-        _storage = new ItemStorage(storageId, maxWidth, maxHeight);
+        _storage = new ItemStorage(principal, storageId, maxWidth, maxHeight);
     }
 
     /// <summary>
@@ -32,9 +76,19 @@ public class ItemStorageProvider
     /// </summary>
     /// <param name="itemId">The id of the item to find.</param>
     /// <returns>The item with the given id if it exists, null otherwise.</returns>
-    public async Task<GameItem?> FindItemAsync(long itemId)
+    public async Task<T?> FindItemAsync<T>(string itemId) where T : GameItem
     {
-        return await _cache.GetAsync<GameItem>($"item:{_storage.StorageId}:{itemId}");
+        return await _cache.GetAsync<T>(itemId);
+    }
+
+    public async Task<ICursor<T>> GetAllItemsAsync<T>() where T : GameItem
+    {
+        return await _cache.GetAllAsync<T>();
+    }
+
+    public StorageSlot? FindSlot(SlotKey key)
+    {
+        return _storage.FindSlot(key);
     }
 
     /// <summary>
@@ -50,21 +104,14 @@ public class ItemStorageProvider
     /// <param name="y">The optional y-coordinate for placing the item. If not specified, auto-placement is attempted.</param>
     /// <param name="slotId">The optional slot identifier for the storage location. Defaults to "inventory".</param>
     /// <returns>true if the item was successfully placed, false otherwise.</returns>
-    public async Task<bool> SetItemAsync(long itemId, short itemCount, SlotKey slotKey)
+    public async Task<bool> SetItemAsync(string itemId, short itemCount, SlotKey slotKey)
     {
-        var item = await FindItemAsync(itemId);
-
-        if (item == null)
+        var item = await FindItemAsync<GameItem>(itemId);
+        if (item == null || item.Stackable == false && itemCount > 1)
             return false;
 
-        // If position is specified
-        if (!CanFitAt(slotKey, item.Size.Width, item.Size.Height))
-            return false;
-
-        PlaceItemAt(slotKey, item, itemCount);
-        return true;
+        return PlaceItemAt(slotKey, item, itemCount);
     }
-
 
     /// <summary>
     /// Adds the specified item to the storage if it has enough capacity.
@@ -77,61 +124,76 @@ public class ItemStorageProvider
     /// <returns>true if the item was successfully added, false otherwise.</returns>
     public bool AddItem(GameItem item, short itemCount, string slotId)
     {
-        for (short y = 0; y <= _storage.MaxHeight - item.Size.Height; y++)
+        for (short y = 0; y <= _storage.MaxHeight - item.Size.Y; y++)
         {
-            for (short x = 0; x <= _storage.MaxWidth - item.Size.Width; x++)
+            for (short x = 0; x <= _storage.MaxWidth - item.Size.X; x++)
             {
                 var atSlotKey = new SlotKey(x, y, slotId, _storage.StorageId);
-                if (!CanFitAt(atSlotKey, item.Size.Width, item.Size.Height))
+                if (!CanFitAt(atSlotKey, item.Size.X, item.Size.Y))
                     continue;
 
-                // Reserve all the slots for the item
-                for (short dy = 0; dy < item.Size.Height; dy++)
+                var positions = new List<SlotKey>();
+                for (short dy = 0; dy < item.Size.Y; dy++)
                 {
-                    for (short dx = 0; dx < item.Size.Width; dx++)
+                    for (short dx = 0; dx < item.Size.X; dx++)
                     {
-                        short slotX = (short)(x + dx);
-                        short slotY = (short)(y + dy);
-                        SlotKey key = new SlotKey(slotX, slotY, slotId, _storage.StorageId);
-
-                        _storage.SlotMap[key] = new StorageSlot
-                        {
-
-                            ItemId = item.Id,
-                            ItemCount = itemCount,
-                            SlotKey = key
-                        };
+                        var slotX = (short)(x + dx);
+                        var slotY = (short)(y + dy);
+                        positions.Add(new SlotKey(slotX, slotY, slotId, _storage.StorageId));
                     }
                 }
 
-                return true;
+                return PlaceItemInternal(item.Id, itemCount, positions);
             }
         }
 
         return false;
     }
 
-    private void PlaceItemAt(SlotKey key, GameItem item, short itemCount)
+    public void RestoreSlot(StorageSlot slot)
     {
-        var startX = key.X;
-        var startY = key.Y;
-        for (short dy = 0; dy < item.Size.Height; dy++)
-        {
-            for (short dx = 0; dx < item.Size.Width; dx++)
-            {
-                short x = (short)(startX + dx);
-                short y = (short)(startY + dy);
+        _storage.SlotMap[slot.SlotKey] = slot;
+    }
 
-                SlotKey atKey = new SlotKey(x, y, key.Id, _storage.StorageId);
-                _storage.SlotMap[key] = new StorageSlot
-                {
-                    ItemId = item.Id,
-                    ItemCount = itemCount,
-                    SlotKey = atKey
-                };
+    private bool PlaceItemInternal(string itemId, short itemCount, List<SlotKey> positions)
+    {
+        for (int i = 0; i < positions.Count; i++)
+        {
+            var current = positions[i];
+            var next = positions[(i + 1) % positions.Count];
+
+            var slot = _storage.SlotMap[current];
+
+            slot.ItemInstanceId = itemId;
+            slot.ItemCount += itemCount;
+            slot.SlotLink = new IntVector2(next.X, next.Y);
+
+            _storage.SlotMap[current] = slot;
+        }
+
+        return true;
+    }
+
+
+    private bool PlaceItemAt(SlotKey key, GameItem item, short itemCount)
+    {
+        if (!CanFitAt(key, item.Size.X, item.Size.Y))
+            return false;
+
+        var positions = new List<SlotKey>();
+        for (short dy = 0; dy < item.Size.Y; dy++)
+        {
+            for (short dx = 0; dx < item.Size.X; dx++)
+            {
+                var slotX = (short)(key.X + dx);
+                var slotY = (short)(key.Y + dy);
+                positions.Add(new SlotKey(slotX, slotY, key.Id, _storage.StorageId));
             }
         }
+
+        return PlaceItemInternal(item.Id, itemCount, positions);
     }
+
 
 
     private bool CanFitAt(SlotKey key, short width, short height)
@@ -149,7 +211,7 @@ public class ItemStorageProvider
                     return false;
 
                 var atKey = new SlotKey(x, y, key.Id, _storage.StorageId);
-                if (_storage.SlotMap.ContainsKey(atKey))
+                if (_storage.SlotMap.TryGetValue(atKey, out var slot) && slot.ItemCount > 0)
                     return false;
             }
         }
@@ -166,23 +228,58 @@ public class ItemStorageProvider
     /// <param name="slotId">The slotId of the storage to remove the item from. Defaults to "inventory".</param>
     /// <param name="count">The number of items to remove. Defaults to 1.</param>
     /// <returns>true if the item was successfully removed, false otherwise.</returns>
-    public StorageSlot? RemoveItem(SlotKey key, short count = 1)
+    public List<StorageSlot> RemoveItem(SlotKey startKey, short count = 1)
     {
-        var slot = _storage.SlotMap.GetValueOrDefault(key);
-        if (slot == null || slot.ItemCount < count)
+        if (!_storage.SlotMap.TryGetValue(startKey, out var startSlot) || startSlot.ItemCount < count)
+            return new();
+
+        var removed = new List<StorageSlot>();
+        var visited = new HashSet<SlotKey>();
+        var currentKey = startKey;
+
+        do
         {
-            return null!;
-        }
+            if (!_storage.SlotMap.TryGetValue(currentKey, out var slot))
+                break;
 
-        slot.ItemCount -= count;
+            var slotCopy = new StorageSlot
+            {
+                SlotKey = slot.SlotKey,
+                ItemInstanceId = slot.ItemInstanceId,
+                ItemCount = slot.ItemCount,
+                MaxCapacity = slot.MaxCapacity,
+                SlotLink = slot.SlotLink
+            };
+            slot.ItemCount -= count;
 
-        if (slot.ItemCount == 0)
-        {
-            _storage.SlotMap.Remove(key);
-        }
+            if (slot.ItemCount <= 0)
+            {
+                slot.ItemInstanceId = "";
+            }
+            else
+            {
+                _storage.SlotMap[currentKey] = slot;
+            }
 
-        return slot;
+            removed.Add(slotCopy);
+            visited.Add(currentKey);
+
+            if (slot.SlotLink is IntVector2 nextLink)
+            {
+                currentKey = new SlotKey(
+                    (short)nextLink.X,
+                    (short)nextLink.Y,
+                    currentKey.Id,
+                    currentKey.StorageId
+                );
+            }
+            else break;
+
+        } while (!visited.Contains(currentKey));
+
+        return removed;
     }
+
 
     /// <summary>
     /// Moves an item from one location to another location in the same storage.
@@ -194,45 +291,35 @@ public class ItemStorageProvider
     /// <param name="fromSlotId">The slotId of the storage that the item is currently in. Defaults to "inventory".</param>
     /// <param name="slotId">The slotId of the storage that the item should be moved to. Defaults to "inventory".</param>
     /// <returns>true if the item was successfully moved, false otherwise.</returns>
-    public async Task<bool> MoveItemAsync(long itemId, SlotKey fromSlotKey, SlotKey toSlotKey, short? count = 1)
+    public async Task<bool> MoveItemAsync(string itemId, SlotKey fromSlotKey, SlotKey toSlotKey, short? count = 1)
     {
         if (count == null || count <= 0)
             return false;
 
-        var item = await FindItemAsync(itemId);
+        var item = await FindItemAsync<GameItem>(itemId);
         if (item == null)
             return false;
 
-        if (!CanFitAt(toSlotKey, item.Size.Width, item.Size.Height))
+        if (!CanFitAt(toSlotKey, item.Size.X, item.Size.Y))
+            return false;
+
+        // Remove the full item from all linked slots
+        var removedSlots = RemoveItem(fromSlotKey, count.Value);
+        if (removedSlots == null || removedSlots.Count == 0)
+            return false;
+
+        // Add the item to the new location
+        var success = await SetItemAsync(itemId, count ?? 1, toSlotKey);
+
+        if (!success)
         {
+            // Failed to place it, restore the original state (optional)
+            foreach (var slot in removedSlots)
+            {
+                _storage.SlotMap[slot.SlotKey] = slot;
+            }
             return false;
         }
-
-        if (!_storage.SlotMap.TryGetValue(fromSlotKey, out var fromSlot) || !_storage.SlotMap.TryGetValue(toSlotKey, out var toSlot))
-            return false;
-
-        if (fromSlot.ItemId != itemId || fromSlot.ItemCount < count)
-            return false;
-
-        // Ensure we're not exceeding MaxCapacity in the target slot
-        if (toSlot.ItemId != 0 && toSlot.ItemId != itemId)
-            return false;
-
-        if (toSlot.ItemCount + count > toSlot.MaxCapacity)
-            return false;
-
-        // Remove count from fromSlot
-        fromSlot.ItemCount -= count.Value;
-        if (fromSlot.ItemCount <= 0)
-        {
-            fromSlot.ItemId = 0;
-            fromSlot.ItemCount = 0;
-        }
-        _storage.SlotMap[fromSlotKey] = fromSlot;
-
-        toSlot.ItemId = itemId;
-        toSlot.ItemCount += count.Value;
-        _storage.SlotMap[toSlotKey] = toSlot;
 
         return true;
     }
@@ -243,7 +330,7 @@ public class ItemStorageProvider
     /// </summary>
     public async Task SortStorageAsync()
     {
-        var itemTasks = _storage.SlotMap.Values.Select(e => FindItemAsync(e.ItemId)).ToList();
+        var itemTasks = _storage.SlotMap.Values.Select(e => FindItemAsync<GameItem>(e.ItemInstanceId)).ToList();
         var items = await Task.WhenAll(itemTasks);
         var sortedItems = items.Where(item => item != null).OrderBy(item => item!.Category).ToList();
 
@@ -259,7 +346,7 @@ public class ItemStorageProvider
             _storage.SlotMap[key] = new StorageSlot
             {
                 SlotKey = key,
-                ItemId = item!.Id,
+                ItemInstanceId = item!.Id,
                 ItemCount = item.Count
             };
 

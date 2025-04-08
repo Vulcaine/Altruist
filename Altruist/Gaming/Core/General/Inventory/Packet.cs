@@ -1,22 +1,23 @@
-using System.Text.Json.Serialization;
-using MessagePack;
-
 namespace Altruist.Gaming;
 
+using MessagePack;
+using System.Text.Json.Serialization;
+
 [MessagePackObject]
-public struct SlotKey
+public readonly struct SlotKey : IEquatable<SlotKey>
 {
-    [Key(0)][JsonPropertyName("type")] public string Type = "SlotKey";
-    [Key(1)][JsonPropertyName("x")] public short X;
-    [Key(2)][JsonPropertyName("y")] public short Y;
-    [Key(3)][JsonPropertyName("id")] public string Id;
-    [Key(4)][JsonPropertyName("storageId")] public string StorageId;
+    [Key(0)][JsonPropertyName("type")] public string Type { get; }
+    [Key(1)][JsonPropertyName("x")] public short X { get; }
+    [Key(2)][JsonPropertyName("y")] public short Y { get; }
+    [Key(3)][JsonPropertyName("id")] public string Id { get; }
+    [Key(4)][JsonPropertyName("storageId")] public string StorageId { get; }
 
     public SlotKey(short x, short y, string id = "inventory", string storageId = "inventory")
     {
-        Id = id;
+        Type = "SlotKey";
         X = x;
         Y = y;
+        Id = id;
         StorageId = storageId;
     }
 
@@ -24,7 +25,30 @@ public struct SlotKey
     {
         return $"slot:{StorageId}:{Id}:{X}:{Y}";
     }
+
+    public bool Equals(SlotKey other)
+    {
+        return X == other.X &&
+               Y == other.Y &&
+               Id == other.Id &&
+               StorageId == other.StorageId;
+    }
+
+    public override bool Equals(object obj)
+    {
+        return obj is SlotKey other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        // Combine hash codes efficiently
+        return HashCode.Combine(X, Y, Id, StorageId);
+    }
+
+    public static bool operator ==(SlotKey left, SlotKey right) => left.Equals(right);
+    public static bool operator !=(SlotKey left, SlotKey right) => !(left == right);
 }
+
 
 public static class SlotKeys
 {
@@ -43,7 +67,7 @@ public struct ItemDropPacket : IPacketBase
 
     [JsonPropertyName("itemId")]
     [Key(1)]
-    public long ItemId { get; set; }
+    public string ItemId { get; set; }
 
     [JsonPropertyName("properties")]
     [Key(2)]
@@ -57,9 +81,10 @@ public struct ItemDropPacket : IPacketBase
     public ItemDropPacket()
     {
         Properties = Array.Empty<int>();
+        ItemId = "";
     }
 
-    public ItemDropPacket(string sender, long itemId, int[] properties, string? receiver = null)
+    public ItemDropPacket(string sender, string itemId, int[] properties, string? receiver = null)
     {
         Header = new PacketHeader(sender, receiver);
         ItemId = itemId;
@@ -110,7 +135,7 @@ public struct ItemPickUpPacket : IPacketBase
 
     [JsonPropertyName("itemId")]
     [Key(1)]
-    public long ItemId { get; set; }
+    public string ItemId { get; set; }
 
     [JsonPropertyName("itemCount")]
     [Key(2)]
@@ -130,9 +155,10 @@ public struct ItemPickUpPacket : IPacketBase
 
     public ItemPickUpPacket()
     {
+        ItemId = "";
     }
 
-    public ItemPickUpPacket(string sender, long itemId, short itemCount, string? targetStorageId = "inventory", string? targetSlotId = "inventory", string? receiver = null)
+    public ItemPickUpPacket(string sender, string itemId, short itemCount, string? targetStorageId = "inventory", string? targetSlotId = "inventory", string? receiver = null)
     {
         ItemId = itemId;
         ItemCount = itemCount;
@@ -163,7 +189,7 @@ public struct ItemSetPacket : IPacketBase
     /// <summary>ID of the item to set.</summary>
     [JsonPropertyName("itemId")]
     [Key(2)]
-    public long ItemId { get; set; }
+    public string ItemId { get; set; }
 
     /// <summary>Count of the item.</summary>
     [JsonPropertyName("itemCount")]
@@ -183,10 +209,10 @@ public struct ItemSetPacket : IPacketBase
     public ItemSetPacket()
     {
         StorageId = "inventory";
-        ItemId = 0;
+        ItemId = "";
     }
 
-    public ItemSetPacket(string sender, string storageId, long itemId, SlotKey slotKey, short itemCount = 1, string? receiver = null)
+    public ItemSetPacket(string sender, string storageId, string itemId, SlotKey slotKey, short itemCount = 1, string? receiver = null)
     {
         SlotKey = slotKey;
         StorageId = storageId;
@@ -211,7 +237,7 @@ public struct InventoryMoveItemPacket : IPacketBase
     /// <summary>ID of the item to move. The server uses this to locate the original position.</summary>
     [JsonPropertyName("itemId")]
     [Key(1)]
-    public long ItemId { get; set; }
+    public string ItemId { get; set; }
 
     /// <summary>Amount of the item to move (if stackable).</summary>
     [JsonPropertyName("itemCount")]
@@ -235,10 +261,10 @@ public struct InventoryMoveItemPacket : IPacketBase
 
     public InventoryMoveItemPacket()
     {
-        ItemId = 0;
+        ItemId = "";
     }
 
-    public InventoryMoveItemPacket(string sender, SlotKey fromSlot, SlotKey toSlot, long itemId, short itemCount = 1, string? receiver = null)
+    public InventoryMoveItemPacket(string sender, SlotKey fromSlot, SlotKey toSlot, string itemId, short itemCount = 1, string? receiver = null)
     {
         SlotKey = fromSlot;
         TargetSlotKey = toSlot;

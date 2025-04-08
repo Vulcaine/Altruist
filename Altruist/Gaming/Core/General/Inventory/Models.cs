@@ -35,7 +35,7 @@ public abstract class BasicItemProperties
     /// <summary>
     /// Size of the item in inventory slots.
     /// </summary>
-    public (byte Width, byte Height) Size { get; set; }
+    public ByteVector2 Size { get; set; }
 
 
     /// <summary>
@@ -53,7 +53,7 @@ public abstract class BasicItemProperties
         Category = itemType;
         Stackable = isStackable;
         ExpiryDate = expiryDate;
-        Size = (width, height);
+        Size = new ByteVector2(width, height);
     }
 }
 
@@ -82,7 +82,7 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// It is generated at runtime and is not the same as the template ID.
     /// </summary>
     [JsonPropertyName("id")]
-    public long Id { get; set; }
+    public string Id { get; set; }
 
     /// <summary>
     /// Static ID that links this item to its template definition.
@@ -110,12 +110,13 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// <param name="expiryDate">Optional expiration date.</param>
     public GameItem(SlotKey slotKey, int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
     {
+        Id = Guid.NewGuid().ToString();
         SlotKey = slotKey;
         Properties = new int[itemPropertySize];
         Category = itemType;
         Stackable = isStackable;
         ExpiryDate = expiryDate;
-        Size = (width, height);
+        Size = new ByteVector2(width, height);
     }
 }
 
@@ -136,8 +137,8 @@ public class StorageSlot
     /// ID of the item currently occupying this slot.
     /// A value of 0 typically means the slot is empty.
     /// </summary>
-    [JsonPropertyName("itemId")]
-    public long ItemId { get; set; }
+    [JsonPropertyName("itemInstanceId")]
+    public string ItemInstanceId { get; set; } = "";
 
     /// <summary>
     /// The number of items currently in this slot.
@@ -152,4 +153,7 @@ public class StorageSlot
     /// </summary>
     [JsonPropertyName("maxCapacity")]
     public short MaxCapacity { get; set; } = 1;
+
+    [JsonPropertyName("slotLink")]
+    public IntVector2? SlotLink { get; set; }
 }

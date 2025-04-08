@@ -62,7 +62,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     [Gate("destroy-item")]
     public virtual async void DestroyItem(ItemRemovePacket packet, string clientId)
     {
-        var removedItem = await _itemStoreService.RemoveItemAsync(packet.SlotKey);
+        var removedItem = await _itemStoreService.RemoveItemAsync<GameItem>(packet.SlotKey);
         if (packet.SlotKey.Id == "ground" && removedItem != null)
         {
             _ = RemoveItemFromWorldAndNotifyClient(removedItem, clientId);
@@ -89,7 +89,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     {
         var fromSlot = SlotKeys.InventoryAnyPos;
         var toSlot = SlotKeys.GroundAnyPos;
-        var movedItem = await _itemStoreService.MoveItemAsync(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
+        var movedItem = await _itemStoreService.MoveItemAsync<GameItem>(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
 
         if (movedItem != null)
         {
@@ -110,7 +110,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     [Gate("move-item")]
     public virtual async void MoveItem(InventoryMoveItemPacket packet, string clientId)
     {
-        var movedItem = await _itemStoreService.MoveItemAsync(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
+        var movedItem = await _itemStoreService.MoveItemAsync<GameItem>(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
 
         if (movedItem != null && packet.TargetSlotKey.Id == "ground")
         {
