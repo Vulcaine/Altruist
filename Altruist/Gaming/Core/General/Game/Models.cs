@@ -175,7 +175,7 @@ public class SpatialGridIndex
         list.Add(obj.InstanceId);
         InstanceMap[obj.InstanceId] = obj;
 
-        var typeKey = type.ToString();
+        var typeKey = type.Value;
         if (!TypeMap.TryGetValue(typeKey, out var typeDict))
             TypeMap[typeKey] = typeDict = new HashSet<string>();
 
@@ -188,9 +188,16 @@ public class SpatialGridIndex
             return null;
 
         string key = GetKey(obj.Position.X / CellSize, obj.Position.Y / CellSize);
-        Grid[key]?.Remove(instanceId);
+        if (Grid.TryGetValue(key, out var list))
+        {
+            list.Remove(instanceId);
+        }
 
-        TypeMap[type.ToString()]?.Remove(instanceId);
+        if (TypeMap.TryGetValue(type.Value, out var map))
+        {
+            map.Remove(instanceId);
+        }
+
         InstanceMap.Remove(instanceId);
 
         return obj;

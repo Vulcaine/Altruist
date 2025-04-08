@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
@@ -32,17 +33,13 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
 
     private async Task RemoveItemFromWorldAndNotifyClient(GameItem item, string clientId)
     {
-        var player = await _playerService.GetPlayerAsync(clientId);
-        if (player != null)
+        var world = await FindWorldForClientAsync(clientId);
+        if (world != null)
         {
-            var world = _worldCoordinator.GetWorld(player.WorldIndex);
-            if (world != null)
+            var removedObject = world.DestroyObject(WorldObjectTypeKeys.Item, item.Id + "");
+            if (removedObject != null)
             {
-                var removedObject = world.DestroyObject(WorldObjectTypeKeys.Item, item.Id + "");
-                if (removedObject != null)
-                {
-                    _ = DispatchDestroyItemPacket(item.Id + "", clientId);
-                }
+                _ = DispatchDestroyItemPacket(item.Id + "", clientId);
             }
         }
     }

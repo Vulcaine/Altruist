@@ -10,9 +10,6 @@ public static class AltruistGamingServiceCollectionExtensions
             return new WorldPartitioner(64, 64);
         });
         services.AddSingleton<GameWorldCoordinator>();
-        // services.AddScoped<IPlayerTracker, PlayerTracker>();
-        // Add whatever your package needs
-
         return services;
     }
 }
