@@ -1,3 +1,5 @@
+using Altruist.Database;
+
 namespace Altruist.Gaming;
 
 public class ItemStoreService : IItemStoreService
@@ -17,6 +19,61 @@ public class ItemStoreService : IItemStoreService
             principal,
             storageId, size.Width, size.Height, slotCapacity, _cache);
     }
+
+    public async Task<bool> SwapSlotsAsync(SlotKey from, SlotKey to)
+    {
+        var fromStorage = await FindStorageAsync(from.StorageId);
+        if (fromStorage == null)
+            return false;
+
+        // Same storage — simple swap
+        if (from.StorageId == to.StorageId)
+        {
+            await fromStorage.SwapSlotsAsync(from, to);
+            await fromStorage.SaveAsync();
+            return true;
+        }
+
+        // Cross-storage — fetch second storage
+        var toStorage = await FindStorageAsync(to.StorageId);
+        if (toStorage == null)
+            return false;
+
+        // Try remove both
+        var sourceSlots = fromStorage.RemoveItem(from);
+        var targetSlots = toStorage.RemoveItem(to);
+
+        if (sourceSlots.Count == 0)
+            return false;
+
+        if (targetSlots.Count == 0)
+        {
+            // rollback source if target failed
+            var rollback = sourceSlots.First();
+            await fromStorage.SetItemAsync(rollback.ItemInstanceId, rollback.ItemCount, rollback.SlotKey);
+            return false;
+        }
+
+        // Swap items between storages:
+        // Each item spans a grid of slots, and all slots reference the same item.
+        // By taking the first slot (top-left), we get the anchor position of the item:
+        // e.g. for a 2x2 item:
+        //     |0,0|1,0|
+        //     |0,1|1,1|
+        // The top-left slot (0,0) is used to reposition the item via SetItemAsync, which
+        // will handle filling in the rest of the grid.
+        var itemFrom = sourceSlots.First();
+        var itemTo = targetSlots.First();
+
+        await fromStorage.SetItemAsync(itemTo.ItemInstanceId, itemTo.ItemCount, from);
+        await toStorage.SetItemAsync(itemFrom.ItemInstanceId, itemFrom.ItemCount, to);
+
+        await fromStorage.SaveAsync();
+        await toStorage.SaveAsync();
+
+        return true;
+    }
+
 
     public async Task<ItemStorageProvider?> FindStorageAsync(string storageId)
     {

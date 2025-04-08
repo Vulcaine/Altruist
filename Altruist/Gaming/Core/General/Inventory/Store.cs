@@ -1,6 +1,9 @@
+using Altruist.UORM;
+
 namespace Altruist.Gaming;
 
-public class ItemStorage
+[Table("item_storage")]
+public class ItemStorage : IVaultModel
 {
     public IStoragePrincipal Principal { get; }
     public string StorageId { get; set; }
@@ -10,6 +13,8 @@ public class ItemStorage
     public short MaxHeight { get; set; } = 10;
 
     public short SlotCapacity { get; set; } = 1;
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string Type { get; set; } = "ItemStorage";
 
     public ItemStorage(
         IStoragePrincipal principal,
@@ -113,6 +118,11 @@ public class ItemStorageProvider
         if (item == null || item.Stackable == false && itemCount > 1)
             return false;
 
+        return SetItem(item, itemCount, slotKey);
+    }
+
+    private bool SetItem(GameItem item, short itemCount, SlotKey slotKey)
+    {
         return PlaceItemAt(slotKey, item, itemCount);
     }
 
@@ -287,6 +297,37 @@ public class ItemStorageProvider
         } while (!visited.Contains(currentKey));
 
         return removed;
+    }
+
+    public async Task<bool> SwapSlotsAsync(SlotKey from, SlotKey to)
+    {
+        var removedFrom = RemoveItem(from, short.MaxValue);
+        if (removedFrom.Count == 0) return false;
+        var removedTo = RemoveItem(to, short.MaxValue);
+
+        var firstSlotFrom = removedFrom.First();
+
+        // rollback
+        if (removedTo.Count == 0)
+        {
+            await SetItemAsync(firstSlotFrom.ItemInstanceId, firstSlotFrom.ItemCount, firstSlotFrom.SlotKey);
+            return false;
+        }
+
+        // Swap items:
+        // Each item spans a grid of slots, and all slots reference the same item.
+        // By taking the first slot (top-left), we get the anchor position of the item:
+        // e.g. for a 2x2 item:
+        //     |0,0|1,0|
+        //     |0,1|1,1|
+        // The top-left slot (0,0) is used to reposition the item via SetItemAsync, which
+        // will handle filling in the rest of the grid.
+        var firstSlotTo = removedTo.First();
+
+        await SetItemAsync(firstSlotFrom.ItemInstanceId, firstSlotFrom.ItemCount, to);
+        await SetItemAsync(firstSlotTo.ItemInstanceId, firstSlotTo.ItemCount, from);
+
+        return true;
     }
 
 
