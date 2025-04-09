@@ -1,3 +1,4 @@
+
 using Altruist.Networking;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -7,27 +8,32 @@ namespace Altruist.Gaming;
 public class AltruistGamePortalTests
 {
     private Mock<IPortalContext> _mockContext;
+    private Mock<IWorldPartitioner> _mockPartitioner;
+    private Mock<GameWorldCoordinator> _mockCoordinator;
     private Mock<IPlayerService<PlayerEntity>> _mockPlayerService;
     private Mock<ILoggerFactory> _mockLoggerFactory;
     private Mock<IAltruistRouter> _mockRouter;
     private Mock<ILogger<AltruistGamePortal<PlayerEntity>>> _mockLogger;
+    private Mock<ICacheProvider> _mockCache;
     private TestAltruistGamePortal _gamePortal;
 
     // Common Setup for all tests
     public AltruistGamePortalTests()
     {
+        _mockPartitioner = new Mock<IWorldPartitioner>();
+        _mockCache = new Mock<ICacheProvider>();
+        _mockCoordinator = new Mock<GameWorldCoordinator>(_mockPartitioner.Object, _mockCache.Object);
         _mockContext = new Mock<IPortalContext>();
         _mockPlayerService = new Mock<IPlayerService<PlayerEntity>>();
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger<AltruistGamePortal<PlayerEntity>>>();
 
-        _mockContext.Setup(c => c.GetPlayerService<PlayerEntity>()).Returns(_mockPlayerService.Object);
         _mockLoggerFactory.Setup(p => p.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
         _mockRouter = SetupRouterMock();  // Set up the router mock
         _mockContext.Setup(p => p.Router).Returns(_mockRouter.Object);
 
         // Create the portal instance (this will use DI)
-        _gamePortal = new TestAltruistGamePortal(_mockContext.Object, _mockLoggerFactory.Object);
+        _gamePortal = new TestAltruistGamePortal(_mockContext.Object, _mockCoordinator.Object, _mockPlayerService.Object, _mockLoggerFactory.Object);
     }
 
     // Common Setup for Router Mocks
@@ -406,10 +412,10 @@ public class AltruistGamePortalTests
 }
 
 // Test Portal that extends the real portal to expose methods for testing
-public class TestAltruistGamePortal : AltruistGamePortal<PlayerEntity>
+public class TestAltruistGamePortal : AltruistGameSessionPortal<PlayerEntity>
 {
-    public TestAltruistGamePortal(IPortalContext context, ILoggerFactory loggerFactory)
-        : base(context, loggerFactory)
+    public TestAltruistGamePortal(IPortalContext context, GameWorldCoordinator gameWorldCoordinator, IPlayerService<PlayerEntity> playerService, ILoggerFactory loggerFactory)
+        : base(context, gameWorldCoordinator, playerService, loggerFactory)
     { }
 
     public override Task Cleanup()

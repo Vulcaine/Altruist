@@ -11,8 +11,6 @@ public interface IPortalContext : IConnectionStore
     IAltruistContext AltruistContext { get; }
     IServiceProvider ServiceProvider { get; }
 
-    IPlayerService<TPlayerEntity> GetPlayerService<TPlayerEntity>() where TPlayerEntity : PlayerEntity, new();
-
     void Initialize();
 }
 
@@ -92,7 +90,6 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return await _connectionStore.FindRoomForClientAsync(clientId);
     }
 
-    public abstract IPlayerService<TPlayerEntity> GetPlayerService<TPlayerEntity>() where TPlayerEntity : PlayerEntity, new();
     public async Task<RoomPacket?> GetRoomAsync(string roomId)
     {
         return await _connectionStore.GetRoomAsync(roomId);

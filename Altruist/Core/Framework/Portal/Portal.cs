@@ -16,11 +16,6 @@ public class PortalContext(
     public override ICacheProvider Cache { get; protected set; } = cache;
 
     public override void Initialize() { }
-
-    public override IPlayerService<TPlayerEntity> GetPlayerService<TPlayerEntity>()
-    {
-        return ServiceProvider.GetRequiredService<IPlayerService<TPlayerEntity>>();
-    }
 }
 
 public abstract class Portal : IPortal, IConnectionStore

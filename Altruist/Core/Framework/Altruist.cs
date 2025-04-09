@@ -34,8 +34,9 @@ namespace Altruist
         private string[] _args;
         public IAltruistContext Settings { get; } = new AltruistServerContext();
 
-        private AltruistBuilder(string[] args)
+        private AltruistBuilder(string[] args, Func<IServiceCollection, IServiceCollection>? serviceBuilder = null)
         {
+            Services = serviceBuilder != null ? serviceBuilder.Invoke(new ServiceCollection()) : new ServiceCollection();
             _args = args;
             Services.AddLogging(loggingBuilder =>
             {
@@ -68,7 +69,7 @@ namespace Altruist
             Services.AddSingleton<DatabaseProviderFactory>();
         }
 
-        public static AltruistEngineBuilder Create(string[] args) => new AltruistBuilder(args).ToConnectionBuilder();
+        public static AltruistEngineBuilder Create(string[] args, Func<IServiceCollection, IServiceCollection>? serviceBuilder = null) => new AltruistBuilder(args, serviceBuilder).ToConnectionBuilder();
 
         private AltruistEngineBuilder ToConnectionBuilder() => new AltruistEngineBuilder(Services, Settings, _args);
     }

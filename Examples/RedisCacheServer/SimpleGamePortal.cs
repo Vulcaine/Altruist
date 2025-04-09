@@ -6,7 +6,12 @@ namespace Portals;
 
 public class SimpleGamePortal : AltruistGamePortal<Spaceship>
 {
-    public SimpleGamePortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    public SimpleGamePortal(
+        IPortalContext context,
+        GameWorldCoordinator coordinator,
+        IPlayerService<Spaceship> playerService,
+        ILoggerFactory loggerFactory)
+        : base(context, coordinator, playerService, loggerFactory)
     {
     }
 }

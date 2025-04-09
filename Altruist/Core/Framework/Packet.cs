@@ -5,6 +5,12 @@ using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
 namespace Altruist
 {
+
+    public static class PacketHeaders
+    {
+        public static PacketHeader Broadcast = new PacketHeader("server");
+    }
+
     // === Base Interfaces ===
     public interface IPacket : IModel
     {
@@ -12,7 +18,7 @@ namespace Altruist
 
     public interface IPacketBase : IPacket
     {
-        PacketHeader Header { get; }
+        PacketHeader Header { get; set; }
 
         void SetReceiver(string clientId) => Header.SetReceiver(clientId);
     }

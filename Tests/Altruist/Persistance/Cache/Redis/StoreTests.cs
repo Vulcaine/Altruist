@@ -63,7 +63,6 @@ public class RedisCacheProviderTests
     {
         // Arrange
         var testEntity = new TestEntity { Id = "123", Name = "Test" };
-        Console.WriteLine("ENTITY TYPE" + testEntity.Type);
         string key = "123";
         string json = JsonSerializer.Serialize(testEntity);
 

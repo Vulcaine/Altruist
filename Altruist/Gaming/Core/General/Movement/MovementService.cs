@@ -11,10 +11,12 @@ public abstract class BaseMovementService<TPlayerEntity, MovementInput> where TP
     protected readonly ILogger<BaseMovementService<TPlayerEntity, MovementInput>> _logger;
     protected readonly IPlayerService<TPlayerEntity> _playerService;
 
-    public BaseMovementService(ILogger<BaseMovementService<TPlayerEntity, MovementInput>> logger, PortalContext portalContext)
+    public BaseMovementService(
+        IPlayerService<TPlayerEntity> playerService,
+        ILogger<BaseMovementService<TPlayerEntity, MovementInput>> logger, PortalContext portalContext)
     {
         _logger = logger;
-        _playerService = portalContext.GetPlayerService<TPlayerEntity>();
+        _playerService = playerService;
     }
 
     public async Task<TPlayerEntity?> MovePlayerAsync(string playerId, MovementInput input)
@@ -86,8 +88,10 @@ public abstract class BaseMovementService<TPlayerEntity, MovementInput> where TP
 
 public abstract class ForwardMovementService<T, MI> : BaseMovementService<T, MI> where T : PlayerEntity, new() where MI : ForwardMovementInput
 {
-    public ForwardMovementService(ILogger<BaseMovementService<T, MI>> logger, PortalContext hubContext)
-        : base(logger, hubContext) { }
+    public ForwardMovementService(
+        IPlayerService<T> playerService,
+        ILogger<BaseMovementService<T, MI>> logger, PortalContext hubContext)
+        : base(playerService, logger, hubContext) { }
 
     protected override void ApplyMovement(Body body, T entity, MI input)
     {
@@ -111,8 +115,8 @@ public abstract class ForwardMovementService<T, MI> : BaseMovementService<T, MI>
 
 public abstract class EightDirectionMovementService<T, MI> : BaseMovementService<T, MI> where T : PlayerEntity, new() where MI : EightDirectionMovementInput
 {
-    public EightDirectionMovementService(ILogger<BaseMovementService<T, MI>> logger, PortalContext hubContext)
-        : base(logger, hubContext) { }
+    public EightDirectionMovementService(IPlayerService<T> playerService, ILogger<BaseMovementService<T, MI>> logger, PortalContext hubContext)
+        : base(playerService, logger, hubContext) { }
 
     protected override void ApplyMovement(Body body, T entity, MI input)
     {
@@ -144,8 +148,8 @@ public abstract class EightDirectionMovementService<T, MI> : BaseMovementService
 
 public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : EightDirectionMovementService<TPlayerEntity, VehicleMovementInput> where TPlayerEntity : Vehicle, new()
 {
-    public EightDirectionVehicleMovementService(ILogger<BaseMovementService<TPlayerEntity, VehicleMovementInput>> logger, PortalContext hubContext)
-        : base(logger, hubContext) { }
+    public EightDirectionVehicleMovementService(IPlayerService<TPlayerEntity> playerService, ILogger<BaseMovementService<TPlayerEntity, VehicleMovementInput>> logger, PortalContext hubContext)
+        : base(playerService, logger, hubContext) { }
 
     protected override void ApplyMovement(Body body, TPlayerEntity vehicle, VehicleMovementInput input)
     {
@@ -168,7 +172,7 @@ public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : Eigh
 
 public abstract class ForwardSpacehipMovementService<TPlayerEntity> : ForwardMovementService<TPlayerEntity, SpaceshipMovementInput> where TPlayerEntity : Spaceship, new()
 {
-    protected ForwardSpacehipMovementService(ILogger<BaseMovementService<TPlayerEntity, SpaceshipMovementInput>> logger, PortalContext hubContext) : base(logger, hubContext)
+    protected ForwardSpacehipMovementService(IPlayerService<TPlayerEntity> playerService, ILogger<BaseMovementService<TPlayerEntity, SpaceshipMovementInput>> logger, PortalContext hubContext) : base(playerService, logger, hubContext)
     {
     }
 

@@ -2,6 +2,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Altruist\Altruist.csproj" />
+    <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
+    <ProjectReference Include="..\..\Altruist\Redis\Redis.csproj" />
+    <ProjectReference Include="..\..\Altruist\Web\Web.csproj" />
+    <ProjectReference Include="..\..\Altruist\Gaming\Gaming.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.WebSockets" Version="2.3.0" />
   </ItemGroup>
 
   <PropertyGroup>
