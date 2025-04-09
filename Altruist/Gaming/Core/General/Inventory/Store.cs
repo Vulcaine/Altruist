@@ -400,35 +400,116 @@ public class ItemStorageProvider
         return MoveItemStatus.Success;
     }
 
-
     /// <summary>
-    /// Sorts the items in the storage by category and saves the result.
+    /// Sorts the items in the storage using a sorting function
     /// </summary>
-    public async Task SortStorageAsync()
+    public async Task<IEnumerable<StorageSlot>> SortStorageAsync(Func<List<SlotGroup>, Task<List<SlotGroup>>> sortFunc)
     {
-        var itemTasks = _storage.SlotMap.Values.Select(e => FindItemAsync<GameItem>(e.ItemInstanceId)).ToList();
-        var items = await Task.WhenAll(itemTasks);
-        var sortedItems = items.Where(item => item != null).OrderBy(item => item!.Category).ToList();
+        var slotMap = _storage.SlotMap;
 
-        _storage.SlotMap.Clear();
+        var groups = CollectGroups(slotMap);
+        var sortedGroups = await SortGroupsAsync(groups, sortFunc);
 
-        short index = 0;
-        foreach (var item in sortedItems)
+        ReassignGroupsToStorage(slotMap, sortedGroups, _storage.MaxWidth);
+
+        return slotMap.Values;
+    }
+
+    private List<SlotGroup> CollectGroups(Dictionary<SlotKey, StorageSlot> slotMap)
+    {
+        var visited = new HashSet<SlotKey>();
+        var groups = new List<SlotGroup>();
+
+        foreach (var slot in slotMap.Values)
         {
-            short x = (short)(index % _storage.MaxWidth);
-            short y = (short)(index / _storage.MaxWidth);
+            if (visited.Contains(slot.SlotKey))
+                continue;
 
-            var key = new SlotKey(x, y, "inventory", _storage.StorageId);
-            _storage.SlotMap[key] = new StorageSlot
+            var groupSlots = new List<StorageSlot> { slot };
+            visited.Add(slot.SlotKey);
+
+            var current = slot;
+            while (current.SlotLink.HasValue)
             {
-                SlotKey = key,
-                ItemInstanceId = item!.Id,
-                ItemCount = item.Count
-            };
+                var nextKey = new SlotKey(
+                    (short)current.SlotLink.Value.X,
+                    (short)current.SlotLink.Value.Y,
+                    current.SlotKey.Id,
+                    current.SlotKey.StorageId);
 
-            index++;
+                if (!slotMap.TryGetValue(nextKey, out var nextSlot))
+                    break;
+
+                groupSlots.Add(nextSlot);
+                visited.Add(nextKey);
+                current = nextSlot;
+            }
+
+            groups.Add(new SlotGroup(groupSlots));
+        }
+
+        return groups;
+    }
+
+    private void ReassignGroupsToStorage(
+    Dictionary<SlotKey, StorageSlot> slotMap,
+    List<SlotGroup> sortedGroups,
+    short maxWidth)
+    {
+        short index = 0;
+        foreach (var group in sortedGroups)
+        {
+            short baseX = (short)(index % maxWidth);
+            short baseY = (short)(index / maxWidth);
+
+            var layout = LayoutGridSlots(baseX, baseY, group.Width, group.Height);
+
+            for (int i = 0; i < group.Slots.Count; i++)
+            {
+                var slot = group.Slots[i];
+                var newKey = layout[i];
+
+                slotMap[newKey] = slot;
+                slot.SlotKey = newKey;
+
+                if (i < group.Slots.Count - 1)
+                {
+                    var nextKey = layout[i + 1];
+                    slot.SlotLink = new IntVector2(nextKey.X, nextKey.Y);
+                }
+                else
+                {
+                    slot.SlotLink = null;
+                }
+            }
+
+            index += (short)(group.Width * group.Height);
         }
     }
+
+
+    private async Task<List<SlotGroup>> SortGroupsAsync(List<SlotGroup> groups, Func<List<SlotGroup>, Task<List<SlotGroup>>> sortFunc)
+    {
+        return await sortFunc(groups);
+    }
+
+    private List<SlotKey> LayoutGridSlots(short startX, short startY, short width, short height)
+    {
+        var keys = new List<SlotKey>();
+
+        for (short dy = 0; dy < height; dy++)
+        {
+            for (short dx = 0; dx < width; dx++)
+            {
+                var x = (short)(startX + dx);
+                var y = (short)(startY + dy);
+                keys.Add(new SlotKey(x, y, "inventory", _storage.StorageId));
+            }
+        }
+
+        return keys;
+    }
+
 
     public async Task SaveAsync()
     {

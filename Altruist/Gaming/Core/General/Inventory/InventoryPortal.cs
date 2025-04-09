@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
@@ -135,7 +134,21 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     [Gate("sort-items")]
     public virtual async Task SortItems(InventorySortPacket packet, string clientId)
     {
-        await _itemStoreService.SortStorageAsync(packet.StorageId);
+        await _itemStoreService.SortStorageAsync(packet.StorageId, async groups =>
+        {
+            var groupWithItems = await Task.WhenAll(groups.Select(async g =>
+            {
+                var item = await _itemStoreService.FindItemAsync<GameItem>(packet.StorageId, g.Anchor.SlotKey);
+                var key = item?.Category ?? g.Anchor.ItemInstanceId;
+                return (Group: g, SortKey: key);
+            }));
+
+            return groupWithItems
+                .OrderBy(pair => pair.SortKey)
+                .Select(pair => pair.Group)
+                .ToList();
+        });
+
         packet.Header = new PacketHeader("server", clientId);
         _ = Router.Client.SendAsync(clientId, packet);
     }

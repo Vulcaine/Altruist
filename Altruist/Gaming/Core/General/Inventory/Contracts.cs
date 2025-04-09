@@ -10,6 +10,8 @@ public interface IItemStoreService
 
     Task<SwapSlotStatus> SwapSlotsAsync(SlotKey from, SlotKey to);
 
+    Task<T?> FindItemAsync<T>(string storageId, SlotKey key) where T : GameItem;
+
     Task<SetItemStatus> SetItemAsync(
         SlotKey slotKey,
         string itemId,
@@ -28,7 +30,9 @@ public interface IItemStoreService
         short count = 1
     ) where T : GameItem;
 
-    Task SortStorageAsync(string storageId);
+    Task<IEnumerable<StorageSlot>> SortStorageAsync(
+        string storageId,
+        Func<List<SlotGroup>, Task<List<SlotGroup>>> sortFunc);
 }
 
 

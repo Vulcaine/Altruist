@@ -146,11 +146,30 @@ public class ItemStoreService : IItemStoreService
         return (await storage.FindItemAsync<T>(removed.First().ItemInstanceId), RemoveItemStatus.Success);
     }
 
-    public async Task SortStorageAsync(string storageId)
+    public async Task<IEnumerable<StorageSlot>> SortStorageAsync(
+        string storageId,
+        Func<List<SlotGroup>, Task<List<SlotGroup>>> sortFunc)
     {
         var storage = await FindStorageAsync(storageId);
         if (storage == null)
-            return;
-        await storage.SortStorageAsync();
+            return Enumerable.Empty<StorageSlot>();
+
+        return await storage.SortStorageAsync(sortFunc);
+    }
+
+    public async Task<T?> FindItemAsync<T>(string storageId, SlotKey key) where T : GameItem
+    {
+        var storage = await FindStorageAsync(storageId);
+        if (storage == null)
+            return null;
+
+        var slot = storage.FindSlot(key);
+
+        if (slot == null)
+        {
+            return null;
+        }
+
+        return await storage.FindItemAsync<T>(slot.ItemInstanceId);
     }
 }

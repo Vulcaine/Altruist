@@ -172,3 +172,15 @@ public class StorageSlot
         SlotLink = null;
     }
 }
+
+
+public record SlotGroup(List<StorageSlot> Slots)
+{
+    public StorageSlot Anchor => Slots[0];
+
+    public short Width =>
+        (short)(Slots.Max(s => s.SlotKey.X) - Slots.Min(s => s.SlotKey.X) + 1);
+
+    public short Height =>
+        (short)(Slots.Max(s => s.SlotKey.Y) - Slots.Min(s => s.SlotKey.Y) + 1);
+}
