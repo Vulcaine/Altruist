@@ -25,7 +25,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Altruist\Altruist.csproj" />
     <ProjectReference Include="..\Altruist\Core\Core.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Gaming.csproj" />
     <ProjectReference Include="..\Altruist\Redis\Redis.csproj" />
