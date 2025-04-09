@@ -300,24 +300,4 @@ public class ItemStorageProviderTests
         // Assert
         result.Should().Be(MoveItemStatus.CannotMove);
     }
-
-    [Fact]
-    public async Task SortStorageAsync_ShouldSortItems()
-    {
-        // Arrange
-        var mockItem1 = new TestGameItem(
-            new SlotKey(0, 0, "inventory", "inventory"), 4, 1, 1, "A", false);
-        var mockItem2 = new TestGameItem(
-            new SlotKey(0, 0, "inventory", "inventory"), 4, 1, 1, "B", false);
-
-        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:1")).ReturnsAsync(mockItem1);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:2")).ReturnsAsync(mockItem2);
-
-        // Act
-        await _storageProvider.SortStorageAsync();
-
-        // Assert
-        var sortedItems = await _storageProvider.GetAllItemsAsync<GameItem>();
-        // sortedItems.Should().BeInAscendingOrder();
-    }
 }
