@@ -33,6 +33,7 @@ AltruistBuilder.Create(args, serviceBuilder => serviceBuilder.AddGamingSupport()
         .AddDocument<WebSocketConnection>()
         .AddDocument<Spaceship>()
         .AddDocument<RoomPacket>())
+    .WithScyllaDB()
     .WebApp()
     .StartServer();
 ```
@@ -42,7 +43,11 @@ AltruistBuilder.Create(args, serviceBuilder => serviceBuilder.AddGamingSupport()
 
 - **Redis:** Add documents for caching and persistence.
 
+- **ScyllaDB:** Integrate with a high-speed scalable database.
+
 - **Start:** Launch your server with .StartServer().
+
+All you left to do is setting up the redis / scylladb server that Altruist can connect to. :)
 
 ## Create your portal
 
