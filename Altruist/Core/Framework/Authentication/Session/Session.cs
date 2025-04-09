@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 
@@ -24,51 +25,86 @@ public class SessionTokenAuth : IShieldAuth
 
         var now = DateTime.UtcNow;
 
+        // Step 1: Check in-memory cache
         if (_sessionCache.TryGetValue(token, out var cached))
         {
-            if (now - cached.LastValidatedAt < cached.SessionData.CacheValidationInterval)
+            // Step 2: Validate cached session
+            if (IsSessionValid(cached, now))
             {
-                if (cached.SessionData.ExpiresAt > now)
-                    return Success(token, cached.SessionData);
-
-                _sessionCache.TryRemove(token, out _);
-                return Fail("Session expired (in-memory)");
+                return Success(token, cached.SessionData);
             }
+
+            _sessionCache.TryRemove(token, out _);
+            return Fail("Session expired");
         }
 
+        // Step 3: Fetch session from Redis
+        var session = await GetSessionFromCache(token);
+        if (session == null)
+            return Fail("Session not found");
+
+        // Step 4: Validate the session
+        if (!ValidateSession(session, context.ClientIp, now))
+        {
+            _sessionCache.TryRemove(token, out _);
+            return Fail("Session expired or IP mismatch");
+        }
+
+        // Step 5: Refresh TTL and update caches
+        await RefreshSessionTtl(session, now);
+        UpdateLocalCache(token, session, now);
+
+        return Success(token, session);
+    }
+
+    private bool IsSessionValid(CachedSession cached, DateTime now)
+    {
+        return now - cached.LastValidatedAt < cached.SessionData.CacheValidationInterval
+            && cached.SessionData.ExpiresAt > now;
+    }
+
+    private async Task<SessionData?> GetSessionFromCache(string token)
+    {
         var session = await _cache.GetAsync<SessionData>(token);
         if (session == null)
         {
             _logger.LogWarning("Invalid session token: {Token}", token);
             _sessionCache.TryRemove(token, out _);
-            return Fail("Session not found");
         }
 
+        return session;
+    }
+
+    private bool ValidateSession(SessionData session, IPAddress clientIp, DateTime now)
+    {
         if (session.ExpiresAt < now)
         {
-            _sessionCache.TryRemove(token, out _);
-            return Fail("Session expired (cache)");
+            _sessionCache.TryRemove(session.Token, out _); // Cleanup expired session
+            return false;
         }
 
-        if (!Equals(session.Ip, context.ClientIp.ToString()))
+        if (!Equals(session.Ip, clientIp.ToString()))
         {
-            _logger.LogWarning("IP mismatch for session {Token}", token);
-            _sessionCache.TryRemove(token, out _);
-            return Fail("IP mismatch");
+            _logger.LogWarning("IP mismatch for session {Token}", session.Token);
+            return false;
         }
 
-        // Refresh TTL (sliding expiration)
-        session.ExpiresAt = now.Add(session.CacheValidationInterval);
-        await _cache.SaveAsync(token, session);
+        return true;
+    }
 
-        // Update in-memory cache
+    private async Task RefreshSessionTtl(SessionData session, DateTime now)
+    {
+        session.ExpiresAt = now.Add(session.CacheValidationInterval);
+        await _cache.SaveAsync(session.Token, session);
+    }
+
+    private void UpdateLocalCache(string token, SessionData session, DateTime now)
+    {
         _sessionCache[token] = new CachedSession
         {
             SessionData = session,
             LastValidatedAt = now
         };
-
-        return Success(token, session);
     }
 
     private AuthResult Success(string token, SessionData session)

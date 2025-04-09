@@ -6,6 +6,7 @@ namespace Altruist.Authentication;
 public class SessionData : IVaultModel
 {
     public string UserId { get; set; } = string.Empty;
+    public string Token { get; set; } = string.Empty;
     public string Ip { get; set; } = string.Empty;
     public DateTime ExpiresAt { get; set; }
     public string Type { get; set; } = "AuthSessionData";
