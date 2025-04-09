@@ -112,16 +112,22 @@ public class ItemStorageProvider
     /// <param name="y">The optional y-coordinate for placing the item. If not specified, auto-placement is attempted.</param>
     /// <param name="slotId">The optional slot identifier for the storage location. Defaults to "inventory".</param>
     /// <returns>true if the item was successfully placed, false otherwise.</returns>
-    public async Task<bool> SetItemAsync(string itemId, short itemCount, SlotKey slotKey)
+    public async Task<SetItemStatus> SetItemAsync(string itemId, short itemCount, SlotKey slotKey)
     {
         var item = await FindItemAsync<GameItem>(itemId);
-        if (item == null || item.Stackable == false && itemCount > 1)
-            return false;
+        if (item == null)
+        {
+            return SetItemStatus.ItemNotFound;
+        }
+        else if (!item.Stackable && itemCount > 1)
+        {
+            return SetItemStatus.NonStackable;
+        }
 
         return SetItem(item, itemCount, slotKey);
     }
 
-    private bool SetItem(GameItem item, short itemCount, SlotKey slotKey)
+    private SetItemStatus SetItem(GameItem item, short itemCount, SlotKey slotKey)
     {
         return PlaceItemAt(slotKey, item, itemCount);
     }
@@ -135,11 +141,11 @@ public class ItemStorageProvider
     /// <param name="itemCount">The number of items to add to the storage.</param>
     /// <param name="slotId">The slotId of the storage to add the item to. Defaults to "inventory".</param>
     /// <returns>true if the item was successfully added, false otherwise.</returns>
-    public bool AddItem(GameItem item, short itemCount, string slotId)
+    public AddItemStatus AddItem(GameItem item, short itemCount, string slotId)
     {
         if (item.Stackable == false && itemCount > 1)
         {
-            return false;
+            return AddItemStatus.NonStackable;
         }
 
         var startX = item.SlotKey.X;
@@ -163,11 +169,12 @@ public class ItemStorageProvider
                     }
                 }
 
-                return PlaceItemInternal(item.Id, itemCount, positions);
+                PlaceItemInternal(item.Id, itemCount, positions);
+                return AddItemStatus.Success;
             }
         }
 
-        return false;
+        return AddItemStatus.NotEnoughSpace;
     }
 
     public void RestoreSlot(StorageSlot slot)
@@ -195,10 +202,10 @@ public class ItemStorageProvider
     }
 
 
-    private bool PlaceItemAt(SlotKey key, GameItem item, short itemCount)
+    private SetItemStatus PlaceItemAt(SlotKey key, GameItem item, short itemCount)
     {
         if (!CanFitAt(item, key, item.Size.X, item.Size.Y, itemCount))
-            return false;
+            return SetItemStatus.NotEnoughSpace;
 
         var positions = new List<SlotKey>();
         for (short dy = 0; dy < item.Size.Y; dy++)
@@ -211,7 +218,8 @@ public class ItemStorageProvider
             }
         }
 
-        return PlaceItemInternal(item.Id, itemCount, positions);
+        PlaceItemInternal(item.Id, itemCount, positions);
+        return SetItemStatus.Success;
     }
 
 
@@ -235,7 +243,10 @@ public class ItemStorageProvider
                 // We can stack only if we don't exceed max capacity and if the they are the same items
                 // If the template id is the same, they must be the same!
                 bool UnableToStackItem = _storage.SlotMap.TryGetValue(atKey, out var slot)
-                    && (slot.ItemCount + itemCount > slot.MaxCapacity || slot.ItemTemplateId != item.TemplateId);
+                    && (
+                    slot.ItemTemplateId != 0 && slot.ItemTemplateId != item.TemplateId ||
+                    item.Stackable && (slot.ItemCount + itemCount > slot.MaxCapacity)
+                    || !item.Stackable && slot.ItemCount == 1);
 
                 if (UnableToStackItem)
                     return false;
@@ -308,7 +319,7 @@ public class ItemStorageProvider
         return removed;
     }
 
-    public async Task<bool> SwapSlotsAsync(SlotKey from, SlotKey to)
+    public async Task<SwapSlotStatus> SwapSlotsAsync(SlotKey from, SlotKey to)
     {
         if (from.StorageId != to.StorageId)
         {
@@ -316,7 +327,7 @@ public class ItemStorageProvider
         }
 
         var removedFrom = RemoveItem(from, short.MaxValue);
-        if (removedFrom.Count == 0) return false;
+        if (removedFrom.Count == 0) return SwapSlotStatus.CannotMove;
         var removedTo = RemoveItem(to, short.MaxValue);
 
         var firstSlotFrom = removedFrom.First();
@@ -324,8 +335,7 @@ public class ItemStorageProvider
         // rollback
         if (removedTo.Count == 0)
         {
-            await SetItemAsync(firstSlotFrom.ItemInstanceId, firstSlotFrom.ItemCount, firstSlotFrom.SlotKey);
-            return false;
+            return (SwapSlotStatus)await SetItemAsync(firstSlotFrom.ItemInstanceId, firstSlotFrom.ItemCount, firstSlotFrom.SlotKey);
         }
 
         // Swap items:
@@ -338,10 +348,11 @@ public class ItemStorageProvider
         // will handle filling in the rest of the grid.
         var firstSlotTo = removedTo.First();
 
+        // TODO: must check if SetItem was successful
         await SetItemAsync(firstSlotFrom.ItemInstanceId, firstSlotFrom.ItemCount, to);
         await SetItemAsync(firstSlotTo.ItemInstanceId, firstSlotTo.ItemCount, from);
 
-        return true;
+        return SwapSlotStatus.Success;
     }
 
 
@@ -355,38 +366,38 @@ public class ItemStorageProvider
     /// <param name="fromSlotId">The slotId of the storage that the item is currently in. Defaults to "inventory".</param>
     /// <param name="slotId">The slotId of the storage that the item should be moved to. Defaults to "inventory".</param>
     /// <returns>true if the item was successfully moved, false otherwise.</returns>
-    public async Task<bool> MoveItemAsync(string itemId, SlotKey fromSlotKey, SlotKey toSlotKey, short? count = 1)
+    public async Task<MoveItemStatus> MoveItemAsync(string itemId, SlotKey fromSlotKey, SlotKey toSlotKey, short? count = 1)
     {
         if (count == null || count <= 0)
-            return false;
+            return MoveItemStatus.BadCount;
 
         var actualCount = count ?? 1;
         var item = await FindItemAsync<GameItem>(itemId);
         if (item == null)
-            return false;
+            return MoveItemStatus.ItemNotFound;
 
         if (!CanFitAt(item, toSlotKey, item.Size.X, item.Size.Y, actualCount))
-            return false;
+            return MoveItemStatus.NotEnoughSpace;
 
         // Remove the full item from all linked slots
         var removedSlots = RemoveItem(fromSlotKey, actualCount);
         if (removedSlots == null || removedSlots.Count == 0)
-            return false;
+            return MoveItemStatus.CannotMove;
 
         // Add the item to the new location
-        var success = await SetItemAsync(itemId, actualCount, toSlotKey);
+        SetItemStatus statusCode = await SetItemAsync(itemId, actualCount, toSlotKey);
 
-        if (!success)
+        if (statusCode != SetItemStatus.Success)
         {
             // Failed to place it, restore the original state (optional)
             foreach (var slot in removedSlots)
             {
                 _storage.SlotMap[slot.SlotKey] = slot;
             }
-            return false;
+            return (MoveItemStatus)statusCode;
         }
 
-        return true;
+        return MoveItemStatus.Success;
     }
 
 

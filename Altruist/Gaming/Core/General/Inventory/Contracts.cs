@@ -8,20 +8,22 @@ public interface IItemStoreService
 
     Task<ItemStorageProvider?> FindStorageAsync(string storageId);
 
-    Task SetItemAsync(
+    Task<SwapSlotStatus> SwapSlotsAsync(SlotKey from, SlotKey to);
+
+    Task<SetItemStatus> SetItemAsync(
         SlotKey slotKey,
         string itemId,
         short itemCount
     );
 
-    Task<T?> MoveItemAsync<T>(
+    Task<(T? Item, MoveItemStatus Status)> MoveItemAsync<T>(
         string itemId,
         SlotKey fromSlotKey,
         SlotKey toSlotKey,
         short count = 1
     ) where T : GameItem;
 
-    Task<T?> RemoveItemAsync<T>(
+    Task<(T? Item, RemoveItemStatus Status)> RemoveItemAsync<T>(
         SlotKey slotKey,
         short count = 1
     ) where T : GameItem;

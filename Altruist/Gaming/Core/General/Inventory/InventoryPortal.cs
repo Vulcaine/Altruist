@@ -62,12 +62,12 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     [Gate("destroy-item")]
     public virtual async void DestroyItem(ItemRemovePacket packet, string clientId)
     {
-        var removedItem = await _itemStoreService.RemoveItemAsync<GameItem>(packet.SlotKey);
-        if (packet.SlotKey.Id == "ground" && removedItem != null)
+        var status = await _itemStoreService.RemoveItemAsync<GameItem>(packet.SlotKey);
+        if (packet.SlotKey.Id == "ground" && status.Item != null)
         {
-            _ = RemoveItemFromWorldAndNotifyClient(removedItem, clientId);
+            _ = RemoveItemFromWorldAndNotifyClient(status.Item, clientId);
         }
-        else if (removedItem != null)
+        else if (status.Item != null)
         {
             packet.Header = new PacketHeader("server", clientId);
             _ = Router.Client.SendAsync(clientId, packet);
@@ -89,11 +89,11 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     {
         var fromSlot = SlotKeys.InventoryAnyPos;
         var toSlot = SlotKeys.GroundAnyPos;
-        var movedItem = await _itemStoreService.MoveItemAsync<GameItem>(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
+        var status = await _itemStoreService.MoveItemAsync<GameItem>(packet.ItemId, fromSlot, toSlot, packet.ItemCount);
 
-        if (movedItem != null)
+        if (status.Item != null)
         {
-            _ = RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
+            _ = RemoveItemFromWorldAndNotifyClient(status.Item, clientId);
         }
         else
         {
@@ -110,13 +110,13 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     [Gate("move-item")]
     public virtual async void MoveItem(InventoryMoveItemPacket packet, string clientId)
     {
-        var movedItem = await _itemStoreService.MoveItemAsync<GameItem>(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
+        var status = await _itemStoreService.MoveItemAsync<GameItem>(packet.ItemId, packet.SlotKey, packet.TargetSlotKey, packet.ItemCount);
 
-        if (movedItem != null && packet.TargetSlotKey.Id == "ground")
+        if (status.Item != null && packet.TargetSlotKey.Id == "ground")
         {
-            _ = RemoveItemFromWorldAndNotifyClient(movedItem, clientId);
+            _ = RemoveItemFromWorldAndNotifyClient(status.Item, clientId);
         }
-        else if (movedItem != null)
+        else if (status.Item != null)
         {
             packet.Header = new PacketHeader("server", clientId);
             _ = Router.Client.SendAsync(clientId, packet);

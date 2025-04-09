@@ -64,7 +64,7 @@ public class ItemStorageProviderTests
         var result = await _storageProvider.SetItemAsync("1", 5, _testSlotKey);
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().Be(SetItemStatus.ItemNotFound);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class ItemStorageProviderTests
         var result = await _storageProvider.SetItemAsync(mockItem.Id, 6, _testSlotKey);
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().Be(SetItemStatus.NotEnoughSpace);
     }
 
     [Fact]
@@ -94,20 +94,20 @@ public class ItemStorageProviderTests
         var result = await _storageProvider.SetItemAsync(mockItem.Id, 5, _testSlotKey);
 
         // Assert
-        result.Should().BeTrue();
+        result.Should().Be(SetItemStatus.Success);
     }
 
     [Fact]
     public void AddItem_ShouldReturnFalse_WhenNoSpaceAvailable()
     {
         // Arrange
-        var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 5, 6, "type", false);
+        var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 5, 6, "type", true);
 
         // Act
         var result = _storageProvider.AddItem(item, 10, "inventory");
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().Be(AddItemStatus.NotEnoughSpace);
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class ItemStorageProviderTests
         var result = _storageProvider.AddItem(item, 1, "inventory");
 
         // Assert
-        result.Should().BeTrue();
+        result.Should().Be(AddItemStatus.Success);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class ItemStorageProviderTests
         var result = _storageProvider.AddItem(item, 5, "inventory");
 
         // Assert
-        result.Should().BeTrue();
+        result.Should().Be(AddItemStatus.Success);
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class ItemStorageProviderTests
         var result = _storageProvider.AddItem(item, 5, "inventory");
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().Be(AddItemStatus.NonStackable);
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public class ItemStorageProviderTests
         var result = _storageProvider.AddItem(item, 5, "inventory");
 
         // Assert
-        result.Should().BeTrue();
+        result.Should().Be(AddItemStatus.Success);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class ItemStorageProviderTests
         var result = await _storageProvider.SwapSlotsAsync(slotA, slotB);
 
         // Assert
-        result.Should().BeTrue();
+        result.Should().Be(SwapSlotStatus.Success);
 
         var newSlotA = _storageProvider.FindSlot(slotA);
         var newSlotB = _storageProvider.FindSlot(slotB);
@@ -245,24 +245,27 @@ public class ItemStorageProviderTests
         var result = await _storageProvider.MoveItemAsync("1", fromSlotKey, toSlotKey, 1);
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().Be(MoveItemStatus.ItemNotFound);
     }
 
     [Fact]
     public async Task MoveItemAsync_ShouldReturnFalse_WhenNoSpaceAtTarget()
     {
         // Arrange
-        var mockItem = new TestGameItem(
-            new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.Id)).ReturnsAsync(mockItem);
         var fromSlotKey = new SlotKey(0, 0, "inventory", "inventory");
         var toSlotKey = new SlotKey(1, 0, "inventory", "inventory");
+
+        var mockItem = new TestGameItem(
+            fromSlotKey, 4, 2, 2, "type", false);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.Id)).ReturnsAsync(mockItem);
+
+        _storageProvider.AddItem(mockItem, 1, fromSlotKey.Id);
 
         // Act
         var result = await _storageProvider.MoveItemAsync(mockItem.Id, fromSlotKey, toSlotKey, 1);
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().Be(MoveItemStatus.NotEnoughSpace);
     }
 
     [Fact]
@@ -279,7 +282,7 @@ public class ItemStorageProviderTests
         var result = await _storageProvider.MoveItemAsync(mockItem.Id, fromSlotKey, toSlotKey, 1);
 
         // Assert
-        result.Should().BeTrue();
+        result.Should().Be(MoveItemStatus.Success);
     }
 
     [Fact]
@@ -295,7 +298,7 @@ public class ItemStorageProviderTests
         var result = await _storageProvider.MoveItemAsync(mockItem.Id, fromSlotKey, toSlotKey, 1);
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().Be(MoveItemStatus.CannotMove);
     }
 
     [Fact]

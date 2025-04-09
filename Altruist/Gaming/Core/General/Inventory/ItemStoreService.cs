@@ -1,5 +1,3 @@
-using Altruist.Database;
-
 namespace Altruist.Gaming;
 
 public class ItemStoreService : IItemStoreService
@@ -20,38 +18,37 @@ public class ItemStoreService : IItemStoreService
             storageId, size.Width, size.Height, slotCapacity, _cache);
     }
 
-    public async Task<bool> SwapSlotsAsync(SlotKey from, SlotKey to)
+    public async Task<SwapSlotStatus> SwapSlotsAsync(SlotKey from, SlotKey to)
     {
         var fromStorage = await FindStorageAsync(from.StorageId);
         if (fromStorage == null)
-            return false;
+            return SwapSlotStatus.StorageNotFound;
 
         // Same storage — simple swap
         if (from.StorageId == to.StorageId)
         {
-            await fromStorage.SwapSlotsAsync(from, to);
+            var status = await fromStorage.SwapSlotsAsync(from, to);
             await fromStorage.SaveAsync();
-            return true;
+            return status;
         }
 
         // Cross-storage — fetch second storage
         var toStorage = await FindStorageAsync(to.StorageId);
         if (toStorage == null)
-            return false;
+            return SwapSlotStatus.StorageNotFound;
 
         // Try remove both
         var sourceSlots = fromStorage.RemoveItem(from);
         var targetSlots = toStorage.RemoveItem(to);
 
         if (sourceSlots.Count == 0)
-            return false;
+            return SwapSlotStatus.CannotMove;
 
         if (targetSlots.Count == 0)
         {
             // rollback source if target failed
             var rollback = sourceSlots.First();
-            await fromStorage.SetItemAsync(rollback.ItemInstanceId, rollback.ItemCount, rollback.SlotKey);
-            return false;
+            return (SwapSlotStatus)await fromStorage.SetItemAsync(rollback.ItemInstanceId, rollback.ItemCount, rollback.SlotKey);
         }
 
         // Swap items between storages:
@@ -65,13 +62,14 @@ public class ItemStoreService : IItemStoreService
         var itemFrom = sourceSlots.First();
         var itemTo = targetSlots.First();
 
+        // TODO: must check if SetItem was successful
         await fromStorage.SetItemAsync(itemTo.ItemInstanceId, itemTo.ItemCount, from);
         await toStorage.SetItemAsync(itemFrom.ItemInstanceId, itemFrom.ItemCount, to);
 
         await fromStorage.SaveAsync();
         await toStorage.SaveAsync();
 
-        return true;
+        return SwapSlotStatus.Success;
     }
 
 
@@ -88,20 +86,21 @@ public class ItemStoreService : IItemStoreService
             storage.StorageId, storage.MaxWidth, storage.MaxHeight, storage.SlotCapacity, _cache);
     }
 
-    public async Task SetItemAsync(SlotKey slotKey, string itemId, short itemCount)
+    public async Task<SetItemStatus> SetItemAsync(SlotKey slotKey, string itemId, short itemCount)
     {
         var storage = await FindStorageAsync(slotKey.StorageId);
 
         if (storage == null)
         {
-            return;
+            return SetItemStatus.StorageNotFound;
         }
 
-        await storage.SetItemAsync(itemId, itemCount, slotKey);
+        var status = await storage.SetItemAsync(itemId, itemCount, slotKey);
         await storage.SaveAsync();
+        return status;
     }
 
-    public async Task<T?> MoveItemAsync<T>(
+    public async Task<(T? Item, MoveItemStatus Status)> MoveItemAsync<T>(
     string itemId,
     SlotKey fromSlotKey,
     SlotKey toSlotKey,
@@ -111,38 +110,40 @@ public class ItemStoreService : IItemStoreService
         var sourceStorage = await FindStorageAsync(fromSlotKey.StorageId);
         var targetStorage = await FindStorageAsync(toSlotKey.StorageId);
         if (sourceStorage == null || targetStorage == null)
-            return null;
+            return (null, MoveItemStatus.StorageNotFound);
 
         var removedSlots = sourceStorage.RemoveItem(fromSlotKey, count);
         if (removedSlots != null && removedSlots.Count > 0)
         {
-            var success = await targetStorage.SetItemAsync(itemId, count, toSlotKey);
-            if (!success)
+            var statusCode = await targetStorage.SetItemAsync(itemId, count, toSlotKey);
+            if (statusCode != SetItemStatus.Success)
             {
                 // Revert the remove
                 foreach (var slot in removedSlots)
                 {
                     sourceStorage.RestoreSlot(slot);
                 }
+
+                return (null, (MoveItemStatus)statusCode);
             }
         }
 
         await sourceStorage.SaveAsync();
-        return await targetStorage.FindItemAsync<T>(itemId);
+        return (await targetStorage.FindItemAsync<T>(itemId), MoveItemStatus.Success);
     }
 
-    public async Task<T?> RemoveItemAsync<T>(SlotKey slotKey, short count = 1) where T : GameItem
+    public async Task<(T? Item, RemoveItemStatus Status)> RemoveItemAsync<T>(SlotKey slotKey, short count = 1) where T : GameItem
     {
         var storage = await FindStorageAsync(slotKey.StorageId);
         if (storage == null)
-            return null;
+            return (null, RemoveItemStatus.StorageNotFound);
         var removed = storage.RemoveItem(slotKey, count);
         await storage.SaveAsync();
         if (removed.Count == 0)
         {
-            return null;
+            return (null, RemoveItemStatus.ItemNotFound);
         }
-        return await storage.FindItemAsync<T>(removed.First().ItemInstanceId);
+        return (await storage.FindItemAsync<T>(removed.First().ItemInstanceId), RemoveItemStatus.Success);
     }
 
     public async Task SortStorageAsync(string storageId)
