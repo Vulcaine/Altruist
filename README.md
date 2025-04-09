@@ -2,7 +2,7 @@
 
 Altruist is a high-performance game server framework for real-time applications. It simplifies infrastructure setup, offering easy integration for transport, database, caching, and game mechanics.
 
-# Features
+# Key Features
 - Optimized for Real-Time: Handles many concurrent connections with minimal overhead.
 
 - **Cycle Attribute:** Control method execution rates (e.g., Hz30, Hz60).
