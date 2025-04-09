@@ -137,10 +137,23 @@ public class ItemStorageProviderTests
     }
 
     [Fact]
+    public void AddItem_ShouldNotAddItem_WhenSpaceAvailable_AndItemNotStackable()
+    {
+        // Arrange
+        var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type");
+
+        // Act
+        var result = _storageProvider.AddItem(item, 5, "inventory");
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
     public void AddItem_ShouldAddItem_WhenSpaceBarelyAvailable()
     {
         // Arrange
-        var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
+        var item = new TestGameItem(new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", true);
 
         // Act
         var result = _storageProvider.AddItem(item, 5, "inventory");
@@ -167,7 +180,7 @@ public class ItemStorageProviderTests
     {
         // Arrange
         var testSlot = new SlotKey(0, 0, "inventory", "inventory");
-        var testItem = new TestGameItem(testSlot, 4, 2, 2, "type", false);
+        var testItem = new TestGameItem(testSlot, 4, 2, 2, "type", true);
 
         _storageProvider.AddItem(testItem, 5, "inventory");
         var result = _storageProvider.RemoveItem(testSlot, 5);
@@ -183,6 +196,42 @@ public class ItemStorageProviderTests
         slot.ItemCount.Should().Be(0);
         slot.ItemInstanceId.Should().Be("");
     }
+
+    [Fact]
+    public async Task SwapSlotsAsync_ShouldSwapItems_WhenBothSlotsAreOccupied()
+    {
+        // Arrange
+        var slotA = new SlotKey(0, 0, "inventory", "inventory");
+        var slotB = new SlotKey(3, 3, "inventory", "inventory");
+
+        var itemA = new TestGameItem(slotA, 4, 1, 1, "item-type-a", true);
+        var itemB = new TestGameItem(slotB, 4, 1, 1, "item-type-b", true);
+
+        _storageProvider.AddItem(itemA, 4, "inventory");
+        _storageProvider.AddItem(itemB, 2, "inventory");
+
+        // Mock
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemA.Id)).ReturnsAsync(itemA);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemB.Id)).ReturnsAsync(itemB);
+
+        // Act
+        var result = await _storageProvider.SwapSlotsAsync(slotA, slotB);
+
+        // Assert
+        result.Should().BeTrue();
+
+        var newSlotA = _storageProvider.FindSlot(slotA);
+        var newSlotB = _storageProvider.FindSlot(slotB);
+
+        newSlotA.Should().NotBeNull();
+        newSlotA.ItemInstanceId.Should().Be(itemB.Id);
+        newSlotA.ItemCount.Should().Be(2);
+
+        newSlotB.Should().NotBeNull();
+        newSlotB.ItemInstanceId.Should().Be(itemA.Id);
+        newSlotB.ItemCount.Should().Be(4);
+    }
+
 
     [Fact]
     public async Task MoveItemAsync_ShouldReturnFalse_WhenItemNotFound()

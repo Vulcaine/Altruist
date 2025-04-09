@@ -137,9 +137,16 @@ public class ItemStorageProvider
     /// <returns>true if the item was successfully added, false otherwise.</returns>
     public bool AddItem(GameItem item, short itemCount, string slotId)
     {
-        for (short y = 0; y <= _storage.MaxHeight - item.Size.Y; y++)
+        if (item.Stackable == false && itemCount > 1)
         {
-            for (short x = 0; x <= _storage.MaxWidth - item.Size.X; x++)
+            return false;
+        }
+
+        var startX = item.SlotKey.X;
+        var startY = item.SlotKey.Y;
+        for (short y = startY; y <= _storage.MaxHeight - item.Size.Y; y++)
+        {
+            for (short x = startX; x <= _storage.MaxWidth - item.Size.X; x++)
             {
                 var atSlotKey = new SlotKey(x, y, slotId, _storage.StorageId);
                 if (!CanFitAt(item, atSlotKey, item.Size.X, item.Size.Y, itemCount))
@@ -249,8 +256,10 @@ public class ItemStorageProvider
     /// <returns>true if the item was successfully removed, false otherwise.</returns>
     public List<StorageSlot> RemoveItem(SlotKey startKey, short count = 1)
     {
-        if (!_storage.SlotMap.TryGetValue(startKey, out var startSlot) || startSlot.ItemCount < count)
+        if (count <= 0 || !_storage.SlotMap.TryGetValue(startKey, out var startSlot) || startSlot.ItemCount == 0)
             return new();
+
+        var removeCount = Math.Min(count, startSlot.ItemCount);
 
         var removed = new List<StorageSlot>();
         var visited = new HashSet<SlotKey>();
@@ -269,7 +278,7 @@ public class ItemStorageProvider
                 MaxCapacity = slot.MaxCapacity,
                 SlotLink = slot.SlotLink
             };
-            slot.ItemCount -= count;
+            slot.ItemCount -= removeCount;
 
             if (slot.ItemCount <= 0)
             {
@@ -301,6 +310,11 @@ public class ItemStorageProvider
 
     public async Task<bool> SwapSlotsAsync(SlotKey from, SlotKey to)
     {
+        if (from.StorageId != to.StorageId)
+        {
+            throw new NotSupportedException("Cross-storage swap is not supported inside a storage.");
+        }
+
         var removedFrom = RemoveItem(from, short.MaxValue);
         if (removedFrom.Count == 0) return false;
         var removedTo = RemoveItem(to, short.MaxValue);
