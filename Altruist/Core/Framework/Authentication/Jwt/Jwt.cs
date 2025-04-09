@@ -62,7 +62,6 @@ public class JwtAuth : IShieldAuth
     }
 }
 
-
 public class JwtTokenValidator : ITokenValidator
 {
     private readonly JwtSecurityTokenHandler _tokenHandler;
@@ -97,32 +96,6 @@ public class JwtTokenValidator : ITokenValidator
         {
             return false;
         }
-    }
-}
-
-public static class WebAppExtensions
-{
-    public static WebApplicationBuilder AddJwtAuth(
-        this WebApplicationBuilder builder,
-        Action<JwtBearerOptions>? configureOptions = null,
-        Action<AuthorizationOptions>? authorizationOptions = null)
-    {
-
-        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer(options =>
-            {
-                configureOptions?.Invoke(options);
-            });
-
-        builder.Services.AddAuthorization(options =>
-        {
-            authorizationOptions?.Invoke(options);
-        });
-
-        builder.Services.AddScoped<ITokenValidator, JwtTokenValidator>();
-        builder.Services.AddScoped<IShieldAuth, JwtAuth>();
-
-        return builder;
     }
 }
 

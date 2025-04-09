@@ -73,7 +73,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         }
         else
         {
-            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed("Item not found", packet.Type, clientId));
+            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed(InventoryStatusCodeMessageMaping.GetMessage((ItemStatus)status.Status), packet.Type, clientId));
         }
     }
 
@@ -96,7 +96,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         }
         else
         {
-            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed("Item not found", packet.Type, clientId));
+            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed(InventoryStatusCodeMessageMaping.GetMessage((ItemStatus)status.Status), packet.Type, clientId));
         }
     }
 
@@ -122,7 +122,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         }
         else
         {
-            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed("Item not found", packet.Type, clientId));
+            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed(InventoryStatusCodeMessageMaping.GetMessage((ItemStatus)status.Status), packet.Type, clientId));
         }
     }
 

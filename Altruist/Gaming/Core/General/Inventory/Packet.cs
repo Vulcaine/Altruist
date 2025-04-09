@@ -34,7 +34,7 @@ public readonly struct SlotKey : IEquatable<SlotKey>
                StorageId == other.StorageId;
     }
 
-    public override bool Equals(object obj)
+    public override bool Equals(object? obj)
     {
         return obj is SlotKey other && Equals(other);
     }

@@ -62,3 +62,18 @@ public enum RemoveItemStatus
     StorageNotFound = ItemStatus.StorageNotFound
 
 }
+
+public static class InventoryStatusCodeMessageMaping
+{
+    public static string GetMessage(this ItemStatus status) => status switch
+    {
+        ItemStatus.Success => "Success",
+        ItemStatus.NotEnoughSpace => "Not enough space",
+        ItemStatus.NonStackable => "Item is not stackable",
+        ItemStatus.ItemNotFound => "Item not found",
+        ItemStatus.BadCount => "Item count cannot be less than zero",
+        ItemStatus.CannotMove => "Unable to move item",
+        ItemStatus.StorageNotFound => "Storage not found",
+        _ => throw new NotImplementedException(),
+    };
+}
