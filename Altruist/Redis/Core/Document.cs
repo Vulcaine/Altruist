@@ -31,8 +31,11 @@ public class RedisDocumentHelper
                 .Where(prop => prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
                 .Select(prop => prop.Name)
                 .ToList();
+            var doc = Document.From(document);
 
-            documents.Add(new RedisDocument(document, tableAttribute?.Name ?? document.Name, document.GetProperties().Select(prop => prop.Name).ToList(), indexedFields));
+            documents.Add(new RedisDocument(
+                doc.Header,
+                doc.Type, doc.Name, doc.Fields, doc.Columns, doc.Indexes, doc.PropertyAccessors));
         }
 
         return documents;
@@ -41,7 +44,7 @@ public class RedisDocumentHelper
 
 public class RedisDocument : Document
 {
-    public RedisDocument(Type type, string name, List<string> fields, List<string> indexes) : base(type, name, fields, indexes)
+    public RedisDocument(VaultAttribute header, Type type, string name, List<string> fields, List<string> columns, List<string> indexes, Dictionary<string, Func<object, object?>> propertyAccessors) : base(header, type, name, fields, columns, indexes, propertyAccessors)
     {
     }
 

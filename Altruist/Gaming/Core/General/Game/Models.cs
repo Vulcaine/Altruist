@@ -96,8 +96,6 @@ public abstract class WorldIndex : IVaultModel
         Width = width;
         Height = height;
     }
-
-    public abstract Task<List<IVaultModel>> PreLoad();
 }
 
 public interface IWorldPartitioner

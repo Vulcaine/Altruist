@@ -66,8 +66,6 @@ public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 
     [JsonPropertyName("baseItem")]
     public string Type { get; set; } = "BaseItem";
-
-    public abstract Task<List<IVaultModel>> PreLoad();
 }
 
 /// <summary>
@@ -117,8 +115,6 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
         ExpiryDate = expiryDate;
         Size = new ByteVector2(width, height);
     }
-
-    public abstract Task<List<IVaultModel>> PreLoad();
 }
 
 

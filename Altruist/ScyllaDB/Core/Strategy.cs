@@ -132,13 +132,16 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
         {
             await provider.CreateTableAsync(vault, Instance);
             var vaultInstance = vault.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
-            var loaded = await vaultInstance!.PreLoad();
-            if (loaded.Count > 0)
-            {
-                await vaultRepo!.Select(vault).SaveBatchAsync(loaded);
-                logger.LogInformation($"Streamed {loaded.Count} items into {vault.Name} vault.");
-            }
 
+            if (vaultInstance is IOnVaultLoad preload)
+            {
+                var loaded = await preload.OnLoadAsync();
+                if (loaded.Count > 0)
+                {
+                    await vaultRepo!.Select(vault).SaveBatchAsync(loaded);
+                    logger.LogInformation($"Streamed {loaded.Count} items into {vault.Name} vault.");
+                }
+            }
         }
     }
 }

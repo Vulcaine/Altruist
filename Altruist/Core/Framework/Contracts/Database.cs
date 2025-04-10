@@ -1,9 +1,10 @@
 using System.Linq.Expressions;
-using Altruist;
 using Altruist.Contracts;
 using Altruist.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
+
+namespace Altruist;
 
 public interface IKeyspace
 {
@@ -33,11 +34,6 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
 public interface IVaultModel : IModel
 {
     DateTime Timestamp { get; set; }
-
-    Task<List<IVaultModel>> PreLoad()
-    {
-        return Task.FromResult(new List<IVaultModel>());
-    }
 }
 
 public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel

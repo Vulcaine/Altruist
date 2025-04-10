@@ -14,11 +14,6 @@ public abstract class Account : IVaultModel
 
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public string Type { get; set; } = "Account";
-
-    public virtual Task<List<IVaultModel>> PreLoad()
-    {
-        return Task.FromResult(new List<IVaultModel>());
-    }
 }
 
 
