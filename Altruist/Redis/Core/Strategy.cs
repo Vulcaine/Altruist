@@ -1,6 +1,5 @@
-using System.Reflection;
 using Altruist.Contracts;
-using Altruist.UORM;
+using Altruist.InMemory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
@@ -146,8 +145,6 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         _services.AddSingleton<RedisConnectionService>();
         _services.AddSingleton<IConnectionStore, RedisConnectionService>(sp => sp.GetRequiredService<RedisConnectionService>());
         _services.AddSingleton<IAltruistRedisConnectionProvider>(sp => sp.GetRequiredService<RedisConnectionService>());
-
-        _services.AddSingleton(typeof(IPlayerService<>), typeof(RedisPlayerService<>));
 
         var serviceProvider = _services.BuildServiceProvider();
 

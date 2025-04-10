@@ -63,7 +63,7 @@ namespace Altruist
             Services.AddSingleton<IDecoder, JsonMessageDecoder>();
             Services.AddSingleton<IEncoder, JsonMessageEncoder>();
             Services.AddSingleton<IConnectionStore, InMemoryConnectionStore>();
-            Services.AddSingleton(typeof(IPlayerService<>), typeof(InMemoryPlayerService<>));
+
             Services.AddSingleton<IPortalContext, PortalContext>();
             Services.AddSingleton<VaultRepositoryFactory>();
             Services.AddSingleton<DatabaseProviderFactory>();

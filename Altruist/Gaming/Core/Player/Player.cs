@@ -1,21 +1,18 @@
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Redis;
+namespace Altruist.Gaming;
 
-public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
+public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
-    private IAltruistRedisConnectionProvider _provider;
-    private RedisCacheProvider _cacheProvider;
-    // private IRedisCollection<TPlayerEntity> _entityRepo;
+    private readonly IConnectionStore _store;
+    private readonly ICacheProvider _cacheProvider;
 
-    private ILogger<RedisPlayerService<TPlayerEntity>> _logger;
+    private ILogger<AltruistPlayerService<TPlayerEntity>> _logger;
 
-    public RedisPlayerService(IAltruistRedisConnectionProvider provider,
-    RedisCacheProvider cacheProvider, ILoggerFactory loggerFactory)
+    public AltruistPlayerService(IConnectionStore store, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
     {
-        _provider = provider;
-        // _entityRepo = _provider.RedisCollection<TPlayerEntity>();
-        _logger = loggerFactory.CreateLogger<RedisPlayerService<TPlayerEntity>>();
+        _store = store;
+        _logger = loggerFactory.CreateLogger<AltruistPlayerService<TPlayerEntity>>();
         _cacheProvider = cacheProvider;
     }
 
@@ -28,7 +25,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
             Position = position ?? [0, 0]
         };
 
-        var room = await _provider.AddClientToRoomAsync(socketId, roomId);
+        var room = await _store.AddClientToRoomAsync(socketId, roomId);
         if (room == null)
         {
             _logger.LogError($"Failed to connect player {socketId} to instance {roomId}. No such room");
@@ -43,6 +40,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
         return player;
     }
+
 
     public Task<TPlayerEntity?> FindEntityAsync(string playerId)
     {
@@ -63,7 +61,6 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
     public Task<TPlayerEntity?> GetPlayer(string socketId)
     {
-        // return _provider.RedisCollection<TPlayerEntity>().FindByIdAsync(socketId);
         return _cacheProvider.GetAsync<TPlayerEntity>(socketId);
     }
 
@@ -84,6 +81,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
         return await FindEntityAsync(playerId);
     }
 
+
     public async Task Cleanup()
     {
         int cursor = 0;
@@ -94,7 +92,7 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
         foreach (var player in players)
         {
-            var conn = await _provider.GetConnectionAsync(player.Id);
+            var conn = await _store.GetConnectionAsync(player.Id);
             if (conn == null || !conn.IsConnected)
             {
                 playersToDelete.Add(player.Id);
@@ -110,5 +108,4 @@ public class RedisPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> w
 
         _logger.LogInformation("Player cleanup completed.");
     }
-
 }

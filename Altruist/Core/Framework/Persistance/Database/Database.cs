@@ -1,4 +1,6 @@
+using System.Reflection;
 using Altruist.Contracts;
+using Altruist.UORM;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Database;
@@ -41,6 +43,16 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
     {
         if (!typeof(IVaultModel).IsAssignableFrom(vault))
             throw new ArgumentException($"{vault.FullName} must implement IVaultModel");
+
+        var attribute = vault.GetCustomAttribute<VaultAttribute>();
+        var keyspaceFromAttribute = attribute?.Keyspace ?? "altruist";
+        var currentKeyspaceName = Instance.Name;
+
+        if (!string.Equals(keyspaceFromAttribute, currentKeyspaceName, StringComparison.OrdinalIgnoreCase))
+        {
+            // Keyspace mismatch, skip registration
+            return this;
+        }
 
         VaultModels.Add(vault);
 

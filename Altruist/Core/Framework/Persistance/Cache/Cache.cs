@@ -2,7 +2,6 @@ using System.Collections;
 
 namespace Altruist;
 
-
 public class InMemoryCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
 {
     private int BatchSize { get; }
