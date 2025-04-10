@@ -5,10 +5,8 @@ using MessagePack;
 
 namespace Altruist;
 
-[Vault("player")]
-[VaultPrimaryKey(keys: [nameof(Id), nameof(Name)])]
 [MessagePackObject]
-public class PlayerEntity : ISynchronizedEntity, IVaultModel
+public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
 {
     [Key(0)]
     [JsonProperty("id")]
@@ -140,9 +138,13 @@ public class PlayerEntity : ISynchronizedEntity, IVaultModel
         MaxDeceleration = 0;
         MaxAcceleration = 0;
     }
+
+    public virtual Task<List<IVaultModel>> PreLoad()
+    {
+        return Task.FromResult(new List<IVaultModel>());
+    }
 }
 
-[Vault("vehicles")]
 public abstract class Vehicle : PlayerEntity
 {
     [VaultColumn]
@@ -191,42 +193,27 @@ public abstract class Vehicle : PlayerEntity
     }
 }
 
-[Vault("Spaceship")]
 public class Spaceship : Vehicle
 {
+    protected Spaceship()
+    {
+    }
+
+    protected Spaceship(string id, int level, float[] position, float rotation, float currentSpeed, float maxSpeed, float acceleration, float maxAcceleration, float deceleration, float maxDeceleration, float rotationSpeed, float turboFuel, float maxTurboFuel, float engineQuality) : base(id, level, position, rotation, currentSpeed, maxSpeed, acceleration, maxAcceleration, deceleration, maxDeceleration, rotationSpeed, turboFuel, maxTurboFuel, engineQuality)
+    {
+    }
 }
 
-[Vault("Car")]
-public class Car : Vehicle
+public abstract class Car : Vehicle
 {
+    protected Car()
+    {
+    }
+
+    protected Car(string id, int level, float[] position, float rotation, float currentSpeed, float maxSpeed, float acceleration, float maxAcceleration, float deceleration, float maxDeceleration, float rotationSpeed, float turboFuel, float maxTurboFuel, float engineQuality) : base(id, level, position, rotation, currentSpeed, maxSpeed, acceleration, maxAcceleration, deceleration, maxDeceleration, rotationSpeed, turboFuel, maxTurboFuel, engineQuality)
+    {
+    }
 }
-
-// [Document(StorageType = StorageType.Json, IndexName = "Players", Prefixes = new[] { "player" })]
-// [Table("player", StoreHistory: true)]
-// [PrimaryKey(keys: [nameof(Id), nameof(Name)])]
-// public class Player : IVaultModel
-// {
-//     
-//     [Indexed]
-//     [Column]
-//     public string Id { get; set; }
-
-//     [Indexed]
-//     [Column]
-//     public required string Name { get; set; }
-
-//     [JsonIgnore]
-//     [Ignore]
-//     [IgnoreMember]
-//     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-
-//     public Player()
-//     {
-//         Id = Guid.NewGuid().ToString();
-//     }
-
-//     public Player(string entityId, string name) => (Id, Name) = (entityId, name);
-// }
 
 public class ServerInfo
 {

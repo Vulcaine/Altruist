@@ -1,10 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
-using Altruist.Contracts;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Query;
-using Microsoft.Extensions.DependencyInjection;
 using Altruist.UORM;
+using Microsoft.EntityFrameworkCore.Query;
 
 namespace Altruist.Database;
 
@@ -20,122 +17,6 @@ public enum QueryPosition
 }
 
 
-public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel : class, IVaultModel
-{
-    private readonly ILinqDatabaseProvider _databaseProvider;
-    private IQueryable<TVaultModel> _query;
-
-    public IKeyspace Keyspace { get; }
-
-    public LinqVault(ILinqDatabaseProvider databaseProvider, IKeyspace keyspace)
-    {
-        _databaseProvider = databaseProvider;
-        _query = _databaseProvider.QueryAsync<TVaultModel>(x => true).Result.AsQueryable();
-        Keyspace = keyspace;
-    }
-
-    public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        _query = _query.Where(predicate);
-        return this;
-    }
-
-    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        _query = _query.OrderBy(keySelector);
-        return this;
-    }
-
-    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        _query = _query.OrderByDescending(keySelector);
-        return this;
-    }
-
-    public IVault<TVaultModel> Take(int count)
-    {
-        _query = _query.Take(count);
-        return this;
-    }
-
-    public async Task<List<TVaultModel>> ToListAsync()
-    {
-        return await Task.FromResult(_query.ToList());
-    }
-
-    public async Task<TVaultModel?> FirstOrDefaultAsync()
-    {
-        return await Task.FromResult(_query.FirstOrDefault());
-    }
-
-    public async Task<TVaultModel?> FirstAsync()
-    {
-        return await Task.FromResult(_query.First());
-    }
-
-    public async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        var filteredQuery = _query.Where(predicate);
-        return await Task.FromResult(filteredQuery.ToList());
-    }
-
-    public async Task<int> CountAsync()
-    {
-        return await Task.FromResult(_query.Count());
-    }
-
-    public async Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        return await _query.ExecuteUpdateAsync(setPropertyCalls);
-    }
-
-    public async Task SaveAsync(TVaultModel entity)
-    {
-        _databaseProvider.Context.Add(entity);
-        await _databaseProvider.Context.SaveChangesAsync();
-    }
-
-    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities)
-    {
-        await _databaseProvider.Context.AddRangeAsync(entities);
-        await _databaseProvider.Context.SaveChangesAsync();
-    }
-
-    public Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
-    {
-        throw new NotImplementedException();
-    }
-
-    public async Task<bool> DeleteAsync()
-    {
-        int affectedRows = await _query.ExecuteDeleteAsync();
-        return affectedRows > 0;
-    }
-
-    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        return await _query.AnyAsync(predicate);
-    }
-
-
-    public IVault<TVaultModel> Skip(int count)
-    {
-        _query = _query.Skip(count);
-        return this;
-    }
-
-
-    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
-    {
-        return await _query.Select(selector).ToListAsync();
-    }
-}
-
 public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     private readonly ICqlDatabaseProvider _databaseProvider;
@@ -144,8 +25,11 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public IKeyspace Keyspace { get; }
 
-    public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace)
+    protected Document _document { get; }
+
+    public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace, Document document)
     {
+        _document = document;
         _databaseProvider = databaseProvider;
         _queryParts = new Dictionary<QueryPosition, HashSet<string>>()
         {
@@ -172,84 +56,120 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         Keyspace = keyspace;
     }
 
-    public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
+    public Task SaveAsync(TVaultModel entity, bool? saveHistory = false) =>
+        SaveEntityAsync(entity, saveHistory, false);
+
+    public Task SaveAsync(object entity, bool? saveHistory = false) =>
+        SaveEntityAsync(entity, saveHistory);
+
+    public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
+        SaveEntitiesAsync(entities.Cast<object>(), saveHistory);
+
+    public Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false) =>
+        SaveEntitiesAsync(entities, saveHistory);
+
+
+    private void ValidateEntityType(Type entityType)
     {
-        entity.Timestamp = DateTime.UtcNow;
-        var tableAttribute = typeof(TVaultModel).GetCustomAttribute<VaultAttribute>();
-
-        var columns = string.Join(", ", _queryParts[QueryPosition.SET]);
-        var placeholders = string.Join(", ", _queryParameters[QueryPosition.SET].Select(param => "?"));
-        var parameters = _queryParameters[QueryPosition.SET].ToArray();
-
-        var insertQuery = $"INSERT INTO {typeof(TVaultModel).Name} ({columns}) VALUES ({placeholders}) IF NOT EXISTS;";
-
-        var batchQueries = new List<string> { insertQuery };
-
-        if (tableAttribute?.StoreHistory == true && saveHistory == true)
+        if (!typeof(IVaultModel).IsAssignableFrom(entityType))
         {
-            var historyColumns = string.Join(", ", _queryParts[QueryPosition.SET]);
-            var historyPlaceholders = string.Join(", ", _queryParameters[QueryPosition.SET].Select(param => "?"));
-            var historyQuery = $"INSERT INTO {typeof(TVaultModel).Name}_history ({historyColumns}, timestamp) VALUES ({historyPlaceholders}, ?);";
+            throw new InvalidOperationException($"Entity type {entityType.Name} does not implement IVaultModel.");
+        }
+    }
 
-            var parametersForHistory = _queryParameters[QueryPosition.SET].ToList();
-            parametersForHistory.Add(entity.Timestamp);
+    private string BuildInsertQuery(string tableName, IEnumerable<string> columns) =>
+        $"INSERT INTO {tableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", columns.Select(_ => "?"))})";
 
-            batchQueries.Add(historyQuery);
-            parameters = parameters.Concat(parametersForHistory).ToArray();
+    private string BuildHistoryQuery(string tableName, IEnumerable<string> columns) =>
+        $"INSERT INTO {tableName}_history ({string.Join(", ", columns)}, timestamp) VALUES ({string.Join(", ", columns.Select(_ => "?"))}, ?)";
+
+    private object?[] GetParameterValues(object entity, IEnumerable<string> fields, bool includeTimestamp = false)
+    {
+        var values = fields.Select(field => _document.PropertyAccessors[field](entity)).ToList();
+
+        if (includeTimestamp)
+        {
+            var now = DateTime.UtcNow;
+            var prop = entity.GetType().GetProperty("Timestamp");
+            prop?.SetValue(entity, now);
+            values.Add(now);
+        }
+
+        return values.ToArray();
+    }
+
+    private async Task SaveEntityAsync(object entity, bool? saveHistory = false, bool? validate = false)
+    {
+        if (entity == null) throw new ArgumentNullException(nameof(entity));
+
+        var type = entity.GetType();
+        if (validate == true) ValidateEntityType(type);
+
+        var tableAttr = type.GetCustomAttribute<VaultAttribute>();
+        var tableName = tableAttr?.Name ?? type.Name;
+        var fields = _document.Fields;
+
+        var insertQuery = BuildInsertQuery(tableName, fields);
+        var parameters = GetParameterValues(entity, fields, false).ToList();
+
+        var queries = new List<string> { insertQuery };
+
+        if (tableAttr?.StoreHistory == true && saveHistory == true)
+        {
+            var historyQuery = BuildHistoryQuery(tableName, fields);
+            queries.Add(historyQuery);
+
+            var historyParams = GetParameterValues(entity, fields, true);
+            parameters.AddRange(historyParams.Skip(fields.Count()));
         }
         else if (saveHistory == true)
         {
-            throw new Exception($"History is not enabled for the table {typeof(TVaultModel).Name}. Consider adding StoreHistory=true");
+            throw new Exception($"History is not enabled for the table {tableName}. Consider adding StoreHistory=true");
         }
 
-        var batchQuery = $"BEGIN BATCH {string.Join(" ", batchQueries)} APPLY BATCH;";
-        await _databaseProvider.ExecuteAsync(batchQuery, parameters);
+        var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
+        await _databaseProvider.ExecuteAsync(batchQuery, parameters.ToArray()!);
     }
 
 
-    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
+    private async Task SaveEntitiesAsync(IEnumerable<object> entities, bool? saveHistory = false)
     {
-        var tableAttribute = typeof(TVaultModel).GetCustomAttribute<VaultAttribute>();
+        if (entities == null || !entities.Any())
+            throw new ArgumentException("Entities cannot be null or empty.");
 
-        var columnNames = string.Join(", ", _queryParts[QueryPosition.SET]);
-        var valuePlaceholders = string.Join(", ", _queryParameters[QueryPosition.SET].Select(p => "?"));
+        var type = entities.First().GetType();
+        ValidateEntityType(type);
 
-        var batchQueries = new List<string>();
+        var tableAttr = type.GetCustomAttribute<VaultAttribute>();
+        var tableName = tableAttr?.Name ?? type.Name;
+        var fields = _document.Fields;
+
+        var insertQuery = BuildInsertQuery(tableName, fields);
+        var historyQuery = BuildHistoryQuery(tableName, fields);
+
+        var queries = new List<string>();
+        var allParams = new List<object?>();
 
         foreach (var entity in entities)
         {
-            var insertQuery = $"INSERT INTO {typeof(TVaultModel).Name} ({columnNames}) VALUES ({valuePlaceholders})";
-            batchQueries.Add(insertQuery);
-            if (tableAttribute?.StoreHistory == true)
+            queries.Add(insertQuery);
+            allParams.AddRange(GetParameterValues(entity, fields, false));
+
+            if (tableAttr?.StoreHistory == true)
             {
-                entity.Timestamp = DateTime.UtcNow;
-                var historyQuery = $"INSERT INTO {typeof(TVaultModel).Name}_history ({columnNames}, timestamp) VALUES ({valuePlaceholders}, ?)";
-                batchQueries.Add(historyQuery);
+                queries.Add(historyQuery);
+                allParams.AddRange(GetParameterValues(entity, fields, true).Skip(fields.Count()));
             }
             else if (saveHistory == true)
             {
-                throw new Exception($"History is not enabled for the table {typeof(TVaultModel).Name}. Consider adding StoreHistory=true");
+                throw new Exception($"History is not enabled for the table {tableName}. Consider adding StoreHistory=true");
             }
         }
 
-        var upsertBatchQuery = $"BEGIN BATCH {string.Join(" ", batchQueries)} APPLY BATCH;";
-
-        var parameters = entities.Select(entity =>
-        {
-            var parametersForEntity = _queryParameters[QueryPosition.SET].ToArray();
-
-            if (tableAttribute?.StoreHistory == true)
-            {
-                var parametersForHistory = parametersForEntity.ToList();
-                parametersForHistory.Add(entity.Timestamp);
-                return parametersForHistory.ToArray();
-            }
-
-            return parametersForEntity;
-        }).SelectMany(p => p).ToArray();
-
-        await _databaseProvider.ExecuteAsync(upsertBatchQuery, parameters);
+        var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
+        await _databaseProvider.ExecuteAsync(batchQuery, allParams.ToArray()!);
     }
+
 
     private void AddToQuery(QueryPosition position, string queryPart, object parameter = null!)
     {
@@ -571,199 +491,4 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         throw new NotSupportedException("Unsupported expression type for SELECT.");
     }
 
-}
-
-
-public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
-{
-    private readonly IVault<TVaultModel> _underlying;
-
-    public Vault(IDatabaseVaultFactory vaultMaker, IKeyspace keyspace)
-    {
-        _underlying = vaultMaker.Make<TVaultModel>(keyspace);
-        Keyspace = keyspace;
-    }
-
-    public IKeyspace Keyspace { get; }
-
-    public Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        return _underlying.AnyAsync(predicate);
-    }
-
-    public Task<int> CountAsync()
-    {
-        return _underlying.CountAsync();
-    }
-
-    public Task<bool> DeleteAsync()
-    {
-        return _underlying.DeleteAsync();
-    }
-
-    public Task<TVaultModel?> FirstAsync()
-    {
-        return _underlying.FirstAsync();
-    }
-
-    public Task<TVaultModel?> FirstOrDefaultAsync()
-    {
-        return _underlying.FirstOrDefaultAsync();
-    }
-
-    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        return _underlying.OrderBy(keySelector);
-    }
-
-    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        return _underlying.OrderByDescending(keySelector);
-    }
-
-    public Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
-    {
-        return _underlying.SaveAsync(entity, saveHistory);
-    }
-
-    public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
-    {
-        return _underlying.SaveBatchAsync(entities, saveHistory);
-    }
-
-    public Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
-    {
-        return _underlying.SelectAsync(selector);
-    }
-
-    public IVault<TVaultModel> Skip(int count)
-    {
-        return _underlying.Skip(count);
-    }
-
-    public IVault<TVaultModel> Take(int count)
-    {
-        return _underlying.Take(count);
-    }
-
-    public Task<List<TVaultModel>> ToListAsync()
-    {
-        return _underlying.ToListAsync();
-    }
-
-    public Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        return _underlying.ToListAsync(predicate);
-    }
-
-    public Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        return _underlying.UpdateAsync(setPropertyCalls);
-    }
-
-    public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        return _underlying.Where(predicate);
-    }
-}
-
-
-/// <summary>
-/// Repository defining a set of vaults and the keyspace they belong to
-/// </summary>
-public abstract class VaultRepository<TKeyspace> : IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
-{
-    private TKeyspace _keyspace;
-    private IGeneralDatabaseProvider _databaseProvider;
-    private IServiceProvider _serviceProvider;
-
-    public IDatabaseServiceToken Token { get; }
-
-    public VaultRepository(IServiceProvider provider, IGeneralDatabaseProvider databaseProvider, TKeyspace keyspace)
-    {
-        _serviceProvider = provider;
-        _keyspace = keyspace;
-        _databaseProvider = databaseProvider;
-        Token = _databaseProvider.Token;
-    }
-
-    public IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel
-    {
-        var vault = _serviceProvider.GetService<IVault<TVaultModel>>();
-
-        if (vault == null)
-        {
-            throw new InvalidOperationException($"Vault for type {typeof(TKeyspace).Name} is not registered.");
-        }
-
-        _databaseProvider.ChangeKeyspaceAsync(_keyspace.Name);
-        return vault;
-    }
-
-    public IVault<IVaultModel> Select(Type type)
-    {
-        if (!type.IsAssignableTo(typeof(IVaultModel)))
-        {
-            throw new InvalidOperationException($"Type {type.Name} does not implement IVaultModel.");
-        }
-
-        var vault = _serviceProvider.GetService(type);
-
-        if (vault == null)
-        {
-            throw new InvalidOperationException($"Vault for type {typeof(TKeyspace).Name} is not registered.");
-        }
-
-        _databaseProvider.ChangeKeyspaceAsync(_keyspace.Name);
-        return (vault as IVault<IVaultModel>)!;
-    }
-}
-
-// public abstract class CacheVaultFactory : ICacheVaultFactory
-// {
-//     private readonly ICacheProvider _cacheProvider;
-//     public ICacheServiceToken Token => throw new NotImplementedException();
-
-//     public CacheVaultFactory(ICacheProvider cacheProvider) => _cacheProvider = cacheProvider;
-
-//     IVault<TVaultModel> ICacheVaultFactory.Make<TVaultModel>()
-//     {
-//         if (_cacheProvider is RedisCacheProvider redisCacheProvider)
-//         {
-//             return new RedisVault<TVaultModel>(redisCacheProvider);
-//         }
-//         else
-//         {
-//             throw new NotSupportedException($"Cannot create vault. Unsupported cache provider {_cacheProvider.GetType().FullName}. If you got a custom provider, make sure you've overridden the CacheVaultFactory implementation.");
-//         }
-//     }
-// }
-
-public abstract class DatabaseVaultFactory : IDatabaseVaultFactory
-{
-    private readonly IGeneralDatabaseProvider _databaseProvider;
-
-    public IDatabaseServiceToken Token => _databaseProvider.Token;
-
-    public DatabaseVaultFactory(
-        IGeneralDatabaseProvider databaseProvider)
-    {
-        _databaseProvider = databaseProvider;
-    }
-
-    public virtual IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel
-    {
-        if (_databaseProvider is ICqlDatabaseProvider cqlDatabaseProvider)
-        {
-            return new CqlVault<TVaultModel>(cqlDatabaseProvider, keyspace);
-        }
-        else if (_databaseProvider is ILinqDatabaseProvider linqDatabaseProvider)
-        {
-            return new LinqVault<TVaultModel>(linqDatabaseProvider, keyspace);
-        }
-        else
-        {
-            throw new NotSupportedException($"Cannot create vault. Unsupported database provider {_databaseProvider.GetType().FullName}. If you got a custom provider, make sure you've overridden the DatabaseVaultFactory implementation.");
-        }
-    }
 }

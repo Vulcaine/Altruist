@@ -2,6 +2,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Altruist\Altruist.csproj" />
+    <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
+    <ProjectReference Include="..\..\Altruist\Gaming\Gaming.csproj" />
+    <ProjectReference Include="..\..\Altruist\Redis\Redis.csproj" />
+    <ProjectReference Include="..\..\Altruist\ScyllaDB\ScyllaDB.csproj" />
+    <ProjectReference Include="..\..\Altruist\Web\Web.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

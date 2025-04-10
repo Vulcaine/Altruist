@@ -1,5 +1,3 @@
-using Cassandra.Mapping;
-using Cassandra.Mapping.Attributes;
 
 namespace Altruist.Auth;
 
@@ -9,8 +7,6 @@ public interface ILoginToken
 
 }
 
-[Table("Account")]
-[PrimaryKey("Id")]
 public abstract class Account : IVaultModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -18,6 +14,11 @@ public abstract class Account : IVaultModel
 
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public string Type { get; set; } = "Account";
+
+    public virtual Task<List<IVaultModel>> PreLoad()
+    {
+        return Task.FromResult(new List<IVaultModel>());
+    }
 }
 
 

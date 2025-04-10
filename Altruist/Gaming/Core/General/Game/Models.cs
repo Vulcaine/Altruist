@@ -1,5 +1,4 @@
 
-using Altruist.UORM;
 
 namespace Altruist.Gaming;
 
@@ -83,9 +82,7 @@ public struct ByteVector2
     }
 }
 
-
-[Vault("world_index")]
-public class WorldIndex : IVaultModel
+public abstract class WorldIndex : IVaultModel
 {
     public int Index { get; set; }
     public int Width { get; set; }
@@ -99,6 +96,8 @@ public class WorldIndex : IVaultModel
         Width = width;
         Height = height;
     }
+
+    public abstract Task<List<IVaultModel>> PreLoad();
 }
 
 public interface IWorldPartitioner

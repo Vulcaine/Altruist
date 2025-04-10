@@ -47,7 +47,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public IDatabaseServiceToken Token { get; }
 
-    public ScyllaDbProvider(List<string> contactPoints, IDatabaseServiceToken token)
+    public ScyllaDbProvider(List<string> contactPoints)
     {
         var clusterBuilder = Cluster.Builder().WithDefaultKeyspace("altruist");
 
@@ -66,7 +66,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
         var cluster = clusterBuilder.Build();
         _session = cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
         _mapper = new Mapper(_session);
-        Token = token;
+        Token = ScyllaDBToken.Instance;
     }
 
     public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
@@ -113,16 +113,45 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     private string MapTypeToCql(Type type)
     {
+        // Check for array types (e.g., float[])
+        if (type.IsArray)
+        {
+            var elementType = type.GetElementType();
+
+            if (elementType == typeof(float))
+            {
+                return "list<float>"; // CQL for an array of floats (use list<float> in Cassandra)
+            }
+            else if (elementType == typeof(double))
+            {
+                return "list<double>"; // CQL for an array of doubles
+            }
+            else if (elementType == typeof(int))
+            {
+                return "list<int>"; // CQL for an array of ints
+            }
+            else if (elementType == typeof(string))
+            {
+                return "list<text>"; // CQL for an array of strings
+            }
+            else
+            {
+                throw new NotSupportedException($"Array type {elementType!.Name} is not supported.");
+            }
+        }
+
+        // Standard type mappings
         return type switch
         {
-            _ when type == typeof(string) => "TEXT",
-            _ when type == typeof(int) => "INT",
-            _ when type == typeof(Guid) => "UUID",
-            _ when type == typeof(bool) => "BOOLEAN",
-            _ when type == typeof(double) => "DOUBLE",
-            _ when type == typeof(float) => "FLOAT",
-            _ when type == typeof(DateTime) => "TIMESTAMP",
-            _ when type == typeof(byte[]) => "BLOB",
+            _ when type == typeof(string) => "text",
+            _ when type == typeof(int) => "int",
+            _ when type == typeof(Guid) => "uuid",
+            _ when type == typeof(bool) => "boolean",
+            _ when type == typeof(double) => "double", // Use double for double precision
+            _ when type == typeof(float) => "float", // Use float for single precision
+            _ when type == typeof(DateTime) => "timestamp",
+            _ when type == typeof(byte[]) => "blob",
+            _ when type == typeof(TimeSpan) => "bigint", // CQL for TimeSpan
             _ => throw new NotSupportedException($"Type {type.Name} is not supported.")
         };
     }
@@ -169,7 +198,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
         var tableAttribute = entityType.GetCustomAttribute<VaultAttribute>();
         if (tableAttribute == null)
         {
-            throw new InvalidOperationException($"Type '{entityType.Name}' is missing TableAttribute.");
+            throw new InvalidOperationException($"Type '{entityType.Name}' is missing VaultAttribute.");
         }
 
         if (!(keyspace is IScyllaKeyspace))
@@ -184,7 +213,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
         string tableName = tableAttribute.Name;
         bool storeHistory = tableAttribute.StoreHistory;
 
-        var primaryKeyAttr = entityType.GetCustomAttribute<Altruist.UORM.VaultPrimaryKeyAttribute>();
+        var primaryKeyAttr = entityType.GetCustomAttribute<VaultPrimaryKeyAttribute>();
         if (primaryKeyAttr == null || primaryKeyAttr.Keys.Length == 0)
         {
             throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}'.");

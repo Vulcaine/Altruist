@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Altruist.UORM;
 
 namespace Altruist.Gaming;
 
@@ -57,7 +56,6 @@ public abstract class BasicItemProperties
     }
 }
 
-[Vault("item-template")]
 public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 {
     [JsonPropertyName("id")]
@@ -68,13 +66,14 @@ public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 
     [JsonPropertyName("baseItem")]
     public string Type { get; set; } = "BaseItem";
+
+    public abstract Task<List<IVaultModel>> PreLoad();
 }
 
 /// <summary>
 /// Represents an item instance in the inventory. Each item is based on a template
 /// and contains dynamic properties such as count, dimensions, category, and expiry.
 /// </summary>
-[Vault("item")]
 public abstract class GameItem : BasicItemProperties, IVaultModel
 {
     /// <summary>
@@ -118,6 +117,8 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
         ExpiryDate = expiryDate;
         Size = new ByteVector2(width, height);
     }
+
+    public abstract Task<List<IVaultModel>> PreLoad();
 }
 
 

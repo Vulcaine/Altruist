@@ -1,8 +1,5 @@
-using Altruist.UORM;
-
 namespace Altruist.Gaming;
 
-[Vault("item_storage")]
 public class ItemStorage : IVaultModel
 {
     public IStoragePrincipal Principal { get; }
@@ -63,6 +60,11 @@ public class ItemStorage : IVaultModel
     public void Clear()
     {
         SlotMap.Clear();
+    }
+
+    public Task<List<IVaultModel>> PreLoad()
+    {
+        return Task.FromResult(new List<IVaultModel>());
     }
 }
 

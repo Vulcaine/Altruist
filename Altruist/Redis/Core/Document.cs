@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using Altruist.Database;
 using Altruist.UORM;
 using StackExchange.Redis;
 
@@ -31,44 +32,25 @@ public class RedisDocumentHelper
                 .Select(prop => prop.Name)
                 .ToList();
 
-            documents.Add(new RedisDocument(document, tableAttribute?.Name ?? document.Name, indexedFields));
+            documents.Add(new RedisDocument(document, tableAttribute?.Name ?? document.Name, document.GetProperties().Select(prop => prop.Name).ToList(), indexedFields));
         }
 
         return documents;
     }
 }
 
-public class RedisDocument
+public class RedisDocument : Document
 {
-    public Type Type { get; set; }
-    public string Name { get; set; }
-    public List<string> Indexes { get; set; } = new();
-
-    public string TypePropertyName;
-
-    public RedisDocument(Type type, string name, List<string> indexes)
+    public RedisDocument(Type type, string name, List<string> fields, List<string> indexes) : base(type, name, fields, indexes)
     {
-        Type = type;
-        Name = name;
-        Indexes = indexes;
-        TypePropertyName = "";
-        Validate();
     }
 
-    public void Validate()
+    public override void Validate()
     {
-        if (!typeof(IModel).IsAssignableFrom(Type))
-        {
-            throw new InvalidOperationException($"The type {Type.FullName} must implement IModel.");
-        }
+        base.Validate();
 
         var typeProperty = Type.GetProperty("Type");
-        if (typeProperty == null)
-        {
-            throw new InvalidOperationException($"The type {Type.FullName} must have a 'Type' property.");
-        }
-
-        var jsonPropertyNameAttr = typeProperty.GetCustomAttribute<JsonPropertyNameAttribute>();
+        var jsonPropertyNameAttr = typeProperty!.GetCustomAttribute<JsonPropertyNameAttribute>();
         if (jsonPropertyNameAttr != null)
         {
             TypePropertyName = jsonPropertyNameAttr.Name;

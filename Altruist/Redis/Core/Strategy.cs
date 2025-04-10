@@ -160,7 +160,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
     //     }
     // }
 
-    public override void Build(IAltruistContext settings)
+    public override Task Build(IAltruistContext settings)
     {
         var sp = _services.BuildServiceProvider();
         ILoggerFactory factory = sp.GetRequiredService<ILoggerFactory>();
@@ -179,6 +179,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         configOptions.SyncTimeout = 1000;
         configOptions.AsyncTimeout = 1000;
         BuildWithOptions(configOptions, logger, settings);
+        return Task.CompletedTask;
     }
 
     private void ResubscribeToChannels(IConnectionMultiplexer multiplexer, IServiceProvider serviceProvider, ILogger logger, bool resub, IAltruistContext context)

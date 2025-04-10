@@ -33,6 +33,11 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
 public interface IVaultModel : IModel
 {
     DateTime Timestamp { get; set; }
+
+    Task<List<IVaultModel>> PreLoad()
+    {
+        return Task.FromResult(new List<IVaultModel>());
+    }
 }
 
 public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
@@ -44,7 +49,7 @@ public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
 {
     IDatabaseServiceToken Token { get; }
     IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-    IVault<IVaultModel> Select(Type type);
+    ITypeErasedVault Select(Type type);
 }
 
 public interface IGeneralDatabaseProvider
@@ -76,7 +81,13 @@ public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
 }
 
 
-public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
+public interface ITypeErasedVault
+{
+    Task SaveAsync(object entity, bool? saveHistory = false);
+    Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false);
+}
+
+public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : class, IVaultModel
 {
     IKeyspace Keyspace { get; }
     IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
@@ -97,7 +108,6 @@ public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
     Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel;
 
 }
-
 
 public interface ICqlVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {

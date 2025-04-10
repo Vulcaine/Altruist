@@ -65,17 +65,20 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
             return Activator.CreateInstance(vaultImplementationType, factory, Instance)!;
         });
 
+        Services.AddSingleton(vaultImplementationType, sp => sp.GetRequiredService(vaultInterfaceType));
+        Services.AddSingleton(vault, sp => sp.GetRequiredService(vaultInterfaceType));
+
         return this;
     }
 
 
-    public abstract void Build();
+    public abstract Task Build();
 }
 
 public interface IKeyspaceSetup
 {
     IDatabaseServiceToken Token { get; }
-    void Build();
+    Task Build();
 }
 
 public class VaultRepositoryFactory
