@@ -224,7 +224,7 @@ public class CqlVaultTests
             new TestHistoryVaultModel { Id = Guid.NewGuid(), Name = "Test2" }
         };
 
-        var tableAttribute = new TableAttribute("test_table", StoreHistory: true);
+        var tableAttribute = new VaultAttribute("test_table", StoreHistory: true);
         var testModel = testModels[0];
         testModel.Timestamp = DateTime.UtcNow;
 
@@ -327,7 +327,7 @@ public class TestVaultModel : IVaultModel
     public string Type { get; set; } = "";
 }
 
-[Table("test", StoreHistory: true)]
+[Vault("test", StoreHistory: true)]
 public class TestHistoryVaultModel : IVaultModel
 {
     public Guid Id { get; set; }

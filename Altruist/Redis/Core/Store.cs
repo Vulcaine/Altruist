@@ -338,7 +338,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
             return new CachedTcpConnection(conn);
         }
 
-        throw new Exception($"Unknown connection type {conn?.Type}.");
+        return null;
     }
 
     public override async Task<bool> IsConnectionExistsAsync(string connectionId) => await _cache.ContainsAsync<Connection>(connectionId);

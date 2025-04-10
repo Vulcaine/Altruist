@@ -92,7 +92,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
 
         foreach (var player in players)
         {
-            var conn = await _store.GetConnectionAsync(player.Id);
+            var conn = await _store.GetConnectionAsync(player.ConnectionId);
             if (conn == null || !conn.IsConnected)
             {
                 playersToDelete.Add(player.Id);
