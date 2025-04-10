@@ -1,39 +1,39 @@
 namespace Altruist.UORM;
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-public class TableAttribute : Attribute
+public class VaultAttribute : Attribute
 {
     public string Name { get; }
     public bool StoreHistory { get; }
-    public TableAttribute(string Name, bool StoreHistory = false) => (this.Name, this.StoreHistory) = (Name, StoreHistory);
+    public VaultAttribute(string Name, bool StoreHistory = false) => (this.Name, this.StoreHistory) = (Name, StoreHistory);
 }
 
 [AttributeUsage(AttributeTargets.Class)]
-public class PrimaryKeyAttribute : Attribute
+public class VaultPrimaryKeyAttribute : Attribute
 {
     public string[] Keys { get; }
-    public PrimaryKeyAttribute(params string[] keys) => Keys = keys;
+    public VaultPrimaryKeyAttribute(params string[] keys) => Keys = keys;
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class ColumnIndexAttribute : Attribute { }
+public class VaultColumnIndexAttribute : Attribute { }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class IgnoreAttribute : Attribute { }
+public class VaultIgnoredAttribute : Attribute { }
 
 [AttributeUsage(AttributeTargets.Class)]
-public class SortingByAttribute : Attribute
+public class VaultSortingByAttribute : Attribute
 {
     public string Name { get; }
     public bool Ascending { get; }
-    public SortingByAttribute(
+    public VaultSortingByAttribute(
         string name,
         bool ascending = false) => (Name, Ascending) = (name, ascending);
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class ColumnAttribute : Attribute
+public class VaultColumnAttribute : Attribute
 {
     public string? Name { get; }
-    public ColumnAttribute(string? name = null) => Name = name;
+    public VaultColumnAttribute(string? name = null) => Name = name;
 }

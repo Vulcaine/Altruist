@@ -2,8 +2,8 @@ using Altruist.UORM;
 
 namespace Altruist.Authentication;
 
-[Table("auth_session")]
-public class SessionData : IVaultModel
+[Vault("auth_session")]
+public class AuthSessionData : IVaultModel
 {
     public string UserId { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;

@@ -1,4 +1,6 @@
+using System.Reflection;
 using Altruist.Contracts;
+using Altruist.UORM;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
@@ -29,10 +31,19 @@ public sealed class RedisServiceConfiguration : ICacheConfiguration
         services.AddSingleton<ICacheConnectionSetupBase, RedisConnectionSetup>();
     }
 
-    public void AddDocument<T>()
+    public void AddDocument<T>() where T : IModel
     {
-        Documents.Add(typeof(T));
+        AddDocument(typeof(T));
     }
+
+    public void AddDocument(Type type)
+    {
+        if (typeof(IModel).IsAssignableFrom(type))
+        {
+            Documents.Add(type);
+        }
+    }
+
 }
 
 public sealed class RedisCacheServiceToken : ICacheServiceToken
@@ -56,9 +67,15 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         _config = (RedisCacheServiceToken.Instance.Configuration as RedisServiceConfiguration)!;
     }
 
-    public RedisConnectionSetup AddDocument<T>()
+    public RedisConnectionSetup AddDocument<T>() where T : class, IModel
     {
         _config.AddDocument<T>();
+        return this;
+    }
+
+    public RedisConnectionSetup AddDocument(Type type)
+    {
+        _config.AddDocument(type);
         return this;
     }
 

@@ -37,6 +37,26 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
         return this;
     }
 
+    public KeyspaceSetup<TKeyspace> AddVault(Type vault)
+    {
+        if (!typeof(IVaultModel).IsAssignableFrom(vault))
+            throw new ArgumentException($"{vault.FullName} must implement IVaultModel");
+
+        VaultModels.Add(vault);
+
+        var vaultInterfaceType = typeof(IVault<>).MakeGenericType(vault);
+        var vaultImplementationType = typeof(Vault<>).MakeGenericType(vault);
+
+        Services.AddSingleton(vaultInterfaceType, sp =>
+        {
+            var factory = sp.GetServices<IDatabaseVaultFactory>().First(s => s.Token == Token);
+            return Activator.CreateInstance(vaultImplementationType, factory, Instance)!;
+        });
+
+        return this;
+    }
+
+
     public abstract void Build();
 }
 

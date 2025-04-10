@@ -5,103 +5,103 @@ using MessagePack;
 
 namespace Altruist;
 
-[Table("player")]
-[PrimaryKey(keys: [nameof(Id), nameof(Name)])]
+[Vault("player")]
+[VaultPrimaryKey(keys: [nameof(Id), nameof(Name)])]
 [MessagePackObject]
 public class PlayerEntity : ISynchronizedEntity, IVaultModel
 {
     [Key(0)]
     [JsonProperty("id")]
-    [Column]
+    [VaultColumn]
 
     public string Id { get; set; }
 
     [Key(1)]
     [Synced(0, SyncAlways: true)]
     [JsonProperty("connectionId")]
-    [Column]
+    [VaultColumn]
     public string ConnectionId { get; set; }
 
     [Key(2)]
     [Synced(1, SyncAlways: true)]
     [JsonProperty("name")]
-    [Column]
+    [VaultColumn]
     public string Name { get; set; }
 
     [Key(3)]
     [Synced(2, SyncAlways: true)]
     [JsonProperty("type")]
-    [Column]
+    [VaultColumn]
     public string Type { get; set; }
 
     [Key(4)]
     [Synced(3)]
     [JsonProperty("level")]
-    [Column]
+    [VaultColumn]
     public int Level { get; set; }
 
     [Key(5)]
     [Synced(4)]
     [JsonProperty("position")]
-    [Column]
+    [VaultColumn]
     public float[] Position { get; set; }
 
     [Key(6)]
     [Synced(5)]
     [JsonProperty("rotation")]
-    [Column]
+    [VaultColumn]
     public float Rotation { get; set; }
 
     [Key(7)]
     [Synced(6)]
     [JsonProperty("currentSpeed")]
-    [Column]
+    [VaultColumn]
     public float CurrentSpeed { get; set; }
 
     [Key(8)]
     [JsonProperty("rotationSpeed")]
-    [Column]
+    [VaultColumn]
     [Synced(7)]
     public float RotationSpeed { get; set; }
 
     [Key(9)]
     [JsonProperty("maxSpeed")]
     [Synced(5)]
-    [Column]
+    [VaultColumn]
     public float MaxSpeed { get; set; }
 
     [Key(10)]
     [JsonProperty("acceleration")]
     [Synced(8)]
-    [Column]
+    [VaultColumn]
     public float Acceleration { get; set; }
 
     [Key(11)]
     [JsonProperty("deceleration")]
     [Synced(9)]
-    [Column]
+    [VaultColumn]
     public float Deceleration { get; set; }
 
     [Key(12)]
     [JsonProperty("maxDeceleration")]
     [Synced(10)]
-    [Column]
+    [VaultColumn]
     public float MaxDeceleration { get; set; }
 
     [Key(13)]
     [JsonProperty("maxAcceleration")]
     [Synced(11)]
-    [Column]
+    [VaultColumn]
     public float MaxAcceleration { get; set; }
 
     [Key(14)]
     [JsonProperty("worldIndex")]
-    [Column]
+    [VaultColumn]
     public int WorldIndex { get; set; }
 
     [Key(15)]
     [JsonIgnore]
-    [Ignore]
+    [VaultIgnored]
     [IgnoreMember]
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
@@ -142,19 +142,19 @@ public class PlayerEntity : ISynchronizedEntity, IVaultModel
     }
 }
 
-[Table("vehicles")]
+[Vault("vehicles")]
 public abstract class Vehicle : PlayerEntity
 {
-    [Column]
+    [VaultColumn]
     public float Fuel { get; set; }
 
-    [Column]
+    [VaultColumn]
     public float TurboFuel { get; set; }
 
-    [Column]
+    [VaultColumn]
     public float MaxTurboFuel { get; set; }
 
-    [Column]
+    [VaultColumn]
     public float EngineQuality { get; set; }
 
     public Vehicle() { }
@@ -191,12 +191,12 @@ public abstract class Vehicle : PlayerEntity
     }
 }
 
-[Table("Spaceship")]
+[Vault("Spaceship")]
 public class Spaceship : Vehicle
 {
 }
 
-[Table("Car")]
+[Vault("Car")]
 public class Car : Vehicle
 {
 }

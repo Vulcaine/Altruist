@@ -166,7 +166,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public async Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null)
     {
-        var tableAttribute = entityType.GetCustomAttribute<TableAttribute>();
+        var tableAttribute = entityType.GetCustomAttribute<VaultAttribute>();
         if (tableAttribute == null)
         {
             throw new InvalidOperationException($"Type '{entityType.Name}' is missing TableAttribute.");
@@ -184,14 +184,14 @@ public class ScyllaDbProvider : IScyllaDbProvider
         string tableName = tableAttribute.Name;
         bool storeHistory = tableAttribute.StoreHistory;
 
-        var primaryKeyAttr = entityType.GetCustomAttribute<Altruist.UORM.PrimaryKeyAttribute>();
+        var primaryKeyAttr = entityType.GetCustomAttribute<Altruist.UORM.VaultPrimaryKeyAttribute>();
         if (primaryKeyAttr == null || primaryKeyAttr.Keys.Length == 0)
         {
             throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}'.");
         }
 
         // === Get Sorting Key from Class-Level Attribute ===
-        var sortingAttribute = entityType.GetCustomAttribute<SortingByAttribute>();
+        var sortingAttribute = entityType.GetCustomAttribute<VaultSortingByAttribute>();
         string? sortingKey = sortingAttribute?.Name.ToLower();
         bool sortAscending = sortingAttribute?.Ascending ?? true;
 
@@ -203,10 +203,10 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
         // === Define Table Columns ===
         var columns = entityType.GetProperties()
-            .Where(p => p.GetCustomAttribute<IgnoreAttribute>() == null)
+            .Where(p => p.GetCustomAttribute<VaultIgnoredAttribute>() == null)
             .Select(p =>
             {
-                var columnAttr = p.GetCustomAttribute<ColumnAttribute>();
+                var columnAttr = p.GetCustomAttribute<VaultColumnAttribute>();
                 string columnName = columnAttr?.Name ?? p.Name.ToLower();
                 string columnType = MapTypeToCql(p.PropertyType);
                 return $"{columnName} {columnType}";

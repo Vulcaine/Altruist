@@ -63,9 +63,9 @@ public class SessionTokenAuth : IShieldAuth
             && cached.SessionData.ExpiresAt > now;
     }
 
-    private async Task<SessionData?> GetSessionFromCache(string token)
+    private async Task<AuthSessionData?> GetSessionFromCache(string token)
     {
-        var session = await _cache.GetAsync<SessionData>(token);
+        var session = await _cache.GetAsync<AuthSessionData>(token);
         if (session == null)
         {
             _logger.LogWarning("Invalid session token: {Token}", token);
@@ -75,7 +75,7 @@ public class SessionTokenAuth : IShieldAuth
         return session;
     }
 
-    private bool ValidateSession(SessionData session, IPAddress clientIp, DateTime now)
+    private bool ValidateSession(AuthSessionData session, IPAddress clientIp, DateTime now)
     {
         if (session.ExpiresAt < now)
         {
@@ -92,13 +92,13 @@ public class SessionTokenAuth : IShieldAuth
         return true;
     }
 
-    private async Task RefreshSessionTtl(SessionData session, DateTime now)
+    private async Task RefreshSessionTtl(AuthSessionData session, DateTime now)
     {
         session.ExpiresAt = now.Add(session.CacheValidationInterval);
         await _cache.SaveAsync(session.Token, session);
     }
 
-    private void UpdateLocalCache(string token, SessionData session, DateTime now)
+    private void UpdateLocalCache(string token, AuthSessionData session, DateTime now)
     {
         _sessionCache[token] = new CachedSession
         {
@@ -107,7 +107,7 @@ public class SessionTokenAuth : IShieldAuth
         };
     }
 
-    private AuthResult Success(string token, SessionData session)
+    private AuthResult Success(string token, AuthSessionData session)
         => new(AuthorizationResult.Success(), new AuthDetails(token, session.ExpiresAt - DateTime.UtcNow));
 
     private AuthResult Fail(string reason)
@@ -118,7 +118,7 @@ public class SessionTokenAuth : IShieldAuth
 
     private class CachedSession
     {
-        public SessionData SessionData { get; set; } = null!;
+        public AuthSessionData SessionData { get; set; } = null!;
         public DateTime LastValidatedAt { get; set; }
     }
 }

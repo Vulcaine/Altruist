@@ -57,7 +57,7 @@ public abstract class BasicItemProperties
     }
 }
 
-[Table("item-template")]
+[Vault("item-template")]
 public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 {
     [JsonPropertyName("id")]
@@ -74,7 +74,7 @@ public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 /// Represents an item instance in the inventory. Each item is based on a template
 /// and contains dynamic properties such as count, dimensions, category, and expiry.
 /// </summary>
-[Table("item")]
+[Vault("item")]
 public abstract class GameItem : BasicItemProperties, IVaultModel
 {
     /// <summary>

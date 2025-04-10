@@ -175,7 +175,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
         entity.Timestamp = DateTime.UtcNow;
-        var tableAttribute = typeof(TVaultModel).GetCustomAttribute<TableAttribute>();
+        var tableAttribute = typeof(TVaultModel).GetCustomAttribute<VaultAttribute>();
 
         var columns = string.Join(", ", _queryParts[QueryPosition.SET]);
         var placeholders = string.Join(", ", _queryParameters[QueryPosition.SET].Select(param => "?"));
@@ -209,7 +209,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
-        var tableAttribute = typeof(TVaultModel).GetCustomAttribute<TableAttribute>();
+        var tableAttribute = typeof(TVaultModel).GetCustomAttribute<VaultAttribute>();
 
         var columnNames = string.Join(", ", _queryParts[QueryPosition.SET]);
         var valuePlaceholders = string.Join(", ", _queryParameters[QueryPosition.SET].Select(p => "?"));

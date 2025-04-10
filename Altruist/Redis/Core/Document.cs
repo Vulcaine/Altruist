@@ -24,10 +24,10 @@ public class RedisDocumentHelper
 
         foreach (var document in _config.Documents)
         {
-            var tableAttribute = document.GetCustomAttribute<TableAttribute>();
+            var tableAttribute = document.GetCustomAttribute<VaultAttribute>();
             var indexedFields = document
                 .GetProperties()
-                .Where(prop => prop.GetCustomAttribute<ColumnIndexAttribute>() != null)
+                .Where(prop => prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
                 .Select(prop => prop.Name)
                 .ToList();
 

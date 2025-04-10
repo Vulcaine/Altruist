@@ -84,7 +84,7 @@ public struct ByteVector2
 }
 
 
-[Table("world_index")]
+[Vault("world_index")]
 public class WorldIndex : IVaultModel
 {
     public int Index { get; set; }

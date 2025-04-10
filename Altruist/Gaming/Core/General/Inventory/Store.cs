@@ -2,7 +2,7 @@ using Altruist.UORM;
 
 namespace Altruist.Gaming;
 
-[Table("item_storage")]
+[Vault("item_storage")]
 public class ItemStorage : IVaultModel
 {
     public IStoragePrincipal Principal { get; }
