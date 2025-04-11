@@ -128,7 +128,22 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         }
 
         var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
-        await _databaseProvider.ExecuteAsync(batchQuery, parameters.ToArray()!);
+
+        bool canSave = true;
+        if (entity is IBeforeVaultSave before)
+        {
+            canSave = await before.BeforeSaveAsync();
+        }
+
+        if (canSave)
+        {
+            await _databaseProvider.ExecuteAsync(batchQuery, parameters.ToArray()!);
+        }
+
+        if (entity is IAfterVaultSave after)
+        {
+            await after.AfterSaveAsync();
+        }
     }
 
 
@@ -152,22 +167,41 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         foreach (var entity in entities)
         {
-            queries.Add(insertQuery);
-            allParams.AddRange(GetParameterValues(entity, fields, false));
+            bool canSave = true;
 
-            if (tableAttr?.StoreHistory == true)
+            if (entity is IBeforeVaultSave before)
             {
-                queries.Add(historyQuery);
-                allParams.AddRange(GetParameterValues(entity, fields, true).Skip(fields.Count()));
+                canSave = await before.BeforeSaveAsync();
             }
-            else if (saveHistory == true)
+
+            if (canSave)
             {
-                throw new Exception($"History is not enabled for the table {tableName}. Consider adding StoreHistory=true");
+                queries.Add(insertQuery);
+                allParams.AddRange(GetParameterValues(entity, fields, false));
+
+                if (tableAttr?.StoreHistory == true)
+                {
+                    queries.Add(historyQuery);
+                    allParams.AddRange(GetParameterValues(entity, fields, true).Skip(fields.Count()));
+                }
+                else if (saveHistory == true)
+                {
+                    throw new Exception($"History is not enabled for the table {tableName}. Consider adding StoreHistory=true");
+                }
             }
         }
 
         var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
+
         await _databaseProvider.ExecuteAsync(batchQuery, allParams.ToArray()!);
+
+        foreach (var entity in entities)
+        {
+            if (entity is IAfterVaultSave after)
+            {
+                await after.AfterSaveAsync();
+            }
+        }
     }
 
 

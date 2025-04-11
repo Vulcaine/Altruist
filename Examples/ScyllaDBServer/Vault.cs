@@ -7,7 +7,7 @@ using Altruist.Database;
 public class SpaceshipPlayer : Spaceship, IOnVaultLoad
 {
 
-    public Task<List<IVaultModel>> OnLoadAsync()
+    public Task<List<IVaultModel>> OnCreateAsync()
     {
         var aPlayer = new SpaceshipPlayer() { Id = "Test", Name = "MyPlayerName" };
         return Task.FromResult(new List<IVaultModel> { aPlayer });
