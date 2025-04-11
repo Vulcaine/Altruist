@@ -1,6 +1,8 @@
 using System.Net;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Altruist;
 using Altruist.Redis;
 using Moq;
 using StackExchange.Redis;
@@ -139,7 +141,8 @@ public class RedisCacheProviderTests
     public async Task ClearAsync_ShouldDeleteAllKeysForGivenType()
     {
         // Arrange
-        var document = new RedisDocument(typeof(TestEntity), "test", new List<string>());
+        var document = Altruist.Database.Document.From(typeof(TestEntity));
+
         _mockServer.Setup(s => s.Keys(It.IsAny<int>(), It.IsAny<RedisValue>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<int>(), It.IsAny<CommandFlags>()))
                    .Returns(["123", "456"]);
 

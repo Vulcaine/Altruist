@@ -22,7 +22,7 @@ public class GameWorldManagerTests
         _partitionerMock = new Mock<IWorldPartitioner>();
         _cacheMock = new Mock<ICacheProvider>();
 
-        _worldIndex = new WorldIndex(1, 100, 100);
+        _worldIndex = new TestWorldIndex(1, 100, 100);
 
         _mockPartitions = new List<WorldPartition>
         {

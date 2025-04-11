@@ -2,6 +2,7 @@ using Moq;
 using Cassandra;
 using Cassandra.Mapping;
 using Altruist.ScyllaDB;
+using Altruist;
 
 public class ScyllaDbProviderTests
 {

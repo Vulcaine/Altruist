@@ -1,3 +1,4 @@
+using Altruist;
 using Altruist.Database;
 using Altruist.UORM;
 using Moq;
@@ -13,8 +14,8 @@ public class CqlVaultTests
     {
         _mockDbProvider = new Mock<ICqlDatabaseProvider>();
         _mockKeyspace = new Mock<IKeyspace>();
-        _vault = new CqlVault<TestVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object);
-        _historyVault = new CqlVault<TestHistoryVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object);
+        _vault = new CqlVault<TestVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object, Document.From(typeof(TestVaultModel)));
+        _historyVault = new CqlVault<TestHistoryVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object, Document.From(typeof(TestHistoryVaultModel)));
     }
 
     [Fact]
