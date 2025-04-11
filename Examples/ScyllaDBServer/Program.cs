@@ -5,8 +5,8 @@ using Altruist.Web;
 using Portals;
 
 AltruistBuilder.Create(args, setup => setup.AddGamingSupport())
-    .NoEngine()
-    .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
+    .EnableEngine(FrameRate.Hz30)
+    .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game").MapPortal<RegenPortal>("/game"))
     .WithRedis(setup => setup.ForgeDocuments())
     .WithScyllaDB(setup => setup.CreateKeyspace<DefaultScyllaKeyspace>(
         setup => setup.ForgeVaults()

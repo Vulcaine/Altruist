@@ -8,6 +8,7 @@ using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist
@@ -46,6 +47,12 @@ namespace Altruist
                 loggingBuilder.AddProvider(new AltruistLoggerProvider(frameworkVersion));
             });
             // Add core services
+            Services.AddSingleton<IHostEnvironment>(new HostingEnvironment
+            {
+                EnvironmentName = Environments.Development,
+                ApplicationName = "Altruist",
+                ContentRootPath = Directory.GetCurrentDirectory()
+            });
             Services.AddSingleton(Services);
             Services.AddSingleton(Settings);
             Services.AddSingleton<ClientSender>();

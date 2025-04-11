@@ -138,11 +138,6 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
         MaxDeceleration = 0;
         MaxAcceleration = 0;
     }
-
-    public virtual Task<List<IVaultModel>> PreLoad()
-    {
-        return Task.FromResult(new List<IVaultModel>());
-    }
 }
 
 public abstract class Vehicle : PlayerEntity

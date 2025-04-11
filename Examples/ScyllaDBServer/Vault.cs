@@ -4,7 +4,7 @@ using Altruist.Database;
 
 [Vault("player")]
 [VaultPrimaryKey(keys: [nameof(Id), nameof(Name)])]
-public class SpaceshipPlayer : Spaceship, IOnVaultLoad
+public class SpaceshipPlayer : Spaceship, IOnVaultCreate
 {
 
     public Task<List<IVaultModel>> OnCreateAsync()

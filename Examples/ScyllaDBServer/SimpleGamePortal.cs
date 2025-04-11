@@ -10,3 +10,15 @@ public class SimpleGamePortal : AltruistGameSessionPortal<SpaceshipPlayer>
     {
     }
 }
+
+public class RegenPortal : AltruistRegenPortal<SpaceshipPlayer>
+{
+    public RegenPortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    {
+    }
+
+    public override Task<List<SpaceshipPlayer>> CalculateRegenOneFrame()
+    {
+        return Task.FromResult(new List<SpaceshipPlayer>());
+    }
+}
