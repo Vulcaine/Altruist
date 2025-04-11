@@ -61,11 +61,6 @@ public class ItemStorage : IVaultModel
     {
         SlotMap.Clear();
     }
-
-    public Task<List<IVaultModel>> PreLoad()
-    {
-        return Task.FromResult(new List<IVaultModel>());
-    }
 }
 
 public class ItemStorageProvider

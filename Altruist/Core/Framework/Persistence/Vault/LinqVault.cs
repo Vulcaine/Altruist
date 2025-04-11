@@ -76,27 +76,40 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
         return await _query.ExecuteUpdateAsync(setPropertyCalls);
     }
 
-    public async Task SaveAsync(TVaultModel entity)
-    {
-        _databaseProvider.Context.Add(entity);
-        await _databaseProvider.Context.SaveChangesAsync();
-    }
-
-    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities)
-    {
-        await _databaseProvider.Context.AddRangeAsync(entities);
-        await _databaseProvider.Context.SaveChangesAsync();
-    }
-
     public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
-        _databaseProvider.Context.Add(entity);
-        await _databaseProvider.Context.SaveChangesAsync();
+        await SaveEntityAsync(entity);
     }
 
-    public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
+    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
-        throw new NotImplementedException();
+        await SaveEntityBatchAsync(entities);
+    }
+
+    public async Task SaveAsync(object entity, bool? saveHistory = false)
+    {
+        if (entity is TVaultModel typedEntity)
+        {
+            await SaveEntityAsync(typedEntity);
+        }
+        else
+        {
+            throw new InvalidCastException($"Expected entity of type {typeof(TVaultModel).Name}, got {entity.GetType().Name}");
+        }
+    }
+
+    public async Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false)
+    {
+        var typedEntities = entities
+            .OfType<TVaultModel>()
+            .ToList();
+
+        if (typedEntities.Count != entities.Count())
+        {
+            throw new InvalidCastException("One or more entities are not of the expected type.");
+        }
+
+        await SaveEntityBatchAsync(typedEntities);
     }
 
     public async Task<bool> DeleteAsync()
@@ -123,13 +136,40 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
         return await _query.Select(selector).ToListAsync();
     }
 
-    public Task SaveAsync(object entity, bool? saveHistory = false)
+    private async Task SaveEntityAsync(TVaultModel entity)
     {
-        throw new NotImplementedException();
+        if (entity is IBeforeVaultSave beforeHook && !await beforeHook.BeforeSaveAsync())
+            return;
+
+        _databaseProvider.Context.Add(entity);
+        await _databaseProvider.Context.SaveChangesAsync();
+
+        if (entity is IAfterVaultSave afterHook)
+            await afterHook.AfterSaveAsync();
     }
 
-    public Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false)
+    private async Task SaveEntityBatchAsync(IEnumerable<TVaultModel> entities)
     {
-        throw new NotImplementedException();
+        var filteredEntities = new List<TVaultModel>();
+
+        foreach (var entity in entities)
+        {
+            if (entity is IBeforeVaultSave beforeHook)
+            {
+                var proceed = await beforeHook.BeforeSaveAsync();
+                if (!proceed) continue;
+            }
+
+            filteredEntities.Add(entity);
+        }
+
+        await _databaseProvider.Context.AddRangeAsync(filteredEntities);
+        await _databaseProvider.Context.SaveChangesAsync();
+
+        foreach (var entity in filteredEntities)
+        {
+            if (entity is IAfterVaultSave afterHook)
+                await afterHook.AfterSaveAsync();
+        }
     }
 }
