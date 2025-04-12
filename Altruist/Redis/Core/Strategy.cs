@@ -152,14 +152,6 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         ResubscribeToChannels(mux, serviceProvider, logger, false, settings);
     }
 
-    // private void BuildIndex(RedisConnectionProvider provider)
-    // {
-    //     foreach (var entity in _config.Documents)
-    //     {
-    //         provider.Connection.CreateIndex(entity);
-    //     }
-    // }
-
     public override Task Build(IAltruistContext settings)
     {
         var sp = _services.BuildServiceProvider();

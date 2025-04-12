@@ -5,6 +5,7 @@ using Altruist.Database;
 using Cassandra;
 using Cassandra.Mapping;
 using Altruist.UORM;
+using Microsoft.AspNetCore.Razor.TagHelpers;
 
 namespace Altruist.ScyllaDB;
 
@@ -37,21 +38,43 @@ public class DefaultScyllaKeyspace : ScyllaKeyspace
 
 public interface IScyllaDbProvider : ICqlDatabaseProvider
 {
-
+    Task ConnectAsync();
 }
 
 public class ScyllaDbProvider : IScyllaDbProvider
 {
-    private readonly ISession _session;
-    private readonly IMapper _mapper;
+    private ISession? _session { get; set; }
+    private IMapper? _mapper { get; set; }
+    private readonly List<string> _contactPoints;
 
-    public IDatabaseServiceToken Token { get; }
+    public IDatabaseServiceToken Token { get; private set; }
 
     public ScyllaDbProvider(List<string> contactPoints)
     {
+        _contactPoints = contactPoints;
+        Token = ScyllaDBToken.Instance;
+    }
+
+    private void checkConnected()
+    {
+        if (_session == null)
+        {
+            throw new InvalidOperationException("ScyllaDB is not connected. Did you forget ConnectAsync() ?");
+        }
+    }
+
+    private bool IsConnected => _session != null;
+
+    public Task ConnectAsync()
+    {
+        if (_contactPoints.Count == 0 || IsConnected)
+        {
+            return Task.CompletedTask;
+        }
+
         var clusterBuilder = Cluster.Builder().WithDefaultKeyspace("altruist");
 
-        foreach (var contactPoint in contactPoints)
+        foreach (var contactPoint in _contactPoints)
         {
             // Check if the contactPoint has a scheme, else prepend 'cql://'
             string contactPointWithScheme = contactPoint.Contains("://") ? contactPoint : "cql://" + contactPoint;
@@ -66,11 +89,12 @@ public class ScyllaDbProvider : IScyllaDbProvider
         var cluster = clusterBuilder.Build();
         _session = cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
         _mapper = new Mapper(_session);
-        Token = ScyllaDBToken.Instance;
+        return Task.CompletedTask;
     }
 
     public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
     {
+        _contactPoints = new List<string>();
         _session = session;
         _mapper = mapper;
         Token = token;
@@ -78,30 +102,34 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel
     {
-        return (await _mapper.FetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
+        checkConnected();
+        return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
     }
 
     public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel
     {
-        return (await _mapper.FetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
+        checkConnected();
+        return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
     }
 
     public async Task<int> ExecuteAsync(string cqlQuery, params object[] parameters)
     {
-        var statement = _session.Prepare(cqlQuery).Bind(parameters);
+        var statement = _session!.Prepare(cqlQuery).Bind(parameters);
         var result = await _session.ExecuteAsync(statement);
         return result?.Info?.AchievedConsistency != null ? result.GetRows().Count() : 0;
     }
 
     public async Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
-        await _mapper.UpdateAsync(entity);
+        checkConnected();
+        await _mapper!.UpdateAsync(entity);
         return 1;
     }
 
     public async Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
-        await _mapper.DeleteAsync(entity);
+        checkConnected();
+        await _mapper!.DeleteAsync(entity);
         return 1;
     }
 
@@ -158,6 +186,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
     {
+        checkConnected();
         var actualOptions = options as ScyllaReplicationOptions ?? new ScyllaReplicationOptions();
 
         // Build the replication configuration
@@ -188,13 +217,14 @@ public class ScyllaDbProvider : IScyllaDbProvider
             throw new ArgumentException("Invalid replication options: NetworkTopologyStrategy requires at least one data center.");
         }
 
-        _session.CreateKeyspaceIfNotExists(keyspace, replicationConfig);
+        _session!.CreateKeyspaceIfNotExists(keyspace, replicationConfig);
         return Task.CompletedTask;
     }
 
 
     public async Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null)
     {
+        checkConnected();
         var tableAttribute = entityType.GetCustomAttribute<VaultAttribute>();
         if (tableAttribute == null)
         {
@@ -257,7 +287,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
             sb.AppendLine($", PRIMARY KEY ({string.Join(", ", primaryKeyAttr.Keys)}) );");
         }
 
-        await _session.ExecuteAsync(new SimpleStatement(sb.ToString()));
+        await _session!.ExecuteAsync(new SimpleStatement(sb.ToString()));
 
         // === STEP 2: CREATE HISTORY TABLE (if enabled) ===
         if (storeHistory)
@@ -292,15 +322,17 @@ public class ScyllaDbProvider : IScyllaDbProvider
     /// </summary>
     private async Task<bool> TableExistsAsync(string keyspace, string tableName)
     {
+        checkConnected();
         var query = $"SELECT table_name FROM system_schema.tables WHERE keyspace_name = '{keyspace}' AND table_name = '{tableName}';";
-        var result = await _session.ExecuteAsync(new SimpleStatement(query));
+        var result = await _session!.ExecuteAsync(new SimpleStatement(query));
         return result.Any();
     }
 
     public async Task ChangeKeyspaceAsync(string keyspace)
     {
+        checkConnected();
         var query = $"USE {keyspace};";
-        await _session.ExecuteAsync(new SimpleStatement(query));
+        await _session!.ExecuteAsync(new SimpleStatement(query));
     }
 }
 

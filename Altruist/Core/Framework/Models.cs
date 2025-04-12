@@ -107,7 +107,7 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
     {
         Type = GetType().Name;
         Id = Guid.NewGuid().ToString();
-        ConnectionId = Guid.NewGuid().ToString();
+        ConnectionId = "";
         Name = "Player";
         Level = 1;
         Position = [0, 0];

@@ -5,11 +5,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Database;
 
-public class Vault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
+public class VaultAdapter<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     private readonly IVault<TVaultModel> _underlying;
 
-    public Vault(IDatabaseVaultFactory vaultMaker, IKeyspace keyspace)
+    public VaultAdapter(IDatabaseVaultFactory vaultMaker, IKeyspace keyspace)
     {
         _underlying = vaultMaker.Make<TVaultModel>(keyspace);
         Keyspace = keyspace;
@@ -148,7 +148,7 @@ public abstract class VaultRepository<TKeyspace> : IVaultRepository<TKeyspace> w
         {
             throw new InvalidOperationException($"Type {type.Name} does not implement IVaultModel.");
         }
-        var vaultInterfaceType = typeof(Vault<>).MakeGenericType(type);
+        var vaultInterfaceType = typeof(VaultAdapter<>).MakeGenericType(type);
         var vault = _serviceProvider.GetService(vaultInterfaceType);
         return (ITypeErasedVault)vault!;
     }

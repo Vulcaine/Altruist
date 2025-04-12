@@ -59,3 +59,9 @@ public class UsernamePasswordLoginRequest : LoginRequest, ILoginToken
         Password = password;
     }
 }
+
+public class AltruistLoginResponse
+{
+    public string AccessToken { get; set; } = "";
+    public string RefreshToken { get; set; } = "";
+}

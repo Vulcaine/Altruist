@@ -35,7 +35,7 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
     public KeyspaceSetup<TKeyspace> AddVault<TVaultModel>() where TVaultModel : class, IVaultModel
     {
         VaultModels.Add(typeof(TVaultModel));
-        Services.AddSingleton<IVault<TVaultModel>>(sp => new Vault<TVaultModel>(sp.GetServices<IDatabaseVaultFactory>().Where(s => s.Token == Token).First(), Instance));
+        Services.AddSingleton<IVault<TVaultModel>>(sp => new VaultAdapter<TVaultModel>(sp.GetServices<IDatabaseVaultFactory>().Where(s => s.Token == Token).First(), Instance));
         return this;
     }
 
@@ -57,7 +57,7 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
         VaultModels.Add(vault);
 
         var vaultInterfaceType = typeof(IVault<>).MakeGenericType(vault);
-        var vaultImplementationType = typeof(Vault<>).MakeGenericType(vault);
+        var vaultImplementationType = typeof(VaultAdapter<>).MakeGenericType(vault);
 
         Services.AddSingleton(vaultInterfaceType, sp =>
         {

@@ -13,7 +13,7 @@ public class SimpleGamePortal : AltruistGameSessionPortal<SpaceshipPlayer>
 
 public class RegenPortal : AltruistRegenPortal<SpaceshipPlayer>
 {
-    public RegenPortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    public RegenPortal(IPortalContext context, GameWorldCoordinator worldCoordinator, IPlayerService<SpaceshipPlayer> playerService, ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
     {
     }
 

@@ -127,6 +127,7 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
             throw new InvalidOperationException("ScyllaDB provider is not registered.");
         }
 
+        await provider.ConnectAsync();
         await provider.CreateKeySpaceAsync(Instance.Name, Instance.Options);
         foreach (var vault in VaultModels)
         {

@@ -398,7 +398,7 @@ namespace Altruist
         public AppBuilder(WebApplication app)
         {
             _app = app;
-            _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals;
+            _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals.ToDictionary(x => x.Key, x => x.Value.Path);
         }
 
         public AppBuilder Configure(Func<WebApplication, WebApplication> setup)
