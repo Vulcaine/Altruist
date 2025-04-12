@@ -1,7 +1,9 @@
 
+using System.Reflection;
 using System.Threading.Tasks;
 using Altruist.Contracts;
 using Altruist.Database;
+using Altruist.UORM;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -129,6 +131,8 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
 
         await provider.ConnectAsync();
         await provider.CreateKeySpaceAsync(Instance.Name, Instance.Options);
+
+        var tableModels = VaultModels.Where(m => m.GetCustomAttribute<VaultAttribute>() != null);
         foreach (var vault in VaultModels)
         {
             await provider.CreateTableAsync(vault, Instance);

@@ -5,38 +5,48 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
-public interface IIssuer<T>
+public interface IIssue
 {
-    T Issue();
+
 }
 
-
-public class SessionToken
-{
-    public string Token { get; set; } = "";
-    public DateTime Expiration { get; set; }
-}
-
-public class JwtToken
+public abstract class TokenIssue : IIssue
 {
     public string AccessToken { get; set; } = "";
     public string RefreshToken { get; set; } = "";
+    public DateTime Expiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
     public string Algorithm { get; set; } = "";
 }
 
-public class SessionTokenIssuer : IIssuer<SessionToken>
+public interface IIssuer
 {
-    public SessionToken Issue()
+    IIssue Issue();
+}
+
+
+public class SessionToken : TokenIssue
+{
+
+}
+
+public class JwtToken : TokenIssue
+{
+
+}
+
+public class SessionTokenIssuer : IIssuer
+{
+    public IIssue Issue()
     {
         return new SessionToken
         {
-            Token = Guid.NewGuid().ToString(),
+            AccessToken = Guid.NewGuid().ToString(),
             Expiration = DateTime.UtcNow.AddHours(1)
         };
     }
 }
 
-public class JwtTokenIssuer : IIssuer<JwtToken>
+public class JwtTokenIssuer : IIssuer
 {
     private readonly JwtBearerOptions _jwtOptions;
     private IEnumerable<Claim>? _customClaims;
@@ -95,7 +105,7 @@ public class JwtTokenIssuer : IIssuer<JwtToken>
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public JwtToken Issue()
+    public IIssue Issue()
     {
         var signingKey = _jwtOptions.TokenValidationParameters.IssuerSigningKey
             as SymmetricSecurityKey ?? throw new InvalidOperationException("Signing key is not configured.");
@@ -136,6 +146,6 @@ public class JwtTokenIssuer : IIssuer<JwtToken>
 
 public static class Issuer
 {
-    public static IIssuer<SessionToken> Session = new SessionTokenIssuer();
-    public static IIssuer<JwtToken> Jwt(IOptionsMonitor<JwtBearerOptions> jwtOptions) => new JwtTokenIssuer(jwtOptions);
+    public static IIssuer Session = new SessionTokenIssuer();
+    public static IIssuer Jwt(IOptionsMonitor<JwtBearerOptions> jwtOptions) => new JwtTokenIssuer(jwtOptions);
 }

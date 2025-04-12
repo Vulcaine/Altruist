@@ -6,6 +6,7 @@ using Cassandra;
 using Cassandra.Mapping;
 using Altruist.UORM;
 using Microsoft.AspNetCore.Razor.TagHelpers;
+using System.Threading.Tasks;
 
 namespace Altruist.ScyllaDB;
 
@@ -55,11 +56,11 @@ public class ScyllaDbProvider : IScyllaDbProvider
         Token = ScyllaDBToken.Instance;
     }
 
-    private void checkConnected()
+    private async Task ensureConnected()
     {
         if (_session == null)
         {
-            throw new InvalidOperationException("ScyllaDB is not connected. Did you forget ConnectAsync() ?");
+            await ConnectAsync();
         }
     }
 
@@ -100,35 +101,50 @@ public class ScyllaDbProvider : IScyllaDbProvider
         Token = token;
     }
 
-    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel
+    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
     {
-        checkConnected();
-        return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
+        await ensureConnected();
+        if (parameters.Count == 0)
+        {
+            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery)).ToList();
+        }
+        else
+        {
+            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
+        }
     }
 
-    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel
+    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
     {
-        checkConnected();
-        return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
+        await ensureConnected();
+        if (parameters.Count == 0)
+        {
+            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery)).FirstOrDefault();
+        }
+        else
+        {
+            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
+        }
     }
 
-    public async Task<int> ExecuteAsync(string cqlQuery, params object[] parameters)
+    public async Task<int> ExecuteAsync(string cqlQuery, List<object> parameters)
     {
-        var statement = _session!.Prepare(cqlQuery).Bind(parameters);
+        await ensureConnected();
+        var statement = _session!.Prepare(cqlQuery).Bind(parameters.Count == 0 ? null : parameters);
         var result = await _session.ExecuteAsync(statement);
         return result?.Info?.AchievedConsistency != null ? result.GetRows().Count() : 0;
     }
 
     public async Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
-        checkConnected();
+        await ensureConnected();
         await _mapper!.UpdateAsync(entity);
         return 1;
     }
 
     public async Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
-        checkConnected();
+        await ensureConnected();
         await _mapper!.DeleteAsync(entity);
         return 1;
     }
@@ -184,9 +200,9 @@ public class ScyllaDbProvider : IScyllaDbProvider
         };
     }
 
-    public Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
+    public async Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
     {
-        checkConnected();
+        await ensureConnected();
         var actualOptions = options as ScyllaReplicationOptions ?? new ScyllaReplicationOptions();
 
         // Build the replication configuration
@@ -218,13 +234,12 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
 
         _session!.CreateKeyspaceIfNotExists(keyspace, replicationConfig);
-        return Task.CompletedTask;
     }
 
 
     public async Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null)
     {
-        checkConnected();
+        await ensureConnected();
         var tableAttribute = entityType.GetCustomAttribute<VaultAttribute>();
         if (tableAttribute == null)
         {
@@ -322,7 +337,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
     /// </summary>
     private async Task<bool> TableExistsAsync(string keyspace, string tableName)
     {
-        checkConnected();
+        await ensureConnected();
         var query = $"SELECT table_name FROM system_schema.tables WHERE keyspace_name = '{keyspace}' AND table_name = '{tableName}';";
         var result = await _session!.ExecuteAsync(new SimpleStatement(query));
         return result.Any();
@@ -330,7 +345,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public async Task ChangeKeyspaceAsync(string keyspace)
     {
-        checkConnected();
+        await ensureConnected();
         var query = $"USE {keyspace};";
         await _session!.ExecuteAsync(new SimpleStatement(query));
     }

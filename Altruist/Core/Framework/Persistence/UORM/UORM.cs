@@ -3,10 +3,11 @@ namespace Altruist.UORM;
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public class VaultAttribute : Attribute
 {
-    public string Keyspace { get; } = "altruist";
     public string Name { get; }
+    public string Keyspace { get; } = "altruist";
+    public string DbToken { get; } = "ScyllaDB";
     public bool StoreHistory { get; }
-    public VaultAttribute(string Name, bool StoreHistory = false) => (this.Name, this.StoreHistory) = (Name, StoreHistory);
+    public VaultAttribute(string Name, bool StoreHistory = false, string Keyspace = "altruist", string DbToken = "ScyllaDB") => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken) = (Name, StoreHistory, Keyspace, DbToken);
 }
 
 [AttributeUsage(AttributeTargets.Class)]

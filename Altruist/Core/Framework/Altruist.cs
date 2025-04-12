@@ -331,6 +331,7 @@ namespace Altruist
         {
             if (App == null)
             {
+                Builder.Services.AddControllers();
                 App = Builder
                 .Build();
 
@@ -340,6 +341,7 @@ namespace Altruist
                 };
                 App.UseWebSockets(webSocketOptions);
                 App.UseRouting();
+                App.MapControllers();
             }
 
             return new AppBuilder(App!);

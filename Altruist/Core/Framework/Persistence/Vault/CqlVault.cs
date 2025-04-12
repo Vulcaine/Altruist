@@ -1,6 +1,8 @@
+using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 using Altruist.UORM;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 
 namespace Altruist.Database;
@@ -15,7 +17,6 @@ public enum QueryPosition
     UPDATE,
     SET
 }
-
 
 public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
@@ -137,7 +138,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         if (canSave)
         {
-            await _databaseProvider.ExecuteAsync(batchQuery, parameters.ToArray()!);
+            await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
         }
 
         if (entity is IAfterVaultSave after)
@@ -193,7 +194,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
 
-        await _databaseProvider.ExecuteAsync(batchQuery, allParams.ToArray()!);
+        await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
 
         foreach (var entity in entities)
         {
@@ -283,7 +284,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public async Task<int> CountAsync()
     {
-        string countQuery = $"SELECT COUNT(*) FROM {typeof(TVaultModel).Name}";
+        string countQuery = $"SELECT COUNT(*) FROM {_document.Name}";
         string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(whereClause))
         {
@@ -307,8 +308,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         string updateQuery = BuildUpdateQuery();
         var concatenatedParameters = _queryParameters[QueryPosition.WHERE]
-            .Concat(_queryParameters[QueryPosition.SET])
-            .ToArray();
+            .Concat(_queryParameters[QueryPosition.SET]).ToList();
 
         return await _databaseProvider.ExecuteAsync(updateQuery, concatenatedParameters);
     }
@@ -335,7 +335,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public string BuildSelectQuery()
     {
-        string selectQuery = $"SELECT {string.Join(", ", _queryParts[QueryPosition.SELECT])} FROM {typeof(TVaultModel).Name}";
+        string selectQuery = $"SELECT {string.Join(", ", _queryParts[QueryPosition.SELECT])} FROM {_document.Name}";
 
         string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(whereClause))
@@ -360,7 +360,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public string BuildUpdateQuery()
     {
-        string updateQuery = $"UPDATE {typeof(TVaultModel).Name} SET {string.Join(", ", _queryParts[QueryPosition.SET])}";
+        string updateQuery = $"UPDATE {_document.Name} SET {string.Join(", ", _queryParts[QueryPosition.SET])}";
 
         string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(whereClause))
@@ -376,7 +376,8 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         if (predicate.Body is BinaryExpression binaryExpression)
         {
             var left = ParseExpression(binaryExpression.Left);
-            var right = ParseExpression(binaryExpression.Right);
+            var rightValue = ExpressionUtils.Evaluate(binaryExpression.Right);
+            string right = ConvertToCqlValue(rightValue);
             string @operator = GetOperator(binaryExpression.NodeType);
 
             return $"{left} {@operator} {right}";
@@ -389,29 +390,41 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         if (expression is MemberExpression memberExpression)
         {
-            return memberExpression.Member.Name;
-        }
-
-        if (expression is ConstantExpression constantExpression && constantExpression.Value != null)
-        {
-            var value = constantExpression.Value;
-            switch (value)
-            {
-                case string stringValue:
-                    return $"'{stringValue}'";
-                case bool boolValue:
-                    return boolValue ? "TRUE" : "FALSE";
-                case DateTime dateTimeValue:
-                    return $"'{dateTimeValue:yyyy-MM-dd HH:mm:ss}'";
-                case null:
-                    return "NULL";
-                default:
-                    return value.ToString()!;
-            }
+            _document.Columns.TryGetValue(memberExpression.Member.Name, out var column);
+            return column ?? Document.ToCamelCase(memberExpression.Member.Name);
         }
 
         throw new NotSupportedException("Unsupported expression type.");
     }
+
+
+    private string ConvertTimeSpanToDatabaseFormat(TimeSpan ts)
+    {
+        if (ts.TotalSeconds < 60)
+            return $"{ts.Seconds}s";
+        if (ts.TotalMinutes < 60)
+            return $"{ts.Minutes}m";
+        if (ts.TotalHours < 24)
+            return $"{ts.Hours}h";
+        return $"{ts.Days}d";
+    }
+
+    private string ConvertToCqlValue(object? value)
+    {
+        if (value == null)
+            return "NULL";
+
+        return value switch
+        {
+            string s => $"'{s.Replace("'", "''")}'", // escape single quotes
+            bool b => b ? "TRUE" : "FALSE",
+            DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
+            TimeSpan ts => $"'{ConvertTimeSpanToDatabaseFormat(ts)}'",
+            Enum e => $"'{e}'",
+            _ => value.ToString()!
+        };
+    }
+
 
     private string GetOperator(ExpressionType expressionType)
     {
@@ -468,7 +481,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public async Task<bool> DeleteAsync()
     {
-        string deleteQuery = $"DELETE FROM {typeof(TVaultModel).Name}";
+        string deleteQuery = $"DELETE FROM {_document.Name}";
 
         string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(whereClause))
@@ -484,7 +497,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         Where(predicate); // Reuse existing Where() method
 
-        string query = $"SELECT COUNT(*) FROM {typeof(TVaultModel).Name} WHERE {string.Join(" AND ", _queryParts[QueryPosition.WHERE])}";
+        string query = $"SELECT COUNT(*) FROM {_document.Name} WHERE {string.Join(" AND ", _queryParts[QueryPosition.WHERE])}";
         int count = await _databaseProvider.ExecuteAsync(query, _queryParameters[QueryPosition.WHERE]);
 
         return count > 0;
@@ -525,4 +538,15 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         throw new NotSupportedException("Unsupported expression type for SELECT.");
     }
 
+}
+
+
+public static class ExpressionUtils
+{
+    public static object? Evaluate(Expression e)
+    {
+        if (e.NodeType == ExpressionType.Constant)
+            return ((ConstantExpression)e).Value;
+        return Expression.Lambda(e).Compile().DynamicInvoke();
+    }
 }

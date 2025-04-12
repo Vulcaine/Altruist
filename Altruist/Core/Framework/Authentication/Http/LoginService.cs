@@ -1,42 +1,40 @@
 namespace Altruist.Auth;
 
-public interface ILoginService<T> where T : LoginRequest
+public interface ILoginService
 {
-    public Task<bool> Login(LoginRequest request);
+    public Task<Account?> Login(LoginRequest request);
 }
 
-public abstract class LoginService<T> : ILoginService<T> where T : LoginRequest
+public abstract class LoginService<TAccount> : ILoginService where TAccount : Account
 {
-    protected IVault<Account> _accountVault;
+    protected IVault<TAccount> _accountVault;
 
-    public LoginService(IVault<Account> accountVault)
+    public LoginService(IVault<TAccount> accountVault)
     {
         _accountVault = accountVault;
     }
 
-    public abstract Task<bool> Login(LoginRequest request);
+    public abstract Task<Account?> Login(LoginRequest request);
 }
 
-public class UsernamePasswordLoginService : LoginService<UsernamePasswordLoginRequest>
+public class UsernamePasswordLoginService<TAccount> : LoginService<TAccount> where TAccount : UsernamePasswordAccount
 {
-    public UsernamePasswordLoginService(IVault<Account> accountVault) : base(accountVault) { }
+    public UsernamePasswordLoginService(IVault<TAccount> accountVault) : base(accountVault) { }
 
-    public override async Task<bool> Login(LoginRequest request)
+    public override async Task<Account?> Login(LoginRequest request)
     {
         if (request is UsernamePasswordLoginRequest usernamePasswordLoginRequest)
         {
-            var vault = _accountVault as IVault<UsernamePasswordAccount>;
-
-            if (vault == null)
+            if (_accountVault == null)
             {
-                return false;
+                return null;
             }
 
-            var account = await vault
+            var account = await _accountVault
                 .Where(a => a.Username == usernamePasswordLoginRequest.Username).FirstOrDefaultAsync();
-            return account != null;
+            return account;
         }
 
-        return false;
+        return null;
     }
 }

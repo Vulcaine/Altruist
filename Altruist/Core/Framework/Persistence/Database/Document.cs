@@ -11,7 +11,7 @@ public class Document
     public string Name { get; set; }
 
     public List<string> Fields { get; set; } = new();     // logical field names (camelCase)
-    public List<string> Columns { get; set; } = new();    // actual column names
+    public Dictionary<string, string> Columns { get; set; } = new();    // actual column names
 
     public List<string> Indexes { get; set; } = new();
 
@@ -25,7 +25,7 @@ public class Document
         Type type,
         string name,
         List<string> fields,
-        List<string> columns,
+        Dictionary<string, string> columns,
         List<string> indexes,
         Dictionary<string, Func<object, object?>> propertyAccessors)
     {
@@ -52,24 +52,21 @@ public class Document
         var name = vaultAttribute?.Name ?? type.Name;
 
         var fields = new List<string>();
-        var columns = new List<string>();
+        var columns = new Dictionary<string, string>();
         var indexes = new List<string>();
         var accessors = new Dictionary<string, Func<object, object?>>();
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
-            if (columnAttr != null)
-            {
-                var columnName = columnAttr.Name ?? ToCamelCase(prop.Name);
-                var fieldName = ToCamelCase(prop.Name);
+            var columnName = columnAttr?.Name ?? ToCamelCase(prop.Name);
+            var fieldName = prop.Name;
 
-                fields.Add(fieldName);
-                columns.Add(columnName);
+            fields.Add(fieldName);
+            columns[fieldName] = columnName;
 
-                // compile and cache accessor
-                accessors[fieldName] = CompileAccessor(prop);
-            }
+            // compile and cache accessor
+            accessors[fieldName] = CompileAccessor(prop);
 
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
             {
@@ -93,7 +90,7 @@ public class Document
         return lambda.Compile();
     }
 
-    private static string ToCamelCase(string value)
+    public static string ToCamelCase(string value)
     {
         return string.IsNullOrEmpty(value)
             ? value

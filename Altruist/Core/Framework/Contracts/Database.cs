@@ -69,9 +69,9 @@ public interface ILinqDatabaseProvider : IGeneralDatabaseProvider
 
 public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
 {
-    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel;
-    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel;
-    Task<int> ExecuteAsync(string cqlQuery, params object[] parameters);
+    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel;
+    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel;
+    Task<int> ExecuteAsync(string cqlQuery, List<object> parameters);
     Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
     Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
 }

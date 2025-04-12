@@ -1,4 +1,5 @@
 ﻿using Altruist;
+using Altruist.Authentication;
 using Altruist.Redis;
 using Altruist.ScyllaDB;
 using Altruist.Web;
@@ -11,5 +12,5 @@ AltruistBuilder.Create(args, setup => setup.AddGamingSupport())
     .WithScyllaDB(setup => setup.CreateKeyspace<DefaultScyllaKeyspace>(
         setup => setup.ForgeVaults()
     ))
-    .WebApp()
+    .WebApp(setup => setup.AddJwtAuth())
     .StartServer();

@@ -1,4 +1,8 @@
 
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
 namespace Altruist.Auth;
 
 
@@ -64,4 +68,32 @@ public class AltruistLoginResponse
 {
     public string AccessToken { get; set; } = "";
     public string RefreshToken { get; set; } = "";
+}
+
+public class LoginRequestBinder : IModelBinder
+{
+    public async Task BindModelAsync(ModelBindingContext bindingContext)
+    {
+        var requestType = bindingContext.HttpContext.Request.ContentType;
+
+        if (requestType != "application/json")
+            return;
+
+        // Read the request body asynchronously
+        var body = bindingContext.HttpContext.Request.Body;
+        var json = await new StreamReader(body).ReadToEndAsync();
+
+        // Deserialize the JSON into a dynamic object
+        dynamic request = JsonConvert.DeserializeObject(json);
+
+        if (request.username != null && request.password != null)
+        {
+            var usernamePasswordRequest = JsonConvert.DeserializeObject<UsernamePasswordLoginRequest>(json);
+            bindingContext.Result = ModelBindingResult.Success(usernamePasswordRequest);
+        }
+        else
+        {
+            bindingContext.Result = ModelBindingResult.Failed();
+        }
+    }
 }

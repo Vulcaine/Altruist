@@ -1,4 +1,8 @@
+using System.CodeDom;
+using System.Security.Cryptography;
 using System.Text;
+using Altruist.Auth;
+using Altruist.Database;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -10,6 +14,12 @@ namespace Altruist.Authentication;
 
 public static class WebAppAuthExtensions
 {
+    // public static WebApplicationBuilder AddUsernamePasswordLogin(this WebApplicationBuilder builder)
+    // {
+    //     builder.Services.AddScoped<ILoginService, UsernamePasswordLoginService>();
+    //     return builder;
+    // }
+
     public static WebApplicationBuilder AddJwtAuth(
        this WebApplicationBuilder builder,
        Action<JwtBearerOptions>? configureOptions = null,
@@ -21,11 +31,13 @@ public static class WebAppAuthExtensions
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                var secretKeyBytes = RandomNumberGenerator.GetBytes(32);
+                var signingKey = new SymmetricSecurityKey(secretKeyBytes);
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidIssuer = "Altruist",
                     ValidAudience = "Altruist",
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("altruist-secret-key")),
+                    IssuerSigningKey = signingKey,
                     ValidateIssuer = true,
                     ValidateAudience = true,
                     ValidateIssuerSigningKey = true,
@@ -41,6 +53,8 @@ public static class WebAppAuthExtensions
         });
 
         builder.Services.AddScoped<ITokenValidator, JwtTokenValidator>();
+        builder.Services.AddScoped<JwtTokenIssuer>();
+        builder.Services.AddScoped<IIssuer>(sp => sp.GetRequiredService<JwtTokenIssuer>());
         builder.Services.AddScoped<IShieldAuth, JwtAuth>();
 
         logger.LogInformation("🔐 JWT authentication activated. Your app is armored and ready to secure connections?! Well, almost..");
@@ -83,6 +97,8 @@ public static class WebAppAuthExtensions
         });
 
         builder.Services.AddScoped<ITokenValidator, JwtTokenValidator>();
+        builder.Services.AddScoped<JwtTokenIssuer>();
+        builder.Services.AddScoped<IIssuer>(sp => sp.GetRequiredService<JwtTokenIssuer>());
         builder.Services.AddScoped<IShieldAuth, JwtAuth>();
 
         logger.LogInformation("🔐 JWT authentication activated. Your app is armored and ready to secure connections!");

@@ -98,9 +98,7 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
     public int WorldIndex { get; set; }
 
     [Key(15)]
-    [JsonIgnore]
-    [VaultIgnored]
-    [IgnoreMember]
+    [VaultColumn]
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
     public PlayerEntity()
