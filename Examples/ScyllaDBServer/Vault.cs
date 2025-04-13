@@ -4,12 +4,12 @@ using Altruist.Database;
 using Altruist.UORM;
 
 [Vault("player")]
-[VaultPrimaryKey(keys: [nameof(Id), nameof(Name)])]
+[VaultPrimaryKey(keys: [nameof(GenId), nameof(Name)])]
 public class SpaceshipPlayer : Spaceship, IOnVaultCreate
 {
     public Task<List<IVaultModel>> OnCreateAsync()
     {
-        var aPlayer = new SpaceshipPlayer() { Id = "Test", Name = "MyPlayerName" };
+        var aPlayer = new SpaceshipPlayer() { GenId = "Test", Name = "MyPlayerName" };
         return Task.FromResult(new List<IVaultModel> { aPlayer });
     }
 }

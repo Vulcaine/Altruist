@@ -12,7 +12,7 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
     [JsonProperty("id")]
     [VaultColumn]
 
-    public string Id { get; set; }
+    public string GenId { get; set; }
 
     [Key(1)]
     [Synced(0, SyncAlways: true)]
@@ -104,7 +104,7 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
     public PlayerEntity()
     {
         Type = GetType().Name;
-        Id = Guid.NewGuid().ToString();
+        GenId = Guid.NewGuid().ToString();
         ConnectionId = "";
         Name = "Player";
         Level = 1;
@@ -122,7 +122,7 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
     public PlayerEntity(string id)
     {
         Type = GetType().Name;
-        Id = id;
+        GenId = id;
         ConnectionId = Guid.NewGuid().ToString();
         Name = "Player";
         Level = 1;
@@ -155,7 +155,7 @@ public abstract class Vehicle : PlayerEntity
     public Vehicle() { }
     public Vehicle(string id, int level, float[] position, float rotation, float currentSpeed, float maxSpeed, float acceleration, float maxAcceleration, float deceleration, float maxDeceleration, float rotationSpeed, float turboFuel, float maxTurboFuel, float engineQuality)
     {
-        Id = id;
+        GenId = id;
         Level = level;
         Position = position;
         Rotation = rotation;

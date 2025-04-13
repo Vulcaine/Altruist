@@ -1,13 +1,43 @@
 
 using System.Collections.Concurrent;
+using Altruist.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.InMemory;
+
+public sealed class InMemoryServiceConfiguration : ICacheConfiguration
+{
+    public void Configure(IServiceCollection services)
+    {
+
+    }
+}
+
+public sealed class InMemoryCacheServiceToken : ICacheServiceToken
+{
+    public static readonly InMemoryCacheServiceToken Instance = new();
+    public ICacheConfiguration Configuration { get; }
+
+    public InMemoryCacheServiceToken()
+    {
+        Configuration = new InMemoryServiceConfiguration();
+    }
+
+    public string Description => "💾 Cache: InMemory";
+}
+
 
 public class InMemoryCache : IMemoryCacheProvider
 {
     private readonly ConcurrentDictionary<Type, Dictionary<string, object>> _memoryCacheEntities = new();
 
+    public event Action? OnConnected;
+    public event Action<Exception> OnFailed = delegate { };
+
+    public ICacheServiceToken Token => new InMemoryCacheServiceToken();
+
+    public bool IsConnected => true;
 
     public Task<ICursor<T>> GetAllAsync<T>() where T : notnull
     {

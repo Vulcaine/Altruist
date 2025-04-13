@@ -84,6 +84,7 @@ public struct ByteVector2
 
 public abstract class WorldIndex : IVaultModel
 {
+    public string GenId { get; set; }
     public int Index { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
@@ -92,6 +93,7 @@ public abstract class WorldIndex : IVaultModel
 
     public WorldIndex(int index, int width, int height)
     {
+        GenId = Guid.NewGuid().ToString();
         Index = index;
         Width = width;
         Height = height;

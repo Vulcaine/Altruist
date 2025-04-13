@@ -33,27 +33,27 @@ public abstract class AuthController : ControllerBase
         return OkOrUnauthorized(IssueToken(claims));
     }
 
-    [HttpPost("refresh")]
-    public async Task<IActionResult> Refresh(
-        [FromBody] string refreshToken,
-        TokenSessionSyncService? syncService = null)
-    {
-        if (syncService == null)
-            throw new InvalidOperationException("TokenSessionSyncService is not registered. Did you forget to call .StatefulToken()?");
+    // [HttpPost("refresh")]
+    // public async Task<IActionResult> Refresh(
+    //     [FromBody] string refreshToken,
+    //     TokenSessionSyncService? syncService = null)
+    // {
+    //     if (syncService == null)
+    //         throw new InvalidOperationException("TokenSessionSyncService is not registered. Did you forget to call .StatefulToken()?");
 
-        var cached = await syncService.FindCachedByIdAsync(refreshToken);
-        if (cached?.IsValid() != true)
-            return Unauthorized();
+    //     var cached = await syncService.FindCachedByIdAsync(refreshToken);
+    //     if (cached?.IsValid() != true)
+    //         return Unauthorized();
 
-        if (_issuer is not JwtTokenIssuer jwtIssuer)
-            return Unauthorized();
+    //     if (_issuer is not JwtTokenIssuer jwtIssuer)
+    //         return Unauthorized();
 
-        var principal = GetPrincipalFromToken(cached.AccessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
-        if (principal == null)
-            return Unauthorized();
+    //     var principal = GetPrincipalFromToken(cached.AccessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
+    //     if (principal == null)
+    //         return Unauthorized();
 
-        return OkOrUnauthorized(IssueToken(principal.Claims));
-    }
+    //     return OkOrUnauthorized(IssueToken(principal.Claims));
+    // }
 
     private IActionResult OkOrUnauthorized(TokenIssue? token) => token is null
         ? Unauthorized()

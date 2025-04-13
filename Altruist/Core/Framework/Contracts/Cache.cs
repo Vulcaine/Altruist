@@ -16,12 +16,8 @@ public interface ICursor<T> where T : notnull
 /// <summary>
 /// Defines a generic caching provider interface for storing, retrieving, and managing objects in a cache.
 /// </summary>
-public interface ICacheProvider
+public interface ICacheProvider : IConnectable
 {
-
-    bool IsConnected { get; }
-    event Action? OnConnected;
-    event Action<Exception> OnFailed;
 
     ICacheServiceToken Token { get; }
 

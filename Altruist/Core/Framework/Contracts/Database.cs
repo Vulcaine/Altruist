@@ -33,7 +33,7 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
 
 public interface IVaultModel : IModel
 {
-    public string Id { get; set; }
+    public string GenId { get; set; }
     DateTime Timestamp { get; set; }
 }
 
@@ -49,11 +49,8 @@ public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
     ITypeErasedVault Select(Type type);
 }
 
-public interface IGeneralDatabaseProvider
+public interface IGeneralDatabaseProvider : IConnectable
 {
-    bool IsConnected { get; }
-    event Action? OnConnected;
-    event Action<Exception> OnFailed;
     IDatabaseServiceToken Token { get; }
     Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel;
     Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null);

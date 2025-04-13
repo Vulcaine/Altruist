@@ -76,6 +76,7 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
         }
 
         _services.AddSingleton<IScyllaDbProvider>(sp => new ScyllaDbProvider(_contactPoints));
+        _services.AddSingleton<IGeneralDatabaseProvider>(sp => sp.GetRequiredService<IScyllaDbProvider>());
 
         _services.AddSingleton(sp => new ScyllaVaultFactory(sp.GetRequiredService<IScyllaDbProvider>()));
         _services.AddSingleton<IDatabaseVaultFactory>(sp => sp.GetRequiredService<ScyllaVaultFactory>());

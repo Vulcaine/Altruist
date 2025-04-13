@@ -58,7 +58,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
     public Task<TVaultModel?> FindPersistedByIdAsync(string id)
     {
         ValidateVault();
-        return _vault!.Where(x => x.Id == id).FirstOrDefaultAsync();
+        return _vault!.Where(x => x.GenId == id).FirstOrDefaultAsync();
     }
 
     public virtual async Task Load()
@@ -68,7 +68,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         List<Task> tasks = new();
         foreach (var entity in all)
         {
-            tasks.Add(_cacheProvider.SaveAsync<TVaultModel>(entity.Id, entity));
+            tasks.Add(_cacheProvider.SaveAsync<TVaultModel>(entity.GenId, entity));
         }
 
         Task.WaitAll(tasks);
@@ -76,7 +76,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
 
     public async Task SaveAsync(TVaultModel entity)
     {
-        await _cacheProvider.SaveAsync(entity.Id, entity);
+        await _cacheProvider.SaveAsync(entity.GenId, entity);
 
         if (_vault != null)
         {

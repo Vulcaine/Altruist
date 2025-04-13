@@ -58,8 +58,10 @@ public abstract class BasicItemProperties
 
 public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 {
+    public string GenId { get; set; } = Guid.NewGuid().ToString();
+
     [JsonPropertyName("id")]
-    public long Id { get; set; }
+    public long ItemId { get; set; }
 
     [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
@@ -79,7 +81,7 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// It is generated at runtime and is not the same as the template ID.
     /// </summary>
     [JsonPropertyName("id")]
-    public string Id { get; set; }
+    public string GenId { get; set; }
 
     /// <summary>
     /// Static ID that links this item to its template definition.
@@ -107,7 +109,7 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// <param name="expiryDate">Optional expiration date.</param>
     public GameItem(SlotKey slotKey, int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
     {
-        Id = Guid.NewGuid().ToString();
+        GenId = Guid.NewGuid().ToString();
         SlotKey = slotKey;
         Properties = new int[itemPropertySize];
         Category = itemType;

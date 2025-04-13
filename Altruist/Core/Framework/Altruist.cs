@@ -436,80 +436,105 @@ namespace Altruist
 
         public async Task Startup()
         {
-            var _settings = _app.Services.GetRequiredService<IAltruistContext>();
+            var settings = _app.Services.GetRequiredService<IAltruistContext>();
             var actions = _app.Services.GetServices<IAction>();
             var appStatus = _app.Services.GetRequiredService<IAppStatus>();
+            var logger = _app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AppBuilder>();
 
-            var dbServices = new List<IGeneralDatabaseProvider>();
-            var dbTokens = _settings.DatabaseTokens;
-            var cacheToken = _settings.CacheToken;
-            var connectedServicesCount = 0;
-            var totalServices = dbTokens.Count;
-            var allServicesConnected = new TaskCompletionSource<bool>();
+            var totalServices = settings.DatabaseTokens.Count + (settings.CacheToken != null ? 1 : 0);
+            var connectedCount = 0;
+            var allConnected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            foreach (var dbToken in dbTokens)
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            cts.Token.Register(() =>
+            {
+                if (!allConnected.Task.IsCompleted)
+                {
+                    logger.LogCritical("❌ Startup timed out. Not all services connected in time.");
+                    appStatus.SignalState(ReadyState.Failed);
+                    Environment.Exit(1);
+                }
+            });
+
+            void OnServiceConnected()
+            {
+                Interlocked.Increment(ref connectedCount);
+                if (connectedCount == totalServices)
+                {
+                    allConnected.TrySetResult(true);
+                }
+            }
+
+            void OnServiceFailed(Exception ex)
+            {
+                logger.LogError(ex, "❌ A required service failed to connect.");
+                appStatus.SignalState(ReadyState.Failed);
+            }
+
+            // Wire DB services
+            foreach (var dbToken in settings.DatabaseTokens)
             {
                 var dbService = _app.Services.GetServices<IGeneralDatabaseProvider>()
-                    .Where(token => token.Token == dbToken)
-                    .FirstOrDefault();
+                    .FirstOrDefault(s => s.Token == dbToken);
 
-                if (dbService != null && !dbService.IsConnected)
+                if (dbService == null)
                 {
-                    dbService.OnConnected += () =>
-                    {
-                        connectedServicesCount++;
-                        if (connectedServicesCount == totalServices)
-                        {
-                            allServicesConnected.SetResult(true);
-                        }
-                    };
-
-                    dbService.OnFailed += (ex) => appStatus.SignalState(ReadyState.Failed);
+                    logger.LogCritical($"❌ Database service with token `{dbToken}` not found.");
+                    appStatus.SignalState(ReadyState.Failed);
+                    Environment.Exit(1);
+                    return;
                 }
-                else if (dbService != null)
+
+                if (dbService.IsConnected)
                 {
-                    dbServices.Add(dbService);
+                    OnServiceConnected();
                 }
                 else
                 {
-                    appStatus.SignalState(ReadyState.Failed);
+                    dbService.OnConnected += OnServiceConnected;
+                    dbService.OnFailed += OnServiceFailed;
                 }
             }
 
-            if (cacheToken != null)
+            // Wire cache service
+            if (settings.CacheToken is { } cacheToken)
             {
                 var cacheService = _app.Services.GetServices<ICacheProvider>()
-                    .Where(cache => cache.Token == cacheToken)
-                    .FirstOrDefault();
-                if (cacheService != null && !cacheService.IsConnected)
-                {
-                    cacheService.OnConnected += () =>
-                    {
-                        connectedServicesCount++;
-                        if (connectedServicesCount == totalServices)
-                        {
-                            allServicesConnected.SetResult(true);
-                        }
-                    };
+                    .FirstOrDefault(c => c.Token == cacheToken);
 
-                    cacheService.OnFailed += (ex) => appStatus.SignalState(ReadyState.Failed);
+                if (cacheService == null)
+                {
+                    logger.LogCritical($"❌ Cache service with token `{cacheToken}` not found.");
+                    appStatus.SignalState(ReadyState.Failed);
+                    Environment.Exit(1);
+                    return;
+                }
+
+                if (cacheService.IsConnected)
+                {
+                    OnServiceConnected();
                 }
                 else
                 {
-                    appStatus.SignalState(ReadyState.Failed);
+                    cacheService.OnConnected += OnServiceConnected;
+                    cacheService.OnFailed += OnServiceFailed;
                 }
             }
 
-            await allServicesConnected.Task;
+            // Wait for all required services to be ready or timeout
+            await allConnected.Task;
 
             if (appStatus.Status == ReadyState.Starting)
             {
+                logger.LogInformation("✅ All required services connected. Running startup actions...");
+
                 foreach (var action in actions)
                 {
                     await action.Run();
                 }
 
                 appStatus.SignalState(ReadyState.Alive);
+                logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
             }
         }
 
@@ -560,7 +585,7 @@ namespace Altruist
                 }
             }
 
-            await Startup();
+            _ = Startup();
 
             var settingsLines = _settings.ToString()!.Replace('\r', ' ').Split('\n');
 

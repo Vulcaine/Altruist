@@ -538,6 +538,10 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         throw new NotSupportedException("Unsupported expression type for SELECT.");
     }
 
+    public Task<ICursor<TVaultModel>> ToCursorAsync()
+    {
+        throw new NotImplementedException();
+    }
 }
 
 

@@ -20,7 +20,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
     {
         var player = new TPlayerEntity
         {
-            Id = socketId,
+            GenId = socketId,
             Name = name,
             Position = position ?? [0, 0]
         };
@@ -55,8 +55,8 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
 
     public async Task UpdatePlayerAsync(TPlayerEntity player)
     {
-        await _cacheProvider.SaveAsync(player.Id, player);
-        _logger.LogInformation($"Player {player.Id} updated in Redis.");
+        await _cacheProvider.SaveAsync(player.GenId, player);
+        _logger.LogInformation($"Player {player.GenId} updated in Redis.");
     }
 
     public Task<TPlayerEntity?> GetPlayer(string socketId)
@@ -72,7 +72,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         {
             await _cacheProvider.RemoveAndForgetAsync<TPlayerEntity>(playerId);
 
-            _logger.LogInformation($"Player and associated spaceship with ID {player.Id} deleted.");
+            _logger.LogInformation($"Player and associated spaceship with ID {player.GenId} deleted.");
         }
     }
 
@@ -95,7 +95,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
             var conn = await _store.GetConnectionAsync(player.ConnectionId);
             if (conn == null || !conn.IsConnected)
             {
-                playersToDelete.Add(player.Id);
+                playersToDelete.Add(player.GenId);
             }
         }
 

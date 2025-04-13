@@ -14,7 +14,7 @@ namespace Altruist
         public string ProcessId { get; } = $"{Environment.MachineName}-{Environment.ProcessId}-${Guid.NewGuid()}";
 
         public ITransportServiceToken TransportToken { get; set; }
-        public IDatabaseServiceToken? DatabaseToken { get; set; }
+        public List<IDatabaseServiceToken> DatabaseTokens { get; set; } = new List<IDatabaseServiceToken>();
         public ICacheServiceToken? CacheToken { get; set; }
 
         public void AddEndpoint(string endpoint) => Endpoints.Add(endpoint);
@@ -52,9 +52,12 @@ namespace Altruist
                 lines.Add(CacheToken.Description);
             }
 
-            if (!string.IsNullOrEmpty(DatabaseToken?.Description))
+            foreach (var databaseToken in DatabaseTokens)
             {
-                lines.Add(DatabaseToken.Description);
+                if (!string.IsNullOrEmpty(databaseToken.Description))
+                {
+                    lines.Add(databaseToken.Description);
+                }
             }
 
             return string.Join(Environment.NewLine, lines);

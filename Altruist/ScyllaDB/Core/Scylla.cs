@@ -17,12 +17,11 @@ public class ScyllaDbProvider : IScyllaDbProvider
     private readonly List<string> _contactPoints;
 
     public bool IsConnected { get; set; }
-    public IDatabaseServiceToken Token { get; private set; }
+    public IDatabaseServiceToken Token { get; private set; } = ScyllaDBToken.Instance;
 
     public ScyllaDbProvider(List<string> contactPoints)
     {
         _contactPoints = contactPoints;
-        Token = ScyllaDBToken.Instance;
     }
 
     private async Task ensureConnected()

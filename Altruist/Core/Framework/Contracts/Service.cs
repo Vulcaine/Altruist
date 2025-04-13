@@ -1,5 +1,12 @@
 namespace Altruist;
 
+public interface IConnectable
+{
+    bool IsConnected { get; }
+    event Action? OnConnected;
+    event Action<Exception> OnFailed;
+}
+
 public interface IRelayService
 {
     string RelayEvent { get; }
