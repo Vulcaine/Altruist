@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using System.Text.Json;
 using System.Text;
+using Altruist.Contracts;
 
 namespace Altruist.Redis;
 
@@ -110,6 +111,8 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         _typeLookup = documents
             .GroupBy(doc => doc.Name)
             .ToDictionary(g => g.Key, g => g.Last());
+
+        HookRedisEvents();
     }
 
 
@@ -131,6 +134,31 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     }
 
     private static ThreadLocal<MemoryStream> _memoryStream = new(() => new MemoryStream());
+
+    private event Action? _onConnected;
+    private event Action<Exception>? _onFailed;
+
+    public event Action? OnConnected
+    {
+        add => _onConnected += value;
+        remove => _onConnected -= value;
+    }
+
+    public event Action<Exception>? OnFailed
+    {
+        add => _onFailed += value;
+        remove => _onFailed -= value;
+    }
+
+    private void HookRedisEvents()
+    {
+        _redis.Multiplexer.ConnectionRestored += (_, _) => _onConnected?.Invoke();
+        _redis.Multiplexer.ConnectionFailed += (_, args) => _onFailed?.Invoke(args.Exception ?? new Exception("Connection failed"));
+    }
+
+    public bool IsConnected => _redis.Multiplexer.IsConnected;
+
+    public ICacheServiceToken Token => RedisCacheServiceToken.Instance;
 
     private async Task SaveObjectAsync<T>(string key, T entity) where T : notnull
     {

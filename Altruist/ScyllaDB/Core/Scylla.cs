@@ -5,8 +5,6 @@ using Altruist.Database;
 using Cassandra;
 using Cassandra.Mapping;
 using Altruist.UORM;
-using Microsoft.AspNetCore.Razor.TagHelpers;
-using System.Threading.Tasks;
 
 namespace Altruist.ScyllaDB;
 
@@ -40,6 +38,72 @@ public class DefaultScyllaKeyspace : ScyllaKeyspace
 public interface IScyllaDbProvider : ICqlDatabaseProvider
 {
     Task ConnectAsync(Builder? builder = null);
+    Task ShutdownAsync(Exception? ex = null);
+    event Action<Host> HostAdded;
+    event Action<Host> HostRemoved;
+}
+
+public class AltruistScyllaDefaultRetryPolicy : IExtendedRetryPolicy, IRetryPolicy
+{
+    private DefaultRetryPolicy _defaultRetryPolicy = new DefaultRetryPolicy();
+    private IScyllaDbProvider _scyllaDbProvider;
+
+    public AltruistScyllaDefaultRetryPolicy(IScyllaDbProvider scyllaDbProvider)
+    {
+        _scyllaDbProvider = scyllaDbProvider;
+    }
+
+    public RetryDecision OnReadTimeout(IStatement query, ConsistencyLevel cl, int requiredResponses, int receivedResponses, bool dataRetrieved, int nbRetry)
+    {
+        try
+        {
+            return _defaultRetryPolicy.OnReadTimeout(query, cl, requiredResponses, receivedResponses, dataRetrieved, nbRetry);
+        }
+        catch (Exception ex)
+        {
+            _scyllaDbProvider.ShutdownAsync(ex);
+            return RetryDecision.Rethrow();
+        }
+    }
+
+    public RetryDecision OnRequestError(IStatement statement, Configuration config, Exception ex, int nbRetry)
+    {
+        try
+        {
+            return _defaultRetryPolicy.OnRequestError(statement, config, ex, nbRetry);
+        }
+        catch (Exception nex)
+        {
+            _scyllaDbProvider.ShutdownAsync(nex);
+            return RetryDecision.Rethrow();
+        }
+    }
+
+    public RetryDecision OnUnavailable(IStatement query, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry)
+    {
+        try
+        {
+            return _defaultRetryPolicy.OnUnavailable(query, cl, requiredReplica, aliveReplica, nbRetry);
+        }
+        catch (Exception ex)
+        {
+            _scyllaDbProvider.ShutdownAsync(ex);
+            return RetryDecision.Rethrow();
+        }
+    }
+
+    public RetryDecision OnWriteTimeout(IStatement query, ConsistencyLevel cl, string writeType, int requiredAcks, int receivedAcks, int nbRetry)
+    {
+        try
+        {
+            return _defaultRetryPolicy.OnWriteTimeout(query, cl, writeType, requiredAcks, receivedAcks, nbRetry);
+        }
+        catch (Exception ex)
+        {
+            _scyllaDbProvider.ShutdownAsync(ex);
+            return RetryDecision.Rethrow();
+        }
+    }
 }
 
 public class ScyllaDbProvider : IScyllaDbProvider
@@ -49,6 +113,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
     private Cluster? _cluster { get; set; }
     private readonly List<string> _contactPoints;
 
+    public bool IsConnected { get; set; }
     public IDatabaseServiceToken Token { get; private set; }
 
     public ScyllaDbProvider(List<string> contactPoints)
@@ -65,7 +130,6 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
     }
 
-    private bool IsConnected => _session != null;
     public event Action<Host> HostAdded
     {
         add
@@ -94,6 +158,17 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
     }
 
+    public event Action? OnConnected;
+    public event Action<Exception>? OnFailed;
+
+    public async Task ShutdownAsync(Exception? ex = null)
+    {
+        OnFailed?.Invoke(ex ?? new Exception("Shutdown"));
+        if (_session == null)
+            return;
+        await _session.ShutdownAsync();
+    }
+
     public async Task ConnectAsync(Builder? builder = null)
     {
         if (_contactPoints.Count == 0 || IsConnected)
@@ -111,14 +186,25 @@ public class ScyllaDbProvider : IScyllaDbProvider
             string host = uri.Host;
             int port = uri.Port;
 
-            clusterBuilder = clusterBuilder.AddContactPoint(host).WithPort(port);
+            clusterBuilder = clusterBuilder.AddContactPoint(host).WithPort(port).WithReconnectionPolicy(new ConstantReconnectionPolicy(10000)).WithRetryPolicy(new AltruistScyllaDefaultRetryPolicy(this));
         }
 
         var cluster = clusterBuilder.Build();
 
         _session = await Task.Run(() =>
         {
-            return cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
+            try
+            {
+                var connection = cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
+                OnConnected?.Invoke();
+                IsConnected = true;
+                return connection;
+            }
+            catch (Exception ex)
+            {
+                OnFailed?.Invoke(ex);
+                return null;
+            }
         });
 
         _cluster = cluster;

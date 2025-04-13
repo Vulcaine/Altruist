@@ -76,7 +76,7 @@ namespace Altruist
             Services.AddSingleton<DatabaseProviderFactory>();
             Services.AddSingleton(sp => new LoadSyncServicesAction(sp));
             Services.AddSingleton<IAction>(sp => sp.GetRequiredService<LoadSyncServicesAction>());
-
+            Services.AddSingleton<IAppStatus, AppStatus>();
         }
 
         public static AltruistEngineBuilder Create(string[] args, Func<IServiceCollection, IServiceCollection>? serviceBuilder = null) => new AltruistBuilder(args, serviceBuilder).ToConnectionBuilder();
@@ -254,7 +254,7 @@ namespace Altruist
             instance.Build(Settings);
             // readding the built instance
             Services.AddSingleton(instance);
-            Settings.DatabaseToken = token;
+            Settings.DatabaseTokens.Add(token);
         }
     }
 
@@ -433,12 +433,82 @@ namespace Altruist
         }
 
 
-        public async Task Startup(IServiceProvider provider)
+        public async Task Startup()
         {
-            var actions = provider.GetServices<IAction>();
-            foreach (var action in actions)
+            var _settings = _app.Services.GetRequiredService<IAltruistContext>();
+            var actions = _app.Services.GetServices<IAction>();
+            var appStatus = _app.Services.GetRequiredService<IAppStatus>();
+
+            var dbServices = new List<IGeneralDatabaseProvider>();
+            var dbTokens = _settings.DatabaseTokens;
+            var cacheToken = _settings.CacheToken;
+            var connectedServicesCount = 0;
+            var totalServices = dbTokens.Count;
+            var allServicesConnected = new TaskCompletionSource<bool>();
+
+            foreach (var dbToken in dbTokens)
             {
-                await action.Run();
+                var dbService = _app.Services.GetServices<IGeneralDatabaseProvider>()
+                    .Where(token => token.Token == dbToken)
+                    .FirstOrDefault();
+
+                if (dbService != null && !dbService.IsConnected)
+                {
+                    dbService.OnConnected += () =>
+                    {
+                        connectedServicesCount++;
+                        if (connectedServicesCount == totalServices)
+                        {
+                            allServicesConnected.SetResult(true);
+                        }
+                    };
+
+                    dbService.OnFailed += (ex) => appStatus.SignalState(ReadyState.Failed);
+                }
+                else if (dbService != null)
+                {
+                    dbServices.Add(dbService);
+                }
+                else
+                {
+                    appStatus.SignalState(ReadyState.Failed);
+                }
+            }
+
+            if (cacheToken != null)
+            {
+                var cacheService = _app.Services.GetServices<ICacheProvider>()
+                    .Where(cache => cache.Token == cacheToken)
+                    .FirstOrDefault();
+                if (cacheService != null && !cacheService.IsConnected)
+                {
+                    cacheService.OnConnected += () =>
+                    {
+                        connectedServicesCount++;
+                        if (connectedServicesCount == totalServices)
+                        {
+                            allServicesConnected.SetResult(true);
+                        }
+                    };
+
+                    cacheService.OnFailed += (ex) => appStatus.SignalState(ReadyState.Failed);
+                }
+                else
+                {
+                    appStatus.SignalState(ReadyState.Failed);
+                }
+            }
+
+            await allServicesConnected.Task;
+
+            if (appStatus.Status == ReadyState.Starting)
+            {
+                foreach (var action in actions)
+                {
+                    await action.Run();
+                }
+
+                appStatus.SignalState(ReadyState.Alive);
             }
         }
 
@@ -489,7 +559,7 @@ namespace Altruist
                 }
             }
 
-            await Startup(_app.Services);
+            await Startup();
 
             var settingsLines = _settings.ToString()!.Replace('\r', ' ').Split('\n');
 

@@ -5,7 +5,7 @@ namespace Altruist;
 public interface IAltruistContext
 {
     ITransportServiceToken TransportToken { get; set; }
-    IDatabaseServiceToken? DatabaseToken { get; set; }
+    List<IDatabaseServiceToken> DatabaseTokens { get; set; }
     ICacheServiceToken? CacheToken { get; set; }
     ServerInfo ServerInfo { get; set; }
     HashSet<string> Endpoints { get; set; }

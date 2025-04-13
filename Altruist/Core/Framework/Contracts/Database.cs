@@ -51,6 +51,9 @@ public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
 
 public interface IGeneralDatabaseProvider
 {
+    bool IsConnected { get; }
+    event Action? OnConnected;
+    event Action<Exception> OnFailed;
     IDatabaseServiceToken Token { get; }
     Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel;
     Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null);
