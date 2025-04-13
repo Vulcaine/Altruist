@@ -151,6 +151,12 @@ public class InMemoryCache : IMemoryCacheProvider
         cacheMap.Remove(key);
         return Task.CompletedTask;
     }
+
+    public Task ConnectAsync()
+    {
+        OnConnected?.Invoke();
+        return Task.CompletedTask;
+    }
 }
 
 

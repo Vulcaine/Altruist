@@ -76,6 +76,9 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     {
         _redis.Multiplexer.ConnectionRestored += (_, _) => _onConnected?.Invoke();
         _redis.Multiplexer.ConnectionFailed += (_, args) => _onFailed?.Invoke(args.Exception ?? new Exception("Connection failed"));
+
+        if (_redis.Multiplexer.IsConnected) _onConnected?.Invoke();
+        else _onFailed?.Invoke(new Exception("Connection failed"));
     }
 
     public bool IsConnected => _redis.Multiplexer.IsConnected;
@@ -246,6 +249,11 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     {
         var document = GetDocumentOrFail<T>();
         return await Keys(pattern: $"{document.Name}:*");
+    }
+
+    public Task ConnectAsync()
+    {
+        throw new NotImplementedException("RedisConnectionService.ConnectAsync() is not implemented. It is done automatically via the Multiplexer.");
     }
 }
 

@@ -10,7 +10,6 @@ public interface IScyllaKeyspace : IKeyspace
 
 public interface IScyllaDbProvider : ICqlDatabaseProvider
 {
-    Task ConnectAsync(Builder? builder = null);
     Task ShutdownAsync(Exception? ex = null);
     event Action<Host> HostAdded;
     event Action<Host> HostRemoved;

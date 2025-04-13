@@ -458,7 +458,7 @@ namespace Altruist
 
             void OnServiceConnected()
             {
-                Interlocked.Increment(ref connectedCount);
+                connectedCount += 1;
                 if (connectedCount == totalServices)
                 {
                     allConnected.TrySetResult(true);
@@ -485,15 +485,10 @@ namespace Altruist
                     return;
                 }
 
-                if (dbService.IsConnected)
-                {
-                    OnServiceConnected();
-                }
-                else
-                {
-                    dbService.OnConnected += OnServiceConnected;
-                    dbService.OnFailed += OnServiceFailed;
-                }
+                dbService.OnConnected += OnServiceConnected;
+                dbService.OnFailed += OnServiceFailed;
+
+                await dbService.ConnectAsync();
             }
 
             // Wire cache service
@@ -538,7 +533,7 @@ namespace Altruist
             }
         }
 
-        public async Task StartServer(string connectionString)
+        public Task StartServer(string connectionString)
         {
             EventHandlerRegistry<IPortal>.ScanAndRegisterHandlers(_app.Services);
 
@@ -633,6 +628,7 @@ namespace Altruist
 
             Console.WriteLine("\n" + logBuilder.ToString() + "\n");
             _app.Run(connectionString);
+            return Task.CompletedTask;
         }
     }
 }

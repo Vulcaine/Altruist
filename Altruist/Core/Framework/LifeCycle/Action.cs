@@ -39,7 +39,7 @@ public class LoadSyncServicesAction : ActionBase
 
         if (syncServices.Count == 0)
         {
-            Logger.LogInformation("ℹ️ No vault cache sync services found to load.");
+            Logger.LogInformation("ℹ️  No vault cache sync services found to load.");
             return;
         }
 

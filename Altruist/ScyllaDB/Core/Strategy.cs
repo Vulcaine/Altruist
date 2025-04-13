@@ -3,6 +3,7 @@ using System.Reflection;
 using Altruist.Contracts;
 using Altruist.Database;
 using Altruist.UORM;
+using Cassandra;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -36,6 +37,8 @@ public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TSc
 public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBConnectionSetup>
 {
 
+    private Builder? _builder { get; set; }
+
     public ScyllaDBConnectionSetup(IServiceCollection services) : base(services, ScyllaDBToken.Instance)
     {
     }
@@ -64,6 +67,11 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
         return this;
     }
 
+    public ScyllaDBConnectionSetup WithBuilder(Builder builder)
+    {
+        _builder = builder;
+        return this;
+    }
 
     public override async Task Build(IAltruistContext settings)
     {
@@ -75,7 +83,7 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
             _contactPoints.Add("localhost:9042");
         }
 
-        _services.AddSingleton<IScyllaDbProvider>(sp => new ScyllaDbProvider(_contactPoints));
+        _services.AddSingleton<IScyllaDbProvider>(sp => new ScyllaDbProvider(_contactPoints, _builder));
         _services.AddSingleton<IGeneralDatabaseProvider>(sp => sp.GetRequiredService<IScyllaDbProvider>());
 
         _services.AddSingleton(sp => new ScyllaVaultFactory(sp.GetRequiredService<IScyllaDbProvider>()));
@@ -157,5 +165,7 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
                 await after.AfterCreateAsync();
             }
         }
+
+        await provider.ShutdownAsync();
     }
 }

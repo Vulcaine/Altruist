@@ -5,6 +5,7 @@ public interface IConnectable
     bool IsConnected { get; }
     event Action? OnConnected;
     event Action<Exception> OnFailed;
+    Task ConnectAsync();
 }
 
 public interface IRelayService

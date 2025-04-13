@@ -15,13 +15,14 @@ public class ScyllaDbProvider : IScyllaDbProvider
     private IMapper? _mapper { get; set; }
     private Cluster? _cluster { get; set; }
     private readonly List<string> _contactPoints;
-
+    private readonly Builder? _builder;
     public bool IsConnected { get; set; }
     public IDatabaseServiceToken Token { get; private set; } = ScyllaDBToken.Instance;
 
-    public ScyllaDbProvider(List<string> contactPoints)
+    public ScyllaDbProvider(List<string> contactPoints, Builder? builder = null)
     {
         _contactPoints = contactPoints;
+        _builder = builder;
     }
 
     private async Task ensureConnected()
@@ -71,14 +72,14 @@ public class ScyllaDbProvider : IScyllaDbProvider
         await _session.ShutdownAsync();
     }
 
-    public async Task ConnectAsync(Builder? builder = null)
+    public async Task ConnectAsync()
     {
         if (_contactPoints.Count == 0 || IsConnected)
         {
             return;
         }
 
-        var clusterBuilder = builder ?? Cluster.Builder().WithDefaultKeyspace("altruist");
+        var clusterBuilder = _builder ?? Cluster.Builder().WithDefaultKeyspace("altruist");
 
         foreach (var contactPoint in _contactPoints)
         {
