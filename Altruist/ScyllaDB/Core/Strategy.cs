@@ -1,10 +1,8 @@
 
 using System.Reflection;
-using System.Threading.Tasks;
 using Altruist.Contracts;
 using Altruist.Database;
 using Altruist.UORM;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 

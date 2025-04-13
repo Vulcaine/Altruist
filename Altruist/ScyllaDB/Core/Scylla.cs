@@ -39,13 +39,14 @@ public class DefaultScyllaKeyspace : ScyllaKeyspace
 
 public interface IScyllaDbProvider : ICqlDatabaseProvider
 {
-    Task ConnectAsync();
+    Task ConnectAsync(Builder? builder = null);
 }
 
 public class ScyllaDbProvider : IScyllaDbProvider
 {
     private ISession? _session { get; set; }
     private IMapper? _mapper { get; set; }
+    private Cluster? _cluster { get; set; }
     private readonly List<string> _contactPoints;
 
     public IDatabaseServiceToken Token { get; private set; }
@@ -65,19 +66,45 @@ public class ScyllaDbProvider : IScyllaDbProvider
     }
 
     private bool IsConnected => _session != null;
+    public event Action<Host> HostAdded
+    {
+        add
+        {
+            if (_cluster != null)
+                _cluster.HostAdded += value;
+        }
+        remove
+        {
+            if (_cluster != null)
+                _cluster.HostAdded -= value;
+        }
+    }
 
-    public Task ConnectAsync()
+    public event Action<Host> HostRemoved
+    {
+        add
+        {
+            if (_cluster != null)
+                _cluster.HostRemoved += value;
+        }
+        remove
+        {
+            if (_cluster != null)
+                _cluster.HostRemoved -= value;
+        }
+    }
+
+    public async Task ConnectAsync(Builder? builder = null)
     {
         if (_contactPoints.Count == 0 || IsConnected)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var clusterBuilder = Cluster.Builder().WithDefaultKeyspace("altruist");
+        var clusterBuilder = builder ?? Cluster.Builder().WithDefaultKeyspace("altruist");
 
         foreach (var contactPoint in _contactPoints)
         {
-            // Check if the contactPoint has a scheme, else prepend 'cql://'
             string contactPointWithScheme = contactPoint.Contains("://") ? contactPoint : "cql://" + contactPoint;
             var uri = new Uri(contactPointWithScheme);
 
@@ -88,9 +115,14 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
 
         var cluster = clusterBuilder.Build();
-        _session = cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
+
+        _session = await Task.Run(() =>
+        {
+            return cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
+        });
+
+        _cluster = cluster;
         _mapper = new Mapper(_session);
-        return Task.CompletedTask;
     }
 
     public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
