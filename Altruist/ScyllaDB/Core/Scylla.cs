@@ -5,106 +5,10 @@ using Altruist.Database;
 using Cassandra;
 using Cassandra.Mapping;
 using Altruist.UORM;
+using Altruist.ScyllaDB.Contracts;
 
 namespace Altruist.ScyllaDB;
 
-public enum ReplicationStrategy
-{
-    SimpleStrategy,
-    NetworkTopologyStrategy
-}
-
-
-public class ScyllaReplicationOptions : ReplicationOptions
-{
-    public ReplicationStrategy Strategy { get; set; } = ReplicationStrategy.SimpleStrategy;
-}
-
-public interface IScyllaKeyspace : IKeyspace
-{
-    ScyllaReplicationOptions? Options { get; set; }
-}
-
-public abstract class ScyllaKeyspace : IScyllaKeyspace
-{
-    public string Name { get; set; } = "altruist";
-    public ScyllaReplicationOptions? Options { get; set; } = new ScyllaReplicationOptions();
-}
-
-public class DefaultScyllaKeyspace : ScyllaKeyspace
-{
-}
-
-public interface IScyllaDbProvider : ICqlDatabaseProvider
-{
-    Task ConnectAsync(Builder? builder = null);
-    Task ShutdownAsync(Exception? ex = null);
-    event Action<Host> HostAdded;
-    event Action<Host> HostRemoved;
-}
-
-public class AltruistScyllaDefaultRetryPolicy : IExtendedRetryPolicy, IRetryPolicy
-{
-    private DefaultRetryPolicy _defaultRetryPolicy = new DefaultRetryPolicy();
-    private IScyllaDbProvider _scyllaDbProvider;
-
-    public AltruistScyllaDefaultRetryPolicy(IScyllaDbProvider scyllaDbProvider)
-    {
-        _scyllaDbProvider = scyllaDbProvider;
-    }
-
-    public RetryDecision OnReadTimeout(IStatement query, ConsistencyLevel cl, int requiredResponses, int receivedResponses, bool dataRetrieved, int nbRetry)
-    {
-        try
-        {
-            return _defaultRetryPolicy.OnReadTimeout(query, cl, requiredResponses, receivedResponses, dataRetrieved, nbRetry);
-        }
-        catch (Exception ex)
-        {
-            _scyllaDbProvider.ShutdownAsync(ex);
-            return RetryDecision.Rethrow();
-        }
-    }
-
-    public RetryDecision OnRequestError(IStatement statement, Configuration config, Exception ex, int nbRetry)
-    {
-        try
-        {
-            return _defaultRetryPolicy.OnRequestError(statement, config, ex, nbRetry);
-        }
-        catch (Exception nex)
-        {
-            _scyllaDbProvider.ShutdownAsync(nex);
-            return RetryDecision.Rethrow();
-        }
-    }
-
-    public RetryDecision OnUnavailable(IStatement query, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry)
-    {
-        try
-        {
-            return _defaultRetryPolicy.OnUnavailable(query, cl, requiredReplica, aliveReplica, nbRetry);
-        }
-        catch (Exception ex)
-        {
-            _scyllaDbProvider.ShutdownAsync(ex);
-            return RetryDecision.Rethrow();
-        }
-    }
-
-    public RetryDecision OnWriteTimeout(IStatement query, ConsistencyLevel cl, string writeType, int requiredAcks, int receivedAcks, int nbRetry)
-    {
-        try
-        {
-            return _defaultRetryPolicy.OnWriteTimeout(query, cl, writeType, requiredAcks, receivedAcks, nbRetry);
-        }
-        catch (Exception ex)
-        {
-            _scyllaDbProvider.ShutdownAsync(ex);
-            return RetryDecision.Rethrow();
-        }
-    }
-}
 
 public class ScyllaDbProvider : IScyllaDbProvider
 {

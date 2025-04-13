@@ -2,6 +2,7 @@
 using System.Reflection;
 using Altruist.Contracts;
 using Altruist.Database;
+using Altruist.ScyllaDB.Contracts;
 using Altruist.UORM;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
