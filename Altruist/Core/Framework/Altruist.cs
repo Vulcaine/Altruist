@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 using Altruist.Codec;
 using Altruist.Contracts;
 using Altruist.Database;
@@ -426,10 +427,19 @@ namespace Altruist
 
         public void StartServer(string host, int port)
         {
-            StartServer($"http://{host}:{port}");
+            _ = StartServer($"http://{host}:{port}");
         }
 
-        public void StartServer(string connectionString)
+
+        public async Task Startup()
+        {
+            foreach (var action in StartupActions.Actions)
+            {
+                await action.Run();
+            }
+        }
+
+        public async Task StartServer(string connectionString)
         {
             EventHandlerRegistry<IPortal>.ScanAndRegisterHandlers(_app.Services);
 
@@ -475,6 +485,8 @@ namespace Altruist
                     logBuilder.AppendLine(PortaledText($"❌ Connection failed for {service.GetType().Name}: {ex.Message}"));
                 }
             }
+
+            await Startup();
 
             var settingsLines = _settings.ToString()!.Replace('\r', ' ').Split('\n');
 
