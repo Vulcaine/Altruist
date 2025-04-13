@@ -172,4 +172,9 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
                 await afterHook.AfterSaveAsync();
         }
     }
+
+    public Task<ICursor<TVaultModel>> ToCursorAsync()
+    {
+        throw new NotImplementedException();
+    }
 }

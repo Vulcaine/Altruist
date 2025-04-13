@@ -87,6 +87,11 @@ public class VaultAdapter<TVaultModel> : IVault<TVaultModel> where TVaultModel :
         return _underlying.Take(count);
     }
 
+    public Task<ICursor<TVaultModel>> ToCursorAsync()
+    {
+        return _underlying.ToCursorAsync();
+    }
+
     public Task<List<TVaultModel>> ToListAsync()
     {
         return _underlying.ToListAsync();

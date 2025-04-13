@@ -33,6 +33,7 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
 
 public interface IVaultModel : IModel
 {
+    public string Id { get; set; }
     DateTime Timestamp { get; set; }
 }
 
@@ -91,6 +92,7 @@ public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : clas
     IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     IVault<TVaultModel> Take(int count);
     Task<List<TVaultModel>> ToListAsync();
+    Task<ICursor<TVaultModel>> ToCursorAsync();
     Task<TVaultModel?> FirstOrDefaultAsync();
     Task<TVaultModel?> FirstAsync();
     Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate);

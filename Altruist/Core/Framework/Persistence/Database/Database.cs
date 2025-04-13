@@ -91,6 +91,7 @@ public class VaultRepositoryFactory
     }
 
     public IVaultRepository<TKeyspace> Make<TKeyspace>(IDatabaseServiceToken token) where TKeyspace : class, IKeyspace, new() => _provider.GetServices<IVaultRepository<TKeyspace>>().Where(p => p.Token == token).First();
+
 }
 
 

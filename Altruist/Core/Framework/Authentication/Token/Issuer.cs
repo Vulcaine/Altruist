@@ -48,14 +48,14 @@ public class SessionTokenIssuer : IIssuer
 
 public class JwtTokenIssuer : IIssuer
 {
-    private readonly JwtBearerOptions _jwtOptions;
+    public JwtBearerOptions JwtOptions { get; }
     private IEnumerable<Claim>? _customClaims;
     private bool _useJwtRefreshToken = false;
     private TimeSpan _refreshTokenExpiry = TimeSpan.FromMinutes(30);
 
     public JwtTokenIssuer(IOptionsMonitor<JwtBearerOptions> jwtOptions)
     {
-        _jwtOptions = jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme);
+        JwtOptions = jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme);
     }
 
     public JwtTokenIssuer WithClaims(IEnumerable<Claim> claims)
@@ -89,14 +89,14 @@ public class JwtTokenIssuer : IIssuer
 
     private string GenerateJwtToken(IEnumerable<Claim> claims, DateTime expires)
     {
-        var signingKey = _jwtOptions.TokenValidationParameters.IssuerSigningKey
+        var signingKey = JwtOptions.TokenValidationParameters.IssuerSigningKey
             as SymmetricSecurityKey ?? throw new InvalidOperationException("Signing key is not configured.");
 
         var creds = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
-            issuer: _jwtOptions.TokenValidationParameters.ValidIssuer,
-            audience: _jwtOptions.TokenValidationParameters.ValidAudience,
+            issuer: JwtOptions.TokenValidationParameters.ValidIssuer,
+            audience: JwtOptions.TokenValidationParameters.ValidAudience,
             claims: claims,
             expires: expires,
             signingCredentials: creds
@@ -107,7 +107,7 @@ public class JwtTokenIssuer : IIssuer
 
     public IIssue Issue()
     {
-        var signingKey = _jwtOptions.TokenValidationParameters.IssuerSigningKey
+        var signingKey = JwtOptions.TokenValidationParameters.IssuerSigningKey
             as SymmetricSecurityKey ?? throw new InvalidOperationException("Signing key is not configured.");
 
         var creds = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
