@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text;
-using System.Threading.Tasks;
 using Altruist.Codec;
 using Altruist.Contracts;
 using Altruist.Database;
@@ -75,6 +74,9 @@ namespace Altruist
             Services.AddSingleton<IPortalContext, PortalContext>();
             Services.AddSingleton<VaultRepositoryFactory>();
             Services.AddSingleton<DatabaseProviderFactory>();
+            Services.AddSingleton(sp => new LoadSyncServicesAction(sp));
+            Services.AddSingleton<IAction>(sp => sp.GetRequiredService<LoadSyncServicesAction>());
+
         }
 
         public static AltruistEngineBuilder Create(string[] args, Func<IServiceCollection, IServiceCollection>? serviceBuilder = null) => new AltruistBuilder(args, serviceBuilder).ToConnectionBuilder();
@@ -431,9 +433,10 @@ namespace Altruist
         }
 
 
-        public async Task Startup()
+        public async Task Startup(IServiceProvider provider)
         {
-            foreach (var action in StartupActions.Actions)
+            var actions = provider.GetServices<IAction>();
+            foreach (var action in actions)
             {
                 await action.Run();
             }
@@ -486,7 +489,7 @@ namespace Altruist
                 }
             }
 
-            await Startup();
+            await Startup(_app.Services);
 
             var settingsLines = _settings.ToString()!.Replace('\r', ' ').Split('\n');
 

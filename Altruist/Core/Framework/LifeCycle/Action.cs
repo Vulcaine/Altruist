@@ -24,19 +24,10 @@ public abstract class ActionBase : IAction
     public abstract Task Run();
 }
 
-public class StartupActions
-{
-    public static readonly List<IAction> Actions = new();
-
-    public static void Add(IAction action) => Actions.Add(action);
-}
-
-// TODO: we must attempt to do this on Cache/DB reconnect as well if its not already done
 public class LoadSyncServicesAction : ActionBase
 {
     public LoadSyncServicesAction(IServiceProvider serviceProvider) : base(serviceProvider)
     {
-        StartupActions.Add(this);
     }
 
     public override async Task Run()
@@ -46,18 +37,24 @@ public class LoadSyncServicesAction : ActionBase
                 .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IVaultCacheSyncService<>)) == true)
             .ToList();
 
-        if (syncServices.Count > 0)
+        if (syncServices.Count == 0)
         {
-            Logger.LogInformation($"🔄 Loading {syncServices.Count} vault cache sync services.");
+            Logger.LogInformation("ℹ️ No vault cache sync services found to load.");
+            return;
         }
 
-        bool error = false;
+        Logger.LogInformation($"🔄 Starting cache sync for **{syncServices.Count}** vault service(s)...");
 
+        var completed = new List<Type>();
+        var failed = new List<(Type Type, string Error)>();
+
+        int index = 1;
         foreach (var service in syncServices)
         {
+            var serviceType = service.GetType();
             try
             {
-                var syncInterface = service.GetType().GetInterfaces()
+                var syncInterface = serviceType.GetInterfaces()
                     .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IVaultCacheSyncService<>));
 
                 if (syncInterface != null)
@@ -65,32 +62,39 @@ public class LoadSyncServicesAction : ActionBase
                     var loadMethod = syncInterface.GetMethod("Load");
                     if (loadMethod != null)
                     {
-                        Logger.LogInformation($"🔂 Populating cache using {service.GetType().Name}.");
+                        Logger.LogInformation($"🔁 [{index}/{syncServices.Count}] Syncing `{serviceType.Name}`...");
                         var task = (Task)loadMethod.Invoke(service, null)!;
                         await task;
+
+                        completed.Add(serviceType);
+                        var pct = completed.Count * 100 / syncServices.Count;
+                        Logger.LogInformation($"✅ `{serviceType.Name}` synced successfully. ({pct}%)");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, $"❌ Error while loading cache from {service.GetType().Name}. Will retry when resolved.");
-                error = true;
-                break;
+                Logger.LogError(ex, $"❌ `{serviceType.Name}` failed to sync.");
+                failed.Add((serviceType, ex.Message));
+            }
+
+            index++;
+        }
+
+        // Final summary
+        if (failed.Count == 0)
+        {
+            Logger.LogInformation("🎉 All vault cache services synced successfully!");
+        }
+        else
+        {
+            Logger.LogWarning($"⚠️ Cache sync completed with **{failed.Count}** failure(s) out of **{syncServices.Count}** services.");
+            Logger.LogWarning("📋 Failed services:");
+
+            foreach (var fail in failed)
+            {
+                Logger.LogWarning($"   • ❌ `{fail.Type.Name}` → {fail.Error}");
             }
         }
-
-        if (syncServices.Count > 0 && !error)
-        {
-            Logger.LogInformation($"✅ Cache sync complete.");
-        }
-    }
-}
-
-
-public static class StartupActionsExtensions
-{
-    public static async Task LoadSyncServices(this StartupActions _, IServiceProvider serviceProvider)
-    {
-        await new LoadSyncServicesAction(serviceProvider).Run();
     }
 }
