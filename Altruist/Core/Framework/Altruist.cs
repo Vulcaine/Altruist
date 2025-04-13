@@ -345,6 +345,7 @@ namespace Altruist
                 App.UseWebSockets(webSocketOptions);
                 App.UseRouting();
                 App.MapControllers();
+                App.UseMiddleware<ReadinessMiddleware>();
             }
 
             return new AppBuilder(App!);

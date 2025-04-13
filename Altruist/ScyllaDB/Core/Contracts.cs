@@ -1,6 +1,6 @@
 using Cassandra;
 
-namespace Altruist.ScyllaDB.Contracts;
+namespace Altruist.ScyllaDB;
 
 
 public interface IScyllaKeyspace : IKeyspace

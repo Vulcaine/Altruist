@@ -9,12 +9,6 @@ public enum ReadyState
     Alive = 2
 }
 
-public interface IAppStatus
-{
-    ReadyState Status { get; set; }
-    void SignalState(ReadyState state);
-}
-
 public class AppStatus : IAppStatus
 {
     public ReadyState Status { get; set; } = ReadyState.Starting;

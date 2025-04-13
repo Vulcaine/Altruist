@@ -1,6 +1,5 @@
 
 using Altruist.Database;
-using Altruist.ScyllaDB.Contracts;
 
 namespace Altruist.ScyllaDB;
 

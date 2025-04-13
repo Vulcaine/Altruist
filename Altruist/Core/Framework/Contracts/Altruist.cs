@@ -2,6 +2,13 @@ using Altruist.Contracts;
 
 namespace Altruist;
 
+public interface IAppStatus
+{
+    ReadyState Status { get; set; }
+    void SignalState(ReadyState state);
+}
+
+
 public interface IAltruistContext
 {
     ITransportServiceToken TransportToken { get; set; }

@@ -5,7 +5,6 @@ using Altruist.Database;
 using Cassandra;
 using Cassandra.Mapping;
 using Altruist.UORM;
-using Altruist.ScyllaDB.Contracts;
 
 namespace Altruist.ScyllaDB;
 

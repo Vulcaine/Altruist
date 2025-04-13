@@ -1,4 +1,3 @@
-using Altruist.ScyllaDB.Contracts;
 using Cassandra;
 
 namespace Altruist.ScyllaDB;
