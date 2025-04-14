@@ -35,10 +35,10 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         var world = await FindWorldForClientAsync(clientId);
         if (world != null)
         {
-            var removedObject = world.DestroyObject(WorldObjectTypeKeys.Item, item.Id + "");
+            var removedObject = world.DestroyObject(WorldObjectTypeKeys.Item, item.GenId + "");
             if (removedObject != null)
             {
-                _ = DispatchDestroyItemPacket(item.Id + "", clientId);
+                _ = DispatchDestroyItemPacket(item.GenId + "", clientId);
             }
         }
     }

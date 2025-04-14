@@ -48,7 +48,7 @@ public interface IDatabaseServiceToken : IServiceToken<IDatabaseConfiguration>
 
 public interface ISetup<TSelf> where TSelf : ISetup<TSelf>
 {
-    void Build(IAltruistContext settings);
+    Task Build(IAltruistContext settings);
 }
 
 public interface IContactSetup<TSelf> : ISetup<TSelf> where TSelf : IContactSetup<TSelf>
@@ -106,7 +106,7 @@ public abstract class ConnectionSetupBase<TSelf> : IContactSetup<TSelf>
         return (TSelf)this;
     }
 
-    public abstract void Build(IAltruistContext settings);
+    public abstract Task Build(IAltruistContext settings);
 }
 
 public interface ICacheConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : ICacheConnectionSetup<TSelf> { }
@@ -139,19 +139,24 @@ public interface ITransportConnectionSetup<TSelf> : ISetup<TSelf>
     where TSelf : ITransportConnectionSetup<TSelf>
 {
     TSelf MapPortal<P>(string path) where P : Portal, IPortal;
+
+    TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : Portal, IPortal where TImplementation : class, P;
+
     TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
+
+    TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
 
     TSelf SetCodec(ICodec encoder);
 }
 
 public interface ITransportConnectionSetupBase
 {
-    Dictionary<Type, string> Portals { get; }
+    Dictionary<Type, (string Path, Func<IServiceProvider, IPortal>? Factory)> Portals { get; }
 }
 
 public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnectionSetup<TSelf>, ITransportConnectionSetupBase where TSelf : TransportConnectionSetupBase<TSelf>
 {
-    public Dictionary<Type, string> Portals { get; } = new();
+    public Dictionary<Type, (string Path, Func<IServiceProvider, IPortal>? Factory)> Portals { get; } = new();
     protected readonly IServiceCollection _services;
     protected readonly IAltruistContext _altruistContext;
     public TransportConnectionSetupBase(IServiceCollection services)
@@ -159,9 +164,11 @@ public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnection
         _services = services;
         _altruistContext = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
     }
-    public abstract void Build(IAltruistContext settings);
+    public abstract Task Build(IAltruistContext settings);
     public abstract TSelf MapPortal<P>(string path) where P : Portal, IPortal;
+    public abstract TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : Portal, IPortal where TImplementation : class, P;
     public abstract TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
+    public abstract TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
 
     public TSelf SetCodec(ICodec codec)
     {
@@ -170,6 +177,8 @@ public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnection
         _services.AddSingleton(codec);
         return (TSelf)this;
     }
+
+
 }
 
 public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetupBase<TSelf>
@@ -186,15 +195,35 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
 
     public override TSelf MapPortal<P>(string path)
     {
-        Portals[typeof(P)] = path;
+        Portals[typeof(P)] = (path, null);
+        return (TSelf)this;
+    }
+
+    public override TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory)
+    {
+        Portals[typeof(P)] = (path, implementationFactory);
+        return (TSelf)this;
+    }
+
+    public override TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
+    {
+        RegisterRelayPortalServices<P, TImplementation>(host, port, eventName, implementationFactory);
         return (TSelf)this;
     }
 
     public override TSelf MapRelayPortal<P>(string host, int port, string eventName)
     {
-        _services.AddTransient<IRelayService, AltruistRelayService>(sp =>
+        RegisterRelayPortalServices<P, P>(host, port, eventName, sp => ActivatorUtilities.CreateInstance<P>(sp));
+        return (TSelf)this;
+    }
+
+    private void RegisterRelayPortalServices<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
+        where P : RelayPortal
+        where TImplementation : P
+    {
+        _services.AddSingleton<IRelayService>(sp =>
         {
-            var instance = ActivatorUtilities.CreateInstance<P>(sp);
+            var instance = implementationFactory(sp);
             return new AltruistRelayService(
                 "ws",
                 host,
@@ -207,7 +236,7 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
             );
         });
 
-        _services.AddSingleton<P>(sp =>
+        _services.AddSingleton(sp =>
         {
             var instance = ActivatorUtilities.CreateInstance<P>(sp);
             IRelayService relayService = sp.GetRequiredService<IRelayService>();
@@ -216,18 +245,25 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
             instance.AddInterceptor(interceptor);
             return instance;
         });
-
-        return (TSelf)this;
     }
 
-    public override void Build(IAltruistContext settings)
+    public override Task Build(IAltruistContext settings)
     {
         foreach (var portal in Portals)
         {
             var type = portal.Key;
-            var path = portal.Value;
+            var path = portal.Value.Path;
+            var factory = portal.Value.Factory;
 
-            _services.AddSingleton(type);
+            if (factory != null)
+            {
+                _services.AddSingleton(type, factory);
+            }
+            else
+            {
+                _services.AddSingleton(type);
+            }
+
             _settings.AddEndpoint(path);
 
             if (typeof(IPortal).IsAssignableFrom(type))
@@ -239,6 +275,8 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
                 throw new InvalidOperationException($"Portal type {type.Name} does not implement IPortal.");
             }
         }
+
+        return Task.CompletedTask;
     }
 }
 

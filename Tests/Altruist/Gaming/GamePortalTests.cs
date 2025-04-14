@@ -5,15 +5,16 @@ using Moq;
 
 namespace Altruist.Gaming;
 
+
 public class AltruistGamePortalTests
 {
     private Mock<IPortalContext> _mockContext;
     private Mock<IWorldPartitioner> _mockPartitioner;
     private Mock<GameWorldCoordinator> _mockCoordinator;
-    private Mock<IPlayerService<PlayerEntity>> _mockPlayerService;
+    private Mock<IPlayerService<TestPlayerEntity>> _mockPlayerService;
     private Mock<ILoggerFactory> _mockLoggerFactory;
     private Mock<IAltruistRouter> _mockRouter;
-    private Mock<ILogger<AltruistGamePortal<PlayerEntity>>> _mockLogger;
+    private Mock<ILogger<TestAltruistGamePortal>> _mockLogger;
     private Mock<ICacheProvider> _mockCache;
     private TestAltruistGamePortal _gamePortal;
 
@@ -24,9 +25,9 @@ public class AltruistGamePortalTests
         _mockCache = new Mock<ICacheProvider>();
         _mockCoordinator = new Mock<GameWorldCoordinator>(_mockPartitioner.Object, _mockCache.Object);
         _mockContext = new Mock<IPortalContext>();
-        _mockPlayerService = new Mock<IPlayerService<PlayerEntity>>();
+        _mockPlayerService = new Mock<IPlayerService<TestPlayerEntity>>();
         _mockLoggerFactory = new Mock<ILoggerFactory>();
-        _mockLogger = new Mock<ILogger<AltruistGamePortal<PlayerEntity>>>();
+        _mockLogger = new Mock<ILogger<TestAltruistGamePortal>>();
 
         _mockLoggerFactory.Setup(p => p.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
         _mockRouter = SetupRouterMock();  // Set up the router mock
@@ -102,7 +103,7 @@ public class AltruistGamePortalTests
         _mockRouter.Verify(r => r.Client.SendAsync(clientId, It.IsAny<IPacketBase>()), Times.Once);
     }
 
-    private void SetupMockPlayerService(string clientId, PlayerEntity? player = null)
+    private void SetupMockPlayerService(string clientId, TestPlayerEntity? player = null)
     {
         _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(player);
         _mockPlayerService.Setup(s => s.DisconnectAsync(clientId)).Returns(Task.CompletedTask);
@@ -124,7 +125,7 @@ public class AltruistGamePortalTests
 
     private void SetupMockPlayerServiceNotFound(string clientId)
     {
-        _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync((PlayerEntity)null!);
+        _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync((TestPlayerEntity)null!);
     }
 
     private void SetupMockRoomService(string clientId, RoomPacket roomMock)
@@ -161,7 +162,7 @@ public class AltruistGamePortalTests
 
     private void ArrangeExitGameTests(string clientId, string roomId = "room1", bool playerExists = true)
     {
-        var playerMock = playerExists ? new PlayerEntity { Name = "Player1" } : null;
+        var playerMock = playerExists ? new TestPlayerEntity { Name = "Player1" } : null;
         SetupMockPlayerService(clientId, playerMock);
 
         var roomMock = new RoomPacket { Id = roomId };
@@ -233,7 +234,7 @@ public class AltruistGamePortalTests
 
         _mockContext.Setup(s => s.FindAvailableRoomAsync()).ReturnsAsync(roomMock);
 
-        var playerMock = new PlayerEntity { Name = "Player1" };
+        var playerMock = new TestPlayerEntity { Name = "Player1" };
         _mockPlayerService.Setup(s => s.ConnectById(roomMock.Id, clientId, message.Name, message.Position)).ReturnsAsync(playerMock);
 
         // Act
@@ -288,7 +289,7 @@ public class AltruistGamePortalTests
         // Arrange
         var message = new LeaveGamePacket();
         var clientId = "client1";
-        var playerMock = new PlayerEntity { Name = "Player1" };
+        var playerMock = new TestPlayerEntity { Name = "Player1" };
 
         // Mock player service to return a player
         _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(playerMock);
@@ -320,7 +321,7 @@ public class AltruistGamePortalTests
         // Arrange
         var message = new LeaveGamePacket();
         var clientId = "client1";
-        var playerMock = new PlayerEntity { Name = "Player1" };
+        var playerMock = new TestPlayerEntity { Name = "Player1" };
 
         // Mock player service to return a player
         _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(playerMock);
@@ -349,7 +350,7 @@ public class AltruistGamePortalTests
         // Arrange
         var message = new LeaveGamePacket();
         var clientId = "client1";
-        var playerMock = new PlayerEntity { Name = "Player1" };
+        var playerMock = new TestPlayerEntity { Name = "Player1" };
 
         // Mock player service to return a player
         _mockPlayerService.Setup(s => s.GetPlayerAsync(clientId)).ReturnsAsync(playerMock);
@@ -412,11 +413,11 @@ public class AltruistGamePortalTests
 }
 
 // Test Portal that extends the real portal to expose methods for testing
-public class TestAltruistGamePortal : AltruistGameSessionPortal<PlayerEntity>
+public class TestAltruistGamePortal : AltruistGameSessionPortal<TestPlayerEntity>
 {
-    public TestAltruistGamePortal(IPortalContext context, GameWorldCoordinator gameWorldCoordinator, IPlayerService<PlayerEntity> playerService, ILoggerFactory loggerFactory)
-        : base(context, gameWorldCoordinator, playerService, loggerFactory)
-    { }
+    public TestAltruistGamePortal(IPortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TestPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
+    {
+    }
 
     public override Task Cleanup()
     {
@@ -427,4 +428,10 @@ public class TestAltruistGamePortal : AltruistGameSessionPortal<PlayerEntity>
     {
         await base.JoinGameAsync(message, clientId);
     }
+}
+
+
+public class TestPlayerEntity : PlayerEntity
+{
+
 }

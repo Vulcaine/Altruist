@@ -3,6 +3,13 @@ namespace Altruist.Gaming;
 using FluentAssertions;
 using Xunit;
 
+public class TestWorldIndex : WorldIndex
+{
+    public TestWorldIndex(int index, int width, int height) : base(index, width, height)
+    {
+    }
+}
+
 public class WorldPartitionerTests
 {
     [Fact]
@@ -24,7 +31,7 @@ public class WorldPartitionerTests
     public void CalculatePartitions_ShouldReturnCorrectNumberOfPartitions()
     {
         // Arrange
-        var worldIndex = new WorldIndex(1, 200, 200); // World size: 200x200
+        var worldIndex = new TestWorldIndex(1, 200, 200); // World size: 200x200
         var partitioner = new WorldPartitioner(50, 50); // Partition size: 50x50
 
         // Act
@@ -38,7 +45,7 @@ public class WorldPartitionerTests
     public void CalculatePartitions_ShouldNotExceedWorldSize()
     {
         // Arrange
-        var worldIndex = new WorldIndex(1, 200, 200); // World size: 200x200
+        var worldIndex = new TestWorldIndex(1, 200, 200); // World size: 200x200
         var partitioner = new WorldPartitioner(50, 50); // Partition size: 50x50
 
         // Act
@@ -59,7 +66,7 @@ public class WorldPartitionerTests
     public void CalculatePartitions_ShouldHandleRemainderPartitions()
     {
         // Arrange
-        var worldIndex = new WorldIndex(1, 120, 120); // World size: 120x120
+        var worldIndex = new TestWorldIndex(1, 120, 120); // World size: 120x120
         var partitioner = new WorldPartitioner(50, 50); // Partition size: 50x50
 
         // Act
@@ -78,7 +85,7 @@ public class WorldPartitionerTests
     public void CalculatePartitions_ShouldReturnCorrectPartitionPositions()
     {
         // Arrange
-        var worldIndex = new WorldIndex(1, 100, 100); // World size: 100x100
+        var worldIndex = new TestWorldIndex(1, 100, 100); // World size: 100x100
         var partitioner = new WorldPartitioner(50, 50); // Partition size: 50x50
 
         // Act

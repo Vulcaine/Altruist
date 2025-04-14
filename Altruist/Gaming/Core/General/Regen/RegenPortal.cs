@@ -19,14 +19,16 @@ namespace Altruist.Gaming;
 /// mechanics. Derived classes are expected to implement the <see cref="CalculateRegenOneFrame"/> method to 
 /// define the actual regeneration logic and the list of players to be updated.
 /// </remarks>
-public abstract class AltruistRegenPortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
+public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="AltruistRegenPortal{T}"/> class with the specified context and logger factory.
+    /// Initializes a new instance of the <see cref="AltruistRegenPortal{T}"/> class.
     /// </summary>
-    /// <param name="context">The context used for managing the portal's state and operations.</param>
-    /// <param name="loggerFactory">The logger factory used for creating loggers.</param>
-    protected AltruistRegenPortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    /// <param name="context">The portal context, providing access to the current routing and cache systems.</param>
+    /// <param name="worldCoordinator">The game world coordinator that manages the game worlds available.</param>
+    /// <param name="playerService">The player service that manages the player entities.</param>
+    /// <param name="loggerFactory">The logger factory for logging purposes.</param>
+    protected AltruistRegenPortal(IPortalContext context, GameWorldCoordinator worldCoordinator, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
     {
     }
 

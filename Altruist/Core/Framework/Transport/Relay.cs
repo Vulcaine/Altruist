@@ -20,11 +20,10 @@ public abstract class RelayPortal : Portal
     }
 }
 
-public class AltruistRelayService : IRelayService
+public class AltruistRelayService : AbstractRelayService
 {
     private readonly string _gatewayUrl;
     private readonly string _eventName;
-    private readonly TimeSpan _reconnectDelay = TimeSpan.FromSeconds(30);
     private ITransportClient _transportClient;
     private CancellationTokenSource _cts = new();
 
@@ -34,7 +33,11 @@ public class AltruistRelayService : IRelayService
 
     private readonly ILogger _logger;
 
-    public string RelayEvent => _eventName;
+    public override string RelayEvent => _eventName;
+
+    public override string ServiceName { get; } = "AltruistRelayService";
+
+    public override bool IsConnected => throw new NotImplementedException();
 
     public AltruistRelayService(
         string protocol,
@@ -48,7 +51,7 @@ public class AltruistRelayService : IRelayService
         _transportClient = transportClient;
     }
 
-    public async Task Relay(IPacket data)
+    public override async Task Relay(IPacket data)
     {
         if (_transportClient != null && _transportClient.IsConnected)
         {
@@ -57,26 +60,40 @@ public class AltruistRelayService : IRelayService
         }
     }
 
-    public async Task ConnectAsync()
+    public override async Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000)
     {
         if (_transportClient == null)
             throw new InvalidOperationException("Transport client not set.");
 
-        try
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            _logger.LogInformation($"Connecting to {_gatewayUrl}...");
-            await _transportClient.ConnectAsync(_gatewayUrl);
-            _logger.LogInformation($"Connected to {_gatewayUrl}.");
+            try
+            {
+                _logger.LogInformation($"🔌 Attempt {attempt}/{maxRetries}: Connecting to {_gatewayUrl}...");
+                await _transportClient.ConnectAsync(_gatewayUrl);
+                _logger.LogInformation($"✅ Connected to {_gatewayUrl}.");
+                RaiseConnectedEvent();
+                _ = ListenForMessages();
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"❌ Attempt {attempt} failed to connect to relay service: {ex.Message}");
 
-            _ = ListenForMessages();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Failed to connect to the relay service {GetType().FullName}: {ex.Message}. Retrying in {_reconnectDelay.Seconds} seconds...");
-            await Task.Delay(_reconnectDelay);
-            await ConnectAsync();
+                if (attempt < maxRetries)
+                {
+                    _logger.LogInformation($"⏳ Retrying in {delayMilliseconds} ms...");
+                    await Task.Delay(delayMilliseconds);
+                }
+                else
+                {
+                    _logger.LogCritical($"❗ Failed to connect after {maxRetries} attempts.");
+                    RaiseOnRetryExhaustedEvent(ex);
+                }
+            }
         }
     }
+
 
     private async Task ListenForMessages()
     {

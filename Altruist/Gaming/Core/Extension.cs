@@ -10,6 +10,7 @@ public static class AltruistGamingServiceCollectionExtensions
             return new WorldPartitioner(64, 64);
         });
         services.AddSingleton<GameWorldCoordinator>();
+        services.AddSingleton(typeof(IPlayerService<>), typeof(AltruistPlayerService<>));
         return services;
     }
 }

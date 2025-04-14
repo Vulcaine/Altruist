@@ -1,89 +1,12 @@
-using System.Collections;
 using Altruist.Socket;
 using Altruist.Web;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using System.Text.Json;
 using System.Text;
+using Altruist.Contracts;
 
 namespace Altruist.Redis;
-
-public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
-{
-    private int BatchSize { get; }
-    private int CurrentIndex { get; set; }
-    private List<T> CurrentBatch { get; }
-
-    private readonly IDatabase _redis;
-    private readonly RedisDocument _document;
-
-    public List<T> Items => CurrentBatch;
-    public bool HasNext => CurrentBatch.Count == BatchSize;
-
-    public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize)
-    {
-        _redis = redis;
-        BatchSize = batchSize;
-        CurrentIndex = 0;
-        CurrentBatch = new List<T>();
-        _document = document;
-    }
-
-    public async Task<bool> NextBatch()
-    {
-        CurrentBatch.Clear();
-
-        // Use SCAN to fetch a batch of keys matching the pattern for the type
-        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
-        var keys = server.Keys(pattern: $"{_document.Name}:*", pageSize: BatchSize)
-                        .Skip(CurrentIndex)
-                        .Take(BatchSize)
-                        .ToArray();
-
-        if (keys.Length == 0)
-            return false;
-
-        // Fetch values for the keys in batch
-        var values = await _redis.StringGetAsync(keys);
-
-        foreach (var value in values)
-        {
-            if (value.HasValue)
-            {
-                var entity = JsonSerializer.Deserialize<T>(value.ToString());
-                if (entity != null)
-                {
-                    CurrentBatch.Add(entity);
-                }
-            }
-        }
-
-        CurrentIndex += keys.Length;
-        return true;
-    }
-
-
-    private IEnumerable<T> FetchAllBatches()
-    {
-        do
-        {
-            foreach (var item in CurrentBatch)
-            {
-                yield return item;
-            }
-        } while (NextBatch().GetAwaiter().GetResult());
-    }
-
-    public IEnumerator<T> GetEnumerator()
-    {
-        return FetchAllBatches().GetEnumerator();
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
-}
 
 public interface IAltruistRedisConnectionProvider : IConnectionStore
 {
@@ -110,6 +33,8 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         _typeLookup = documents
             .GroupBy(doc => doc.Name)
             .ToDictionary(g => g.Key, g => g.Last());
+
+        HookRedisEvents();
     }
 
 
@@ -130,7 +55,78 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         }
     }
 
+
+    #region Connection Events
+    private event Action? _onConnected = () => { };
+    private event Action<Exception>? _onRetryExhausted = _ => { };
+
+    private event Action<Exception>? _onFailed = _ => { };
+
+    public event Action? OnConnected
+    {
+        add => _onConnected += value;
+        remove => _onConnected -= value;
+    }
+
+    public event Action<Exception>? OnRetryExhausted
+    {
+        add => _onRetryExhausted += value;
+        remove => _onRetryExhausted -= value;
+    }
+
+    public event Action<Exception>? OnFailed
+    {
+        add => _onFailed += value;
+        remove => _onFailed -= value;
+    }
+
+
+    public void RaiseConnectedEvent()
+    {
+        _onConnected?.Invoke();
+    }
+
+    public void RaiseFailedEvent(Exception ex)
+    {
+        _onFailed?.Invoke(ex);
+    }
+
+    public void RaiseOnRetryExhaustedEvent(Exception ex)
+    {
+        _onRetryExhausted?.Invoke(ex);
+    }
+
+    private void HookRedisEvents()
+    {
+        _redis.Multiplexer.ConnectionRestored += (_, args) =>
+        {
+            if (args.ConnectionType == ConnectionType.Interactive)
+            {
+                RaiseConnectedEvent();
+            }
+        };
+        _redis.Multiplexer.ConnectionFailed += (_, args) =>
+        {
+            if (args.ConnectionType == ConnectionType.Interactive)
+            {
+                RaiseFailedEvent(args.Exception ?? new Exception("Connection failed"));
+            }
+        };
+
+        if (_redis.Multiplexer.IsConnected) RaiseConnectedEvent();
+        else _onRetryExhausted?.Invoke(new Exception("Connection failed"));
+    }
+
+    public bool IsConnected => _redis.Multiplexer.IsConnected;
+
+    #endregion
+
+    #region Redis API
+
     private static ThreadLocal<MemoryStream> _memoryStream = new(() => new MemoryStream());
+    public ICacheServiceToken Token => RedisCacheServiceToken.Instance;
+
+    public string ServiceName { get; } = "RedisCache";
 
     private async Task SaveObjectAsync<T>(string key, T entity) where T : notnull
     {
@@ -297,14 +293,21 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         var document = GetDocumentOrFail<T>();
         return await Keys(pattern: $"{document.Name}:*");
     }
+
+    public Task ConnectAsync(int maxRetries, int delayMilliseconds)
+    {
+        throw new NotImplementedException("RedisConnectionService.ConnectAsync() is not implemented. It is done automatically via the Multiplexer.");
+    }
+
+    #endregion
 }
 
+#region Connection Service
 
 public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistRedisConnectionProvider
 {
     private readonly RedisCacheProvider _cache;
     private readonly IDatabase _redis;
-    // private const string RoomPrefix = "room:";
 
     public RedisConnectionService(IConnectionMultiplexer redis,
         IMemoryCacheProvider memoryCache,
@@ -338,7 +341,7 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
             return new CachedTcpConnection(conn);
         }
 
-        throw new Exception($"Unknown connection type {conn?.Type}.");
+        return null;
     }
 
     public override async Task<bool> IsConnectionExistsAsync(string connectionId) => await _cache.ContainsAsync<Connection>(connectionId);
@@ -452,3 +455,5 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         return _redis.ScriptEvaluate(script, keys, values, flags);
     }
 }
+
+#endregion

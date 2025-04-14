@@ -4,9 +4,21 @@ using Microsoft.Extensions.Logging;
 
 namespace Portals;
 
-public class SimpleGamePortal : AltruistGamePortal<Spaceship>
+public class SimpleGamePortal : AltruistGameSessionPortal<SpaceshipPlayer>
 {
-    public SimpleGamePortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    public SimpleGamePortal(IPortalContext context, GameWorldCoordinator gameWorld, IPlayerService<SpaceshipPlayer> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
+    }
+}
+
+public class RegenPortal : AltruistRegenPortal<SpaceshipPlayer>
+{
+    public RegenPortal(IPortalContext context, GameWorldCoordinator worldCoordinator, IPlayerService<SpaceshipPlayer> playerService, ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
+    {
+    }
+
+    public override Task<List<SpaceshipPlayer>> CalculateRegenOneFrame()
+    {
+        return Task.FromResult(new List<SpaceshipPlayer>());
     }
 }

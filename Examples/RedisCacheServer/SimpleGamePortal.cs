@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Portals;
 
-public class SimpleGamePortal : AltruistGamePortal<Spaceship>
+public class SimpleGamePortal : AltruistGameSessionPortal<Spaceship>
 {
     public SimpleGamePortal(
         IPortalContext context,

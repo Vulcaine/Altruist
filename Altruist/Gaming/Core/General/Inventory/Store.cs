@@ -1,10 +1,8 @@
-using Altruist.UORM;
-
 namespace Altruist.Gaming;
 
-[Table("item_storage")]
 public class ItemStorage : IVaultModel
 {
+    public string GenId { get; set; }
     public IStoragePrincipal Principal { get; }
     public string StorageId { get; set; }
     public Dictionary<SlotKey, StorageSlot> SlotMap { get; set; }
@@ -20,6 +18,7 @@ public class ItemStorage : IVaultModel
         IStoragePrincipal principal,
         string storageId, short maxWidth, short maxHeight, short capacity = 1)
     {
+        GenId = Guid.NewGuid().ToString();
         Principal = principal;
         StorageId = storageId;
         MaxWidth = maxWidth;
@@ -169,7 +168,7 @@ public class ItemStorageProvider
                     }
                 }
 
-                PlaceItemInternal(item.Id, itemCount, positions);
+                PlaceItemInternal(item.GenId, itemCount, positions);
                 return AddItemStatus.Success;
             }
         }
@@ -218,7 +217,7 @@ public class ItemStorageProvider
             }
         }
 
-        PlaceItemInternal(item.Id, itemCount, positions);
+        PlaceItemInternal(item.GenId, itemCount, positions);
         return SetItemStatus.Success;
     }
 

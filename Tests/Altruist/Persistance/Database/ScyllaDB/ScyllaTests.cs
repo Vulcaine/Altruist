@@ -2,6 +2,7 @@ using Moq;
 using Cassandra;
 using Cassandra.Mapping;
 using Altruist.ScyllaDB;
+using Altruist;
 
 public class ScyllaDbProviderTests
 {
@@ -50,7 +51,7 @@ public class ScyllaDbProviderTests
                    .ReturnsAsync(new List<TestModel> { expectedResult });
 
         // Act
-        var result = await _scyllaDbProvider.QuerySingleAsync<TestModel>("SELECT * FROM table WHERE id = ?", 1);
+        var result = await _scyllaDbProvider.QuerySingleAsync<TestModel>("SELECT * FROM table WHERE id = ?", new List<object> { 1 });
 
         // Assert
         Assert.NotNull(result);
@@ -79,7 +80,7 @@ public class ScyllaDbProviderTests
         _mockSession.Setup(s => s.ExecuteAsync(It.IsAny<BoundStatement>())).ReturnsAsync(mockRowSet.Object);
 
         // Act
-        var affectedRows = await _scyllaDbProvider.ExecuteAsync("UPDATE table SET name = ? WHERE id = ?", "Updated", 1);
+        var affectedRows = await _scyllaDbProvider.ExecuteAsync("UPDATE table SET name = ? WHERE id = ?", new List<object> { "Updated", 1 });
 
         // Assert
         Assert.Equal(1, affectedRows);
@@ -147,4 +148,5 @@ public class TestModel : IVaultModel
     public string Name { get; set; } = "";
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
+    public string GenId { get; set; } = Guid.NewGuid().ToString();
 }

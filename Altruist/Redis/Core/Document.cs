@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using Altruist.Database;
 using Altruist.UORM;
 using StackExchange.Redis;
 
@@ -24,51 +25,35 @@ public class RedisDocumentHelper
 
         foreach (var document in _config.Documents)
         {
-            var tableAttribute = document.GetCustomAttribute<TableAttribute>();
+            var tableAttribute = document.GetCustomAttribute<VaultAttribute>();
             var indexedFields = document
                 .GetProperties()
-                .Where(prop => prop.GetCustomAttribute<ColumnIndexAttribute>() != null)
+                .Where(prop => prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
                 .Select(prop => prop.Name)
                 .ToList();
+            var doc = Document.From(document);
 
-            documents.Add(new RedisDocument(document, tableAttribute?.Name ?? document.Name, indexedFields));
+            documents.Add(new RedisDocument(
+                doc.Header,
+                doc.Type, doc.Name, doc.Fields, doc.Columns, doc.Indexes, doc.PropertyAccessors));
         }
 
         return documents;
     }
 }
 
-public class RedisDocument
+public class RedisDocument : Document
 {
-    public Type Type { get; set; }
-    public string Name { get; set; }
-    public List<string> Indexes { get; set; } = new();
-
-    public string TypePropertyName;
-
-    public RedisDocument(Type type, string name, List<string> indexes)
+    public RedisDocument(VaultAttribute header, Type type, string name, List<string> fields, Dictionary<string, string> columns, List<string> indexes, Dictionary<string, Func<object, object?>> propertyAccessors) : base(header, type, name, fields, columns, indexes, propertyAccessors)
     {
-        Type = type;
-        Name = name;
-        Indexes = indexes;
-        TypePropertyName = "";
-        Validate();
     }
 
-    public void Validate()
+    public override void Validate()
     {
-        if (!typeof(IModel).IsAssignableFrom(Type))
-        {
-            throw new InvalidOperationException($"The type {Type.FullName} must implement IModel.");
-        }
+        base.Validate();
 
         var typeProperty = Type.GetProperty("Type");
-        if (typeProperty == null)
-        {
-            throw new InvalidOperationException($"The type {Type.FullName} must have a 'Type' property.");
-        }
-
-        var jsonPropertyNameAttr = typeProperty.GetCustomAttribute<JsonPropertyNameAttribute>();
+        var jsonPropertyNameAttr = typeProperty!.GetCustomAttribute<JsonPropertyNameAttribute>();
         if (jsonPropertyNameAttr != null)
         {
             TypePropertyName = jsonPropertyNameAttr.Name;

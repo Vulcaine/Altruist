@@ -1,9 +1,10 @@
 using System.Linq.Expressions;
-using Altruist;
 using Altruist.Contracts;
 using Altruist.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
+
+namespace Altruist;
 
 public interface IKeyspace
 {
@@ -32,6 +33,7 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
 
 public interface IVaultModel : IModel
 {
+    public string GenId { get; set; }
     DateTime Timestamp { get; set; }
 }
 
@@ -44,10 +46,10 @@ public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
 {
     IDatabaseServiceToken Token { get; }
     IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-    IVault<IVaultModel> Select(Type type);
+    ITypeErasedVault Select(Type type);
 }
 
-public interface IGeneralDatabaseProvider
+public interface IGeneralDatabaseProvider : IConnectable
 {
     IDatabaseServiceToken Token { get; }
     Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel;
@@ -68,15 +70,21 @@ public interface ILinqDatabaseProvider : IGeneralDatabaseProvider
 
 public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
 {
-    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel;
-    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel;
-    Task<int> ExecuteAsync(string cqlQuery, params object[] parameters);
+    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
+    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
+    Task<int> ExecuteAsync(string cqlQuery, List<object>? parameters = null);
     Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
     Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
 }
 
 
-public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
+public interface ITypeErasedVault
+{
+    Task SaveAsync(object entity, bool? saveHistory = false);
+    Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false);
+}
+
+public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : class, IVaultModel
 {
     IKeyspace Keyspace { get; }
     IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
@@ -84,6 +92,7 @@ public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
     IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     IVault<TVaultModel> Take(int count);
     Task<List<TVaultModel>> ToListAsync();
+    Task<ICursor<TVaultModel>> ToCursorAsync();
     Task<TVaultModel?> FirstOrDefaultAsync();
     Task<TVaultModel?> FirstAsync();
     Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate);
@@ -97,7 +106,6 @@ public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
     Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel;
 
 }
-
 
 public interface ICqlVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {

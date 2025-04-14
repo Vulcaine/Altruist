@@ -8,100 +8,244 @@ using Altruist.UORM;
 
 namespace Altruist.ScyllaDB;
 
-public enum ReplicationStrategy
-{
-    SimpleStrategy,
-    NetworkTopologyStrategy
-}
-
-
-public class ScyllaReplicationOptions : ReplicationOptions
-{
-    public ReplicationStrategy Strategy { get; set; } = ReplicationStrategy.SimpleStrategy;
-}
-
-public interface IScyllaKeyspace : IKeyspace
-{
-    ScyllaReplicationOptions? Options { get; set; }
-}
-
-public abstract class ScyllaKeyspace : IScyllaKeyspace
-{
-    public string Name { get; set; } = "altruist";
-    public ScyllaReplicationOptions? Options { get; set; } = new ScyllaReplicationOptions();
-}
-
-public class DefaultScyllaKeyspace : ScyllaKeyspace
-{
-}
-
-public interface IScyllaDbProvider : ICqlDatabaseProvider
-{
-
-}
-
 public class ScyllaDbProvider : IScyllaDbProvider
 {
-    private readonly ISession _session;
-    private readonly IMapper _mapper;
+    private ISession? _session { get; set; }
+    private IMapper? _mapper { get; set; }
+    private Cluster? _cluster { get; set; }
+    private readonly List<string> _contactPoints;
+    private readonly Builder? _builder;
+    public bool IsConnected { get; set; }
 
-    public IDatabaseServiceToken Token { get; }
+    public string ServiceName { get; } = "ScyllaDB";
+    public IDatabaseServiceToken Token { get; private set; } = ScyllaDBToken.Instance;
 
-    public ScyllaDbProvider(List<string> contactPoints, IDatabaseServiceToken token)
+
+
+    public ScyllaDbProvider(List<string> contactPoints, Builder? builder = null)
     {
-        var clusterBuilder = Cluster.Builder().WithDefaultKeyspace("altruist");
-
-        foreach (var contactPoint in contactPoints)
-        {
-            // Check if the contactPoint has a scheme, else prepend 'cql://'
-            string contactPointWithScheme = contactPoint.Contains("://") ? contactPoint : "cql://" + contactPoint;
-            var uri = new Uri(contactPointWithScheme);
-
-            string host = uri.Host;
-            int port = uri.Port;
-
-            clusterBuilder = clusterBuilder.AddContactPoint(host).WithPort(port);
-        }
-
-        var cluster = clusterBuilder.Build();
-        _session = cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
-        _mapper = new Mapper(_session);
-        Token = token;
+        _contactPoints = contactPoints;
+        _builder = builder;
     }
+
 
     public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
     {
+        _contactPoints = new List<string>();
         _session = session;
         _mapper = mapper;
         Token = token;
     }
 
-    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel
+    #region Connection Events
+    private async Task ensureConnected()
     {
-        return (await _mapper.FetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
+        if (!IsConnected)
+        {
+            await ConnectAsync();
+        }
     }
 
-    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, params object[] parameters) where TVaultModel : class, IVaultModel
+    public event Action<Host> HostAdded
     {
-        return (await _mapper.FetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
+        add
+        {
+            if (_cluster != null)
+                _cluster.HostAdded += value;
+        }
+        remove
+        {
+            if (_cluster != null)
+                _cluster.HostAdded -= value;
+        }
     }
 
-    public async Task<int> ExecuteAsync(string cqlQuery, params object[] parameters)
+    public event Action<Host> HostRemoved
     {
-        var statement = _session.Prepare(cqlQuery).Bind(parameters);
-        var result = await _session.ExecuteAsync(statement);
-        return result?.Info?.AchievedConsistency != null ? result.GetRows().Count() : 0;
+        add
+        {
+            if (_cluster != null)
+                _cluster.HostRemoved += value;
+        }
+        remove
+        {
+            if (_cluster != null)
+                _cluster.HostRemoved -= value;
+        }
     }
+
+    public event Action? OnConnected;
+    public event Action<Exception>? OnFailed;
+    public event Action<Exception>? OnRetryExhausted;
+
+    public void RaiseConnectedEvent()
+    {
+        IsConnected = true;
+        OnConnected?.Invoke();
+    }
+
+    public void RaiseFailedEvent(Exception ex)
+    {
+        IsConnected = false;
+        OnFailed?.Invoke(ex);
+    }
+
+    public void RaiseOnRetryExhaustedEvent(Exception ex)
+    {
+        IsConnected = false;
+        OnRetryExhausted?.Invoke(ex);
+    }
+
+    public async Task ShutdownAsync(Exception? ex = null)
+    {
+        StopHealthChecks();
+        if (_session == null)
+            return;
+
+        await _session.ShutdownAsync();
+    }
+
+    public async Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000)
+    {
+        if (_contactPoints.Count == 0 || IsConnected)
+            return;
+
+        var clusterBuilder = _builder ?? Cluster.Builder().WithDefaultKeyspace("altruist");
+
+        foreach (var contactPoint in _contactPoints)
+        {
+            string contactPointWithScheme = contactPoint.Contains("://") ? contactPoint : "cql://" + contactPoint;
+            var uri = new Uri(contactPointWithScheme);
+            string host = uri.Host;
+            int port = uri.Port;
+
+            clusterBuilder = clusterBuilder
+                .AddContactPoint(host)
+                .WithPort(port)
+                .WithReconnectionPolicy(new ConstantReconnectionPolicy(10000))
+                .WithRetryPolicy(new AltruistScyllaDefaultRetryPolicy(this));
+        }
+
+        var cluster = clusterBuilder.Build();
+
+        Exception? lastException = null;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                _session = await Task.Run(() => cluster.ConnectAndCreateDefaultKeyspaceIfNotExists());
+                _cluster = cluster;
+                _mapper = new Mapper(_session);
+                RaiseConnectedEvent();
+                StartHealthChecks();
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == 1)
+                {
+                    RaiseFailedEvent(ex);
+                }
+
+                lastException = ex;
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(delayMilliseconds);
+                }
+            }
+        }
+
+        RaiseOnRetryExhaustedEvent(lastException!);
+    }
+
+    #endregion
+
+    #region  Provider API
+
+    private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(
+    string cqlQuery,
+    List<object>? parameters = null) where TVaultModel : class, IVaultModel
+    {
+        try
+        {
+            await ensureConnected();
+
+            var count = parameters?.Count ?? 0;
+            IEnumerable<TVaultModel> results;
+            if (count == 0)
+            {
+                results = await _mapper!.FetchAsync<TVaultModel>(cqlQuery);
+            }
+            else
+            {
+                results = await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters);
+            }
+
+            if (!IsConnected)
+            {
+                RaiseConnectedEvent();
+            }
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            RaiseFailedEvent(ex);
+            throw;
+        }
+    }
+
+
+    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
+    string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel
+    {
+        return (await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
+    }
+
+    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
+        string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel
+    {
+        return (await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
+    }
+
+
+    public async Task<int> ExecuteAsync(string cqlQuery, List<object>? parameters = null)
+    {
+        try
+        {
+            await ensureConnected();
+
+            var count = parameters?.Count ?? 0;
+            var statement = _session!.Prepare(cqlQuery).Bind(count == 0 ? null : parameters);
+            var result = await _session.ExecuteAsync(statement);
+
+            if (!IsConnected)
+            {
+                RaiseConnectedEvent();
+            }
+
+            return result?.Info?.AchievedConsistency != null ? result.GetRows().Count() : 0;
+        }
+        catch (Exception ex)
+        {
+            RaiseFailedEvent(ex);
+            throw;
+        }
+    }
+
 
     public async Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
-        await _mapper.UpdateAsync(entity);
+        await ensureConnected();
+        await _mapper!.UpdateAsync(entity);
         return 1;
     }
 
     public async Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
-        await _mapper.DeleteAsync(entity);
+        await ensureConnected();
+        await _mapper!.DeleteAsync(entity);
         return 1;
     }
 
@@ -113,22 +257,52 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     private string MapTypeToCql(Type type)
     {
+        // Check for array types (e.g., float[])
+        if (type.IsArray)
+        {
+            var elementType = type.GetElementType();
+
+            if (elementType == typeof(float))
+            {
+                return "list<float>"; // CQL for an array of floats (use list<float> in Cassandra)
+            }
+            else if (elementType == typeof(double))
+            {
+                return "list<double>"; // CQL for an array of doubles
+            }
+            else if (elementType == typeof(int))
+            {
+                return "list<int>"; // CQL for an array of ints
+            }
+            else if (elementType == typeof(string))
+            {
+                return "list<text>"; // CQL for an array of strings
+            }
+            else
+            {
+                throw new NotSupportedException($"Array type {elementType!.Name} is not supported.");
+            }
+        }
+
+        // Standard type mappings
         return type switch
         {
-            _ when type == typeof(string) => "TEXT",
-            _ when type == typeof(int) => "INT",
-            _ when type == typeof(Guid) => "UUID",
-            _ when type == typeof(bool) => "BOOLEAN",
-            _ when type == typeof(double) => "DOUBLE",
-            _ when type == typeof(float) => "FLOAT",
-            _ when type == typeof(DateTime) => "TIMESTAMP",
-            _ when type == typeof(byte[]) => "BLOB",
+            _ when type == typeof(string) => "text",
+            _ when type == typeof(int) => "int",
+            _ when type == typeof(Guid) => "uuid",
+            _ when type == typeof(bool) => "boolean",
+            _ when type == typeof(double) => "double", // Use double for double precision
+            _ when type == typeof(float) => "float", // Use float for single precision
+            _ when type == typeof(DateTime) => "timestamp",
+            _ when type == typeof(byte[]) => "blob",
+            _ when type == typeof(TimeSpan) => "bigint", // CQL for TimeSpan
             _ => throw new NotSupportedException($"Type {type.Name} is not supported.")
         };
     }
 
-    public Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
+    public async Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
     {
+        await ensureConnected();
         var actualOptions = options as ScyllaReplicationOptions ?? new ScyllaReplicationOptions();
 
         // Build the replication configuration
@@ -159,17 +333,17 @@ public class ScyllaDbProvider : IScyllaDbProvider
             throw new ArgumentException("Invalid replication options: NetworkTopologyStrategy requires at least one data center.");
         }
 
-        _session.CreateKeyspaceIfNotExists(keyspace, replicationConfig);
-        return Task.CompletedTask;
+        _session!.CreateKeyspaceIfNotExists(keyspace, replicationConfig);
     }
 
 
     public async Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null)
     {
-        var tableAttribute = entityType.GetCustomAttribute<TableAttribute>();
+        await ensureConnected();
+        var tableAttribute = entityType.GetCustomAttribute<VaultAttribute>();
         if (tableAttribute == null)
         {
-            throw new InvalidOperationException($"Type '{entityType.Name}' is missing TableAttribute.");
+            throw new InvalidOperationException($"Type '{entityType.Name}' is missing VaultAttribute.");
         }
 
         if (!(keyspace is IScyllaKeyspace))
@@ -184,14 +358,14 @@ public class ScyllaDbProvider : IScyllaDbProvider
         string tableName = tableAttribute.Name;
         bool storeHistory = tableAttribute.StoreHistory;
 
-        var primaryKeyAttr = entityType.GetCustomAttribute<Altruist.UORM.PrimaryKeyAttribute>();
+        var primaryKeyAttr = entityType.GetCustomAttribute<VaultPrimaryKeyAttribute>();
         if (primaryKeyAttr == null || primaryKeyAttr.Keys.Length == 0)
         {
             throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}'.");
         }
 
         // === Get Sorting Key from Class-Level Attribute ===
-        var sortingAttribute = entityType.GetCustomAttribute<SortingByAttribute>();
+        var sortingAttribute = entityType.GetCustomAttribute<VaultSortingByAttribute>();
         string? sortingKey = sortingAttribute?.Name.ToLower();
         bool sortAscending = sortingAttribute?.Ascending ?? true;
 
@@ -203,10 +377,10 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
         // === Define Table Columns ===
         var columns = entityType.GetProperties()
-            .Where(p => p.GetCustomAttribute<IgnoreAttribute>() == null)
+            .Where(p => p.GetCustomAttribute<VaultIgnoredAttribute>() == null)
             .Select(p =>
             {
-                var columnAttr = p.GetCustomAttribute<ColumnAttribute>();
+                var columnAttr = p.GetCustomAttribute<VaultColumnAttribute>();
                 string columnName = columnAttr?.Name ?? p.Name.ToLower();
                 string columnType = MapTypeToCql(p.PropertyType);
                 return $"{columnName} {columnType}";
@@ -228,7 +402,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
             sb.AppendLine($", PRIMARY KEY ({string.Join(", ", primaryKeyAttr.Keys)}) );");
         }
 
-        await _session.ExecuteAsync(new SimpleStatement(sb.ToString()));
+        await _session!.ExecuteAsync(new SimpleStatement(sb.ToString()));
 
         // === STEP 2: CREATE HISTORY TABLE (if enabled) ===
         if (storeHistory)
@@ -263,16 +437,74 @@ public class ScyllaDbProvider : IScyllaDbProvider
     /// </summary>
     private async Task<bool> TableExistsAsync(string keyspace, string tableName)
     {
+        await ensureConnected();
         var query = $"SELECT table_name FROM system_schema.tables WHERE keyspace_name = '{keyspace}' AND table_name = '{tableName}';";
-        var result = await _session.ExecuteAsync(new SimpleStatement(query));
+        var result = await _session!.ExecuteAsync(new SimpleStatement(query));
         return result.Any();
     }
 
     public async Task ChangeKeyspaceAsync(string keyspace)
     {
+        await ensureConnected();
         var query = $"USE {keyspace};";
-        await _session.ExecuteAsync(new SimpleStatement(query));
+        await _session!.ExecuteAsync(new SimpleStatement(query));
     }
+
+    #endregion
+
+    #region  Health Checks
+
+    private CancellationTokenSource _healthCheckCts = new();
+    private SemaphoreSlim _pingLock = new(1, 1);
+
+    private void StartHealthChecks(int seconds = 5)
+    {
+        _ = Task.Run(async () =>
+        {
+            while (!_healthCheckCts.Token.IsCancellationRequested)
+            {
+                await HealthCheckAsync();
+                await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCheckCts.Token);
+            }
+        });
+    }
+
+
+    private async Task HealthCheckAsync()
+    {
+        if (!await _pingLock.WaitAsync(0)) return;
+        try
+        {
+            if (_session != null)
+            {
+                await _session.ExecuteAsync(new SimpleStatement("SELECT now() FROM system.local"));
+                if (!IsConnected)
+                {
+                    IsConnected = true;
+                    RaiseConnectedEvent();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (IsConnected)
+            {
+                IsConnected = false;
+                RaiseFailedEvent(ex);
+            }
+        }
+        finally
+        {
+            _pingLock.Release();
+        }
+    }
+
+
+    private void StopHealthChecks()
+    {
+        _healthCheckCts.Cancel();
+    }
+    #endregion
 }
 
 

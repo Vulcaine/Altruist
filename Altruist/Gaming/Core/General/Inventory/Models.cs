@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Altruist.UORM;
 
 namespace Altruist.Gaming;
 
@@ -57,11 +56,12 @@ public abstract class BasicItemProperties
     }
 }
 
-[Table("item-template")]
 public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 {
+    public string GenId { get; set; } = Guid.NewGuid().ToString();
+
     [JsonPropertyName("id")]
-    public long Id { get; set; }
+    public long ItemId { get; set; }
 
     [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
@@ -74,7 +74,6 @@ public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 /// Represents an item instance in the inventory. Each item is based on a template
 /// and contains dynamic properties such as count, dimensions, category, and expiry.
 /// </summary>
-[Table("item")]
 public abstract class GameItem : BasicItemProperties, IVaultModel
 {
     /// <summary>
@@ -82,7 +81,7 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// It is generated at runtime and is not the same as the template ID.
     /// </summary>
     [JsonPropertyName("id")]
-    public string Id { get; set; }
+    public string GenId { get; set; }
 
     /// <summary>
     /// Static ID that links this item to its template definition.
@@ -110,7 +109,7 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// <param name="expiryDate">Optional expiration date.</param>
     public GameItem(SlotKey slotKey, int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
     {
-        Id = Guid.NewGuid().ToString();
+        GenId = Guid.NewGuid().ToString();
         SlotKey = slotKey;
         Properties = new int[itemPropertySize];
         Category = itemType;

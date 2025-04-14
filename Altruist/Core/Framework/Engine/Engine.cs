@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
+using Altruist;
 using Cronos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -304,10 +305,13 @@ public class AltruistEngine : IAltruistEngine
 
     public int Throttle = 1000000;
 
+    private IServerStatus _appStatus;
+
     public AltruistEngine(
         IServiceProvider serviceProvider,
         int engineFrequencyHz = 30, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
     {
+        var settings = serviceProvider.GetRequiredService<IAltruistContext>();
         _staticTasks = new LinkedList<EngineStaticTask>();
         _dynamicTasks = new ConcurrentDictionary<TaskIdentifier, Delegate>();
         _engineRate = new CycleRate(engineFrequencyHz, unit);
@@ -316,6 +320,7 @@ public class AltruistEngine : IAltruistEngine
         _cancellationTokenSource = new CancellationTokenSource();
         _engineThread = null!;
         _serviceProvider = serviceProvider;
+        _appStatus = settings.AppStatus;
     }
 
     public void Enable()
@@ -357,15 +362,32 @@ public class AltruistEngine : IAltruistEngine
 
     public void Start()
     {
-        Enable();
-        _cancellationTokenSource = new CancellationTokenSource();
-        _engineThread = new Thread(RunEngineLoop)
+        if (!Enabled)
         {
-            IsBackground = true,
-            Priority = ThreadPriority.Highest
-        };
-        _engineThread.Start();
+            _cancellationTokenSource = new CancellationTokenSource();
+            _engineThread = new Thread(() =>
+            {
+                while (!_cancellationTokenSource.IsCancellationRequested)
+                {
+                    if (_appStatus.Status == ReadyState.Alive)
+                    {
+                        Enable();
+                        RunEngineLoop();
+                        return;
+                    }
+
+                    Thread.Sleep(5000);
+                }
+            })
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.Highest
+            };
+
+            _engineThread.Start();
+        }
     }
+
 
     private async void RunEngineLoop()
     {
@@ -522,13 +544,11 @@ public class EngineWithDiagnostics : IAltruistEngine
 
     public void Start()
     {
-        Enable();
         _wrappedEngine.Start();
     }
 
     public void Stop()
     {
-        Disable();
         _wrappedEngine.Stop();
     }
 

@@ -8,6 +8,7 @@ using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist
@@ -46,6 +47,12 @@ namespace Altruist
                 loggingBuilder.AddProvider(new AltruistLoggerProvider(frameworkVersion));
             });
             // Add core services
+            Services.AddSingleton<IHostEnvironment>(new HostingEnvironment
+            {
+                EnvironmentName = Environments.Development,
+                ApplicationName = "Altruist",
+                ContentRootPath = Directory.GetCurrentDirectory()
+            });
             Services.AddSingleton(Services);
             Services.AddSingleton(Settings);
             Services.AddSingleton<ClientSender>();
@@ -63,10 +70,13 @@ namespace Altruist
             Services.AddSingleton<IDecoder, JsonMessageDecoder>();
             Services.AddSingleton<IEncoder, JsonMessageEncoder>();
             Services.AddSingleton<IConnectionStore, InMemoryConnectionStore>();
-            Services.AddSingleton(typeof(IPlayerService<>), typeof(InMemoryPlayerService<>));
+
             Services.AddSingleton<IPortalContext, PortalContext>();
             Services.AddSingleton<VaultRepositoryFactory>();
             Services.AddSingleton<DatabaseProviderFactory>();
+            Services.AddSingleton(sp => new LoadSyncServicesAction(sp));
+            Services.AddSingleton<IAction>(sp => sp.GetRequiredService<LoadSyncServicesAction>());
+            Services.AddSingleton<IServerStatus, ServerStatus>();
         }
 
         public static AltruistEngineBuilder Create(string[] args, Func<IServiceCollection, IServiceCollection>? serviceBuilder = null) => new AltruistBuilder(args, serviceBuilder).ToConnectionBuilder();
@@ -244,7 +254,7 @@ namespace Altruist
             instance.Build(Settings);
             // readding the built instance
             Services.AddSingleton(instance);
-            Settings.DatabaseToken = token;
+            Settings.DatabaseTokens.Add(token);
         }
     }
 
@@ -289,7 +299,7 @@ namespace Altruist
             Settings = settings;
         }
 
-        public AppBuilder Configure(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup!(Builder.Build()));
+        public AppManager Configure(Func<WebApplication, WebApplication> setup) => new AppManager(setup!(Builder.Build()));
 
         public void StartServer()
         {
@@ -307,7 +317,7 @@ namespace Altruist
             altruistContext.Validate();
         }
 
-        public AppBuilder Configure(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup!(App!));
+        public AppManager Configure(Func<WebApplication, WebApplication> setup) => new AppManager(setup!(App!));
 
         public void StartServer()
         {
@@ -317,13 +327,14 @@ namespace Altruist
         public void StartServer(string host, int port)
         {
             BuildApp();
-            new AppBuilder(App!).StartServer(host, port);
+            new AppManager(App!).StartServer(host, port);
         }
 
-        public AppBuilder BuildApp()
+        public AppManager BuildApp()
         {
             if (App == null)
             {
+                Builder.Services.AddControllers();
                 App = Builder
                 .Build();
 
@@ -333,9 +344,11 @@ namespace Altruist
                 };
                 App.UseWebSockets(webSocketOptions);
                 App.UseRouting();
+                App.MapControllers();
+                App.UseMiddleware<ReadinessMiddleware>();
             }
 
-            return new AppBuilder(App!);
+            return new AppManager(App!);
         }
     }
 
@@ -364,7 +377,6 @@ namespace Altruist
             {
                 var env = sp.GetRequiredService<IHostEnvironment>();
                 var engine = new AltruistEngine(sp, hz, unit, throttle);
-                engine.Enable();
 
                 if (env.IsDevelopment())
                 {
@@ -383,30 +395,37 @@ namespace Altruist
         }
     }
 
-    public class AppBuilder
+    public class AppManager
     {
-        private readonly WebApplication _app;
+        public readonly WebApplication App;
         private readonly Dictionary<Type, string> _portals;
 
-        public AppBuilder(WebApplication app)
+        public readonly IServerStatus AppState;
+
+        public AppManager(WebApplication app)
         {
-            _app = app;
-            _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals;
+            App = app;
+            AppState = new ServerStatus(app.Services);
+            var settings = app.Services.GetRequiredService<IAltruistContext>();
+            settings.AppStatus = AppState;
+            _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals.ToDictionary(x => x.Key, x => x.Value.Path);
         }
 
-        public AppBuilder Configure(Func<WebApplication, WebApplication> setup)
+        public IServiceProvider ServiceProvider => App.Services;
+
+        public AppManager Configure(Func<WebApplication, WebApplication> setup)
         {
             if (setup != null)
             {
-                return new AppBuilder(setup(_app));
+                return new AppManager(setup(App));
             }
             return this;
         }
 
-        public AppBuilder UseAuth()
+        public AppManager UseAuth()
         {
-            _app.UseAuthentication();
-            _app.UseAuthorization();
+            App.UseAuthentication();
+            App.UseAuthorization();
             return this;
         }
 
@@ -417,15 +436,40 @@ namespace Altruist
 
         public void StartServer(string host, int port)
         {
-            StartServer($"http://{host}:{port}");
+            _ = StartServer($"http://{host}:{port}");
         }
 
-        public void StartServer(string connectionString)
+        public void Shutdown(Exception? ex = null, string reason = "")
         {
-            EventHandlerRegistry<IPortal>.ScanAndRegisterHandlers(_app.Services);
+            var settings = App.Services.GetRequiredService<IAltruistContext>();
+            var appStatus = settings.AppStatus;
+            var logger = App.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AppManager>();
+            if (ex != null)
+            {
+                logger.LogCritical($"❌ {reason}, {ex.Message}.");
+            }
+            else
+            {
+                logger.LogInformation($"{reason}.");
+            }
 
-            var _settings = _app.Services.GetRequiredService<IAltruistContext>();
-            var gatewayServices = _app.Services.GetServices<IRelayService>();
+            appStatus.SignalState(ReadyState.Failed);
+            Environment.Exit(1);
+        }
+
+        public async Task Startup()
+        {
+            var settings = App.Services.GetRequiredService<IAltruistContext>();
+            var appStatus = settings.AppStatus;
+            await appStatus.StartupAsync(this);
+        }
+
+        public Task StartServer(string connectionString)
+        {
+            EventHandlerRegistry<IPortal>.ScanAndRegisterHandlers(App.Services);
+            var logger = App.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AppManager>();
+            var _settings = App.Services.GetRequiredService<IAltruistContext>();
+            var gatewayServices = App.Services.GetServices<IRelayService>();
             var splitted = connectionString.Split(':');
             var protocol = splitted[0];
             var host = splitted[1].Replace("//", "");
@@ -445,27 +489,17 @@ namespace Altruist
 ╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚══════╝   ╚═╝         ╚═══╝   ╚═╝                                               
 "));
             logBuilder.AppendLine(frameLine);
-            var transport = _app.Services.GetService<ITransport>();
+            var transport = App.Services.GetService<ITransport>();
 
             foreach (var (type, path) in _portals)
             {
                 logBuilder.AppendLine(PortaledText($"🔌 Opening {type.Name} through {path}"));
-                transport!.UseTransportEndpoints(_app, type, path);
+                transport!.UseTransportEndpoints(App, type, path);
             }
 
-            foreach (var service in gatewayServices)
-            {
-                logBuilder.AppendLine(PortaledText($"🔗 Starting relay portal {service.GetType().Name}..."));
 
-                try
-                {
-                    _ = Task.Run(service.ConnectAsync);
-                }
-                catch (Exception ex)
-                {
-                    logBuilder.AppendLine(PortaledText($"❌ Connection failed for {service.GetType().Name}: {ex.Message}"));
-                }
-            }
+
+            _ = Startup();
 
             var settingsLines = _settings.ToString()!.Replace('\r', ' ').Split('\n');
 
@@ -486,9 +520,9 @@ namespace Altruist
 
             if (_settings.EngineEnabled)
             {
-                var scheduler = _app.Services.GetService<MethodScheduler>();
-                var methods = scheduler!.RegisterMethods(_app.Services);
-                var engine = _app.Services.GetService<IAltruistEngine>();
+                var scheduler = App.Services.GetService<MethodScheduler>();
+                var methods = scheduler!.RegisterMethods(App.Services);
+                var engine = App.Services.GetService<IAltruistEngine>();
                 engine!.Start();
 
                 logBuilder.AppendLine(PortaledText(
@@ -512,7 +546,17 @@ namespace Altruist
             }
 
             Console.WriteLine("\n" + logBuilder.ToString() + "\n");
-            _app.Run(connectionString);
+            Console.WriteLine(_settings.AppStatus.ToString());
+
+
+            if (_settings.AppStatus.Status != ReadyState.Alive)
+            {
+                logger.LogWarning("🕒 All systems initialized, but I'm still waiting for a few lazy services to show up. Hang tight — no inbound or outbound messages are allowed yet. And if you enabled the engine... nope, not starting that until everyone's here!");
+
+            }
+
+            App.Run(connectionString);
+            return Task.CompletedTask;
         }
     }
 }

@@ -1,3 +1,5 @@
+using Altruist.Contracts;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using StackExchange.Redis;
 
 namespace Altruist;
@@ -16,6 +18,9 @@ public interface ICursor<T> where T : notnull
 /// </summary>
 public interface ICacheProvider
 {
+
+    ICacheServiceToken Token { get; }
+
     /// <summary>
     /// Checks whether an item with the given key exists in the cache.
     /// </summary>
@@ -104,7 +109,7 @@ public interface IRedisCacheProvider : IExternalCacheProvider
     Task<IEnumerable<RedisKey>> KeysAsync<T>() where T : notnull;
 }
 
-public interface IExternalCacheProvider : ICacheProvider
+public interface IExternalCacheProvider : ICacheProvider, IConnectable
 {
 }
 

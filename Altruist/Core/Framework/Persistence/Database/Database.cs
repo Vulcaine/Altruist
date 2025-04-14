@@ -1,4 +1,6 @@
+using System.Reflection;
 using Altruist.Contracts;
+using Altruist.UORM;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Database;
@@ -33,17 +35,50 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
     public KeyspaceSetup<TKeyspace> AddVault<TVaultModel>() where TVaultModel : class, IVaultModel
     {
         VaultModels.Add(typeof(TVaultModel));
-        Services.AddSingleton<IVault<TVaultModel>>(sp => new Vault<TVaultModel>(sp.GetServices<IDatabaseVaultFactory>().Where(s => s.Token == Token).First(), Instance));
+        Services.AddSingleton<IVault<TVaultModel>>(sp => new VaultAdapter<TVaultModel>(sp.GetServices<IDatabaseVaultFactory>().Where(s => s.Token == Token).First(), Instance));
         return this;
     }
 
-    public abstract void Build();
+    public KeyspaceSetup<TKeyspace> AddVault(Type vault)
+    {
+        if (!typeof(IVaultModel).IsAssignableFrom(vault))
+            throw new ArgumentException($"{vault.FullName} must implement IVaultModel");
+
+        var attribute = vault.GetCustomAttribute<VaultAttribute>();
+        var keyspaceFromAttribute = attribute?.Keyspace ?? "altruist";
+        var currentKeyspaceName = Instance.Name;
+
+        if (!string.Equals(keyspaceFromAttribute, currentKeyspaceName, StringComparison.OrdinalIgnoreCase))
+        {
+            // Keyspace mismatch, skip registration
+            return this;
+        }
+
+        VaultModels.Add(vault);
+
+        var vaultInterfaceType = typeof(IVault<>).MakeGenericType(vault);
+        var vaultImplementationType = typeof(VaultAdapter<>).MakeGenericType(vault);
+
+        Services.AddSingleton(vaultInterfaceType, sp =>
+        {
+            var factory = sp.GetServices<IDatabaseVaultFactory>().First(s => s.Token == Token);
+            return Activator.CreateInstance(vaultImplementationType, factory, Instance)!;
+        });
+
+        Services.AddSingleton(vaultImplementationType, sp => sp.GetRequiredService(vaultInterfaceType));
+        Services.AddSingleton(vault, sp => sp.GetRequiredService(vaultInterfaceType));
+
+        return this;
+    }
+
+
+    public abstract Task Build();
 }
 
 public interface IKeyspaceSetup
 {
     IDatabaseServiceToken Token { get; }
-    void Build();
+    Task Build();
 }
 
 public class VaultRepositoryFactory
@@ -56,6 +91,7 @@ public class VaultRepositoryFactory
     }
 
     public IVaultRepository<TKeyspace> Make<TKeyspace>(IDatabaseServiceToken token) where TKeyspace : class, IKeyspace, new() => _provider.GetServices<IVaultRepository<TKeyspace>>().Where(p => p.Token == token).First();
+
 }
 
 

@@ -1,5 +1,4 @@
 
-using Altruist.UORM;
 
 namespace Altruist.Gaming;
 
@@ -83,10 +82,9 @@ public struct ByteVector2
     }
 }
 
-
-[Table("world_index")]
-public class WorldIndex : IVaultModel
+public abstract class WorldIndex : IVaultModel
 {
+    public string GenId { get; set; }
     public int Index { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
@@ -95,6 +93,7 @@ public class WorldIndex : IVaultModel
 
     public WorldIndex(int index, int width, int height)
     {
+        GenId = Guid.NewGuid().ToString();
         Index = index;
         Width = width;
         Height = height;
