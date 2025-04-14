@@ -99,7 +99,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     private void HookRedisEvents()
     {
         _redis.Multiplexer.ConnectionRestored += (_, _) => RaiseConnectedEvent();
-        _redis.Multiplexer.ConnectionFailed += (_, args) => RaiseOnRetryExhaustedEvent(args.Exception ?? new Exception("Connection failed"));
+        _redis.Multiplexer.ConnectionFailed += (_, args) => RaiseFailedEvent(args.Exception ?? new Exception("Connection failed"));
 
         if (_redis.Multiplexer.IsConnected) RaiseConnectedEvent();
         else _onRetryExhausted?.Invoke(new Exception("Connection failed"));

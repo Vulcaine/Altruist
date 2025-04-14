@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Altruist.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -11,7 +12,7 @@ public sealed class RedisServiceConfiguration : ICacheConfiguration
     public void Configure(IServiceCollection services)
     {
         services.AddSingleton<RedisConnectionSetup>();
-        services.AddSingleton<ICacheConnectionSetupBase, RedisConnectionSetup>();
+        services.AddSingleton<ICacheConnectionSetupBase>(sp => sp.GetRequiredService<RedisConnectionSetup>());
     }
 
     public void AddDocument<T>() where T : IModel
@@ -44,10 +45,9 @@ public sealed class RedisCacheServiceToken : ICacheServiceToken
 
 public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionSetup>, ICacheConnectionSetupBase
 {
-    private readonly RedisServiceConfiguration _config;
+    private readonly ConcurrentDictionary<string, bool> _subscribedChannels = new();
 
-    public event Func<ConnectionFailedEventArgs, ILogger, Task>? OnConnectionFailed;
-    public event Func<ConnectionFailedEventArgs, ILogger, Task>? OnConnectionRestored;
+    private readonly RedisServiceConfiguration _config;
 
     public RedisConnectionSetup(IServiceCollection services) : base(services)
     {
@@ -100,27 +100,10 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         var multiplexer = ConnectionMultiplexer.Connect(options);
         _services.AddSingleton<IConnectionMultiplexer>(multiplexer);
 
-        if (!multiplexer.IsConnected)
-        {
-            await (OnConnectionFailed?.Invoke(null!, logger)
-                ?? DefaultConnectionFailedHandler(null!, logger));
-        }
-        else
+        if (multiplexer.IsConnected)
         {
             logger.LogInformation("⚡ Redis support activated. Ready to store and distribute data across realms with incredible speed! 🌌");
         }
-
-        multiplexer.ConnectionFailed += async (sender, args) =>
-        {
-            await (OnConnectionFailed?.Invoke(args, logger)
-                ?? DefaultConnectionFailedHandler(args, logger));
-        };
-
-        multiplexer.ConnectionRestored += async (sender, args) =>
-        {
-            await (OnConnectionRestored?.Invoke(args, logger)
-                ?? DefaultConnectionRestoredHandler(args, logger, multiplexer, settings));
-        };
 
         _services.AddSingleton(sp => multiplexer.GetSubscriber());
 
@@ -144,43 +127,59 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         _services.AddSingleton<IAltruistRedisConnectionProvider>(sp => sp.GetRequiredService<RedisConnectionService>());
 
         var serviceProvider = _services.BuildServiceProvider();
-        await ResubscribeToChannels(multiplexer, serviceProvider, logger, false, settings);
-    }
 
-    private static Task DefaultConnectionFailedHandler(ConnectionFailedEventArgs? args, ILogger logger)
-    {
-        logger.LogError($"❌ Redis connection failed: {args?.Exception?.Message ?? "Unknown error"}");
-        return Task.CompletedTask;
-    }
+        multiplexer.ConnectionFailed += (sender, args) =>
+       {
+           _subscribedChannels.Clear();
+       };
 
-    private static async Task DefaultConnectionRestoredHandler(ConnectionFailedEventArgs? args, ILogger logger, IConnectionMultiplexer multiplexer, IAltruistContext context)
-    {
-        logger.LogInformation("✅ Redis connection restored. Re-subscribing to Redis Pub/Sub channels...");
-        await new RedisConnectionSetup(null!).ResubscribeToChannels(multiplexer, null!, logger, true, context);
-    }
-
-    private Task ResubscribeToChannels(IConnectionMultiplexer multiplexer, IServiceProvider serviceProvider, ILogger logger, bool resub, IAltruistContext context)
-    {
-        if (multiplexer.IsConnected)
+        multiplexer.ConnectionRestored += async (sender, args) =>
         {
-            var subscriber = multiplexer.GetSubscriber();
-            var router = serviceProvider.GetRequiredService<IAltruistRouter>();
-            var decoder = serviceProvider.GetRequiredService<ICodec>();
+            await SubscribeToChannels(multiplexer, serviceProvider, logger, true, settings);
+        };
 
-            var redisDatabase = multiplexer.GetDatabase();
+        await SubscribeToChannels(multiplexer, serviceProvider, logger, false, settings);
+    }
 
-            logger.LogInformation(resub ? "🔄 Resubscribing to Redis Pub/Sub channels..." : "🔗 Subscribing to Redis Pub/Sub channels...");
 
-            RedisChannel channel = RedisChannel.Literal(IngressRedis.MessageDistributeChannel);
+    private Task SubscribeToChannels(
+    IConnectionMultiplexer multiplexer,
+    IServiceProvider serviceProvider,
+    ILogger logger,
+    bool resub,
+    IAltruistContext context)
+    {
+        if (!multiplexer.IsConnected)
+            return Task.CompletedTask;
 
-            subscriber.Subscribe(channel, async (channel, message) =>
-            {
-                await ProcessQueuedMessagesAsync(multiplexer, decoder, router, context);
-            });
+        var subscriber = multiplexer.GetSubscriber();
+        var router = serviceProvider.GetRequiredService<IAltruistRouter>();
+        var decoder = serviceProvider.GetRequiredService<ICodec>();
+
+        var channelKey = IngressRedis.MessageDistributeChannel;
+
+        // Attempt to mark as "subscribed" atomically
+        bool alreadySubscribed = !_subscribedChannels.TryAdd(channelKey, true);
+
+        if (alreadySubscribed)
+        {
+            return Task.CompletedTask;
         }
 
+        RedisChannel channel = RedisChannel.Literal(channelKey);
+
+        logger.LogInformation(resub
+            ? "🔄 Resubscribing to Redis Pub/Sub channels..."
+            : "🔗 Subscribing to Redis Pub/Sub channels...");
+
+        subscriber.Subscribe(channel, async (channel, message) =>
+        {
+            await ProcessQueuedMessagesAsync(multiplexer, decoder, router, context);
+        });
+
         return Task.CompletedTask;
     }
+
 
     private async Task ProcessQueuedMessagesAsync(IConnectionMultiplexer mux, ICodec codec, IAltruistRouter router, IAltruistContext context)
     {

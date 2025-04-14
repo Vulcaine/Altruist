@@ -455,7 +455,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
     private CancellationTokenSource _healthCheckCts = new();
     private SemaphoreSlim _pingLock = new(1, 1);
 
-    private void StartHealthChecks(int seconds = 3)
+    private void StartHealthChecks(int seconds = 5)
     {
         _ = Task.Run(async () =>
         {

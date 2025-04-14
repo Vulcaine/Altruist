@@ -120,18 +120,19 @@ public class ServerStatus : IServerStatus
     {
         service.OnConnected += () =>
         {
-            logger.LogInformation($"✅ {service.ServiceName} is alive.");
             lock (_connected)
             {
                 _connected.Add(service);
 
                 if (_connected.Count == _connectables.Count && !_startup && Status != ReadyState.Alive)
                 {
+                    logger.LogInformation($"✅ {service.ServiceName} is alive.");
                     _startup = true;
                     _ = RunStartupActionsAsync(actions, logger, tcs);
                 }
                 else if (_connected.Count == _connectables.Count && Status != ReadyState.Alive)
                 {
+                    logger.LogInformation($"✅ {service.ServiceName} is alive.");
                     _startupTimeoutTimer?.Dispose();
                     SignalState(ReadyState.Alive);
                     logger.LogInformation("🚀 Altruist is now live again and ready to serve requests.");
@@ -156,7 +157,7 @@ public class ServerStatus : IServerStatus
 
         service.OnRetryExhausted += ex =>
         {
-            manager.Shutdown(ex, $"❌ {service.ServiceName} failed to connect after all retries.");
+            manager.Shutdown(ex, $"{service.ServiceName} failed to connect after all retries.");
         };
     }
 
