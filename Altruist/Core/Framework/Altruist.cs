@@ -546,6 +546,8 @@ namespace Altruist
             }
 
             Console.WriteLine("\n" + logBuilder.ToString() + "\n");
+            Console.WriteLine(_settings.AppStatus.ToString());
+
 
             if (_settings.AppStatus.Status != ReadyState.Alive)
             {

@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -16,7 +17,7 @@ public class ServerStatus : IServerStatus
     public ReadyState Status { get; private set; } = ReadyState.Starting;
 
     private readonly IServiceProvider _serviceProvider;
-    private readonly List<IConnectable> _connectables = new();
+    private readonly HashSet<IConnectable> _connectables = new();
     private readonly HashSet<IConnectable> _connected = new();
     private bool _startup;
     private Timer? _startupTimeoutTimer;
@@ -29,6 +30,7 @@ public class ServerStatus : IServerStatus
         var dbProviders = serviceProvider.GetServices<IGeneralDatabaseProvider>();
         var cacheProviders = serviceProvider.GetServices<ICacheProvider>();
         var relayServices = serviceProvider.GetServices<IRelayService>();
+        var allOtherConnectibles = serviceProvider.GetServices<IConnectable>().ToList();
 
         foreach (var dbToken in context.DatabaseTokens)
         {
@@ -47,7 +49,15 @@ public class ServerStatus : IServerStatus
             }
         }
 
-        _connectables.AddRange(relayServices);
+        foreach (var connectable in allOtherConnectibles)
+        {
+            _connectables.Add(connectable);
+        }
+
+        foreach (var relayService in relayServices)
+        {
+            _connectables.Add(relayService);
+        }
     }
 
     public void SignalState(ReadyState state)
@@ -142,6 +152,8 @@ public class ServerStatus : IServerStatus
                     SignalState(ReadyState.Alive);
                     logger.LogInformation("🚀 Altruist is now live again and ready to serve requests.");
                 }
+
+                LogStatus();
             }
         };
 
@@ -156,6 +168,7 @@ public class ServerStatus : IServerStatus
 
             StartTimeoutTimer(manager, logger);
             SignalState(ReadyState.Failed);
+            LogStatus();
         };
 
         service.OnRetryExhausted += ex =>
@@ -195,6 +208,40 @@ public class ServerStatus : IServerStatus
         logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
         tcs.TrySetResult(true);
     }
+
+    private void LogStatus()
+    {
+        Console.WriteLine(ToString());
+    }
+
+    public override string ToString()
+    {
+        const int nameColWidth = 24;
+        const int statusColWidth = 16;
+        var sb = new StringBuilder();
+
+        var topBorder = $"╔{new string('═', nameColWidth)}╦{new string('═', statusColWidth)}╗";
+        var header = $"║{"Service Name".PadRight(nameColWidth)}║{"Status".PadRight(statusColWidth)}║";
+        var separator = $"╠{new string('═', nameColWidth)}╬{new string('═', statusColWidth)}╣";
+        var bottomBorder = $"╚{new string('═', nameColWidth)}╩{new string('═', statusColWidth)}╝";
+
+        sb.AppendLine();
+        sb.AppendLine("🔌 Service Connection Status");
+        sb.AppendLine(topBorder);
+        sb.AppendLine(header);
+        sb.AppendLine(separator);
+
+        foreach (var service in _connectables.OrderBy(s => s.ServiceName))
+        {
+            var status = service.IsConnected ? "✅ Connected" : "❌ Disconnected";
+            sb.AppendLine($"║{service.ServiceName.PadRight(nameColWidth)}║{status.PadRight(statusColWidth - 1)}║");
+        }
+
+        sb.AppendLine(bottomBorder);
+
+        return sb.ToString();
+    }
+
 }
 
 
