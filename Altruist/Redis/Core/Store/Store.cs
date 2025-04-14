@@ -55,8 +55,8 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         }
     }
 
-    private static ThreadLocal<MemoryStream> _memoryStream = new(() => new MemoryStream());
 
+    #region Connection Events
     private event Action? _onConnected = () => { };
     private event Action<Exception>? _onRetryExhausted = _ => { };
 
@@ -98,8 +98,20 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
 
     private void HookRedisEvents()
     {
-        _redis.Multiplexer.ConnectionRestored += (_, _) => RaiseConnectedEvent();
-        _redis.Multiplexer.ConnectionFailed += (_, args) => RaiseFailedEvent(args.Exception ?? new Exception("Connection failed"));
+        _redis.Multiplexer.ConnectionRestored += (_, args) =>
+        {
+            if (args.ConnectionType == ConnectionType.Interactive)
+            {
+                RaiseConnectedEvent();
+            }
+        };
+        _redis.Multiplexer.ConnectionFailed += (_, args) =>
+        {
+            if (args.ConnectionType == ConnectionType.Interactive)
+            {
+                RaiseFailedEvent(args.Exception ?? new Exception("Connection failed"));
+            }
+        };
 
         if (_redis.Multiplexer.IsConnected) RaiseConnectedEvent();
         else _onRetryExhausted?.Invoke(new Exception("Connection failed"));
@@ -107,6 +119,11 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
 
     public bool IsConnected => _redis.Multiplexer.IsConnected;
 
+    #endregion
+
+    #region Redis API
+
+    private static ThreadLocal<MemoryStream> _memoryStream = new(() => new MemoryStream());
     public ICacheServiceToken Token => RedisCacheServiceToken.Instance;
 
     public string ServiceName { get; } = "RedisCache";
@@ -281,14 +298,16 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     {
         throw new NotImplementedException("RedisConnectionService.ConnectAsync() is not implemented. It is done automatically via the Multiplexer.");
     }
+
+    #endregion
 }
 
+#region Connection Service
 
 public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistRedisConnectionProvider
 {
     private readonly RedisCacheProvider _cache;
     private readonly IDatabase _redis;
-    // private const string RoomPrefix = "room:";
 
     public RedisConnectionService(IConnectionMultiplexer redis,
         IMemoryCacheProvider memoryCache,
@@ -436,3 +455,5 @@ public sealed class RedisConnectionService : AbstractConnectionStore, IAltruistR
         return _redis.ScriptEvaluate(script, keys, values, flags);
     }
 }
+
+#endregion

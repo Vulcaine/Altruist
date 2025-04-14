@@ -72,7 +72,7 @@ public class ServerStatus : IServerStatus
         var actions = app.Services.GetServices<IAction>();
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        StartTimeoutTimer(manager);
+        StartTimeoutTimer(manager, logger);
 
         foreach (var service in _connectables)
         {
@@ -99,8 +99,9 @@ public class ServerStatus : IServerStatus
         await CheckAllConnectedAsync(actions, logger, tcs);
     }
 
-    private void StartTimeoutTimer(AppManager manager)
+    private void StartTimeoutTimer(AppManager manager, ILogger logger)
     {
+        logger.LogInformation("⌛ Starting server timeout timer...");
         _startupTimeoutTimer?.Dispose();
         _startupTimeoutTimer = new Timer(_ =>
         {
@@ -122,17 +123,21 @@ public class ServerStatus : IServerStatus
         {
             lock (_connected)
             {
+                if (_connected.Contains(service))
+                {
+                    return;
+                }
+
+                logger.LogInformation($"✅ {service.ServiceName} is alive.");
                 _connected.Add(service);
 
                 if (_connected.Count == _connectables.Count && !_startup && Status != ReadyState.Alive)
                 {
-                    logger.LogInformation($"✅ {service.ServiceName} is alive.");
                     _startup = true;
                     _ = RunStartupActionsAsync(actions, logger, tcs);
                 }
                 else if (_connected.Count == _connectables.Count && Status != ReadyState.Alive)
                 {
-                    logger.LogInformation($"✅ {service.ServiceName} is alive.");
                     _startupTimeoutTimer?.Dispose();
                     SignalState(ReadyState.Alive);
                     logger.LogInformation("🚀 Altruist is now live again and ready to serve requests.");
@@ -149,9 +154,7 @@ public class ServerStatus : IServerStatus
                 _connected.Remove(service);
             }
 
-            if (!_startup)
-                StartTimeoutTimer(manager);
-
+            StartTimeoutTimer(manager, logger);
             SignalState(ReadyState.Failed);
         };
 

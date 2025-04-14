@@ -26,33 +26,25 @@ public class AltruistLogger : ILogger
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
         var logMessage = formatter(state, exception);
-
-        // Map log level to corresponding color for the ALTRUIST prefix
         var logLevelColor = logLevel switch
         {
-            LogLevel.Trace => ConsoleColor.Gray, // For trace (if used)
-            LogLevel.Debug => ConsoleColor.Magenta, // Purple for debug
-            LogLevel.Information => ConsoleColor.Blue, // Blue for info
-            LogLevel.Warning => ConsoleColor.Yellow, // Yellow for warning
-            LogLevel.Error => ConsoleColor.Red, // Red for error
-            LogLevel.Critical => ConsoleColor.Red, // Red for critical
-            LogLevel.None => ConsoleColor.Gray, // None default color (could be gray or others)
-            _ => ConsoleColor.White // Fallback to white if not matched
+            LogLevel.Trace => ConsoleColor.Gray,
+            LogLevel.Debug => ConsoleColor.Magenta,
+            LogLevel.Information => ConsoleColor.Blue,
+            LogLevel.Warning => ConsoleColor.Yellow,
+            LogLevel.Error => ConsoleColor.Red,
+            LogLevel.Critical => ConsoleColor.Red,
+            LogLevel.None => ConsoleColor.Gray,
+            _ => ConsoleColor.White
         };
 
-        // Prepare formatted log message with colored ALTRUIST version part
-        var versionMessage = $"[ALTRUIST-{_frameworkVersion}]"; // Version part
-        var formattedMessage = $"{versionMessage} {logMessage}"; // Full message with version and log message
-
-        // Set console color for the ALTRUIST version part
+        var versionMessage = $"[ALTRUIST-{_frameworkVersion}]";
+        var formattedMessage = $"{versionMessage} {logMessage}";
         Console.ForegroundColor = logLevelColor;
 
-        // Write the ALTRUIST version part to the console
         Console.Write(versionMessage);
-
-        // Reset color and write the actual log message in white
         Console.ResetColor();
-        Console.WriteLine($" {logMessage}"); // Log message in white
+        Console.WriteLine($" {logMessage}");
     }
 }
 

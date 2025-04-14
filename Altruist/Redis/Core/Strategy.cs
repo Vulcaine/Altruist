@@ -130,12 +130,18 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
 
         multiplexer.ConnectionFailed += (sender, args) =>
        {
-           _subscribedChannels.Clear();
+           if (args.ConnectionType == ConnectionType.Interactive)
+           {
+               _subscribedChannels.Clear();
+           }
        };
 
         multiplexer.ConnectionRestored += async (sender, args) =>
         {
-            await SubscribeToChannels(multiplexer, serviceProvider, logger, true, settings);
+            if (args.ConnectionType == ConnectionType.Interactive)
+            {
+                await SubscribeToChannels(multiplexer, serviceProvider, logger, true, settings);
+            }
         };
 
         await SubscribeToChannels(multiplexer, serviceProvider, logger, false, settings);
