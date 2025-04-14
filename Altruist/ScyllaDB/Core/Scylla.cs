@@ -165,14 +165,15 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(
     string cqlQuery,
-    List<object> parameters) where TVaultModel : class, IVaultModel
+    List<object>? parameters = null) where TVaultModel : class, IVaultModel
     {
         try
         {
             await ensureConnected();
 
+            var count = parameters?.Count ?? 0;
             IEnumerable<TVaultModel> results;
-            if (parameters.Count == 0)
+            if (count == 0)
             {
                 results = await _mapper!.FetchAsync<TVaultModel>(cqlQuery);
             }
@@ -197,25 +198,26 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
 
     public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
-    string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
+    string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel
     {
         return (await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
     }
 
     public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
-        string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
+        string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel
     {
         return (await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
     }
 
 
-    public async Task<int> ExecuteAsync(string cqlQuery, List<object> parameters)
+    public async Task<int> ExecuteAsync(string cqlQuery, List<object>? parameters = null)
     {
         try
         {
             await ensureConnected();
 
-            var statement = _session!.Prepare(cqlQuery).Bind(parameters.Count == 0 ? null : parameters);
+            var count = parameters?.Count ?? 0;
+            var statement = _session!.Prepare(cqlQuery).Bind(count == 0 ? null : parameters);
             var result = await _session.ExecuteAsync(statement);
 
             if (!IsConnected)

@@ -23,14 +23,14 @@ public class CqlVaultTests
     {
         // Arrange
         var testModel = new TestVaultModel { Id = Guid.NewGuid(), Name = "Test" };
-        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()))
+        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(1);
 
         // Act
         await _vault.SaveAsync(testModel);
 
         // Assert
-        _mockDbProvider.Verify(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()), Times.Once);
+        _mockDbProvider.Verify(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()), Times.Once);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class CqlVaultTests
             new TestVaultModel { Id = Guid.NewGuid(), Name = "Item2" }
         };
 
-        _mockDbProvider.Setup(db => db.QueryAsync<TestVaultModel>(It.IsAny<string>(), It.IsAny<object[]>()))
+        _mockDbProvider.Setup(db => db.QueryAsync<TestVaultModel>(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(mockData);
 
         // Act
@@ -67,7 +67,7 @@ public class CqlVaultTests
     public async Task FirstOrDefaultAsync_ReturnsNull_WhenNoData()
     {
         // Arrange
-        _mockDbProvider.Setup(db => db.QueryAsync<TestVaultModel>(It.IsAny<string>(), It.IsAny<object[]>()))
+        _mockDbProvider.Setup(db => db.QueryAsync<TestVaultModel>(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(new List<TestVaultModel>());
 
         // Act
@@ -81,7 +81,7 @@ public class CqlVaultTests
     public async Task CountAsync_ReturnsCorrectCount()
     {
         // Arrange
-        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()))
+        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(5);
 
         // Act
@@ -109,7 +109,7 @@ public class CqlVaultTests
     public async Task DeleteAsync_ReturnsTrue_WhenSuccessful()
     {
         // Arrange
-        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()))
+        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(1);
 
         // Act
@@ -129,14 +129,14 @@ public class CqlVaultTests
             new TestVaultModel { Id = Guid.NewGuid(), Name = "Test2" }
         };
 
-        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()))
+        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(2); // Simulating 2 rows affected
 
         // Act
         await _vault.SaveBatchAsync(testModels);
 
         // Assert
-        _mockDbProvider.Verify(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()), Times.Once);
+        _mockDbProvider.Verify(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()), Times.Once);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class CqlVaultTests
 
         string expectedColumns = "*";
         string expectedTable = typeof(TestVaultModel).Name;
-        string expectedWhereClause = "Name = 'Test'";
+        string expectedWhereClause = "name = 'Test'";
         var expectedQuery = $"SELECT {expectedColumns} FROM {expectedTable} WHERE {expectedWhereClause}";
 
         // Assert
@@ -229,14 +229,14 @@ public class CqlVaultTests
         var testModel = testModels[0];
         testModel.Timestamp = DateTime.UtcNow;
 
-        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()))
+        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(2); // Simulating 2 rows affected
 
         // Act
         await _historyVault.SaveBatchAsync(testModels, saveHistory: true);
 
         // Assert
-        _mockDbProvider.Verify(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<object[]>()), Times.Once);
+        _mockDbProvider.Verify(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()), Times.Once);
     }
 
     [Fact]
@@ -249,7 +249,7 @@ public class CqlVaultTests
         var query = _vault.BuildUpdateQuery();
 
         string expectedTable = typeof(TestVaultModel).Name;
-        string expectedWhereClause = "WHERE Name = 'Test'"; // Assuming the Name field is part of the WHERE clause
+        string expectedWhereClause = "WHERE name = 'Test'"; // Assuming the Name field is part of the WHERE clause
 
         var expectedQuery = $"UPDATE {expectedTable} SET  {expectedWhereClause}";
 
@@ -326,6 +326,7 @@ public class TestVaultModel : IVaultModel
     public string Name { get; set; } = "";
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
+    public string GenId { get; set; } = Guid.NewGuid().ToString();
 }
 
 [Vault("test", StoreHistory: true)]
@@ -335,4 +336,5 @@ public class TestHistoryVaultModel : IVaultModel
     public string Name { get; set; } = "";
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
+    public string GenId { get; set; } = Guid.NewGuid().ToString();
 }
