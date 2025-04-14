@@ -28,12 +28,6 @@ using Portals;
 AltruistBuilder.Create(args, serviceBuilder => serviceBuilder.AddGamingSupport())
     .NoEngine()
     .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
-    .WithRedis(setup => setup
-        .AddDocument<Connection>()
-        .AddDocument<WebSocketConnection>()
-        .AddDocument<Spaceship>()
-        .AddDocument<RoomPacket>())
-    .WithScyllaDB()
     .WebApp()
     .StartServer();
 ```
@@ -54,7 +48,7 @@ All you left to do is setting up the redis / scylladb server that Altruist can c
 ```csharp
 namespace GameGateway.Portals
 {
-    public class SpaceshipGamePortal : AltruistSpaceshipGamePortal
+    public class SpaceshipGamePortal : AltruistGameSessionPortal<SpaceshipPlayer>
     {
         ...
     }
