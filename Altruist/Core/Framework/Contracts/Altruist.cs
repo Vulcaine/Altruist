@@ -2,7 +2,7 @@ using Altruist.Contracts;
 
 namespace Altruist;
 
-public interface IAppStatus
+public interface IServerStatus
 {
     ReadyState Status { get; }
     void SignalState(ReadyState state);
@@ -12,7 +12,7 @@ public interface IAppStatus
 
 public interface IAltruistContext
 {
-    IAppStatus AppStatus { get; set; }
+    IServerStatus AppStatus { get; set; }
     ITransportServiceToken TransportToken { get; set; }
     List<IDatabaseServiceToken> DatabaseTokens { get; set; }
     ICacheServiceToken? CacheToken { get; set; }

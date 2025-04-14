@@ -305,7 +305,7 @@ public class AltruistEngine : IAltruistEngine
 
     public int Throttle = 1000000;
 
-    private IAppStatus _appStatus;
+    private IServerStatus _appStatus;
 
     public AltruistEngine(
         IServiceProvider serviceProvider,

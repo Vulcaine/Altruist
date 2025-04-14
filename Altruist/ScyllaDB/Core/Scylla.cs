@@ -8,7 +8,6 @@ using Altruist.UORM;
 
 namespace Altruist.ScyllaDB;
 
-
 public class ScyllaDbProvider : IScyllaDbProvider
 {
     private ISession? _session { get; set; }
@@ -19,12 +18,24 @@ public class ScyllaDbProvider : IScyllaDbProvider
     public bool IsConnected { get; set; }
     public IDatabaseServiceToken Token { get; private set; } = ScyllaDBToken.Instance;
 
+
+
     public ScyllaDbProvider(List<string> contactPoints, Builder? builder = null)
     {
         _contactPoints = contactPoints;
         _builder = builder;
     }
 
+
+    public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
+    {
+        _contactPoints = new List<string>();
+        _session = session;
+        _mapper = mapper;
+        Token = token;
+    }
+
+    #region Connection Events
     private async Task ensureConnected()
     {
         if (!IsConnected)
@@ -85,6 +96,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public async Task ShutdownAsync(Exception? ex = null)
     {
+        StopHealthChecks();
         if (_session == null)
             return;
 
@@ -123,6 +135,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
                 _cluster = cluster;
                 _mapper = new Mapper(_session);
                 RaiseConnectedEvent();
+                StartHealthChecks();
                 return;
             }
             catch (Exception ex)
@@ -144,14 +157,9 @@ public class ScyllaDbProvider : IScyllaDbProvider
         RaiseOnRetryExhaustedEvent(lastException!);
     }
 
+    #endregion
 
-    public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
-    {
-        _contactPoints = new List<string>();
-        _session = session;
-        _mapper = mapper;
-        Token = token;
-    }
+    #region  Provider API
 
     private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(
     string cqlQuery,
@@ -438,6 +446,61 @@ public class ScyllaDbProvider : IScyllaDbProvider
         await _session!.ExecuteAsync(new SimpleStatement(query));
     }
 
+    #endregion
+
+    #region  Health Checks
+
+    private CancellationTokenSource _healthCheckCts = new();
+    private SemaphoreSlim _pingLock = new(1, 1);
+
+    private void StartHealthChecks(int seconds = 3)
+    {
+        _ = Task.Run(async () =>
+        {
+            while (!_healthCheckCts.Token.IsCancellationRequested)
+            {
+                await HealthCheckAsync();
+                await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCheckCts.Token);
+            }
+        });
+    }
+
+
+    private async Task HealthCheckAsync()
+    {
+        if (!await _pingLock.WaitAsync(0)) return;
+        try
+        {
+            if (_session != null)
+            {
+                await _session.ExecuteAsync(new SimpleStatement("SELECT now() FROM system.local"));
+                if (!IsConnected)
+                {
+                    IsConnected = true;
+                    RaiseConnectedEvent();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (IsConnected)
+            {
+                IsConnected = false;
+                RaiseFailedEvent(ex);
+            }
+        }
+        finally
+        {
+            _pingLock.Release();
+        }
+    }
+
+
+    private void StopHealthChecks()
+    {
+        _healthCheckCts.Cancel();
+    }
+    #endregion
 }
 
 

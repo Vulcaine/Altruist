@@ -16,7 +16,7 @@ namespace Altruist
         public ITransportServiceToken TransportToken { get; set; }
         public List<IDatabaseServiceToken> DatabaseTokens { get; set; } = new List<IDatabaseServiceToken>();
         public ICacheServiceToken? CacheToken { get; set; }
-        public IAppStatus AppStatus { get; set; }
+        public IServerStatus AppStatus { get; set; }
 
         public void AddEndpoint(string endpoint) => Endpoints.Add(endpoint);
 

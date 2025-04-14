@@ -76,7 +76,7 @@ namespace Altruist
             Services.AddSingleton<DatabaseProviderFactory>();
             Services.AddSingleton(sp => new LoadSyncServicesAction(sp));
             Services.AddSingleton<IAction>(sp => sp.GetRequiredService<LoadSyncServicesAction>());
-            Services.AddSingleton<IAppStatus, AppStatus>();
+            Services.AddSingleton<IServerStatus, ServerStatus>();
         }
 
         public static AltruistEngineBuilder Create(string[] args, Func<IServiceCollection, IServiceCollection>? serviceBuilder = null) => new AltruistBuilder(args, serviceBuilder).ToConnectionBuilder();
@@ -400,12 +400,12 @@ namespace Altruist
         public readonly WebApplication App;
         private readonly Dictionary<Type, string> _portals;
 
-        public readonly IAppStatus AppState;
+        public readonly IServerStatus AppState;
 
         public AppManager(WebApplication app)
         {
             App = app;
-            AppState = new AppStatus(app.Services);
+            AppState = new ServerStatus(app.Services);
             var settings = app.Services.GetRequiredService<IAltruistContext>();
             settings.AppStatus = AppState;
             _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals.ToDictionary(x => x.Key, x => x.Value.Path);
