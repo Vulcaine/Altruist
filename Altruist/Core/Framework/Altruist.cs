@@ -377,7 +377,6 @@ namespace Altruist
             {
                 var env = sp.GetRequiredService<IHostEnvironment>();
                 var engine = new AltruistEngine(sp, hz, unit, throttle);
-                engine.Enable();
 
                 if (env.IsDevelopment())
                 {

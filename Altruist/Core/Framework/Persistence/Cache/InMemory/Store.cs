@@ -31,13 +31,7 @@ public sealed class InMemoryCacheServiceToken : ICacheServiceToken
 public class InMemoryCache : IMemoryCacheProvider
 {
     private readonly ConcurrentDictionary<Type, Dictionary<string, object>> _memoryCacheEntities = new();
-
-    public event Action? OnConnected;
-    public event Action<Exception> OnRetryExhausted = delegate { };
-
     public ICacheServiceToken Token => new InMemoryCacheServiceToken();
-
-    public bool IsConnected => true;
 
     public Task<ICursor<T>> GetAllAsync<T>() where T : notnull
     {
@@ -149,12 +143,6 @@ public class InMemoryCache : IMemoryCacheProvider
     {
         var cacheMap = GetOrCreateCacheMap(typeof(T));
         cacheMap.Remove(key);
-        return Task.CompletedTask;
-    }
-
-    public Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000)
-    {
-        OnConnected?.Invoke();
         return Task.CompletedTask;
     }
 }

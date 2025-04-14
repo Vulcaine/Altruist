@@ -45,7 +45,10 @@ public class AppStatus : IAppStatus
             {
                 throw new InvalidOperationException($"❌ Cache service with token `{cacheToken}` not found.");
             }
-            _connectables.Add(cache);
+            else if (cache is IConnectable connectable)
+            {
+                _connectables.Add(connectable);
+            }
         }
 
         _connectables.AddRange(relayServices);
@@ -85,37 +88,88 @@ public class AppStatus : IAppStatus
                 logger.LogInformation($"🔗 Starting relay portal {relay.GetType().Name}...");
             }
 
-            service.OnConnected += () =>
+            SubscribeToServiceEvents(service, manager, actions, tcs, logger);
+
+            if (service.IsConnected)
             {
                 lock (_connected)
                 {
                     _connected.Add(service);
-                    if (_connected.Count == _connectables.Count && Status == ReadyState.Starting)
-                    {
-                        _ = Task.Run(async () =>
-                        {
-                            logger.LogInformation("✅ All required services connected. Running startup actions...");
-                            foreach (var action in actions)
-                                await action.Run();
-
-                            SignalState(ReadyState.Alive);
-                            logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
-                            tcs.TrySetResult(true);
-                        });
-                    }
                 }
-            };
-
-            service.OnRetryExhausted += (ex) =>
+            }
+            else
             {
-                manager.Shutdown(ex, $"❌ {service.GetType()} failed to connect after all retries.");
-            };
-
-            if (!service.IsConnected)
                 _ = service.ConnectAsync();
+            }
+        }
+
+        await CheckAllConnectedAsync(actions, logger, tcs);
+    }
+
+    private void SubscribeToServiceEvents(
+        IConnectable service,
+        AppManager manager,
+        IEnumerable<IAction> actions,
+        TaskCompletionSource<bool> tcs,
+        ILogger logger)
+    {
+        service.OnConnected += () =>
+        {
+            lock (_connected)
+            {
+                _connected.Add(service);
+
+                if (_connected.Count == _connectables.Count && Status == ReadyState.Starting)
+                {
+                    _ = RunStartupActionsAsync(actions, logger, tcs);
+                }
+            }
+        };
+
+        service.OnFailed += ex =>
+        {
+            lock (_connected)
+            {
+                _connected.Remove(service);
+            }
+
+            SignalState(ReadyState.Failed);
+        };
+
+        service.OnRetryExhausted += ex =>
+        {
+            manager.Shutdown(ex, $"❌ {service.GetType()} failed to connect after all retries.");
+        };
+    }
+
+    private async Task CheckAllConnectedAsync(
+        IEnumerable<IAction> actions,
+        ILogger logger,
+        TaskCompletionSource<bool> tcs)
+    {
+        lock (_connected)
+        {
+            if (_connected.Count == _connectables.Count && Status == ReadyState.Starting)
+            {
+                _ = RunStartupActionsAsync(actions, logger, tcs);
+            }
         }
 
         await tcs.Task;
+    }
+
+    private async Task RunStartupActionsAsync(
+        IEnumerable<IAction> actions,
+        ILogger logger,
+        TaskCompletionSource<bool> tcs)
+    {
+        logger.LogInformation("✅ All required services connected. Running startup actions...");
+        foreach (var action in actions)
+            await action.Run();
+
+        SignalState(ReadyState.Alive);
+        logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
+        tcs.TrySetResult(true);
     }
 }
 

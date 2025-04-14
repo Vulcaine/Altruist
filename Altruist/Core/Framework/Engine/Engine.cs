@@ -544,13 +544,11 @@ public class EngineWithDiagnostics : IAltruistEngine
 
     public void Start()
     {
-        Enable();
         _wrappedEngine.Start();
     }
 
     public void Stop()
     {
-        Disable();
         _wrappedEngine.Stop();
     }
 

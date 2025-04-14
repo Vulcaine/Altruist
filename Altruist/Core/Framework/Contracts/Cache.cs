@@ -16,7 +16,7 @@ public interface ICursor<T> where T : notnull
 /// <summary>
 /// Defines a generic caching provider interface for storing, retrieving, and managing objects in a cache.
 /// </summary>
-public interface ICacheProvider : IConnectable
+public interface ICacheProvider
 {
 
     ICacheServiceToken Token { get; }
@@ -109,7 +109,7 @@ public interface IRedisCacheProvider : IExternalCacheProvider
     Task<IEnumerable<RedisKey>> KeysAsync<T>() where T : notnull;
 }
 
-public interface IExternalCacheProvider : ICacheProvider
+public interface IExternalCacheProvider : ICacheProvider, IConnectable
 {
 }
 

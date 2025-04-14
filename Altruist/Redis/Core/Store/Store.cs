@@ -57,10 +57,10 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
 
     private static ThreadLocal<MemoryStream> _memoryStream = new(() => new MemoryStream());
 
-    private event Action? _onConnected;
-    private event Action<Exception>? _onRetryExhausted;
+    private event Action? _onConnected = () => { };
+    private event Action<Exception>? _onRetryExhausted = _ => { };
 
-    private event Action<Exception>? _onFailed;
+    private event Action<Exception>? _onFailed = _ => { };
 
     public event Action? OnConnected
     {
@@ -98,10 +98,10 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
 
     private void HookRedisEvents()
     {
-        _redis.Multiplexer.ConnectionRestored += (_, _) => _onConnected?.Invoke();
-        _redis.Multiplexer.ConnectionFailed += (_, args) => _onRetryExhausted?.Invoke(args.Exception ?? new Exception("Connection failed"));
+        _redis.Multiplexer.ConnectionRestored += (_, _) => RaiseConnectedEvent();
+        _redis.Multiplexer.ConnectionFailed += (_, args) => RaiseOnRetryExhaustedEvent(args.Exception ?? new Exception("Connection failed"));
 
-        if (_redis.Multiplexer.IsConnected) _onConnected?.Invoke();
+        if (_redis.Multiplexer.IsConnected) RaiseConnectedEvent();
         else _onRetryExhausted?.Invoke(new Exception("Connection failed"));
     }
 
