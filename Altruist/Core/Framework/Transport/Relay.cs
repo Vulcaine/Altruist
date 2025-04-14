@@ -35,6 +35,10 @@ public class AltruistRelayService : AbstractRelayService
 
     public override string RelayEvent => _eventName;
 
+    public override string ServiceName { get; } = "AltruistRelayService";
+
+    public override bool IsConnected => throw new NotImplementedException();
+
     public AltruistRelayService(
         string protocol,
         string host, int port, string eventName, RelayPortal socketPortal, ICodec codec, ILoggerFactory loggerFactory, ITransportClient transportClient)

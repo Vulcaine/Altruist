@@ -1,6 +1,11 @@
 namespace Altruist;
 
-public interface IConnectable
+public interface IService
+{
+    public string ServiceName { get; }
+}
+
+public interface IConnectable : IService
 {
     bool IsConnected { get; }
     event Action? OnConnected;
@@ -23,7 +28,8 @@ public abstract class AbstractRelayService : IRelayService
 {
     public abstract string RelayEvent { get; }
 
-    public bool IsConnected => throw new NotImplementedException();
+    public abstract string ServiceName { get; }
+    public abstract bool IsConnected { get; }
 
     public event Action? OnConnected;
     public event Action<Exception> OnRetryExhausted = _ => { };

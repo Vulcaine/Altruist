@@ -16,6 +16,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
     private readonly List<string> _contactPoints;
     private readonly Builder? _builder;
     public bool IsConnected { get; set; }
+
+    public string ServiceName { get; } = "ScyllaDB";
     public IDatabaseServiceToken Token { get; private set; } = ScyllaDBToken.Instance;
 
 

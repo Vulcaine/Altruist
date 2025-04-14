@@ -109,6 +109,8 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
 
     public ICacheServiceToken Token => RedisCacheServiceToken.Instance;
 
+    public string ServiceName { get; } = "RedisCache";
+
     private async Task SaveObjectAsync<T>(string key, T entity) where T : notnull
     {
         var document = GetDocumentOrFail<T>();

@@ -78,7 +78,7 @@ public class ServerStatus : IServerStatus
         {
             if (service is IRelayService relay)
             {
-                logger.LogInformation($"🔗 Starting relay portal {relay.GetType().Name}...");
+                logger.LogInformation($"🔗 Starting relay portal {relay.ServiceName}...");
             }
 
             SubscribeToServiceEvents(service, manager, actions, tcs, logger);
@@ -120,7 +120,7 @@ public class ServerStatus : IServerStatus
     {
         service.OnConnected += () =>
         {
-            logger.LogInformation($"✅ {service.GetType()} is alive.");
+            logger.LogInformation($"✅ {service.ServiceName} is alive.");
             lock (_connected)
             {
                 _connected.Add(service);
@@ -141,7 +141,7 @@ public class ServerStatus : IServerStatus
 
         service.OnFailed += ex =>
         {
-            logger.LogError($"❌ Lost connection to the service {service.GetType()}, reason: {ex.Message}");
+            logger.LogError($"❌ Lost connection to the service {service.ServiceName}, reason: {ex.Message}");
 
             lock (_connected)
             {
@@ -156,7 +156,7 @@ public class ServerStatus : IServerStatus
 
         service.OnRetryExhausted += ex =>
         {
-            manager.Shutdown(ex, $"❌ {service.GetType()} failed to connect after all retries.");
+            manager.Shutdown(ex, $"❌ {service.ServiceName} failed to connect after all retries.");
         };
     }
 
