@@ -17,11 +17,12 @@ public class AltruistScyllaDefaultRetryPolicy : IExtendedRetryPolicy, IRetryPoli
     {
         try
         {
+            RaiseOnFailed(nbRetry);
             return _defaultRetryPolicy.OnReadTimeout(query, cl, requiredResponses, receivedResponses, dataRetrieved, nbRetry);
         }
-        catch (Exception ex)
+        catch (Exception nex)
         {
-            _scyllaDbProvider.ShutdownAsync(ex);
+            _scyllaDbProvider.RaiseOnRetryExhaustedEvent(nex);
             return RetryDecision.Rethrow();
         }
     }
@@ -30,11 +31,12 @@ public class AltruistScyllaDefaultRetryPolicy : IExtendedRetryPolicy, IRetryPoli
     {
         try
         {
+            RaiseOnFailed(nbRetry);
             return _defaultRetryPolicy.OnRequestError(statement, config, ex, nbRetry);
         }
         catch (Exception nex)
         {
-            _scyllaDbProvider.ShutdownAsync(nex);
+            _scyllaDbProvider.RaiseOnRetryExhaustedEvent(nex);
             return RetryDecision.Rethrow();
         }
     }
@@ -43,11 +45,12 @@ public class AltruistScyllaDefaultRetryPolicy : IExtendedRetryPolicy, IRetryPoli
     {
         try
         {
+            RaiseOnFailed(nbRetry);
             return _defaultRetryPolicy.OnUnavailable(query, cl, requiredReplica, aliveReplica, nbRetry);
         }
-        catch (Exception ex)
+        catch (Exception nex)
         {
-            _scyllaDbProvider.ShutdownAsync(ex);
+            _scyllaDbProvider.RaiseOnRetryExhaustedEvent(nex);
             return RetryDecision.Rethrow();
         }
     }
@@ -56,12 +59,21 @@ public class AltruistScyllaDefaultRetryPolicy : IExtendedRetryPolicy, IRetryPoli
     {
         try
         {
+            RaiseOnFailed(nbRetry);
             return _defaultRetryPolicy.OnWriteTimeout(query, cl, writeType, requiredAcks, receivedAcks, nbRetry);
         }
-        catch (Exception ex)
+        catch (Exception nex)
         {
-            _scyllaDbProvider.ShutdownAsync(ex);
+            _scyllaDbProvider.RaiseOnRetryExhaustedEvent(nex);
             return RetryDecision.Rethrow();
+        }
+    }
+
+    private void RaiseOnFailed(int nbRetry, Exception? ex = null)
+    {
+        if (nbRetry == 1)
+        {
+            _scyllaDbProvider.RaiseFailedEvent(ex ?? new Exception("Connection failed."));
         }
     }
 }

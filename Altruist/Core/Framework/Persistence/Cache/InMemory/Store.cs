@@ -33,7 +33,7 @@ public class InMemoryCache : IMemoryCacheProvider
     private readonly ConcurrentDictionary<Type, Dictionary<string, object>> _memoryCacheEntities = new();
 
     public event Action? OnConnected;
-    public event Action<Exception> OnFailed = delegate { };
+    public event Action<Exception> OnRetryExhausted = delegate { };
 
     public ICacheServiceToken Token => new InMemoryCacheServiceToken();
 
@@ -152,7 +152,7 @@ public class InMemoryCache : IMemoryCacheProvider
         return Task.CompletedTask;
     }
 
-    public Task ConnectAsync()
+    public Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000)
     {
         OnConnected?.Invoke();
         return Task.CompletedTask;

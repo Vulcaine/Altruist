@@ -299,7 +299,7 @@ namespace Altruist
             Settings = settings;
         }
 
-        public AppBuilder Configure(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup!(Builder.Build()));
+        public AppManager Configure(Func<WebApplication, WebApplication> setup) => new AppManager(setup!(Builder.Build()));
 
         public void StartServer()
         {
@@ -317,7 +317,7 @@ namespace Altruist
             altruistContext.Validate();
         }
 
-        public AppBuilder Configure(Func<WebApplication, WebApplication> setup) => new AppBuilder(setup!(App!));
+        public AppManager Configure(Func<WebApplication, WebApplication> setup) => new AppManager(setup!(App!));
 
         public void StartServer()
         {
@@ -327,10 +327,10 @@ namespace Altruist
         public void StartServer(string host, int port)
         {
             BuildApp();
-            new AppBuilder(App!).StartServer(host, port);
+            new AppManager(App!).StartServer(host, port);
         }
 
-        public AppBuilder BuildApp()
+        public AppManager BuildApp()
         {
             if (App == null)
             {
@@ -348,7 +348,7 @@ namespace Altruist
                 App.UseMiddleware<ReadinessMiddleware>();
             }
 
-            return new AppBuilder(App!);
+            return new AppManager(App!);
         }
     }
 
@@ -396,30 +396,37 @@ namespace Altruist
         }
     }
 
-    public class AppBuilder
+    public class AppManager
     {
-        private readonly WebApplication _app;
+        public readonly WebApplication App;
         private readonly Dictionary<Type, string> _portals;
 
-        public AppBuilder(WebApplication app)
+        public readonly IAppStatus AppState;
+
+        public AppManager(WebApplication app)
         {
-            _app = app;
+            App = app;
+            AppState = new AppStatus(app.Services);
+            var settings = app.Services.GetRequiredService<IAltruistContext>();
+            settings.AppStatus = AppState;
             _portals = app.Services.GetService<ITransportConnectionSetupBase>()!.Portals.ToDictionary(x => x.Key, x => x.Value.Path);
         }
 
-        public AppBuilder Configure(Func<WebApplication, WebApplication> setup)
+        public IServiceProvider ServiceProvider => App.Services;
+
+        public AppManager Configure(Func<WebApplication, WebApplication> setup)
         {
             if (setup != null)
             {
-                return new AppBuilder(setup(_app));
+                return new AppManager(setup(App));
             }
             return this;
         }
 
-        public AppBuilder UseAuth()
+        public AppManager UseAuth()
         {
-            _app.UseAuthentication();
-            _app.UseAuthorization();
+            App.UseAuthentication();
+            App.UseAuthorization();
             return this;
         }
 
@@ -433,112 +440,37 @@ namespace Altruist
             _ = StartServer($"http://{host}:{port}");
         }
 
+        public void Shutdown(Exception? ex = null, string reason = "")
+        {
+            var settings = App.Services.GetRequiredService<IAltruistContext>();
+            var appStatus = settings.AppStatus;
+            var logger = App.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AppManager>();
+            if (ex != null)
+            {
+                logger.LogCritical($"❌ {reason}, {ex.Message}.");
+            }
+            else
+            {
+                logger.LogInformation($"{reason}.");
+            }
+
+            appStatus.SignalState(ReadyState.Failed);
+            Environment.Exit(1);
+        }
 
         public async Task Startup()
         {
-            var settings = _app.Services.GetRequiredService<IAltruistContext>();
-            var actions = _app.Services.GetServices<IAction>();
-            var appStatus = _app.Services.GetRequiredService<IAppStatus>();
-            var logger = _app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AppBuilder>();
-
-            var totalServices = settings.DatabaseTokens.Count + (settings.CacheToken != null ? 1 : 0);
-            var connectedCount = 0;
-            var allConnected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
-            cts.Token.Register(() =>
-            {
-                if (!allConnected.Task.IsCompleted)
-                {
-                    logger.LogCritical("❌ Startup timed out. Not all services connected in time.");
-                    appStatus.SignalState(ReadyState.Failed);
-                    Environment.Exit(1);
-                }
-            });
-
-            void OnServiceConnected()
-            {
-                connectedCount += 1;
-                if (connectedCount == totalServices)
-                {
-                    allConnected.TrySetResult(true);
-                }
-            }
-
-            void OnServiceFailed(Exception ex)
-            {
-                logger.LogError(ex, "❌ A required service failed to connect.");
-                appStatus.SignalState(ReadyState.Failed);
-            }
-
-            // Wire DB services
-            foreach (var dbToken in settings.DatabaseTokens)
-            {
-                var dbService = _app.Services.GetServices<IGeneralDatabaseProvider>()
-                    .FirstOrDefault(s => s.Token == dbToken);
-
-                if (dbService == null)
-                {
-                    logger.LogCritical($"❌ Database service with token `{dbToken}` not found.");
-                    appStatus.SignalState(ReadyState.Failed);
-                    Environment.Exit(1);
-                    return;
-                }
-
-                dbService.OnConnected += OnServiceConnected;
-                dbService.OnFailed += OnServiceFailed;
-
-                await dbService.ConnectAsync();
-            }
-
-            // Wire cache service
-            if (settings.CacheToken is { } cacheToken)
-            {
-                var cacheService = _app.Services.GetServices<ICacheProvider>()
-                    .FirstOrDefault(c => c.Token == cacheToken);
-
-                if (cacheService == null)
-                {
-                    logger.LogCritical($"❌ Cache service with token `{cacheToken}` not found.");
-                    appStatus.SignalState(ReadyState.Failed);
-                    Environment.Exit(1);
-                    return;
-                }
-
-                if (cacheService.IsConnected)
-                {
-                    OnServiceConnected();
-                }
-                else
-                {
-                    cacheService.OnConnected += OnServiceConnected;
-                    cacheService.OnFailed += OnServiceFailed;
-                }
-            }
-
-            // Wait for all required services to be ready or timeout
-            await allConnected.Task;
-
-            if (appStatus.Status == ReadyState.Starting)
-            {
-                logger.LogInformation("✅ All required services connected. Running startup actions...");
-
-                foreach (var action in actions)
-                {
-                    await action.Run();
-                }
-
-                appStatus.SignalState(ReadyState.Alive);
-                logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
-            }
+            var settings = App.Services.GetRequiredService<IAltruistContext>();
+            var appStatus = settings.AppStatus;
+            await appStatus.StartupAsync(this);
         }
 
         public Task StartServer(string connectionString)
         {
-            EventHandlerRegistry<IPortal>.ScanAndRegisterHandlers(_app.Services);
-
-            var _settings = _app.Services.GetRequiredService<IAltruistContext>();
-            var gatewayServices = _app.Services.GetServices<IRelayService>();
+            EventHandlerRegistry<IPortal>.ScanAndRegisterHandlers(App.Services);
+            var logger = App.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AppManager>();
+            var _settings = App.Services.GetRequiredService<IAltruistContext>();
+            var gatewayServices = App.Services.GetServices<IRelayService>();
             var splitted = connectionString.Split(':');
             var protocol = splitted[0];
             var host = splitted[1].Replace("//", "");
@@ -558,27 +490,15 @@ namespace Altruist
 ╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚══════╝   ╚═╝         ╚═══╝   ╚═╝                                               
 "));
             logBuilder.AppendLine(frameLine);
-            var transport = _app.Services.GetService<ITransport>();
+            var transport = App.Services.GetService<ITransport>();
 
             foreach (var (type, path) in _portals)
             {
                 logBuilder.AppendLine(PortaledText($"🔌 Opening {type.Name} through {path}"));
-                transport!.UseTransportEndpoints(_app, type, path);
+                transport!.UseTransportEndpoints(App, type, path);
             }
 
-            foreach (var service in gatewayServices)
-            {
-                logBuilder.AppendLine(PortaledText($"🔗 Starting relay portal {service.GetType().Name}..."));
 
-                try
-                {
-                    _ = Task.Run(service.ConnectAsync);
-                }
-                catch (Exception ex)
-                {
-                    logBuilder.AppendLine(PortaledText($"❌ Connection failed for {service.GetType().Name}: {ex.Message}"));
-                }
-            }
 
             _ = Startup();
 
@@ -601,9 +521,9 @@ namespace Altruist
 
             if (_settings.EngineEnabled)
             {
-                var scheduler = _app.Services.GetService<MethodScheduler>();
-                var methods = scheduler!.RegisterMethods(_app.Services);
-                var engine = _app.Services.GetService<IAltruistEngine>();
+                var scheduler = App.Services.GetService<MethodScheduler>();
+                var methods = scheduler!.RegisterMethods(App.Services);
+                var engine = App.Services.GetService<IAltruistEngine>();
                 engine!.Start();
 
                 logBuilder.AppendLine(PortaledText(
@@ -627,7 +547,14 @@ namespace Altruist
             }
 
             Console.WriteLine("\n" + logBuilder.ToString() + "\n");
-            _app.Run(connectionString);
+
+            if (_settings.AppStatus.Status != ReadyState.Alive)
+            {
+                logger.LogWarning("🕒 All systems initialized, but I'm still waiting for a few lazy services to show up. Hang tight — no inbound or outbound messages are allowed yet. And if you enabled the engine... nope, not starting that until everyone's here!");
+
+            }
+
+            App.Run(connectionString);
             return Task.CompletedTask;
         }
     }

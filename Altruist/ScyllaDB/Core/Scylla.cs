@@ -27,7 +27,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     private async Task ensureConnected()
     {
-        if (_session == null)
+        if (!IsConnected)
         {
             await ConnectAsync();
         }
@@ -63,21 +63,38 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public event Action? OnConnected;
     public event Action<Exception>? OnFailed;
+    public event Action<Exception>? OnRetryExhausted;
+
+    public void RaiseConnectedEvent()
+    {
+        IsConnected = true;
+        OnConnected?.Invoke();
+    }
+
+    public void RaiseFailedEvent(Exception ex)
+    {
+        IsConnected = false;
+        OnFailed?.Invoke(ex);
+    }
+
+    public void RaiseOnRetryExhaustedEvent(Exception ex)
+    {
+        IsConnected = false;
+        OnRetryExhausted?.Invoke(ex);
+    }
 
     public async Task ShutdownAsync(Exception? ex = null)
     {
-        OnFailed?.Invoke(ex ?? new Exception("Shutdown"));
         if (_session == null)
             return;
+
         await _session.ShutdownAsync();
     }
 
-    public async Task ConnectAsync()
+    public async Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000)
     {
         if (_contactPoints.Count == 0 || IsConnected)
-        {
             return;
-        }
 
         var clusterBuilder = _builder ?? Cluster.Builder().WithDefaultKeyspace("altruist");
 
@@ -85,34 +102,48 @@ public class ScyllaDbProvider : IScyllaDbProvider
         {
             string contactPointWithScheme = contactPoint.Contains("://") ? contactPoint : "cql://" + contactPoint;
             var uri = new Uri(contactPointWithScheme);
-
             string host = uri.Host;
             int port = uri.Port;
 
-            clusterBuilder = clusterBuilder.AddContactPoint(host).WithPort(port).WithReconnectionPolicy(new ConstantReconnectionPolicy(10000)).WithRetryPolicy(new AltruistScyllaDefaultRetryPolicy(this));
+            clusterBuilder = clusterBuilder
+                .AddContactPoint(host)
+                .WithPort(port)
+                .WithReconnectionPolicy(new ConstantReconnectionPolicy(10000))
+                .WithRetryPolicy(new AltruistScyllaDefaultRetryPolicy(this));
         }
 
         var cluster = clusterBuilder.Build();
 
-        _session = await Task.Run(() =>
+        Exception? lastException = null;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
-                var connection = cluster.ConnectAndCreateDefaultKeyspaceIfNotExists();
-                OnConnected?.Invoke();
-                IsConnected = true;
-                return connection;
+                _session = await Task.Run(() => cluster.ConnectAndCreateDefaultKeyspaceIfNotExists());
+                _cluster = cluster;
+                _mapper = new Mapper(_session);
+                RaiseConnectedEvent();
+                return;
             }
             catch (Exception ex)
             {
-                OnFailed?.Invoke(ex);
-                return null;
-            }
-        });
+                if (attempt == 1)
+                {
+                    RaiseFailedEvent(ex);
+                }
 
-        _cluster = cluster;
-        _mapper = new Mapper(_session);
+                lastException = ex;
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(delayMilliseconds);
+                }
+            }
+        }
+
+        RaiseOnRetryExhaustedEvent(lastException!);
     }
+
 
     public ScyllaDbProvider(ISession session, IMapper mapper, IDatabaseServiceToken token)
     {
@@ -122,39 +153,75 @@ public class ScyllaDbProvider : IScyllaDbProvider
         Token = token;
     }
 
-    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
+    private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(
+    string cqlQuery,
+    List<object> parameters) where TVaultModel : class, IVaultModel
     {
-        await ensureConnected();
-        if (parameters.Count == 0)
+        try
         {
-            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery)).ToList();
+            await ensureConnected();
+
+            IEnumerable<TVaultModel> results;
+            if (parameters.Count == 0)
+            {
+                results = await _mapper!.FetchAsync<TVaultModel>(cqlQuery);
+            }
+            else
+            {
+                results = await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters);
+            }
+
+            if (!IsConnected)
+            {
+                RaiseConnectedEvent();
+            }
+
+            return results;
         }
-        else
+        catch (Exception ex)
         {
-            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
+            RaiseFailedEvent(ex);
+            throw;
         }
     }
 
-    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
+
+    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
+    string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
     {
-        await ensureConnected();
-        if (parameters.Count == 0)
-        {
-            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery)).FirstOrDefault();
-        }
-        else
-        {
-            return (await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
-        }
+        return (await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters)).ToList();
     }
+
+    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
+        string cqlQuery, List<object> parameters) where TVaultModel : class, IVaultModel
+    {
+        return (await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
+    }
+
 
     public async Task<int> ExecuteAsync(string cqlQuery, List<object> parameters)
     {
-        await ensureConnected();
-        var statement = _session!.Prepare(cqlQuery).Bind(parameters.Count == 0 ? null : parameters);
-        var result = await _session.ExecuteAsync(statement);
-        return result?.Info?.AchievedConsistency != null ? result.GetRows().Count() : 0;
+        try
+        {
+            await ensureConnected();
+
+            var statement = _session!.Prepare(cqlQuery).Bind(parameters.Count == 0 ? null : parameters);
+            var result = await _session.ExecuteAsync(statement);
+
+            if (!IsConnected)
+            {
+                RaiseConnectedEvent();
+            }
+
+            return result?.Info?.AchievedConsistency != null ? result.GetRows().Count() : 0;
+        }
+        catch (Exception ex)
+        {
+            RaiseFailedEvent(ex);
+            throw;
+        }
     }
+
 
     public async Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
@@ -370,6 +437,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
         var query = $"USE {keyspace};";
         await _session!.ExecuteAsync(new SimpleStatement(query));
     }
+
 }
 
 

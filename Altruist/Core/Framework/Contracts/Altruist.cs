@@ -4,13 +4,15 @@ namespace Altruist;
 
 public interface IAppStatus
 {
-    ReadyState Status { get; set; }
+    ReadyState Status { get; }
     void SignalState(ReadyState state);
+    Task StartupAsync(AppManager manager);
 }
 
 
 public interface IAltruistContext
 {
+    IAppStatus AppStatus { get; set; }
     ITransportServiceToken TransportToken { get; set; }
     List<IDatabaseServiceToken> DatabaseTokens { get; set; }
     ICacheServiceToken? CacheToken { get; set; }

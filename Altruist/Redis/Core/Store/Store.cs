@@ -58,6 +58,8 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     private static ThreadLocal<MemoryStream> _memoryStream = new(() => new MemoryStream());
 
     private event Action? _onConnected;
+    private event Action<Exception>? _onRetryExhausted;
+
     private event Action<Exception>? _onFailed;
 
     public event Action? OnConnected
@@ -66,19 +68,41 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         remove => _onConnected -= value;
     }
 
+    public event Action<Exception>? OnRetryExhausted
+    {
+        add => _onRetryExhausted += value;
+        remove => _onRetryExhausted -= value;
+    }
+
     public event Action<Exception>? OnFailed
     {
         add => _onFailed += value;
         remove => _onFailed -= value;
     }
 
+
+    public void RaiseConnectedEvent()
+    {
+        _onConnected?.Invoke();
+    }
+
+    public void RaiseFailedEvent(Exception ex)
+    {
+        _onFailed?.Invoke(ex);
+    }
+
+    public void RaiseOnRetryExhaustedEvent(Exception ex)
+    {
+        _onRetryExhausted?.Invoke(ex);
+    }
+
     private void HookRedisEvents()
     {
         _redis.Multiplexer.ConnectionRestored += (_, _) => _onConnected?.Invoke();
-        _redis.Multiplexer.ConnectionFailed += (_, args) => _onFailed?.Invoke(args.Exception ?? new Exception("Connection failed"));
+        _redis.Multiplexer.ConnectionFailed += (_, args) => _onRetryExhausted?.Invoke(args.Exception ?? new Exception("Connection failed"));
 
         if (_redis.Multiplexer.IsConnected) _onConnected?.Invoke();
-        else _onFailed?.Invoke(new Exception("Connection failed"));
+        else _onRetryExhausted?.Invoke(new Exception("Connection failed"));
     }
 
     public bool IsConnected => _redis.Multiplexer.IsConnected;
@@ -251,7 +275,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         return await Keys(pattern: $"{document.Name}:*");
     }
 
-    public Task ConnectAsync()
+    public Task ConnectAsync(int maxRetries, int delayMilliseconds)
     {
         throw new NotImplementedException("RedisConnectionService.ConnectAsync() is not implemented. It is done automatically via the Multiplexer.");
     }
