@@ -1,6 +1,3 @@
-
-using Cassandra;
-
 namespace Altruist.Database;
 
 public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, IVaultModel
@@ -8,6 +5,8 @@ public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, 
     public Task Load();
 
     public Task SaveAsync(TVaultModel entity);
+
+    public Task<bool> DeleteAsync(string id);
 
     public Task<TVaultModel?> FindCachedByIdAsync(string id);
 
@@ -89,5 +88,18 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
     {
         ValidateVault();
         return _vault!;
+    }
+
+    public async Task<bool> DeleteAsync(string id)
+    {
+        ValidateVault();
+        var deletedFromVault = await _vault!.Where(x => x.GenId == id).DeleteAsync();
+        if (deletedFromVault || _vault == null)
+        {
+            await _cacheProvider.RemoveAsync<TVaultModel>(id);
+            return true;
+        }
+
+        return false;
     }
 }

@@ -209,23 +209,17 @@ public class ScyllaDbProvider : IScyllaDbProvider
         return (await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters)).FirstOrDefault();
     }
 
-
-    public async Task<int> ExecuteAsync(string cqlQuery, List<object>? parameters = null)
+    public async Task<long> ExecuteCountAsync(string cqlQuery, List<object>? parameters = null)
     {
         try
         {
             await ensureConnected();
 
-            var count = parameters?.Count ?? 0;
-            var statement = _session!.Prepare(cqlQuery).Bind(count == 0 ? null : parameters);
+            var statement = _session!.Prepare(cqlQuery).Bind(parameters?.ToArray());
             var result = await _session.ExecuteAsync(statement);
 
-            if (!IsConnected)
-            {
-                RaiseConnectedEvent();
-            }
-
-            return result?.Info?.AchievedConsistency != null ? result.GetRows().Count() : 0;
+            var row = result.FirstOrDefault();
+            return row != null ? row.GetValue<long>("count") : 0;
         }
         catch (Exception ex)
         {
@@ -235,14 +229,39 @@ public class ScyllaDbProvider : IScyllaDbProvider
     }
 
 
-    public async Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
+    public async Task<long> ExecuteAsync(string cqlQuery, List<object>? parameters = null)
+    {
+        try
+        {
+            await ensureConnected();
+
+            var count = parameters?.Count ?? 0;
+            var statement = _session!.Prepare(cqlQuery).Bind(count == 0 ? null : parameters?.ToArray());
+            var result = await _session.ExecuteAsync(statement);
+
+            if (!IsConnected)
+            {
+                RaiseConnectedEvent();
+            }
+
+            return result.GetRows().Count();
+        }
+        catch (Exception ex)
+        {
+            RaiseFailedEvent(ex);
+            throw;
+        }
+    }
+
+
+    public async Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
         await ensureConnected();
         await _mapper!.UpdateAsync(entity);
         return 1;
     }
 
-    public async Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
+    public async Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
     {
         await ensureConnected();
         await _mapper!.DeleteAsync(entity);
@@ -340,6 +359,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
     public async Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null)
     {
         await ensureConnected();
+        var document = Document.From(entityType);
         var tableAttribute = entityType.GetCustomAttribute<VaultAttribute>();
         if (tableAttribute == null)
         {
@@ -355,18 +375,22 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
         await CreateKeySpaceAsync(actualKeyspace.Name, actualKeyspace.Options);
 
-        string tableName = tableAttribute.Name;
+        string tableName = document.Name;
         bool storeHistory = tableAttribute.StoreHistory;
 
-        var primaryKeyAttr = entityType.GetCustomAttribute<VaultPrimaryKeyAttribute>();
-        if (primaryKeyAttr == null || primaryKeyAttr.Keys.Length == 0)
+        var primaryKey = document.PrimaryKey;
+
+        //  entityType.GetCustomAttribute<VaultPrimaryKeyAttribute>();
+        if (primaryKey == null || primaryKey.Keys.Length == 0)
         {
             throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}'.");
         }
 
         // === Get Sorting Key from Class-Level Attribute ===
-        var sortingAttribute = entityType.GetCustomAttribute<VaultSortingByAttribute>();
-        string? sortingKey = sortingAttribute?.Name.ToLower();
+        var sortingAttribute = document.SortingBy;
+        var sortingKey = sortingAttribute != null && document.Columns.ContainsKey(sortingAttribute.Name) ? document.Columns[sortingAttribute.Name] : sortingAttribute?.Name.ToLower();
+
+        // entityType.GetCustomAttribute<VaultSortingByAttribute>();
         bool sortAscending = sortingAttribute?.Ascending ?? true;
 
         // Validate Sorting Key (if defined)
@@ -376,30 +400,31 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
 
         // === Define Table Columns ===
-        var columns = entityType.GetProperties()
-            .Where(p => p.GetCustomAttribute<VaultIgnoredAttribute>() == null)
-            .Select(p =>
-            {
-                var columnAttr = p.GetCustomAttribute<VaultColumnAttribute>();
-                string columnName = columnAttr?.Name ?? p.Name.ToLower();
-                string columnType = MapTypeToCql(p.PropertyType);
-                return $"{columnName} {columnType}";
-            });
+        var columns =
+            entityType.GetProperties()
+                .Where(p => p.GetCustomAttribute<VaultIgnoredAttribute>() == null)
+                .Select(p =>
+                {
+                    var columnAttr = p.GetCustomAttribute<VaultColumnAttribute>();
+                    string columnName = columnAttr?.Name ?? p.Name.ToLower();
+                    string columnType = MapTypeToCql(p.PropertyType);
+                    return $"{columnName} {columnType}";
+                });
 
         // === STEP 1: CREATE MAIN TABLE ===
         var sb = new StringBuilder();
-        sb.AppendLine($"CREATE TABLE IF NOT EXISTS {actualKeyspace.Name}.{tableName} (");
-        sb.AppendLine(string.Join(", ", columns));
+        sb.Append($"CREATE TABLE IF NOT EXISTS {actualKeyspace.Name}.{tableName} (");
+        sb.Append(string.Join(", ", columns));
 
         // Define PRIMARY KEY (if sorting is needed)
         if (sortingKey != null)
         {
-            sb.AppendLine($", PRIMARY KEY (({string.Join(", ", primaryKeyAttr.Keys)}), {sortingKey})");
-            sb.AppendLine($") WITH CLUSTERING ORDER BY ({sortingKey} {(sortAscending ? "ASC" : "DESC")});");
+            sb.Append($", PRIMARY KEY (({string.Join(", ", primaryKey.Keys)}), {sortingKey})");
+            sb.Append($") WITH CLUSTERING ORDER BY ({sortingKey} {(sortAscending ? "ASC" : "DESC")});");
         }
         else
         {
-            sb.AppendLine($", PRIMARY KEY ({string.Join(", ", primaryKeyAttr.Keys)}) );");
+            sb.Append($", PRIMARY KEY ({string.Join(", ", primaryKey.Keys)}) );");
         }
 
         await _session!.ExecuteAsync(new SimpleStatement(sb.ToString()));
@@ -412,18 +437,18 @@ public class ScyllaDbProvider : IScyllaDbProvider
             if (!await TableExistsAsync(actualKeyspace.Name, historyTableName))
             {
                 sb.Clear();
-                sb.AppendLine($"CREATE TABLE IF NOT EXISTS {actualKeyspace.Name}.{historyTableName} (");
-                sb.AppendLine(string.Join(", ", columns));
-                sb.AppendLine(", timestamp TIMESTAMP");
+                sb.Append($"CREATE TABLE IF NOT EXISTS {actualKeyspace.Name}.{historyTableName} (");
+                sb.Append(string.Join(", ", columns));
+                sb.Append(", timestamp TIMESTAMP");
 
                 // Define history PRIMARY KEY (always sorts by timestamp)
-                sb.AppendLine($", PRIMARY KEY (({string.Join(", ", primaryKeyAttr.Keys)}), timestamp)");
-                sb.AppendLine(") WITH CLUSTERING ORDER BY (timestamp DESC);");
+                sb.Append($", PRIMARY KEY (({string.Join(", ", primaryKey.Keys)}), timestamp)");
+                sb.Append(") WITH CLUSTERING ORDER BY (timestamp DESC);");
 
                 await _session.ExecuteAsync(new SimpleStatement(sb.ToString()));
 
                 // Create Indexes on Primary Keys for Fast Lookups
-                foreach (var key in primaryKeyAttr.Keys)
+                foreach (var key in primaryKey.Keys)
                 {
                     var indexQuery = $@"CREATE INDEX IF NOT EXISTS ON {actualKeyspace.Name}.{historyTableName} ({key});";
                     await _session.ExecuteAsync(new SimpleStatement(indexQuery));

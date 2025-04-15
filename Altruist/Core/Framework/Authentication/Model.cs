@@ -1,4 +1,5 @@
 
+using Altruist.UORM;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Newtonsoft.Json;
 
@@ -10,40 +11,62 @@ public interface ILoginToken
 
 }
 
-public abstract class Account : VaultModel
+public abstract class AccountVault : VaultModel
 {
+    [VaultColumn("id")]
     public override string GenId { get; set; } = Guid.NewGuid().ToString();
+
+    [VaultColumn("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    [VaultColumn("timestamp")]
     public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [VaultColumn("type")]
     public override string Type { get; set; } = "Account";
 }
 
 
-public class UsernamePasswordAccount : Account
+public class UsernamePasswordAccountVault : AccountVault
 {
+
+    [VaultColumn("username")]
     public required string Username { get; set; }
+
+    [VaultColumn("passwordHash")]
     public required string PasswordHash { get; set; }
 
-    public new string Type { get; set; } = "UsernamePasswordAccount";
+    [VaultColumn("type")]
+    public override string Type { get; set; } = "UsernamePasswordAccount";
 }
 
-public class EmailPasswordAccount : Account
+public class EmailPasswordAccountVault : AccountVault
 {
+    [VaultColumn("email")]
     public required string Email { get; set; }
+
+    [VaultColumn("passwordHash")]
     public required string PasswordHash { get; set; }
 
-    public new string Type { get; set; } = "EmailPasswordAccount";
+    [VaultColumn("type")]
+
+    public override string Type { get; set; } = "EmailPasswordAccount";
 }
 
 
-public class HybridAccount : Account
+public class HybridAccountVault : AccountVault
 {
+    [VaultColumn("username")]
     public required string Username { get; set; }
+
+    [VaultColumn("email")]
     public required string Email { get; set; }
+
+    [VaultColumn("passwordHash")]
     public required string PasswordHash { get; set; }
 
-    public new string Type { get; set; } = "HybridAccount";
+    [VaultColumn("type")]
+    public override string Type { get; set; } = "HybridAccount";
 }
 
 
@@ -54,6 +77,7 @@ public class LoginRequest
 public class UsernamePasswordLoginRequest : LoginRequest, ILoginToken
 {
     public string Username { get; set; }
+
     public string Password { get; set; }
 
     public UsernamePasswordLoginRequest(string username, string password)

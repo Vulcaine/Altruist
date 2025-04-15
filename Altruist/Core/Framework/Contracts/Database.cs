@@ -97,9 +97,10 @@ public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
 {
     Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
     Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
-    Task<int> ExecuteAsync(string cqlQuery, List<object>? parameters = null);
-    Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    Task<long> ExecuteAsync(string cqlQuery, List<object>? parameters = null);
+    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    Task<long> ExecuteCountAsync(string cqlQuery, List<object>? parameters = null);
 }
 
 
@@ -107,6 +108,7 @@ public interface ITypeErasedVault
 {
     Task SaveAsync(object entity, bool? saveHistory = false);
     Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false);
+    Task<long> CountAsync();
 }
 
 public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : class, IVaultModel
@@ -121,10 +123,9 @@ public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : clas
     Task<TVaultModel?> FirstOrDefaultAsync();
     Task<TVaultModel?> FirstAsync();
     Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate);
-    Task<int> CountAsync();
     Task SaveAsync(TVaultModel entity, bool? saveHistory = false);
     Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false);
-    Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
+    Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
     Task<bool> DeleteAsync();
     Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate);
     IVault<TVaultModel> Skip(int count);

@@ -13,7 +13,7 @@ public class AuthSessionVault : VaultModel
     public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public TimeSpan CacheValidationInterval { get; set; } = TimeSpan.FromSeconds(10);
 
-    public AuthSessionVault() => GenId = AccessToken;
+    public AuthSessionVault() => GenId = PrincipalId;
 
     public bool IsValid() => Expiration > DateTime.UtcNow;
 }

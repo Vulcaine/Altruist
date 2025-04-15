@@ -4,6 +4,7 @@ using System.Security.Cryptography.X509Certificates;
 using Altruist.Authentication;
 using Altruist.Database;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Auth;
@@ -15,11 +16,11 @@ public abstract class AuthController : ControllerBase
     private readonly TokenSessionSyncService? _syncService;
 
     protected AuthController(VaultRepositoryFactory factory, IIssuer issuer,
-        TokenSessionSyncService? syncService = null)
+        IServiceProvider serviceProvider)
     {
         _loginService = LoginService(factory);
         _issuer = issuer;
-        _syncService = syncService;
+        _syncService = serviceProvider.GetService<TokenSessionSyncService>();
     }
 
     [HttpPost("login")]
@@ -42,7 +43,7 @@ public abstract class AuthController : ControllerBase
 
             if (ip == null)
             {
-                return Unauthorized("Only clients with IP address is allowed to connect.");
+                return Unauthorized("Only clients with IP address are allowed to connect.");
             }
 
             var authData = new AuthSessionVault
@@ -51,7 +52,8 @@ public abstract class AuthController : ControllerBase
                 Expiration = issue.Expiration,
                 RefreshToken = issue.RefreshToken,
                 PrincipalId = account.GenId,
-                Ip = ip
+                Ip = ip,
+                GenId = account.GenId
             };
 
             await _syncService.SaveAsync(authData);

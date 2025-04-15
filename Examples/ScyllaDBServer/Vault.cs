@@ -16,11 +16,11 @@ public class SpaceshipPlayer : Spaceship, IOnVaultCreate
 
 [Vault("account")]
 [VaultPrimaryKey(keys: [nameof(Username)])]
-public class MyAccount : UsernamePasswordAccount, IOnVaultCreate
+public class MyAccount : UsernamePasswordAccountVault, IOnVaultCreate
 {
     public Task<List<IVaultModel>> OnCreateAsync()
     {
-        var adminAccount = new MyAccount() { Username = "AltruistAdmin", PasswordHash = "someHashedPass" };
+        var adminAccount = new MyAccount { Username = "AltruistAdmin", PasswordHash = "someHashedPass" };
         return Task.FromResult(new List<IVaultModel> { adminAccount });
     }
 }

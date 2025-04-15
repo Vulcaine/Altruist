@@ -2,10 +2,10 @@ namespace Altruist.Auth;
 
 public interface ILoginService
 {
-    public Task<Account?> Login(LoginRequest request);
+    public Task<AccountVault?> Login(LoginRequest request);
 }
 
-public abstract class LoginService<TAccount> : ILoginService where TAccount : Account
+public abstract class LoginService<TAccount> : ILoginService where TAccount : AccountVault
 {
     protected IVault<TAccount> _accountVault;
 
@@ -14,14 +14,14 @@ public abstract class LoginService<TAccount> : ILoginService where TAccount : Ac
         _accountVault = accountVault;
     }
 
-    public abstract Task<Account?> Login(LoginRequest request);
+    public abstract Task<AccountVault?> Login(LoginRequest request);
 }
 
-public class UsernamePasswordLoginService<TAccount> : LoginService<TAccount> where TAccount : UsernamePasswordAccount
+public class UsernamePasswordLoginService<TAccount> : LoginService<TAccount> where TAccount : UsernamePasswordAccountVault
 {
     public UsernamePasswordLoginService(IVault<TAccount> accountVault) : base(accountVault) { }
 
-    public override async Task<Account?> Login(LoginRequest request)
+    public override async Task<AccountVault?> Login(LoginRequest request)
     {
         if (request is UsernamePasswordLoginRequest usernamePasswordLoginRequest)
         {

@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 [Route("/altruist/auth")]
 public class MyController : AuthController
 {
-    public MyController(VaultRepositoryFactory factory, IIssuer jwtIssuer) : base(factory, jwtIssuer)
+    public MyController(VaultRepositoryFactory factory, JwtTokenIssuer jwtIssuer, IServiceProvider serviceProvider) : base(factory, jwtIssuer, serviceProvider)
     {
     }
 
