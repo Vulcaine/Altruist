@@ -6,9 +6,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Authentication;
 
-public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthSessionVault>
+public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionVault>
 {
-    public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthSessionVault>? vault = null) : base(cacheProvider, vault)
+    public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthTokenSessionVault>? vault = null) : base(cacheProvider, vault)
     {
     }
 }
@@ -63,10 +63,10 @@ public class SessionTokenAuth : IShieldAuth
     private bool IsSessionValid(CachedSession cached, DateTime now)
     {
         return now - cached.LastValidatedAt < cached.SessionData.CacheValidationInterval
-            && cached.SessionData.Expiration > now;
+            && cached.SessionData.AccessExpiration > now;
     }
 
-    private async Task<AuthSessionVault?> GetSessionFromCache(string token)
+    private async Task<AuthTokenSessionVault?> GetSessionFromCache(string token)
     {
         var session = await _syncService.FindCachedByIdAsync(token);
         if (session == null)
@@ -78,9 +78,9 @@ public class SessionTokenAuth : IShieldAuth
         return session;
     }
 
-    private bool ValidateSession(AuthSessionVault session, IPAddress clientIp, DateTime now)
+    private bool ValidateSession(AuthTokenSessionVault session, IPAddress clientIp, DateTime now)
     {
-        if (session.Expiration < now)
+        if (session.AccessExpiration < now)
         {
             _sessionCache.TryRemove(session.AccessToken, out _); // Cleanup expired session
             return false;
@@ -95,13 +95,13 @@ public class SessionTokenAuth : IShieldAuth
         return true;
     }
 
-    private async Task RefreshSessionTtl(AuthSessionVault session, DateTime now)
+    private async Task RefreshSessionTtl(AuthTokenSessionVault session, DateTime now)
     {
-        session.Expiration = now.Add(session.CacheValidationInterval);
+        session.AccessExpiration = now.Add(session.CacheValidationInterval);
         await _syncService.SaveAsync(session);
     }
 
-    private void UpdateLocalCache(string token, AuthSessionVault session, DateTime now)
+    private void UpdateLocalCache(string token, AuthTokenSessionVault session, DateTime now)
     {
         _sessionCache[token] = new CachedSession
         {
@@ -110,8 +110,8 @@ public class SessionTokenAuth : IShieldAuth
         };
     }
 
-    private AuthResult Success(string token, AuthSessionVault session)
-        => new(AuthorizationResult.Success(), new AuthDetails(token, session.Expiration - DateTime.UtcNow));
+    private AuthResult Success(string token, AuthTokenSessionVault session)
+        => new(AuthorizationResult.Success(), new AuthDetails(token, session.AccessExpiration - DateTime.UtcNow));
 
     private AuthResult Fail(string reason)
     {
@@ -121,7 +121,7 @@ public class SessionTokenAuth : IShieldAuth
 
     private class CachedSession
     {
-        public AuthSessionVault SessionData { get; set; } = null!;
+        public AuthTokenSessionVault SessionData { get; set; } = null!;
         public DateTime LastValidatedAt { get; set; }
     }
 }

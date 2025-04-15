@@ -4,7 +4,7 @@ public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, 
 {
     public Task Load();
 
-    public Task SaveAsync(TVaultModel entity);
+    public Task SaveAsync(TVaultModel entity, string group = "");
 
     public Task<bool> DeleteAsync(string id);
 
@@ -73,9 +73,9 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         Task.WaitAll(tasks);
     }
 
-    public async Task SaveAsync(TVaultModel entity)
+    public async Task SaveAsync(TVaultModel entity, string group = "")
     {
-        await _cacheProvider.SaveAsync(entity.GenId, entity);
+        await _cacheProvider.SaveAsync(entity.GenId, entity, group);
 
         if (_vault != null)
         {

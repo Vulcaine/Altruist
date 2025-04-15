@@ -13,16 +13,19 @@ public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
     private readonly IDatabase _redis;
     private readonly RedisDocument _document;
 
+    private readonly string _group;
+
     public List<T> Items => CurrentBatch;
     public bool HasNext => CurrentBatch.Count == BatchSize;
 
-    public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize)
+    public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize, string group = "")
     {
         _redis = redis;
         BatchSize = batchSize;
         CurrentIndex = 0;
         CurrentBatch = new List<T>();
         _document = document;
+        _group = group;
     }
 
     public async Task<bool> NextBatch()
@@ -31,7 +34,7 @@ public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
 
         // Use SCAN to fetch a batch of keys matching the pattern for the type
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
-        var keys = server.Keys(pattern: $"{_document.Name}:*", pageSize: BatchSize)
+        var keys = server.Keys(pattern: $"{_document.Name}{(_group != "" ? $"_{_group}" : "")}:*", pageSize: BatchSize)
                         .Skip(CurrentIndex)
                         .Take(BatchSize)
                         .ToArray();

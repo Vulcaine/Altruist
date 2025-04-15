@@ -6,6 +6,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.InMemory;
 
+using GroupCache = ConcurrentDictionary<string, ConcurrentDictionary<string, object>>;
+using EntityCache = ConcurrentDictionary<string, object>;
+
 public sealed class InMemoryServiceConfiguration : ICacheConfiguration
 {
     public void Configure(IServiceCollection services)
@@ -27,125 +30,142 @@ public sealed class InMemoryCacheServiceToken : ICacheServiceToken
     public string Description => "💾 Cache: InMemory";
 }
 
-
 public class InMemoryCache : IMemoryCacheProvider
 {
-    private readonly ConcurrentDictionary<Type, Dictionary<string, object>> _memoryCacheEntities = new();
+    private readonly ConcurrentDictionary<Type, GroupCache> _cache = new();
     public ICacheServiceToken Token => new InMemoryCacheServiceToken();
 
-    public Task<ICursor<T>> GetAllAsync<T>() where T : notnull
+    private EntityCache GetOrCreateEntityCache(Type type, string group = "")
     {
-        return CreateCursorAsync<T>(int.MaxValue);
+        var groupMap = _cache.GetOrAdd(type, _ => new GroupCache());
+        return groupMap.GetOrAdd(group ?? "", _ => new EntityCache());
     }
 
-    public Task<ICursor<object>> GetAllAsync(Type type)
+    public Task<T?> GetAsync<T>(string key, string group = "") where T : notnull
     {
-        return CreateCursorAsync<object>(int.MaxValue);
+        var map = GetOrCreateEntityCache(typeof(T), group);
+        return Task.FromResult(map.TryGetValue(key, out var value) ? (T)value : default);
     }
 
-    private Task<ICursor<T>> CreateCursorAsync<T>(int batchSize) where T : notnull
+    public Task<ICursor<T>> GetAllAsync<T>(string group = "") where T : notnull
     {
-        var cacheMap = GetOrCreateCacheMap(typeof(T));
-        var cursor = new InMemoryCacheCursor<T>(cacheMap, batchSize);
-        return Task.FromResult(cursor as ICursor<T>);
-    }
+        Dictionary<string, object> dict;
 
-    public Task<T?> GetAsync<T>(string key) where T : notnull
-    {
-        var cacheMap = GetOrCreateCacheMap(typeof(T));
-
-        if (cacheMap == null || !cacheMap.ContainsKey(key))
+        if (group == "")
         {
-            return Task.FromResult(default(T));
+            if (_cache.TryGetValue(typeof(T), out var allGroups))
+            {
+                dict = allGroups.Values
+                    .SelectMany(d => d)
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            }
+            else
+            {
+                dict = new Dictionary<string, object>();
+            }
+        }
+        else
+        {
+            dict = GetOrCreateEntityCache(typeof(T), group).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         }
 
-        var entity = cacheMap[key];
-        return Task.FromResult((T)entity)!;
+        return Task.FromResult(new InMemoryCacheCursor<T>(dict, int.MaxValue) as ICursor<T>);
+    }
+
+    public Task<ICursor<object>> GetAllAsync(Type type, string group = "")
+    {
+        Dictionary<string, object> dict;
+
+        if (group == "")
+        {
+            if (_cache.TryGetValue(type, out var allGroups))
+            {
+                dict = allGroups.Values
+                    .SelectMany(d => d)
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            }
+            else
+            {
+                dict = new Dictionary<string, object>();
+            }
+        }
+        else
+        {
+            dict = GetOrCreateEntityCache(type, group).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
+
+        return Task.FromResult(new InMemoryCacheCursor<object>(dict, int.MaxValue) as ICursor<object>);
     }
 
 
-    public Task<List<string>> GetBatchKeysAsync(string baseKey, int skip, int take)
+    public Task SaveAsync<T>(string key, T entity, string group = "") where T : notnull
     {
-        var keys = _memoryCacheEntities.Values
-            .SelectMany(cacheMap => cacheMap.Keys)
-            .Where(key => key.StartsWith(baseKey))
+        var map = GetOrCreateEntityCache(typeof(T), group);
+        map[key] = entity!;
+        return Task.CompletedTask;
+    }
+
+    public Task SaveBatchAsync<T>(Dictionary<string, T> entities, string group = "") where T : notnull
+    {
+        var map = GetOrCreateEntityCache(typeof(T), group);
+        foreach (var kv in entities)
+        {
+            map[kv.Key] = kv.Value!;
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<T?> RemoveAsync<T>(string key, string group = "") where T : notnull
+    {
+        var map = GetOrCreateEntityCache(typeof(T), group);
+        return Task.FromResult(map.TryRemove(key, out var value) ? (T)value : default);
+    }
+
+    public Task RemoveAndForgetAsync<T>(string key, string group = "") where T : notnull
+    {
+        var map = GetOrCreateEntityCache(typeof(T), group);
+        map.TryRemove(key, out _);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> ContainsAsync<T>(string key, string group = "") where T : notnull
+    {
+        var map = GetOrCreateEntityCache(typeof(T), group);
+        return Task.FromResult(map.ContainsKey(key));
+    }
+
+    public Task ClearAsync<T>(string group = "") where T : notnull
+    {
+        if (_cache.TryGetValue(typeof(T), out var groupMap))
+        {
+            if (groupMap.TryGetValue(group ?? "", out var map))
+            {
+                map.Clear();
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task ClearAllAsync()
+    {
+        _cache.Clear();
+        return Task.CompletedTask;
+    }
+
+    public Task<List<string>> GetBatchKeysAsync(string baseKey, int skip, int take, string group = "")
+    {
+        var keys = _cache.Values
+            .SelectMany(g => g.Values)
+            .SelectMany(d => d.Keys)
+            .Where(k => k.StartsWith(baseKey))
             .Skip(skip)
             .Take(take)
             .ToList();
 
         return Task.FromResult(keys);
     }
-
-    public Task<T?> RemoveAsync<T>(string key) where T : notnull
-    {
-        var cacheMap = GetOrCreateCacheMap(typeof(T));
-        if (cacheMap == null || !cacheMap.ContainsKey(key))
-        {
-            return Task.FromResult(default(T));
-        }
-
-        var old = cacheMap[key];
-        cacheMap.Remove(key);
-        return Task.FromResult((T)old)!;
-    }
-
-    public Task SaveAsync<T>(string key, T entity) where T : notnull
-    {
-        var cacheMap = GetOrCreateCacheMap(typeof(T));
-        if (cacheMap == null)
-        {
-            return Task.CompletedTask;
-        }
-        cacheMap[key] = entity!;
-        return Task.CompletedTask;
-    }
-
-    public Task SaveBatchAsync<T>(Dictionary<string, T> entities) where T : notnull
-    {
-        foreach (var entity in entities)
-        {
-            var cacheMap = GetOrCreateCacheMap(typeof(T));
-            cacheMap[entity.Key] = entity.Value!;
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private Dictionary<string, object> GetOrCreateCacheMap(Type type)
-    {
-        if (!_memoryCacheEntities.ContainsKey(type))
-        {
-            _memoryCacheEntities[type] = new();
-        }
-
-        return _memoryCacheEntities[type];
-    }
-
-    public Task ClearAsync<T>() where T : notnull
-    {
-        _memoryCacheEntities[typeof(T)].Clear();
-        return Task.CompletedTask;
-    }
-
-    public Task ClearAllAsync()
-    {
-        _memoryCacheEntities.Clear();
-        return Task.CompletedTask;
-    }
-
-    public Task<bool> ContainsAsync<T>(string key) where T : notnull
-    {
-        var cacheMap = GetOrCreateCacheMap(typeof(T));
-        return Task.FromResult(cacheMap.ContainsKey(key));
-    }
-
-    public Task RemoveAndForgetAsync<T>(string key) where T : notnull
-    {
-        var cacheMap = GetOrCreateCacheMap(typeof(T));
-        cacheMap.Remove(key);
-        return Task.CompletedTask;
-    }
 }
+
 
 
 public class InMemoryConnectionStore : AbstractConnectionStore

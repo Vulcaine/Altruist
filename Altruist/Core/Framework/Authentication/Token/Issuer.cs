@@ -18,7 +18,9 @@ public abstract class TokenIssue : IIssue
 {
     public string AccessToken { get; set; } = "";
     public string RefreshToken { get; set; } = "";
-    public DateTime Expiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
+    public DateTime AccessExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
+
+    public DateTime RefreshExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromDays(7);
 
     [IgnoreMember]
     [JsonIgnore]
@@ -55,8 +57,8 @@ public class SessionTokenIssuer : IIssuer
     {
         return new SessionToken
         {
-            AccessToken = Guid.NewGuid().ToString(),
-            Expiration = DateTime.UtcNow.AddHours(1)
+            AccessToken = Guid.NewGuid().ToString() + ";session",
+            AccessExpiration = DateTime.UtcNow.AddHours(1)
         };
     }
 }
@@ -141,17 +143,17 @@ public class JwtTokenIssuer : IIssuer
         string refreshToken;
         if (_useJwtRefreshToken)
         {
-            refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry);
+            refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry) + ";jwt";
         }
         else
         {
-            refreshToken = GenerateRandomRefreshToken();
+            refreshToken = GenerateRandomRefreshToken() + ";session";
         }
 
         return new JwtToken
         {
-            AccessToken = accessToken,
-            RefreshToken = refreshToken,
+            AccessToken = $"{accessToken};jwt",
+            RefreshToken = $"{refreshToken}",
             Algorithm = creds.Algorithm
         };
     }
