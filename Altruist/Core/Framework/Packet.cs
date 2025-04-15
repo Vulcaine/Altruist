@@ -12,7 +12,7 @@ namespace Altruist
     }
 
     // === Base Interfaces ===
-    public interface IPacket : IModel
+    public interface IPacket : ITypedModel
     {
     }
 

@@ -94,6 +94,11 @@ public sealed class TcpTransport : ITransport
 
         await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
     }
+
+    public void RouteTraffic(IApplicationBuilder app)
+    {
+        throw new NotImplementedException();
+    }
 }
 
 public sealed class CachedTcpConnection : Connection

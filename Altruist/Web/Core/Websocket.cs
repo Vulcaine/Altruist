@@ -16,62 +16,76 @@ namespace Altruist.Web;
 
 public sealed class WebSocketTransport : ITransport
 {
+    private readonly Dictionary<string, List<(IConnectionManager Manager, ShieldAttribute? Shield)>> _routes = new();
+
+    public void RegisterConnectionManager(IConnectionManager manager, string path)
+    {
+        if (!_routes.ContainsKey(path))
+        {
+            _routes[path] = new List<(IConnectionManager, ShieldAttribute?)>();
+        }
+
+        var shield = manager.GetType().GetCustomAttribute<ShieldAttribute>();
+        _routes[path].Add((manager, shield));
+    }
+
     public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path)
     {
-        UseWebSocketEndpoint(app, path, app.ApplicationServices.GetRequiredService<IConnectionManager>(), app.ApplicationServices);
+        var manager = app.ApplicationServices.GetRequiredService<IConnectionManager>();
+        RegisterConnectionManager(manager, path);
     }
 
     public void UseTransportEndpoints(IApplicationBuilder app, Type type, string path)
     {
-        UseWebSocketEndpoint(app, path, (app.ApplicationServices.GetRequiredService(type) as IConnectionManager)!, app.ApplicationServices);
+        var manager = (IConnectionManager)app.ApplicationServices.GetRequiredService(type);
+        RegisterConnectionManager(manager, path);
     }
 
-    private static readonly ActionDescriptor SharedActionDescriptor = new ActionDescriptor();
-    private static readonly List<IFilterMetadata> SharedFilters = new List<IFilterMetadata>();
-
-    private Task UseWebSocketEndpoint(
-        IApplicationBuilder app, string path, IConnectionManager wsManager, IServiceProvider serviceProvider)
+    public void RouteTraffic(IApplicationBuilder app)
     {
-        var shieldAttribute = wsManager.GetType().GetCustomAttribute<ShieldAttribute>();
-
         app.Use(async (context, next) =>
         {
-            if (context.Request.Path == path && context.WebSockets.IsWebSocketRequest)
+            if (context.WebSockets.IsWebSocketRequest && _routes.TryGetValue(context.Request.Path, out var managers))
             {
-                AuthDetails? authDetails = null;
-                if (shieldAttribute != null)
+                foreach (var (manager, shield) in managers)
                 {
-                    var actionContext = new ActionContext(context, context.GetRouteData(), SharedActionDescriptor);
+                    AuthDetails? authDetails = null;
 
-                    var authorizationContext = new AuthorizationFilterContext(actionContext, SharedFilters);
-
-                    await shieldAttribute.OnAuthorizationAsync(authorizationContext);
-
-                    if (authorizationContext.Result is UnauthorizedResult)
+                    if (shield != null)
                     {
-                        context.Response.StatusCode = 401;
-                        return;
+                        var actionContext = new ActionContext(context, context.GetRouteData(), SharedActionDescriptor);
+                        var authorizationContext = new AuthorizationFilterContext(actionContext, SharedFilters);
+
+                        await shield.OnAuthorizationAsync(authorizationContext);
+
+                        if (authorizationContext.Result is UnauthorizedResult)
+                        {
+                            continue;
+                        }
+
+                        authDetails = (authorizationContext.HttpContext.Items["AuthResult"] as AuthResult)?.AuthDetails;
                     }
-                    else
-                    {
-                        authDetails = (authorizationContext.HttpContext.Items["AuthResult"] as AuthResult)!.AuthDetails;
-                    }
+
+                    var clientId = Guid.NewGuid().ToString();
+                    var socket = await context.WebSockets.AcceptWebSocketAsync();
+                    var connection = new WebSocketConnection(socket, clientId, authDetails);
+                    await manager.HandleConnection(connection, context.Request.Path, clientId);
+                    return;
                 }
 
-                var clientId = Guid.NewGuid().ToString();
-                var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                var webSocketConnection = new WebSocketConnection(webSocket, clientId, authDetails);
-                await wsManager.HandleConnection(webSocketConnection, path, clientId);
+                context.Response.StatusCode = 401;
             }
             else
             {
                 await next();
             }
         });
-
-        return Task.CompletedTask;
     }
+
+    private static readonly ActionDescriptor SharedActionDescriptor = new();
+    private static readonly List<IFilterMetadata> SharedFilters = new();
 }
+
 
 public sealed class WebSocketConfiguration : ITransportConfiguration
 {

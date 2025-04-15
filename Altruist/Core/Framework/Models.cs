@@ -6,13 +6,13 @@ using MessagePack;
 namespace Altruist;
 
 [MessagePackObject]
-public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
+public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
 {
     [Key(0)]
     [JsonProperty("id")]
     [VaultColumn]
 
-    public string GenId { get; set; }
+    public override string GenId { get; set; }
 
     [Key(1)]
     [Synced(0, SyncAlways: true)]
@@ -30,7 +30,7 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
     [Synced(2, SyncAlways: true)]
     [JsonProperty("type")]
     [VaultColumn]
-    public string Type { get; set; }
+    public override string Type { get; set; }
 
     [Key(4)]
     [Synced(3)]
@@ -99,7 +99,7 @@ public abstract class PlayerEntity : ISynchronizedEntity, IVaultModel
 
     [Key(15)]
     [VaultColumn]
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
     public PlayerEntity()
     {

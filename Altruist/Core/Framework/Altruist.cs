@@ -497,7 +497,7 @@ namespace Altruist
                 transport!.UseTransportEndpoints(App, type, path);
             }
 
-
+            transport!.RouteTraffic(App);
 
             _ = Startup();
 

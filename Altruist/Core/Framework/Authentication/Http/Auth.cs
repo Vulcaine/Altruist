@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
 using Altruist.Authentication;
 using Altruist.Database;
 using Microsoft.AspNetCore.Mvc;
@@ -11,16 +12,19 @@ public abstract class AuthController : ControllerBase
 {
     private readonly ILoginService _loginService;
     private readonly IIssuer _issuer;
+    private readonly TokenSessionSyncService? _syncService;
 
-    protected AuthController(VaultRepositoryFactory factory, IIssuer issuer)
+    protected AuthController(VaultRepositoryFactory factory, IIssuer issuer,
+        TokenSessionSyncService? syncService = null)
     {
         _loginService = LoginService(factory);
         _issuer = issuer;
+        _syncService = syncService;
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login(
-        [FromBody][ModelBinder(BinderType = typeof(LoginRequestBinder))] LoginRequest request)
+    [FromBody][ModelBinder(BinderType = typeof(LoginRequestBinder))] LoginRequest request)
     {
         if (request is not UsernamePasswordLoginRequest usernamePasswordLoginRequest)
             return Unauthorized();
@@ -30,30 +34,53 @@ public abstract class AuthController : ControllerBase
             return Unauthorized();
 
         var claims = new List<Claim> { new(ClaimTypes.Name, usernamePasswordLoginRequest.Username) };
-        return OkOrUnauthorized(IssueToken(claims));
+        var issue = IssueToken(claims);
+
+        if (issue != null && _syncService != null)
+        {
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+
+            if (ip == null)
+            {
+                return Unauthorized("Only clients with IP address is allowed to connect.");
+            }
+
+            var authData = new AuthSessionVault
+            {
+                AccessToken = issue.AccessToken,
+                Expiration = issue.Expiration,
+                RefreshToken = issue.RefreshToken,
+                PrincipalId = account.GenId,
+                Ip = ip
+            };
+
+            await _syncService.SaveAsync(authData);
+        }
+
+        return OkOrUnauthorized(issue);
     }
 
-    // [HttpPost("refresh")]
-    // public async Task<IActionResult> Refresh(
-    //     [FromBody] string refreshToken,
-    //     TokenSessionSyncService? syncService = null)
-    // {
-    //     if (syncService == null)
-    //         throw new InvalidOperationException("TokenSessionSyncService is not registered. Did you forget to call .StatefulToken()?");
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(
+        [FromBody] string refreshToken)
+    {
+        if (_syncService == null)
+            throw new InvalidOperationException("TokenSessionSyncService is not registered. Did you forget to call .StatefulToken()?");
 
-    //     var cached = await syncService.FindCachedByIdAsync(refreshToken);
-    //     if (cached?.IsValid() != true)
-    //         return Unauthorized();
+        var cached = await _syncService.FindCachedByIdAsync(refreshToken);
+        if (cached?.IsValid() != true)
+            return Unauthorized();
 
-    //     if (_issuer is not JwtTokenIssuer jwtIssuer)
-    //         return Unauthorized();
+        if (_issuer is not JwtTokenIssuer jwtIssuer)
+            return Unauthorized();
 
-    //     var principal = GetPrincipalFromToken(cached.AccessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
-    //     if (principal == null)
-    //         return Unauthorized();
+        var principal = GetPrincipalFromToken(cached.AccessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
+        if (principal == null)
+            return Unauthorized();
 
-    //     return OkOrUnauthorized(IssueToken(principal.Claims));
-    // }
+        var issue = IssueToken(principal.Claims);
+        return OkOrUnauthorized(issue);
+    }
 
     private IActionResult OkOrUnauthorized(TokenIssue? token) => token is null
         ? Unauthorized()

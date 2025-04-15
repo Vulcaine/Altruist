@@ -12,5 +12,5 @@ AltruistBuilder.Create(args, setup => setup.AddGamingSupport())
     .WithScyllaDB(setup => setup.CreateKeyspace<DefaultScyllaKeyspace>(
         setup => setup.ForgeVaults()
     ))
-    .WebApp(setup => setup.AddJwtAuth())
+    .WebApp(setup => setup.AddJwtAuth().StatefulToken())
     .StartServer();

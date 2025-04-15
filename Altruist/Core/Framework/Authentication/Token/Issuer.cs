@@ -1,21 +1,30 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json.Serialization;
+using Altruist;
+using MessagePack;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
-public interface IIssue
+public interface IIssue : IPacketBase
 {
 
 }
 
+[MessagePackObject]
 public abstract class TokenIssue : IIssue
 {
     public string AccessToken { get; set; } = "";
     public string RefreshToken { get; set; } = "";
     public DateTime Expiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
+
+    [IgnoreMember]
+    [JsonIgnore]
     public string Algorithm { get; set; } = "";
+    public PacketHeader Header { get; set; }
+    public virtual string Type { get; set; } = "TokenIssue";
 }
 
 public interface IIssuer
@@ -24,14 +33,20 @@ public interface IIssuer
 }
 
 
+public static class IssuerKeys
+{
+    public const string SessionToken = "SessionToken";
+    public const string JwtToken = "JwtToken";
+}
+
 public class SessionToken : TokenIssue
 {
-
+    public override string Type { get; set; } = "SessionToken";
 }
 
 public class JwtToken : TokenIssue
 {
-
+    public override string Type { get; set; } = "JwtToken";
 }
 
 public class SessionTokenIssuer : IIssuer

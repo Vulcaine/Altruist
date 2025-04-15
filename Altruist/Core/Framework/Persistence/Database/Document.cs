@@ -43,7 +43,7 @@ public class Document
 
     public static Document From(Type type)
     {
-        if (!typeof(IModel).IsAssignableFrom(type))
+        if (!typeof(IStoredModel).IsAssignableFrom(type))
         {
             throw new InvalidOperationException($"The type {type.FullName} must implement IModel.");
         }
@@ -99,7 +99,7 @@ public class Document
 
     public virtual void Validate()
     {
-        if (!typeof(IModel).IsAssignableFrom(Type))
+        if (!typeof(IStoredModel).IsAssignableFrom(Type))
         {
             throw new InvalidOperationException($"The type {Type.FullName} must implement IModel.");
         }

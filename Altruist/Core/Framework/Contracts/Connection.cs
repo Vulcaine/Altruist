@@ -3,7 +3,7 @@ using Altruist.Authentication;
 
 namespace Altruist;
 
-public interface IConnection : IModel
+public interface IConnection : IStoredModel
 {
     AuthDetails? AuthDetails { get; }
     string ConnectionId { get; }
@@ -16,15 +16,14 @@ public interface IConnection : IModel
     bool IsConnected { get; }
 }
 
-// [Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connections" })]
-public class Connection : IConnection
+public class Connection : StoredModel, IConnection
 {
     [JsonIgnore] // Not serialized
     public AuthDetails? AuthDetails { get; set; }
 
     [JsonPropertyName("Type")]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public string Type => GetType().Name;
+    public override string Type { get => GetType().Name; set => Type = value; }
 
     [JsonPropertyName("ConnectionId")]
     public string ConnectionId { get; set; } = string.Empty;
@@ -34,10 +33,10 @@ public class Connection : IConnection
 
     [JsonPropertyName("LastActivity")]
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
-
+    public override string GenId { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
 
     [JsonIgnore]
-    string IModel.Type { get => Type; set { /* Allow deserialization but ignore */ } }
+    string ITypedModel.Type { get => Type; set { /* Allow deserialization but ignore */ } }
 
     public virtual Task CloseAsync()
     {

@@ -1,7 +1,6 @@
 
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Altruist.Auth;
 
@@ -11,13 +10,13 @@ public interface ILoginToken
 
 }
 
-public abstract class Account : IVaultModel
+public abstract class Account : VaultModel
 {
-    public string GenId { get; set; } = Guid.NewGuid().ToString();
+    public override string GenId { get; set; } = Guid.NewGuid().ToString();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-    public string Type { get; set; } = "Account";
+    public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public override string Type { get; set; } = "Account";
 }
 
 

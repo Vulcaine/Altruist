@@ -11,9 +11,25 @@ public interface IKeyspace
     string Name { get; }
 }
 
-public interface IModel
+public interface IIdGenerator
+{
+    public string GenerateId();
+}
+
+public interface ITypedModel
 {
     public string Type { get; set; }
+}
+
+public interface IStoredModel : ITypedModel
+{
+    public string GenId { get; set; }
+}
+
+public abstract class StoredModel : IStoredModel
+{
+    public abstract string GenId { get; set; }
+    public abstract string Type { get; set; }
 }
 
 public interface IVaultFactory<TToken, TConfig> where TConfig : IConfiguration where TToken : IServiceToken<TConfig>
@@ -31,10 +47,19 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
     IVault<TVaultModel> Make<TVaultModel>() where TVaultModel : class, IVaultModel;
 }
 
-public interface IVaultModel : IModel
+public interface IVaultModel : IStoredModel
 {
-    public string GenId { get; set; }
     DateTime Timestamp { get; set; }
+}
+
+public abstract class VaultModel : StoredModel, IVaultModel
+{
+    public abstract DateTime Timestamp { get; set; }
+
+    public VaultModel()
+    {
+        GenId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(GenId) ? Guid.NewGuid().ToString() : GenId);
+    }
 }
 
 public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel

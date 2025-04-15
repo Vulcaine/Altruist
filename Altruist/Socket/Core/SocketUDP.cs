@@ -108,6 +108,11 @@ public sealed class UdpTransport : ITransport
         var connection = new CachedUdpConnection(new UdpConnection(_udpClient!, clientId, authDetails, clientIp));
         await connectionManager.HandleConnection(connection, _endpoint, clientId);
     }
+
+    public void RouteTraffic(IApplicationBuilder app)
+    {
+        throw new NotImplementedException();
+    }
 }
 
 public sealed class CachedUdpConnection : Connection

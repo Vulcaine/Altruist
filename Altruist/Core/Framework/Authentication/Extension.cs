@@ -33,9 +33,11 @@ public static class WebAppAuthExtensions
         {
             var repoFactory = sp.GetRequiredService<VaultRepositoryFactory>();
             var repo = repoFactory.Make<TKeyspace>(token);
-            return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthSessionData>());
+            return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthSessionVault>());
         });
         builder.Services.AddSingleton(typeof(IVaultCacheSyncService<>), sp => sp.GetRequiredService<TokenSessionSyncService>());
+        builder.Services.AddSingleton<SessionTokenIssuer>();
+        builder.Services.AddKeyedScoped<IIssuer>(IssuerKeys.SessionToken, (sp, key) => sp.GetRequiredService<SessionTokenIssuer>());
         return builder;
     }
 
@@ -53,6 +55,8 @@ public static class WebAppAuthExtensions
         {
             return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), null);
         });
+        builder.Services.AddSingleton<SessionTokenIssuer>();
+        builder.Services.AddKeyedScoped<IIssuer>(IssuerKeys.SessionToken, (sp, key) => sp.GetRequiredService<SessionTokenIssuer>());
         return builder;
     }
 
@@ -133,8 +137,7 @@ public static class WebAppAuthExtensions
 
         builder.Services.AddScoped<ITokenValidator, JwtTokenValidator>();
         builder.Services.AddScoped<JwtTokenIssuer>();
-        builder.Services.AddScoped<IIssuer>(sp => sp.GetRequiredService<JwtTokenIssuer>());
-        builder.Services.AddScoped<IShieldAuth, JwtAuth>();
+        builder.Services.AddKeyedScoped<IIssuer>(IssuerKeys.JwtToken, (sp, key) => sp.GetRequiredService<JwtTokenIssuer>());
 
         logger.LogInformation("🔐 JWT authentication activated. Your app is armored and ready to secure connections!");
 
