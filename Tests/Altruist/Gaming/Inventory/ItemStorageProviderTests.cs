@@ -32,7 +32,7 @@ public class ItemStorageProviderTests
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false
         );
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId)).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
 
         // Act
         var result = await _storageProvider.FindItemAsync<GameItem>(mockItem.GenId);
@@ -45,7 +45,7 @@ public class ItemStorageProviderTests
     public async Task FindItemAsync_ShouldReturnNull_WhenItemDoesNotExistInCache()
     {
         // Arrange
-        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:1")).ReturnsAsync((GameItem?)null);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:1", "")).ReturnsAsync((GameItem?)null);
 
         // Act
         var result = await _storageProvider.FindItemAsync<GameItem>("1");
@@ -58,7 +58,7 @@ public class ItemStorageProviderTests
     public async Task SetItemAsync_ShouldReturnFalse_WhenItemNotFound()
     {
         // Arrange
-        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:1")).ReturnsAsync((GameItem?)null);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:1", "")).ReturnsAsync((GameItem?)null);
 
         // Act
         var result = await _storageProvider.SetItemAsync("1", 5, _testSlotKey);
@@ -73,7 +73,7 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 1, 1, "type", true);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId)).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
         _storageProvider.AddItem(mockItem, 1, "inventory");
         // Act
         var result = await _storageProvider.SetItemAsync(mockItem.GenId, 6, _testSlotKey);
@@ -88,7 +88,7 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", true);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId)).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
 
         // Act
         var result = await _storageProvider.SetItemAsync(mockItem.GenId, 5, _testSlotKey);
@@ -211,8 +211,8 @@ public class ItemStorageProviderTests
         _storageProvider.AddItem(itemB, 2, "inventory");
 
         // Mock
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemA.GenId)).ReturnsAsync(itemA);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemB.GenId)).ReturnsAsync(itemB);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemA.GenId, "")).ReturnsAsync(itemA);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemB.GenId, "")).ReturnsAsync(itemB);
 
         // Act
         var result = await _storageProvider.SwapSlotsAsync(slotA, slotB);
@@ -237,7 +237,7 @@ public class ItemStorageProviderTests
     public async Task MoveItemAsync_ShouldReturnFalse_WhenItemNotFound()
     {
         // Arrange
-        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:1")).ReturnsAsync((GameItem?)null);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>("item:inventory:1", "")).ReturnsAsync((GameItem?)null);
         var fromSlotKey = new SlotKey(0, 0, "inventory", "inventory");
         var toSlotKey = new SlotKey(1, 0, "inventory", "inventory");
 
@@ -257,7 +257,7 @@ public class ItemStorageProviderTests
 
         var mockItem = new TestGameItem(
             fromSlotKey, 4, 2, 2, "type", false);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId)).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
 
         _storageProvider.AddItem(mockItem, 1, fromSlotKey.Id);
 
@@ -274,7 +274,7 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId)).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
         _storageProvider.AddItem(mockItem, 1, "inventory");
         var fromSlotKey = new SlotKey(0, 0, "inventory", "inventory");
         var toSlotKey = new SlotKey(2, 0, "inventory", "inventory");
@@ -291,7 +291,7 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId)).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
         var fromSlotKey = new SlotKey(0, 0, "inventory", "inventory");
         var toSlotKey = new SlotKey(1, 0, "inventory", "inventory");
         // Act
