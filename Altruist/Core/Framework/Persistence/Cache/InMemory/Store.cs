@@ -35,23 +35,23 @@ public class InMemoryCache : IMemoryCacheProvider
     private readonly ConcurrentDictionary<Type, GroupCache> _cache = new();
     public ICacheServiceToken Token => new InMemoryCacheServiceToken();
 
-    private EntityCache GetOrCreateEntityCache(Type type, string group = "")
+    private EntityCache GetOrCreateEntityCache(Type type, string cacheGroupId = "")
     {
         var groupMap = _cache.GetOrAdd(type, _ => new GroupCache());
-        return groupMap.GetOrAdd(group ?? "", _ => new EntityCache());
+        return groupMap.GetOrAdd(cacheGroupId ?? "", _ => new EntityCache());
     }
 
-    public Task<T?> GetAsync<T>(string key, string group = "") where T : notnull
+    public Task<T?> GetAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
-        var map = GetOrCreateEntityCache(typeof(T), group);
+        var map = GetOrCreateEntityCache(typeof(T), cacheGroupId);
         return Task.FromResult(map.TryGetValue(key, out var value) ? (T)value : default);
     }
 
-    public Task<ICursor<T>> GetAllAsync<T>(string group = "") where T : notnull
+    public Task<ICursor<T>> GetAllAsync<T>(string cacheGroupId = "") where T : notnull
     {
         Dictionary<string, object> dict;
 
-        if (group == "")
+        if (cacheGroupId == "")
         {
             if (_cache.TryGetValue(typeof(T), out var allGroups))
             {
@@ -66,17 +66,17 @@ public class InMemoryCache : IMemoryCacheProvider
         }
         else
         {
-            dict = GetOrCreateEntityCache(typeof(T), group).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            dict = GetOrCreateEntityCache(typeof(T), cacheGroupId).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         }
 
         return Task.FromResult(new InMemoryCacheCursor<T>(dict, int.MaxValue) as ICursor<T>);
     }
 
-    public Task<ICursor<object>> GetAllAsync(Type type, string group = "")
+    public Task<ICursor<object>> GetAllAsync(Type type, string cacheGroupId = "")
     {
         Dictionary<string, object> dict;
 
-        if (group == "")
+        if (cacheGroupId == "")
         {
             if (_cache.TryGetValue(type, out var allGroups))
             {
@@ -91,23 +91,23 @@ public class InMemoryCache : IMemoryCacheProvider
         }
         else
         {
-            dict = GetOrCreateEntityCache(type, group).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            dict = GetOrCreateEntityCache(type, cacheGroupId).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         }
 
         return Task.FromResult(new InMemoryCacheCursor<object>(dict, int.MaxValue) as ICursor<object>);
     }
 
 
-    public Task SaveAsync<T>(string key, T entity, string group = "") where T : notnull
+    public Task SaveAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull
     {
-        var map = GetOrCreateEntityCache(typeof(T), group);
+        var map = GetOrCreateEntityCache(typeof(T), cacheGroupId);
         map[key] = entity!;
         return Task.CompletedTask;
     }
 
-    public Task SaveBatchAsync<T>(Dictionary<string, T> entities, string group = "") where T : notnull
+    public Task SaveBatchAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull
     {
-        var map = GetOrCreateEntityCache(typeof(T), group);
+        var map = GetOrCreateEntityCache(typeof(T), cacheGroupId);
         foreach (var kv in entities)
         {
             map[kv.Key] = kv.Value!;
@@ -115,30 +115,30 @@ public class InMemoryCache : IMemoryCacheProvider
         return Task.CompletedTask;
     }
 
-    public Task<T?> RemoveAsync<T>(string key, string group = "") where T : notnull
+    public Task<T?> RemoveAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
-        var map = GetOrCreateEntityCache(typeof(T), group);
+        var map = GetOrCreateEntityCache(typeof(T), cacheGroupId);
         return Task.FromResult(map.TryRemove(key, out var value) ? (T)value : default);
     }
 
-    public Task RemoveAndForgetAsync<T>(string key, string group = "") where T : notnull
+    public Task RemoveAndForgetAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
-        var map = GetOrCreateEntityCache(typeof(T), group);
+        var map = GetOrCreateEntityCache(typeof(T), cacheGroupId);
         map.TryRemove(key, out _);
         return Task.CompletedTask;
     }
 
-    public Task<bool> ContainsAsync<T>(string key, string group = "") where T : notnull
+    public Task<bool> ContainsAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
-        var map = GetOrCreateEntityCache(typeof(T), group);
+        var map = GetOrCreateEntityCache(typeof(T), cacheGroupId);
         return Task.FromResult(map.ContainsKey(key));
     }
 
-    public Task ClearAsync<T>(string group = "") where T : notnull
+    public Task ClearAsync<T>(string cacheGroupId = "") where T : notnull
     {
         if (_cache.TryGetValue(typeof(T), out var groupMap))
         {
-            if (groupMap.TryGetValue(group ?? "", out var map))
+            if (groupMap.TryGetValue(cacheGroupId ?? "", out var map))
             {
                 map.Clear();
             }
@@ -152,7 +152,7 @@ public class InMemoryCache : IMemoryCacheProvider
         return Task.CompletedTask;
     }
 
-    public Task<List<string>> GetBatchKeysAsync(string baseKey, int skip, int take, string group = "")
+    public Task<List<string>> GetBatchKeysAsync(string baseKey, int skip, int take, string cacheGroupId = "")
     {
         var keys = _cache.Values
             .SelectMany(g => g.Values)

@@ -208,7 +208,6 @@ public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePor
         }
     }
 
-    [Cycle(cron: CronPresets.Hourly)]
     public override async Task Cleanup()
     {
         try

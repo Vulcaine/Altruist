@@ -18,14 +18,14 @@ public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
     public List<T> Items => CurrentBatch;
     public bool HasNext => CurrentBatch.Count == BatchSize;
 
-    public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize, string group = "")
+    public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize, string cacheGroupId = "")
     {
         _redis = redis;
         BatchSize = batchSize;
         CurrentIndex = 0;
         CurrentBatch = new List<T>();
         _document = document;
-        _group = group;
+        _group = cacheGroupId;
     }
 
     public async Task<bool> NextBatch()

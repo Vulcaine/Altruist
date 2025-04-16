@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Security;
@@ -5,10 +7,12 @@ namespace Altruist.Security;
 public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISessionAuthContext
 {
     protected IIssuer Issuer;
+    private readonly TokenSessionSyncService? _syncService;
 
-    protected AuthPortal(IPortalContext context, ILoggerFactory loggerFactory, IIssuer issuer) : base(context, loggerFactory)
+    protected AuthPortal(IPortalContext context, ILoggerFactory loggerFactory, IIssuer issuer, IServiceProvider serviceProvider) : base(context, loggerFactory)
     {
         Issuer = issuer;
+        _syncService = serviceProvider.GetService<TokenSessionSyncService>();
     }
 
     [Gate("upgrade")]

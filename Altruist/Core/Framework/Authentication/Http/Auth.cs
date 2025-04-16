@@ -36,27 +36,9 @@ public abstract class AuthController : ControllerBase
         var claims = new List<Claim> { new(ClaimTypes.Name, usernamePasswordLoginRequest.Username) };
         var issue = IssueToken(claims);
 
-        if (issue != null && _syncService != null)
+        if (!await CreateAndSaveAuthSessionAsync(issue, account.GenId))
         {
-            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-
-            if (ip == null)
-            {
-                return Unauthorized("Only clients with IP address are allowed to connect.");
-            }
-
-            var authData = new AuthTokenSessionVault
-            {
-                AccessToken = issue.AccessToken,
-                AccessExpiration = issue.AccessExpiration,
-                RefreshExpiration = issue.RefreshExpiration,
-                RefreshToken = issue.RefreshToken,
-                PrincipalId = account.GenId,
-                Ip = ip,
-                GenId = issue.AccessToken
-            };
-
-            await _syncService.SaveAsync(authData, account.GenId);
+            return Unauthorized("Only clients with IP address are allowed to connect.");
         }
 
         return OkOrUnauthorized(issue);
@@ -119,6 +101,11 @@ public abstract class AuthController : ControllerBase
         }
 
         var issue = IssueToken(principal.Claims);
+        if (!await CreateAndSaveAuthSessionAsync(issue, cached.PrincipalId))
+        {
+            return Unauthorized("Only clients with IP address are allowed to connect.");
+        }
+
         return OkOrUnauthorized(issue);
     }
 
@@ -148,6 +135,70 @@ public abstract class AuthController : ControllerBase
         catch
         {
             return null;
+        }
+    }
+
+    protected async Task InvalidateAllSessions(string principalId)
+    {
+        if (_syncService != null)
+        {
+            var cursor = await _syncService.FindAllCachedAsync(principalId);
+            foreach (var session in cursor)
+            {
+                await _syncService.DeleteAsync(session.GenId, principalId);
+            }
+        }
+    }
+
+    protected async Task InvalidateExpiredSessions(AccountVault account)
+    {
+        if (_syncService != null)
+        {
+            var cursor = await _syncService.FindAllCachedAsync(account.GenId);
+            foreach (var session in cursor)
+            {
+                if (!session.IsAccessTokenValid() && !session.IsRefreshTokenValid())
+                {
+                    await _syncService.DeleteAsync(session.GenId, account.GenId);
+                }
+            }
+        }
+    }
+
+    private async Task<bool> CreateAndSaveAuthSessionAsync(TokenIssue? issue, string principalId)
+    {
+        if (issue != null && _syncService != null)
+        {
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+
+            if (ip == null)
+            {
+                return false;
+            }
+
+            var authData = new AuthTokenSessionVault
+            {
+                AccessToken = issue.AccessToken,
+                AccessExpiration = issue.AccessExpiration,
+                RefreshExpiration = issue.RefreshExpiration,
+                RefreshToken = issue.RefreshToken,
+                PrincipalId = principalId,
+                Ip = ip,
+                GenId = issue.AccessToken
+            };
+
+            await SaveAuthSessionAsync(authData, principalId);
+        }
+
+        return true;
+    }
+
+    protected async Task SaveAuthSessionAsync(AuthTokenSessionVault session, string principal)
+    {
+        if (_syncService != null)
+        {
+            await InvalidateAllSessions(principal);
+            await _syncService.SaveAsync(session, principal);
         }
     }
 
