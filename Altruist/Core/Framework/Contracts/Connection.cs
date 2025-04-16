@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using Altruist.Authentication;
+using Altruist.Security;
 
 namespace Altruist;
 
@@ -33,7 +33,7 @@ public class Connection : StoredModel, IConnection
 
     [JsonPropertyName("LastActivity")]
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
-    public override string GenId { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+    public override string GenId { get; set; } = Guid.NewGuid().ToString();
 
     [JsonIgnore]
     string ITypedModel.Type { get => Type; set { /* Allow deserialization but ignore */ } }

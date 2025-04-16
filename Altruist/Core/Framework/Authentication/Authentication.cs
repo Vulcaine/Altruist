@@ -1,4 +1,4 @@
-namespace Altruist.Authentication;
+namespace Altruist.Security;
 
 public class AuthDetails
 {

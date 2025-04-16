@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Altruist.Authentication;
+namespace Altruist.Security;
 
 /// <summary>
 /// Provides extension methods to configure authentication and token session handling for a WebApplicationBuilder.

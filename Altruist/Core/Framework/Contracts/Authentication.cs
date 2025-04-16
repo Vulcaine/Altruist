@@ -1,5 +1,5 @@
 using System.Net;
-using Altruist.Authentication;
+using Altruist.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 

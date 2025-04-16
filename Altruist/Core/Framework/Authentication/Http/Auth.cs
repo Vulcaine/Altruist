@@ -1,12 +1,12 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Altruist.Authentication;
+using Altruist.Security;
 using Altruist.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Altruist.Auth;
+namespace Altruist.Security;
 
 public abstract class AuthController : ControllerBase
 {

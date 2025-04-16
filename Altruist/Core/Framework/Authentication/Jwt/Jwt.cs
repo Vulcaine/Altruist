@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Altruist.Authentication;
+namespace Altruist.Security;
 
 public class JwtAuth : IShieldAuth
 {

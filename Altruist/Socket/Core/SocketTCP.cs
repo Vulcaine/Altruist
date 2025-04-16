@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
-using Altruist.Authentication;
+using Altruist.Security;
 using Altruist.Contracts;
 using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;

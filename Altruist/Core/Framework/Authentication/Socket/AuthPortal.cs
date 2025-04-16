@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Auth;
+namespace Altruist.Security;
 
-public abstract class AuthPortal<TAuthContext> : Portal
+public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISessionAuthContext
 {
     protected IIssuer Issuer;
 

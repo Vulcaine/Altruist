@@ -70,58 +70,49 @@ public class MethodScheduler
 
     public List<MethodInfo> RegisterMethods(IServiceProvider serviceProvider)
     {
-        var services = serviceProvider.GetAll<object>();
-        foreach (var service in services)
+        // 1. Collect all methods annotated with CycleAttribute
+        foreach (var service in serviceProvider.GetAll<object>())
         {
             var type = service.GetType();
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
-                .Where(m => m.GetCustomAttributes<CycleAttribute>().Any())
-                .ToList();
+                              .Where(m => m.GetCustomAttribute<CycleAttribute>() != null);
 
             foreach (var method in methods)
             {
-                var cycleAttribute = method.GetCustomAttribute<CycleAttribute>();
-                if (cycleAttribute != null)
-                {
-                    (object? serviceInstance, Type resolvedType) = GetServiceInstance(type);
-
-                    if (serviceInstance == null)
-                    {
-                        continue;
-                    }
-
-                    RegisterMethod(method, serviceInstance);
-                }
+                RegisterMethod(method, service);
             }
         }
 
-        foreach (var group in _registeredMethodsByType)
+        // 2. Register scheduling logic (cron/frequency/realtime)
+        foreach (var methodEnty in _registeredMethodsByType)
         {
-            var methods = group.Value.Item2;
+            var methods = methodEnty.Value.Item2;
+            var serviceInstance = methodEnty.Value.Item1;
+
             foreach (var method in methods)
             {
-                var cycleAttribute = method.GetCustomAttribute<CycleAttribute>();
-                if (cycleAttribute != null)
+                var attr = method.GetCustomAttribute<CycleAttribute>();
+                if (attr == null) continue;
+
+                if (attr.IsCron())
                 {
-                    if (cycleAttribute.IsCron())
-                    {
-                        RegisterCronJob(method, cycleAttribute.Cron!);
-                    }
-                    else if (cycleAttribute.IsFrequency())
-                    {
-                        RegisterFrequencyJob(method, cycleAttribute.Rate == null ? null : cycleAttribute.Rate);
-                    }
-                    else if (cycleAttribute.IsRealTime())
-                    {
-                        var engine = _serviceProvider.GetService<IAltruistEngine>();
-                        RegisterFrequencyJob(method, engine!.Rate);
-                    }
+                    RegisterCronJob(method, attr.Cron!, serviceInstance);
+                }
+                else if (attr.IsFrequency())
+                {
+                    RegisterFrequencyJob(method, attr.Rate, serviceInstance);
+                }
+                else if (attr.IsRealTime())
+                {
+                    var engine = _serviceProvider.GetService<IAltruistEngine>();
+                    RegisterFrequencyJob(method, engine!.Rate, serviceInstance);
                 }
             }
         }
 
         return _registeredMethodsByType.Values.SelectMany(x => x.Item2).ToList();
     }
+
 
     private void RegisterMethod(MethodInfo method, object? serviceInstance)
     {
@@ -131,13 +122,15 @@ public class MethodScheduler
             throw new InvalidOperationException("Method does not have a DeclaringType.");
         }
 
-        if (_registeredMethodsByType.TryGetValue(declaringType, out var existingMethod))
+        var instanceDeclaringType = serviceInstance?.GetType() ?? declaringType;
+
+        if (_registeredMethodsByType.TryGetValue(instanceDeclaringType, out var existingMethod))
         {
             var existingMethodInfo = existingMethod.Item2.FirstOrDefault(m => m.ToString() == method.ToString());
 
             if (existingMethodInfo != null)
             {
-                if (declaringType.IsSubclassOf(existingMethodInfo.DeclaringType!))
+                if (instanceDeclaringType.IsSubclassOf(existingMethodInfo.DeclaringType!))
                 {
                     existingMethod.Item2.Remove(existingMethodInfo);
                     existingMethod.Item2.Add(method);
@@ -153,7 +146,7 @@ public class MethodScheduler
             bool methodReplaced = false;
             foreach (var entry in _registeredMethodsByType)
             {
-                if (declaringType.IsSubclassOf(entry.Key))
+                if (instanceDeclaringType.IsSubclassOf(entry.Key))
                 {
                     var existingMethodInfo = entry.Value.Item2.FirstOrDefault(m => m.ToString() == method.ToString());
                     if (existingMethodInfo != null)
@@ -166,7 +159,7 @@ public class MethodScheduler
                             _registeredMethodsByType.Remove(entry.Key);
                         }
 
-                        _registeredMethodsByType[declaringType] = (serviceInstance, new HashSet<MethodInfo> { method });
+                        _registeredMethodsByType[instanceDeclaringType] = (serviceInstance, new HashSet<MethodInfo> { method });
                         break;
                     }
                 }
@@ -174,27 +167,27 @@ public class MethodScheduler
 
             if (!methodReplaced)
             {
-                _registeredMethodsByType[declaringType] = (serviceInstance, new HashSet<MethodInfo> { method });
+                _registeredMethodsByType[instanceDeclaringType] = (serviceInstance, new HashSet<MethodInfo> { method });
             }
         }
     }
 
-    public void RegisterCronJob(MethodInfo method, string cronExpression)
+    public void RegisterCronJob(MethodInfo method, string cronExpression, object? serviceInstance = null)
     {
 
-        var jobDelegate = CreateTaskDelegate(method);
-        _engine.RegisterCronJob(jobDelegate, cronExpression);
+        var jobDelegate = CreateTaskDelegate(method, serviceInstance);
+        _engine.RegisterCronJob(jobDelegate, cronExpression, serviceInstance);
     }
 
-    private void RegisterFrequencyJob(MethodInfo method, CycleRate? cycleRate = null)
+    private void RegisterFrequencyJob(MethodInfo method, CycleRate? cycleRate = null, object? serviceInstance = null)
     {
-        var taskDelegate = CreateTaskDelegate(method);
+        var taskDelegate = CreateTaskDelegate(method, serviceInstance);
         _engine.ScheduleTask(taskDelegate, cycleRate);
     }
 
-    private Func<Task> CreateTaskDelegate(MethodInfo method)
+    private Func<Task> CreateTaskDelegate(MethodInfo method, object? serviceInstance = null)
     {
-        var serviceInstance = GetServiceInstance(method.DeclaringType!).Item1;
+        // var serviceInstance = GetServiceInstance(method.DeclaringType!).Item1;
         var parameters = method.GetParameters().Length == 0 ? null : new object[0];
 
         if (serviceInstance == null)
@@ -333,7 +326,7 @@ public class AltruistEngine : IAltruistEngine
         Enabled = false;
     }
 
-    public void RegisterCronJob(Delegate jobDelegate, string cronExpression)
+    public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
     {
         var cron = CronExpression.Parse(cronExpression);
 
@@ -537,9 +530,9 @@ public class EngineWithDiagnostics : IAltruistEngine
         Enabled = false;
     }
 
-    public void RegisterCronJob(Delegate jobDelegate, string cronExpression)
+    public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
     {
-        _wrappedEngine.RegisterCronJob(jobDelegate, cronExpression);
+        _wrappedEngine.RegisterCronJob(jobDelegate, cronExpression, serviceInstance);
     }
 
     public void Start()

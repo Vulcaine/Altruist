@@ -120,8 +120,6 @@ namespace Altruist
         }
 
         [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "SyncPacket";
-
-
     }
 
 

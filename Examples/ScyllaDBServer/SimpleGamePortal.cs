@@ -1,5 +1,5 @@
 using Altruist;
-using Altruist.Authentication;
+using Altruist.Security;
 using Altruist.Gaming;
 using Microsoft.Extensions.Logging;
 

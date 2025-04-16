@@ -1,4 +1,4 @@
-namespace Altruist.Auth;
+namespace Altruist.Security;
 
 public interface ILoginService
 {

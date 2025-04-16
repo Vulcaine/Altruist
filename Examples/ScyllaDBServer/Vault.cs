@@ -1,5 +1,5 @@
 using Altruist;
-using Altruist.Auth;
+using Altruist.Security;
 using Altruist.Database;
 using Altruist.UORM;
 

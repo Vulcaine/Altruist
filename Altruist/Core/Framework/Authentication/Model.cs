@@ -3,7 +3,7 @@ using Altruist.UORM;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Newtonsoft.Json;
 
-namespace Altruist.Auth;
+namespace Altruist.Security;
 
 
 public interface ILoginToken

@@ -1,33 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
-using System.Text.Json.Serialization;
-using Altruist;
-using MessagePack;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
-public interface IIssue : IPacketBase
-{
-
-}
-
-[MessagePackObject]
-public abstract class TokenIssue : IIssue
-{
-    public string AccessToken { get; set; } = "";
-    public string RefreshToken { get; set; } = "";
-    public DateTime AccessExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
-
-    public DateTime RefreshExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromDays(7);
-
-    [IgnoreMember]
-    [JsonIgnore]
-    public string Algorithm { get; set; } = "";
-    public PacketHeader Header { get; set; }
-    public virtual string Type { get; set; } = "TokenIssue";
-}
+namespace Altruist.Security;
 
 public interface IIssuer
 {

@@ -4,7 +4,7 @@ using Altruist.Database;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Authentication;
+namespace Altruist.Security;
 
 public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionVault>
 {

@@ -1,6 +1,6 @@
 
 using Altruist;
-using Altruist.Auth;
+using Altruist.Security;
 
 public interface ILoginVault : IVault<AccountVault>
 {

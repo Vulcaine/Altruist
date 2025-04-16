@@ -20,7 +20,7 @@ public class PortalContext(
 
 public abstract class Portal : IPortal, IConnectionStore
 {
-    private readonly IPortalContext _context;
+    protected readonly IPortalContext _context;
     protected readonly ILogger Logger;
 
     protected IAltruistRouter Router => _context.Router;
@@ -195,17 +195,9 @@ public abstract class Portal : IPortal, IConnectionStore
         await _context.SaveRoomAsync(room);
     }
 
-    [Cycle(cron: CronPresets.Hourly)]
-    public virtual async Task Cleanup()
+    public virtual Task Cleanup()
     {
-        try
-        {
-            await _context.Cleanup();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError($"Error cleaning up connections: {ex}");
-        }
+        return Task.CompletedTask;
     }
 
     public Task<bool> IsConnectionExistsAsync(string connectionId)

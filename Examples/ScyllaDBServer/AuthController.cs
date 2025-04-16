@@ -1,4 +1,4 @@
-using Altruist.Auth;
+using Altruist.Security;
 using Altruist.Database;
 using Altruist.ScyllaDB;
 using Microsoft.AspNetCore.Mvc;

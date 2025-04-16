@@ -1,5 +1,5 @@
 
-namespace Altruist.Authentication;
+namespace Altruist.Security;
 
 
 public class AuthTokenSessionVault : VaultModel
