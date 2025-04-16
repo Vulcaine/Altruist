@@ -16,7 +16,7 @@ public class SpaceshipPlayer : Spaceship, IOnVaultCreate
 
 [Vault("account")]
 [VaultPrimaryKey(keys: [nameof(Username)])]
-public class MyAccount : UsernamePasswordAccountVault, IOnVaultCreate
+public class MyAccount : UsernamePasswordAccountModel, IOnVaultCreate
 {
     public Task<List<IVaultModel>> OnCreateAsync()
     {

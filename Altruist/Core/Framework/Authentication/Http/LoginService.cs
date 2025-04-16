@@ -23,7 +23,7 @@ public abstract class LoginService<TAccount> : ILoginService where TAccount : Ac
     public abstract Task<AccountModel?> Signup(SignupRequest request);
 }
 
-public class UsernamePasswordLoginService<TAccount> : LoginService<TAccount> where TAccount : UsernamePasswordAccountVault
+public class UsernamePasswordLoginService<TAccount> : LoginService<TAccount> where TAccount : UsernamePasswordAccountModel
 {
     public UsernamePasswordLoginService(IVault<TAccount> accountVault, IPasswordHasher passwordHasher) : base(accountVault, passwordHasher) { }
 
@@ -60,7 +60,7 @@ public class UsernamePasswordLoginService<TAccount> : LoginService<TAccount> whe
             throw new ArgumentException("Username must be provided.");
         }
 
-        var account = new UsernamePasswordAccountVault
+        var account = new UsernamePasswordAccountModel
         {
             Username = request.Username,
             PasswordHash = _passwordHasher.Hash(request.Password),

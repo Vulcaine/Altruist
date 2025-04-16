@@ -13,7 +13,7 @@ public class MyController : JwtAuthController
     {
     }
 
-    public override ILoginService LoginService(IServiceProvider serviceProvider)
+    protected override ILoginService LoginService(IServiceProvider serviceProvider)
     {
         var factory = serviceProvider.GetRequiredService<VaultRepositoryFactory>();
         var defaultKeyspace = factory.Make<DefaultScyllaKeyspace>(ScyllaDBToken.Instance);

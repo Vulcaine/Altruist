@@ -29,7 +29,7 @@ public abstract class AccountModel : VaultModel
 }
 
 
-public class UsernamePasswordAccountVault : AccountModel
+public class UsernamePasswordAccountModel : AccountModel
 {
 
     [VaultColumn("username")]

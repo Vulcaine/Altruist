@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
@@ -19,7 +20,7 @@ public class JwtAuth : IShieldAuth
     public Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
         var token = GetTokenFromRequest(context);
-        if (string.IsNullOrEmpty(token) || !_tokenValidator.ValidateToken(token))
+        if (string.IsNullOrEmpty(token) || _tokenValidator.ValidateToken(token) == null)
         {
             return Task.FromResult(new AuthResult(AuthorizationResult.Failed(), null!));
         }
@@ -69,16 +70,17 @@ public class JwtTokenValidator : ITokenValidator
         _validationParams = parameters;
     }
 
-    public bool ValidateToken(string token)
+    public ClaimsPrincipal GetClaimsPrincipal(string token) => _tokenHandler.ValidateToken(token, _validationParams, out _);
+
+    public ClaimsPrincipal? ValidateToken(string token)
     {
         try
         {
-            _tokenHandler.ValidateToken(token, _validationParams, out _);
-            return true;
+            return _tokenHandler.ValidateToken(token, _validationParams, out _);
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 }

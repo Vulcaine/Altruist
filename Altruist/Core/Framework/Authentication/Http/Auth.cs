@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Altruist.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -118,7 +117,7 @@ public abstract class AuthController : ControllerBase
     /// Provides the login service instance to handle username/password authentication.
     /// Must be implemented in derived classes.
     /// </summary>
-    public abstract ILoginService LoginService(IServiceProvider serviceProvider);
+    protected abstract ILoginService LoginService(IServiceProvider serviceProvider);
 }
 
 /// <summary>
@@ -126,9 +125,13 @@ public abstract class AuthController : ControllerBase
 /// </summary>
 public abstract class JwtAuthController : AuthController
 {
+    protected readonly JwtTokenValidator _tokenValidator;
     protected JwtAuthController(IIssuer issuer,
     ILoggerFactory loggerFactory, IServiceProvider serviceProvider)
-        : base(issuer, loggerFactory, serviceProvider) { }
+        : base(issuer, loggerFactory, serviceProvider)
+    {
+        _tokenValidator = serviceProvider.GetRequiredService<JwtTokenValidator>();
+    }
 
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignupRequest request)
@@ -226,42 +229,65 @@ public abstract class JwtAuthController : AuthController
         if (accessProtocol != "jwt" || refreshProtocol != "jwt")
             return Unauthorized("This endpoint only supports JWT access and refresh tokens.");
 
-        var accessKey = $"{accessToken};jwt";
-        var cached = await _syncService.FindCachedByIdAsync(accessKey);
-
-        if (cached?.IsAccessTokenValid() != true || cached?.IsRefreshTokenValid() != true)
+        try
         {
-            _logger.LogWarning($"[refresh] ❌ Invalid/expired session for access token: {accessToken}");
-            return Unauthorized("Invalid or expired session.");
+            var claims = _tokenValidator.GetClaimsPrincipal(accessToken);
+            if (claims == null)
+            {
+                _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
+                return Unauthorized("Invalid access token.");
+            }
+
+            var groupKey = claims.FindFirst("GroupKey")?.Value;
+
+            if (groupKey == null)
+            {
+                _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
+                return Unauthorized("Invalid access token.");
+            }
+
+            var accessKey = $"{accessToken};jwt";
+            var cached = await _syncService.FindCachedByIdAsync(accessKey, groupKey ?? "");
+
+            if (cached?.IsRefreshTokenValid() != true)
+            {
+                _logger.LogWarning($"[refresh] ❌ Invalid/expired session for access token: {accessToken}");
+                return Unauthorized("Invalid or expired session.");
+            }
+
+            var expectedRefreshKey = $"{cached.RefreshToken}";
+            var providedRefreshKey = $"{refreshToken};jwt";
+
+            if (!string.Equals(providedRefreshKey, expectedRefreshKey, StringComparison.Ordinal))
+            {
+                _logger.LogWarning($"[refresh][{cached.PrincipalId}] ❌ Refresh token mismatch.");
+                return Unauthorized("Refresh token mismatch.");
+            }
+
+            if (_issuer is not JwtTokenIssuer jwtIssuer)
+                return Unauthorized("JWT issuer not configured.");
+
+            var principal = GetPrincipalFromToken(accessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
+            if (principal == null)
+            {
+                _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
+                return Unauthorized("Invalid access token.");
+            }
+
+            var issue = IssueToken(principal.Claims);
+
+
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey!, cached.PrincipalId))
+                return Unauthorized("Couldn't identify client IP.");
+
+            _logger.LogInformation($"[refresh][{groupKey}] 🔁 Token refreshed (principal: {cached.PrincipalId})");
+            return OkOrUnauthorized(issue);
         }
-
-        var expectedRefreshKey = $"{cached.RefreshToken};jwt";
-        var providedRefreshKey = $"{refreshToken};jwt";
-
-        if (!string.Equals(providedRefreshKey, expectedRefreshKey, StringComparison.Ordinal))
+        catch (Exception ex)
         {
-            _logger.LogWarning($"[refresh][{cached.PrincipalId}] ❌ Refresh token mismatch.");
-            return Unauthorized("Refresh token mismatch.");
+            _logger.LogError($"[refresh] Exception: {ex.Message}");
+            return Unauthorized();
         }
-
-        if (_issuer is not JwtTokenIssuer jwtIssuer)
-            return Unauthorized("JWT issuer not configured.");
-
-        var principal = GetPrincipalFromToken(accessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
-        if (principal == null)
-        {
-            _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
-            return Unauthorized("Invalid access token.");
-        }
-
-        var issue = IssueToken(principal.Claims);
-        var groupKey = SessionGroupKeyStrategy(cached.PrincipalId);
-
-        if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, cached.PrincipalId))
-            return Unauthorized("Couldn't identify client IP.");
-
-        _logger.LogInformation($"[refresh][{groupKey}] 🔁 Token refreshed (principal: {cached.PrincipalId})");
-        return OkOrUnauthorized(issue);
     }
 
     private IActionResult OkOrUnauthorized(TokenIssue? token) => token is null
@@ -314,6 +340,7 @@ public abstract class JwtAuthController : AuthController
             throw new NotSupportedException($"Unsupported login request type {request.GetType().Name}.");
         }
 
-        return [new Claim(ClaimTypes.Name, principal)];
+        string groupKey = SessionGroupKeyStrategy(account.GenId);
+        return [new Claim(ClaimTypes.Name, principal), new Claim("GroupKey", groupKey ?? ""), new Claim(JwtRegisteredClaimNames.Sub, account.GenId)];
     }
 }
