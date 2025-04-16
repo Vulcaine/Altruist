@@ -31,12 +31,22 @@ public class JwtToken : TokenIssue
 
 public class SessionTokenIssuer : IIssuer
 {
+    private readonly TimeSpan _accessTokenExpiration;
+    private readonly TimeSpan _refreshTokenExpiration;
+    public SessionTokenIssuer(TimeSpan? accessTokenExpiration = null, TimeSpan? refreshTokenExpiration = null)
+    {
+        _accessTokenExpiration = accessTokenExpiration ?? TimeSpan.FromHours(1);
+        _refreshTokenExpiration = refreshTokenExpiration ?? TimeSpan.FromDays(7);
+    }
+
     public IIssue Issue()
     {
         return new SessionToken
         {
             AccessToken = Guid.NewGuid().ToString() + ";session",
-            AccessExpiration = DateTime.UtcNow.AddHours(1)
+            RefreshToken = Guid.NewGuid().ToString() + ";session",
+            RefreshExpiration = DateTime.UtcNow + _refreshTokenExpiration,
+            AccessExpiration = DateTime.UtcNow + _accessTokenExpiration
         };
     }
 }

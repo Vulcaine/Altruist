@@ -59,7 +59,7 @@ public struct SessionAuthContext : ISessionAuthContext
 
     [JsonPropertyName("token")]
     [Key(2)]
-    public string StatelessToken { get; } = string.Empty;
+    public string StatelessToken { get; set; } = string.Empty;
 
     public SessionAuthContext()
     {

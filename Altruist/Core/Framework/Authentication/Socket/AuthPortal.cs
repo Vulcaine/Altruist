@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -54,9 +55,36 @@ public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISe
 
         if (_syncService != null)
         {
-            await _syncService.DeleteAsync(context.StatelessToken, groupKey);
+            var old = await _syncService.DeleteAsync(context.StatelessToken, groupKey);
+
+            if (old == null)
+            {
+                return null;
+            }
         }
 
-        return Issuer.Issue();
+        var newToken = Issuer.Issue();
+
+        if (_syncService != null && newToken is TokenIssue tokenIssue)
+        {
+            var newAuthSession = new AuthTokenSessionModel
+            {
+                AccessToken = tokenIssue.AccessToken,
+                AccessExpiration = tokenIssue.AccessExpiration,
+                RefreshExpiration = tokenIssue.RefreshExpiration,
+                RefreshToken = tokenIssue.RefreshToken,
+                PrincipalId = claims.FindFirst(ClaimTypes.Name)?.Value!,
+                Ip = claims.FindFirst("Ip")?.Value!,
+                GenId = tokenIssue.AccessToken
+            };
+
+            await _syncService.SaveAsync(newAuthSession, groupKey);
+        }
+        else
+        {
+            return null;
+        }
+
+        return newToken;
     }
 }

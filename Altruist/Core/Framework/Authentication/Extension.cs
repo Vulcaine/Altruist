@@ -73,15 +73,24 @@ public static class WebAppAuthExtensions
     /// This is suitable for development and testing purposes. In production, use the overload that accepts a fixed secret key.
     /// </remarks>
     public static WebApplicationBuilder AddJwtAuth(
-        this WebApplicationBuilder builder,
-        Action<JwtBearerOptions>? configureOptions = null,
-        Action<AuthorizationOptions>? authorizationOptions = null)
+    this WebApplicationBuilder builder,
+    Action<JwtBearerOptions>? configureOptions = null,
+    Action<AuthorizationOptions>? authorizationOptions = null)
     {
-        var secretKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        builder.Services.AddSingleton(new SymmetricSecurityKey(Convert.FromBase64String(secretKey)));
+        // Dummy, fixed key for development use only.
+        // You can generate one with any 256-bit base64-encoded string (32 bytes).
+        const string devSecretKey =
+        // This-is-a-development-secret-key. Provided to make it work out of the box without the need for a complex configuration."
+        "VGhpcy1pcy1hLWRldmVsb3BtZW50LXNlY3JldC1rZXktMTIzNDU2";
+
+        var keyBytes = Convert.FromBase64String(devSecretKey);
+        var signingKey = new SymmetricSecurityKey(keyBytes);
+
+        builder.Services.AddSingleton(signingKey);
 
         return builder.ConfigureJwtAuth(configureOptions, authorizationOptions, isDefaultKey: true);
     }
+
 
     /// <summary>
     /// Adds JWT authentication to the application using a specified secret key.

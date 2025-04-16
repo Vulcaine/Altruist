@@ -341,6 +341,7 @@ public abstract class JwtAuthController : AuthController
         }
 
         string groupKey = SessionGroupKeyStrategy(account.GenId);
-        return [new Claim(ClaimTypes.Name, principal), new Claim("GroupKey", groupKey ?? ""), new Claim(JwtRegisteredClaimNames.Sub, account.GenId)];
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        return [new Claim(ClaimTypes.Name, principal), new Claim("GroupKey", groupKey ?? ""), new Claim(JwtRegisteredClaimNames.Sub, account.GenId), new Claim("Ip", ip ?? "")];
     }
 }

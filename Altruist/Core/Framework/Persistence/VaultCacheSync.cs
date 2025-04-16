@@ -6,7 +6,7 @@ public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, 
 
     public Task SaveAsync(TVaultModel entity, string cacheGroupId = "");
 
-    public Task<bool> DeleteAsync(string id, string cacheGroupId = "");
+    public Task<TVaultModel?> DeleteAsync(string id, string cacheGroupId = "");
 
     public Task<TVaultModel?> FindCachedByIdAsync(string id, string cacheGroupId = "");
 
@@ -90,23 +90,21 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         return _vault!;
     }
 
-    public async Task<bool> DeleteAsync(string id, string cacheGroupId = "")
+    public async Task<TVaultModel?> DeleteAsync(string id, string cacheGroupId = "")
     {
         if (_vault == null)
         {
-            await _cacheProvider.RemoveAsync<TVaultModel>(id, cacheGroupId);
-            return true;
+            return await _cacheProvider.RemoveAsync<TVaultModel>(id, cacheGroupId);
         }
         else
         {
             var deletedFromVault = await _vault.Where(x => x.GenId == id).DeleteAsync();
             if (deletedFromVault)
             {
-                await _cacheProvider.RemoveAsync<TVaultModel>(id, cacheGroupId);
-                return true;
+                return await _cacheProvider.RemoveAsync<TVaultModel>(id, cacheGroupId);
             }
         }
 
-        return false;
+        return null;
     }
 }
