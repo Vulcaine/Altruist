@@ -111,8 +111,11 @@ public class SessionTokenAuth : IShieldAuth
     }
 
     private AuthResult Success(string token, AuthTokenSessionModel session)
-        => new(AuthorizationResult.Success(), new AuthDetails(token, session.AccessExpiration - DateTime.UtcNow));
+    {
+        // TODO: currently we are assigning PrincipalID as groupkey which might not be good always
+        return new(AuthorizationResult.Success(), new AuthDetails(token, session.PrincipalId, session.Ip, session.PrincipalId, session.AccessExpiration - DateTime.UtcNow));
 
+    }
     private AuthResult Fail(string reason)
     {
         _logger.LogDebug("Auth failed: {Reason}", reason);
