@@ -143,6 +143,8 @@ public static class WebAppAuthExtensions
         builder.Services.AddSingleton<JwtTokenIssuer>();
         builder.Services.AddKeyedSingleton<IIssuer>(IssuerKeys.JwtToken, (sp, key) => sp.GetRequiredService<JwtTokenIssuer>());
         builder.Services.AddSingleton<JwtAuth>();
+        builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+
 
         logger.LogInformation("🔐 JWT authentication activated. Your app is armored and ready to secure connections!");
 

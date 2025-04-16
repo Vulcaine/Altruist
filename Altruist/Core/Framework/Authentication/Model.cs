@@ -1,5 +1,7 @@
 
+using System.Text.Json.Serialization;
 using Altruist.UORM;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Newtonsoft.Json;
 
@@ -40,7 +42,7 @@ public class UsernamePasswordAccountVault : AccountModel
     public override string Type { get; set; } = "UsernamePasswordAccount";
 }
 
-public class EmailPasswordAccountVault : AccountModel
+public class EmailPasswordAccountModel : AccountModel
 {
     [VaultColumn("email")]
     public required string Email { get; set; }
@@ -54,7 +56,7 @@ public class EmailPasswordAccountVault : AccountModel
 }
 
 
-public class HybridAccountVault : AccountModel
+public class HybridAccountModel : AccountModel
 {
     [VaultColumn("username")]
     public required string Username { get; set; }
@@ -74,15 +76,55 @@ public class LoginRequest
 {
 }
 
+public class SignupRequest
+{
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("email")]
+    public string? Email { get; set; }
+
+    [JsonPropertyName("password")]
+    public string Password { get; set; }
+
+    public SignupRequest(string password, string? username = null, string? email = null)
+    {
+        if (username == null && email == null)
+        {
+            throw new BadHttpRequestException("Username or email must be provided.");
+        }
+
+        Username = username;
+        Password = password;
+    }
+}
+
 public class UsernamePasswordLoginRequest : LoginRequest, ILoginToken
 {
+    [JsonPropertyName("username")]
     public string Username { get; set; }
 
+    [JsonPropertyName("password")]
     public string Password { get; set; }
 
     public UsernamePasswordLoginRequest(string username, string password)
     {
         Username = username;
+        Password = password;
+    }
+}
+
+public class EmailPasswordLoginRequest : LoginRequest, ILoginToken
+{
+    [JsonPropertyName("email")]
+    public string Email { get; set; }
+
+    [JsonPropertyName("password")]
+    public string Password { get; set; }
+
+    public EmailPasswordLoginRequest(string email, string password)
+    {
+        Email = email;
         Password = password;
     }
 }
