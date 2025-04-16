@@ -1,16 +1,15 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Security;
 
 public class JwtAuth : IShieldAuth
 {
-    private readonly ITokenValidator _tokenValidator;
+    private readonly JwtTokenValidator _tokenValidator;
 
-    public JwtAuth(ITokenValidator tokenValidator)
+    public JwtAuth(JwtTokenValidator tokenValidator)
     {
         _tokenValidator = tokenValidator;
     }
@@ -34,7 +33,7 @@ public class JwtAuth : IShieldAuth
         if (context is HttpAuthContext httpAuthContext)
         {
             var request = httpAuthContext.HttpContext.Request;
-            return request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            return request.Headers["Authorization"].ToString().Replace("Bearer ", "").Split(";")[0];
         }
         else
         {
@@ -64,22 +63,10 @@ public class JwtTokenValidator : ITokenValidator
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly TokenValidationParameters _validationParams;
 
-    public JwtTokenValidator(IConfiguration configuration)
+    public JwtTokenValidator(TokenValidationParameters parameters)
     {
         _tokenHandler = new JwtSecurityTokenHandler();
-
-        _validationParams = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = configuration["Jwt:Issuer"],
-            ValidAudience = configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(configuration["Jwt:SecretKey"]!)
-            )
-        };
+        _validationParams = parameters;
     }
 
     public bool ValidateToken(string token)
@@ -95,6 +82,7 @@ public class JwtTokenValidator : ITokenValidator
         }
     }
 }
+
 
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
 public class JwtShieldAttribute : ShieldAttribute

@@ -38,6 +38,11 @@ public class Connection : StoredModel, IConnection
     [JsonIgnore]
     string ITypedModel.Type { get => Type; set { /* Allow deserialization but ignore */ } }
 
+    public virtual Task CloseOutputAsync()
+    {
+        throw new NotImplementedException();
+    }
+
     public virtual Task CloseAsync()
     {
         throw new NotImplementedException();

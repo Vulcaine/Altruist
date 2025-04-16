@@ -188,6 +188,18 @@ public sealed class CachedWebSocketConnection : Connection
             return Task.CompletedTask;
         }
     }
+
+    public override Task CloseOutputAsync()
+    {
+        if (_connection != null)
+        {
+            return _connection.CloseOutputAsync();
+        }
+        else
+        {
+            return Task.CompletedTask;
+        }
+    }
 }
 
 public sealed class WebSocketConnection : Connection

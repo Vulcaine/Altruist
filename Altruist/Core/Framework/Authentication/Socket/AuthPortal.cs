@@ -14,8 +14,14 @@ public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISe
     [Gate("upgrade")]
     public virtual async Task Upgrade(TAuthContext context, string clientId)
     {
-        var token = await UpgradeAuth(context, clientId);
-        await Router.Client.SendAsync(clientId, token);
+        var connection = await GetConnectionAsync(clientId);
+        if (connection != null)
+        {
+            var token = await UpgradeAuth(context, clientId);
+            await Router.Client.SendAsync(clientId, token);
+            await connection.CloseOutputAsync();
+            await connection.CloseAsync();
+        }
     }
 
     public virtual Task<IIssue> UpgradeAuth(TAuthContext context, string clientId)
