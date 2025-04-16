@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Altruist.Contracts;
 using Altruist.Database;
+using Cassandra;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Altruist.Authentication;
+namespace Altruist.Security;
 
 /// <summary>
 /// Provides extension methods to configure authentication and token session handling for a WebApplicationBuilder.
@@ -33,9 +34,11 @@ public static class WebAppAuthExtensions
         {
             var repoFactory = sp.GetRequiredService<VaultRepositoryFactory>();
             var repo = repoFactory.Make<TKeyspace>(token);
-            return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthSessionData>());
+            return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthTokenSessionModel>());
         });
         builder.Services.AddSingleton(typeof(IVaultCacheSyncService<>), sp => sp.GetRequiredService<TokenSessionSyncService>());
+        builder.Services.AddSingleton<SessionTokenIssuer>();
+        builder.Services.AddKeyedScoped<IIssuer>(IssuerKeys.SessionToken, (sp, key) => sp.GetRequiredService<SessionTokenIssuer>());
         return builder;
     }
 
@@ -53,6 +56,9 @@ public static class WebAppAuthExtensions
         {
             return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), null);
         });
+        builder.Services.AddSingleton<SessionTokenIssuer>();
+        builder.Services.AddKeyedScoped<IIssuer>(IssuerKeys.SessionToken, (sp, key) => sp.GetRequiredService<SessionTokenIssuer>());
+        builder.Services.AddSingleton<SessionTokenAuth>();
         return builder;
     }
 
@@ -67,15 +73,24 @@ public static class WebAppAuthExtensions
     /// This is suitable for development and testing purposes. In production, use the overload that accepts a fixed secret key.
     /// </remarks>
     public static WebApplicationBuilder AddJwtAuth(
-        this WebApplicationBuilder builder,
-        Action<JwtBearerOptions>? configureOptions = null,
-        Action<AuthorizationOptions>? authorizationOptions = null)
+    this WebApplicationBuilder builder,
+    Action<JwtBearerOptions>? configureOptions = null,
+    Action<AuthorizationOptions>? authorizationOptions = null)
     {
-        var secretKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        builder.Services.AddSingleton(new SymmetricSecurityKey(Convert.FromBase64String(secretKey)));
+        // Dummy, fixed key for development use only.
+        // You can generate one with any 256-bit base64-encoded string (32 bytes).
+        const string devSecretKey =
+        // This-is-a-development-secret-key. Provided to make it work out of the box without the need for a complex configuration."
+        "VGhpcy1pcy1hLWRldmVsb3BtZW50LXNlY3JldC1rZXktMTIzNDU2";
+
+        var keyBytes = Convert.FromBase64String(devSecretKey);
+        var signingKey = new SymmetricSecurityKey(keyBytes);
+
+        builder.Services.AddSingleton(signingKey);
 
         return builder.ConfigureJwtAuth(configureOptions, authorizationOptions, isDefaultKey: true);
     }
+
 
     /// <summary>
     /// Adds JWT authentication to the application using a specified secret key.
@@ -110,31 +125,35 @@ public static class WebAppAuthExtensions
         var sp = builder.Services.BuildServiceProvider();
         var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<object>();
         var signingKey = sp.GetRequiredService<SymmetricSecurityKey>();
+        var validationParameters = new TokenValidationParameters
+        {
+            ValidIssuer = "Altruist",
+            ValidAudience = "Altruist",
+            IssuerSigningKey = signingKey,
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
 
+        builder.Services.AddSingleton(sp => validationParameters);
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer(options =>
-            {
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidIssuer = "Altruist",
-                    ValidAudience = "Altruist",
-                    IssuerSigningKey = signingKey,
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero
-                };
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = validationParameters;
+            configureOptions?.Invoke(options);
+        });
 
-                configureOptions?.Invoke(options);
-            });
 
         builder.Services.AddAuthorization(options => authorizationOptions?.Invoke(options));
 
-        builder.Services.AddScoped<ITokenValidator, JwtTokenValidator>();
-        builder.Services.AddScoped<JwtTokenIssuer>();
-        builder.Services.AddScoped<IIssuer>(sp => sp.GetRequiredService<JwtTokenIssuer>());
-        builder.Services.AddScoped<IShieldAuth, JwtAuth>();
+        builder.Services.AddSingleton<JwtTokenValidator>();
+        builder.Services.AddSingleton<JwtTokenIssuer>();
+        builder.Services.AddKeyedSingleton<IIssuer>(IssuerKeys.JwtToken, (sp, key) => sp.GetRequiredService<JwtTokenIssuer>());
+        builder.Services.AddSingleton<JwtAuth>();
+        builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+
 
         logger.LogInformation("🔐 JWT authentication activated. Your app is armored and ready to secure connections!");
 

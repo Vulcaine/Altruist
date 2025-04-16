@@ -15,5 +15,5 @@ public interface IAltruistEngine
 
     void ScheduleTask(Delegate taskDelegate, CycleRate? frequencyHz = null);
     void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
-    void RegisterCronJob(Delegate jobDelegate, string cronExpression);
+    void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
 }

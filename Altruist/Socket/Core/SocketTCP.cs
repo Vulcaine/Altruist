@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
-using Altruist.Authentication;
+using Altruist.Security;
 using Altruist.Contracts;
 using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
@@ -93,6 +93,11 @@ public sealed class TcpTransport : ITransport
         var connection = new CachedTcpConnection(new TcpConnection(client, authContext.ClientId, authDetails));
 
         await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
+    }
+
+    public void RouteTraffic(IApplicationBuilder app)
+    {
+        throw new NotImplementedException();
     }
 }
 

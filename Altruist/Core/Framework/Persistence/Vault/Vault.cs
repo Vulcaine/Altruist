@@ -22,7 +22,7 @@ public class VaultAdapter<TVaultModel> : IVault<TVaultModel> where TVaultModel :
         return _underlying.AnyAsync(predicate);
     }
 
-    public Task<int> CountAsync()
+    public Task<long> CountAsync()
     {
         return _underlying.CountAsync();
     }
@@ -102,7 +102,7 @@ public class VaultAdapter<TVaultModel> : IVault<TVaultModel> where TVaultModel :
         return _underlying.ToListAsync(predicate);
     }
 
-    public Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    public Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
         return _underlying.UpdateAsync(setPropertyCalls);
     }

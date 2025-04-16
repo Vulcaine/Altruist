@@ -15,14 +15,14 @@ public sealed class RedisServiceConfiguration : ICacheConfiguration
         services.AddSingleton<ICacheConnectionSetupBase>(sp => sp.GetRequiredService<RedisConnectionSetup>());
     }
 
-    public void AddDocument<T>() where T : IModel
+    public void AddDocument<T>() where T : IStoredModel
     {
         AddDocument(typeof(T));
     }
 
     public void AddDocument(Type type)
     {
-        if (typeof(IModel).IsAssignableFrom(type))
+        if (typeof(IStoredModel).IsAssignableFrom(type))
         {
             Documents.Add(type);
         }
@@ -54,7 +54,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
         _config = (RedisCacheServiceToken.Instance.Configuration as RedisServiceConfiguration)!;
     }
 
-    public RedisConnectionSetup AddDocument<T>() where T : class, IModel
+    public RedisConnectionSetup AddDocument<T>() where T : class, IStoredModel
     {
         _config.AddDocument<T>();
         return this;

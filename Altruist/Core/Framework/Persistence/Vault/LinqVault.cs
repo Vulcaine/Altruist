@@ -66,12 +66,12 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
         return await Task.FromResult(filteredQuery.ToList());
     }
 
-    public async Task<int> CountAsync()
+    public async Task<long> CountAsync()
     {
         return await Task.FromResult(_query.Count());
     }
 
-    public async Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
         return await _query.ExecuteUpdateAsync(setPropertyCalls);
     }

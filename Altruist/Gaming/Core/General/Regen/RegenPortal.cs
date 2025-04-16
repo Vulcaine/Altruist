@@ -41,7 +41,6 @@ public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TP
     /// method to retrieve the players requiring updates, and then synchronizes the updates via the router to 
     /// ensure the changes are sent to the players in real-time.
     /// </remarks>
-    [Cycle()]
     public async virtual Task Regen()
     {
         var players = await CalculateRegenOneFrame();

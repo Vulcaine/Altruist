@@ -1,5 +1,6 @@
 using System.Net;
-using Altruist.Authentication;
+using System.Security.Claims;
+using Altruist.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 
@@ -19,7 +20,7 @@ public class AuthResult
 
 public interface ITokenValidator
 {
-    bool ValidateToken(string token);
+    ClaimsPrincipal? ValidateToken(string token);
 }
 
 

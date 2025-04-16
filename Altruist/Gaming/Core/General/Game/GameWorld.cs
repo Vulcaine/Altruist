@@ -32,7 +32,7 @@ public class GameWorldManager
 
     public virtual async Task SaveAsync()
     {
-        var saveTasks = _partitions.Select(p => _cache.SaveAsync(p.Id, p));
+        var saveTasks = _partitions.Select(p => _cache.SaveAsync(p.GenId, p));
         await Task.WhenAll(saveTasks);
     }
 

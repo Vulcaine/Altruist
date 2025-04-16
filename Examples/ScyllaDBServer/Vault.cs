@@ -1,5 +1,5 @@
 using Altruist;
-using Altruist.Auth;
+using Altruist.Security;
 using Altruist.Database;
 using Altruist.UORM;
 
@@ -16,11 +16,12 @@ public class SpaceshipPlayer : Spaceship, IOnVaultCreate
 
 [Vault("account")]
 [VaultPrimaryKey(keys: [nameof(Username)])]
-public class MyAccount : UsernamePasswordAccount, IOnVaultCreate
+public class MyAccount : UsernamePasswordAccountModel, IOnVaultCreate
 {
     public Task<List<IVaultModel>> OnCreateAsync()
     {
-        var adminAccount = new MyAccount() { Username = "AltruistAdmin", PasswordHash = "someHashedPass" };
+        var hasher = new BcryptPasswordHasher();
+        var adminAccount = new MyAccount { Username = "AltruistAdmin", PasswordHash = hasher.Hash("someHashedPass") };
         return Task.FromResult(new List<IVaultModel> { adminAccount });
     }
 }

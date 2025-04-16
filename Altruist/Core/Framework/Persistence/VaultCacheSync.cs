@@ -1,17 +1,16 @@
-
-using Cassandra;
-
 namespace Altruist.Database;
 
 public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, IVaultModel
 {
     public Task Load();
 
-    public Task SaveAsync(TVaultModel entity);
+    public Task SaveAsync(TVaultModel entity, string cacheGroupId = "");
 
-    public Task<TVaultModel?> FindCachedByIdAsync(string id);
+    public Task<TVaultModel?> DeleteAsync(string id, string cacheGroupId = "");
 
-    public Task<ICursor<TVaultModel>> FindAllCachedAsync();
+    public Task<TVaultModel?> FindCachedByIdAsync(string id, string cacheGroupId = "");
+
+    public Task<ICursor<TVaultModel>> FindAllCachedAsync(string cacheGroupId = "");
 
     public Task<TVaultModel?> FindPersistedByIdAsync(string id);
 
@@ -39,9 +38,9 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         }
     }
 
-    public Task<ICursor<TVaultModel>> FindAllCachedAsync()
+    public Task<ICursor<TVaultModel>> FindAllCachedAsync(string cacheGroupId = "")
     {
-        return _cacheProvider.GetAllAsync<TVaultModel>();
+        return _cacheProvider.GetAllAsync<TVaultModel>(cacheGroupId);
     }
 
     public Task<ICursor<TVaultModel>> FindAllPersistedAsync()
@@ -50,9 +49,9 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         return _vault!.ToCursorAsync();
     }
 
-    public Task<TVaultModel?> FindCachedByIdAsync(string id)
+    public Task<TVaultModel?> FindCachedByIdAsync(string id, string cacheGroupId = "")
     {
-        return _cacheProvider.GetAsync<TVaultModel>(id);
+        return _cacheProvider.GetAsync<TVaultModel>(id, cacheGroupId);
     }
 
     public Task<TVaultModel?> FindPersistedByIdAsync(string id)
@@ -74,9 +73,9 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         Task.WaitAll(tasks);
     }
 
-    public async Task SaveAsync(TVaultModel entity)
+    public async Task SaveAsync(TVaultModel entity, string cacheGroupId = "")
     {
-        await _cacheProvider.SaveAsync(entity.GenId, entity);
+        await _cacheProvider.SaveAsync(entity.GenId, entity, cacheGroupId);
 
         if (_vault != null)
         {
@@ -89,5 +88,23 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
     {
         ValidateVault();
         return _vault!;
+    }
+
+    public async Task<TVaultModel?> DeleteAsync(string id, string cacheGroupId = "")
+    {
+        if (_vault == null)
+        {
+            return await _cacheProvider.RemoveAsync<TVaultModel>(id, cacheGroupId);
+        }
+        else
+        {
+            var deletedFromVault = await _vault.Where(x => x.GenId == id).DeleteAsync();
+            if (deletedFromVault)
+            {
+                return await _cacheProvider.RemoveAsync<TVaultModel>(id, cacheGroupId);
+            }
+        }
+
+        return null;
     }
 }

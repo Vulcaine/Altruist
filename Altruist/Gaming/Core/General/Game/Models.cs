@@ -330,10 +330,10 @@ public class SpatialGridIndex
     }
 }
 
-public class WorldPartition : IModel
+public class WorldPartition : IStoredModel
 {
     private readonly SpatialGridIndex _spatialIndex = new(cellSize: 16);
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string GenId { get; set; } = Guid.NewGuid().ToString();
 
     public IntVector2 Index { get; set; }
     public IntVector2 Position { get; set; }
@@ -345,7 +345,7 @@ public class WorldPartition : IModel
         string id,
         IntVector2 index, IntVector2 position, IntVector2 size)
     {
-        Id = id;
+        GenId = id;
         Index = index;
         Position = position;
         Size = size;

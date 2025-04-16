@@ -1,8 +1,6 @@
-using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 using Altruist.UORM;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 
 namespace Altruist.Database;
@@ -108,9 +106,11 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         var tableAttr = type.GetCustomAttribute<VaultAttribute>();
         var tableName = tableAttr?.Name ?? type.Name;
-        var fields = _document.Fields;
 
-        var insertQuery = BuildInsertQuery(tableName, fields);
+        var columns = _document.Columns;
+        var fields = columns.Keys;
+
+        var insertQuery = BuildInsertQuery(tableName, columns.Values);
         var parameters = GetParameterValues(entity, fields, false).ToList();
 
         var queries = new List<string> { insertQuery };
@@ -156,12 +156,12 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         var type = entities.First().GetType();
         ValidateEntityType(type);
 
-        var tableAttr = type.GetCustomAttribute<VaultAttribute>();
-        var tableName = tableAttr?.Name ?? type.Name;
-        var fields = _document.Fields;
+        var tableName = _document.Name;
+        var columns = _document.Columns;
+        var fields = columns.Keys;
 
-        var insertQuery = BuildInsertQuery(tableName, fields);
-        var historyQuery = BuildHistoryQuery(tableName, fields);
+        var insertQuery = BuildInsertQuery(tableName, columns.Values);
+        var historyQuery = BuildHistoryQuery(tableName, columns.Values);
 
         var queries = new List<string>();
         var allParams = new List<object?>();
@@ -180,7 +180,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
                 queries.Add(insertQuery);
                 allParams.AddRange(GetParameterValues(entity, fields, false));
 
-                if (tableAttr?.StoreHistory == true)
+                if (_document.StoreHistory == true)
                 {
                     queries.Add(historyQuery);
                     allParams.AddRange(GetParameterValues(entity, fields, true).Skip(fields.Count()));
@@ -224,7 +224,9 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         AddToQuery(QueryPosition.WHERE, whereClause);
         if (_queryParts[QueryPosition.SELECT].Count == 0)
         {
-            AddToQuery(QueryPosition.SELECT, "*");
+            AddToQuery(QueryPosition.SELECT,
+    string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}")));
+
         }
         return this;
     }
@@ -251,7 +253,9 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         AddToQuery(QueryPosition.LIMIT, $"LIMIT {count}");
         if (_queryParts[QueryPosition.SELECT].Count == 0)
         {
-            AddToQuery(QueryPosition.SELECT, "*");
+            AddToQuery(QueryPosition.SELECT,
+     string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}")));
+
         }
         return this;
     }
@@ -282,7 +286,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         return await ToListAsync();
     }
 
-    public async Task<int> CountAsync()
+    public async Task<long> CountAsync()
     {
         string countQuery = $"SELECT COUNT(*) FROM {_document.Name}";
         string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
@@ -291,10 +295,10 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             countQuery += $" WHERE {whereClause}";
         }
 
-        return await _databaseProvider.ExecuteAsync(countQuery, _queryParameters[QueryPosition.WHERE]);
+        return await _databaseProvider.ExecuteCountAsync(countQuery, _queryParameters[QueryPosition.WHERE]);
     }
 
-    public async Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
         var setClauseParts = new List<object>();
         var updatedProperties = ExtractSetProperties(setPropertyCalls);
@@ -335,7 +339,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public string BuildSelectQuery()
     {
-        string selectQuery = $"SELECT {string.Join(", ", _queryParts[QueryPosition.SELECT])} FROM {_document.Name}";
+        string selectQuery = $"SELECT {string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"))} FROM {_document.Name}";
 
         string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(whereClause))
@@ -489,7 +493,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             deleteQuery += $" WHERE {whereClause}";
         }
 
-        int affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _queryParameters[QueryPosition.WHERE]);
+        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _queryParameters[QueryPosition.WHERE]);
         return affectedRows > 0;
     }
 
@@ -498,7 +502,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         Where(predicate); // Reuse existing Where() method
 
         string query = $"SELECT COUNT(*) FROM {_document.Name} WHERE {string.Join(" AND ", _queryParts[QueryPosition.WHERE])}";
-        int count = await _databaseProvider.ExecuteAsync(query, _queryParameters[QueryPosition.WHERE]);
+        long count = await _databaseProvider.ExecuteAsync(query, _queryParameters[QueryPosition.WHERE]);
 
         return count > 0;
     }

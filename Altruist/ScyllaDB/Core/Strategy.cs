@@ -140,30 +140,67 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
         await provider.CreateKeySpaceAsync(Instance.Name, Instance.Options);
 
         var tableModels = VaultModels.Where(m => m.GetCustomAttribute<VaultAttribute>() != null);
-        foreach (var vault in VaultModels)
+        foreach (var vault in tableModels)
         {
-            await provider.CreateTableAsync(vault, Instance);
-            var vaultInstance = vault.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
-
-            if (vaultInstance is IBeforeVaultCreate before)
+            try
             {
-                await before.BeforeCreateAsync();
+                await provider.CreateTableAsync(vault, Instance);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to create table for {vault.Name}. Reason: {ex.Message}");
+                continue;
             }
 
-            if (vaultInstance is IOnVaultCreate preload)
+            var vaultInstance = vault.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
+            try
             {
-                var loaded = await preload.OnCreateAsync();
-                if (loaded.Count > 0)
+                if (vaultInstance is IBeforeVaultCreate before)
                 {
-                    await vaultRepo!.Select(vault).SaveBatchAsync(loaded);
-                    logger.LogInformation($"Streamed {loaded.Count} items into {vault.Name} vault.");
+                    await before.BeforeCreateAsync();
                 }
             }
-
-            if (vaultInstance is IAfterVaultCreate after)
+            catch (Exception ex)
             {
-                await after.AfterCreateAsync();
+                logger.LogError(ex, $"Failed to run before actions for {vault.Name}. Reason: {ex.Message}");
             }
+
+            try
+            {
+                if (vaultInstance is IOnVaultCreate preload)
+                {
+                    var loaded = await preload.OnCreateAsync();
+                    if (loaded.Count > 0)
+                    {
+                        var remoteVault = vaultRepo!.Select(vault);
+                        var count = await remoteVault.CountAsync();
+
+                        if (count == 0)
+                        {
+                            await vaultRepo!.Select(vault).SaveBatchAsync(loaded);
+                            logger.LogInformation($"Streamed {loaded.Count} items into {vault.Name} vault.");
+                        }
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to run preload actions for {vault.Name}. Reason: {ex.Message}");
+            }
+
+            try
+            {
+                if (vaultInstance is IAfterVaultCreate after)
+                {
+                    await after.AfterCreateAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to run after actions for {vault.Name}. Reason: {ex.Message}");
+            }
+
         }
 
         await provider.ShutdownAsync();

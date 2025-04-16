@@ -11,9 +11,25 @@ public interface IKeyspace
     string Name { get; }
 }
 
-public interface IModel
+public interface IIdGenerator
+{
+    public string GenerateId();
+}
+
+public interface ITypedModel
 {
     public string Type { get; set; }
+}
+
+public interface IStoredModel : ITypedModel
+{
+    public string GenId { get; set; }
+}
+
+public abstract class StoredModel : IStoredModel
+{
+    public abstract string GenId { get; set; }
+    public abstract string Type { get; set; }
 }
 
 public interface IVaultFactory<TToken, TConfig> where TConfig : IConfiguration where TToken : IServiceToken<TConfig>
@@ -31,10 +47,19 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
     IVault<TVaultModel> Make<TVaultModel>() where TVaultModel : class, IVaultModel;
 }
 
-public interface IVaultModel : IModel
+public interface IVaultModel : IStoredModel
 {
-    public string GenId { get; set; }
     DateTime Timestamp { get; set; }
+}
+
+public abstract class VaultModel : StoredModel, IVaultModel
+{
+    public abstract DateTime Timestamp { get; set; }
+
+    public VaultModel()
+    {
+        GenId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(GenId) ? Guid.NewGuid().ToString() : GenId);
+    }
 }
 
 public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
@@ -72,9 +97,10 @@ public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
 {
     Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
     Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
-    Task<int> ExecuteAsync(string cqlQuery, List<object>? parameters = null);
-    Task<int> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    Task<long> ExecuteAsync(string cqlQuery, List<object>? parameters = null);
+    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    Task<long> ExecuteCountAsync(string cqlQuery, List<object>? parameters = null);
 }
 
 
@@ -82,6 +108,7 @@ public interface ITypeErasedVault
 {
     Task SaveAsync(object entity, bool? saveHistory = false);
     Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false);
+    Task<long> CountAsync();
 }
 
 public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : class, IVaultModel
@@ -96,10 +123,9 @@ public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : clas
     Task<TVaultModel?> FirstOrDefaultAsync();
     Task<TVaultModel?> FirstAsync();
     Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate);
-    Task<int> CountAsync();
     Task SaveAsync(TVaultModel entity, bool? saveHistory = false);
     Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false);
-    Task<int> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
+    Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
     Task<bool> DeleteAsync();
     Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate);
     IVault<TVaultModel> Skip(int count);

@@ -44,7 +44,8 @@ public class RedisDocumentHelper
 
 public class RedisDocument : Document
 {
-    public RedisDocument(VaultAttribute header, Type type, string name, List<string> fields, Dictionary<string, string> columns, List<string> indexes, Dictionary<string, Func<object, object?>> propertyAccessors) : base(header, type, name, fields, columns, indexes, propertyAccessors)
+    public RedisDocument(
+        VaultAttribute header, Type type, string name, List<string> fields, Dictionary<string, string> columns, List<string> indexes, Dictionary<string, Func<object, object?>> propertyAccessors, VaultPrimaryKeyAttribute? primaryKeyAttribute = null, VaultSortingByAttribute? vaultSortingByAttribute = null) : base(header, type, name, fields, columns, indexes, propertyAccessors, primaryKeyAttribute, vaultSortingByAttribute)
     {
     }
 

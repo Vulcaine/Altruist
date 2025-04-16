@@ -128,7 +128,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
 
     public string ServiceName { get; } = "RedisCache";
 
-    private async Task SaveObjectAsync<T>(string key, T entity) where T : notnull
+    private async Task SaveObjectAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull
     {
         var document = GetDocumentOrFail<T>();
         var memoryStream = _memoryStream.Value!;
@@ -140,13 +140,13 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
             JsonSerializer.Serialize(writer, entity);
         }
 
-        await _redis.StringSetAsync($"{document.Name}:{key}", memoryStream.ToArray());
+        await _redis.StringSetAsync($"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:{key}", memoryStream.ToArray());
     }
 
-    private async Task<T?> GetObjectAsync<T>(string key)
+    private async Task<T?> GetObjectAsync<T>(string key, string cacheGroupId = "")
     {
         var document = GetDocumentOrFail<T>();
-        var json = await _redis.StringGetAsync($"{document.Name}:{key}");
+        var json = await _redis.StringGetAsync($"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:{key}");
         if (json.IsNullOrEmpty) return default;
 
         ReadOnlyMemory<byte> jsonMemory = Encoding.UTF8.GetBytes(json.ToString()).AsMemory();
@@ -177,17 +177,17 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         return (T)JsonSerializer.Deserialize(jsonSpan, typeDoc.Type)!;
     }
 
-    public async Task<T?> GetAsync<T>(string key) where T : notnull
+    public async Task<T?> GetAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
-        return await GetObjectAsync<T>(key);
+        return await GetObjectAsync<T>(key, cacheGroupId);
     }
 
-    public async Task SaveAsync<T>(string key, T entity) where T : notnull
+    public async Task SaveAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull
     {
-        await SaveObjectAsync(key, entity);
+        await SaveObjectAsync(key, entity, cacheGroupId);
     }
 
-    public async Task SaveBatchAsync<T>(Dictionary<string, T> entities) where T : notnull
+    public async Task SaveBatchAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull
     {
         var batch = _redis.CreateBatch();
         var tasks = new List<Task>();
@@ -195,28 +195,28 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         foreach (var (key, entity) in entities)
         {
             var serializedEntity = JsonSerializer.Serialize(entity);
-            tasks.Add(batch.StringSetAsync(key, serializedEntity));
+            tasks.Add(batch.StringSetAsync($"{key}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")} ", serializedEntity));
         }
 
         await Task.WhenAll(tasks);
     }
 
 
-    public async Task<T?> RemoveAsync<T>(string key) where T : notnull
+    public async Task<T?> RemoveAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
-        var entity = await GetObjectAsync<T>(key);
+        var entity = await GetObjectAsync<T>(key, cacheGroupId);
         if (entity != null)
         {
-            _ = RemoveAndForgetAsync<T>(key);
+            _ = RemoveAndForgetAsync<T>(key, cacheGroupId);
         }
         return entity;
     }
 
-    public async Task ClearAsync<T>() where T : notnull
+    public async Task ClearAsync<T>(string cacheGroupId = "") where T : notnull
     {
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
         var document = GetDocumentOrFail<T>();
-        var keys = server.Keys(pattern: $"{document.Name}:*").ToArray();
+        var keys = server.Keys(pattern: $"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:*").ToArray();
 
         if (keys.Length > 0)
         {
@@ -225,24 +225,24 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     }
 
 
-    public Task<ICursor<T>> GetAllAsync<T>(int batchSize = 100) where T : notnull
+    public Task<ICursor<T>> GetAllAsync<T>(int batchSize = 100, string cacheGroupId = "") where T : notnull
     {
-        var cursor = new RedisCacheCursor<T>(_redis, GetDocumentOrFail<T>(), batchSize);
+        var cursor = new RedisCacheCursor<T>(_redis, GetDocumentOrFail<T>(), batchSize, cacheGroupId);
         return Task.FromResult(cursor as ICursor<T>);
     }
 
-    public Task<bool> ContainsAsync<T>(string key) where T : notnull
+    public Task<bool> ContainsAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
         var document = GetDocumentOrFail<T>();
-        return _redis.KeyExistsAsync($"{document.Name}:{key}");
+        return _redis.KeyExistsAsync($"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:{key}");
     }
 
-    public async Task<ICursor<T>> GetAllAsync<T>() where T : notnull
+    public async Task<ICursor<T>> GetAllAsync<T>(string cacheGroupId = "") where T : notnull
     {
-        return await GetAllAsync<T>(100);
+        return await GetAllAsync<T>(100, cacheGroupId);
     }
 
-    public Task<ICursor<object>> GetAllAsync(Type type)
+    public Task<ICursor<object>> GetAllAsync(Type type, string cacheGroupId = "")
     {
         if (!_documents.TryGetValue(type, out var document))
         {
@@ -250,7 +250,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         }
 
         var cursorType = typeof(RedisCacheCursor<>).MakeGenericType(type);
-        var cursor = Activator.CreateInstance(cursorType, _redis, document, 100);
+        var cursor = Activator.CreateInstance(cursorType, _redis, document, 100, cacheGroupId);
 
         return Task.FromResult((cursor as ICursor<object>)!) ?? throw new InvalidOperationException("Failed to create cursor.");
     }
@@ -267,10 +267,10 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         }
     }
 
-    public async Task RemoveAndForgetAsync<T>(string key) where T : notnull
+    public async Task RemoveAndForgetAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
         var document = GetDocumentOrFail<T>();
-        await _redis.KeyDeleteAsync($"{document.Name}:{key}");
+        await _redis.KeyDeleteAsync($"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:{key}");
     }
 
     public async Task<IEnumerable<RedisKey>> Keys(string pattern)

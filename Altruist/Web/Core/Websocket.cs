@@ -3,7 +3,7 @@ using System.Net.WebSockets;
 using Altruist.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
-using Altruist.Authentication;
+using Altruist.Security;
 using Altruist.Contracts;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -16,62 +16,91 @@ namespace Altruist.Web;
 
 public sealed class WebSocketTransport : ITransport
 {
+    private readonly Dictionary<string, List<(IConnectionManager Manager, ShieldAttribute? Shield)>> _routes = new();
+
+    public void RegisterConnectionManager(IConnectionManager manager, string path)
+    {
+        if (!_routes.ContainsKey(path))
+        {
+            _routes[path] = new List<(IConnectionManager, ShieldAttribute?)>();
+        }
+
+        var shield = manager.GetType().GetCustomAttribute<ShieldAttribute>();
+        _routes[path].Add((manager, shield));
+    }
+
     public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path)
     {
-        UseWebSocketEndpoint(app, path, app.ApplicationServices.GetRequiredService<IConnectionManager>(), app.ApplicationServices);
+        var manager = app.ApplicationServices.GetRequiredService<IConnectionManager>();
+        RegisterConnectionManager(manager, path);
     }
 
     public void UseTransportEndpoints(IApplicationBuilder app, Type type, string path)
     {
-        UseWebSocketEndpoint(app, path, (app.ApplicationServices.GetRequiredService(type) as IConnectionManager)!, app.ApplicationServices);
+        var manager = (IConnectionManager)app.ApplicationServices.GetRequiredService(type);
+        RegisterConnectionManager(manager, path);
     }
 
-    private static readonly ActionDescriptor SharedActionDescriptor = new ActionDescriptor();
-    private static readonly List<IFilterMetadata> SharedFilters = new List<IFilterMetadata>();
-
-    private Task UseWebSocketEndpoint(
-        IApplicationBuilder app, string path, IConnectionManager wsManager, IServiceProvider serviceProvider)
+    public void RouteTraffic(IApplicationBuilder app)
     {
-        var shieldAttribute = wsManager.GetType().GetCustomAttribute<ShieldAttribute>();
-
         app.Use(async (context, next) =>
         {
-            if (context.Request.Path == path && context.WebSockets.IsWebSocketRequest)
+            if (!context.WebSockets.IsWebSocketRequest || !_routes.TryGetValue(context.Request.Path, out var managers))
+            {
+                await next();
+                return;
+            }
+
+            var allowedManagers = new List<(IConnectionManager Manager, AuthDetails? AuthDetails)>();
+
+            foreach (var (manager, shield) in managers)
             {
                 AuthDetails? authDetails = null;
-                if (shieldAttribute != null)
+
+                if (shield != null)
                 {
                     var actionContext = new ActionContext(context, context.GetRouteData(), SharedActionDescriptor);
-
                     var authorizationContext = new AuthorizationFilterContext(actionContext, SharedFilters);
 
-                    await shieldAttribute.OnAuthorizationAsync(authorizationContext);
+                    await shield.OnAuthorizationAsync(authorizationContext);
 
                     if (authorizationContext.Result is UnauthorizedResult)
                     {
-                        context.Response.StatusCode = 401;
-                        return;
+                        continue; // Skip this manager
                     }
-                    else
+
+                    authDetails = (authorizationContext.HttpContext.Items["AuthResult"] as AuthResult)?.AuthDetails;
+
+                    if (authDetails == null)
                     {
-                        authDetails = (authorizationContext.HttpContext.Items["AuthResult"] as AuthResult)!.AuthDetails;
+                        continue; // Still not authorized
                     }
                 }
 
-                var clientId = Guid.NewGuid().ToString();
-                var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                var webSocketConnection = new WebSocketConnection(webSocket, clientId, authDetails);
-                await wsManager.HandleConnection(webSocketConnection, path, clientId);
+                allowedManagers.Add((manager, authDetails));
             }
-            else
+
+            if (allowedManagers.Count == 0)
             {
-                await next();
+                context.Response.StatusCode = 401;
+                return;
+            }
+
+            var clientId = Guid.NewGuid().ToString();
+            var socket = await context.WebSockets.AcceptWebSocketAsync();
+
+            foreach (var (manager, authDetails) in allowedManagers)
+            {
+                var connection = new WebSocketConnection(socket, clientId, authDetails);
+                await manager.HandleConnection(connection, context.Request.Path, clientId);
             }
         });
-
-        return Task.CompletedTask;
     }
+
+    private static readonly ActionDescriptor SharedActionDescriptor = new();
+    private static readonly List<IFilterMetadata> SharedFilters = new();
 }
+
 
 public sealed class WebSocketConfiguration : ITransportConfiguration
 {
@@ -153,6 +182,18 @@ public sealed class CachedWebSocketConnection : Connection
         if (_connection != null)
         {
             return _connection.CloseAsync();
+        }
+        else
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    public override Task CloseOutputAsync()
+    {
+        if (_connection != null)
+        {
+            return _connection.CloseOutputAsync();
         }
         else
         {

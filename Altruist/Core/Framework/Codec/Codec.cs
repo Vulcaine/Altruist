@@ -7,7 +7,11 @@ public class JsonMessageEncoder : IEncoder
 {
     public byte[] Encode<TPacket>(TPacket message)
     {
-        return JsonSerializer.SerializeToUtf8Bytes(message);
+        if (message == null)
+        {
+            return Array.Empty<byte>();
+        }
+        return JsonSerializer.SerializeToUtf8Bytes(message, message!.GetType());
     }
 
     public byte[] Encode(object message, Type type)

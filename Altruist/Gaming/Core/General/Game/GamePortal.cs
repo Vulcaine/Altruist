@@ -208,10 +208,16 @@ public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePor
         }
     }
 
-    [Cycle(cron: CronPresets.Hourly)]
     public override async Task Cleanup()
     {
-        await base.Cleanup();
+        try
+        {
+            await _context.Cleanup();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Error cleaning up connections: {ex}");
+        }
         await _playerService.Cleanup();
     }
 }

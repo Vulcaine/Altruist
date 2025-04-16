@@ -5,18 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
-public interface IIssue
-{
-
-}
-
-public abstract class TokenIssue : IIssue
-{
-    public string AccessToken { get; set; } = "";
-    public string RefreshToken { get; set; } = "";
-    public DateTime Expiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
-    public string Algorithm { get; set; } = "";
-}
+namespace Altruist.Security;
 
 public interface IIssuer
 {
@@ -24,24 +13,40 @@ public interface IIssuer
 }
 
 
+public static class IssuerKeys
+{
+    public const string SessionToken = "SessionToken";
+    public const string JwtToken = "JwtToken";
+}
+
 public class SessionToken : TokenIssue
 {
-
+    public override string Type { get; set; } = "SessionToken";
 }
 
 public class JwtToken : TokenIssue
 {
-
+    public override string Type { get; set; } = "JwtToken";
 }
 
 public class SessionTokenIssuer : IIssuer
 {
+    private readonly TimeSpan _accessTokenExpiration;
+    private readonly TimeSpan _refreshTokenExpiration;
+    public SessionTokenIssuer(TimeSpan? accessTokenExpiration = null, TimeSpan? refreshTokenExpiration = null)
+    {
+        _accessTokenExpiration = accessTokenExpiration ?? TimeSpan.FromHours(1);
+        _refreshTokenExpiration = refreshTokenExpiration ?? TimeSpan.FromDays(7);
+    }
+
     public IIssue Issue()
     {
         return new SessionToken
         {
-            AccessToken = Guid.NewGuid().ToString(),
-            Expiration = DateTime.UtcNow.AddHours(1)
+            AccessToken = Guid.NewGuid().ToString() + ";session",
+            RefreshToken = Guid.NewGuid().ToString() + ";session",
+            RefreshExpiration = DateTime.UtcNow + _refreshTokenExpiration,
+            AccessExpiration = DateTime.UtcNow + _accessTokenExpiration
         };
     }
 }
@@ -50,7 +55,6 @@ public class JwtTokenIssuer : IIssuer
 {
     public JwtBearerOptions JwtOptions { get; }
     private IEnumerable<Claim>? _customClaims;
-    private bool _useJwtRefreshToken = false;
     private TimeSpan _refreshTokenExpiry = TimeSpan.FromMinutes(30);
 
     public JwtTokenIssuer(IOptionsMonitor<JwtBearerOptions> jwtOptions)
@@ -68,23 +72,6 @@ public class JwtTokenIssuer : IIssuer
     {
         _refreshTokenExpiry = expiration;
         return this;
-    }
-
-    public JwtTokenIssuer UseJwtRefreshToken(TimeSpan? expiration)
-    {
-        SetRefreshTokenExpiry(expiration ?? TimeSpan.FromMinutes(30));
-        _useJwtRefreshToken = true;
-        return this;
-    }
-
-    private string GenerateRandomRefreshToken()
-    {
-        var bytes = new byte[32];
-        using (var rng = RandomNumberGenerator.Create())
-        {
-            rng.GetBytes(bytes);
-        }
-        return Convert.ToBase64String(bytes);
     }
 
     private string GenerateJwtToken(IEnumerable<Claim> claims, DateTime expires)
@@ -114,7 +101,6 @@ public class JwtTokenIssuer : IIssuer
 
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, Guid.NewGuid().ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -124,19 +110,12 @@ public class JwtTokenIssuer : IIssuer
         var accessToken = GenerateJwtToken(claims, DateTime.UtcNow.AddHours(1));
 
         string refreshToken;
-        if (_useJwtRefreshToken)
-        {
-            refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry);
-        }
-        else
-        {
-            refreshToken = GenerateRandomRefreshToken();
-        }
+        refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry) + ";jwt";
 
         return new JwtToken
         {
-            AccessToken = accessToken,
-            RefreshToken = refreshToken,
+            AccessToken = $"{accessToken};jwt",
+            RefreshToken = $"{refreshToken}",
             Algorithm = creds.Algorithm
         };
     }

@@ -19,7 +19,7 @@ public static class Extensions
     {
         var modelTypes = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => a.GetTypes())
-            .Where(t => typeof(IModel).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass);
+            .Where(t => typeof(IStoredModel).IsAssignableFrom(t) && !t.IsAbstract && t.IsClass);
 
         foreach (var type in modelTypes)
         {

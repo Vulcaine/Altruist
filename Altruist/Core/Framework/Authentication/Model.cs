@@ -1,9 +1,11 @@
 
+using System.Text.Json.Serialization;
+using Altruist.UORM;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
-namespace Altruist.Auth;
+namespace Altruist.Security;
 
 
 public interface ILoginToken
@@ -11,40 +13,62 @@ public interface ILoginToken
 
 }
 
-public abstract class Account : IVaultModel
+public abstract class AccountModel : VaultModel
 {
-    public string GenId { get; set; } = Guid.NewGuid().ToString();
+    [VaultColumn("id")]
+    public override string GenId { get; set; } = Guid.NewGuid().ToString();
+
+    [VaultColumn("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-    public string Type { get; set; } = "Account";
+    [VaultColumn("timestamp")]
+    public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [VaultColumn("type")]
+    public override string Type { get; set; } = "Account";
 }
 
 
-public class UsernamePasswordAccount : Account
+public class UsernamePasswordAccountModel : AccountModel
 {
+
+    [VaultColumn("username")]
     public required string Username { get; set; }
+
+    [VaultColumn("passwordHash")]
     public required string PasswordHash { get; set; }
 
-    public new string Type { get; set; } = "UsernamePasswordAccount";
+    [VaultColumn("type")]
+    public override string Type { get; set; } = "UsernamePasswordAccount";
 }
 
-public class EmailPasswordAccount : Account
+public class EmailPasswordAccountModel : AccountModel
 {
+    [VaultColumn("email")]
     public required string Email { get; set; }
+
+    [VaultColumn("passwordHash")]
     public required string PasswordHash { get; set; }
 
-    public new string Type { get; set; } = "EmailPasswordAccount";
+    [VaultColumn("type")]
+
+    public override string Type { get; set; } = "EmailPasswordAccount";
 }
 
 
-public class HybridAccount : Account
+public class HybridAccountModel : AccountModel
 {
+    [VaultColumn("username")]
     public required string Username { get; set; }
+
+    [VaultColumn("email")]
     public required string Email { get; set; }
+
+    [VaultColumn("passwordHash")]
     public required string PasswordHash { get; set; }
 
-    public new string Type { get; set; } = "HybridAccount";
+    [VaultColumn("type")]
+    public override string Type { get; set; } = "HybridAccount";
 }
 
 
@@ -52,14 +76,55 @@ public class LoginRequest
 {
 }
 
+public class SignupRequest
+{
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("email")]
+    public string? Email { get; set; }
+
+    [JsonPropertyName("password")]
+    public string Password { get; set; }
+
+    public SignupRequest(string password, string? username = null, string? email = null)
+    {
+        if (username == null && email == null)
+        {
+            throw new BadHttpRequestException("Username or email must be provided.");
+        }
+
+        Username = username;
+        Password = password;
+    }
+}
+
 public class UsernamePasswordLoginRequest : LoginRequest, ILoginToken
 {
+    [JsonPropertyName("username")]
     public string Username { get; set; }
+
+    [JsonPropertyName("password")]
     public string Password { get; set; }
 
     public UsernamePasswordLoginRequest(string username, string password)
     {
         Username = username;
+        Password = password;
+    }
+}
+
+public class EmailPasswordLoginRequest : LoginRequest, ILoginToken
+{
+    [JsonPropertyName("email")]
+    public string Email { get; set; }
+
+    [JsonPropertyName("password")]
+    public string Password { get; set; }
+
+    public EmailPasswordLoginRequest(string email, string password)
+    {
+        Email = email;
         Password = password;
     }
 }

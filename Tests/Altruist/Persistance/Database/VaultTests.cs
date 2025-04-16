@@ -81,7 +81,7 @@ public class CqlVaultTests
     public async Task CountAsync_ReturnsCorrectCount()
     {
         // Arrange
-        _mockDbProvider.Setup(db => db.ExecuteAsync(It.IsAny<string>(), It.IsAny<List<object>>()))
+        _mockDbProvider.Setup(db => db.ExecuteCountAsync(It.IsAny<string>(), It.IsAny<List<object>>()))
                        .ReturnsAsync(5);
 
         // Act
@@ -148,7 +148,9 @@ public class CqlVaultTests
         // Act
         var query = _vault.BuildSelectQuery();
 
-        string expectedColumns = "*";
+        var document = Document.From(typeof(TestVaultModel));
+
+        string expectedColumns = string.Join(", ", document.Columns.Select(c => $"{c.Value} AS {c.Key}"));
         string expectedTable = typeof(TestVaultModel).Name;
         string expectedWhereClause = "name = 'Test'";
         var expectedQuery = $"SELECT {expectedColumns} FROM {expectedTable} WHERE {expectedWhereClause}";
@@ -167,7 +169,7 @@ public class CqlVaultTests
         // Act
         var query = _vault.BuildSelectQuery();
 
-        string expectedColumns = "Name";
+        string expectedColumns = "id AS Id, name AS Name, timestamp AS Timestamp, type AS Type, genId AS GenId";
         string expectedTable = typeof(TestVaultModel).Name;
         string expectedOrderByClause = "ORDER BY Name";
 
@@ -185,8 +187,9 @@ public class CqlVaultTests
 
         // Act
         var query = _vault.BuildSelectQuery();
+        var document = Document.From(typeof(TestVaultModel));
 
-        string expectedColumns = "*";
+        string expectedColumns = string.Join(", ", document.Columns.Select(c => $"{c.Value} AS {c.Key}"));
         string expectedTable = typeof(TestVaultModel).Name;
         string expectedLimitClause = "LIMIT 10";
 
@@ -205,7 +208,10 @@ public class CqlVaultTests
         // Act
         var query = _vault.BuildSelectQuery();
 
-        string expectedColumns = "Name";
+        var document = Document.From(typeof(TestVaultModel));
+
+        string expectedColumns = string.Join(", ", document.Columns.Select(c => $"{c.Value} AS {c.Key}"));
+
         string expectedTable = typeof(TestVaultModel).Name;
         string expectedOrderByDescClause = "ORDER BY Name DESC";
 

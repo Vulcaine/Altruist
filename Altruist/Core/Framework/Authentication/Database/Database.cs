@@ -1,8 +1,8 @@
 
 using Altruist;
-using Altruist.Auth;
+using Altruist.Security;
 
-public interface ILoginVault : IVault<Account>
+public interface ILoginVault : IVault<AccountModel>
 {
     bool Login<TLoginToken>(TLoginToken token) where TLoginToken : ILoginToken;
 }

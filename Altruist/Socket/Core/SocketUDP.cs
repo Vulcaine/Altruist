@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
-using Altruist.Authentication;
+using Altruist.Security;
 using Altruist.Contracts;
 using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
@@ -107,6 +107,11 @@ public sealed class UdpTransport : ITransport
 
         var connection = new CachedUdpConnection(new UdpConnection(_udpClient!, clientId, authDetails, clientIp));
         await connectionManager.HandleConnection(connection, _endpoint, clientId);
+    }
+
+    public void RouteTraffic(IApplicationBuilder app)
+    {
+        throw new NotImplementedException();
     }
 }
 
