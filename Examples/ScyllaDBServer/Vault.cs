@@ -20,7 +20,8 @@ public class MyAccount : UsernamePasswordAccountVault, IOnVaultCreate
 {
     public Task<List<IVaultModel>> OnCreateAsync()
     {
-        var adminAccount = new MyAccount { Username = "AltruistAdmin", PasswordHash = "someHashedPass" };
+        var hasher = new BcryptPasswordHasher();
+        var adminAccount = new MyAccount { Username = "AltruistAdmin", PasswordHash = hasher.Hash("someHashedPass") };
         return Task.FromResult(new List<IVaultModel> { adminAccount });
     }
 }

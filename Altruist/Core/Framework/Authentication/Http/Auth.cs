@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Altruist.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Security;
@@ -24,11 +25,14 @@ public abstract class AuthController : ControllerBase
     protected readonly IIssuer _issuer;
     protected readonly TokenSessionSyncService? _syncService;
 
-    protected AuthController(VaultRepositoryFactory factory, IIssuer issuer, IServiceProvider serviceProvider)
+    protected readonly ILogger<AuthController> _logger;
+
+    protected AuthController(IIssuer issuer, ILoggerFactory loggerFactory, IServiceProvider serviceProvider)
     {
-        _loginService = LoginService(factory);
+        _loginService = LoginService(serviceProvider);
         _issuer = issuer;
         _syncService = serviceProvider.GetService<TokenSessionSyncService>();
+        _logger = loggerFactory.CreateLogger<AuthController>();
     }
 
     protected async Task InvalidateAllSessions(string groupKey)
@@ -39,9 +43,11 @@ public abstract class AuthController : ControllerBase
             foreach (var session in cursor)
             {
                 await _syncService.DeleteAsync(session.GenId, groupKey);
+                _logger.LogInformation($"[auth][{groupKey}] ✅ Invalidated session: {session.GenId}");
             }
         }
     }
+
 
     protected async Task InvalidateExpiredSessions(string groupKey)
     {
@@ -53,6 +59,7 @@ public abstract class AuthController : ControllerBase
                 if (!session.IsAccessTokenValid() && !session.IsRefreshTokenValid())
                 {
                     await _syncService.DeleteAsync(session.GenId, groupKey);
+                    _logger.LogInformation($"[auth][{groupKey}] ✅ Invalidated expired session: {session.GenId}");
                 }
             }
         }
@@ -66,6 +73,8 @@ public abstract class AuthController : ControllerBase
 
             if (ip == null)
             {
+                _logger.LogWarning($"[auth][{groupKey}] ❌ Login rejected – missing IP address for principal: {principal}");
+
                 return false;
             }
 
@@ -81,6 +90,8 @@ public abstract class AuthController : ControllerBase
             };
 
             await SaveAuthSessionAsync(authData, groupKey);
+            _logger.LogInformation($"[auth][{groupKey}] ✅ Auth session created for principal: {principal}, IP: {ip}");
+
         }
 
         return true;
@@ -92,6 +103,7 @@ public abstract class AuthController : ControllerBase
         {
             await InvalidateAllSessions(groupKey);
             await _syncService.SaveAsync(session, groupKey);
+            _logger.LogInformation($"[auth][{groupKey}] 💾 Session saved: {session.GenId} (principal: {session.PrincipalId})");
         }
     }
 
@@ -106,7 +118,7 @@ public abstract class AuthController : ControllerBase
     /// Provides the login service instance to handle username/password authentication.
     /// Must be implemented in derived classes.
     /// </summary>
-    public abstract ILoginService LoginService(VaultRepositoryFactory factory);
+    public abstract ILoginService LoginService(IServiceProvider serviceProvider);
 }
 
 /// <summary>
@@ -114,8 +126,9 @@ public abstract class AuthController : ControllerBase
 /// </summary>
 public abstract class JwtAuthController : AuthController
 {
-    protected JwtAuthController(VaultRepositoryFactory factory, IIssuer issuer, IServiceProvider serviceProvider)
-        : base(factory, issuer, serviceProvider) { }
+    protected JwtAuthController(IIssuer issuer,
+    ILoggerFactory loggerFactory, IServiceProvider serviceProvider)
+        : base(issuer, loggerFactory, serviceProvider) { }
 
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignupRequest request)
@@ -124,48 +137,71 @@ public abstract class JwtAuthController : AuthController
 
         if (account != null)
         {
+            _logger.LogInformation($"[signup][{request.Email}] ✅ Signup succeeded – user ID: {account.GenId}");
+
             return Ok();
         }
         else
         {
+            _logger.LogWarning($"[signup][{request.Email}] ❌ Signup failed");
             return BadRequest();
         }
     }
 
     [HttpPost("login/emailpwd")]
-    public async Task<IActionResult> UsernamePasswordLogin(
-        [FromBody] EmailPasswordLoginRequest request)
+    public async Task<IActionResult> EmailPasswordLogin([FromBody] EmailPasswordLoginRequest request)
     {
-        var account = await _loginService.Login(request);
-        if (account == null)
+        try
+        {
+            var account = await _loginService.Login(request);
+            if (account == null)
+            {
+                _logger.LogWarning($"[login-email][{request.Email}] ❌ Login failed");
+                return Unauthorized();
+            }
+
+            var claims = GetClaimsForLogin(account, request);
+            var issue = IssueToken(claims);
+            var groupKey = SessionGroupKeyStrategy(account.GenId);
+
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId))
+                return Unauthorized($"[login-email][${request.Email}] Only clients with IP address are allowed to connect.");
+
+            _logger.LogInformation($"[login-email][{groupKey}] ✅ Login succeeded (email: {request.Email})");
+            return OkOrUnauthorized(issue);
+        }
+        catch
+        {
             return Unauthorized();
-
-        var claims = GetClaimsForLogin(account, request);
-        var issue = IssueToken(claims);
-        var groupKey = SessionGroupKeyStrategy(account.GenId);
-
-        if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId))
-            return Unauthorized("Only clients with IP address are allowed to connect.");
-
-        return OkOrUnauthorized(issue);
+        }
     }
 
     [HttpPost("login/unamepwd")]
-    public async Task<IActionResult> UsernamePasswordLogin(
-        [FromBody] UsernamePasswordLoginRequest request)
+    public async Task<IActionResult> UsernamePasswordLogin([FromBody] UsernamePasswordLoginRequest request)
     {
-        var account = await _loginService.Login(request);
-        if (account == null)
+        try
+        {
+            var account = await _loginService.Login(request);
+            if (account == null)
+            {
+                _logger.LogWarning($"[login-uname][{request.Username}] ❌ Login failed");
+                return Unauthorized();
+            }
+
+            var claims = GetClaimsForLogin(account, request);
+            var issue = IssueToken(claims);
+            var groupKey = SessionGroupKeyStrategy(account.GenId);
+
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId))
+                return Unauthorized($"[login-uname][${request.Username}] Only clients with IP address are allowed to connect.");
+
+            _logger.LogInformation($"[login-uname][{groupKey}] ✅ Login succeeded (username: {request.Username})");
+            return OkOrUnauthorized(issue);
+        }
+        catch
+        {
             return Unauthorized();
-
-        var claims = GetClaimsForLogin(account, request);
-        var issue = IssueToken(claims);
-        var groupKey = SessionGroupKeyStrategy(account.GenId);
-
-        if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId))
-            return Unauthorized("Only clients with IP address are allowed to connect.");
-
-        return OkOrUnauthorized(issue);
+        }
     }
 
     [HttpPost("refresh")]
@@ -194,20 +230,29 @@ public abstract class JwtAuthController : AuthController
         var cached = await _syncService.FindCachedByIdAsync(accessKey);
 
         if (cached?.IsAccessTokenValid() != true || cached?.IsRefreshTokenValid() != true)
+        {
+            _logger.LogWarning($"[refresh] ❌ Invalid/expired session for access token: {accessToken}");
             return Unauthorized("Invalid or expired session.");
+        }
 
         var expectedRefreshKey = $"{cached.RefreshToken};jwt";
         var providedRefreshKey = $"{refreshToken};jwt";
 
         if (!string.Equals(providedRefreshKey, expectedRefreshKey, StringComparison.Ordinal))
+        {
+            _logger.LogWarning($"[refresh][{cached.PrincipalId}] ❌ Refresh token mismatch.");
             return Unauthorized("Refresh token mismatch.");
+        }
 
         if (_issuer is not JwtTokenIssuer jwtIssuer)
             return Unauthorized("JWT issuer not configured.");
 
         var principal = GetPrincipalFromToken(accessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
         if (principal == null)
+        {
+            _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
             return Unauthorized("Invalid access token.");
+        }
 
         var issue = IssueToken(principal.Claims);
         var groupKey = SessionGroupKeyStrategy(cached.PrincipalId);
@@ -215,6 +260,7 @@ public abstract class JwtAuthController : AuthController
         if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, cached.PrincipalId))
             return Unauthorized("Couldn't identify client IP.");
 
+        _logger.LogInformation($"[refresh][{groupKey}] 🔁 Token refreshed (principal: {cached.PrincipalId})");
         return OkOrUnauthorized(issue);
     }
 
