@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Altruist.Security;
 using Altruist.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,9 +32,8 @@ public abstract class AuthController : ControllerBase
         if (account == null)
             return Unauthorized();
 
-        var claims = new List<Claim> { new(ClaimTypes.Name, usernamePasswordLoginRequest.Username) };
+        var claims = GetClaimsForLogin(account, usernamePasswordLoginRequest);
         var issue = IssueToken(claims);
-
         if (!await CreateAndSaveAuthSessionAsync(issue, account.GenId))
         {
             return Unauthorized("Only clients with IP address are allowed to connect.");
@@ -138,28 +136,29 @@ public abstract class AuthController : ControllerBase
         }
     }
 
-    protected async Task InvalidateAllSessions(string principalId)
+    protected async Task InvalidateAllSessions(string groupKey)
     {
         if (_syncService != null)
         {
-            var cursor = await _syncService.FindAllCachedAsync(principalId);
+            var cursor = await _syncService.FindAllCachedAsync(groupKey);
             foreach (var session in cursor)
             {
-                await _syncService.DeleteAsync(session.GenId, principalId);
+                await _syncService.DeleteAsync(session.GenId, groupKey);
             }
         }
     }
 
-    protected async Task InvalidateExpiredSessions(AccountVault account)
+    protected async Task InvalidateExpiredSessions(AccountModel account)
     {
         if (_syncService != null)
         {
-            var cursor = await _syncService.FindAllCachedAsync(account.GenId);
+            var groupKey = GetSessionGroupKey(account.GenId);
+            var cursor = await _syncService.FindAllCachedAsync(groupKey);
             foreach (var session in cursor)
             {
                 if (!session.IsAccessTokenValid() && !session.IsRefreshTokenValid())
                 {
-                    await _syncService.DeleteAsync(session.GenId, account.GenId);
+                    await _syncService.DeleteAsync(session.GenId, groupKey);
                 }
             }
         }
@@ -176,7 +175,7 @@ public abstract class AuthController : ControllerBase
                 return false;
             }
 
-            var authData = new AuthTokenSessionVault
+            var authData = new AuthTokenSessionModel
             {
                 AccessToken = issue.AccessToken,
                 AccessExpiration = issue.AccessExpiration,
@@ -187,19 +186,30 @@ public abstract class AuthController : ControllerBase
                 GenId = issue.AccessToken
             };
 
-            await SaveAuthSessionAsync(authData, principalId);
+            var groupKey = GetSessionGroupKey(principalId);
+            await SaveAuthSessionAsync(authData, groupKey);
         }
 
         return true;
     }
 
-    protected async Task SaveAuthSessionAsync(AuthTokenSessionVault session, string principal)
+    protected async Task SaveAuthSessionAsync(AuthTokenSessionModel session, string groupKey)
     {
         if (_syncService != null)
         {
-            await InvalidateAllSessions(principal);
-            await _syncService.SaveAsync(session, principal);
+            await InvalidateAllSessions(groupKey);
+            await _syncService.SaveAsync(session, groupKey);
         }
+    }
+
+    protected virtual string GetSessionGroupKey(string principalId)
+    {
+        return principalId;
+    }
+
+    protected virtual IEnumerable<Claim> GetClaimsForLogin(AccountModel account, UsernamePasswordLoginRequest request)
+    {
+        return [new Claim(ClaimTypes.Name, request.Username)];
     }
 
     public abstract ILoginService LoginService(VaultRepositoryFactory factory);

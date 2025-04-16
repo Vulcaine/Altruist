@@ -11,7 +11,7 @@ public interface ILoginToken
 
 }
 
-public abstract class AccountVault : VaultModel
+public abstract class AccountModel : VaultModel
 {
     [VaultColumn("id")]
     public override string GenId { get; set; } = Guid.NewGuid().ToString();
@@ -27,7 +27,7 @@ public abstract class AccountVault : VaultModel
 }
 
 
-public class UsernamePasswordAccountVault : AccountVault
+public class UsernamePasswordAccountVault : AccountModel
 {
 
     [VaultColumn("username")]
@@ -40,7 +40,7 @@ public class UsernamePasswordAccountVault : AccountVault
     public override string Type { get; set; } = "UsernamePasswordAccount";
 }
 
-public class EmailPasswordAccountVault : AccountVault
+public class EmailPasswordAccountVault : AccountModel
 {
     [VaultColumn("email")]
     public required string Email { get; set; }
@@ -54,7 +54,7 @@ public class EmailPasswordAccountVault : AccountVault
 }
 
 
-public class HybridAccountVault : AccountVault
+public class HybridAccountVault : AccountModel
 {
     [VaultColumn("username")]
     public required string Username { get; set; }

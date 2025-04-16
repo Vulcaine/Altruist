@@ -6,9 +6,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Security;
 
-public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionVault>
+public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionModel>
 {
-    public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthTokenSessionVault>? vault = null) : base(cacheProvider, vault)
+    public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthTokenSessionModel>? vault = null) : base(cacheProvider, vault)
     {
     }
 }
@@ -66,7 +66,7 @@ public class SessionTokenAuth : IShieldAuth
             && cached.SessionData.AccessExpiration > now;
     }
 
-    private async Task<AuthTokenSessionVault?> GetSessionFromCache(string token)
+    private async Task<AuthTokenSessionModel?> GetSessionFromCache(string token)
     {
         var session = await _syncService.FindCachedByIdAsync(token);
         if (session == null)
@@ -78,7 +78,7 @@ public class SessionTokenAuth : IShieldAuth
         return session;
     }
 
-    private bool ValidateSession(AuthTokenSessionVault session, IPAddress clientIp, DateTime now)
+    private bool ValidateSession(AuthTokenSessionModel session, IPAddress clientIp, DateTime now)
     {
         if (session.AccessExpiration < now)
         {
@@ -95,13 +95,13 @@ public class SessionTokenAuth : IShieldAuth
         return true;
     }
 
-    private async Task RefreshSessionTtl(AuthTokenSessionVault session, DateTime now)
+    private async Task RefreshSessionTtl(AuthTokenSessionModel session, DateTime now)
     {
         session.AccessExpiration = now.Add(session.CacheValidationInterval);
         await _syncService.SaveAsync(session);
     }
 
-    private void UpdateLocalCache(string token, AuthTokenSessionVault session, DateTime now)
+    private void UpdateLocalCache(string token, AuthTokenSessionModel session, DateTime now)
     {
         _sessionCache[token] = new CachedSession
         {
@@ -110,7 +110,7 @@ public class SessionTokenAuth : IShieldAuth
         };
     }
 
-    private AuthResult Success(string token, AuthTokenSessionVault session)
+    private AuthResult Success(string token, AuthTokenSessionModel session)
         => new(AuthorizationResult.Success(), new AuthDetails(token, session.AccessExpiration - DateTime.UtcNow));
 
     private AuthResult Fail(string reason)
@@ -121,7 +121,7 @@ public class SessionTokenAuth : IShieldAuth
 
     private class CachedSession
     {
-        public AuthTokenSessionVault SessionData { get; set; } = null!;
+        public AuthTokenSessionModel SessionData { get; set; } = null!;
         public DateTime LastValidatedAt { get; set; }
     }
 }

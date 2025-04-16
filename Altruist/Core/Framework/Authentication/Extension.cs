@@ -34,7 +34,7 @@ public static class WebAppAuthExtensions
         {
             var repoFactory = sp.GetRequiredService<VaultRepositoryFactory>();
             var repo = repoFactory.Make<TKeyspace>(token);
-            return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthTokenSessionVault>());
+            return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthTokenSessionModel>());
         });
         builder.Services.AddSingleton(typeof(IVaultCacheSyncService<>), sp => sp.GetRequiredService<TokenSessionSyncService>());
         builder.Services.AddSingleton<SessionTokenIssuer>();
