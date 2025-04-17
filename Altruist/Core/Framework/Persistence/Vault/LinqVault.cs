@@ -7,18 +7,20 @@ namespace Altruist.Database;
 public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     private readonly ILinqDatabaseProvider _databaseProvider;
+    private readonly IServiceProvider _serviceProvider;
     private IQueryable<TVaultModel> _query;
 
     public IKeyspace Keyspace { get; }
 
     protected Document _document;
 
-    public LinqVault(ILinqDatabaseProvider databaseProvider, IKeyspace keyspace, Document document)
+    public LinqVault(ILinqDatabaseProvider databaseProvider, IKeyspace keyspace, Document document, IServiceProvider serviceProvider)
     {
         _document = document;
         _databaseProvider = databaseProvider;
         _query = _databaseProvider.QueryAsync<TVaultModel>(x => true).Result.AsQueryable();
         Keyspace = keyspace;
+        _serviceProvider = serviceProvider;
     }
 
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
@@ -138,14 +140,14 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
 
     private async Task SaveEntityAsync(TVaultModel entity)
     {
-        if (entity is IBeforeVaultSave beforeHook && !await beforeHook.BeforeSaveAsync())
+        if (entity is IBeforeVaultSave beforeHook && !await beforeHook.BeforeSaveAsync(_serviceProvider))
             return;
 
         _databaseProvider.Context.Add(entity);
         await _databaseProvider.Context.SaveChangesAsync();
 
         if (entity is IAfterVaultSave afterHook)
-            await afterHook.AfterSaveAsync();
+            await afterHook.AfterSaveAsync(_serviceProvider);
     }
 
     private async Task SaveEntityBatchAsync(IEnumerable<TVaultModel> entities)
@@ -156,7 +158,7 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
         {
             if (entity is IBeforeVaultSave beforeHook)
             {
-                var proceed = await beforeHook.BeforeSaveAsync();
+                var proceed = await beforeHook.BeforeSaveAsync(_serviceProvider);
                 if (!proceed) continue;
             }
 
@@ -169,7 +171,7 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
         foreach (var entity in filteredEntities)
         {
             if (entity is IAfterVaultSave afterHook)
-                await afterHook.AfterSaveAsync();
+                await afterHook.AfterSaveAsync(_serviceProvider);
         }
     }
 

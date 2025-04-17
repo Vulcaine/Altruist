@@ -18,6 +18,7 @@ public enum QueryPosition
 
 public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
+    private readonly IServiceProvider _serviceProvider;
     private readonly ICqlDatabaseProvider _databaseProvider;
     private Dictionary<QueryPosition, HashSet<string>> _queryParts;
     private Dictionary<QueryPosition, List<object>> _queryParameters;
@@ -26,7 +27,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     protected Document _document { get; }
 
-    public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace, Document document)
+    public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace, Document document, IServiceProvider serviceProvider)
     {
         _document = document;
         _databaseProvider = databaseProvider;
@@ -53,6 +54,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         };
 
         Keyspace = keyspace;
+        _serviceProvider = serviceProvider;
     }
 
     public Task SaveAsync(TVaultModel entity, bool? saveHistory = false) =>
@@ -133,7 +135,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         bool canSave = true;
         if (entity is IBeforeVaultSave before)
         {
-            canSave = await before.BeforeSaveAsync();
+            canSave = await before.BeforeSaveAsync(_serviceProvider);
         }
 
         if (canSave)
@@ -143,7 +145,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         if (entity is IAfterVaultSave after)
         {
-            await after.AfterSaveAsync();
+            await after.AfterSaveAsync(_serviceProvider);
         }
     }
 
@@ -172,7 +174,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
             if (entity is IBeforeVaultSave before)
             {
-                canSave = await before.BeforeSaveAsync();
+                canSave = await before.BeforeSaveAsync(_serviceProvider);
             }
 
             if (canSave)
@@ -200,7 +202,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         {
             if (entity is IAfterVaultSave after)
             {
-                await after.AfterSaveAsync();
+                await after.AfterSaveAsync(_serviceProvider);
             }
         }
     }

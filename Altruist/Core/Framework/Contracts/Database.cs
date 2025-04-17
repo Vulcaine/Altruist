@@ -8,6 +8,7 @@ namespace Altruist;
 
 public interface IKeyspace
 {
+    IDatabaseServiceToken DatabaseToken { get; }
     string Name { get; }
 }
 

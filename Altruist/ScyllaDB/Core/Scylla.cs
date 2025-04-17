@@ -332,7 +332,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
             replicationConfig = new Dictionary<string, string>
             {
                 { "class", "SimpleStrategy" },
-                { "replication_factor", actualOptions.ReplicationFactor.ToString() }
+                { "replication_factor", actualOptions.ReplicationFactor.ToString () }
             };
         }
         else if (actualOptions.Strategy == ReplicationStrategy.NetworkTopologyStrategy && actualOptions.DataCenters != null)
@@ -535,7 +535,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
 public class ScyllaVaultFactory : DatabaseVaultFactory
 {
-    public ScyllaVaultFactory(IScyllaDbProvider databaseProvider) : base(databaseProvider)
+    public ScyllaVaultFactory(IScyllaDbProvider databaseProvider, IServiceProvider serviceProvider) : base(databaseProvider, serviceProvider)
     {
     }
 }
