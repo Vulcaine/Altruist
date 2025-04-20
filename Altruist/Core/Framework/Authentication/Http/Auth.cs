@@ -64,7 +64,7 @@ public abstract class AuthController : ControllerBase
         }
     }
 
-    protected async Task<bool> CreateAndSaveAuthSessionAsync(TokenIssue? issue, string groupKey, string principal)
+    protected async Task<bool> CreateAndSaveAuthSessionAsync(TokenIssue? issue, string groupKey, string principal, string? fingerprint = null)
     {
         if (issue != null && _syncService != null)
         {
@@ -85,7 +85,8 @@ public abstract class AuthController : ControllerBase
                 RefreshToken = issue.RefreshToken,
                 PrincipalId = principal,
                 Ip = ip,
-                GenId = issue.AccessToken
+                GenId = issue.AccessToken,
+                Fingerprint = fingerprint
             };
 
             await SaveAuthSessionAsync(authData, groupKey);
@@ -167,7 +168,7 @@ public abstract class JwtAuthController : AuthController
             var issue = IssueToken(claims);
             var groupKey = SessionGroupKeyStrategy(account.GenId);
 
-            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId))
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId, request.Fingerprint))
                 return Unauthorized($"[login-email][${request.Email}] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-email][{groupKey}] ✅ Login succeeded (email: {request.Email})");
@@ -195,7 +196,7 @@ public abstract class JwtAuthController : AuthController
             var issue = IssueToken(claims);
             var groupKey = SessionGroupKeyStrategy(account.GenId);
 
-            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId))
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId, request.Fingerprint))
                 return Unauthorized($"[login-uname][${request.Username}] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-uname][{groupKey}] ✅ Login succeeded (username: {request.Username})");
@@ -238,6 +239,7 @@ public abstract class JwtAuthController : AuthController
                 return Unauthorized("Invalid access token.");
             }
 
+            string? fingerprint = claims.FindFirst("Fingerprint")?.Value;
             var groupKey = claims.FindFirst("GroupKey")?.Value;
 
             if (groupKey == null)
@@ -249,9 +251,9 @@ public abstract class JwtAuthController : AuthController
             var accessKey = $"{accessToken};jwt";
             var cached = await _syncService.FindCachedByIdAsync(accessKey, groupKey ?? "");
 
-            if (cached?.IsRefreshTokenValid() != true)
+            if (cached?.IsRefreshTokenValid() != true || cached.Fingerprint != fingerprint)
             {
-                _logger.LogWarning($"[refresh] ❌ Invalid/expired session for access token: {accessToken}");
+                _logger.LogWarning($"[refresh] ❌ Invalid/expired session for refresh token: {refreshToken}");
                 return Unauthorized("Invalid or expired session.");
             }
 
@@ -276,8 +278,7 @@ public abstract class JwtAuthController : AuthController
 
             var issue = IssueToken(principal.Claims);
 
-
-            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey!, cached.PrincipalId))
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey!, cached.PrincipalId, cached.Fingerprint))
                 return Unauthorized("Couldn't identify client IP.");
 
             _logger.LogInformation($"[refresh][{groupKey}] 🔁 Token refreshed (principal: {cached.PrincipalId})");

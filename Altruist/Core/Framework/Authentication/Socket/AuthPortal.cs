@@ -53,6 +53,7 @@ public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISe
             return null;
         }
 
+        string? originalFingerprint = null;
         if (_syncService != null)
         {
             var old = await _syncService.DeleteAsync(context.StatelessToken, groupKey);
@@ -61,6 +62,8 @@ public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISe
             {
                 return null;
             }
+
+            originalFingerprint = old.Fingerprint;
         }
 
         var newToken = Issuer.Issue();
@@ -75,7 +78,8 @@ public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISe
                 RefreshToken = tokenIssue.RefreshToken,
                 PrincipalId = claims.FindFirst(ClaimTypes.Name)?.Value!,
                 Ip = claims.FindFirst("Ip")?.Value!,
-                GenId = tokenIssue.AccessToken
+                GenId = tokenIssue.AccessToken,
+                Fingerprint = originalFingerprint
             };
 
             await _syncService.SaveAsync(newAuthSession, groupKey);

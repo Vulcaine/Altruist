@@ -74,6 +74,8 @@ public class HybridAccountModel : AccountModel
 
 public class LoginRequest
 {
+    [JsonPropertyName("fingerprint")]
+    public string? Fingerprint { get; set; }
 }
 
 public class SignupRequest
