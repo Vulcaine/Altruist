@@ -343,6 +343,20 @@ public abstract class JwtAuthController : AuthController
 
         string groupKey = SessionGroupKeyStrategy(account.GenId);
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-        return [new Claim(ClaimTypes.Name, principal), new Claim("GroupKey", groupKey ?? ""), new Claim(JwtRegisteredClaimNames.Sub, account.GenId), new Claim("Ip", ip ?? "")];
+
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.Name, principal),
+            new Claim("GroupKey", groupKey ?? ""),
+            new Claim(JwtRegisteredClaimNames.Sub, account.GenId),
+            new Claim("Ip", ip ?? "")
+        };
+
+        if (!string.IsNullOrEmpty(request.Fingerprint))
+        {
+            claims.Add(new Claim("Fingerprint", request.Fingerprint));
+        }
+
+        return claims;
     }
 }
