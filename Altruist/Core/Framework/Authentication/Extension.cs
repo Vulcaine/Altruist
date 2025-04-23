@@ -179,12 +179,13 @@ public static class TlsExtensions
 {
     public static WebApplicationBuilder UseTls(this WebApplicationBuilder builder)
     {
-        // Register CertLoader and strategies
+        // Cert strategies
         builder.Services.AddSingleton<CertLoader>();
         builder.Services.AddSingleton<ICertLoadStrategy, PfxCertStrategy>();
         builder.Services.AddSingleton<ICertLoadStrategy, PemKeyCertStrategy>();
+        builder.Services.AddSingleton<ICertLoadStrategy, CombinedP7bAndCaBundleCertStrategy>();
 
-        // Use service provider temporarily to get logger and cert
+        // Create service provider temporarily to get logger and cert
         var tempProvider = builder.Services.BuildServiceProvider();
         var logger = tempProvider.GetRequiredService<ILogger<CertLoader>>();
         var loader = tempProvider.GetRequiredService<CertLoader>();

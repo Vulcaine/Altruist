@@ -1,5 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
+using Org.BouncyCastle.Asn1.X509;
+using Org.BouncyCastle.OpenSsl;
 
 namespace Altruist.Security;
 
