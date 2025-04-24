@@ -5,6 +5,8 @@ using Moq;
 
 public class CqlVaultTests
 {
+    private readonly Mock<IServiceProvider> _mockServiceProvider;
+
     private readonly Mock<ICqlDatabaseProvider> _mockDbProvider;
     private readonly Mock<IKeyspace> _mockKeyspace;
     private readonly CqlVault<TestVaultModel> _vault;
@@ -12,10 +14,11 @@ public class CqlVaultTests
 
     public CqlVaultTests()
     {
+        _mockServiceProvider = new Mock<IServiceProvider>();
         _mockDbProvider = new Mock<ICqlDatabaseProvider>();
         _mockKeyspace = new Mock<IKeyspace>();
-        _vault = new CqlVault<TestVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object, Document.From(typeof(TestVaultModel)));
-        _historyVault = new CqlVault<TestHistoryVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object, Document.From(typeof(TestHistoryVaultModel)));
+        _vault = new CqlVault<TestVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object, Document.From(typeof(TestVaultModel)), _mockServiceProvider.Object);
+        _historyVault = new CqlVault<TestHistoryVaultModel>(_mockDbProvider.Object, _mockKeyspace.Object, Document.From(typeof(TestHistoryVaultModel)), _mockServiceProvider.Object);
     }
 
     [Fact]
