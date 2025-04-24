@@ -60,7 +60,7 @@ jobs:
       env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
       run: |
-        dotnet nuget push ./Altruist/nupkgs/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
+        dotnet nuget push ./Altruist/nupkgs/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json
 
     # Create a new GitHub release using the tag created
     - name: Create GitHub Release
