@@ -30,9 +30,23 @@ jobs:
     - name: Run Tests
       run: dotnet test ./Tests/Tests.csproj --no-build --verbosity normal
 
-  release:
+  version-check:
     runs-on: ubuntu-latest
     needs: build
+    # Runs only on push to main branch
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Project Versions
+        run: |
+          echo "📦 Checking versions..."
+          chmod +x ./validate-version.sh
+          ./validate-version.sh
+
+  release:
+    runs-on: ubuntu-latest
+    needs: version-check
     # Runs only on push to main branch
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
