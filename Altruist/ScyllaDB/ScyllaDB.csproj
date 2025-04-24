@@ -9,7 +9,11 @@
     <Version>0.1.1-alpha</Version>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
+    <ProjectReference Include="..\Core\Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
     <PackageReference Include="Altruist" Version="*-*" />
   </ItemGroup>
 

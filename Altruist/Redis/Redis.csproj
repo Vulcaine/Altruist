@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Socket\Socket.csproj" />
+    <ProjectReference Include="..\Web\Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
     <PackageReference Include="Altruist" Version="*-*" />
     <PackageReference Include="Altruist.Socket" Version="*-*" />
     <PackageReference Include="Altruist.Web" Version="*-*" />
