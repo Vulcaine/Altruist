@@ -1,9 +1,13 @@
+using System.Net;
 using System.Text;
 using Altruist.Database;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -171,44 +175,6 @@ public static class WebAppAuthExtensions
     public static WebApplicationBuilder AddSessionTokenAuth(this WebApplicationBuilder builder)
     {
         builder.Services.AddScoped<SessionTokenAuth>();
-        return builder;
-    }
-}
-
-public static class TlsExtensions
-{
-    public static WebApplicationBuilder UseTls(this WebApplicationBuilder builder)
-    {
-        // Cert strategies
-        builder.Services.AddSingleton<CertLoader>();
-        builder.Services.AddSingleton<ICertLoadStrategy, PfxCertStrategy>();
-        builder.Services.AddSingleton<ICertLoadStrategy, PemKeyCertStrategy>();
-        builder.Services.AddSingleton<ICertLoadStrategy, CombinedP7bAndCaBundleCertStrategy>();
-
-        // Create service provider temporarily to get logger and cert
-        var tempProvider = builder.Services.BuildServiceProvider();
-        var logger = tempProvider.GetRequiredService<ILogger<CertLoader>>();
-        var loader = tempProvider.GetRequiredService<CertLoader>();
-
-        var cert = loader.Load();
-
-        if (cert != null)
-        {
-            builder.WebHost.ConfigureKestrel(options =>
-            {
-                options.ConfigureHttpsDefaults(https =>
-                {
-                    https.ServerCertificate = cert;
-                });
-            });
-
-            logger.LogInformation("✅ TLS has been successfully configured.");
-        }
-        else
-        {
-            logger.LogWarning("⚠️ TLS configuration skipped. Certificate could not be loaded.");
-        }
-
         return builder;
     }
 }

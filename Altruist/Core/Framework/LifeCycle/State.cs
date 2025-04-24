@@ -82,7 +82,10 @@ public class ServerStatus : IServerStatus
         var actions = app.Services.GetServices<IAction>();
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        StartTimeoutTimer(manager, logger);
+        if (_connectables.Count > 0)
+        {
+            StartTimeoutTimer(manager, logger);
+        }
 
         foreach (var service in _connectables)
         {
@@ -216,6 +219,11 @@ public class ServerStatus : IServerStatus
 
     public override string ToString()
     {
+        if (_connectables.Count == 0)
+        {
+            return string.Empty;
+        }
+
         const int nameColWidth = 24;
         const int statusColWidth = 16;
         var sb = new StringBuilder();
