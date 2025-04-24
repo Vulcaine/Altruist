@@ -48,6 +48,7 @@ jobs:
     - name: Create Tag
       run: |
         VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
         git tag "$VERSION"
         git push origin "$VERSION"
 
@@ -66,7 +67,7 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: "$VERSION"
+        tag_name: ${{ env.VERSION }}
         files: ./Altruist/nupkgs/*.nupkg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
