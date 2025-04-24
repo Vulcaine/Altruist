@@ -66,6 +66,7 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        files: ./nupkgs/*.nupkg
+        tag_name: $VERSION
+        files: ./Altruist/nupkgs/*.nupkg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
