@@ -6,11 +6,11 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Socket</PackageId>
     <Description>Socket module for Altruist framework.</Description>
-    <Version>0.1.0-alpha</Version>
+    <Version>0.1.1-alpha</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Altruist" Version="0.1.0-alpha" />
+    <PackageReference Include="Altruist" Version="*-*" />
   </ItemGroup>
 
 </Project>
