@@ -9,7 +9,7 @@ SCRIPT_DIR=$(dirname "$0")
 cd "$SCRIPT_DIR"
 
 VERSION_FILE="version.txt"
-NEW_VERSION=$(cat $VERSION_FILE)
+NEW_VERSION=$(cat "$VERSION_FILE")
 
 echo "Updating all project versions to: $NEW_VERSION"
 
