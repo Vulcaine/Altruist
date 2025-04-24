@@ -1,11 +1,13 @@
-using System.Security.Cryptography;
+using System.Net;
 using System.Text;
-using Altruist.Contracts;
 using Altruist.Database;
-using Cassandra;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -27,13 +29,13 @@ public static class WebAppAuthExtensions
     /// <remarks>
     /// This variant enables full persistence of token sessions using both database and cache.
     /// </remarks>
-    public static WebApplicationBuilder StatefulToken<TKeyspace>(this WebApplicationBuilder builder, IDatabaseServiceToken token)
+    public static WebApplicationBuilder StatefulToken<TKeyspace>(this WebApplicationBuilder builder)
         where TKeyspace : class, IKeyspace, new()
     {
         builder.Services.AddSingleton(sp =>
         {
             var repoFactory = sp.GetRequiredService<VaultRepositoryFactory>();
-            var repo = repoFactory.Make<TKeyspace>(token);
+            var repo = repoFactory.Make<TKeyspace>();
             return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthTokenSessionModel>());
         });
         builder.Services.AddSingleton(typeof(IVaultCacheSyncService<>), sp => sp.GetRequiredService<TokenSessionSyncService>());

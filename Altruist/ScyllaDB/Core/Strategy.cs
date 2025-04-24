@@ -86,7 +86,7 @@ public sealed class ScyllaDBConnectionSetup : DatabaseConnectionSetup<ScyllaDBCo
         _services.AddSingleton<IScyllaDbProvider>(sp => new ScyllaDbProvider(_contactPoints, _builder));
         _services.AddSingleton<IGeneralDatabaseProvider>(sp => sp.GetRequiredService<IScyllaDbProvider>());
 
-        _services.AddSingleton(sp => new ScyllaVaultFactory(sp.GetRequiredService<IScyllaDbProvider>()));
+        _services.AddSingleton(sp => new ScyllaVaultFactory(sp.GetRequiredService<IScyllaDbProvider>(), sp));
         _services.AddSingleton<IDatabaseVaultFactory>(sp => sp.GetRequiredService<ScyllaVaultFactory>());
 
         if (Keyspaces.Count == 0)
@@ -157,7 +157,7 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
             {
                 if (vaultInstance is IBeforeVaultCreate before)
                 {
-                    await before.BeforeCreateAsync();
+                    await before.BeforeCreateAsync(builtServices);
                 }
             }
             catch (Exception ex)
@@ -169,7 +169,7 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
             {
                 if (vaultInstance is IOnVaultCreate preload)
                 {
-                    var loaded = await preload.OnCreateAsync();
+                    var loaded = await preload.OnCreateAsync(builtServices);
                     if (loaded.Count > 0)
                     {
                         var remoteVault = vaultRepo!.Select(vault);
@@ -193,7 +193,7 @@ public class ScyllaKeyspaceSetup<TKeyspace> : KeyspaceSetup<TKeyspace> where TKe
             {
                 if (vaultInstance is IAfterVaultCreate after)
                 {
-                    await after.AfterCreateAsync();
+                    await after.AfterCreateAsync(builtServices);
                 }
             }
             catch (Exception ex)

@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="BCrypt" Version="1.0.0" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
     <PackageReference Include="CassandraCSharpDriver" Version="3.22.0" />
     <PackageReference Include="Cronos" Version="0.9.0" />
 

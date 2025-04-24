@@ -90,8 +90,11 @@ public class VaultRepositoryFactory
         _provider = provider;
     }
 
-    public IVaultRepository<TKeyspace> Make<TKeyspace>(IDatabaseServiceToken token) where TKeyspace : class, IKeyspace, new() => _provider.GetServices<IVaultRepository<TKeyspace>>().Where(p => p.Token == token).First();
-
+    public IVaultRepository<TKeyspace> Make<TKeyspace>() where TKeyspace : class, IKeyspace, new()
+    {
+        var token = new TKeyspace().DatabaseToken;
+        return _provider.GetServices<IVaultRepository<TKeyspace>>().Where(p => p.Token == token).First();
+    }
 }
 
 

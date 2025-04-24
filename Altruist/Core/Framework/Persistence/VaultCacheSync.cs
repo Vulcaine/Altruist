@@ -2,7 +2,7 @@ namespace Altruist.Database;
 
 public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, IVaultModel
 {
-    public Task Load();
+    public Task Sync();
 
     public Task SaveAsync(TVaultModel entity, string cacheGroupId = "");
 
@@ -21,8 +21,8 @@ public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, 
 
 public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSyncService<TVaultModel> where TVaultModel : class, IVaultModel
 {
-    private readonly ICacheProvider _cacheProvider;
-    private readonly IVault<TVaultModel>? _vault;
+    protected readonly ICacheProvider _cacheProvider;
+    protected readonly IVault<TVaultModel>? _vault;
 
     public AbstractVaultCacheSyncService(ICacheProvider cacheProvider, IVault<TVaultModel>? vault = null)
     {
@@ -30,7 +30,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         _vault = vault;
     }
 
-    public void ValidateVault()
+    protected void ValidateVault()
     {
         if (_vault == null)
         {
@@ -60,14 +60,14 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         return _vault!.Where(x => x.GenId == id).FirstOrDefaultAsync();
     }
 
-    public virtual async Task Load()
+    public virtual async Task Sync()
     {
         ValidateVault();
         var all = await _vault!.ToListAsync();
         List<Task> tasks = new();
         foreach (var entity in all)
         {
-            tasks.Add(_cacheProvider.SaveAsync<TVaultModel>(entity.GenId, entity));
+            tasks.Add(_cacheProvider.SaveAsync(entity.GenId, entity));
         }
 
         Task.WaitAll(tasks);

@@ -7,7 +7,7 @@ using Altruist.UORM;
 [VaultPrimaryKey(keys: [nameof(GenId), nameof(Name)])]
 public class SpaceshipPlayer : Spaceship, IOnVaultCreate
 {
-    public Task<List<IVaultModel>> OnCreateAsync()
+    public Task<List<IVaultModel>> OnCreateAsync(IServiceProvider serviceProvider)
     {
         var aPlayer = new SpaceshipPlayer() { GenId = "Test", Name = "MyPlayerName" };
         return Task.FromResult(new List<IVaultModel> { aPlayer });
@@ -18,7 +18,7 @@ public class SpaceshipPlayer : Spaceship, IOnVaultCreate
 [VaultPrimaryKey(keys: [nameof(Username)])]
 public class MyAccount : UsernamePasswordAccountModel, IOnVaultCreate
 {
-    public Task<List<IVaultModel>> OnCreateAsync()
+    public Task<List<IVaultModel>> OnCreateAsync(IServiceProvider serviceProvider)
     {
         var hasher = new BcryptPasswordHasher();
         var adminAccount = new MyAccount { Username = "AltruistAdmin", PasswordHash = hasher.Hash("someHashedPass") };

@@ -169,14 +169,16 @@ public abstract class VaultRepository<TKeyspace> : IVaultRepository<TKeyspace> w
 
 public abstract class DatabaseVaultFactory : IDatabaseVaultFactory
 {
+    private readonly IServiceProvider _serviceProvider;
     private readonly IGeneralDatabaseProvider _databaseProvider;
 
     public IDatabaseServiceToken Token => _databaseProvider.Token;
 
     public DatabaseVaultFactory(
-        IGeneralDatabaseProvider databaseProvider)
+        IGeneralDatabaseProvider databaseProvider, IServiceProvider serviceProvider)
     {
         _databaseProvider = databaseProvider;
+        _serviceProvider = serviceProvider;
     }
 
     public virtual IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel
@@ -184,11 +186,11 @@ public abstract class DatabaseVaultFactory : IDatabaseVaultFactory
         var document = Document.From(typeof(TVaultModel));
         if (_databaseProvider is ICqlDatabaseProvider cqlDatabaseProvider)
         {
-            return new CqlVault<TVaultModel>(cqlDatabaseProvider, keyspace, document);
+            return new CqlVault<TVaultModel>(cqlDatabaseProvider, keyspace, document, _serviceProvider);
         }
         else if (_databaseProvider is ILinqDatabaseProvider linqDatabaseProvider)
         {
-            return new LinqVault<TVaultModel>(linqDatabaseProvider, keyspace, document);
+            return new LinqVault<TVaultModel>(linqDatabaseProvider, keyspace, document, _serviceProvider);
         }
         else
         {

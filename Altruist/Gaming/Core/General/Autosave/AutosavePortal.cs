@@ -30,7 +30,7 @@ public abstract class AltruistAutosavePortal<TKeyspace> : Portal where TKeyspace
     {
         Cache = context.Cache;
         Token = token;
-        Repository = vaultRepository.Make<TKeyspace>(token);
+        Repository = vaultRepository.Make<TKeyspace>();
     }
 
     public abstract List<Type> GetPersistedEntities();
