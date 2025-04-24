@@ -1,5 +1,7 @@
 # Altruist Framework
 
+[Read The Docs](https://altruist-docs-36tr37m0p-vulcaines-projects.vercel.app/)
+
 Altruist is a high-performance game server framework for real-time applications. It simplifies infrastructure setup, offering easy integration for transport, database, caching, and game mechanics.
 
 # Key Features
