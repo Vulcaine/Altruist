@@ -48,8 +48,8 @@ jobs:
     - name: Create Tag
       run: |
         VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
-        git tag $VERSION
-        git push origin $VERSION
+        git tag "$VERSION"
+        git push origin "$VERSION"
 
     # Build the package using dotnet pack
     - name: Build Package
