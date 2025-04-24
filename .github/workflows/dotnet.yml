@@ -41,15 +41,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install dos2unix
+        run: sudo apt-get install dos2unix
+
       - name: Validate Project Versions
         run: |
           echo "📦 Checking versions..."
+          dos2unix ./Altruist/validate_versions.sh
           chmod +x ./Altruist/validate_versions.sh
           ./Altruist/validate_versions.sh
       
       - name: Update Project Versions
         run: |
           echo "📦 Updating project versions to match version.txt...
+          dos2unix ./Altruist/update_versions.sh
           chmod +x ./Altruist/update_versions.sh
           ./Altruist/update_versions.sh
 
@@ -78,7 +83,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Merge PR on Success
         uses: ridedott/merge-me-action@v2
         with:
