@@ -49,7 +49,7 @@ jobs:
       
       - name: Update Project Versions
         run: |
-          echo "📦 Updating project versions to match version.txt..."
+          echo "📦 Updating project versions to match version.txt...
           chmod +x ./Altruist/update_versions.sh
           ./Altruist/update_versions.sh
 
