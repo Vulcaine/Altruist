@@ -44,14 +44,14 @@ jobs:
       - name: Validate Project Versions
         run: |
           echo "📦 Checking versions..."
-          chmod +x ./Altruist/validate-version.sh
-          ./Altruist/validate-version.sh
+          chmod +x ./Altruist/validate-versions.sh
+          ./Altruist/validate-versions.sh
       
       - name: Update Project Versions
         run: |
           echo "📦 Updating project versions to match version.txt..."
-          chmod +x ./Altruist/update-versions.sh
-          ./Altruist/update-versions.sh
+          chmod +x ./Altruist/update_versions.sh
+          ./Altruist/update_versions.sh
 
       - name: Create a new branch for version updates
         run: |
