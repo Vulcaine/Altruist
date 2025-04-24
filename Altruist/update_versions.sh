@@ -2,6 +2,12 @@
 
 set -e
 
+# Get the directory of the script
+SCRIPT_DIR=$(dirname "$0")
+
+# Navigate to the directory where the script is located
+cd "$SCRIPT_DIR"
+
 VERSION_FILE="version.txt"
 NEW_VERSION=$(cat $VERSION_FILE)
 
