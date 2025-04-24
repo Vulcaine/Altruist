@@ -1,9 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\Core\Core.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,5 +8,9 @@
     <Description>ScyllaDB module for Altruist framework.</Description>
     <Version>0.1.0-alpha</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Altruist" Version="0.1.0-alpha" />
+  </ItemGroup>
 
 </Project>
