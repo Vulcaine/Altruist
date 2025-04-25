@@ -39,35 +39,40 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
-
+      - name: Clone repository using PAT
+        run: |
+          git clone https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git repo
+          cd repo
+          git config user.name "Vulcaine"
+          git config user.email "Vulcaine@users.noreply.github.com"
+          git checkout -b version-update-branch
+  
       - name: Install dos2unix
         run: sudo apt-get install dos2unix
-
+  
       - name: Validate Project Versions
         run: |
+          cd repo
           echo "📦 Checking versions..."
           dos2unix ./Altruist/validate_versions.sh
           chmod +x ./Altruist/validate_versions.sh
           ./Altruist/validate_versions.sh
-      
+  
       - name: Update Project Versions
         run: |
+          cd repo
           echo "📦 Updating project versions to match version.txt..."
           dos2unix ./Altruist/update_versions.sh
           chmod +x ./Altruist/update_versions.sh
           ./Altruist/update_versions.sh
-
-      - name: Create a new branch for version updates
+  
+      - name: Commit and Push Changes
         run: |
-          git checkout -b version-update-branch
-          git config user.name "Vulcaine"
-          git config user.email "Vulcaine@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git
+          cd repo
           git add .
           git commit -m "chore: update package versions to match version.txt" || echo "No changes to commit"
-          git push origin version-update-branch
-
+          git push --set-upstream origin version-update-branch
+  
       - name: Create Pull Request to Merge into main
         uses: peter-evans/create-pull-request@v4
         with:
