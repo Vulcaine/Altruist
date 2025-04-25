@@ -13,9 +13,9 @@ on:
 jobs:
   validate_version:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.ref, 'refs/heads/release/')"
     steps:
     - uses: actions/checkout@v4
-    
     - name: Install dos2unix
       run: sudo apt-get install dos2unix
 
@@ -28,6 +28,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.ref, 'refs/heads/release/')"
     needs: validate_version
     steps:
     - uses: actions/checkout@v4
