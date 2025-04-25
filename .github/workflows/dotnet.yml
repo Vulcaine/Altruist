@@ -13,11 +13,20 @@ on:
 jobs:
   validate_version:
     runs-on: ubuntu-latest
-    if: "(
-      github.event_name == 'push' &&
-      !startsWith(github.head_ref, 'release/') &&
-      !contains(github.event.head_commit.message, 'dotnet.yml')) || (github.event_name == 'pull_request' && github.base_ref != 'main' && !startsWith(github.head_ref, 'release/') &&
-      !contains(github.event.head_commit.message, 'dotnet.yml'))"
+    if: |
+      # Run on push event, excluding release/* branches and commits to main from release/*
+      (
+        github.event_name == 'push' &&
+        !startsWith(github.head_ref, 'release/') &&
+        github.base_ref != 'main'
+      )
+      || 
+      # Run on pull request events, except when a release/* branch is merged into main
+      (
+        github.event_name == 'pull_request' &&
+        !startsWith(github.head_ref, 'release/') &&
+        github.base_ref != 'main' # exclude PRs from release/* branches to main
+      )
     steps:
     - uses: actions/checkout@v4
 
