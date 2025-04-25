@@ -24,7 +24,7 @@ jobs:
       (
         github.event_name == 'pull_request' &&
         !startsWith(github.head_ref, 'release/') &&
-        github.base_ref != 'main' # exclude PRs from release/* branches to main
+        github.base_ref != 'main'
       )
     steps:
     - uses: actions/checkout@v4
