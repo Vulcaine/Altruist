@@ -122,21 +122,41 @@ jobs:
     - name: Build Package
       run: dotnet pack ./Altruist --configuration Release --output ./Altruist/nupkgs
 
+    - name: Create GitHub Release manually
+      working-directory: ./repo
+      run: |
+        echo "📦 Creating GitHub release for tag ${{ needs.update-version.outputs.VERSION }}"
+    
+        # Create the release
+        API_JSON=$(jq -n \
+          --arg tag "${{ needs.update-version.outputs.VERSION }}" \
+          --arg name "${{ needs.update-version.outputs.VERSION }}" \
+          --arg body "Automated release for ${{ needs.update-version.outputs.VERSION }}" \
+          '{ tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false }')
+    
+        curl -s -X POST "https://api.github.com/repos/Vulcaine/Altruist/releases" \
+          -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+          -H "Accept: application/vnd.github+json" \
+          -d "$API_JSON"
+
+        # Upload artifacts
+        for file in ./Altruist/nupkgs/*.nupkg; do
+          FILENAME=$(basename "$file")
+          echo "📤 Uploading $FILENAME"
+          curl -s --data-binary @"$file" \
+            -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+            -H "Content-Type: application/octet-stream" \
+            "https://uploads.github.com/repos/Vulcaine/Altruist/releases/latest/assets?name=$FILENAME"
+        done
+
+        echo "✅ GitHub release created."
+
     # Publish the package to NuGet
     - name: Publish to NuGet
       env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
       run: |
         dotnet nuget push ./Altruist/nupkgs/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
-
-    # Create a new GitHub release using the tag created
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ needs.update-version.outputs.VERSION }}
-        files: ./Altruist/nupkgs/*.nupkg
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Create Release Pull Request Via GitHub API
       run: |
