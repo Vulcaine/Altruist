@@ -13,7 +13,7 @@ on:
 jobs:
   validate_version:
     runs-on: ubuntu-latest
-    if: "!startsWith(github.ref, 'refs/heads/release/')"
+    if: "!startsWith(github.head_ref, 'refs/heads/release/')"
     steps:
     - uses: actions/checkout@v4
 
@@ -22,7 +22,7 @@ jobs:
 
     - name: Validate Project Versions
       run: |
-        echo ${{ github.ref }}
+        echo ${{ github.head_ref }}
         echo "📦 Checking versions..."
         dos2unix ./Altruist/validate_versions.sh
         chmod +x ./Altruist/validate_versions.sh
@@ -30,7 +30,6 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    if: "!startsWith(github.ref, 'refs/heads/release/')"
     needs: validate_version
     steps:
     - uses: actions/checkout@v4
