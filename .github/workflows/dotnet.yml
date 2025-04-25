@@ -41,17 +41,22 @@ jobs:
     steps:
       - name: Checkout main repository
         uses: actions/checkout@v4
-    
-      - name: Clone repository using PAT
+
+      - name: Setup Versions
         run: |
           VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
           RELEASE_BRANCH="release/$VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> $GITHUB_ENV
+    
+      - name: Clone repository using PAT
+        run: |
           echo "Cloning repo and checking out release branch: $RELEASE_BRANCH"
           git clone https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git repo
           cd repo
           git config user.name "Vulcaine"
           git config user.email "Vulcaine@users.noreply.github.com"
-          git checkout -b "$RELEASE_BRANCH"
+          git checkout -b "${{ env.RELEASE_BRANCH }}"
           
       - name: Install dos2unix
         run: sudo apt-get install dos2unix
@@ -72,12 +77,10 @@ jobs:
 
       - name: Commit and Push Changes
         run: |
-          VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
-          RELEASE_BRANCH="release/$VERSION"
           cd repo
           git add .
           git commit -m "chore: update package versions to match version.txt" || echo "No changes to commit"
-          git push --set-upstream origin "$RELEASE_BRANCH"
+          git push --set-upstream origin "${{ env.RELEASE_BRANCH }}" || echo "Branch is up to date`"
 
   release:
     runs-on: ubuntu-latest
@@ -96,10 +99,9 @@ jobs:
     # Checkout the Release Branch
     - name: Checkout Release Branch
       run: |
-        VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
-        RELEASE_BRANCH="release/$VERSION"
-        echo "Checking out release branch: $RELEASE_BRANCH"
-        git checkout "$RELEASE_BRANCH"
+        echo "Checking out release branch: ${{ env.RELEASE_BRANCH }}"
+        git fetch && git rebase
+        git checkout "${{ env.RELEASE_BRANCH }}"
 
     # Configure Git with bot credentials
     - name: Configure Git for Commits
@@ -110,10 +112,8 @@ jobs:
     # Create a new version tag based on the release branch
     - name: Create Tag on Release Branch
       run: |
-        VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        git tag "$VERSION"
-        git push origin "$VERSION"
+        git tag "${{ env.VERSION }}"
+        git push origin "${{ env.VERSION }}"
 
     # Build the package using dotnet pack
     - name: Build Package
@@ -138,14 +138,12 @@ jobs:
     - name: Create Release Pull Request Via GitHub API
       run: |
         echo "📬 Creating pull request via GitHub API..."
-        VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
-        RELEASE_BRANCH="release/$VERSION"
         curl -s -X POST https://api.github.com/repos/Vulcaine/Altruist/pulls \
           -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
           -H "Accept: application/vnd.github+json" \
           -d '{
             "title": "$RELEASE_BRANCH: Merge Release into Main",
             "body": "This PR merges the new release version back to main",
-            "head": "$RELEASE_BRANCH",
+            "head": "${{ env.RELEASE_BRANCH }}",
             "base": "main"
           }'
