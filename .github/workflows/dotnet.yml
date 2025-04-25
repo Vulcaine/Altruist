@@ -36,6 +36,9 @@ jobs:
 
   update-version:
     runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.set-version.outputs.VERSION }}
+      RELEASE_BRANCH: ${{ steps.set-version.outputs.RELEASE_BRANCH }}
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
@@ -43,12 +46,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Versions
+        id: set-version
         run: |
           VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
           RELEASE_BRANCH="release/$VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> $GITHUB_ENV
-    
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> $GITHUB_OUTPUT
+          
       - name: Clone repository using PAT
         run: |
           echo "Cloning repo and checking out release branch: ${{ env.RELEASE_BRANCH }}"
@@ -99,9 +105,9 @@ jobs:
     # Checkout the Release Branch
     - name: Checkout Release Branch
       run: |
-        echo "Checking out release branch: ${{ env.RELEASE_BRANCH }}"
+        echo "Checking out release branch: ${{ needs.update-version.outputs.RELEASE_BRANCH }}"
         git fetch && git rebase
-        git checkout "${{ env.RELEASE_BRANCH }}"
+        git checkout "${{ needs.update-version.outputs.RELEASE_BRANCH }}"
 
     # Configure Git with bot credentials
     - name: Configure Git for Commits
@@ -112,8 +118,8 @@ jobs:
     # Create a new version tag based on the release branch
     - name: Create Tag on Release Branch
       run: |
-        git tag "${{ env.VERSION }}"
-        git push origin "${{ env.VERSION }}"
+        git tag "${{ needs.update-version.outputs.VERSION }}"
+        git push origin "${{ needs.update-version.outputs.VERSION }}"
 
     # Build the package using dotnet pack
     - name: Build Package
@@ -130,7 +136,7 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ env.VERSION }}
+        tag_name: ${{ needs.update-version.outputs.VERSION }}
         files: ./Altruist/nupkgs/*.nupkg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -142,8 +148,8 @@ jobs:
           -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
           -H "Accept: application/vnd.github+json" \
           -d '{
-            "title": "$RELEASE_BRANCH: Merge Release into Main",
+            "title": "${{ needs.update-version.outputs.RELEASE_BRANCH }}: Merge Release into Main",
             "body": "This PR merges the new release version back to main",
-            "head": "${{ env.RELEASE_BRANCH }}",
+            "head": "${{ needs.update-version.outputs.RELEASE_BRANCH }}",
             "base": "main"
           }'
