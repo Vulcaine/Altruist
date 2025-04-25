@@ -13,14 +13,16 @@ on:
 jobs:
   validate_version:
     runs-on: ubuntu-latest
+    if: "!startsWith(github.head_ref, 'release/')"
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install dos2unix
       run: sudo apt-get install dos2unix
 
     - name: Validate Project Versions
       run: |
+        echo ${{ github.head_ref }}
         echo "📦 Checking versions..."
         dos2unix ./Altruist/validate_versions.sh
         chmod +x ./Altruist/validate_versions.sh
