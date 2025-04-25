@@ -14,14 +14,14 @@ jobs:
   validate_version:
     runs-on: ubuntu-latest
     if: |
-      # Run on push event, excluding release/* branches and commits to main from release/*
+      from release/*
       (
         github.event_name == 'push' &&
         !startsWith(github.head_ref, 'release/') &&
         github.base_ref != 'main'
       )
       || 
-      # Run on pull request events, except when a release/* branch is merged into main
+      into main
       (
         github.event_name == 'pull_request' &&
         !startsWith(github.head_ref, 'release/') &&
