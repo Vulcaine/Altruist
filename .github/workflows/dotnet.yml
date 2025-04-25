@@ -63,10 +63,10 @@ jobs:
           git checkout -b version-update-branch
           git config user.name "Vulcaine"
           git config user.email "Vulcaine@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git
           git add .
           git commit -m "chore: update package versions to match version.txt" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git version-update-branch
-
+          git push origin version-update-branch
 
       - name: Create Pull Request to Merge into main
         uses: peter-evans/create-pull-request@v4
