@@ -39,6 +39,15 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
+      - name: Clean up old version-update-branch (if exists)
+        run: |
+          echo "🧹 Cleaning up old version-update-branch (if any)..."
+          git clone https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git cleanup-repo
+          cd cleanup-repo
+          git config user.name "Vulcaine"
+          git config user.email "Vulcaine@users.noreply.github.com"
+          git push origin --delete version-update-branch || echo "No existing version-update-branch to delete"
+          
       - name: Clone repository using PAT
         run: |
           git clone https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git repo
