@@ -51,7 +51,7 @@ jobs:
     
       - name: Clone repository using PAT
         run: |
-          echo "Cloning repo and checking out release branch: $RELEASE_BRANCH"
+          echo "Cloning repo and checking out release branch: ${{ env.RELEASE_BRANCH }}"
           git clone https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git repo
           cd repo
           git config user.name "Vulcaine"
@@ -80,7 +80,7 @@ jobs:
           cd repo
           git add .
           git commit -m "chore: update package versions to match version.txt" || echo "No changes to commit"
-          git push --set-upstream origin "${{ env.RELEASE_BRANCH }}" || echo "Branch is up to date`"
+          git push --set-upstream origin "${{ env.RELEASE_BRANCH }}" || echo "Branch is up to date"
 
   release:
     runs-on: ubuntu-latest
