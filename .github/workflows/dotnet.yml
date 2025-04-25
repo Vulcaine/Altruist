@@ -19,8 +19,7 @@ jobs:
         !startsWith(github.head_ref, 'release/') &&
         github.base_ref != 'main'
       )
-      || 
-      into main
+      ||
       (
         github.event_name == 'pull_request' &&
         !startsWith(github.head_ref, 'release/') &&
