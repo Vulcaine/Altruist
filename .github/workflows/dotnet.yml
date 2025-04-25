@@ -95,26 +95,25 @@ jobs:
     # Checkout main
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+
+    - name: Clone repository using PAT
+      run: |
+        echo "Cloning main repo with access token"
+        git clone https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git repo
+        cd repo
+        git config user.name "Vulcaine"
+        git config user.email "Vulcaine@users.noreply.github.com"
+        echo "Checking out release branch: ${{ needs.update-version.outputs.RELEASE_BRANCH }}"
+        git fetch && git rebase
+        git checkout "${{ needs.update-version.outputs.RELEASE_BRANCH }}"
+        git config user.name "Vulcaine"
+        git config user.email "Vulcaine@users.noreply.github.com"
+
     # Setup .NET SDK
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 9.0.x
-
-    # Checkout the Release Branch
-    - name: Checkout Release Branch
-      run: |
-        echo "Checking out release branch: ${{ needs.update-version.outputs.RELEASE_BRANCH }}"
-        git fetch && git rebase
-        git checkout "${{ needs.update-version.outputs.RELEASE_BRANCH }}"
-
-    # Configure Git with bot credentials
-    - name: Configure Git for Commits
-      run: |
-        git config user.name "Vulcaine"
-        git config user.email "Vulcaine@users.noreply.github.com"
-        git remote set-url origin https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git
 
     # Create a new version tag based on the release branch
     - name: Create Tag on Release Branch
