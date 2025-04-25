@@ -7,10 +7,14 @@
     <PackageId>Altruist.EFCore</PackageId>
     <Description>EFCore module for Altruist framework.</Description>
     <Version>0.1.3-alpha</Version>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReadmeFile>./README.md</PackageReadmeFile>
   </PropertyGroup>
 
-   <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath=""/>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
     <ProjectReference Include="..\Core\Core.csproj" />
   </ItemGroup>
 
