@@ -122,34 +122,46 @@ jobs:
     - name: Build Package
       run: dotnet pack ./Altruist --configuration Release --output ./Altruist/nupkgs
 
-    - name: Create GitHub Release manually
+    - name: Create GitHub Release manually and upload artifacts
       working-directory: ./repo
+      env:
+        VERSION: ${{ needs.update-version.outputs.VERSION }}
+        GH_PAT: ${{ secrets.ACTION_PAT }}
       run: |
-        echo "📦 Creating GitHub release for tag ${{ needs.update-version.outputs.VERSION }}"
+        echo "📦 Creating GitHub release for tag $VERSION"
     
-        # Create the release
-        API_JSON=$(jq -n \
-          --arg tag "${{ needs.update-version.outputs.VERSION }}" \
-          --arg name "${{ needs.update-version.outputs.VERSION }}" \
-          --arg body "Automated release for ${{ needs.update-version.outputs.VERSION }}" \
-          '{ tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false }')
-    
-        curl -s -X POST "https://api.github.com/repos/Vulcaine/Altruist/releases" \
-          -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+        # Create the release and capture upload_url
+        RESPONSE=$(curl -s -X POST https://api.github.com/repos/Vulcaine/Altruist/releases \
+          -H "Authorization: token $GH_PAT" \
           -H "Accept: application/vnd.github+json" \
-          -d "$API_JSON"
-
-        # Upload artifacts
+          -d @- <<EOF
+          {
+            "tag_name": "$VERSION",
+            "name": "$VERSION",
+            "body": "Automated release for $VERSION",
+            "draft": false,
+            "prerelease": false
+          }
+          EOF)
+    
+        echo "$RESPONSE"
+    
+        UPLOAD_URL=$(echo "$RESPONSE" | jq -r .upload_url | sed -e "s/{?name,label}//")
+    
+        echo "📤 Uploading .nupkg files to: $UPLOAD_URL"
+    
         for file in ./Altruist/nupkgs/*.nupkg; do
+          [ -e "$file" ] || continue  # Skip if no files matched
           FILENAME=$(basename "$file")
-          echo "📤 Uploading $FILENAME"
-          curl -s --data-binary @"$file" \
-            -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+          echo "Uploading $FILENAME"
+          curl --fail -s \
+            -X POST "$UPLOAD_URL?name=$FILENAME" \
+            -H "Authorization: token $GH_PAT" \
             -H "Content-Type: application/octet-stream" \
-            "https://uploads.github.com/repos/Vulcaine/Altruist/releases/latest/assets?name=$FILENAME"
+            --data-binary @"$file"
         done
-
-        echo "✅ GitHub release created."
+    
+        echo "✅ Done uploading release artifacts."
 
     # Publish the package to NuGet
     - name: Publish to NuGet
