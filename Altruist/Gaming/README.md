@@ -13,7 +13,7 @@ The API may change in future versions.
 Not all features are implemented and some may be incomplete or broken.
 There are no guarantees of support for issues encountered during experimentation.
 
-# 🔗 [Project Documentation](https://altruist-docs-36tr37m0p-vulcaines-projects.vercel.app/docs/project-status)
+# 🔗 [Project Documentation](altruist-docs.vercel.app)
 
 The docs will guide you through installation, usage, and help you get started with testing the package in your project.
 
