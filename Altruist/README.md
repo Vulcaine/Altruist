@@ -9,7 +9,7 @@ Altruist is a high-performance game server framework for real-time applications.
 
 - **Plug-and-Play Portals:** Easily create and integrate custom portals for game mechanics, chat, and more.
 
-- **Built-In Caching & Database:** Integrates Redis for caching and ScyllaDB for persistent storage.
+- **Flexible Caching & Database Integration**: Supports integration with any caching or database provider. Currently, Redis (for caching) and ScyllaDB (for persistence) are implemented out of the box. The framework is designed for easy extensibility to other providers.
 
 - **Auto Object Mapping:** Automatically map objects to persistence layers.
 
