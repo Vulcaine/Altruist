@@ -22,7 +22,7 @@ jobs:
 
     - name: Validate Project Versions
       run: |
-        echo ${{ github.ref}}
+        echo ${{ github.ref }}
         echo "📦 Checking versions..."
         dos2unix ./Altruist/validate_versions.sh
         chmod +x ./Altruist/validate_versions.sh
