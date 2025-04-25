@@ -52,7 +52,7 @@ jobs:
           git config user.name "Vulcaine"
           git config user.email "Vulcaine@users.noreply.github.com"
           git checkout -b "$RELEASE_BRANCH"
-
+          
       - name: Install dos2unix
         run: sudo apt-get install dos2unix
 
@@ -69,6 +69,15 @@ jobs:
           dos2unix ./Altruist/update_versions.sh
           chmod +x ./Altruist/update_versions.sh
           ./Altruist/update_versions.sh
+
+      - name: Commit and Push Changes
+        run: |
+          VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
+          RELEASE_BRANCH="release/$VERSION"
+          cd repo
+          git add .
+          git commit -m "chore: update package versions to match version.txt" || echo "No changes to commit"
+          git push --set-upstream origin "$RELEASE_BRANCH"
 
   release:
     runs-on: ubuntu-latest
