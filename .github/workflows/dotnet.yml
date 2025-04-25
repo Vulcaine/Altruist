@@ -39,6 +39,9 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+    
       - name: Clone repository using PAT
         run: |
           VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
