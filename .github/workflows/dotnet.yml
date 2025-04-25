@@ -70,24 +70,14 @@ jobs:
           chmod +x ./Altruist/update_versions.sh
           ./Altruist/update_versions.sh
 
-      - name: Create Pull Request to Merge into main
-        run: |
-          VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
-          RELEASE_BRANCH="release/$VERSION"
-          curl -s -X POST https://api.github.com/repos/Vulcaine/Altruist/pulls \
-            -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
-            -H "Accept: application/vnd.github+json" \
-            -d '{
-              "title": "chore: update package versions for release '"$VERSION"'",
-              "body": "This PR updates the project versions for release '"$VERSION"'",
-              "head": "'"$RELEASE_BRANCH"'",
-              "base": "main"
-            }'
-
   release:
     runs-on: ubuntu-latest
     needs: update-version
     steps:
+    # Checkout main
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
     # Setup .NET SDK
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -135,3 +125,18 @@ jobs:
         files: ./Altruist/nupkgs/*.nupkg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Release Pull Request Via GitHub API
+      run: |
+        echo "📬 Creating pull request via GitHub API..."
+        VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
+        RELEASE_BRANCH="release/$VERSION"
+        curl -s -X POST https://api.github.com/repos/Vulcaine/Altruist/pulls \
+          -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+          -H "Accept: application/vnd.github+json" \
+          -d '{
+            "title": "$RELEASE_BRANCH: Merge Release into Main",
+            "body": "This PR merges the new release version back to main",
+            "head": "$RELEASE_BRANCH",
+            "base": "main"
+          }'
