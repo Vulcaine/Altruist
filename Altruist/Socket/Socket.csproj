@@ -7,6 +7,7 @@
     <PackageId>Altruist.Socket</PackageId>
     <Description>Socket module for Altruist framework.</Description>
     <Version>0.1.3-alpha</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
    <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
