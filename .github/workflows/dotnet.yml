@@ -16,14 +16,12 @@ jobs:
     if: |
       (
         github.event_name == 'push' &&
-        !startsWith(github.head_ref, 'release/') &&
-        github.ref != 'refs/heads/main'
+        !startsWith(github.head_ref, 'release/')
       )
       ||
       (
         github.event_name == 'pull_request' &&
-        !startsWith(github.head_ref, 'release/') &&
-        github.ref != 'refs/heads/main'
+        !startsWith(github.head_ref, 'release/')
       )
     steps:
     - uses: actions/checkout@v4
