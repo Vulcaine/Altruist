@@ -114,6 +114,7 @@ jobs:
       run: |
         git config user.name "Vulcaine"
         git config user.email "Vulcaine@users.noreply.github.com"
+        git remote set-url origin https://x-access-token:${{ secrets.ACTION_PAT }}@github.com/Vulcaine/Altruist.git
 
     # Create a new version tag based on the release branch
     - name: Create Tag on Release Branch
