@@ -133,27 +133,30 @@ jobs:
       run: |
         echo "📦 Creating GitHub release for tag $VERSION"
     
-        API_JSON=$(jq -n \
-          --arg tag "${{ needs.update-version.outputs.VERSION }}" \
-          --arg name "${{ needs.update-version.outputs.VERSION }}" \
-          --arg body "Automated release for ${{ needs.update-version.outputs.VERSION }}" \
-          '{ tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false }')
-    
-        curl -s -X POST "https://api.github.com/repos/Vulcaine/Altruist/releases" \
-          -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+        # Create release and capture response
+        API_RESPONSE=$(curl -s -X POST "https://api.github.com/repos/Vulcaine/Altruist/releases" \
+          -H "Authorization: token $GH_PAT" \
           -H "Accept: application/vnd.github+json" \
-          -d "$API_JSON"
+          -d "$(jq -n \
+            --arg tag "$VERSION" \
+            --arg name "$VERSION" \
+            --arg body "Automated release for $VERSION" \
+            '{ tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false }')")
     
         echo "✅ GitHub release created."
     
-        # Upload artifacts
+        # Extract upload URL from response
+        UPLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.upload_url' | sed 's/{?name,label}//')
+    
+        echo "📤 Uploading artifacts to: $UPLOAD_URL"
+    
         for file in ./Altruist/nupkgs/*.nupkg; do
           FILENAME=$(basename "$file")
           echo "📤 Uploading $FILENAME"
           curl -s --data-binary @"$file" \
-            -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+            -H "Authorization: token $GH_PAT" \
             -H "Content-Type: application/octet-stream" \
-            "https://uploads.github.com/repos/Vulcaine/Altruist/releases/latest/assets?name=$FILENAME"
+            "$UPLOAD_URL?name=$FILENAME"
         done
     
         echo "✅ Done uploading release artifacts."
