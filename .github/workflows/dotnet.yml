@@ -13,7 +13,7 @@ on:
 jobs:
   validate_version:
     runs-on: ubuntu-latest
-    if: "!startsWith(github.head_ref, 'refs/heads/release/')"
+    if: "!startsWith(github.head_ref, 'release/')"
     steps:
     - uses: actions/checkout@v4
 
