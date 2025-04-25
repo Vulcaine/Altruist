@@ -68,6 +68,7 @@ jobs:
         run: sudo apt-get install dos2unix
 
       - name: Validate Project Versions
+        working-directory: ./repo
         run: |
           echo "📦 Checking versions..."
           dos2unix ./Altruist/validate_versions.sh
@@ -75,6 +76,7 @@ jobs:
           ./Altruist/validate_versions.sh
       
       - name: Update Project Versions
+        working-directory: ./repo
         run: |
           echo "📦 Updating project versions to match version.txt..."
           dos2unix ./Altruist/update_versions.sh
@@ -82,8 +84,8 @@ jobs:
           ./Altruist/update_versions.sh
 
       - name: Commit and Push Changes
+        working-directory: ./repo
         run: |
-          cd repo
           git add .
           git commit -m "chore: update package versions to match version.txt" || echo "No changes to commit"
           git push --set-upstream origin "${{ env.RELEASE_BRANCH }}" || echo "Branch is up to date"
