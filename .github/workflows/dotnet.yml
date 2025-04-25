@@ -13,7 +13,11 @@ on:
 jobs:
   validate_version:
     runs-on: ubuntu-latest
-    if: "!startsWith(github.head_ref, 'release/')"
+    if: "(
+      github.event_name == 'push' &&
+      !startsWith(github.head_ref, 'release/') &&
+      !contains(github.event.head_commit.message, 'dotnet.yml')) || (github.event_name == 'pull_request' && github.base_ref != 'main' && !startsWith(github.head_ref, 'release/') &&
+      !contains(github.event.head_commit.message, 'dotnet.yml'))"
     steps:
     - uses: actions/checkout@v4
 
