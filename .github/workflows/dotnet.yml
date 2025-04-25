@@ -82,15 +82,19 @@ jobs:
           git commit -m "chore: update package versions to match version.txt" || echo "No changes to commit"
           git push --set-upstream origin version-update-branch
   
-      - name: Create Pull Request to Merge into main
-        uses: peter-evans/create-pull-request@v4
-        with:
-          token: ${{ secrets.ACTION_PAT }}
-          title: "chore: update package versions to match version.txt"
-          body: "This PR updates the project versions to match version.txt"
-          branch: version-update-branch
-          base: main
-          commit-message: "chore: update package versions to match version.txt"
+      - name: Create Pull Request via GitHub API
+        run: |
+          echo "📬 Creating pull request via GitHub API..."
+          curl -s -X POST https://api.github.com/repos/Vulcaine/Altruist/pulls \
+            -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            -d '{
+              "title": "chore: update package versions to match version.txt",
+              "body": "This PR updates the project versions to match version.txt",
+              "head": "version-update-branch",
+              "base": "main"
+            }'
+
 
   merge-pr:
     runs-on: ubuntu-latest
