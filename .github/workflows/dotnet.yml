@@ -14,15 +14,17 @@ jobs:
   validate_version:
     runs-on: ubuntu-latest
     steps:
-      - name: Install dos2unix
-        run: sudo apt-get install dos2unix
+    - uses: actions/checkout@v4
+    
+    - name: Install dos2unix
+      run: sudo apt-get install dos2unix
 
-      - name: Validate Project Versions
-        run: |
-          echo "📦 Checking versions..."
-          dos2unix ./Altruist/validate_versions.sh
-          chmod +x ./Altruist/validate_versions.sh
-          ./Altruist/validate_versions.sh
+    - name: Validate Project Versions
+      run: |
+        echo "📦 Checking versions..."
+        dos2unix ./Altruist/validate_versions.sh
+        chmod +x ./Altruist/validate_versions.sh
+        ./Altruist/validate_versions.sh
 
   build:
     runs-on: ubuntu-latest
