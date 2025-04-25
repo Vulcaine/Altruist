@@ -76,12 +76,12 @@ jobs:
       - name: Create Pull Request to Merge into main
         uses: peter-evans/create-pull-request@v4
         with:
+          token: ${{ secrets.ACTION_PAT }}
           title: "chore: update package versions to match version.txt"
           body: "This PR updates the project versions to match version.txt"
-          head: version-update-branch
+          branch: version-update-branch
           base: main
           commit-message: "chore: update package versions to match version.txt"
-          token: ${{ secrets.ACTION_PAT }}
 
   merge-pr:
     runs-on: ubuntu-latest
