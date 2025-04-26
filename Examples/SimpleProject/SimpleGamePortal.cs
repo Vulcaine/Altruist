@@ -17,12 +17,13 @@ limitations under the License.
 using Altruist;
 using Altruist.Gaming;
 using Microsoft.Extensions.Logging;
+using SimpleGame.Entities;
 
 namespace Portals;
 
-public class SimpleGamePortal : AltruistGamePortal<Spaceship>
+public class SimpleGamePortal : AltruistGameSessionPortal<SimpleSpaceship>
 {
-    public SimpleGamePortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    public SimpleGamePortal(IPortalContext context, GameWorldCoordinator worldCoordinator, IPlayerService<SimpleSpaceship> playerService, ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
     {
     }
 }

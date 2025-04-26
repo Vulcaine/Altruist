@@ -82,7 +82,7 @@ public sealed class TcpTransport : ITransport
 
         var authContext = new SocketAuthContext
         {
-            Token = handshakeMessage.Token,
+            Token = "",
             ClientId = Guid.NewGuid().ToString(),
             ClientIp = clientIp!.Address,
             ConnectionTimestamp = DateTime.UtcNow
@@ -90,7 +90,7 @@ public sealed class TcpTransport : ITransport
 
         if (shieldAttribute != null)
         {
-            if (clientIp == null || string.IsNullOrEmpty(handshakeMessage.Token))
+            if (clientIp == null || string.IsNullOrEmpty(""))
             {
                 await networkStream.WriteAsync(errorMessage, 0, errorMessage.Length);
                 client.Close();

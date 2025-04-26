@@ -324,23 +324,20 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("rooms")][Key(1)] public RoomPacket[] Rooms { get; set; }
 
-        [JsonPropertyName("token")][Key(1)] public string? Token { get; set; }
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "HandshakePacket";
 
         public HandshakePacket()
         {
             Header = default;
             Rooms = Array.Empty<RoomPacket>();
-            Token = string.Empty;
         }
 
-        public HandshakePacket(string sender, RoomPacket[] rooms, string? token = null, string? receiver = null)
+        public HandshakePacket(string sender, RoomPacket[] rooms, string? receiver = null)
         {
             Header = new PacketHeader(sender, receiver);
             Rooms = rooms;
-            Token = token;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "HandshakePacket";
     }
 
     [MessagePackObject]
@@ -349,7 +346,7 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("name")][Key(1)] public string Name { get; set; }
         [JsonPropertyName("roomId")][Key(2)] public string? RoomId { get; set; }
-        [JsonPropertyName("position")][Key(2)] public float[]? Position { get; set; }
+        [JsonPropertyName("position")][Key(3)] public float[]? Position { get; set; }
 
         public JoinGamePacket()
         {
@@ -367,7 +364,7 @@ namespace Altruist
             Position = position ?? [0, 0];
         }
 
-        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "JoinGamePacket";
+        [JsonPropertyName("type")][Key(4)] public string Type { get; set; } = "JoinGamePacket";
     }
 
     [MessagePackObject]

@@ -1,7 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Altruist\Altruist.csproj" />
+    <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
+    <ProjectReference Include="..\..\Altruist\Web\Web.csproj" />
+    <ProjectReference Include="..\..\Altruist\Gaming\Gaming.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

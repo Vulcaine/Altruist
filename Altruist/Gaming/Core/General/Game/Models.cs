@@ -14,6 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Text.Json.Serialization;
+using Altruist.Networking;
+using Altruist.UORM;
+using MessagePack;
+
 namespace Altruist.Gaming;
 
 public struct IntVector2
@@ -386,4 +391,317 @@ public class WorldPartition : IStoredModel
 
     public virtual HashSet<ObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
         _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
+}
+
+
+[MessagePackObject]
+public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
+{
+    [Key(0)]
+    [JsonPropertyName("id")]
+    [VaultColumn]
+
+    public override string GenId { get; set; }
+
+    [Key(1)]
+    [Synced(0, SyncAlways: true)]
+    [JsonPropertyName("connectionId")]
+    [VaultColumn]
+    public string ConnectionId { get; set; }
+
+    [Key(2)]
+    [Synced(1, SyncAlways: true)]
+    [JsonPropertyName("name")]
+    [VaultColumn]
+    public string Name { get; set; }
+
+    [Key(3)]
+    [Synced(2, SyncAlways: true)]
+    [JsonPropertyName("type")]
+    [VaultColumn]
+    public override string Type { get; set; }
+
+    [Key(4)]
+    [Synced(3)]
+    [JsonPropertyName("level")]
+    [VaultColumn]
+    public int Level { get; set; }
+
+    [Key(5)]
+    [Synced(4)]
+    [JsonPropertyName("position")]
+    [VaultColumn]
+    public float[] Position { get; set; }
+
+    [Key(6)]
+    [Synced(5)]
+    [JsonPropertyName("rotation")]
+    [VaultColumn]
+    public float Rotation { get; set; }
+
+    [Key(7)]
+    [Synced(6)]
+    [JsonPropertyName("currentSpeed")]
+    [VaultColumn]
+    public float CurrentSpeed { get; set; }
+
+    [Key(8)]
+    [JsonPropertyName("rotationSpeed")]
+    [VaultColumn]
+    [Synced(7)]
+    public float RotationSpeed { get; set; }
+
+    [Key(9)]
+    [JsonPropertyName("maxSpeed")]
+    [Synced(5)]
+    [VaultColumn]
+    public float MaxSpeed { get; set; }
+
+    [Key(10)]
+    [JsonPropertyName("acceleration")]
+    [Synced(8)]
+    [VaultColumn]
+    public float Acceleration { get; set; }
+
+    [Key(11)]
+    [JsonPropertyName("deceleration")]
+    [Synced(9)]
+    [VaultColumn]
+    public float Deceleration { get; set; }
+
+    [Key(12)]
+    [JsonPropertyName("maxDeceleration")]
+    [Synced(10)]
+    [VaultColumn]
+    public float MaxDeceleration { get; set; }
+
+    [Key(13)]
+    [JsonPropertyName("maxAcceleration")]
+    [Synced(11)]
+    [VaultColumn]
+    public float MaxAcceleration { get; set; }
+
+    [Key(14)]
+    [JsonPropertyName("worldIndex")]
+    [VaultColumn]
+    public int WorldIndex { get; set; }
+
+    [Key(15)]
+    [VaultColumn]
+    public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    protected virtual void InitDefaults()
+    {
+        Type = GetType().Name;
+        GenId = Guid.NewGuid().ToString();
+        ConnectionId = "";
+        Name = "Player";
+        Level = 1;
+        Position = [0, 0];
+        Rotation = 0;
+        CurrentSpeed = 0;
+        RotationSpeed = 0;
+        MaxSpeed = 0;
+        Acceleration = 0;
+        Deceleration = 0;
+        MaxDeceleration = 0;
+        MaxAcceleration = 0;
+    }
+
+    public PlayerEntity()
+    {
+        InitDefaults();
+    }
+
+    public PlayerEntity(string id)
+    {
+        InitDefaults();
+        GenId = id;
+    }
+}
+
+public abstract class MovementInput
+{
+    public float RotationSpeed { get; set; } = 0f;
+    public bool Turbo { get; set; }
+}
+
+
+public class ForwardMovementInput : MovementInput
+{
+    public bool MoveUp { get; set; }
+    public bool RotateLeft { get; set; }
+    public bool RotateRight { get; set; }
+}
+
+
+public class EightDirectionMovementInput : MovementInput
+{
+    public bool MoveUp { get; set; }
+    public bool MoveDown { get; set; }
+    public bool MoveLeft { get; set; }
+    public bool MoveRight { get; set; }
+}
+
+
+public class VehicleMovementInput : EightDirectionMovementInput
+{
+
+}
+
+
+public class SpaceshipMovementInput : ForwardMovementInput
+{
+
+}
+
+
+
+public abstract class Vehicle : PlayerEntity
+{
+    [VaultColumn]
+    [Synced(0)]
+    [JsonPropertyName("fuel")]
+    public float Fuel { get; set; }
+
+    [VaultColumn]
+    [Synced(1)]
+    [JsonPropertyName("turboFuel")]
+    public float TurboFuel { get; set; }
+
+    [VaultColumn]
+    [Synced(2)]
+    [JsonPropertyName("maxTurboFuel")]
+    public float MaxTurboFuel { get; set; }
+
+    [VaultColumn]
+    [Synced(3)]
+    [JsonPropertyName("maxTurboSpeed")]
+    public float MaxTurboSpeed { get; set; }
+
+    [VaultColumn]
+    [Synced(4)]
+    [JsonPropertyName("toggleTurbo")]
+    public bool ToggleTurbo { get; set; }
+
+    [VaultColumn]
+    [JsonPropertyName("engineQuality")]
+    public float EngineQuality { get; set; }
+
+    public Vehicle() { }
+    public Vehicle(
+    string id,
+    int level,
+    float[] position,
+    float rotation,
+    float currentSpeed,
+    float maxSpeed,
+    float acceleration,
+    float maxAcceleration,
+    float deceleration,
+    float maxDeceleration,
+    float rotationSpeed,
+    float turboFuel,
+    float maxTurboFuel,
+    float maxTurboSpeed,
+    bool toggleTurbo,
+    float engineQuality
+)
+    {
+        GenId = id;
+        Level = level;
+        Position = position;
+        Rotation = rotation;
+        CurrentSpeed = currentSpeed;
+        MaxSpeed = maxSpeed;
+        Acceleration = acceleration;
+        MaxAcceleration = maxAcceleration;
+        Deceleration = deceleration;
+        MaxDeceleration = maxDeceleration;
+        RotationSpeed = rotationSpeed;
+        TurboFuel = turboFuel;
+        MaxTurboFuel = maxTurboFuel;
+        MaxTurboSpeed = maxTurboSpeed;
+        ToggleTurbo = toggleTurbo;
+        EngineQuality = engineQuality;
+    }
+
+
+    public void UpdateSpeed()
+    {
+        if (CurrentSpeed == 0) return;
+
+        if (CurrentSpeed > 0)
+        {
+            CurrentSpeed -= Deceleration;
+            if (CurrentSpeed < 0)
+            {
+                CurrentSpeed = 0;
+            }
+        }
+    }
+}
+
+public class Spaceship : Vehicle
+{
+    [VaultColumn]
+    [JsonPropertyName("shootSpeed")]
+    public float ShootSpeed { get; set; }
+
+    protected Spaceship()
+    {
+    }
+
+    protected Spaceship(
+    string id,
+    int level,
+    float[] position,
+    float rotation,
+    float currentSpeed,
+    float maxSpeed,
+    float acceleration,
+    float maxAcceleration,
+    float deceleration,
+    float maxDeceleration,
+    float rotationSpeed,
+    float turboFuel,
+    float maxTurboFuel,
+    float maxTurboSpeed,
+    bool toggleTurbo,
+    float engineQuality,
+    float shootSpeed
+) : base(id, level, position, rotation, currentSpeed, maxSpeed, acceleration, maxAcceleration, deceleration, maxDeceleration, rotationSpeed, turboFuel, maxTurboFuel, maxTurboSpeed, toggleTurbo, engineQuality)
+    {
+        ShootSpeed = shootSpeed;
+    }
+
+}
+
+public abstract class Car : Vehicle
+{
+    protected Car()
+    {
+    }
+
+    protected Car(
+    string id,
+    int level,
+    float[] position,
+    float rotation,
+    float currentSpeed,
+    float maxSpeed,
+    float acceleration,
+    float maxAcceleration,
+    float deceleration,
+    float maxDeceleration,
+    float rotationSpeed,
+    float turboFuel,
+    float maxTurboFuel,
+    float maxTurboSpeed,
+    bool toggleTurbo,
+    float engineQuality
+) : base(id, level, position, rotation, currentSpeed, maxSpeed, acceleration, maxAcceleration, deceleration, maxDeceleration, rotationSpeed, turboFuel, maxTurboFuel, maxTurboSpeed, toggleTurbo, engineQuality)
+    {
+    }
+
 }

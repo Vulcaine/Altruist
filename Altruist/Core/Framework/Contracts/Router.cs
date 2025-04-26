@@ -159,15 +159,18 @@ public class ClientSynchronizator
         _broadcast = broadcastSender;
     }
 
-    public virtual async Task SendAsync(ISynchronizedEntity entity)
+    public virtual async Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
     {
-        var (changeMask, changedProperties) = Synchronization.GetChangedData(entity, entity.ConnectionId);
-        if (changeMask == 0)
+        var (changeMasks, changedProperties) = Synchronization.GetChangedData(entity, entity.ConnectionId, forceAllAsChanged);
+
+        bool anyChanges = changeMasks.Any(mask => mask != 0);
+        if (!anyChanges)
             return;
 
         var syncData = new SyncPacket("server", entity.GetType().Name, changedProperties);
-        await _broadcast.SendAsync(syncData, entity.ConnectionId);
+        await _broadcast.SendAsync(syncData);
     }
+
 }
 
 public class BroadcastSender
