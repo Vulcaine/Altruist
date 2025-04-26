@@ -23,6 +23,6 @@ If you have any questions, suggestions, or issues, we're here to help! Reach out
 
 📨 [Open a GitHub Issue](https://github.com/Vulcaine/Altruist/issues) — Let us know your thoughts or report any bugs.
 
-💡 Support us: [OpenCollective](https://opencollective.com/altruist) — Help fund the project's future and development.
+♥️ Support us: [Sponsorship](https://github.com/sponsors/Vulcaine) — Help fund the project's future and development.
 
 Your feedback and support are greatly appreciated!
