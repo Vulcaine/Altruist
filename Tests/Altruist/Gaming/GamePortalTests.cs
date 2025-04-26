@@ -258,7 +258,7 @@ public class AltruistGamePortalTests
 
         // Assert
         VerifyClientSendSuccess(clientId);
-        _mockRouter.Verify(r => r.Synchronize.SendAsync(It.IsAny<ISynchronizedEntity>()), Times.Once);
+        _mockRouter.Verify(r => r.Synchronize.SendAsync(It.IsAny<ISynchronizedEntity>(), It.IsAny<bool>()), Times.Once);
     }
 
 
