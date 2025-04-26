@@ -18,6 +18,8 @@ using Altruist;
 using Altruist.Web;
 using Portals;
 
-AltruistBuilder.Create(args)
-    .SetupWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
+AltruistBuilder.Create(args, setup => setup.AddGamingSupport())
+    .NoEngine()
+    .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
+    .WebApp()
     .StartServer();

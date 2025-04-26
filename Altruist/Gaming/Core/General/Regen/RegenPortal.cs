@@ -59,7 +59,7 @@ public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TP
     public async virtual Task Regen()
     {
         var players = await CalculateRegenOneFrame();
-        var tasks = players.Select(Router.Synchronize.SendAsync).ToList();
+        var tasks = players.Select(e => Router.Synchronize.SendAsync(e)).ToList();
         await Task.WhenAll(tasks);
     }
 

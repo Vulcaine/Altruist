@@ -95,9 +95,10 @@ public sealed class UdpTransport : ITransport
 
             var handshakeMessage = _codec.Decoder.Decode<HandshakePacket>(buffer);
 
+            // TODO: get token from handshakeMessage
             var authContext = new SocketAuthContext
             {
-                Token = handshakeMessage.Token,
+                Token = "",
                 ClientId = clientId,
                 ClientIp = clientIp.Address,
                 ConnectionTimestamp = DateTime.UtcNow
@@ -105,7 +106,7 @@ public sealed class UdpTransport : ITransport
 
             if (shieldAttribute != null)
             {
-                if (string.IsNullOrEmpty(handshakeMessage.Token))
+                if (string.IsNullOrEmpty(""))
                 {
                     await _udpClient!.SendAsync(errorMessage, errorMessage.Length, clientIp);
                     return;

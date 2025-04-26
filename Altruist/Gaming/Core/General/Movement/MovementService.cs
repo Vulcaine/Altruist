@@ -22,20 +22,20 @@ using StackExchange.Redis;
 
 namespace Altruist.Gaming;
 
-public abstract class BaseMovementService<TPlayerEntity, MovementInput> where TPlayerEntity : PlayerEntity, new() where MovementInput : Altruist.MovementInput
+public abstract class BaseMovementService<TPlayerEntity, MI> where TPlayerEntity : PlayerEntity, new() where MI : MovementInput
 {
-    protected readonly ILogger<BaseMovementService<TPlayerEntity, MovementInput>> _logger;
+    protected readonly ILogger<BaseMovementService<TPlayerEntity, MI>> _logger;
     protected readonly IPlayerService<TPlayerEntity> _playerService;
 
     public BaseMovementService(
         IPlayerService<TPlayerEntity> playerService,
-        ILogger<BaseMovementService<TPlayerEntity, MovementInput>> logger, PortalContext portalContext)
+        ILogger<BaseMovementService<TPlayerEntity, MI>> logger, PortalContext portalContext)
     {
         _logger = logger;
         _playerService = playerService;
     }
 
-    public async Task<TPlayerEntity?> MovePlayerAsync(string playerId, MovementInput input)
+    public async Task<TPlayerEntity?> MovePlayerAsync(string playerId, MI input)
     {
         try
         {
@@ -59,9 +59,9 @@ public abstract class BaseMovementService<TPlayerEntity, MovementInput> where TP
 
         return null;
     }
-    protected abstract void ApplyRotation(Body body, MovementInput input);
+    protected abstract void ApplyRotation(Body body, MI input);
 
-    protected abstract void ApplyMovement(Body body, TPlayerEntity entity, MovementInput input);
+    protected abstract void ApplyMovement(Body body, TPlayerEntity entity, MI input);
 
     protected virtual void ApplyDeceleration(Body body, TPlayerEntity entity)
     {

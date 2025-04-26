@@ -14,14 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-namespace Altruist;
+namespace Altruist.Gaming;
 
-public interface IFactory<TType>
+public interface IPlayerService
 {
-    TType Get(SupportedBackplane backplane);
+    Task<PlayerEntity> GetPlayerAsync(string id);
 }
-
-// public interface IPlayerServiceFactory : IFactory<IPlayerService>
-// {
-//     IPlayerService<TPlayerEntity> Get<TPlayerEntity>(SupportedBackplane backplane) where TPlayerEntity : PlayerEntity, new();
-// }

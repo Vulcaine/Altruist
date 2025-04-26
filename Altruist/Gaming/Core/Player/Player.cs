@@ -37,6 +37,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         var player = new TPlayerEntity
         {
             GenId = socketId,
+            ConnectionId = socketId,
             Name = name,
             Position = position ?? [0, 0]
         };
@@ -50,7 +51,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         else
         {
             await _cacheProvider.SaveAsync(socketId, player);
-            _logger.LogInformation($"Connected player {socketId} to instance {roomId}");
+            _logger.LogInformation($"Connected player {socketId} to room: {room}");
         }
 
 
