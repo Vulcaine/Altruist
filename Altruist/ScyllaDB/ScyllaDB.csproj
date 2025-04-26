@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.ScyllaDB</PackageId>
     <Description>ScyllaDB module for Altruist framework.</Description>
-    <Version>0.1.6-alpha</Version>
+    <Version>0.1.7-alpha</Version>
   </PropertyGroup>
 
   <ItemGroup>
