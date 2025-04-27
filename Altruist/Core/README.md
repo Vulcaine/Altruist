@@ -26,3 +26,5 @@ If you have any questions, suggestions, or issues, we're here to help! Reach out
 ♥️ Support us: [Sponsorship](https://github.com/sponsors/Vulcaine) — Help fund the project's future and development.
 
 Your feedback and support are greatly appreciated!
+
+Copyright (c) Aron Gere 2025

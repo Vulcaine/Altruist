@@ -6,6 +6,10 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.ScyllaDB</PackageId>
     <Description>ScyllaDB module for Altruist framework.</Description>
+    <Copyright>Copyright © 2025 Aron Gere</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <Version>0.1.10-alpha</Version>
   </PropertyGroup>
 
