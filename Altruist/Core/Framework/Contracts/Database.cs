@@ -40,12 +40,12 @@ public interface ITypedModel
 
 public interface IStoredModel : ITypedModel
 {
-    public string GenId { get; set; }
+    public string SysId { get; set; }
 }
 
 public abstract class StoredModel : IStoredModel
 {
-    public abstract string GenId { get; set; }
+    public abstract string SysId { get; set; }
     public abstract string Type { get; set; }
 }
 
@@ -75,7 +75,7 @@ public abstract class VaultModel : StoredModel, IVaultModel
 
     public VaultModel()
     {
-        GenId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(GenId) ? Guid.NewGuid().ToString() : GenId);
+        SysId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(SysId) ? Guid.NewGuid().ToString() : SysId);
     }
 }
 

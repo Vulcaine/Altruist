@@ -247,6 +247,8 @@ namespace Altruist
         [JsonPropertyName("rotateRight")][Key(3)] public bool RotateRight { get; set; }
         [JsonPropertyName("turbo")][Key(4)] public bool Turbo { get; set; }
 
+        [JsonPropertyName("type")][Key(5)] public string Type { get; set; } = "ForwardMovementPacket";
+
         public ForwardMovementPacket() { }
 
         public ForwardMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool rotateLeft = false, bool rotateRight = false, bool turbo = false)
@@ -257,12 +259,7 @@ namespace Altruist
             RotateLeft = rotateLeft;
             RotateRight = rotateRight;
         }
-        [JsonPropertyName("type")][Key(5)] public string Type { get; set; } = "ForwardMovementPacket";
-
-
     }
-
-
 
     [MessagePackObject]
     public struct EightDirectionMovementPacket : IMovementPacket

@@ -13,9 +13,9 @@ The API may change in future versions.
 Not all features are implemented and some may be incomplete or broken.
 There are no guarantees of support for issues encountered during experimentation.
 
-# 🔗 [Project Documentation](altruist-docs.vercel.app)
+# 🔗 [Project Documentation](https://altruist-docs.vercel.app)
 
-The docs will guide you through installation, usage, and help you get started with testing the package in your project.
+The [docs](https://altruist-docs.vercel.app) will guide you through installation, usage, and help you get started with testing the package in your project.
 
 # Help Us Improve
 

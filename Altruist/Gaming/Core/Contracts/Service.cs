@@ -27,7 +27,7 @@ public interface IPlayerService<TPlayerEntity> : ICleanUp where TPlayerEntity : 
 }
 
 
-public interface IMovementService<TPlayerEntity, TMovementInput> where TPlayerEntity : PlayerEntity where TMovementInput : MovementInput
+public interface IMovementService<TPlayerEntity> where TPlayerEntity : PlayerEntity
 {
-    Task<TPlayerEntity?> MovePlayerAsync(string playerId, TMovementInput input);
+    Task<TPlayerEntity?> MovePlayerAsync(string playerId, IMovementPacket input);
 }

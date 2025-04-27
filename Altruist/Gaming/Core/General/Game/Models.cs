@@ -103,7 +103,7 @@ public struct ByteVector2
 
 public abstract class WorldIndex : IVaultModel
 {
-    public string GenId { get; set; }
+    public string SysId { get; set; }
     public int Index { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
@@ -112,7 +112,7 @@ public abstract class WorldIndex : IVaultModel
 
     public WorldIndex(int index, int width, int height)
     {
-        GenId = Guid.NewGuid().ToString();
+        SysId = Guid.NewGuid().ToString();
         Index = index;
         Width = width;
         Height = height;
@@ -352,7 +352,7 @@ public class SpatialGridIndex
 public class WorldPartition : IStoredModel
 {
     private readonly SpatialGridIndex _spatialIndex = new(cellSize: 16);
-    public string GenId { get; set; } = Guid.NewGuid().ToString();
+    public string SysId { get; set; } = Guid.NewGuid().ToString();
 
     public IntVector2 Index { get; set; }
     public IntVector2 Position { get; set; }
@@ -364,7 +364,7 @@ public class WorldPartition : IStoredModel
         string id,
         IntVector2 index, IntVector2 position, IntVector2 size)
     {
-        GenId = id;
+        SysId = id;
         Index = index;
         Position = position;
         Size = size;
@@ -401,7 +401,7 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     [JsonPropertyName("id")]
     [VaultColumn]
 
-    public override string GenId { get; set; }
+    public override string SysId { get; set; }
 
     [Key(1)]
     [Synced(0, SyncAlways: true)]
@@ -493,7 +493,7 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     protected virtual void InitDefaults()
     {
         Type = GetType().Name;
-        GenId = Guid.NewGuid().ToString();
+        SysId = Guid.NewGuid().ToString();
         ConnectionId = "";
         Name = "Player";
         Level = 1;
@@ -516,7 +516,7 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     public PlayerEntity(string id)
     {
         InitDefaults();
-        GenId = id;
+        SysId = id;
     }
 }
 
@@ -608,7 +608,7 @@ public abstract class Vehicle : PlayerEntity
     float engineQuality
 )
     {
-        GenId = id;
+        SysId = id;
         Level = level;
         Position = position;
         Rotation = rotation;

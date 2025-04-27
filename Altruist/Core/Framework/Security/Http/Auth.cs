@@ -57,8 +57,8 @@ public abstract class AuthController : ControllerBase
             var cursor = await _syncService.FindAllCachedAsync(groupKey);
             foreach (var session in cursor)
             {
-                await _syncService.DeleteAsync(session.GenId, groupKey);
-                _logger.LogInformation($"[auth][{groupKey}] ✅ Invalidated session: {session.GenId}");
+                await _syncService.DeleteAsync(session.SysId, groupKey);
+                _logger.LogInformation($"[auth][{groupKey}] ✅ Invalidated session: {session.SysId}");
             }
         }
     }
@@ -73,8 +73,8 @@ public abstract class AuthController : ControllerBase
             {
                 if (!session.IsAccessTokenValid() && !session.IsRefreshTokenValid())
                 {
-                    await _syncService.DeleteAsync(session.GenId, groupKey);
-                    _logger.LogInformation($"[auth][{groupKey}] ✅ Invalidated expired session: {session.GenId}");
+                    await _syncService.DeleteAsync(session.SysId, groupKey);
+                    _logger.LogInformation($"[auth][{groupKey}] ✅ Invalidated expired session: {session.SysId}");
                 }
             }
         }
@@ -101,7 +101,7 @@ public abstract class AuthController : ControllerBase
                 RefreshToken = issue.RefreshToken,
                 PrincipalId = principal,
                 Ip = ip,
-                GenId = issue.AccessToken,
+                SysId = issue.AccessToken,
                 Fingerprint = fingerprint
             };
 
@@ -119,7 +119,7 @@ public abstract class AuthController : ControllerBase
         {
             await InvalidateAllSessions(groupKey);
             await _syncService.SaveAsync(session, groupKey);
-            _logger.LogInformation($"[auth][{groupKey}] 💾 Session saved: {session.GenId} (principal: {session.PrincipalId})");
+            _logger.LogInformation($"[auth][{groupKey}] 💾 Session saved: {session.SysId} (principal: {session.PrincipalId})");
         }
     }
 
@@ -157,7 +157,7 @@ public abstract class JwtAuthController : AuthController
 
         if (account != null)
         {
-            _logger.LogInformation($"[signup][{request.Email}] ✅ Signup succeeded – user ID: {account.GenId}");
+            _logger.LogInformation($"[signup][{request.Email}] ✅ Signup succeeded – user ID: {account.SysId}");
 
             return Ok();
         }
@@ -182,9 +182,9 @@ public abstract class JwtAuthController : AuthController
 
             var claims = GetClaimsForLogin(account, request);
             var issue = IssueToken(claims);
-            var groupKey = SessionGroupKeyStrategy(account.GenId);
+            var groupKey = SessionGroupKeyStrategy(account.SysId);
 
-            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId, request.Fingerprint))
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.SysId, request.Fingerprint))
                 return Unauthorized($"[login-email][${request.Email}] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-email][{groupKey}] ✅ Login succeeded (email: {request.Email})");
@@ -210,9 +210,9 @@ public abstract class JwtAuthController : AuthController
 
             var claims = GetClaimsForLogin(account, request);
             var issue = IssueToken(claims);
-            var groupKey = SessionGroupKeyStrategy(account.GenId);
+            var groupKey = SessionGroupKeyStrategy(account.SysId);
 
-            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.GenId, request.Fingerprint))
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.SysId, request.Fingerprint))
                 return Unauthorized($"[login-uname][${request.Username}] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-uname][{groupKey}] ✅ Login succeeded (username: {request.Username})");
@@ -357,14 +357,14 @@ public abstract class JwtAuthController : AuthController
             throw new NotSupportedException($"Unsupported login request type {request.GetType().Name}.");
         }
 
-        string groupKey = SessionGroupKeyStrategy(account.GenId);
+        string groupKey = SessionGroupKeyStrategy(account.SysId);
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
 
         var claims = new List<Claim>
         {
             new Claim(ClaimTypes.Name, principal),
             new Claim("GroupKey", groupKey ?? ""),
-            new Claim(JwtRegisteredClaimNames.Sub, account.GenId),
+            new Claim(JwtRegisteredClaimNames.Sub, account.SysId),
             new Claim("Ip", ip ?? "")
         };
 

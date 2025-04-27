@@ -49,7 +49,7 @@ public class Connection : StoredModel, IConnection
 
     [JsonPropertyName("LastActivity")]
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
-    public override string GenId { get; set; } = Guid.NewGuid().ToString();
+    public override string SysId { get; set; } = Guid.NewGuid().ToString();
 
     [JsonIgnore]
     string ITypedModel.Type { get => Type; set { /* Allow deserialization but ignore */ } }

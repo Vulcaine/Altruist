@@ -31,7 +31,7 @@ public interface ILoginToken
 public abstract class AccountModel : VaultModel
 {
     [VaultColumn("id")]
-    public override string GenId { get; set; } = Guid.NewGuid().ToString();
+    public override string SysId { get; set; } = Guid.NewGuid().ToString();
 
     [VaultColumn("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
