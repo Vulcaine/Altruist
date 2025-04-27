@@ -48,10 +48,10 @@ public class ItemStorageProviderTests
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false
         );
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.SysId, "")).ReturnsAsync(mockItem);
 
         // Act
-        var result = await _storageProvider.FindItemAsync<GameItem>(mockItem.GenId);
+        var result = await _storageProvider.FindItemAsync<GameItem>(mockItem.SysId);
 
         // Assert
         result.Should().BeEquivalentTo(mockItem);
@@ -89,10 +89,10 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 1, 1, "type", true);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.SysId, "")).ReturnsAsync(mockItem);
         _storageProvider.AddItem(mockItem, 1, "inventory");
         // Act
-        var result = await _storageProvider.SetItemAsync(mockItem.GenId, 6, _testSlotKey);
+        var result = await _storageProvider.SetItemAsync(mockItem.SysId, 6, _testSlotKey);
 
         // Assert
         result.Should().Be(SetItemStatus.NotEnoughSpace);
@@ -104,10 +104,10 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", true);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.SysId, "")).ReturnsAsync(mockItem);
 
         // Act
-        var result = await _storageProvider.SetItemAsync(mockItem.GenId, 5, _testSlotKey);
+        var result = await _storageProvider.SetItemAsync(mockItem.SysId, 5, _testSlotKey);
 
         // Assert
         result.Should().Be(SetItemStatus.Success);
@@ -200,13 +200,13 @@ public class ItemStorageProviderTests
 
         _storageProvider.AddItem(testItem, 5, "inventory");
         var result = _storageProvider.RemoveItem(testSlot, 5);
-        var itemInStorage = await _storageProvider.FindItemAsync<GameItem>(testItem.GenId);
+        var itemInStorage = await _storageProvider.FindItemAsync<GameItem>(testItem.SysId);
         var slot = _storageProvider.FindSlot(testSlot);
 
         // Assert
         result.Should().NotBeNull();
         result.First().ItemCount.Should().Be(5);
-        result.First().ItemInstanceId.Should().Be(testItem.GenId);
+        result.First().ItemInstanceId.Should().Be(testItem.SysId);
         itemInStorage.Should().BeNull();
         slot.Should().NotBeNull();
         slot.ItemCount.Should().Be(0);
@@ -227,8 +227,8 @@ public class ItemStorageProviderTests
         _storageProvider.AddItem(itemB, 2, "inventory");
 
         // Mock
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemA.GenId, "")).ReturnsAsync(itemA);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemB.GenId, "")).ReturnsAsync(itemB);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemA.SysId, "")).ReturnsAsync(itemA);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(itemB.SysId, "")).ReturnsAsync(itemB);
 
         // Act
         var result = await _storageProvider.SwapSlotsAsync(slotA, slotB);
@@ -240,11 +240,11 @@ public class ItemStorageProviderTests
         var newSlotB = _storageProvider.FindSlot(slotB);
 
         newSlotA.Should().NotBeNull();
-        newSlotA.ItemInstanceId.Should().Be(itemB.GenId);
+        newSlotA.ItemInstanceId.Should().Be(itemB.SysId);
         newSlotA.ItemCount.Should().Be(2);
 
         newSlotB.Should().NotBeNull();
-        newSlotB.ItemInstanceId.Should().Be(itemA.GenId);
+        newSlotB.ItemInstanceId.Should().Be(itemA.SysId);
         newSlotB.ItemCount.Should().Be(4);
     }
 
@@ -273,12 +273,12 @@ public class ItemStorageProviderTests
 
         var mockItem = new TestGameItem(
             fromSlotKey, 4, 2, 2, "type", false);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.SysId, "")).ReturnsAsync(mockItem);
 
         _storageProvider.AddItem(mockItem, 1, fromSlotKey.Id);
 
         // Act
-        var result = await _storageProvider.MoveItemAsync(mockItem.GenId, fromSlotKey, toSlotKey, 1);
+        var result = await _storageProvider.MoveItemAsync(mockItem.SysId, fromSlotKey, toSlotKey, 1);
 
         // Assert
         result.Should().Be(MoveItemStatus.NotEnoughSpace);
@@ -290,12 +290,12 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.SysId, "")).ReturnsAsync(mockItem);
         _storageProvider.AddItem(mockItem, 1, "inventory");
         var fromSlotKey = new SlotKey(0, 0, "inventory", "inventory");
         var toSlotKey = new SlotKey(2, 0, "inventory", "inventory");
         // Act
-        var result = await _storageProvider.MoveItemAsync(mockItem.GenId, fromSlotKey, toSlotKey, 1);
+        var result = await _storageProvider.MoveItemAsync(mockItem.SysId, fromSlotKey, toSlotKey, 1);
 
         // Assert
         result.Should().Be(MoveItemStatus.Success);
@@ -307,11 +307,11 @@ public class ItemStorageProviderTests
         // Arrange
         var mockItem = new TestGameItem(
             new SlotKey(0, 0, "inventory", "inventory"), 4, 2, 2, "type", false);
-        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.GenId, "")).ReturnsAsync(mockItem);
+        _cacheMock.Setup(c => c.GetAsync<GameItem>(mockItem.SysId, "")).ReturnsAsync(mockItem);
         var fromSlotKey = new SlotKey(0, 0, "inventory", "inventory");
         var toSlotKey = new SlotKey(1, 0, "inventory", "inventory");
         // Act
-        var result = await _storageProvider.MoveItemAsync(mockItem.GenId, fromSlotKey, toSlotKey, 1);
+        var result = await _storageProvider.MoveItemAsync(mockItem.SysId, fromSlotKey, toSlotKey, 1);
 
         // Assert
         result.Should().Be(MoveItemStatus.CannotMove);

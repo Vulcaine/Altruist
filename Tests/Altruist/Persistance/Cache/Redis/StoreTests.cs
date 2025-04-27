@@ -51,7 +51,7 @@ public class RedisCacheProviderTests
 
     private class TestEntity : IStoredModel
     {
-        public string GenId { get; set; } = Guid.NewGuid().ToString();
+        public string SysId { get; set; } = Guid.NewGuid().ToString();
         public string Name { get; set; } = "Test";
         public string Type { get; set; } = "TestEntity";
     }
@@ -60,7 +60,7 @@ public class RedisCacheProviderTests
     public async Task SaveAsync_ShouldSaveEntityToRedis()
     {
         // Arrange
-        var testEntity = new TestEntity { GenId = "123", Name = "Test" };
+        var testEntity = new TestEntity { SysId = "123", Name = "Test" };
         string key = "123";
         string expectedJson = JsonSerializer.Serialize(testEntity);
 
@@ -80,7 +80,7 @@ public class RedisCacheProviderTests
     public async Task GetAsync_ShouldReturnEntity_WhenExistsInRedis()
     {
         // Arrange
-        var testEntity = new TestEntity { GenId = "123", Name = "Test" };
+        var testEntity = new TestEntity { SysId = "123", Name = "Test" };
         string key = "123";
         string json = JsonSerializer.Serialize(testEntity);
 
@@ -177,8 +177,8 @@ public class RedisCacheProviderTests
         // Arrange
         var entities = new Dictionary<string, TestEntity>
         {
-            { "1", new TestEntity { GenId = "1", Name = "A" } },
-            { "2", new TestEntity { GenId = "2", Name = "B" } }
+            { "1", new TestEntity { SysId = "1", Name = "A" } },
+            { "2", new TestEntity { SysId = "2", Name = "B" } }
         };
 
         _mockDatabase.Setup(db => db.CreateBatch(It.IsAny<object>())).Returns(_mockDatabaseBatch.Object);

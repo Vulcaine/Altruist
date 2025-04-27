@@ -188,7 +188,7 @@ public class CqlVaultTests
         // Act
         var query = _vault.BuildSelectQuery();
 
-        string expectedColumns = "id AS Id, name AS Name, timestamp AS Timestamp, type AS Type, genId AS GenId";
+        string expectedColumns = "id AS Id, name AS Name, timestamp AS Timestamp, type AS Type, sysId AS SysId";
         string expectedTable = typeof(TestVaultModel).Name;
         string expectedOrderByClause = "ORDER BY Name";
 
@@ -351,7 +351,7 @@ public class TestVaultModel : IVaultModel
     public string Name { get; set; } = "";
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
-    public string GenId { get; set; } = Guid.NewGuid().ToString();
+    public string SysId { get; set; } = Guid.NewGuid().ToString();
 }
 
 [Vault("test", StoreHistory: true)]
@@ -361,5 +361,5 @@ public class TestHistoryVaultModel : IVaultModel
     public string Name { get; set; } = "";
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
-    public string GenId { get; set; } = Guid.NewGuid().ToString();
+    public string SysId { get; set; } = Guid.NewGuid().ToString();
 }

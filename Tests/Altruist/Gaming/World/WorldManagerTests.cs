@@ -84,7 +84,7 @@ public class GameWorldManagerTests
         foreach (var partition in _mockPartitions)
         {
             // Initialize also calling the save once
-            _cacheMock.Verify(c => c.SaveAsync(partition.GenId, partition, ""), Times.Exactly(2));
+            _cacheMock.Verify(c => c.SaveAsync(partition.SysId, partition, ""), Times.Exactly(2));
         }
     }
 
