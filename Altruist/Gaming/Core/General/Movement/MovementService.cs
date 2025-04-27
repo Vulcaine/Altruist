@@ -79,7 +79,9 @@ public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPla
 
     protected virtual Body CreatePhysxBody(TPlayerEntity entity)
     {
-        return BodyFactory.CreateRectangle(new World(new Vector2(0, 0)), 40f, 20f, 1f, new Vector2(entity.Position[0], entity.Position[1]), entity.Rotation);
+        var body = BodyFactory.CreateRectangle(new World(new Vector2(0, 0)), 40f, 20f, 1f, new Vector2(entity.Position[0], entity.Position[1]));
+        body.Rotation = entity.Rotation;
+        return body;
     }
 
     protected void UpdateEntityPosition(TPlayerEntity entity, Body body)
@@ -99,7 +101,7 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
 
     protected override void ApplyRotation(Body body, T entity, IMovementPacket input)
     {
-        if (input is ForwardMovementPacket forwardMovementPacket)
+        if (input is ForwardMovementPacket forwardMovementPacket && (forwardMovementPacket.RotateRight || forwardMovementPacket.RotateLeft))
         {
             body.Rotation += forwardMovementPacket.RotateRight ? entity.RotationSpeed : -entity.RotationSpeed;
         }

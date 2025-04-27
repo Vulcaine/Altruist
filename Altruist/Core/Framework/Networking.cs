@@ -133,9 +133,12 @@ public static class Synchronization
         for (int i = 0; i < count; i++)
         {
             var propertyName = properties[i].Name;
+            var propertySyncedAttribute = properties[i].GetCustomAttribute<SyncedAttribute>();
             var newValue = properties[i].GetValue(newEntity);
+            var lastStateValue = lastState[i];
+            var shouldSync = forceAllAsChanged || (propertySyncedAttribute != null && propertySyncedAttribute.SyncAlways == true) || !Equals(lastStateValue, newValue);
 
-            if (!Equals(lastState[i], newValue) || forceAllAsChanged)
+            if (shouldSync)
             {
                 int maskIndex = i / 64;   // Which ulong
                 int bitIndex = i % 64;    // Which bit inside the ulong
