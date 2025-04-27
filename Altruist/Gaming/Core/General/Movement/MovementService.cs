@@ -123,9 +123,11 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
 
             float deltaTime = 1.0f;
             body.Position += velocity * deltaTime;
+            entity.Moving = true;
         }
         else
         {
+            entity.Moving = false;
             ApplyDeceleration(body, entity);
         }
     }
@@ -149,6 +151,7 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
 
         if (direction == Vector2.Zero)
         {
+            entity.Moving = false;
             ApplyDeceleration(body, entity);
         }
         else
@@ -161,6 +164,7 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
 
             Vector2 velocity = direction * entity.CurrentSpeed;
             body.LinearVelocity = velocity;
+            entity.Moving = true;
         }
     }
 }
