@@ -73,7 +73,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
     public Task<TVaultModel?> FindPersistedByIdAsync(string id)
     {
         ValidateVault();
-        return _vault!.Where(x => x.GenId == id).FirstOrDefaultAsync();
+        return _vault!.Where(x => x.SysId == id).FirstOrDefaultAsync();
     }
 
     public virtual async Task Sync()
@@ -83,7 +83,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         List<Task> tasks = new();
         foreach (var entity in all)
         {
-            tasks.Add(_cacheProvider.SaveAsync(entity.GenId, entity));
+            tasks.Add(_cacheProvider.SaveAsync(entity.SysId, entity));
         }
 
         Task.WaitAll(tasks);
@@ -91,7 +91,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
 
     public async Task SaveAsync(TVaultModel entity, string cacheGroupId = "")
     {
-        await _cacheProvider.SaveAsync(entity.GenId, entity, cacheGroupId);
+        await _cacheProvider.SaveAsync(entity.SysId, entity, cacheGroupId);
 
         if (_vault != null)
         {
@@ -114,7 +114,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         }
         else
         {
-            var deletedFromVault = await _vault.Where(x => x.GenId == id).DeleteAsync();
+            var deletedFromVault = await _vault.Where(x => x.SysId == id).DeleteAsync();
             if (deletedFromVault)
             {
                 return await _cacheProvider.RemoveAsync<TVaultModel>(id, cacheGroupId);

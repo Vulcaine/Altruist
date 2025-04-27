@@ -21,7 +21,7 @@ namespace Altruist.Security;
 
 public class AuthTokenSessionModel : VaultModel, IIdGenerator
 {
-    public override string GenId { get; set; }
+    public override string SysId { get; set; }
     public override string Type { get; set; }
     public string PrincipalId { get; set; } = string.Empty;
 
@@ -40,7 +40,7 @@ public class AuthTokenSessionModel : VaultModel, IIdGenerator
 
     public AuthTokenSessionModel()
     {
-        GenId = GenerateId();
+        SysId = GenerateId();
         Type = GetType().Name;
     }
 
@@ -50,7 +50,7 @@ public class AuthTokenSessionModel : VaultModel, IIdGenerator
     public string GenerateId()
     {
         if (string.IsNullOrWhiteSpace(PrincipalId))
-            throw new InvalidOperationException("PrincipalId must be set before generating GenId.");
+            throw new InvalidOperationException("PrincipalId must be set before generating SysId.");
 
         var combined = string.IsNullOrWhiteSpace(Fingerprint)
             ? PrincipalId

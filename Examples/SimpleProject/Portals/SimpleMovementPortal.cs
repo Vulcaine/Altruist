@@ -1,4 +1,4 @@
-﻿/* 
+/* 
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,20 +16,14 @@ limitations under the License.
 
 using Altruist;
 using Altruist.Gaming;
-using Altruist.Web;
-using Microsoft.Extensions.DependencyInjection;
-using Portals;
+using Microsoft.Extensions.Logging;
 using SimpleGame.Entities;
-using SimpleGame.Services;
 
-AltruistBuilder.Create(args, setup =>
+namespace Portals;
+
+public class SimpleMovementPortal : AltruistForwardMovementPortal<SimpleSpaceship, ForwardMovementPacket>
 {
-    setup.AddSingleton<IMovementService<SimpleSpaceship>, SimpleForwardMovementService>();
-
-    return setup.AddGamingSupport();
-})
-    .NoEngine()
-    .WithWebsocket(setup =>
-    setup.MapPortal<SimpleGamePortal>("/game").MapPortal<SimpleMovementPortal>("/game"))
-    .WebApp()
-    .StartServer();
+    public SimpleMovementPortal(IPortalContext context, IPlayerService<SimpleSpaceship> playerService, IMovementService<SimpleSpaceship> movementService, ILoggerFactory loggerFactory) : base(context, playerService, movementService, loggerFactory)
+    {
+    }
+}

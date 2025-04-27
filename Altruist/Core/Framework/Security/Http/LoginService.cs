@@ -45,7 +45,7 @@ public class UsernamePasswordLoginService<TAccount> : LoginService<TAccount> whe
 
     public override async Task<AccountModel?> FindAccountByIdAsync(string id)
     {
-        return await _accountVault.Where(acc => acc.GenId == id).FirstOrDefaultAsync();
+        return await _accountVault.Where(acc => acc.SysId == id).FirstOrDefaultAsync();
     }
 
     public override async Task<AccountModel?> Login(LoginRequest request)
