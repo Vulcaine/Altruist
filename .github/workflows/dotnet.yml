@@ -143,7 +143,7 @@ jobs:
     # Build the package using dotnet pack
     - name: Build Package
       working-directory: ./repo
-      run: dotnet pack ./Altruist --configuration Release --output ./Altruist/nupkgs -p:UseLocalProjects=false
+      run: dotnet pack ./Altruist --configuration Release --output ./Altruist/nupkgs
 
     - name: Create GitHub Release manually and upload artifacts
       working-directory: ./repo

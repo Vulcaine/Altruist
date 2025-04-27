@@ -487,6 +487,11 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     public int WorldIndex { get; set; }
 
     [Key(15)]
+    [JsonPropertyName("moving")]
+    [VaultColumn]
+    public bool Moving { get; set; }
+
+    [Key(16)]
     [VaultColumn]
     public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
