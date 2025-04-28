@@ -10,7 +10,7 @@
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <Version>0.1.11-alpha</Version>
+    <Version>0.2.1-alpha</Version>
   </PropertyGroup>
 
   <ItemGroup>
