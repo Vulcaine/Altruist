@@ -21,8 +21,10 @@ using Altruist.ScyllaDB;
 using Altruist.Web;
 using Portals;
 
-AltruistBuilder.Create(args, setup => setup.AddGamingSupport())
-    .EnableEngine(FrameRate.Hz30)
+AltruistBuilder.Create(args)
+    .SetupGameEngine(setup => setup
+        .AddWorld(new MainWorldIndex(0, new Vector2(100, 100)))
+        .EnableEngine(FrameRate.Hz30))
     .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game").MapPortal<RegenPortal>("/game").MapPortal<MyAuthPortal>("/game"))
     .WithRedis(setup => setup.ForgeDocuments())
     .WithScyllaDB(setup => setup.CreateKeyspace<DefaultScyllaKeyspace>(
