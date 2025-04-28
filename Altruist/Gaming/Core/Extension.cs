@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using Altruist;
 using Altruist.Gaming;
+using Altruist.Gaming.Engine;
 using Microsoft.Extensions.DependencyInjection;
 
 public static class AltruistGamingServiceCollectionExtensions
@@ -29,4 +31,6 @@ public static class AltruistGamingServiceCollectionExtensions
         services.AddSingleton(typeof(IPlayerService<>), typeof(AltruistPlayerService<>));
         return services;
     }
+
+    public static AltruistEngineBuilder GameEngine(this AltruistIntermediateBuilder builder) => new AltruistEngineBuilder(builder.Services, builder.Settings, builder.Args);
 }

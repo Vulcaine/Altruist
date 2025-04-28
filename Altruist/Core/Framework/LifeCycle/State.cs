@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Text;
+using Altruist.Engine;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

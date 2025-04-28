@@ -14,11 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-namespace Altruist.InMemory;
+namespace Altruist.Physx;
 
-public class InMemoryDirectRouter : DirectRouter
+public class ForwardMovementPhysxInput : MovementPhysxInput
 {
-    public InMemoryDirectRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
-    {
-    }
+    public bool MoveForward { get; set; }
+    public bool RotateLeft { get; set; }
+    public bool RotateRight { get; set; }
+    public bool Turbo { get; set; }
+    public float RotationSpeed { get; set; }
+    public float DeltaTime { get; set; } = 1.0f; // Could make configurable if needed
 }

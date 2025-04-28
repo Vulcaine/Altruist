@@ -18,6 +18,7 @@ using System.Text.Json.Serialization;
 using Altruist.Networking;
 using Altruist.UORM;
 using MessagePack;
+using Microsoft.Xna.Framework;
 
 namespace Altruist.Gaming;
 
@@ -104,19 +105,23 @@ public struct ByteVector2
 public abstract class WorldIndex : IVaultModel
 {
     public string SysId { get; set; }
+    public Vector2 Position { get; set; }
+    public Vector2 Size { get; set; }
+    public Vector2 Gravity { get; set; }
     public int Index { get; set; }
-    public int Width { get; set; }
-    public int Height { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public string Type { get; set; } = "WorldIndex";
 
-    public WorldIndex(int index, int width, int height)
+    public WorldIndex(int index, Vector2 size, Vector2? gravity = null)
     {
         SysId = Guid.NewGuid().ToString();
         Index = index;
-        Width = width;
-        Height = height;
+        Size = size;
+        Gravity = gravity ?? new Vector2(0, 9.81f);
     }
+
+    public int Width => (int)Size.X;
+    public int Height => (int)Size.Y;
 }
 
 public interface IWorldPartitioner
@@ -393,10 +398,10 @@ public class WorldPartition : IStoredModel
         _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
 }
 
-
-[MessagePackObject]
 public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
 {
+#pragma warning disable CS8618 // Non-nullable field is uninitialized. Consider calling the parameterless constructor.
+
     [Key(0)]
     [JsonPropertyName("id")]
     [VaultColumn]
@@ -514,6 +519,7 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     }
 
     public PlayerEntity()
+
     {
         InitDefaults();
     }

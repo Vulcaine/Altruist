@@ -14,11 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-namespace Altruist.InMemory;
+namespace Altruist.Physx;
 
-public class InMemoryDirectRouter : DirectRouter
+public class MovementPhysx
 {
-    public InMemoryDirectRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    public ForwardMovementPhysx Forward { get; }
+    public EightDirectionMovementPhysx EightDirection { get; }
+
+    public MovementPhysx()
     {
+        Forward = new ForwardMovementPhysx();
+        EightDirection = new EightDirectionMovementPhysx();
     }
 }

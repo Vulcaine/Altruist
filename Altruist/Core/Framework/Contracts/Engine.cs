@@ -14,7 +14,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Reflection;
+namespace Altruist.Engine;
+
+
+public class TaskIdentifier : IEquatable<TaskIdentifier>
+{
+    public string Id { get; }
+
+    public TaskIdentifier(string id)
+    {
+        Id = id ?? throw new ArgumentNullException(nameof(id));
+    }
+
+    public bool Equals(TaskIdentifier? other)
+    {
+        if (other == null) return false;
+        return Id.Equals(other.Id, StringComparison.Ordinal);
+    }
+
+    public override int GetHashCode()
+    {
+        return Id.GetHashCode();
+    }
+
+    public static TaskIdentifier FromType(Type type)
+    {
+        return new TaskIdentifier(type.FullName!);
+    }
+
+    public override string ToString() => Id;
+}
+
 
 public interface IAltruistEngine
 {
