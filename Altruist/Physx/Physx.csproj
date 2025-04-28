@@ -8,11 +8,15 @@
     <Description>Physx module for Altruist framework.</Description>
     <Version>0.1.11-alpha</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
-    <PackageReadmeFile>./README.md</PackageReadmeFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath=""/>
+  </ItemGroup>
   
   <ItemGroup >
     <PackageReference Include="FarseerPhysics" Version="3.5.0" />
