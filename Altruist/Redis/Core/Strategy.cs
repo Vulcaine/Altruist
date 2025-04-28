@@ -16,6 +16,7 @@ limitations under the License.
 
 using System.Collections.Concurrent;
 using Altruist.Contracts;
+using Altruist.Engine;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;

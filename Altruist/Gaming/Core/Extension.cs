@@ -14,7 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using Altruist;
 using Altruist.Gaming;
+using Altruist.Gaming.Engine;
+using Altruist.Physx;
 using Microsoft.Extensions.DependencyInjection;
 
 public static class AltruistGamingServiceCollectionExtensions
@@ -26,7 +29,15 @@ public static class AltruistGamingServiceCollectionExtensions
             return new WorldPartitioner(64, 64);
         });
         services.AddSingleton<GameWorldCoordinator>();
+        services.AddSingleton<MovementPhysx>();
         services.AddSingleton(typeof(IPlayerService<>), typeof(AltruistPlayerService<>));
         return services;
+    }
+
+    public static AltruistConnectionBuilder SetupGameEngine(this AltruistIntermediateBuilder builder, Func<AltruistGameEngineBuilder, AltruistConnectionBuilder> setup)
+    {
+        builder.Services.AddGamingSupport();
+        var engineBuilder = new AltruistGameEngineBuilder(builder.Services, builder.Settings, builder.Args);
+        return setup.Invoke(engineBuilder);
     }
 }

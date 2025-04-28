@@ -21,14 +21,11 @@
 
   <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
     <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Physx\Physx.csproj" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
     <PackageReference Include="Altruist" Version="*-*" />
-  </ItemGroup>
-
-  <ItemGroup >
-    <PackageReference Include="FarseerPhysics" Version="3.5.0" />
   </ItemGroup>
 
 </Project>

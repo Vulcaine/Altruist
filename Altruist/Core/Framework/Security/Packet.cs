@@ -24,7 +24,6 @@ public interface IIssue : IPacketBase
 
 }
 
-[MessagePackObject]
 public abstract class TokenIssue : IIssue
 {
     [Key(0)]

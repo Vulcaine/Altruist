@@ -22,10 +22,3 @@ public class InMemoryDirectRouter : DirectRouter
     {
     }
 }
-
-public class InMemoryEngineRouter : EngineRouter
-{
-    public InMemoryEngineRouter(IConnectionStore store, ICodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator, engine)
-    {
-    }
-}

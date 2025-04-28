@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-
 using Altruist;
 using Altruist.Gaming;
+using Altruist.Physx;
 using Microsoft.Extensions.Logging;
 using SimpleGame.Entities;
 
@@ -24,7 +24,7 @@ namespace SimpleGame.Services;
 
 public class SimpleForwardMovementService : ForwardSpacehipMovementService<SimpleSpaceship>
 {
-    public SimpleForwardMovementService(IPortalContext context, IPlayerService<SimpleSpaceship> playerService, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(context, playerService, cacheProvider, loggerFactory)
+    public SimpleForwardMovementService(IPortalContext context, IPlayerService<SimpleSpaceship> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(context, playerService, physx, cacheProvider, loggerFactory)
     {
     }
 }

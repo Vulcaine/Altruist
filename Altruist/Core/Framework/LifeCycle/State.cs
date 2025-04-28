@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Text;
+using Altruist.Engine;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -125,7 +126,7 @@ public class ServerStatus : IServerStatus
             }
         }
 
-        await CheckAllConnectedAsync(actions, logger, tcs);
+        await CheckAllConnectedAsync(actions, logger, manager.App.Services, tcs);
     }
 
     private void StartTimeoutTimer(AppManager manager, ILogger logger)
@@ -163,7 +164,7 @@ public class ServerStatus : IServerStatus
                 if (_connected.Count == _connectables.Count && !_startup && Status != ReadyState.Alive)
                 {
                     _startup = true;
-                    _ = RunStartupActionsAsync(actions, logger, tcs);
+                    _ = RunStartupActionsAsync(actions, logger, manager.App.Services, tcs);
                 }
                 else if (_connected.Count == _connectables.Count && Status != ReadyState.Alive)
                 {
@@ -199,6 +200,7 @@ public class ServerStatus : IServerStatus
     private async Task CheckAllConnectedAsync(
         IEnumerable<IAction> actions,
         ILogger logger,
+        IServiceProvider serviceProvider,
         TaskCompletionSource<bool> tcs)
     {
         lock (_connected)
@@ -206,7 +208,7 @@ public class ServerStatus : IServerStatus
             if (_connected.Count == _connectables.Count && !_startup)
             {
                 _startup = true;
-                _ = RunStartupActionsAsync(actions, logger, tcs);
+                _ = RunStartupActionsAsync(actions, logger, serviceProvider, tcs);
             }
         }
 
@@ -216,12 +218,13 @@ public class ServerStatus : IServerStatus
     private async Task RunStartupActionsAsync(
         IEnumerable<IAction> actions,
         ILogger logger,
+        IServiceProvider serviceProvider,
         TaskCompletionSource<bool> tcs)
     {
         _startupTimeoutTimer?.Dispose();
         logger.LogInformation("✅ All required services connected. Running startup actions...");
         foreach (var action in actions)
-            await action.Run();
+            await action.Run(serviceProvider);
 
         SignalState(ReadyState.Alive);
         logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");

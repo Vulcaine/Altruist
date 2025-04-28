@@ -22,7 +22,7 @@ namespace Altruist;
 
 public interface IAction
 {
-    Task Run();
+    Task Run(IServiceProvider serviceProvider);
 }
 
 public abstract class ActionBase : IAction
@@ -37,7 +37,7 @@ public abstract class ActionBase : IAction
         Logger = loggerFactory.CreateLogger(GetType());
     }
 
-    public abstract Task Run();
+    public abstract Task Run(IServiceProvider serviceProvider);
 }
 
 public class LoadSyncServicesAction : ActionBase
@@ -46,7 +46,7 @@ public class LoadSyncServicesAction : ActionBase
     {
     }
 
-    public override async Task Run()
+    public override async Task Run(IServiceProvider serviceProvider)
     {
         var syncServices = ServiceProvider.GetServices<object>()
             .Where(s => s?.GetType().GetInterfaces()

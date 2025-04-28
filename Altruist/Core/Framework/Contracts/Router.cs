@@ -32,7 +32,6 @@ public interface IAltruistRouter
 
 }
 
-public interface IAltruistEngineRouter : IAltruistRouter { }
 
 public abstract class AbstractAltruistRouter : IAltruistRouter
 {
@@ -66,21 +65,6 @@ public abstract class DirectRouter : AbstractAltruistRouter
     }
 }
 
-public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRouter
-{
-    private readonly IAltruistEngine _engine;
-
-    protected EngineRouter(IConnectionStore store, ICodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
-    {
-        _engine = engine;
-    }
-
-    public virtual void SendTask(TaskIdentifier taskIdentifier, Delegate task)
-    {
-        _engine.SendTask(taskIdentifier, task);
-    }
-}
-
 public class ClientSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
@@ -105,21 +89,6 @@ public class ClientSender : IAltruistRouterSender
     {
         var encodedMessage = _codec.Encoder.Encode(message);
         await SendAsync(clientId, encodedMessage);
-    }
-}
-
-public class EngineClientSender : ClientSender
-{
-    private readonly IAltruistEngine _engine;
-    public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine) : base(store, codec)
-    {
-        _engine = engine;
-    }
-
-    public override Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
-    {
-        _engine.SendTask(new TaskIdentifier(clientId + message.Type), () => base.SendAsync(clientId, message));
-        return Task.CompletedTask;
     }
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 
 using System.Text.Json.Serialization;
 using Altruist;
+using Altruist.Networking.Codec.MessagePack;
 using MessagePack;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
@@ -32,6 +33,7 @@ namespace Altruist
     {
     }
 
+    [MessagePackFormatter(typeof(PacketBaseFormatter))]
     public interface IPacketBase : IPacket
     {
         PacketHeader Header { get; set; }
@@ -40,7 +42,7 @@ namespace Altruist
     }
 
     [MessagePackObject]
-    public class DecodeType : IPacketBase
+    public struct DecodeType : IPacketBase
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
 
@@ -185,12 +187,7 @@ namespace Altruist
             Message = message;
             SuccessType = successType;
         }
-
-
-
-
     }
-
 
     [MessagePackObject]
     public struct FailedPacket : IPacketBase
@@ -199,6 +196,8 @@ namespace Altruist
         [JsonPropertyName("reason")][Key(1)] public string Reason { get; set; }
 
         [JsonPropertyName("message")][Key(2)] public string FailType { get; set; }
+
+        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "FailedPacket";
 
         public FailedPacket()
         {
@@ -214,7 +213,7 @@ namespace Altruist
             FailType = failType;
         }
 
-        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "FailedPacket";
+
     }
 
 

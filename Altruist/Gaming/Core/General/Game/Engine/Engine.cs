@@ -17,10 +17,12 @@ limitations under the License.
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
-using Altruist;
+using Altruist.Engine;
 using Cronos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+
+namespace Altruist.Gaming.Engine;
 
 /// <summary>
 /// Defines common update frequencies (in Hz) for different types of game servers.
@@ -258,34 +260,6 @@ public class MethodScheduler
     }
 }
 
-public class TaskIdentifier : IEquatable<TaskIdentifier>
-{
-    public string Id { get; }
-
-    public TaskIdentifier(string id)
-    {
-        Id = id ?? throw new ArgumentNullException(nameof(id));
-    }
-
-    public bool Equals(TaskIdentifier? other)
-    {
-        if (other == null) return false;
-        return Id.Equals(other.Id, StringComparison.Ordinal);
-    }
-
-    public override int GetHashCode()
-    {
-        return Id.GetHashCode();
-    }
-
-    public static TaskIdentifier FromType(Type type)
-    {
-        return new TaskIdentifier(type.FullName!);
-    }
-
-    public override string ToString() => Id;
-}
-
 
 public class EngineStaticTask
 {
@@ -316,8 +290,11 @@ public class AltruistEngine : IAltruistEngine
 
     private IServerStatus _appStatus;
 
+    private readonly GameWorldCoordinator _worldCoordinator;
+
     public AltruistEngine(
         IServiceProvider serviceProvider,
+        GameWorldCoordinator worldCoordinator,
         int engineFrequencyHz = 30, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
     {
         var settings = serviceProvider.GetRequiredService<IAltruistContext>();
@@ -330,6 +307,7 @@ public class AltruistEngine : IAltruistEngine
         _engineThread = null!;
         _serviceProvider = serviceProvider;
         _appStatus = settings.AppStatus;
+        _worldCoordinator = worldCoordinator;
     }
 
     public void Enable()
@@ -410,6 +388,7 @@ public class AltruistEngine : IAltruistEngine
         {
             long currentTick = stopwatch.ElapsedTicks;
             long elapsedTicks = currentTick - lastTick;
+            float deltaTime = elapsedTicks / Stopwatch.Frequency;
 
             if (elapsedTicks >= _engineFrequencyTicks)
             {
@@ -438,6 +417,7 @@ public class AltruistEngine : IAltruistEngine
                 }
 
                 _dynamicTasks.Clear();
+                _ = _worldCoordinator.Step(deltaTime);
             }
         }
     }

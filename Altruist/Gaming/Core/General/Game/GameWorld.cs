@@ -14,11 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using Altruist.Physx;
+
 namespace Altruist.Gaming;
 
 public class GameWorldManager
 {
     protected readonly WorldIndex _world;
+    protected readonly PhysxWorld _physx;
     protected readonly List<WorldPartition> _partitions;
     protected readonly ICacheProvider _cache;
 
@@ -28,10 +31,13 @@ public class GameWorldManager
     public GameWorldManager(WorldIndex world, IWorldPartitioner worldPartitioner, ICacheProvider cacheProvider)
     {
         _world = world;
+        _physx = new PhysxWorld(world.Gravity);
         _partitions = new List<WorldPartition>();
         _cache = cacheProvider;
         _worldPartitioner = worldPartitioner;
     }
+
+    public PhysxWorld PhysxWorld => _physx;
 
     public virtual void Initialize()
     {
@@ -139,7 +145,6 @@ public class GameWorldManager
     }
 }
 
-
 public class GameWorldCoordinator
 {
     private readonly Dictionary<int, GameWorldManager> _worlds = new();
@@ -185,4 +190,18 @@ public class GameWorldCoordinator
     /// Lists all currently loaded world indices.
     /// </summary>
     public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
+
+    public async Task Step(float deltaTime)
+    {
+        var tasks = new List<Task>();
+
+        foreach (var world in _worlds.Values)
+        {
+            tasks.Add(Task.Run(() => world.PhysxWorld.Step(deltaTime)));
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
+    public bool Empty() => _worlds.Count == 0;
 }
