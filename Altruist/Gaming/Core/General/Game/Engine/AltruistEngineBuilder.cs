@@ -21,12 +21,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Engine;
 
-public class AltruistEngineBuilder
+public class AltruistGameEngineBuilder
 {
     private IServiceCollection Services { get; }
     private IAltruistContext Settings;
     private string[] _args;
-    public AltruistEngineBuilder(IServiceCollection services, IAltruistContext Settings, string[] args)
+    private List<WorldIndex> _worlds = new();
+
+    public AltruistGameEngineBuilder(IServiceCollection services, IAltruistContext Settings, string[] args)
     {
         Services = services;
         this.Settings = Settings;
@@ -38,29 +40,29 @@ public class AltruistEngineBuilder
         return new AltruistConnectionBuilder(Services, Settings, _args);
     }
 
-    public AltruistEngineBuilder AddWorld(WorldIndex worldIndex)
+    public AltruistGameEngineBuilder AddWorld(WorldIndex worldIndex)
     {
-        Services.AddKeyedSingleton(typeof(WorldIndex), $"world-{worldIndex.Index}", (sp, key) =>
-        {
-            var coordinator = sp.GetRequiredService<GameWorldCoordinator>();
-            coordinator.AddWorld(worldIndex);
-            return worldIndex;
-        });
-
+        Services.AddKeyedSingleton(typeof(WorldIndex), $"world-{worldIndex.Index}", worldIndex);
+        _worlds.Add(worldIndex);
         return this;
     }
 
     public AltruistConnectionBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
     {
-        Services.AddSingleton<EngineStartupAction>();
+        Services.AddSingleton<IAction, EngineStartupAction>();
         Services.AddSingleton<IAltruistEngineRouter, InMemoryEngineRouter>();
         Services.AddSingleton<EngineClientSender>();
         Services.AddSingleton<IAltruistEngine>(sp =>
         {
             var coordinator = sp.GetRequiredService<GameWorldCoordinator>();
-            if (coordinator.Empty())
+            if (_worlds.Count == 0)
             {
                 throw new InvalidOperationException("Engine requires a physics world but has not been set. Use AddWorld(WorldIndex) to add a world to the universe.");
+            }
+
+            foreach (var world in _worlds)
+            {
+                coordinator.AddWorld(world);
             }
 
             var env = sp.GetRequiredService<IHostEnvironment>();

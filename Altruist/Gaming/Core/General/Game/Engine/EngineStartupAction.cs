@@ -28,14 +28,15 @@ public class EngineStartupAction : ActionBase
     {
     }
 
-    public override Task Run()
+    public override Task Run(IServiceProvider serviceProvider)
     {
-        var settings = ServiceProvider.GetRequiredService<IAltruistContext>();
+        var settings = serviceProvider.GetRequiredService<IAltruistContext>();
         if (settings.EngineEnabled)
         {
-            var scheduler = ServiceProvider.GetRequiredService<MethodScheduler>();
-            var methods = scheduler!.RegisterMethods(ServiceProvider);
-            var engine = ServiceProvider.GetRequiredService<IAltruistEngine>();
+            Logger.LogInformation("🚀 Starting engine...");
+            var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
+            var methods = scheduler!.RegisterMethods(serviceProvider);
+            var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
             engine!.Start();
             Logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
 

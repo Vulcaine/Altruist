@@ -21,7 +21,7 @@ namespace Altruist.Physx;
 
 public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput>
 {
-    public MovementPhysxOutput ApplyMovement(Body body, ForwardMovementPhysxInput input)
+    public virtual MovementPhysxOutput ApplyMovement(Body body, ForwardMovementPhysxInput input)
     {
         if (!input.MoveForward) return new MovementPhysxOutput(input.CurrentSpeed, input.RotationSpeed, false, body.Position);
 
@@ -40,7 +40,7 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
         return new MovementPhysxOutput(input.CurrentSpeed, input.RotationSpeed, posDelta.Length() > 0, body.Position);
     }
 
-    public void ApplyRotation(Body body, ForwardMovementPhysxInput input)
+    public virtual void ApplyRotation(Body body, ForwardMovementPhysxInput input)
     {
         if (input.RotateLeft)
             body.Rotation -= input.RotationSpeed;
@@ -48,7 +48,7 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
             body.Rotation += input.RotationSpeed;
     }
 
-    public void ApplyDeceleration(Body body, ForwardMovementPhysxInput movementInput)
+    public virtual void ApplyDeceleration(Body body, ForwardMovementPhysxInput movementInput)
     {
         Vector2 direction = MovementHelper.GetDirectionVector(body.Rotation);
         float decelerationForce = -movementInput.Deceleration * movementInput.CurrentSpeed;

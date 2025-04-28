@@ -145,7 +145,6 @@ public class GameWorldManager
     }
 }
 
-
 public class GameWorldCoordinator
 {
     private readonly Dictionary<int, GameWorldManager> _worlds = new();
@@ -192,12 +191,16 @@ public class GameWorldCoordinator
     /// </summary>
     public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 
-    public void Step(float deltaTime)
+    public async Task Step(float deltaTime)
     {
+        var tasks = new List<Task>();
+
         foreach (var world in _worlds.Values)
         {
-            world.PhysxWorld.Step(deltaTime);
+            tasks.Add(Task.Run(() => world.PhysxWorld.Step(deltaTime)));
         }
+
+        await Task.WhenAll(tasks);
     }
 
     public bool Empty() => _worlds.Count == 0;

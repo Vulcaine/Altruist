@@ -66,8 +66,6 @@ public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPla
     protected abstract void ApplyRotation(Body body, TPlayerEntity entity, IMovementPacket input);
     protected abstract void ApplyMovement(Body body, TPlayerEntity entity, IMovementPacket input);
 
-    protected abstract void ApplyDeceleration(Body body, TPlayerEntity entity);
-
     protected void ClampSpeed(TPlayerEntity entity)
     {
         entity.CurrentSpeed = Math.Clamp(entity.CurrentSpeed, 0, entity.MaxSpeed);

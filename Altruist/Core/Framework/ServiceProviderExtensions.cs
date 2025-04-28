@@ -21,8 +21,22 @@ public static class IServiceProviderExtensions
 {
     public static IEnumerable<TType> GetAll<TType>(this IServiceProvider provider)
     {
-        var site = typeof(ServiceProvider).GetProperty("CallSiteFactory", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(provider);
-        var desc = site!.GetType().GetField("_descriptors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(site) as ServiceDescriptor[];
+        var properties = provider.GetType().GetProperties();
+        var hasServiceProviderProperty = properties.Any(p => p.PropertyType == typeof(IServiceProvider));
+        object? site;
+        provider.GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        ServiceDescriptor[] desc = [];
+        if (hasServiceProviderProperty)
+        {
+            var serviceProvider = properties.Single(p => p.PropertyType == typeof(IServiceProvider)).GetValue(provider) as IServiceProvider;
+            site = serviceProvider!.GetType().GetProperty("CallSiteFactory", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(serviceProvider);
+            desc = site!.GetType().GetField("_descriptors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(site) as ServiceDescriptor[] ?? [];
+        }
+        else
+        {
+            site = provider.GetType().GetProperty("CallSiteFactory", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(provider);
+            desc = site!.GetType().GetField("_descriptors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(site) as ServiceDescriptor[] ?? [];
+        }
 
         // Skip services that throw exceptions during GetRequiredService
         return desc!

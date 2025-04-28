@@ -69,7 +69,7 @@ namespace Altruist
             {
                 Builder.Services.AddControllers();
                 App = Builder
-                .Build();
+                       .Build();
 
                 var webSocketOptions = new WebSocketOptions
                 {

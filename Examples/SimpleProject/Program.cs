@@ -16,8 +16,10 @@ limitations under the License.
 
 using Altruist;
 using Altruist.Gaming;
+using Altruist.Gaming.Engine;
 using Altruist.Web;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Xna.Framework;
 using Portals;
 using SimpleGame.Entities;
 using SimpleGame.Services;
@@ -25,11 +27,20 @@ using SimpleGame.Services;
 AltruistBuilder.Create(args, setup =>
 {
     setup.AddSingleton<IMovementService<SimpleSpaceship>, SimpleForwardMovementService>();
-
-    return setup.AddGamingSupport();
+    return setup;
 })
-    .NoEngine()
+    .SetupGameEngine(setup => setup
+        .AddWorld(new MainWorldIndex(0, new Vector2(100, 100)))
+        .EnableEngine(FrameRate.Hz30))
     .WithWebsocket(setup =>
     setup.MapPortal<SimpleGamePortal>("/game").MapPortal<SimpleMovementPortal>("/game"))
     .WebApp()
     .StartServer();
+
+
+public class MainWorldIndex : WorldIndex
+{
+    public MainWorldIndex(int index, Vector2 size, Vector2? gravity = null) : base(index, size, gravity)
+    {
+    }
+}

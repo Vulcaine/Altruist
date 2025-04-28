@@ -55,12 +55,12 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, posDelta.Length() > 0, body.Position);
     }
 
-    public void ApplyRotation(Body body, EightDirectionMovementPhysxInput input)
+    public virtual void ApplyRotation(Body body, EightDirectionMovementPhysxInput input)
     {
         throw new NotSupportedException("Rotation not supported for EightDirectionMovement");
     }
 
-    public void ApplyDeceleration(Body body, EightDirectionMovementPhysxInput input)
+    public virtual void ApplyDeceleration(Body body, EightDirectionMovementPhysxInput input)
     {
         Vector2 velocity = body.LinearVelocity;
         if (velocity.LengthSquared() > 0)

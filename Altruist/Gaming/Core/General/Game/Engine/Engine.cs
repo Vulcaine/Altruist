@@ -417,7 +417,7 @@ public class AltruistEngine : IAltruistEngine
                 }
 
                 _dynamicTasks.Clear();
-                _worldCoordinator.Step(deltaTime);
+                _ = _worldCoordinator.Step(deltaTime);
             }
         }
     }
