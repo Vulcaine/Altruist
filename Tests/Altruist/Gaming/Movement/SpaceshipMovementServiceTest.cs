@@ -115,27 +115,13 @@ public class ForwardSpaceshipMovementServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.True(result.Moving);
-        Assert.True(result.TurboFuel > 10); // Should have slightly recovered fuel
+        Assert.True(result.TurboFuel > 10);
     }
 
-    // Test classes
     private class TestSpaceshipMovementService : ForwardSpacehipMovementService<TestSpaceship>
     {
         public TestSpaceshipMovementService(IPortalContext context, IPlayerService<TestSpaceship> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
             : base(context, playerService, movementPhysx, cacheProvider, loggerFactory) { }
-
-        protected override void ApplyDeceleration(Body body, TestSpaceship entity)
-        {
-            _movementPhysx.Forward.ApplyDeceleration(body, new ForwardMovementPhysxInput
-            {
-                CurrentSpeed = entity.CurrentSpeed,
-                Deceleration = entity.Deceleration,
-                DeltaTime = 1.0f,
-                MaxSpeed = entity.MaxSpeed,
-                MoveForward = false,
-                Turbo = false
-            });
-        }
     }
 }
 

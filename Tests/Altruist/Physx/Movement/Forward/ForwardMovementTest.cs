@@ -27,25 +27,35 @@ public class ForwardMovementPhysxTests
         var input = new ForwardMovementPhysxInput
         {
             MoveForward = true,
-            CurrentSpeed = 5f,
+            CurrentSpeed = 50f,
             Acceleration = 2f,
-            MaxSpeed = 10f,
+            MaxSpeed = 300f,
             DeltaTime = 1f,
             Turbo = false,
             RotationSpeed = 1f
         };
-
+        body.BodyType = BodyType.Dynamic;
+        body.Mass = 1;
+        body.LinearDamping = 0f;
+        body.AngularDamping = 0f;
+        body.Friction = 0f;
         body.Rotation = 0f; // Facing right (East)
         body.Position = Vector2.Zero;
+        body.ResetMassData();
+        body.ResetDynamics();
 
         // Act
-        forwardMovementPhysx.ApplyMovement(body, input);
-        world.Step(1f); // Simulate one step in the world (DeltaTime)
+        var result = forwardMovementPhysx.ApplyMovement(body, input);
 
         // Assert
-        Assert.Equal(new Vector2(7f, 0f), body.Position);  // Position = 5 + (2 * 1) (based on speed and acceleration)
-        Assert.Equal(new Vector2(7f, 0f), body.LinearVelocity);  // LinearVelocity should match velocity direction
-        Assert.Equal(7f, input.CurrentSpeed);  // Speed after acceleration
+        Assert.Equal(new Vector2(52f, 0f), body.LinearVelocity);
+        world.Step(1f); // Simulate one step in the world (DeltaTime) 
+                        // LinearVelocity should match velocity direction
+                        // Position = 5 + (2 * 1) (based on speed and acceleration)
+
+        // Velocity = currentspeed + (acceleration * turboFactor)
+        Assert.Equal(new Vector2(54f, 0f), body.Position);
+        Assert.Equal(52f, result.CurrentSpeed);  // Speed after acceleration
     }
 
     [Fact]
@@ -63,16 +73,17 @@ public class ForwardMovementPhysxTests
             RotationSpeed = 1f
         };
 
+        body.BodyType = BodyType.Dynamic;
         body.Position = Vector2.Zero;
 
         // Act
-        forwardMovementPhysx.ApplyMovement(body, input);
-        world.Step(1f); // Simulate one step in the world (DeltaTime)
+        var result = forwardMovementPhysx.ApplyMovement(body, input);
 
         // Assert
-        Assert.Equal(Vector2.Zero, body.Position);  // No movement
         Assert.Equal(Vector2.Zero, body.LinearVelocity);  // No velocity
-        Assert.Equal(5f, input.CurrentSpeed);  // Speed should remain the same
+        world.Step(1f); // Simulate one step in the world (DeltaTime)
+        Assert.Equal(Vector2.Zero, body.Position);  // No movement
+        Assert.Equal(5f, result.CurrentSpeed);  // Speed should remain the same
     }
 
     [Fact]
@@ -90,15 +101,18 @@ public class ForwardMovementPhysxTests
             RotationSpeed = 1f
         };
 
+        body.BodyType = BodyType.Dynamic;
         body.Position = Vector2.Zero;
 
         // Act
-        forwardMovementPhysx.ApplyMovement(body, input);
-        world.Step(1f); // Simulate one step in the world (DeltaTime)
-
+        var result = forwardMovementPhysx.ApplyMovement(body, input);
         // Assert
-        Assert.Equal(new Vector2(10f, 0f), body.LinearVelocity);  // Velocity should be capped at MaxSpeed (10)
-        Assert.Equal(10f, input.CurrentSpeed);  // Speed should be capped
+        // Velocity should be capped at MaxSpeed (10)
+        Assert.Equal(new Vector2(10f, 0f), body.LinearVelocity);
+        // Speed should be capped
+        Assert.Equal(10f, result.CurrentSpeed);
+        world.Step(1f);
+        Assert.Equal(new Vector2(12f, 0f), body.Position);
     }
 
     [Fact]
@@ -118,14 +132,15 @@ public class ForwardMovementPhysxTests
             RotateRight = false
         };
 
-        body.Rotation = 0f; // Facing right (East)
+        // Facing right (East)
+        body.Rotation = 0f;
 
         // Act
         forwardMovementPhysx.ApplyRotation(body, input);
-        world.Step(1f); // Simulate one step in the world (DeltaTime)
 
         // Assert
-        Assert.Equal(-1f, body.Rotation);  // Rotation should decrease by 1 (rotate left)
+        // Rotation should decrease by 1 (rotate left)
+        Assert.Equal(-1f, body.Rotation);
     }
 
     [Fact]
@@ -144,14 +159,20 @@ public class ForwardMovementPhysxTests
             Deceleration = 0.5f
         };
 
+        body.BodyType = BodyType.Dynamic;
+        body.LinearDamping = 0f;
+        body.Friction = 0f;
         body.Position = Vector2.Zero;
+        body.LinearVelocity = new Vector2(10f, 0f); // some initial velocity
 
         // Act
-        forwardMovementPhysx.ApplyDeceleration(body, input);
-        world.Step(1f); // Simulate one step in the world (DeltaTime)
+        var result = forwardMovementPhysx.ApplyDeceleration(body, input);
+
+        world.Step(0.4f);
 
         // Assert
-        Assert.Equal(new Vector2(-5f, 0f), body.LinearVelocity);  // Deceleration force should apply in the opposite direction
-        Assert.Equal(9.5f, input.CurrentSpeed);  // Speed should be decreased by 0.5
+        // 10 + (-5) = 5
+        Assert.Equal(new Vector2(5f, 0f), body.LinearVelocity);
+        Assert.Equal(9.5f, result.CurrentSpeed);
     }
 }

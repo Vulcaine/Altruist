@@ -45,14 +45,14 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         if (direction.LengthSquared() > 0) direction.Normalize();
 
         float accelerationFactor = input.Turbo ? 2.0f : 1.0f;
-        input.CurrentSpeed += input.Acceleration * accelerationFactor;
-        input.CurrentSpeed = Math.Min(input.CurrentSpeed, input.MaxSpeed);
+        var currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
+        currentSpeed = Math.Min(input.CurrentSpeed, input.MaxSpeed);
 
-        var posDelta = direction * input.CurrentSpeed;
-        Vector2 velocity = direction * input.CurrentSpeed;
+        var posDelta = direction * currentSpeed;
+        Vector2 velocity = direction * currentSpeed;
         body.LinearVelocity = velocity;
 
-        return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, posDelta.Length() > 0, body.Position);
+        return new MovementPhysxOutput(currentSpeed, 0.0f, posDelta.Length() > 0, body.Position);
     }
 
     public virtual void ApplyRotation(Body body, EightDirectionMovementPhysxInput input)
@@ -60,15 +60,27 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         throw new NotSupportedException("Rotation not supported for EightDirectionMovement");
     }
 
-    public virtual void ApplyDeceleration(Body body, EightDirectionMovementPhysxInput input)
+    public virtual MovementPhysxOutput ApplyDeceleration(Body body, EightDirectionMovementPhysxInput input)
     {
         Vector2 velocity = body.LinearVelocity;
         if (velocity.LengthSquared() > 0)
         {
-            Vector2 decelerationVector = Vector2.Normalize(velocity) * -input.Deceleration;
-            body.ApplyForce(decelerationVector);
+            // Normalize the velocity to get the direction of deceleration
+            Vector2 decelerationDirection = Vector2.Normalize(velocity);
+
+            // Calculate the deceleration force magnitude
+            float decelerationForceMagnitude = input.Deceleration * input.CurrentSpeed;
+
+            // Calculate the deceleration force vector
+            Vector2 force = -decelerationDirection * decelerationForceMagnitude * body.Mass;
+
+            // Apply the calculated deceleration force to the body
+            body.ApplyForce(ref force);
         }
 
-        input.CurrentSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
+        // Update the current speed after applying deceleration
+        var currSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
+        return new MovementPhysxOutput(currSpeed, 0.0f, false, body.Position);
     }
+
 }

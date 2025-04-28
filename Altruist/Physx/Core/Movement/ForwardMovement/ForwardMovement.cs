@@ -37,7 +37,7 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
         var posDelta = velocity * input.DeltaTime;
         body.Position += posDelta;
 
-        return new MovementPhysxOutput(input.CurrentSpeed, input.RotationSpeed, posDelta.Length() > 0, body.Position);
+        return new MovementPhysxOutput(currentSpeed, input.RotationSpeed, posDelta.Length() > 0, body.Position);
     }
 
     public virtual void ApplyRotation(Body body, ForwardMovementPhysxInput input)
@@ -48,13 +48,24 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
             body.Rotation += input.RotationSpeed;
     }
 
-    public virtual void ApplyDeceleration(Body body, ForwardMovementPhysxInput movementInput)
+    public virtual MovementPhysxOutput ApplyDeceleration(Body body, ForwardMovementPhysxInput movementInput)
     {
+        // Get the direction of movement based on the body's rotation
         Vector2 direction = MovementHelper.GetDirectionVector(body.Rotation);
+
+        // Calculate the deceleration force based on the current speed and deceleration rate
         float decelerationForce = -movementInput.Deceleration * movementInput.CurrentSpeed;
-        Vector2 force = direction * decelerationForce;
+
+        // Calculate the force vector
+        Vector2 force = direction * decelerationForce * body.Mass;
+
+        // Apply the deceleration force over time
         body.ApplyForce(ref force);
 
-        movementInput.CurrentSpeed = Math.Max(0, movementInput.CurrentSpeed - movementInput.Deceleration);
+        // Update the current speed after applying deceleration
+        float newSpeed = Math.Max(0, movementInput.CurrentSpeed - movementInput.Deceleration);
+
+        // Return the result with the new speed and the body's current position
+        return new MovementPhysxOutput(newSpeed, movementInput.RotationSpeed, false, body.Position);
     }
 }

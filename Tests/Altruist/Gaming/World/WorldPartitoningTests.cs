@@ -17,11 +17,12 @@ limitations under the License.
 namespace Altruist.Gaming;
 
 using FluentAssertions;
+using Microsoft.Xna.Framework;
 using Xunit;
 
 public class TestWorldIndex : WorldIndex
 {
-    public TestWorldIndex(int index, int width, int height) : base(index, width, height)
+    public TestWorldIndex(int index, int width, int height) : base(index, new Vector2(width, height))
     {
     }
 }

@@ -114,7 +114,8 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
             CurrentSpeed = entity.CurrentSpeed,
             RotateLeft = forwardMovementPacket.RotateLeft,
             RotateRight = forwardMovementPacket.RotateRight,
-            Turbo = forwardMovementPacket.Turbo
+            Turbo = forwardMovementPacket.Turbo,
+            MoveForward = forwardMovementPacket.MoveUp
         };
 
         var result = _movementPhysx.Forward.ApplyMovement(body, movementInput);

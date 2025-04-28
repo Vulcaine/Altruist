@@ -63,19 +63,6 @@ public class EightDirectionVehicleMovementServiceTests
             typeof(EightDirectionVehicleMovementService<TestVehicle>)
                 .GetMethod("HandleTurboFuel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
                 .Invoke(this, [vehicle, turbo]);
-
-        protected override void ApplyDeceleration(Body body, TestVehicle entity)
-        {
-            _movementPhysx.Forward.ApplyDeceleration(body, new ForwardMovementPhysxInput
-            {
-                CurrentSpeed = entity.CurrentSpeed,
-                Deceleration = entity.Deceleration,
-                DeltaTime = 1.0f,
-                MaxSpeed = entity.MaxSpeed,
-                MoveForward = false,
-                Turbo = false
-            });
-        }
     }
 }
 

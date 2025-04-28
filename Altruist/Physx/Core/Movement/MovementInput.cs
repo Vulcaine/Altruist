@@ -33,7 +33,7 @@ public interface IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
 {
     MovementPhysxOutput ApplyMovement(Body body, TInput input);
     void ApplyRotation(Body body, TInput input);
-    void ApplyDeceleration(Body body, TInput input);
+    MovementPhysxOutput ApplyDeceleration(Body body, TInput input);
 }
 
 public abstract class MovementPhysxInput

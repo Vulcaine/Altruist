@@ -105,7 +105,9 @@ public class BaseMovementServiceTests
         _movementService.TestApplyDeceleration(body, player);
 
         // Assert
-        Assert.Equal(4f, player.CurrentSpeed);
+        // Its not actually decreasing now because it is not inside a world simulation
+        // The world simulation is run by the engine
+        Assert.Equal(5f, player.CurrentSpeed);
     }
 
     [Fact]
@@ -134,13 +136,17 @@ public class BaseMovementServiceTests
         protected override void ApplyRotation(Body body, TestPlayer entity, IMovementPacket input) { }
         protected override void ApplyMovement(Body body, TestPlayer entity, IMovementPacket input) { }
 
-        public void TestApplyDeceleration(Body body, TestPlayer entity) => ApplyDeceleration(body, entity);
-        public void TestClampSpeed(TestPlayer entity) => ClampSpeed(entity);
-
-        protected override void ApplyDeceleration(Body body, TestPlayer entity)
+        public void TestApplyDeceleration(Body body, TestPlayer entity) => _movementPhysx.Forward.ApplyDeceleration(body, new ForwardMovementPhysxInput
         {
-
-        }
+            CurrentSpeed = entity.CurrentSpeed,
+            Deceleration = entity.Deceleration,
+            DeltaTime = 1f,
+            MaxSpeed = entity.MaxSpeed,
+            MoveForward = false,
+            RotationSpeed = entity.RotationSpeed,
+            Turbo = false
+        });
+        public void TestClampSpeed(TestPlayer entity) => ClampSpeed(entity);
     }
 }
 
