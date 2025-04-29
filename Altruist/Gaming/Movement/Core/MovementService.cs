@@ -20,7 +20,7 @@ using FarseerPhysics.Factories;
 using Microsoft.Extensions.Logging;
 using Microsoft.Xna.Framework;
 
-namespace Altruist.Gaming;
+namespace Altruist.Gaming.Movement;
 
 public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {

@@ -16,7 +16,7 @@ limitations under the License.
 
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Gaming;
+namespace Altruist.Gaming.Movement;
 
 public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : Portal
     where TPlayerEntity : PlayerEntity, new()
