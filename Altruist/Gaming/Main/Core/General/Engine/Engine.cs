@@ -382,9 +382,11 @@ public class AltruistEngine : IAltruistEngine
         var stopwatch = Stopwatch.StartNew();
 
         long lastTick = stopwatch.ElapsedTicks;
+        long lastWorldStepTick = lastTick;
         var asyncTaskList = new List<Task>();
 
         float ticksToSeconds = (float)1.0 / Stopwatch.Frequency;
+        Task worldStepTask = Task.Run(() => _worldCoordinator.Step(0));
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -393,7 +395,6 @@ public class AltruistEngine : IAltruistEngine
 
             if (elapsedTicks >= _engineFrequencyTicks)
             {
-                float deltaTime = elapsedTicks * ticksToSeconds;
                 lastTick = currentTick;
 
                 foreach (var task in _staticTasks)
@@ -424,8 +425,13 @@ public class AltruistEngine : IAltruistEngine
                     dynamicTasks.Clear();
                 }
 
-                // _dynamicTasks.Clear();
-                _worldCoordinator.Step(deltaTime);
+                if (worldStepTask.IsCompleted)
+                {
+                    long elapsedWorldTicks = currentTick - lastWorldStepTick;
+                    float deltaTime = elapsedWorldTicks * ticksToSeconds;
+                    worldStepTask = Task.Run(() => _worldCoordinator.Step(deltaTime));
+                    lastWorldStepTick = lastTick;
+                }
             }
         }
     }
@@ -558,7 +564,7 @@ public class EngineWithDiagnostics : IAltruistEngine
         await task();
 
         stopwatch.Stop();
-        var taskTrackCount = 1000;
+        var taskTrackCount = 1000000;
 
         // Accumulate elapsed time in ticks (higher precision than milliseconds)
         _accumulatedMillis += stopwatch.ElapsedTicks;
