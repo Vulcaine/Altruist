@@ -16,6 +16,7 @@ limitations under the License.
 
 
 using Altruist.Networking;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -24,7 +25,7 @@ namespace Altruist.Gaming;
 
 public class AltruistGamePortalTests
 {
-    private Mock<IPortalContext> _mockContext;
+    private Mock<GamePortalContext> _mockContext;
     private Mock<IWorldPartitioner> _mockPartitioner;
     private Mock<GameWorldCoordinator> _mockCoordinator;
     private Mock<IPlayerService<TestPlayerEntity>> _mockPlayerService;
@@ -40,7 +41,33 @@ public class AltruistGamePortalTests
         _mockPartitioner = new Mock<IWorldPartitioner>();
         _mockCache = new Mock<ICacheProvider>();
         _mockCoordinator = new Mock<GameWorldCoordinator>(_mockPartitioner.Object, _mockCache.Object);
-        _mockContext = new Mock<IPortalContext>();
+
+        var mockAltruistContext = new Mock<IAltruistContext>();
+        var mockProvider = new Mock<IServiceProvider>();
+        var connStore = new Mock<IConnectionStore>();
+        var router = new Mock<IAltruistRouter>();
+        var cache = new Mock<ICacheProvider>();
+        var cursor = new Mock<IPlayerCursorFactory>();
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(IConnectionStore)))
+        .Returns(connStore.Object);
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(IAltruistRouter)))
+        .Returns(router.Object);
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(ICacheProvider)))
+        .Returns(cache.Object);
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(IPlayerCursorFactory)))
+        .Returns(cursor.Object);
+
+
+
+        _mockContext = new Mock<GamePortalContext>(mockAltruistContext.Object, mockProvider.Object);
         _mockPlayerService = new Mock<IPlayerService<TestPlayerEntity>>();
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger<TestAltruistGamePortal>>();
@@ -251,7 +278,7 @@ public class AltruistGamePortalTests
         _mockContext.Setup(s => s.FindAvailableRoomAsync()).ReturnsAsync(roomMock);
 
         var playerMock = new TestPlayerEntity { Name = "Player1" };
-        _mockPlayerService.Setup(s => s.ConnectById(roomMock.Id, clientId, message.Name, message.Position)).ReturnsAsync(playerMock);
+        _mockPlayerService.Setup(s => s.ConnectById(roomMock.Id, clientId, message.Name, message.WorldIndex ?? 0, message.Position)).ReturnsAsync(playerMock);
 
         // Act
         await _gamePortal.JoinGameAsync(message, clientId);
@@ -431,7 +458,7 @@ public class AltruistGamePortalTests
 // Test Portal that extends the real portal to expose methods for testing
 public class TestAltruistGamePortal : AltruistGameSessionPortal<TestPlayerEntity>
 {
-    public TestAltruistGamePortal(IPortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TestPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
+    public TestAltruistGamePortal(GamePortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TestPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
     }
 

@@ -18,17 +18,26 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Movement;
 
-public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : Portal
+public class MovementPortalContext : GamePortalContext
+{
+    public MovementPortalContext(IAltruistContext altruistContext, IServiceProvider serviceProvider) : base(altruistContext, serviceProvider)
+    {
+    }
+}
+
+public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : Portal<MovementPortalContext>
     where TPlayerEntity : PlayerEntity, new()
     where TMovementPacket : IMovementPacket
 {
-    private readonly IPlayerService<TPlayerEntity> _playerService;
-    private readonly IMovementService<TPlayerEntity> _movementService;
+    protected readonly IPlayerService<TPlayerEntity> _playerService;
+    protected readonly IMovementService<TPlayerEntity> _movementService;
+    protected readonly PlayerCursor<TPlayerEntity> _playerCursor;
 
-    protected AltruistMovementPortal(IPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    protected AltruistMovementPortal(MovementPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
         _playerService = playerService;
         _movementService = movementService;
+        _playerCursor = context.PlayerCursorFactory.Create<TPlayerEntity>();
     }
 
     [Gate("sync-movement")]
@@ -43,11 +52,14 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : P
             return;
         }
 
-        var updatedEntity = await _movementService.MovePlayerAsync(clientId, movement);
+        await _movementService.MovePlayerAsync(clientId, movement);
+    }
 
-        if (updatedEntity != null)
+    protected void UpdateMovement()
+    {
+        foreach (var player in _playerCursor)
         {
-            await Router.Synchronize.SendAsync(updatedEntity);
+            _ = Router.Synchronize.SendAsync(player);
         }
     }
 }
@@ -55,13 +67,13 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : P
 public abstract class AltruistForwardMovementPortal<TPlayerEntity, TMovementPacket> : AltruistMovementPortal<TPlayerEntity, TMovementPacket> where TPlayerEntity : PlayerEntity, new()
 where TMovementPacket : IMovementPacket
 {
-    public AltruistForwardMovementPortal(IPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory)
+    public AltruistForwardMovementPortal(MovementPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory)
         : base(context, playerService, movementService, loggerFactory) { }
 
 }
 
 public abstract class AltruistEightDirectionMovementPortal<TPlayerEntity, TMovementPacket> : AltruistMovementPortal<TPlayerEntity, TMovementPacket> where TPlayerEntity : PlayerEntity, new() where TMovementPacket : IMovementPacket
 {
-    public AltruistEightDirectionMovementPortal(IPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory)
+    public AltruistEightDirectionMovementPortal(MovementPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory)
         : base(context, playerService, movementService, loggerFactory) { }
 }

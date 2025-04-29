@@ -154,9 +154,9 @@ public abstract class DatabaseConnectionSetup<TSelf> : ExternalConnectionSetupBa
 public interface ITransportConnectionSetup<TSelf> : ISetup<TSelf>
     where TSelf : ITransportConnectionSetup<TSelf>
 {
-    TSelf MapPortal<P>(string path) where P : Portal, IPortal;
+    TSelf MapPortal<P>(string path) where P : class, IPortal;
 
-    TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : Portal, IPortal where TImplementation : class, P;
+    TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
 
     TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
 
@@ -181,8 +181,8 @@ public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnection
         _altruistContext = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
     }
     public abstract Task Build(IAltruistContext settings);
-    public abstract TSelf MapPortal<P>(string path) where P : Portal, IPortal;
-    public abstract TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : Portal, IPortal where TImplementation : class, P;
+    public abstract TSelf MapPortal<P>(string path) where P : class, IPortal;
+    public abstract TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
     public abstract TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
     public abstract TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
 
@@ -258,7 +258,7 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
             IRelayService relayService = sp.GetRequiredService<IRelayService>();
 
             IInterceptor interceptor = new RelayInterceptor(relayService);
-            instance.AddInterceptor(interceptor);
+            ((IPortal)instance).AddInterceptor(interceptor);
             return instance;
         });
     }

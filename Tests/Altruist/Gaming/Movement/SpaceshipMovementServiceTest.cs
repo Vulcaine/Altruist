@@ -1,6 +1,7 @@
 using Altruist.Physx;
 using FarseerPhysics.Dynamics;
 using Microsoft.Extensions.Logging;
+using Microsoft.Xna.Framework;
 using Moq;
 
 namespace Altruist.Gaming.Movement;
@@ -15,6 +16,8 @@ public class ForwardSpaceshipMovementServiceTests
 
     private readonly TestSpaceshipMovementService _movementService;
 
+    private readonly World _world;
+
     public ForwardSpaceshipMovementServiceTests()
     {
         _portalContextMock = new Mock<IPortalContext>();
@@ -24,12 +27,12 @@ public class ForwardSpaceshipMovementServiceTests
         _loggerFactoryMock = new Mock<ILoggerFactory>();
 
         _movementService = new TestSpaceshipMovementService(
-            _portalContextMock.Object,
             _playerServiceMock.Object,
             _movementPhysxMock.Object,
             _cacheProviderMock.Object,
             _loggerFactoryMock.Object
         );
+        _world = new World(Vector2.Zero);
     }
 
     [Fact]
@@ -48,6 +51,8 @@ public class ForwardSpaceshipMovementServiceTests
             MaxTurboFuel = 20,
             RotationSpeed = 0.1f
         };
+
+        spaceship.CalculatePhysxBody(_world);
 
         var movementPacket = new ForwardMovementPacket
         {
@@ -72,8 +77,10 @@ public class ForwardSpaceshipMovementServiceTests
         Assert.True(result.Moving);
         Assert.Equal(9, result.TurboFuel); // Should decrease by 1
         Assert.True(result.CurrentSpeed > 0); // Should have accelerated
-        Assert.NotEqual(0f, result.Position[0]); // Should have moved
-        Assert.NotEqual(0f, result.Position[1]); // Should have moved
+
+        // IMPORTANT!!! we can't assert movement as the movement update will happen in the engine
+        // Assert.NotEqual(0f, result.Position[0]); // Should have moved
+        // Assert.NotEqual(0f, result.Position[1]); // Should have moved
         Assert.True(result.Rotation != 0); // Should have rotated
     }
 
@@ -93,6 +100,8 @@ public class ForwardSpaceshipMovementServiceTests
             MaxTurboFuel = 20,
             RotationSpeed = 0.1f
         };
+
+        spaceship.CalculatePhysxBody(_world);
 
         var movementPacket = new ForwardMovementPacket
         {
@@ -120,8 +129,8 @@ public class ForwardSpaceshipMovementServiceTests
 
     private class TestSpaceshipMovementService : ForwardSpacehipMovementService<TestSpaceship>
     {
-        public TestSpaceshipMovementService(IPortalContext context, IPlayerService<TestSpaceship> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
-            : base(context, playerService, movementPhysx, cacheProvider, loggerFactory) { }
+        public TestSpaceshipMovementService(IPlayerService<TestSpaceship> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+            : base(playerService, movementPhysx, cacheProvider, loggerFactory) { }
     }
 }
 

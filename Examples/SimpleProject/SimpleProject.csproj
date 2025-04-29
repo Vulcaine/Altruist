@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
     <ProjectReference Include="..\..\Altruist\Web\Web.csproj" />
-    <ProjectReference Include="..\..\Altruist\Gaming\Gaming.csproj" />
+    <ProjectReference Include="..\..\Altruist\Gaming\Movement\Movement.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using FarseerPhysics.Dynamics;
+using Microsoft.Xna.Framework;
+
 namespace Altruist.Physx;
 
 public class MovementPhysx
@@ -25,5 +28,17 @@ public class MovementPhysx
     {
         Forward = new ForwardMovementPhysx();
         EightDirection = new EightDirectionMovementPhysx();
+    }
+
+    public void ApplyMovement(Body body, MovementPhysxOutput input)
+    {
+        // Apply the calculated force to the body (continuous force, not impulse)
+        if (input.Force != Vector2.Zero)
+        {
+            body.ApplyForce(input.Force);
+        }
+
+        body.LinearVelocity = input.Velocity;
+        body.AngularVelocity = input.RotationSpeed;
     }
 }

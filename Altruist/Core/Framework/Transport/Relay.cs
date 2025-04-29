@@ -18,11 +18,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Transport;
 
-public abstract class RelayPortal : Portal
+public abstract class RelayPortal : Portal<PortalContext>
 {
     private ICodec Codec { get; }
 
-    public RelayPortal(IPortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
+    public RelayPortal(PortalContext context, ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
         Codec = context.Codec;
     }

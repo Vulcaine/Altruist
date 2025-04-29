@@ -342,7 +342,9 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("name")][Key(1)] public string Name { get; set; }
         [JsonPropertyName("roomId")][Key(2)] public string? RoomId { get; set; }
-        [JsonPropertyName("position")][Key(3)] public float[]? Position { get; set; }
+        [JsonPropertyName("world")][Key(3)] public int? WorldIndex { get; set; }
+        [JsonPropertyName("position")][Key(4)] public float[]? Position { get; set; }
+        [JsonPropertyName("type")][Key(5)] public string Type { get; set; } = "JoinGamePacket";
 
         public JoinGamePacket()
         {
@@ -350,17 +352,19 @@ namespace Altruist
             Name = string.Empty;
             RoomId = string.Empty;
             Position = [0, 0];
+            WorldIndex = 0;
         }
 
-        public JoinGamePacket(string sender, string name, string? roomid = null, float[]? position = null, string? receiver = null)
+        public JoinGamePacket(string sender, string name, string? roomid = null, int? worldIndex = 0, float[]? position = null, string? receiver = null)
         {
             Header = new PacketHeader(sender, receiver);
             Name = name;
             RoomId = roomid;
             Position = position ?? [0, 0];
+            WorldIndex = worldIndex;
         }
 
-        [JsonPropertyName("type")][Key(4)] public string Type { get; set; } = "JoinGamePacket";
+
     }
 
     [MessagePackObject]

@@ -23,25 +23,38 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
     private readonly IConnectionStore _store;
     private readonly ICacheProvider _cacheProvider;
 
+    private readonly GameWorldCoordinator _worldCoordinator;
+
     private ILogger<AltruistPlayerService<TPlayerEntity>> _logger;
 
-    public AltruistPlayerService(IConnectionStore store, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+    public AltruistPlayerService(IConnectionStore store, ICacheProvider cacheProvider, GameWorldCoordinator worldCoordinator, ILoggerFactory loggerFactory)
     {
         _store = store;
         _logger = loggerFactory.CreateLogger<AltruistPlayerService<TPlayerEntity>>();
         _cacheProvider = cacheProvider;
+        _worldCoordinator = worldCoordinator;
     }
 
-    public async Task<TPlayerEntity?> ConnectById(string roomId, string socketId, string name, float[]? position = null)
+    public async Task<TPlayerEntity?> ConnectById(string roomId, string socketId, string name, int worldIndex, float[]? position = null)
     {
         var player = new TPlayerEntity
         {
             SysId = socketId,
             ConnectionId = socketId,
             Name = name,
-            Position = position ?? [0, 0]
+            Position = position ?? [0, 0],
+            WorldIndex = worldIndex
         };
 
+        var world = _worldCoordinator.GetWorld(worldIndex);
+
+        if (world == null)
+        {
+            _logger.LogError($"Failed to connect player {socketId} to instance {roomId} and world {worldIndex}. No such world.");
+            return null;
+        }
+
+        player.CalculatePhysxBody(world.PhysxWorld.World);
         var room = await _store.AddClientToRoomAsync(socketId, roomId);
         if (room == null)
         {

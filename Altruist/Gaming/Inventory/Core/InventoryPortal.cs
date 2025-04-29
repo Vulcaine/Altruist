@@ -37,7 +37,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
     /// <param name="context">The portal context, providing access to the current routing and cache systems.</param>
     /// <param name="itemStoreService">The inventory service that interacts with the inventory system.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
-    protected AltruistInventoryPortal(IPortalContext context,
+    protected AltruistInventoryPortal(GamePortalContext context,
         GameWorldCoordinator worldCoordinator,
         IPlayerService<TPlayerEntity> playerService,
         IItemStoreService itemStoreService,

@@ -17,6 +17,8 @@ limitations under the License.
 using System.Text.Json.Serialization;
 using Altruist.Networking;
 using Altruist.UORM;
+using FarseerPhysics.Dynamics;
+using FarseerPhysics.Factories;
 using MessagePack;
 using Microsoft.Xna.Framework;
 
@@ -500,6 +502,15 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     [VaultColumn]
     public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
+    [Key(17)]
+    [VaultColumn]
+    public Vector2 Size { get; set; }
+
+    [JsonIgnore]
+    [IgnoreMember]
+    [VaultIgnored]
+    public Body? PhysxBody { get; private set; }
+
     protected virtual void InitDefaults()
     {
         Type = GetType().Name;
@@ -516,6 +527,7 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
         Deceleration = 0;
         MaxDeceleration = 0;
         MaxAcceleration = 0;
+        Size = new Vector2(1, 1);
     }
 
     public PlayerEntity()
@@ -528,6 +540,23 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     {
         InitDefaults();
         SysId = id;
+    }
+
+    public void AttachBody(Body body) => PhysxBody = body;
+
+    public virtual Body CalculatePhysxBody(World world)
+    {
+        if (PhysxBody != null) return PhysxBody;
+
+        var body = BodyFactory.CreateRectangle(world, width: Size.X, height: Size.Y, density: 1f, Position);
+
+        body.BodyType = BodyType.Dynamic;
+        body.Rotation = Rotation;
+        body.FixedRotation = true;
+        body.Friction = 0.2f;
+        body.LinearDamping = 1f;
+        AttachBody(body);
+        return body;
     }
 }
 
