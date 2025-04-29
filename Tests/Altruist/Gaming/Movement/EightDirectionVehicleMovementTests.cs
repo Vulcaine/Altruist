@@ -18,7 +18,6 @@ public class EightDirectionVehicleMovementServiceTests
         var movementPhysxMock = new Mock<MovementPhysx>();
 
         _movementService = new TestVehicleMovementService(
-            contextMock.Object,
             playerServiceMock.Object,
             movementPhysxMock.Object,
             cacheProviderMock.Object,
@@ -56,8 +55,8 @@ public class EightDirectionVehicleMovementServiceTests
     // Test Classes
     private class TestVehicleMovementService : EightDirectionVehicleMovementService<TestVehicle>
     {
-        public TestVehicleMovementService(IPortalContext context, IPlayerService<TestVehicle> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
-            : base(context, playerService, movementPhysx, cacheProvider, loggerFactory) { }
+        public TestVehicleMovementService(IPlayerService<TestVehicle> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+            : base(playerService, movementPhysx, cacheProvider, loggerFactory) { }
 
         public void TestHandleTurboFuel(TestVehicle vehicle, bool turbo) =>
             typeof(EightDirectionVehicleMovementService<TestVehicle>)

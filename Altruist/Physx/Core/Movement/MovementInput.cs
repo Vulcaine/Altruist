@@ -24,16 +24,20 @@ public record MovementPhysxOutput
     public float CurrentSpeed { get; set; }
     public float RotationSpeed { get; set; }
     public bool Moving { get; set; }
-    public Vector2 Position { get; set; }
+    // public Vector2 Position { get; set; }
 
-    public MovementPhysxOutput(float currentSpeed, float rotationSpeed, bool moving, Vector2 position) => (CurrentSpeed, RotationSpeed, Moving, Position) = (currentSpeed, rotationSpeed, moving, position);
+    public Vector2 Velocity { get; set; }
+
+    public Vector2 Force { get; set; }
+
+    public MovementPhysxOutput(float currentSpeed, float rotationSpeed, bool moving, Vector2 velocity, Vector2 force) => (CurrentSpeed, RotationSpeed, Moving, Velocity, Force) = (currentSpeed, rotationSpeed, moving, velocity, force);
 }
 
 public interface IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
 {
-    MovementPhysxOutput ApplyMovement(Body body, TInput input);
-    void ApplyRotation(Body body, TInput input);
-    MovementPhysxOutput ApplyDeceleration(Body body, TInput input);
+    MovementPhysxOutput CalculateMovement(Body body, TInput input);
+    float CalculateRotation(Body body, TInput input);
+    MovementPhysxOutput CalculateDeceleration(Body body, TInput input);
 }
 
 public abstract class MovementPhysxInput
@@ -42,4 +46,5 @@ public abstract class MovementPhysxInput
     public float MaxSpeed { get; set; }
     public float Acceleration { get; set; }
     public float Deceleration { get; set; }
+    public float DeltaTime { get; set; } = 1.0f;
 }

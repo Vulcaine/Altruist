@@ -14,29 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist;
 
 public class PortalContext(
-    IAltruistContext altruistContext,
-    IAltruistRouter router, ICodec codec, IConnectionStore connectionStore, ICacheProvider cache, IServiceProvider serviceProvider)
-    : AbstractSocketPortalContext(altruistContext, router, codec, connectionStore, cache, serviceProvider)
+    IAltruistContext altruistContext, IServiceProvider serviceProvider)
+    : AbstractSocketPortalContext(altruistContext, serviceProvider)
 {
-    public override IAltruistRouter Router { get; protected set; } = router;
-    public override ICodec Codec { get; protected set; } = codec;
-    public override IAltruistContext AltruistContext { get; protected set; } = altruistContext;
-    public override IServiceProvider ServiceProvider { get; protected set; } = serviceProvider;
-
-    public override ICacheProvider Cache { get; protected set; } = cache;
-
     public override void Initialize() { }
 }
 
-public abstract class Portal : IPortal, IConnectionStore
+public abstract class Portal<TContext> : IPortal, IConnectionStore where TContext : IPortalContext
 {
-    protected readonly IPortalContext _context;
+    protected readonly TContext _context;
     protected readonly ILogger Logger;
 
     protected IAltruistRouter Router => _context.Router;
@@ -44,10 +35,10 @@ public abstract class Portal : IPortal, IConnectionStore
 
     private readonly List<IInterceptor> _interceptors = new();
 
-    public Portal(IPortalContext context, ILoggerFactory loggerFactory)
+    public Portal(TContext context, ILoggerFactory loggerFactory)
     {
         _context = context;
-        Logger = loggerFactory.CreateLogger<Portal>();
+        Logger = loggerFactory.CreateLogger(GetType());
     }
 
     public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
@@ -148,14 +139,20 @@ public abstract class Portal : IPortal, IConnectionStore
         return _context.GetAllConnectionIdsAsync();
     }
 
-    public Task<Dictionary<string, Connection>> GetAllConnectionsAsync()
+    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
+    {
+        return await _context.GetAllConnectionsDictAsync();
+    }
+
+    public Task<ICursor<Connection>> GetAllConnectionsAsync()
     {
         return _context.GetAllConnectionsAsync();
     }
 
     private async Task<TPacketBase> ReceiveAsync<TPacketBase>(string clientId) where TPacketBase : IPacketBase
     {
-        var connections = await GetAllConnectionsAsync();
+        var connections = await GetAllConnectionsDictAsync();
+
         if (connections.TryGetValue(clientId, out var connection))
         {
             var data = await connection.ReceiveAsync(CancellationToken.None);

@@ -21,13 +21,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Security;
 
-public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISessionAuthContext
+public abstract class AuthPortal<TAuthContext> : Portal<PortalContext> where TAuthContext : ISessionAuthContext
 {
     protected IIssuer Issuer;
     private readonly TokenSessionSyncService? _syncService;
     private readonly JwtTokenValidator _tokenValidator;
 
-    protected AuthPortal(IPortalContext context, ILoggerFactory loggerFactory, IIssuer issuer, IServiceProvider serviceProvider) : base(context, loggerFactory)
+
+    protected AuthPortal(PortalContext context, ILoggerFactory loggerFactory, IIssuer issuer, IServiceProvider serviceProvider) : base(context, loggerFactory)
     {
         Issuer = issuer;
         _syncService = serviceProvider.GetService<TokenSessionSyncService>();

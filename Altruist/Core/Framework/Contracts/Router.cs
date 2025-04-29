@@ -157,8 +157,9 @@ public class BroadcastSender
     {
         var connections = await _store.GetAllConnectionsAsync();
 
-        foreach (var (clientId, socket) in connections)
+        foreach (var socket in connections)
         {
+            var clientId = socket.ConnectionId;
             if (clientId == excludeClientId)
                 continue;
 

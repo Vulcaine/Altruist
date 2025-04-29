@@ -92,5 +92,5 @@ public interface IConnectionManager
 
 public interface IPortal : IConnectionManager
 {
-
+    void AddInterceptor(IInterceptor interceptor);
 }

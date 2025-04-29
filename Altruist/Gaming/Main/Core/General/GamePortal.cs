@@ -14,16 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
-public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEntity : PlayerEntity, new()
+public class GamePortalContext : PortalContext
+{
+    public IPlayerCursorFactory PlayerCursorFactory { get; }
+
+    public GamePortalContext(IAltruistContext altruistContext, IServiceProvider serviceProvider) : base(altruistContext, serviceProvider)
+    {
+        PlayerCursorFactory = serviceProvider.GetRequiredService<IPlayerCursorFactory>();
+    }
+}
+
+public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalContext> where TPlayerEntity : PlayerEntity, new()
 {
     protected readonly GameWorldCoordinator _worldCoordinator;
     protected readonly IPlayerService<TPlayerEntity> _playerService;
 
-    protected AltruistGamePortal(IPortalContext context,
+    protected AltruistGamePortal(GamePortalContext context,
         GameWorldCoordinator worldCoordinator,
         IPlayerService<TPlayerEntity> playerService,
         ILoggerFactory loggerFactory) : base(context, loggerFactory)
@@ -80,7 +91,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
                 var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
                 foreach (var client in clients)
                 {
-                    _ = Router.Client.SendAsync(client.InstanceId, packet);
+                    await Router.Client.SendAsync(client.InstanceId, packet);
                 }
             }
         }
@@ -117,18 +128,18 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal where TPlayerEn
         var room = await FindRoomForClientAsync(senderClientId);
         if (room != null && room.PlayerCount < threshold)
         {
-            _ = Router.Room.SendAsync(room.Id, packet);
+            await Router.Room.SendAsync(room.Id, packet);
         }
         else
         {
-            _ = SpatialBroadcast(senderClientId, x, y, packet);
+            await SpatialBroadcast(senderClientId, x, y, packet);
         }
     }
 }
 
 public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
-    protected AltruistGameSessionPortal(IPortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
+    protected AltruistGameSessionPortal(GamePortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
     }
 
@@ -208,7 +219,7 @@ public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePor
         else
         {
             var msg = $"Player {message.Name} joined the room: {room.Id}.";
-            var player = await _playerService.ConnectById(room.Id, clientId, message.Name, message.Position);
+            var player = await _playerService.ConnectById(room.Id, clientId, message.Name, message.WorldIndex ?? 0, message.Position);
             if (player == null)
             {
                 var joinFailedMsg = $"Join failed. No such room: {message.RoomId}";

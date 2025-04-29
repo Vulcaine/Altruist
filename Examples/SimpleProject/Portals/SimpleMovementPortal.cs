@@ -16,6 +16,7 @@ limitations under the License.
 
 using Altruist;
 using Altruist.Gaming;
+using Altruist.Gaming.Movement;
 using Microsoft.Extensions.Logging;
 using SimpleGame.Entities;
 
@@ -23,7 +24,13 @@ namespace Portals;
 
 public class SimpleMovementPortal : AltruistForwardMovementPortal<SimpleSpaceship, ForwardMovementPacket>
 {
-    public SimpleMovementPortal(IPortalContext context, IPlayerService<SimpleSpaceship> playerService, IMovementService<SimpleSpaceship> movementService, ILoggerFactory loggerFactory) : base(context, playerService, movementService, loggerFactory)
+    public SimpleMovementPortal(MovementPortalContext context, IPlayerService<SimpleSpaceship> playerService, IMovementService<SimpleSpaceship> movementService, ILoggerFactory loggerFactory) : base(context, playerService, movementService, loggerFactory)
     {
+    }
+
+    [Cycle]
+    protected override async Task UpdateMovementAsync()
+    {
+        await base.UpdateMovementAsync();
     }
 }

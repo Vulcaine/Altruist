@@ -21,48 +21,48 @@ namespace Altruist.Physx;
 
 public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMovementPhysxInput>
 {
-    public MovementPhysxOutput ApplyMovement(Body body, EightDirectionMovementPhysxInput input)
+    public MovementPhysxOutput CalculateMovement(Body body, EightDirectionMovementPhysxInput input)
     {
         bool moving = input.MoveUp || input.MoveDown || input.MoveLeft || input.MoveRight;
+        var zeroVector = Vector2.Zero;
 
         if (!moving)
         {
-            return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, body.Position);
+            return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, zeroVector, zeroVector);
         }
 
-        Vector2 direction = Vector2.Zero;
+        Vector2 direction = zeroVector;
         if (input.MoveUp) direction += new Vector2(0, -1);
         if (input.MoveDown) direction += new Vector2(0, 1);
         if (input.MoveLeft) direction += new Vector2(-1, 0);
         if (input.MoveRight) direction += new Vector2(1, 0);
 
-        if (direction == Vector2.Zero)
+        if (direction == zeroVector)
         {
-            body.LinearVelocity = Vector2.Zero;
-            return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, body.Position);
+            return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, zeroVector, zeroVector);
         }
 
-        if (direction.LengthSquared() > 0) direction.Normalize();
+        direction.Normalize();
 
         float accelerationFactor = input.Turbo ? 2.0f : 1.0f;
         var currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
         currentSpeed = Math.Min(input.CurrentSpeed, input.MaxSpeed);
 
         var posDelta = direction * currentSpeed;
-        Vector2 velocity = direction * currentSpeed;
-        body.LinearVelocity = velocity;
+        Vector2 velocity = posDelta;
 
-        return new MovementPhysxOutput(currentSpeed, 0.0f, posDelta.Length() > 0, body.Position);
+        return new MovementPhysxOutput(currentSpeed, 0.0f, posDelta.LengthSquared() > 0, velocity, zeroVector);
     }
 
-    public virtual void ApplyRotation(Body body, EightDirectionMovementPhysxInput input)
+    public virtual float CalculateRotation(Body body, EightDirectionMovementPhysxInput input)
     {
         throw new NotSupportedException("Rotation not supported for EightDirectionMovement");
     }
 
-    public virtual MovementPhysxOutput ApplyDeceleration(Body body, EightDirectionMovementPhysxInput input)
+    public virtual MovementPhysxOutput CalculateDeceleration(Body body, EightDirectionMovementPhysxInput input)
     {
         Vector2 velocity = body.LinearVelocity;
+        Vector2 force = Vector2.Zero;
         if (velocity.LengthSquared() > 0)
         {
             // Normalize the velocity to get the direction of deceleration
@@ -72,15 +72,14 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
             float decelerationForceMagnitude = input.Deceleration * input.CurrentSpeed;
 
             // Calculate the deceleration force vector
-            Vector2 force = -decelerationDirection * decelerationForceMagnitude * body.Mass;
-
-            // Apply the calculated deceleration force to the body
-            body.ApplyForce(ref force);
+            force = -decelerationDirection * decelerationForceMagnitude * body.Mass;
+            // // Apply the calculated deceleration force to the body
+            // body.ApplyForce(ref force);
         }
 
         // Update the current speed after applying deceleration
         var currSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
-        return new MovementPhysxOutput(currSpeed, 0.0f, false, body.Position);
+        return new MovementPhysxOutput(currSpeed, 0.0f, false, Vector2.Zero, force);
     }
 
 }

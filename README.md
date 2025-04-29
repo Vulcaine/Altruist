@@ -27,8 +27,10 @@ using Altruist.Redis;
 using Altruist.Web;
 using Portals;
 
-AltruistBuilder.Create(args, serviceBuilder => serviceBuilder.AddGamingSupport())
-    .NoEngine()
+AltruistBuilder.Create(args)
+    .SetupGameEngine(setup => setup
+        .AddWorld(new MainWorldIndex(0, new Vector2(100, 100)))
+        .EnableEngine(FrameRate.Hz30))
     .WithWebsocket(setup => setup.MapPortal<SimpleGamePortal>("/game"))
     .WebApp()
     .StartServer();

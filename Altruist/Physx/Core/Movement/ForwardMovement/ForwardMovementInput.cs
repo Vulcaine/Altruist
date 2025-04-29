@@ -23,5 +23,5 @@ public class ForwardMovementPhysxInput : MovementPhysxInput
     public bool RotateRight { get; set; }
     public bool Turbo { get; set; }
     public float RotationSpeed { get; set; }
-    public float DeltaTime { get; set; } = 1.0f; // Could make configurable if needed
+
 }

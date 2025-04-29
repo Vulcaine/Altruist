@@ -9,7 +9,6 @@ namespace Altruist.Gaming.Movement;
 
 public class BaseMovementServiceTests
 {
-    private readonly Mock<IPortalContext> _portalContextMock;
     private readonly Mock<IPlayerService<TestPlayer>> _playerServiceMock;
     private readonly Mock<ICacheProvider> _cacheProviderMock;
     private readonly Mock<ILoggerFactory> _loggerFactoryMock;
@@ -17,9 +16,10 @@ public class BaseMovementServiceTests
 
     private readonly TestMovementService _movementService;
 
+    private readonly World _world = new World(Vector2.Zero);
+
     public BaseMovementServiceTests()
     {
-        _portalContextMock = new Mock<IPortalContext>();
         _playerServiceMock = new Mock<IPlayerService<TestPlayer>>();
         _cacheProviderMock = new Mock<ICacheProvider>();
         _loggerFactoryMock = new Mock<ILoggerFactory>();
@@ -29,7 +29,6 @@ public class BaseMovementServiceTests
         _loggerFactoryMock.Setup(f => f.CreateLogger("")).Returns(_loggerMock.Object);
 
         _movementService = new TestMovementService(
-            _portalContextMock.Object,
             _playerServiceMock.Object,
             movementPhysxMock.Object,
             _cacheProviderMock.Object,
@@ -50,6 +49,7 @@ public class BaseMovementServiceTests
             MaxSpeed = 5f
         };
 
+        player.CalculatePhysxBody(_world);
         var input = new TestMovementPacket();
 
         _playerServiceMock
@@ -96,11 +96,7 @@ public class BaseMovementServiceTests
             Deceleration = 1f
         };
 
-        var body = new Body(new World(Vector2.Zero))
-        {
-            Rotation = 0f
-        };
-
+        var body = player.CalculatePhysxBody(_world);
         // Act
         _movementService.TestApplyDeceleration(body, player);
 
@@ -119,7 +115,7 @@ public class BaseMovementServiceTests
             CurrentSpeed = 10f,
             MaxSpeed = 5f
         };
-
+        player.CalculatePhysxBody(_world);
         // Act
         _movementService.TestClampSpeed(player);
 
@@ -130,22 +126,26 @@ public class BaseMovementServiceTests
     // Test Classes
     private class TestMovementService : BaseMovementService<TestPlayer>
     {
-        public TestMovementService(IPortalContext context, IPlayerService<TestPlayer> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
-            : base(context, playerService, movementPhysx, cacheProvider, loggerFactory) { }
+        public TestMovementService(IPlayerService<TestPlayer> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+            : base(playerService, movementPhysx, cacheProvider, loggerFactory) { }
 
-        protected override void ApplyRotation(Body body, TestPlayer entity, IMovementPacket input) { }
         protected override void ApplyMovement(Body body, TestPlayer entity, IMovementPacket input) { }
 
-        public void TestApplyDeceleration(Body body, TestPlayer entity) => _movementPhysx.Forward.ApplyDeceleration(body, new ForwardMovementPhysxInput
+        public void TestApplyDeceleration(Body body, TestPlayer entity)
         {
-            CurrentSpeed = entity.CurrentSpeed,
-            Deceleration = entity.Deceleration,
-            DeltaTime = 1f,
-            MaxSpeed = entity.MaxSpeed,
-            MoveForward = false,
-            RotationSpeed = entity.RotationSpeed,
-            Turbo = false
-        });
+            var result = _movementPhysx.Forward.CalculateDeceleration(body, new ForwardMovementPhysxInput
+            {
+                CurrentSpeed = entity.CurrentSpeed,
+                Deceleration = entity.Deceleration,
+                DeltaTime = 1f,
+                MaxSpeed = entity.MaxSpeed,
+                MoveForward = false,
+                RotationSpeed = entity.RotationSpeed,
+                Turbo = false
+            });
+
+            _movementPhysx.ApplyMovement(body, result);
+        }
         public void TestClampSpeed(TestPlayer entity) => ClampSpeed(entity);
     }
 }

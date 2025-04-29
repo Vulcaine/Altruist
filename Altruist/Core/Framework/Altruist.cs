@@ -68,6 +68,7 @@ namespace Altruist
             if (App == null)
             {
                 Builder.Services.AddControllers();
+                ServiceConfig.Configure(Builder.Services);
                 App = Builder
                        .Build();
 

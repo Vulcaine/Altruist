@@ -95,7 +95,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
 
         if (_vault != null)
         {
-            _ = _vault.SaveAsync(entity);
+            await _vault.SaveAsync(entity);
         }
 
     }

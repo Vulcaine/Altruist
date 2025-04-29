@@ -375,20 +375,23 @@ public class AltruistEngine : IAltruistEngine
         }
     }
 
-
-    private async void RunEngineLoop()
+    private async Task RunEngineLoop()
     {
         long _engineFrequencyTicks = _engineRate.Value;
         var dynamicTasks = new List<Task>(_preallocatedTaskSize);
         var stopwatch = Stopwatch.StartNew();
 
         long lastTick = stopwatch.ElapsedTicks;
+        long lastWorldStepTick = lastTick;
+        var asyncTaskList = new List<Task>();
+
+        float ticksToSeconds = (float)1.0 / Stopwatch.Frequency;
+        Task worldStepTask = Task.Run(() => _worldCoordinator.Step(0));
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
             long currentTick = stopwatch.ElapsedTicks;
             long elapsedTicks = currentTick - lastTick;
-            float deltaTime = elapsedTicks / Stopwatch.Frequency;
 
             if (elapsedTicks >= _engineFrequencyTicks)
             {
@@ -398,8 +401,14 @@ public class AltruistEngine : IAltruistEngine
                 {
                     if (elapsedTicks >= task.CycleRate.Value)
                     {
-                        _ = ExecuteTaskAsync(task.Delegate);
+                        asyncTaskList.Add(ExecuteTaskAsync(task.Delegate));
                     }
+                }
+
+                if (asyncTaskList.Count > 0)
+                {
+                    await Task.WhenAll(asyncTaskList);
+                    asyncTaskList.Clear();
                 }
 
                 foreach (var task in _dynamicTasks.Values)
@@ -416,11 +425,17 @@ public class AltruistEngine : IAltruistEngine
                     dynamicTasks.Clear();
                 }
 
-                _dynamicTasks.Clear();
-                _ = _worldCoordinator.Step(deltaTime);
+                if (worldStepTask.IsCompleted)
+                {
+                    long elapsedWorldTicks = currentTick - lastWorldStepTick;
+                    float deltaTime = elapsedWorldTicks * ticksToSeconds;
+                    worldStepTask = Task.Run(() => _worldCoordinator.Step(deltaTime));
+                    lastWorldStepTick = lastTick;
+                }
             }
         }
     }
+
 
     /// <summary>
     /// Schedules a task to be executed at a specific frequency. The task is resolved and its dependencies
@@ -549,12 +564,12 @@ public class EngineWithDiagnostics : IAltruistEngine
         await task();
 
         stopwatch.Stop();
+        var taskTrackCount = 1000000;
 
         // Accumulate elapsed time in ticks (higher precision than milliseconds)
         _accumulatedMillis += stopwatch.ElapsedTicks;
         _taskCount++;
-
-        if (_taskCount >= 1_000_000)
+        if (_taskCount >= taskTrackCount)
         {
             double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000_000.0 / Stopwatch.Frequency;
 
@@ -566,7 +581,7 @@ public class EngineWithDiagnostics : IAltruistEngine
 
             _logger.LogInformation(
                 $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
-                $"Just processed 1,000,000 tasks in {elapsedTimeInNanoseconds:n0}ns. " +
+                $"Just processed {taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
                 $"Match that! (⎚-⎚)\n\n" +
 
                 $"📊 Theoretical Throughput:\n" +
@@ -596,10 +611,11 @@ public class EngineWithDiagnostics : IAltruistEngine
 
         _accumulatedMillis += stopwatch.ElapsedMilliseconds;
         _taskCount++;
+        var taskTrackCount = 1000;
 
-        if (_taskCount >= 1_000_000)
+        if (_taskCount >= taskTrackCount)
         {
-            double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000;
+            double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000.0;
 
             double elapsedTimePerTask = elapsedTimeInNanoseconds / _taskCount;
             double elapsedTimePerTaskInSeconds = elapsedTimePerTask / 1_000_000_000;
@@ -609,7 +625,7 @@ public class EngineWithDiagnostics : IAltruistEngine
 
             _logger.LogInformation(
                 $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
-                $"Jut processed 1,000,000 tasks in {elapsedTimeInNanoseconds:n0}ns. " +
+                $"Jut processed {taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
                 $"Match that! (⎚-⎚)\n\n" +
 
                 $"📊 Theoretical Throughput:\n" +
