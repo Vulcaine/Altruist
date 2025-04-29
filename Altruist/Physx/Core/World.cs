@@ -41,7 +41,6 @@ public class PhysxWorld
     // Step the physics world with a fixed deltaTime
     public void Step(float deltaTime)
     {
-        // Update the physics simulation world step with deltaTime
         World.Step(deltaTime);
     }
 

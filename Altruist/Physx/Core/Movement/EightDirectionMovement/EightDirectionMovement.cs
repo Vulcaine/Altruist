@@ -54,7 +54,7 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         return new MovementPhysxOutput(currentSpeed, 0.0f, posDelta.LengthSquared() > 0, velocity, zeroVector);
     }
 
-    public virtual MovementPhysxOutput CalculateRotation(Body body, EightDirectionMovementPhysxInput input)
+    public virtual float CalculateRotation(Body body, EightDirectionMovementPhysxInput input)
     {
         throw new NotSupportedException("Rotation not supported for EightDirectionMovement");
     }

@@ -388,7 +388,7 @@ public class AltruistEngine : IAltruistEngine
         {
             long currentTick = stopwatch.ElapsedTicks;
             long elapsedTicks = currentTick - lastTick;
-            float deltaTime = elapsedTicks / Stopwatch.Frequency;
+            float deltaTime = (float)elapsedTicks / Stopwatch.Frequency;
 
             if (elapsedTicks >= _engineFrequencyTicks)
             {
@@ -431,7 +431,7 @@ public class AltruistEngine : IAltruistEngine
                 }
 
                 _dynamicTasks.Clear();
-                await _worldCoordinator.Step(deltaTime);
+                _worldCoordinator.Step(deltaTime);
             }
         }
     }

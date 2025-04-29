@@ -19,6 +19,13 @@ using Microsoft.Xna.Framework;
 
 namespace Altruist.Physx;
 
+public class VectorConstants
+{
+    public static readonly Vector2 ZeroVector = Vector2.Zero;
+    public static readonly Vector2 LeftDirection = new Vector2(-1, 0);
+    public static readonly Vector2 RightDirection = new Vector2(1, 0);
+}
+
 public class MovementPhysx
 {
     public ForwardMovementPhysx Forward { get; }
@@ -32,13 +39,12 @@ public class MovementPhysx
 
     public void ApplyMovement(Body body, MovementPhysxOutput input)
     {
-        // Apply the calculated force to the body (continuous force, not impulse)
+        body.LinearVelocity = input.Velocity;
+        body.Rotation += input.RotationSpeed;
+
         if (input.Force != Vector2.Zero)
         {
             body.ApplyForce(input.Force);
         }
-
-        body.LinearVelocity = input.Velocity;
-        body.AngularVelocity = input.RotationSpeed;
     }
 }

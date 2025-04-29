@@ -34,12 +34,12 @@ public class PlayerCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull
 
     private async Task<ICursor<T>> CreateCursorAsync()
     {
-        return await _cacheProvider.GetAllAsync<T>();
+        _underlying = await _cacheProvider.GetAllAsync<T>();
+        return _underlying;
     }
 
     public async Task<IEnumerable<T>> NextBatch()
     {
-        _underlying = await CreateCursorAsync();
         return await _underlying.NextBatch();
     }
 

@@ -36,7 +36,7 @@ public record MovementPhysxOutput
 public interface IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
 {
     MovementPhysxOutput CalculateMovement(Body body, TInput input);
-    MovementPhysxOutput CalculateRotation(Body body, TInput input);
+    float CalculateRotation(Body body, TInput input);
     MovementPhysxOutput CalculateDeceleration(Body body, TInput input);
 }
 

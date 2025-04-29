@@ -23,50 +23,50 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
 {
     public virtual MovementPhysxOutput CalculateMovement(Body body, ForwardMovementPhysxInput input)
     {
-        var zeroVector = Vector2.Zero;
-        if (!input.MoveForward) return new MovementPhysxOutput(input.CurrentSpeed, input.RotationSpeed, false, zeroVector, zeroVector);
+        float rotationSpeed = CalculateRotation(body, input);
 
-        Vector2 direction = input.RotateLeft ? new Vector2(-1, 0) : new Vector2(1, 0);
+        if (!input.MoveForward)
+        {
+            return new MovementPhysxOutput(
+                input.CurrentSpeed,
+                rotationSpeed,
+                false,
+                VectorConstants.ZeroVector,
+                VectorConstants.ZeroVector
+            );
+        }
+
+        Vector2 direction = new Vector2(MathF.Cos(body.Rotation), MathF.Sin(body.Rotation));
         float accelerationFactor = input.Turbo ? 2.0f : 1.0f;
-        var currentSpeed = input.CurrentSpeed;
-        currentSpeed += input.Acceleration * accelerationFactor;
+
+        float currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
         currentSpeed = Math.Min(currentSpeed, input.MaxSpeed);
 
         Vector2 velocity = direction * currentSpeed;
-        var posDelta = velocity * input.DeltaTime;
-        // var newPosition = body.Position + posDelta;
+        Vector2 posDelta = velocity * input.DeltaTime;
 
-        return new MovementPhysxOutput(currentSpeed, input.RotationSpeed, posDelta.LengthSquared() > 0, velocity, zeroVector);
+        return new MovementPhysxOutput(
+            currentSpeed,
+            rotationSpeed,
+            posDelta.LengthSquared() > 0,
+            velocity,
+            VectorConstants.ZeroVector
+        );
     }
 
-    public virtual MovementPhysxOutput CalculateRotation(Body body, ForwardMovementPhysxInput input)
+    public virtual float CalculateRotation(Body body, ForwardMovementPhysxInput input)
     {
-        if (input.RotateLeft)
-            body.Rotation -= input.RotationSpeed;
-        else if (input.RotateRight)
-            body.Rotation += input.RotationSpeed;
-
-        return new MovementPhysxOutput(input.CurrentSpeed, input.RotationSpeed, false, body.LinearVelocity, Vector2.Zero);
+        return input.RotateLeft ? -input.RotationSpeed : (input.RotateRight ? input.RotationSpeed : 0);
     }
 
     public virtual MovementPhysxOutput CalculateDeceleration(Body body, ForwardMovementPhysxInput input)
     {
-        // Get the direction of movement based on the body's rotation
-        Vector2 direction = input.RotateLeft ? new Vector2(-1, 0) : new Vector2(1, 0);
+        Vector2 direction = new Vector2(MathF.Cos(body.Rotation), MathF.Sin(body.Rotation));
 
-        // Calculate the deceleration force based on the current speed and deceleration rate
         float decelerationForce = -input.Deceleration * input.CurrentSpeed;
-
-        // Calculate the force vector
         Vector2 force = direction * decelerationForce * body.Mass;
-
-        // // Apply the deceleration force over time
-        // body.ApplyForce(ref force);
-
-        // Update the current speed after applying deceleration
         float newSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
 
-        // Return the result with the new speed and the body's current position
-        return new MovementPhysxOutput(newSpeed, input.RotationSpeed, false, body.Position, force);
+        return new MovementPhysxOutput(newSpeed, CalculateRotation(body, input), false, VectorConstants.ZeroVector, force);
     }
 }

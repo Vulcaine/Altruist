@@ -48,9 +48,9 @@ public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPla
             if (entity.PhysxBody == null) throw new Exception("Illegal state of player entity. Physx body is null.");
 
             var body = entity.PhysxBody;
-            ApplyRotation(body, entity, input);
+            // ApplyRotation(body, entity, input);
             ApplyMovement(body, entity, input);
-            UpdateEntityPosition(entity, body);
+            // UpdateEntityPosition(entity, body);
             await _cacheProvider.SaveAsync(entity.SysId, entity);
             return entity;
         }
@@ -61,7 +61,7 @@ public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPla
 
         return null;
     }
-    protected abstract void ApplyRotation(Body body, TPlayerEntity entity, IMovementPacket input);
+    // protected abstract void ApplyRotation(Body body, TPlayerEntity entity, IMovementPacket input);
     protected abstract void ApplyMovement(Body body, TPlayerEntity entity, IMovementPacket input);
 
     protected void ClampSpeed(TPlayerEntity entity)
@@ -86,14 +86,6 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
         ILoggerFactory loggerFactory)
         : base(playerService, movementPhysx, cacheProvider, loggerFactory) { }
 
-    protected override void ApplyRotation(Body body, T entity, IMovementPacket input)
-    {
-        if (input is ForwardMovementPacket forwardMovementPacket && (forwardMovementPacket.RotateRight || forwardMovementPacket.RotateLeft))
-        {
-            body.Rotation += forwardMovementPacket.RotateRight ? entity.RotationSpeed : -entity.RotationSpeed;
-        }
-    }
-
     protected override void ApplyMovement(Body body, T entity, IMovementPacket input)
     {
         if (input is not ForwardMovementPacket forwardMovementPacket) return;
@@ -104,6 +96,7 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
             Deceleration = entity.Deceleration,
             MaxSpeed = entity.MaxSpeed,
             CurrentSpeed = entity.CurrentSpeed,
+            RotationSpeed = entity.RotationSpeed,
             RotateLeft = forwardMovementPacket.RotateLeft,
             RotateRight = forwardMovementPacket.RotateRight,
             Turbo = forwardMovementPacket.Turbo,
@@ -174,10 +167,10 @@ public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : Eigh
         : base(playerService, physx, cacheProvider, loggerFactory) { }
 
 
-    protected override void ApplyRotation(Body body, TPlayerEntity entity, IMovementPacket input)
-    {
-        body.Rotation += entity.RotationSpeed;
-    }
+    // protected override void ApplyRotation(Body body, TPlayerEntity entity, IMovementPacket input)
+    // {
+    //     body.Rotation += entity.RotationSpeed;
+    // }
 
 
     protected override void ApplyMovement(Body body, TPlayerEntity vehicle, IMovementPacket input)
@@ -206,10 +199,10 @@ public abstract class ForwardSpacehipMovementService<TPlayerEntity> : ForwardMov
     {
     }
 
-    protected override void ApplyRotation(Body body, TPlayerEntity vehicle, IMovementPacket input)
-    {
-        base.ApplyRotation(body, vehicle, input);
-    }
+    // protected override void ApplyRotation(Body body, TPlayerEntity vehicle, IMovementPacket input)
+    // {
+    //     base.ApplyRotation(body, vehicle, input);
+    // }
 
     protected override void ApplyMovement(Body body, TPlayerEntity vehicle, IMovementPacket input)
     {

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Collections.Concurrent;
 using Altruist.Physx;
 
 namespace Altruist.Gaming;
@@ -191,16 +192,12 @@ public class GameWorldCoordinator
     /// </summary>
     public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 
-    public async Task Step(float deltaTime)
+    public void Step(float deltaTime)
     {
-        var tasks = new List<Task>();
-
         foreach (var world in _worlds.Values)
         {
-            tasks.Add(Task.Run(() => world.PhysxWorld.Step(deltaTime)));
+            world.PhysxWorld.Step(deltaTime);
         }
-
-        await Task.WhenAll(tasks);
     }
 
     public bool Empty() => _worlds.Count == 0;
