@@ -16,14 +16,12 @@ jobs:
     if: |
       (
         github.event_name == 'push' &&
-        !startsWith(github.ref_name, 'release/') &&
-        github.ref_name != 'staging'
+        github.ref_name == 'refs/heads/main'  # Only run if pushing to 'main'
       )
       ||
       (
         github.event_name == 'pull_request' &&
-        !startsWith(github.head_ref, 'release/') &&
-        github.head_ref != 'staging'
+        github.base_ref == 'main'  # Only run for PRs targeting 'main'
       )
     steps:
     - uses: actions/checkout@v4
