@@ -16,12 +16,12 @@ jobs:
     if: |
       (
         github.event_name == 'push' &&
-        github.ref_name == 'refs/heads/main'  # Only run if pushing to 'main'
+        github.ref_name == 'refs/heads/main'
       )
       ||
       (
         github.event_name == 'pull_request' &&
-        github.base_ref == 'main'  # Only run for PRs targeting 'main'
+        github.base_ref == 'main'
       )
     steps:
     - uses: actions/checkout@v4
