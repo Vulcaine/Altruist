@@ -1,5 +1,5 @@
+using Altruist.Gaming.Movement;
 using Altruist.Networking;
-using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.Extensions.Logging;
 using Moq;
 

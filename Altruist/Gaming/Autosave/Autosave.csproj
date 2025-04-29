@@ -1,12 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-
-  <PropertyGroup>
+   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <PackageId>Altruist.Gaming</PackageId>
-    <Description>Gaming module for Altruist framework.</Description>
+    <PackageId>Altruist.Gaming.Autosave</PackageId>
+    <Description>Gaming.Autosave module for Altruist framework.</Description>
     <Version>0.2.1-alpha</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>./README.md</PackageReadmeFile>
@@ -20,12 +19,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
-    <ProjectReference Include="..\Core\Core.csproj" />
-    <ProjectReference Include="..\Physx\Physx.csproj" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
-    <PackageReference Include="Altruist" Version="*-*" />
+    <ProjectReference Include="..\Main\Gaming.csproj" />
   </ItemGroup>
 
 </Project>

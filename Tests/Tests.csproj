@@ -25,7 +25,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Altruist\Core\Core.csproj" />
-    <ProjectReference Include="..\Altruist\Gaming\Gaming.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Movement\Movement.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Inventory\Inventory.csproj" />
     <ProjectReference Include="..\Altruist\Redis\Redis.csproj" />
     <ProjectReference Include="..\Altruist\ScyllaDB\ScyllaDB.csproj" />
   </ItemGroup>

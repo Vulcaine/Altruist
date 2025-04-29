@@ -16,7 +16,7 @@ limitations under the License.
 
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Gaming;
+namespace Altruist.Gaming.Regen;
 
 /// <summary>
 /// Represents a portal for managing regeneration updates for players in a real-time game system.

@@ -1,4 +1,4 @@
-# Altruist EFCore
+# Altruist Gaming.Regen
 
 Altruist is a powerful, on-premise game server framework designed to provide plug-and-play ease of integration for game developers. The goal of this framework is to simplify the process of creating scalable, high-performance game servers with robust features, making it easier to develop, deploy, and maintain online multiplayer games.
 

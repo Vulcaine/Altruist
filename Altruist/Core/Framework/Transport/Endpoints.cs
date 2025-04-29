@@ -29,6 +29,7 @@ public static class IngressEP
 {
     public const string Handshake = "handshake";
     public const string JoinGame = "join-game";
+    public const string Forward = "forward-message";
     public const string LeaveGame = "leave-game";
     public const string Shoot = "SHOOT";
 }

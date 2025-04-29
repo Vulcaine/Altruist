@@ -19,7 +19,7 @@ using Altruist.Database;
 using Altruist.Engine;
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Gaming;
+namespace Altruist.Gaming.Autosave;
 
 public interface IAutosaveStrategy { }
 
