@@ -196,7 +196,14 @@ public class GameWorldCoordinator
     {
         foreach (var world in _worlds.Values)
         {
-            world.PhysxWorld.Step(deltaTime);
+            try
+            {
+                world.PhysxWorld.Step(deltaTime);
+            }
+            catch
+            {
+
+            }
         }
     }
 
