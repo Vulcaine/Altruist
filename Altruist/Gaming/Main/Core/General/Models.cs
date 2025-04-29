@@ -544,6 +544,19 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
 
     public void AttachBody(Body body) => PhysxBody = body;
 
+    public virtual void DetachBody() => PhysxBody = null;
+
+    public virtual PlayerEntity Update()
+    {
+        if (PhysxBody != null)
+        {
+            Position = [PhysxBody.Position.X, PhysxBody.Position.Y];
+            Rotation = PhysxBody.Rotation;
+        }
+
+        return this;
+    }
+
     public virtual Body CalculatePhysxBody(World world)
     {
         if (PhysxBody != null) return PhysxBody;

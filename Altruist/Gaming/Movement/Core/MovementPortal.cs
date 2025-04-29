@@ -59,7 +59,7 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : P
     {
         foreach (var player in _playerCursor)
         {
-            _ = Router.Synchronize.SendAsync(player);
+            _ = Router.Synchronize.SendAsync(player.Update());
         }
     }
 }
