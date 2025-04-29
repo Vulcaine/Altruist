@@ -42,17 +42,17 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
             return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, body.Position);
         }
 
-        if (direction.LengthSquared() > 0) direction.Normalize();
+        direction.Normalize();
 
         float accelerationFactor = input.Turbo ? 2.0f : 1.0f;
         var currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
         currentSpeed = Math.Min(input.CurrentSpeed, input.MaxSpeed);
 
         var posDelta = direction * currentSpeed;
-        Vector2 velocity = direction * currentSpeed;
+        Vector2 velocity = posDelta;
         body.LinearVelocity = velocity;
 
-        return new MovementPhysxOutput(currentSpeed, 0.0f, posDelta.Length() > 0, body.Position);
+        return new MovementPhysxOutput(currentSpeed, 0.0f, posDelta.LengthSquared() > 0, body.Position);
     }
 
     public virtual void ApplyRotation(Body body, EightDirectionMovementPhysxInput input)

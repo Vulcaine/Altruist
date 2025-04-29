@@ -37,7 +37,7 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
         var posDelta = velocity * input.DeltaTime;
         body.Position += posDelta;
 
-        return new MovementPhysxOutput(currentSpeed, input.RotationSpeed, posDelta.Length() > 0, body.Position);
+        return new MovementPhysxOutput(currentSpeed, input.RotationSpeed, posDelta.LengthSquared() > 0, body.Position);
     }
 
     public virtual void ApplyRotation(Body body, ForwardMovementPhysxInput input)
