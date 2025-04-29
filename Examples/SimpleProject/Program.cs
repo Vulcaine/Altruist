@@ -23,7 +23,7 @@ using Portals;
 
 AltruistBuilder.Create(args)
     .SetupGameEngine(setup => setup
-        .AddWorld(new MainWorldIndex(0, new Vector2(100, 100)))
+        .AddWorld(new MainWorldIndex(0, new Vector2(100, 100), new Vector2(0, 0)))
         .EnableEngine(FrameRate.Hz30))
     .WithWebsocket(setup =>
     setup.MapPortal<SimpleGamePortal>("/game").MapPortal<SimpleMovementPortal>("/game"))

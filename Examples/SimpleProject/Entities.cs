@@ -24,10 +24,10 @@ public class SimpleSpaceship : Spaceship
     protected override void InitDefaults()
     {
         base.InitDefaults();
-        MaxSpeed = 5f;
+        MaxSpeed = 20f;
         MaxTurboSpeed = 10f;
         RotationSpeed = 0.01f;
-        Acceleration = 0.5f;
+        Acceleration = 2f;
         MaxAcceleration = 5f;
         Deceleration = 5f;
         MaxDeceleration = 5f;
