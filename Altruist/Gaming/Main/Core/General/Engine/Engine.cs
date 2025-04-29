@@ -375,7 +375,7 @@ public class AltruistEngine : IAltruistEngine
         }
     }
 
-    private async void RunEngineLoop()
+    private async Task RunEngineLoop()
     {
         long _engineFrequencyTicks = _engineRate.Value;
         var dynamicTasks = new List<Task>(_preallocatedTaskSize);
@@ -388,7 +388,7 @@ public class AltruistEngine : IAltruistEngine
         {
             long currentTick = stopwatch.ElapsedTicks;
             long elapsedTicks = currentTick - lastTick;
-            float deltaTime = (float)elapsedTicks / Stopwatch.Frequency;
+            double deltaTime = (double)elapsedTicks / Stopwatch.Frequency;
 
             if (elapsedTicks >= _engineFrequencyTicks)
             {
@@ -431,7 +431,7 @@ public class AltruistEngine : IAltruistEngine
                 }
 
                 _dynamicTasks.Clear();
-                _worldCoordinator.Step(deltaTime);
+                _worldCoordinator.Step((float)deltaTime);
             }
         }
     }
@@ -561,21 +561,13 @@ public class EngineWithDiagnostics : IAltruistEngine
     {
         var stopwatch = Stopwatch.StartNew();
 
-        try
-        {
-            await task();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Failed to execute task: {ex}");
-        }
+        await task();
 
         stopwatch.Stop();
 
         // Accumulate elapsed time in ticks (higher precision than milliseconds)
         _accumulatedMillis += stopwatch.ElapsedTicks;
         _taskCount++;
-
         if (_taskCount >= 1_000_000)
         {
             double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000_000.0 / Stopwatch.Frequency;
