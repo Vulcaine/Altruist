@@ -141,7 +141,7 @@ public class ForwardMovementPhysxTests
                 body.Rotation = 0f;
 
                 // Act
-                var result = movementPhysx.Forward.CalculateRotation(body, input);
+                var result = movementPhysx.Forward.CalculateMovement(body, input);
                 movementPhysx.ApplyMovement(body, result);
 
                 // Assert

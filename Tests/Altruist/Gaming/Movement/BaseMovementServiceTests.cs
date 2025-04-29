@@ -129,7 +129,6 @@ public class BaseMovementServiceTests
         public TestMovementService(IPlayerService<TestPlayer> playerService, MovementPhysx movementPhysx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
             : base(playerService, movementPhysx, cacheProvider, loggerFactory) { }
 
-        protected override void ApplyRotation(Body body, TestPlayer entity, IMovementPacket input) { }
         protected override void ApplyMovement(Body body, TestPlayer entity, IMovementPacket input) { }
 
         public void TestApplyDeceleration(Body body, TestPlayer entity)

@@ -79,9 +79,6 @@ public class ForwardSpaceshipMovementServiceTests
         Assert.True(result.CurrentSpeed > 0); // Should have accelerated
 
         // IMPORTANT!!! we can't assert movement as the movement update will happen in the engine
-        // Assert.NotEqual(0f, result.Position[0]); // Should have moved
-        // Assert.NotEqual(0f, result.Position[1]); // Should have moved
-        Assert.True(result.Rotation != 0); // Should have rotated
     }
 
     [Fact]
