@@ -384,14 +384,16 @@ public class AltruistEngine : IAltruistEngine
         long lastTick = stopwatch.ElapsedTicks;
         var asyncTaskList = new List<Task>();
 
+        float ticksToSeconds = (float)1.0 / Stopwatch.Frequency;
+
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
             long currentTick = stopwatch.ElapsedTicks;
             long elapsedTicks = currentTick - lastTick;
-            double deltaTime = (double)elapsedTicks / Stopwatch.Frequency;
 
             if (elapsedTicks >= _engineFrequencyTicks)
             {
+                float deltaTime = elapsedTicks * ticksToSeconds;
                 lastTick = currentTick;
 
                 foreach (var task in _staticTasks)
@@ -404,15 +406,7 @@ public class AltruistEngine : IAltruistEngine
 
                 if (asyncTaskList.Count > 0)
                 {
-                    try
-                    {
-                        await Task.WhenAll(asyncTaskList);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"Failed to execute tasks: {ex}");
-                    }
-
+                    await Task.WhenAll(asyncTaskList);
                     asyncTaskList.Clear();
                 }
 
@@ -430,8 +424,8 @@ public class AltruistEngine : IAltruistEngine
                     dynamicTasks.Clear();
                 }
 
-                _dynamicTasks.Clear();
-                _worldCoordinator.Step((float)deltaTime);
+                // _dynamicTasks.Clear();
+                _worldCoordinator.Step(deltaTime);
             }
         }
     }
@@ -564,11 +558,12 @@ public class EngineWithDiagnostics : IAltruistEngine
         await task();
 
         stopwatch.Stop();
+        var taskTrackCount = 1000;
 
         // Accumulate elapsed time in ticks (higher precision than milliseconds)
         _accumulatedMillis += stopwatch.ElapsedTicks;
         _taskCount++;
-        if (_taskCount >= 1_000_000)
+        if (_taskCount >= taskTrackCount)
         {
             double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000_000.0 / Stopwatch.Frequency;
 
@@ -580,7 +575,7 @@ public class EngineWithDiagnostics : IAltruistEngine
 
             _logger.LogInformation(
                 $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
-                $"Just processed 1,000,000 tasks in {elapsedTimeInNanoseconds:n0}ns. " +
+                $"Just processed {taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
                 $"Match that! (⎚-⎚)\n\n" +
 
                 $"📊 Theoretical Throughput:\n" +
@@ -610,10 +605,11 @@ public class EngineWithDiagnostics : IAltruistEngine
 
         _accumulatedMillis += stopwatch.ElapsedMilliseconds;
         _taskCount++;
+        var taskTrackCount = 1000;
 
-        if (_taskCount >= 1_000_000)
+        if (_taskCount >= taskTrackCount)
         {
-            double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000;
+            double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000.0;
 
             double elapsedTimePerTask = elapsedTimeInNanoseconds / _taskCount;
             double elapsedTimePerTaskInSeconds = elapsedTimePerTask / 1_000_000_000;
@@ -623,7 +619,7 @@ public class EngineWithDiagnostics : IAltruistEngine
 
             _logger.LogInformation(
                 $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
-                $"Jut processed 1,000,000 tasks in {elapsedTimeInNanoseconds:n0}ns. " +
+                $"Jut processed {taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
                 $"Match that! (⎚-⎚)\n\n" +
 
                 $"📊 Theoretical Throughput:\n" +
