@@ -15,16 +15,14 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using StackExchange.Redis;
 
 namespace Altruist;
 
 public interface ICursor<T> where T : notnull
 {
-    List<T> Items { get; }
     bool HasNext { get; }
-    Task<bool> NextBatch();
+    Task<IEnumerable<T>> NextBatch();
     IEnumerator<T> GetEnumerator();
 }
 

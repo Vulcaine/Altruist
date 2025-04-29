@@ -91,7 +91,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalConte
                 var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
                 foreach (var client in clients)
                 {
-                    _ = Router.Client.SendAsync(client.InstanceId, packet);
+                    await Router.Client.SendAsync(client.InstanceId, packet);
                 }
             }
         }
@@ -128,11 +128,11 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalConte
         var room = await FindRoomForClientAsync(senderClientId);
         if (room != null && room.PlayerCount < threshold)
         {
-            _ = Router.Room.SendAsync(room.Id, packet);
+            await Router.Room.SendAsync(room.Id, packet);
         }
         else
         {
-            _ = SpatialBroadcast(senderClientId, x, y, packet);
+            await SpatialBroadcast(senderClientId, x, y, packet);
         }
     }
 }

@@ -77,9 +77,9 @@ public abstract class AltruistAutosavePortal<TKeyspace> : Portal<GamePortalConte
         var cursor = await Cache.GetAllAsync(entity);
         var saveTasks = new List<Task>();
 
-        while (await cursor.NextBatch())
+        while (cursor.HasNext)
         {
-            var batch = cursor.Items.Where(i => i is IVaultModel).Cast<IVaultModel>().ToList();
+            var batch = (await cursor.NextBatch()).Where(i => i is IVaultModel).Cast<IVaultModel>().ToList();
             saveTasks.Add(vaultRepository.Select(entity).SaveBatchAsync(batch));
         }
 

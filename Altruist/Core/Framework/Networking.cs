@@ -42,7 +42,7 @@ public static class Synchronization
 {
     private static readonly ConcurrentDictionary<Type, (PropertyInfo[], int)> _syncMetadata = new();
     private static readonly ConcurrentDictionary<string, object?[]> _lastSyncedStates = new();
-    private static readonly ConcurrentDictionary<string, Dictionary<string, object?>> _lastSyncedData = new();
+    private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, object?>> _lastSyncedData = new();
 
     // lazy load sync metadata, after warmup syncing will be super fast!
     private static (PropertyInfo[], int) GetSyncMetadata(Type type, bool onlySyncedProperties = true)
@@ -127,19 +127,52 @@ public static class Synchronization
         var masks = new ulong[maskCount];
 
         var lastState = _lastSyncedStates.GetOrAdd(clientId, _ => new object[count]);
-        var changedData = _lastSyncedData.GetOrAdd(clientId, _ => new Dictionary<string, object?>(count));
+        var changedData = _lastSyncedData.GetOrAdd(clientId, _ => new ConcurrentDictionary<string, object?>());
         changedData.Clear();
 
+        var syncAlwaysProperties = new List<int>(); // Collect the indices of SyncAlways properties
+        bool nonSyncAlwaysChanged = false; // Track if any non-SyncAlways property has changed
+
+        // First pass: collect SyncAlways properties
         for (int i = 0; i < count; i++)
         {
             var propertyName = properties[i].Name;
             var propertySyncedAttribute = properties[i].GetCustomAttribute<SyncedAttribute>();
             var newValue = properties[i].GetValue(newEntity);
             var lastStateValue = lastState[i];
-            var shouldSync = forceAllAsChanged || (propertySyncedAttribute != null && propertySyncedAttribute.SyncAlways == true) || !Equals(lastStateValue, newValue);
+
+            bool isSyncAlways = propertySyncedAttribute != null && propertySyncedAttribute.SyncAlways == true;
+            bool shouldSync = forceAllAsChanged || !Equals(lastStateValue, newValue);
 
             if (shouldSync)
             {
+                if (isSyncAlways)
+                {
+                    // Collect SyncAlways property indices
+                    syncAlwaysProperties.Add(i);
+                }
+                else
+                {
+                    // For non-SyncAlways properties, mark them as changed and set the flag
+                    nonSyncAlwaysChanged = true;
+
+                    int maskIndex = i / 64;   // Which ulong
+                    int bitIndex = i % 64;    // Which bit inside the ulong
+                    masks[maskIndex] |= 1UL << bitIndex;
+
+                    changedData[propertyName] = newValue;
+                    lastState[i] = newValue;
+                }
+            }
+        }
+
+        // Second pass: If any non-SyncAlways property has changed, mark all SyncAlways properties
+        if (nonSyncAlwaysChanged)
+        {
+            foreach (var i in syncAlwaysProperties)
+            {
+                var propertyName = properties[i].Name;
+                var newValue = properties[i].GetValue(newEntity);
                 int maskIndex = i / 64;   // Which ulong
                 int bitIndex = i % 64;    // Which bit inside the ulong
                 masks[maskIndex] |= 1UL << bitIndex;
@@ -149,6 +182,6 @@ public static class Synchronization
             }
         }
 
-        return (masks, changedData);
+        return (masks, changedData.ToDictionary());
     }
 }

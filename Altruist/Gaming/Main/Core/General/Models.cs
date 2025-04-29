@@ -661,6 +661,7 @@ public abstract class Vehicle : PlayerEntity
 public class Spaceship : Vehicle
 {
     [VaultColumn]
+    [Synced(0)]
     [JsonPropertyName("shootSpeed")]
     public float ShootSpeed { get; set; }
 

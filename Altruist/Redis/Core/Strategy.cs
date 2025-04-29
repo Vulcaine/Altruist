@@ -219,7 +219,7 @@ public sealed class RedisConnectionSetup : CacheConnectionSetup<RedisConnectionS
                 continue;
 
             var clientId = redisMessage.Header.Receiver;
-            _ = router.Client.SendAsync(clientId!, redisMessage.Message);
+            await router.Client.SendAsync(clientId!, redisMessage.Message);
         }
     }
 }

@@ -96,7 +96,7 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         return _connectionStore.GetAllConnectionIdsAsync();
     }
 
-    public virtual Task<Dictionary<string, Connection>> GetAllConnectionsAsync()
+    public virtual Task<ICursor<Connection>> GetAllConnectionsAsync()
     {
         return _connectionStore.GetAllConnectionsAsync();
     }
@@ -125,13 +125,18 @@ public abstract class AbstractSocketPortalContext : IPortalContext
         await _connectionStore.SaveRoomAsync(room);
     }
 
-    public virtual Task Cleanup()
+    public virtual async Task Cleanup()
     {
-        return _connectionStore.Cleanup();
+        await _connectionStore.Cleanup();
     }
 
-    public virtual Task<bool> IsConnectionExistsAsync(string connectionId)
+    public virtual async Task<bool> IsConnectionExistsAsync(string connectionId)
     {
-        return _connectionStore.IsConnectionExistsAsync(connectionId);
+        return await _connectionStore.IsConnectionExistsAsync(connectionId);
+    }
+
+    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
+    {
+        return await _connectionStore.GetAllConnectionsDictAsync();
     }
 }

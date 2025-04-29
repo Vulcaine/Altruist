@@ -139,14 +139,20 @@ public abstract class Portal<TContext> : IPortal, IConnectionStore where TContex
         return _context.GetAllConnectionIdsAsync();
     }
 
-    public Task<Dictionary<string, Connection>> GetAllConnectionsAsync()
+    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
+    {
+        return await _context.GetAllConnectionsDictAsync();
+    }
+
+    public Task<ICursor<Connection>> GetAllConnectionsAsync()
     {
         return _context.GetAllConnectionsAsync();
     }
 
     private async Task<TPacketBase> ReceiveAsync<TPacketBase>(string clientId) where TPacketBase : IPacketBase
     {
-        var connections = await GetAllConnectionsAsync();
+        var connections = await GetAllConnectionsDictAsync();
+
         if (connections.TryGetValue(clientId, out var connection))
         {
             var data = await connection.ReceiveAsync(CancellationToken.None);

@@ -16,38 +16,31 @@ limitations under the License.
 
 using System.Text.Json;
 using StackExchange.Redis;
-using System.Collections;
 
 namespace Altruist.Redis;
 
-public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
+public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull
 {
     private int BatchSize { get; }
     private int CurrentIndex { get; set; }
-    private List<T> CurrentBatch { get; }
 
     private readonly IDatabase _redis;
     private readonly RedisDocument _document;
-
     private readonly string _group;
 
-    public List<T> Items => CurrentBatch;
-    public bool HasNext => CurrentBatch.Count == BatchSize;
+    public bool HasNext { get; private set; } = true;
 
     public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize, string cacheGroupId = "")
     {
         _redis = redis;
         BatchSize = batchSize;
         CurrentIndex = 0;
-        CurrentBatch = new List<T>();
         _document = document;
         _group = cacheGroupId;
     }
 
-    public async Task<bool> NextBatch()
+    public async Task<IEnumerable<T>> NextBatch()
     {
-        CurrentBatch.Clear();
-
         // Use SCAN to fetch a batch of keys matching the pattern for the type
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
         var keys = server.Keys(pattern: $"{_document.Name}{(_group != "" ? $"_{_group}" : "")}:*", pageSize: BatchSize)
@@ -56,10 +49,14 @@ public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
                         .ToArray();
 
         if (keys.Length == 0)
-            return false;
+        {
+            HasNext = false;
+            return Enumerable.Empty<T>();
+        }
 
         // Fetch values for the keys in batch
         var values = await _redis.StringGetAsync(keys);
+        var result = new List<T>(keys.Length);
 
         foreach (var value in values)
         {
@@ -68,25 +65,42 @@ public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
                 var entity = JsonSerializer.Deserialize<T>(value.ToString());
                 if (entity != null)
                 {
-                    CurrentBatch.Add(entity);
+                    result.Add(entity);
                 }
             }
         }
 
         CurrentIndex += keys.Length;
-        return true;
+        HasNext = result.Count == BatchSize;
+        return result;
     }
-
 
     private IEnumerable<T> FetchAllBatches()
     {
-        do
+        while (true)
         {
-            foreach (var item in CurrentBatch)
+            if (!HasNext)
+                yield break;
+
+            var batch = NextBatch().GetAwaiter().GetResult();
+            foreach (var item in batch)
             {
                 yield return item;
             }
-        } while (NextBatch().GetAwaiter().GetResult());
+        }
+    }
+
+    public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            if (!HasNext)
+                yield break;
+
+            var batch = await NextBatch();
+            foreach (var item in batch)
+                yield return item;
+        }
     }
 
     public IEnumerator<T> GetEnumerator()
@@ -94,8 +108,9 @@ public class RedisCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
         return FetchAllBatches().GetEnumerator();
     }
 
-    IEnumerator IEnumerable.GetEnumerator()
+    IAsyncEnumerator<T> IAsyncEnumerable<T>.GetAsyncEnumerator(CancellationToken cancellationToken)
     {
-        return GetEnumerator();
+        return GetAsyncEnumerator(cancellationToken);
     }
 }
+

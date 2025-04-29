@@ -29,7 +29,8 @@ public interface IConnectionStore : ICleanUp
     Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null);
     Task RemoveConnectionAsync(string connectionId);
     Task<Connection?> GetConnectionAsync(string connectionId);
-    Task<Dictionary<string, Connection>> GetAllConnectionsAsync();
+    Task<ICursor<Connection>> GetAllConnectionsAsync();
+    Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync();
     Task<IEnumerable<string>> GetAllConnectionIdsAsync();
 
     Task<RoomPacket?> GetRoomAsync(string roomId);
@@ -120,7 +121,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return await _memoryCache.GetAsync<Connection>(connectionId);
     }
 
-    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsAsync()
+    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
     {
         var connections = new Dictionary<string, Connection>();
 
@@ -131,6 +132,11 @@ public abstract class AbstractConnectionStore : IConnectionStore
         }
 
         return connections;
+    }
+
+    public virtual async Task<ICursor<Connection>> GetAllConnectionsAsync()
+    {
+        return await _memoryCache.GetAllAsync<Connection>();
     }
 
     public virtual async Task<IEnumerable<string>> GetAllConnectionIdsAsync()

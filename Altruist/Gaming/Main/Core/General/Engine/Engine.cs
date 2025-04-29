@@ -375,7 +375,6 @@ public class AltruistEngine : IAltruistEngine
         }
     }
 
-
     private async void RunEngineLoop()
     {
         long _engineFrequencyTicks = _engineRate.Value;
@@ -383,6 +382,7 @@ public class AltruistEngine : IAltruistEngine
         var stopwatch = Stopwatch.StartNew();
 
         long lastTick = stopwatch.ElapsedTicks;
+        var asyncTaskList = new List<Task>();
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -398,8 +398,22 @@ public class AltruistEngine : IAltruistEngine
                 {
                     if (elapsedTicks >= task.CycleRate.Value)
                     {
-                        _ = ExecuteTaskAsync(task.Delegate);
+                        asyncTaskList.Add(ExecuteTaskAsync(task.Delegate));
                     }
+                }
+
+                if (asyncTaskList.Count > 0)
+                {
+                    try
+                    {
+                        await Task.WhenAll(asyncTaskList);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Failed to execute tasks: {ex}");
+                    }
+
+                    asyncTaskList.Clear();
                 }
 
                 foreach (var task in _dynamicTasks.Values)
@@ -417,10 +431,11 @@ public class AltruistEngine : IAltruistEngine
                 }
 
                 _dynamicTasks.Clear();
-                _ = _worldCoordinator.Step(deltaTime);
+                await _worldCoordinator.Step(deltaTime);
             }
         }
     }
+
 
     /// <summary>
     /// Schedules a task to be executed at a specific frequency. The task is resolved and its dependencies
@@ -546,7 +561,14 @@ public class EngineWithDiagnostics : IAltruistEngine
     {
         var stopwatch = Stopwatch.StartNew();
 
-        await task();
+        try
+        {
+            await task();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to execute task: {ex}");
+        }
 
         stopwatch.Stop();
 

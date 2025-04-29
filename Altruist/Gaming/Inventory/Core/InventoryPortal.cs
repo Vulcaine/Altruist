@@ -54,7 +54,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
             var removedObject = world.DestroyObject(WorldObjectTypeKeys.Item, item.SysId + "");
             if (removedObject != null)
             {
-                _ = DispatchDestroyItemPacket(item.SysId + "", clientId);
+                await DispatchDestroyItemPacket(item.SysId + "", clientId);
             }
         }
     }
@@ -65,7 +65,7 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         if (room != null)
         {
             var destroyPacket = new DestroyObjectPacket("server", objectId);
-            _ = Router.Room.SendAsync(room.Id, destroyPacket);
+            await Router.Room.SendAsync(room.Id, destroyPacket);
         }
     }
 
@@ -80,16 +80,16 @@ public abstract class AltruistInventoryPortal<TPlayerEntity> : AltruistGamePorta
         var status = await _itemStoreService.RemoveItemAsync<GameItem>(packet.SlotKey);
         if (packet.SlotKey.Id == "ground" && status.Item != null)
         {
-            _ = RemoveItemFromWorldAndNotifyClient(status.Item, clientId);
+            await RemoveItemFromWorldAndNotifyClient(status.Item, clientId);
         }
         else if (status.Item != null)
         {
             packet.Header = new PacketHeader("server", clientId);
-            _ = Router.Client.SendAsync(clientId, packet);
+            await Router.Client.SendAsync(clientId, packet);
         }
         else
         {
-            _ = Router.Client.SendAsync(clientId, PacketHelper.Failed(InventoryStatusCodeMessageMaping.GetMessage((ItemStatus)status.Status), packet.Type, clientId));
+            await Router.Client.SendAsync(clientId, PacketHelper.Failed(InventoryStatusCodeMessageMaping.GetMessage((ItemStatus)status.Status), packet.Type, clientId));
         }
     }
 

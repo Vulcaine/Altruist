@@ -40,6 +40,7 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : P
         _playerCursor = context.PlayerCursorFactory.Create<TPlayerEntity>();
     }
 
+
     [Gate("move")]
     public async virtual Task SyncMovement(TMovementPacket movement, string clientId)
     {
@@ -55,11 +56,11 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : P
         await _movementService.MovePlayerAsync(clientId, movement);
     }
 
-    protected void UpdateMovement()
+    protected virtual async Task UpdateMovementAsync()
     {
         foreach (var player in _playerCursor)
         {
-            _ = Router.Synchronize.SendAsync(player.Update());
+            await Router.Synchronize.SendAsync(player.Update());
         }
     }
 }

@@ -20,45 +20,69 @@ namespace Altruist;
 
 public class PlayerCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull, PlayerEntity
 {
+    private readonly ICacheProvider _cacheProvider;
+
     private ICursor<T> _underlying;
+
     public bool HasNext => _underlying.HasNext;
 
-    public List<T> Items => _underlying.Items;
-
-    public PlayerCursor(ICacheProvider cache)
+    public PlayerCursor(ICacheProvider cacheProvider)
     {
-        _underlying = cache.GetAllAsync<T>().GetAwaiter().GetResult();
+        _cacheProvider = cacheProvider;
+        _underlying = CreateCursorAsync().GetAwaiter().GetResult();
     }
 
-    public async Task<bool> NextBatch()
+    private async Task<ICursor<T>> CreateCursorAsync()
     {
+        return await _cacheProvider.GetAllAsync<T>();
+    }
+
+    public async Task<IEnumerable<T>> NextBatch()
+    {
+        _underlying = await CreateCursorAsync();
         return await _underlying.NextBatch();
     }
 
     public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        var firstBatchFetched = await NextBatch();
+        var cursor = await CreateCursorAsync();
 
-        while (firstBatchFetched)
+        while (true)
         {
-            foreach (var item in _underlying)
+            if (!HasNext)
+                yield break;
+
+            var batch = await cursor.NextBatch();
+            if (batch.Count() == 0)
+                yield break;
+
+            foreach (var item in batch)
             {
                 yield return item;
             }
-
-            firstBatchFetched = await NextBatch();
         }
     }
 
     public IEnumerator<T> GetEnumerator()
     {
-        return _underlying.GetEnumerator();
+        var cursor = CreateCursorAsync().GetAwaiter().GetResult();
+
+        while (true)
+        {
+            if (!HasNext)
+                yield break;
+
+            var batch = cursor.NextBatch().GetAwaiter().GetResult();
+            if (batch.Count() == 0)
+                yield break;
+
+            foreach (var item in batch)
+            {
+                yield return item;
+            }
+        }
     }
 
-    IAsyncEnumerator<T> IAsyncEnumerable<T>.GetAsyncEnumerator(CancellationToken cancellationToken)
-    {
-        return GetAsyncEnumerator(cancellationToken);
-    }
 }
 
 

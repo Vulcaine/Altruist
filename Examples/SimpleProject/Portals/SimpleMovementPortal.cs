@@ -27,4 +27,10 @@ public class SimpleMovementPortal : AltruistForwardMovementPortal<SimpleSpaceshi
     public SimpleMovementPortal(MovementPortalContext context, IPlayerService<SimpleSpaceship> playerService, IMovementService<SimpleSpaceship> movementService, ILoggerFactory loggerFactory) : base(context, playerService, movementService, loggerFactory)
     {
     }
+
+    [Cycle]
+    protected override async Task UpdateMovementAsync()
+    {
+        await base.UpdateMovementAsync();
+    }
 }
