@@ -633,7 +633,6 @@ public class EngineWithDiagnostics : IAltruistEngine
     {
         _accumulatedTicks += elapsedTicks;
         _taskCount++;
-        var taskTrackCount = 1000;
 
         if (_taskCount >= _taskTrackCount)
         {
