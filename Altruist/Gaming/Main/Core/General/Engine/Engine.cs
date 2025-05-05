@@ -516,15 +516,40 @@ public class EngineWithDiagnostics : IAltruistEngine
     private readonly IAltruistEngine _wrappedEngine;
     private readonly ILogger _logger;
 
-    private int _taskCount;
-    private long _accumulatedMillis = 0;
+    private readonly double _engineFrequencyHz;
+
+    private readonly int _taskTrackCount = 100;
+
 
     public EngineWithDiagnostics(IAltruistEngine wrappedEngine, ILoggerFactory loggerFactory)
     {
         _wrappedEngine = wrappedEngine;
-        _taskCount = 0;
-        _accumulatedMillis = 0;
         _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();
+        var unit = _wrappedEngine.Rate.Unit;
+
+        if (unit == CycleUnit.Seconds)
+        {
+            // Value = ticks per cycle => Hz = ticks per second / ticks per cycle
+            _engineFrequencyHz = (double)TimeSpan.TicksPerSecond / _wrappedEngine.Rate.Value;
+        }
+        else if (unit == CycleUnit.Milliseconds)
+        {
+            // Value = ticks per cycle => Hz = ticks per millisecond / ticks per cycle
+            _taskTrackCount = 1_000;
+            _engineFrequencyHz = (double)(TimeSpan.TicksPerSecond / 1000) / _wrappedEngine.Rate.Value;
+        }
+        else if (unit == CycleUnit.Ticks)
+        {
+            // Value = frequency in Hz directly (per TICK-based scheduling, i.e., "X times per tick")
+            // In this case, the higher the number, the **slower** it is.
+            // So to get Hz as "X times per second", we need Stopwatch.Frequency / Value
+            _taskTrackCount = 1_000_000;
+            _engineFrequencyHz = (double)Stopwatch.Frequency / _wrappedEngine.Rate.Value;
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unsupported CycleUnit: {unit}");
+        }
     }
 
     public CycleRate Rate => _wrappedEngine.Rate;
@@ -557,91 +582,56 @@ public class EngineWithDiagnostics : IAltruistEngine
     }
 
 
+    private long _accumulatedTicks = 0;
+    private int _taskCount;
+
     private async Task ExecuteWithDiagnostics(Func<Task> task)
     {
         var stopwatch = Stopwatch.StartNew();
-
         await task();
-
         stopwatch.Stop();
-        var taskTrackCount = 1000000;
-
-        // Accumulate elapsed time in ticks (higher precision than milliseconds)
-        _accumulatedMillis += stopwatch.ElapsedTicks;
-        _taskCount++;
-        if (_taskCount >= taskTrackCount)
-        {
-            double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000_000.0 / Stopwatch.Frequency;
-
-            double elapsedTimePerTask = elapsedTimeInNanoseconds / _taskCount;
-            double elapsedTimePerTaskInSeconds = elapsedTimePerTask / 1_000_000_000.0;
-
-            double tasksPerSecond = 1 / elapsedTimePerTaskInSeconds;
-            double engineFrequencyHz = _wrappedEngine.Rate.Value;
-
-            _logger.LogInformation(
-                $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
-                $"Just processed {taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
-                $"Match that! (⎚-⎚)\n\n" +
-
-                $"📊 Theoretical Throughput:\n" +
-                $"   - Estimated max capacity: {tasksPerSecond:n0} tasks/sec\n" +
-                $"   - Configured frequency: {engineFrequencyHz} Hz\n\n" +
-
-                $"🚀 Engine Efficiency:\n" +
-                $"   - Running at {(tasksPerSecond / engineFrequencyHz) * 100:n2}% of its configured frequency.\n" +
-                $"   - {tasksPerSecond / engineFrequencyHz:n2}x faster than expected.\n"
-            );
-
-
-            // Reset for the next set of measurements
-            _taskCount = 0;
-            _accumulatedMillis = 0;
-        }
+        RecordDiagnostics(stopwatch.ElapsedTicks);
     }
-
 
     private void ExecuteWithDiagnostics(Action task)
     {
         var stopwatch = Stopwatch.StartNew();
-
         task();
-
         stopwatch.Stop();
+        RecordDiagnostics(stopwatch.ElapsedTicks);
+    }
 
-        _accumulatedMillis += stopwatch.ElapsedMilliseconds;
+    private void RecordDiagnostics(long elapsedTicks)
+    {
+        _accumulatedTicks += elapsedTicks;
         _taskCount++;
-        var taskTrackCount = 1000;
 
-        if (_taskCount >= taskTrackCount)
+        if (_taskCount >= _taskTrackCount)
         {
-            double elapsedTimeInNanoseconds = _accumulatedMillis * 1_000_000.0;
-
+            double elapsedTimeInNanoseconds = _accumulatedTicks * 1_000_000_000.0 / Stopwatch.Frequency;
             double elapsedTimePerTask = elapsedTimeInNanoseconds / _taskCount;
-            double elapsedTimePerTaskInSeconds = elapsedTimePerTask / 1_000_000_000;
-
+            double elapsedTimePerTaskInSeconds = elapsedTimePerTask / 1_000_000_000.0;
             double tasksPerSecond = 1 / elapsedTimePerTaskInSeconds;
-            double engineFrequencyHz = _wrappedEngine.Rate.Value;
 
             _logger.LogInformation(
                 $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
-                $"Jut processed {taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
+                $"Just processed {_taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
                 $"Match that! (⎚-⎚)\n\n" +
 
                 $"📊 Theoretical Throughput:\n" +
                 $"   - Estimated max capacity: {tasksPerSecond:n0} tasks/sec\n" +
-                $"   - Configured frequency: {engineFrequencyHz} Hz\n\n" +
+                $"   - Configured frequency: {_engineFrequencyHz:n2} Hz\n\n" +
 
                 $"🚀 Engine Efficiency:\n" +
-                $"   - Running at {(tasksPerSecond / engineFrequencyHz) * 100:n2}% of its configured frequency.\n" +
-                $"   - {tasksPerSecond / engineFrequencyHz:n2}x faster than expected.\n"
+                $"   - Running at {tasksPerSecond / _engineFrequencyHz * 100:n2}% of its configured frequency.\n" +
+                $"   - {tasksPerSecond / _engineFrequencyHz:n2}x faster than expected.\n"
             );
 
+            // Reset counters
             _taskCount = 0;
-            _accumulatedMillis = 0;
+            _accumulatedTicks = 0;
         }
     }
-
 
     public void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null)
     {

@@ -31,6 +31,8 @@ public class CycleRate
     /// </summary>
     public long Value { get; }
 
+    public CycleUnit Unit { get; }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="CycleRate"/> class.
     /// </summary>
@@ -52,6 +54,8 @@ public class CycleRate
     {
         if (frequencyHz <= 0)
             throw new ArgumentException("Frequency must be a positive value.", nameof(frequencyHz));
+
+        Unit = unit ?? CycleUnit.Ticks;
 
         Value = unit switch
         {
