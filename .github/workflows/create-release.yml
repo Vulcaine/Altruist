@@ -1,0 +1,39 @@
+name: Create Release PR
+
+on:
+  workflow_dispatch:  # Button trigger from GitHub UI
+
+jobs:
+  create-release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Required to diff between branches
+
+      - name: 📖 Read version
+        id: read_version
+        run: echo "version=$(cat Altruist/version.txt)" >> $GITHUB_OUTPUT
+
+      - name: 📋 Get commit log
+        id: changelog
+        run: |
+          log=$(git log origin/main..origin/staging --pretty=format:"- %s (%an)")
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$log" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 🔁 Create PR from staging to main
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          head: staging
+          title: "Release/${{ steps.read_version.outputs.version }}"
+          body: |
+            ## 📝 Changelog
+
+            Commits between `staging` and `main`:
+
+            ${{ steps.changelog.outputs.log }}
