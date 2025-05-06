@@ -24,16 +24,28 @@ jobs:
           echo "$log" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: 🔁 Create PR from staging to main
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          base: main
-          head: staging
-          title: "Release/${{ steps.read_version.outputs.version }}"
-          body: |
-            ## 📝 Changelog
+      - name: 🔁 Create PR via GitHub REST API
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+        run: |
+          VERSION=${{ steps.read_version.outputs.version }}
+          CHANGELOG="${{ steps.changelog.outputs.log }}"
+          TITLE="Release/$VERSION"
+          BODY="## 📝 Changelog
 
-            Commits between `staging` and `main`:
+          Commits between \`staging\` and \`main\`:
 
-            ${{ steps.changelog.outputs.log }}
+          $CHANGELOG
+          "
+
+          echo "Creating PR: $TITLE"
+
+          curl -s -X POST https://api.github.com/repos/${{ github.repository }}/pulls \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -d "$(jq -n \
+              --arg title "$TITLE" \
+              --arg head "staging" \
+              --arg base "main" \
+              --arg body "$BODY" \
+              '{title: $title, head: $head, base: $base, body: $body}')"
