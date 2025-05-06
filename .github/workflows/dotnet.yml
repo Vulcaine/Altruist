@@ -16,7 +16,7 @@ jobs:
     if: |
       (
         github.event_name == 'push' &&
-        github.ref_name == 'refs/heads/main'
+        github.ref == 'refs/heads/main'
       )
       ||
       (
