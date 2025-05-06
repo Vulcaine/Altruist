@@ -67,7 +67,7 @@ jobs:
       VERSION: ${{ steps.set-version.outputs.VERSION }}
       RELEASE_BRANCH: ${{ steps.set-version.outputs.RELEASE_BRANCH }}
     needs: [build, validate_version]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.base_ref == 'main'
     steps:
       - name: Checkout main repository
         uses: actions/checkout@v4
