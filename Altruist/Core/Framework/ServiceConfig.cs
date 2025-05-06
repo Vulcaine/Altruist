@@ -14,19 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Altruist;
-using Altruist.Gaming;
-using Altruist.Gaming.Movement;
-using Altruist.Physx;
-using Microsoft.Extensions.Logging;
-using SimpleGame.Entities;
+using Altruist.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace SimpleGame.Services;
+namespace Altruist;
 
-[Service(typeof(IMovementService<SimpleSpaceship>))]
-public class SimpleForwardMovementService : ForwardSpacehipMovementService<SimpleSpaceship>
+public static class ServiceConfig
 {
-    public SimpleForwardMovementService(IPlayerService<SimpleSpaceship> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
+    public static List<IConfiguration> configurations = new();
+
+    public static void Register(IConfiguration configuration) => configurations.Add(configuration);
+
+    public static void Configure(IServiceCollection services)
     {
+        foreach (var configuration in configurations)
+        {
+            configuration.Configure(services);
+        }
     }
 }

@@ -223,7 +223,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         var entity = await GetObjectAsync<T>(key, cacheGroupId);
         if (entity != null)
         {
-            _ = RemoveAndForgetAsync<T>(key, cacheGroupId);
+            await RemoveAndForgetAsync<T>(key, cacheGroupId);
         }
         return entity;
     }

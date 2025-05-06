@@ -1,0 +1,51 @@
+name: Create Release PR
+
+on:
+  workflow_dispatch:  # Button trigger from GitHub UI
+
+jobs:
+  create-release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Required to diff between branches
+
+      - name: 📖 Read version
+        id: read_version
+        run: echo "version=$(cat Altruist/version.txt)" >> $GITHUB_OUTPUT
+
+      - name: 📋 Get commit log
+        id: changelog
+        run: |
+          log=$(git log origin/main..origin/staging --pretty=format:"- %s (%an)")
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$log" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 🔁 Create PR via GitHub REST API
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+        run: |
+          VERSION=${{ steps.read_version.outputs.version }}
+          CHANGELOG="${{ steps.changelog.outputs.log }}"
+          TITLE="Release/$VERSION"
+          BODY="## 📝 Changelog
+
+          Commits between \`staging\` and \`main\`:
+
+          $CHANGELOG
+          "
+
+          echo "Creating PR: $TITLE"
+
+          curl -s -X POST https://api.github.com/repos/${{ github.repository }}/pulls \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -d "$(jq -n \
+              --arg title "$TITLE" \
+              --arg head "staging" \
+              --arg base "main" \
+              --arg body "$BODY" \
+              '{title: $title, head: $head, base: $base, body: $body}')"

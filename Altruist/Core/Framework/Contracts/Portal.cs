@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using Altruist.Codec;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist;
 
@@ -34,104 +35,108 @@ public interface IPortalContext : IConnectionStore
 public abstract class AbstractSocketPortalContext : IPortalContext
 {
     protected readonly IConnectionStore _connectionStore;
-    public abstract IAltruistRouter Router { get; protected set; }
-    public abstract ICodec Codec { get; protected set; }
+    public virtual IAltruistRouter Router { get; }
+    public ICodec Codec { get; }
 
-    public abstract IAltruistContext AltruistContext { get; protected set; }
-    public abstract IServiceProvider ServiceProvider { get; protected set; }
+    public IAltruistContext AltruistContext { get; protected set; }
+    public IServiceProvider ServiceProvider { get; }
 
-    public abstract ICacheProvider Cache { get; protected set; }
+    public ICacheProvider Cache { get; }
 
     public AbstractSocketPortalContext(
-        IAltruistContext altruistContext,
-        IAltruistRouter router, ICodec codec, IConnectionStore connectionStore, ICacheProvider cache, IServiceProvider serviceProvider)
+        IAltruistContext altruistContext, IServiceProvider serviceProvider)
     {
         AltruistContext = altruistContext;
-        Codec = codec ?? new JsonCodec();
-        _connectionStore = connectionStore;
-        Router = router;
+        Codec = serviceProvider.GetService<ICodec>() ?? new JsonCodec();
+        _connectionStore = serviceProvider.GetRequiredService<IConnectionStore>();
+        Router = serviceProvider.GetRequiredService<IAltruistRouter>();
         ServiceProvider = serviceProvider;
-        Cache = cache;
+        Cache = serviceProvider.GetRequiredService<ICacheProvider>();
     }
 
     public abstract void Initialize();
 
-    public async Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId)
+    public virtual async Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId)
     {
         return await _connectionStore.GetConnectionsInRoomAsync(roomId);
     }
 
-    public async Task<RoomPacket> FindAvailableRoomAsync()
+    public virtual async Task<RoomPacket> FindAvailableRoomAsync()
     {
         return await _connectionStore.FindAvailableRoomAsync();
     }
 
-    public async Task<RoomPacket> CreateRoomAsync()
+    public virtual async Task<RoomPacket> CreateRoomAsync()
     {
         return await _connectionStore.CreateRoomAsync();
     }
 
-    public Task DeleteRoomAsync(string roomName)
+    public virtual Task DeleteRoomAsync(string roomName)
     {
         return _connectionStore.DeleteRoomAsync(roomName);
     }
 
-    public Task RemoveConnectionAsync(string connectionId)
+    public virtual Task RemoveConnectionAsync(string connectionId)
     {
         return _connectionStore.RemoveConnectionAsync(connectionId);
     }
 
-    public Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null)
+    public virtual Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null)
     {
         return _connectionStore.AddConnectionAsync(connectionId, socket, roomId);
     }
 
-    public Task<Connection?> GetConnectionAsync(string connectionId)
+    public virtual Task<Connection?> GetConnectionAsync(string connectionId)
     {
         return _connectionStore.GetConnectionAsync(connectionId);
     }
 
-    public Task<IEnumerable<string>> GetAllConnectionIdsAsync()
+    public virtual Task<IEnumerable<string>> GetAllConnectionIdsAsync()
     {
         return _connectionStore.GetAllConnectionIdsAsync();
     }
 
-    public Task<Dictionary<string, Connection>> GetAllConnectionsAsync()
+    public virtual Task<ICursor<Connection>> GetAllConnectionsAsync()
     {
         return _connectionStore.GetAllConnectionsAsync();
     }
 
-    public async Task<RoomPacket?> FindRoomForClientAsync(string clientId)
+    public virtual async Task<RoomPacket?> FindRoomForClientAsync(string clientId)
     {
         return await _connectionStore.FindRoomForClientAsync(clientId);
     }
 
-    public async Task<RoomPacket?> GetRoomAsync(string roomId)
+    public virtual async Task<RoomPacket?> GetRoomAsync(string roomId)
     {
         return await _connectionStore.GetRoomAsync(roomId);
     }
-    public async Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
+    public virtual async Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
     {
         return await _connectionStore.GetAllRoomsAsync();
     }
 
-    public async Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
+    public virtual async Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
     {
         return await _connectionStore.AddClientToRoomAsync(connectionId, roomId);
     }
 
-    public async Task SaveRoomAsync(RoomPacket room)
+    public virtual async Task SaveRoomAsync(RoomPacket room)
     {
         await _connectionStore.SaveRoomAsync(room);
     }
 
-    public Task Cleanup()
+    public virtual async Task Cleanup()
     {
-        return _connectionStore.Cleanup();
+        await _connectionStore.Cleanup();
     }
 
-    public Task<bool> IsConnectionExistsAsync(string connectionId)
+    public virtual async Task<bool> IsConnectionExistsAsync(string connectionId)
     {
-        return _connectionStore.IsConnectionExistsAsync(connectionId);
+        return await _connectionStore.IsConnectionExistsAsync(connectionId);
+    }
+
+    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
+    {
+        return await _connectionStore.GetAllConnectionsDictAsync();
     }
 }

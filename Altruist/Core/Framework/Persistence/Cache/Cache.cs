@@ -22,11 +22,9 @@ public class InMemoryCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnu
 {
     private int BatchSize { get; }
     private int CurrentIndex { get; set; }
-    private int TotalItems { get; }
-    private List<T> CurrentBatch { get; }
+    private int TotalItems => _cache.Values.Count();
     private readonly Dictionary<string, object> _cache;
 
-    public List<T> Items => CurrentBatch;
     public bool HasNext => CurrentIndex < TotalItems;
 
     public InMemoryCacheCursor(Dictionary<string, object> cache, int batchSize)
@@ -34,22 +32,21 @@ public class InMemoryCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnu
         _cache = cache;
         BatchSize = batchSize;
         CurrentIndex = 0;
-        TotalItems = _cache.Values.Count;
-        CurrentBatch = new List<T>();
     }
 
-    public Task<bool> NextBatch()
+    public Task<IEnumerable<T>> NextBatch()
     {
-        CurrentBatch.Clear();
-        var entities = _cache.Values.OfType<T>().Skip(CurrentIndex).Take(BatchSize).ToList();
+        var batch = _cache.Values.OfType<T>()
+                      .Skip(CurrentIndex)
+                      .Take(BatchSize);
 
-        if (entities.Count == 0)
-            return Task.FromResult(false);
+        var size = batch.Count();
 
-        CurrentBatch.AddRange(entities);
-        CurrentIndex += entities.Count;
+        if (size == 0)
+            return Task.FromResult(Enumerable.Empty<T>());
 
-        return Task.FromResult(true);
+        CurrentIndex += size;
+        return Task.FromResult(batch);
     }
 
     public IEnumerator<T> GetEnumerator()
@@ -59,13 +56,16 @@ public class InMemoryCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnu
 
     private IEnumerable<T> FetchAllBatches()
     {
-        do
+        while (true)
         {
-            foreach (var item in CurrentBatch)
-            {
+            if (!HasNext)
+                yield break;
+
+            var batch = NextBatch().GetAwaiter().GetResult();
+
+            foreach (var item in batch)
                 yield return item;
-            }
-        } while (NextBatch().GetAwaiter().GetResult());
+        }
     }
 
     IEnumerator IEnumerable.GetEnumerator()

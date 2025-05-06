@@ -1,5 +1,6 @@
 using Altruist.Gaming.Movement;
 using Altruist.Networking;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -7,7 +8,7 @@ namespace Altruist.Gaming;
 
 public class AltruistMovementPortalTests
 {
-    private readonly Mock<IPortalContext> _contextMock;
+    private readonly Mock<MovementPortalContext> _contextMock;
     private readonly Mock<IPlayerService<TestPlayer>> _playerServiceMock;
     private readonly Mock<IMovementService<TestPlayer>> _movementServiceMock;
     private readonly Mock<ILoggerFactory> _loggerFactoryMock;
@@ -17,7 +18,32 @@ public class AltruistMovementPortalTests
 
     public AltruistMovementPortalTests()
     {
-        _contextMock = new Mock<IPortalContext>();
+
+        var mockAltruistContext = new Mock<IAltruistContext>();
+        var mockProvider = new Mock<IServiceProvider>();
+        var connStore = new Mock<IConnectionStore>();
+        var router = new Mock<IAltruistRouter>();
+        var cache = new Mock<ICacheProvider>();
+        var cursor = new Mock<IPlayerCursorFactory>();
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(IConnectionStore)))
+        .Returns(connStore.Object);
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(IAltruistRouter)))
+        .Returns(router.Object);
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(ICacheProvider)))
+        .Returns(cache.Object);
+
+        mockProvider
+        .Setup(s => s.GetService(typeof(IPlayerCursorFactory)))
+        .Returns(cursor.Object);
+
+        _contextMock = new Mock<MovementPortalContext>(mockAltruistContext.Object, mockProvider.Object);
+
         _playerServiceMock = new Mock<IPlayerService<TestPlayer>>();
         _movementServiceMock = new Mock<IMovementService<TestPlayer>>();
         _loggerFactoryMock = new Mock<ILoggerFactory>();
@@ -43,7 +69,7 @@ public class AltruistMovementPortalTests
     }
 
     [Fact]
-    public async Task SyncMovement_PlayerExists_ShouldMoveAndSynchronize()
+    public async Task SyncMovement_PlayerExists_ShouldMove()
     {
         // Arrange
         var clientId = "player1";
@@ -66,7 +92,6 @@ public class AltruistMovementPortalTests
         // Assert
         _playerServiceMock.Verify(p => p.GetPlayerAsync(clientId), Times.Once);
         _movementServiceMock.Verify(m => m.MovePlayerAsync(clientId, movementPacket), Times.Once);
-        _routerMock.Verify(r => r.Synchronize.SendAsync(playerEntity, false), Times.Once);
     }
 
     [Fact]
@@ -101,7 +126,7 @@ public class AltruistMovementPortalTests
     // Helper Classes
     private class TestMovementPortal : AltruistMovementPortal<TestPlayer, TestMovementPacket>
     {
-        public TestMovementPortal(IPortalContext context, IPlayerService<TestPlayer> playerService, IMovementService<TestPlayer> movementService, ILoggerFactory loggerFactory)
+        public TestMovementPortal(MovementPortalContext context, IPlayerService<TestPlayer> playerService, IMovementService<TestPlayer> movementService, ILoggerFactory loggerFactory)
             : base(context, playerService, movementService, loggerFactory) { }
     }
 

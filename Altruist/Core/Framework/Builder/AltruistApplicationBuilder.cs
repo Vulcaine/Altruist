@@ -44,7 +44,11 @@ public class AltruistWebApplicationBuilder
         Settings = settings;
     }
 
-    public AppManager Configure(Func<WebApplication, WebApplication> setup) => new AppManager(setup!(Builder.Build()));
+    public AppManager Configure(Func<WebApplication, WebApplication> setup)
+    {
+        ServiceConfig.Configure(Builder.Services);
+        return new AppManager(setup!(Builder.Build()));
+    }
 
     public void StartServer()
     {

@@ -43,7 +43,7 @@ public abstract class AltruistRegenPortal<TPlayerEntity> : AltruistGamePortal<TP
     /// <param name="worldCoordinator">The game world coordinator that manages the game worlds available.</param>
     /// <param name="playerService">The player service that manages the player entities.</param>
     /// <param name="loggerFactory">The logger factory for logging purposes.</param>
-    protected AltruistRegenPortal(IPortalContext context, GameWorldCoordinator worldCoordinator, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
+    protected AltruistRegenPortal(GamePortalContext context, GameWorldCoordinator worldCoordinator, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
     {
     }
 

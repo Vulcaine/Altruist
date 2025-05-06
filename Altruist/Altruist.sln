@@ -19,8 +19,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Redis", "Redis\Redis.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Physx", "Physx\Physx.csproj", "{D7043060-B0EF-4EAF-9FA7-4FA9F4A79DF2}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Gaming", "Gaming", "{FA1CF26A-4220-0C83-67CE-0F9D94A2A4CE}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Movement", "Gaming\Movement\Movement.csproj", "{A3F05A9C-BADF-47A4-8CF0-6F370792D7B7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Autosave", "Gaming\Autosave\Autosave.csproj", "{6DE799D6-66FE-4E32-AE05-27CD51F2590C}"

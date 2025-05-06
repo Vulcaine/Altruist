@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Altruist;
 using Altruist.Gaming;
 using Microsoft.Extensions.Logging;
 using SimpleGame.Entities;
@@ -23,7 +22,7 @@ namespace Portals;
 
 public class SimpleGamePortal : AltruistGameSessionPortal<SimpleSpaceship>
 {
-    public SimpleGamePortal(IPortalContext context, GameWorldCoordinator worldCoordinator, IPlayerService<SimpleSpaceship> playerService, ILoggerFactory loggerFactory) : base(context, worldCoordinator, playerService, loggerFactory)
+    public SimpleGamePortal(GamePortalContext context, GameWorldCoordinator gameWorld, IPlayerService<SimpleSpaceship> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
     }
 }
