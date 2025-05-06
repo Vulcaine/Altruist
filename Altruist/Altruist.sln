@@ -27,6 +27,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Regen", "Gaming\Regen\Regen
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Inventory", "Gaming\Inventory\Inventory.csproj", "{1A1C1326-9AC7-4D96-A333-6AD060D00663}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Gaming", "Gaming", "{FA1CF26A-4220-0C83-67CE-0F9D94A2A4CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -184,12 +186,6 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{A3F05A9C-BADF-47A4-8CF0-6F370792D7B7} = {FA1CF26A-4220-0C83-67CE-0F9D94A2A4CE}
-		{6DE799D6-66FE-4E32-AE05-27CD51F2590C} = {FA1CF26A-4220-0C83-67CE-0F9D94A2A4CE}
-		{20698C72-4830-4079-A1C1-2EC9F1F72803} = {FA1CF26A-4220-0C83-67CE-0F9D94A2A4CE}
-		{1A1C1326-9AC7-4D96-A333-6AD060D00663} = {FA1CF26A-4220-0C83-67CE-0F9D94A2A4CE}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {67983807-7A8E-47CC-B41D-C025CC2BC203}
