@@ -62,7 +62,6 @@ jobs:
 
     # 📦 Pack the Altruist solution for NuGet (only on push to main)
     - name: Pack NuGet packages
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: dotnet pack ./Altruist --configuration Release --output ./Altruist/nupkgs
 
   update-version:
