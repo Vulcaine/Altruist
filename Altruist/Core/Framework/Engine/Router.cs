@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Collections.Concurrent;
+
 namespace Altruist.Engine;
 
 public interface IAltruistEngineRouter : IAltruistRouter { }
@@ -44,7 +46,16 @@ public class EngineClientSender : ClientSender
 
     public override Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
     {
-        _engine.SendTask(new TaskIdentifier(clientId + message.Type), () => base.SendAsync(clientId, message));
+        // Efficient string allocation using string.Create (avoids clientId + message.Type allocation)
+        var id = string.Create(clientId.Length + 1 + message.Type.Length, (clientId, message.Type), (span, state) =>
+        {
+            state.clientId.AsSpan().CopyTo(span);
+            span[state.clientId.Length] = ':';
+            state.Item2.AsSpan().CopyTo(span.Slice(state.clientId.Length + 1));
+        });
+
+        var identifier = new TaskIdentifier(id);
+        _engine.SendTask(identifier, () => base.SendAsync(clientId, message));
         return Task.CompletedTask;
     }
 }

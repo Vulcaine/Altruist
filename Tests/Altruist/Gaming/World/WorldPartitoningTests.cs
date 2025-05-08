@@ -16,8 +16,8 @@ limitations under the License.
 
 namespace Altruist.Gaming;
 
+using System.Numerics;
 using FluentAssertions;
-using Microsoft.Xna.Framework;
 using Xunit;
 
 public class TestWorldIndex : WorldIndex

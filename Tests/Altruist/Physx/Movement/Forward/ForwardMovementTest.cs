@@ -1,9 +1,9 @@
 namespace Altruist.Physx.Movement;
 
-using FarseerPhysics.Dynamics;
-using Microsoft.Xna.Framework;
+using System.Numerics;
+using Box2DSharp.Collision.Shapes;
+using Box2DSharp.Dynamics;
 using Xunit;
-using FarseerPhysics.Factories;
 
 public class ForwardMovementPhysxTests
 {
@@ -13,21 +13,39 @@ public class ForwardMovementPhysxTests
 
         public ForwardMovementPhysxTests()
         {
-                // Initialize the physics world
-                world = new World(Vector2.Zero);
+                // Initialize Box2D world with zero gravity
+                world = new World(new Vector2(0f, 0f));
+
                 movementPhysx = new MovementPhysx();
 
-                body = BodyFactory.CreateRectangle(world, 1f, 1f, 1f, position: Vector2.Zero);
+                // Define the body
+                var bodyDef = new BodyDef
+                {
+                        BodyType = BodyType.DynamicBody,
+                        Position = new Vector2(0f, 0f),
+                        Angle = 0f,              // Facing right (0 radians)
+                        LinearDamping = 0f,
+                        AngularDamping = 0f,
+                        FixedRotation = false
+                };
 
-                body.BodyType = BodyType.Dynamic;
-                body.Mass = 1;
-                body.LinearDamping = 0f;
-                body.AngularDamping = 0f;
-                body.Friction = 0f;
-                body.Rotation = 0f; // Facing right (East)
-                body.Position = Vector2.Zero;
-                body.ResetMassData();
-                body.ResetDynamics();
+                body = world.CreateBody(bodyDef);
+
+                // Define shape (Box2DSharp uses half-widths)
+                var shape = new PolygonShape();
+                shape.SetAsBox(0.5f, 0.5f); // Width=1, Height=1
+
+                // Define fixture
+                var fixtureDef = new FixtureDef
+                {
+                        Shape = shape,
+                        Density = 1f,
+                        Friction = 0f
+                };
+
+                body.CreateFixture(fixtureDef);
+
+                // Mass and dynamics reset is handled internally in Box2D when fixture is added
         }
 
         [Fact]
@@ -52,12 +70,12 @@ public class ForwardMovementPhysxTests
                 // Simulate one second in 50 small steps (0.02s each)
                 for (int i = 0; i < 50; i++)
                 {
-                        world.Step(0.02f);
+                        world.Step(0.02f, 8, 3);
                 }
 
                 // Assert
                 Assert.Equal(new Vector2(52f, 0f), body.LinearVelocity);
-                Assert.True(body.Position.X > 52f);
+                Assert.True(body.GetPosition().X > 52f);
                 Assert.Equal(52f, result.CurrentSpeed);
         }
 
@@ -82,8 +100,8 @@ public class ForwardMovementPhysxTests
 
                 // Assert
                 Assert.Equal(Vector2.Zero, body.LinearVelocity);  // No velocity
-                world.Step(1f); // Simulate one step in the world (DeltaTime)
-                Assert.Equal(Vector2.Zero, body.Position);  // No movement
+                world.Step(1f, 8, 3); // Simulate one step in the world (DeltaTime)
+                Assert.Equal(Vector2.Zero, body.GetPosition());  // No movement
                 Assert.Equal(5f, result.CurrentSpeed);  // Speed should remain the same
         }
 
@@ -114,9 +132,9 @@ public class ForwardMovementPhysxTests
                 // Simulate one second in 50 small steps (0.02s each)
                 for (int i = 0; i < 50; i++)
                 {
-                        world.Step(0.02f);
+                        world.Step(0.02f, 8, 3);
                 }
-                Assert.Equal(new Vector2(10f, 0f), new Vector2((float)Math.Round(body.Position.X, 2), 0));
+                Assert.Equal(new Vector2(10f, 0f), new Vector2((float)Math.Round(body.GetPosition().X, 2), 0));
 
         }
 
@@ -138,7 +156,7 @@ public class ForwardMovementPhysxTests
                 };
 
                 // Facing right (East)
-                body.Rotation = 0f;
+                body.SetTransform(body.GetPosition(), 0f);
 
                 // Act
                 var result = movementPhysx.Forward.CalculateMovement(body, input);
@@ -146,7 +164,7 @@ public class ForwardMovementPhysxTests
 
                 // Assert
                 // Rotation should decrease by 1 (rotate left)
-                Assert.Equal(-1f, body.Rotation);
+                Assert.Equal(-1f, body.GetAngle());
         }
 
         [Fact]
@@ -165,11 +183,10 @@ public class ForwardMovementPhysxTests
                         Deceleration = 0.5f
                 };
 
-                body.BodyType = BodyType.Dynamic;
+                body.BodyType = BodyType.DynamicBody;
                 body.LinearDamping = 0f;
-                body.Friction = 0f;
-                body.Position = Vector2.Zero;
-                body.LinearVelocity = new Vector2(10f, 0f); // some initial velocity
+                body.SetTransform(Vector2.Zero, 0f);
+                body.SetLinearVelocity(new Vector2(10f, 0f));
 
                 // Act
                 var result = movementPhysx.Forward.CalculateDeceleration(body, input);

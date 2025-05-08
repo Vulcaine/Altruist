@@ -64,54 +64,49 @@ public class InMemoryCache : IMemoryCacheProvider
 
     public Task<ICursor<T>> GetAllAsync<T>(string cacheGroupId = "") where T : notnull
     {
-        Dictionary<string, object> dict;
+        IEnumerable<T> source;
 
         if (cacheGroupId == "")
         {
             if (_cache.TryGetValue(typeof(T), out var allGroups))
             {
-                dict = allGroups.Values
-                    .SelectMany(d => d)
-                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                source = allGroups.Values.SelectMany(dict => dict.Values).OfType<T>();
             }
             else
             {
-                dict = new Dictionary<string, object>();
+                source = Enumerable.Empty<T>();
             }
         }
         else
         {
-            dict = GetOrCreateEntityCache(typeof(T), cacheGroupId).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            source = GetOrCreateEntityCache(typeof(T), cacheGroupId).Values.OfType<T>();
         }
 
-        return Task.FromResult(new InMemoryCacheCursor<T>(dict, int.MaxValue) as ICursor<T>);
+        return Task.FromResult(new InMemoryCacheCursor<T>(source, int.MaxValue) as ICursor<T>);
     }
 
     public Task<ICursor<object>> GetAllAsync(Type type, string cacheGroupId = "")
     {
-        Dictionary<string, object> dict;
+        IEnumerable<object> source;
 
         if (cacheGroupId == "")
         {
             if (_cache.TryGetValue(type, out var allGroups))
             {
-                dict = allGroups.Values
-                    .SelectMany(d => d)
-                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                source = allGroups.Values.SelectMany(dict => dict.Values);
             }
             else
             {
-                dict = new Dictionary<string, object>();
+                source = Enumerable.Empty<object>();
             }
         }
         else
         {
-            dict = GetOrCreateEntityCache(type, cacheGroupId).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            source = GetOrCreateEntityCache(type, cacheGroupId).Values;
         }
 
-        return Task.FromResult(new InMemoryCacheCursor<object>(dict, int.MaxValue) as ICursor<object>);
+        return Task.FromResult(new InMemoryCacheCursor<object>(source, int.MaxValue) as ICursor<object>);
     }
-
 
     public Task SaveAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull
     {

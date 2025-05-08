@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using FarseerPhysics.Dynamics;
-using Microsoft.Xna.Framework;
+using System.Numerics;
+using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx;
 
@@ -24,6 +24,8 @@ public class VectorConstants
     public static readonly Vector2 ZeroVector = Vector2.Zero;
     public static readonly Vector2 LeftDirection = new Vector2(-1, 0);
     public static readonly Vector2 RightDirection = new Vector2(1, 0);
+    public static readonly Vector2 UpDirection = new Vector2(0, 1);
+    public static readonly Vector2 DownDirection = new Vector2(0, -1);
 }
 
 public class MovementPhysx
@@ -39,12 +41,17 @@ public class MovementPhysx
 
     public void ApplyMovement(Body body, MovementPhysxOutput input)
     {
-        body.LinearVelocity = input.Velocity;
-        body.Rotation += input.RotationSpeed;
-
-        if (input.Force != Vector2.Zero)
+        body.SetLinearVelocity(input.Velocity);
+        if (input.RotationSpeed != 0)
         {
-            body.ApplyForce(input.Force);
+            var currentPosition = body.GetPosition();
+            var currentAngle = body.GetAngle();
+            body.SetTransform(currentPosition, currentAngle + input.RotationSpeed);
+        }
+
+        if (input.Force.X != 0 || input.Force.Y != 0)
+        {
+            body.ApplyForce(input.Force, body.GetWorldCenter(), true);
         }
     }
 }

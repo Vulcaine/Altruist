@@ -136,7 +136,8 @@ public class ClientSynchronizator
         if (!anyChanges)
             return;
 
-        var syncData = new SyncPacket("server", entity.GetType().Name, changedProperties);
+        var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        var syncData = new SyncPacket("server", entity.GetType().Name, safeCopy);
         await _broadcast.SendAsync(syncData);
     }
 

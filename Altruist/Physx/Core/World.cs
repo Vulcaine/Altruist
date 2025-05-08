@@ -1,7 +1,8 @@
 
-using FarseerPhysics.Dynamics;
-using FarseerPhysics.Dynamics.Joints;
-using Microsoft.Xna.Framework;
+using Box2DSharp.Dynamics;
+using Box2DSharp.Dynamics.Joints;
+using Box2DSharp.Common;
+using System.Numerics;
 
 namespace Altruist.Physx;
 
@@ -11,95 +12,87 @@ public class PhysxWorld
 
     public PhysxWorld(Vector2 gravity) => World = new World(gravity);
 
-    // Add a body to the world
-    public void AddBreakableBody(BreakableBody body)
-    {
-        World.AddBreakableBody(body);
-    }
-
     // Remove a body from the world
     public void RemoveBody(Body body)
     {
-        World.RemoveBody(body);
+        World.DestroyBody(body);
     }
 
-    public void RayCast(Func<Fixture, Vector2, Vector2, float, float> callback, Vector2 point1, Vector2 point2)
+    // RayCast using Box2D's callback format
+    public void RayCast(in IRayCastCallback callback, in Vector2 point1, in Vector2 point2)
     {
         World.RayCast(callback, point1, point2);
     }
 
     public void RemoveJoint(Joint joint)
     {
-        World.RemoveJoint(joint);
+        World.DestroyJoint(joint);
     }
 
     public void AddJoint(Joint joint)
     {
-        World.AddJoint(joint);
+        // No explicit "AddJoint" method in Box2DSharp — joints are added when created.
+        // You can leave this empty or use a factory method elsewhere.
     }
 
     // Step the physics world with a fixed deltaTime
     public void Step(float deltaTime)
     {
-        World.Step(deltaTime);
+        if (World.BodyCount == 0) return;
+        World.Step(deltaTime, velocityIterations: 8, positionIterations: 3);
     }
 
-    // Apply a force to a body (for example, deceleration or other forces)
-    public void ApplyForce(Body body, Vector2 force)
+    // Apply a force to a body (e.g. for deceleration or external effects)
+    public void ApplyForce(Body body, Vector2 force, bool wake)
     {
-        body.ApplyForce(ref force);
+        body.ApplyForce(force, body.GetWorldCenter(), wake);
     }
 
-    // Retrieve all the bodies in the world (for querying or other purposes)
     public List<Body> GetAllBodies()
     {
         var bodies = new List<Body>();
-        foreach (Body body in World.BodyList)
+
+        foreach (var body in World.BodyList)
         {
             bodies.Add(body);
         }
+
         return bodies;
     }
 
-    // Get the position of a body
-    public Vector2 GetPosition(Body body)
-    {
-        return body.Position;
-    }
 
-    // Set the position of a body directly
+    // Get and set body position
+    public Vector2 GetPosition(Body body) => body.GetPosition();
+
     public void SetPosition(Body body, Vector2 position)
     {
-        body.Position = position;
+        var angle = body.GetAngle();
+        body.SetTransform(position, angle);
     }
 
-    // Get the velocity of a body
-    public Vector2 GetVelocity(Body body)
-    {
-        return body.LinearVelocity;
-    }
+    // Get and set body velocity
+    public Vector2 GetVelocity(Body body) => body.LinearVelocity;
 
-    // Set the velocity of a body directly
     public void SetVelocity(Body body, Vector2 velocity)
     {
-        body.LinearVelocity = velocity;
+        body.SetLinearVelocity(velocity);
     }
 
     // Apply impulse to a body
-    public void ApplyImpulse(Body body, Vector2 impulse)
+    public void ApplyImpulse(Body body, Vector2 impulse, bool wake)
     {
-        body.ApplyLinearImpulse(ref impulse);
+        body.ApplyLinearImpulse(impulse, body.GetWorldCenter(), wake);
     }
 
     // Apply torque to a body
-    public void ApplyTorque(Body body, float torque)
+    public void ApplyTorque(Body body, float torque, bool wake)
     {
-        body.ApplyTorque(torque);
+        body.ApplyTorque(torque, wake);
     }
 
-    // Add a force at a specific point in the world
-    public void ApplyForceAtPoint(Body body, Vector2 force, Vector2 point)
+    // Apply force at a specific world point
+    public void ApplyForceAtPoint(Body body, Vector2 force, Vector2 point, bool wake)
     {
-        body.ApplyForce(force, point);
+        body.ApplyForce(force, point, wake);
     }
 }

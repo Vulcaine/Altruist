@@ -20,56 +20,38 @@ namespace Altruist;
 
 public class InMemoryCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
 {
-    private int BatchSize { get; }
+    private readonly T[] _items;
     private int CurrentIndex { get; set; }
-    private int TotalItems => _cache.Values.Count();
-    private readonly Dictionary<string, object> _cache;
+    private int BatchSize { get; }
 
-    public bool HasNext => CurrentIndex < TotalItems;
+    public bool HasNext => CurrentIndex < _items.Length;
 
-    public InMemoryCacheCursor(Dictionary<string, object> cache, int batchSize)
+    public InMemoryCacheCursor(IEnumerable<T> source, int batchSize)
     {
-        _cache = cache;
+        _items = source.ToArray();
         BatchSize = batchSize;
         CurrentIndex = 0;
     }
 
     public Task<IEnumerable<T>> NextBatch()
     {
-        var batch = _cache.Values.OfType<T>()
-                      .Skip(CurrentIndex)
-                      .Take(BatchSize);
-
-        var size = batch.Count();
-
-        if (size == 0)
+        if (!HasNext)
             return Task.FromResult(Enumerable.Empty<T>());
 
+        int remaining = _items.Length - CurrentIndex;
+        int size = Math.Min(BatchSize, remaining);
+
+        var segment = new ArraySegment<T>(_items, CurrentIndex, size);
         CurrentIndex += size;
-        return Task.FromResult(batch);
+
+        return Task.FromResult<IEnumerable<T>>(segment);
     }
 
     public IEnumerator<T> GetEnumerator()
     {
-        return FetchAllBatches().GetEnumerator();
+        CurrentIndex = 0;
+        return ((IEnumerable<T>)_items).GetEnumerator();
     }
 
-    private IEnumerable<T> FetchAllBatches()
-    {
-        while (true)
-        {
-            if (!HasNext)
-                yield break;
-
-            var batch = NextBatch().GetAwaiter().GetResult();
-
-            foreach (var item in batch)
-                yield return item;
-        }
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

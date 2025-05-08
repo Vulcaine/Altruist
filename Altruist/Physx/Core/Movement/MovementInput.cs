@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using FarseerPhysics.Dynamics;
-using Microsoft.Xna.Framework;
+using System.Numerics;
+using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx;
 
@@ -24,13 +24,19 @@ public record MovementPhysxOutput
     public float CurrentSpeed { get; set; }
     public float RotationSpeed { get; set; }
     public bool Moving { get; set; }
-    // public Vector2 Position { get; set; }
 
     public Vector2 Velocity { get; set; }
 
     public Vector2 Force { get; set; }
 
-    public MovementPhysxOutput(float currentSpeed, float rotationSpeed, bool moving, Vector2 velocity, Vector2 force) => (CurrentSpeed, RotationSpeed, Moving, Velocity, Force) = (currentSpeed, rotationSpeed, moving, velocity, force);
+    public MovementPhysxOutput(float currentSpeed, float rotationSpeed, bool moving, Vector2 velocity, Vector2 force)
+    {
+        CurrentSpeed = currentSpeed;
+        RotationSpeed = rotationSpeed;
+        Moving = moving;
+        Velocity = velocity;
+        Force = force;
+    }
 }
 
 public interface IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
