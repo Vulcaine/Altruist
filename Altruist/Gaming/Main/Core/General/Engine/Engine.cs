@@ -72,6 +72,14 @@ public class FrameRate
     public static int Hz256 = 256;
 }
 
+public static class FrameTime
+{
+    private static readonly double TicksToSeconds = 1.0 / Stopwatch.Frequency;
+
+    public static long NowTicks => Stopwatch.GetTimestamp();
+    public static float TicksToDeltaSeconds(long ticks) => (float)(ticks * TicksToSeconds);
+}
+
 
 public class MethodScheduler
 {
@@ -280,6 +288,7 @@ public class AltruistEngine : IAltruistEngine
     private CancellationTokenSource _cancellationTokenSource;
     private readonly CycleRate _engineRate;
     private readonly int _preallocatedTaskSize;
+    private Thread _physxThread;
     private Thread _engineThread;
 
     public CycleRate Rate => _engineRate;
@@ -304,7 +313,6 @@ public class AltruistEngine : IAltruistEngine
         Throttle = throttle ?? (int)(1_000_000_000 / (_engineRate.Value + 1));
         _preallocatedTaskSize = Throttle;
         _cancellationTokenSource = new CancellationTokenSource();
-        _engineThread = null!;
         _serviceProvider = serviceProvider;
         _appStatus = settings.AppStatus;
         _worldCoordinator = worldCoordinator;
@@ -354,9 +362,11 @@ public class AltruistEngine : IAltruistEngine
             _cancellationTokenSource = new CancellationTokenSource();
             _engineThread = new Thread(() =>
             {
+                Thread.CurrentThread.Name = "EngineThread";
+
                 while (!_cancellationTokenSource.IsCancellationRequested)
                 {
-                    if (_appStatus.Status == ReadyState.Alive)
+                    if (_appStatus.Status == ReadyState.Alive && !Enabled)
                     {
                         Enable();
                         RunEngineLoop();
@@ -370,30 +380,59 @@ public class AltruistEngine : IAltruistEngine
                 IsBackground = true,
                 Priority = ThreadPriority.Highest
             };
-
             _engineThread.Start();
+
+            _physxThread = new Thread(() =>
+            {
+                Thread.CurrentThread.Name = "PhysicsThread";
+                StartPhysicsLoop();
+            })
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.BelowNormal
+            };
+
+            _physxThread.Start();
+
         }
     }
 
-    private async Task RunEngineLoop()
+    private void StartPhysicsLoop()
     {
-        long _engineFrequencyTicks = _engineRate.Value;
-        var dynamicTasks = new List<Task>(_preallocatedTaskSize);
-        var stopwatch = Stopwatch.StartNew();
-
-        long lastTick = stopwatch.ElapsedTicks;
-        long lastWorldStepTick = lastTick;
-        var asyncTaskList = new List<Task>();
-
-        float ticksToSeconds = (float)1.0 / Stopwatch.Frequency;
-        Task worldStepTask = Task.Run(() => _worldCoordinator.Step(0));
+        long previousTicks = FrameTime.NowTicks;
+        long tickLength = (long)(Stopwatch.Frequency / 15.0); // 15 FPS = ~66.6ms
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
-            long currentTick = stopwatch.ElapsedTicks;
+            long now = FrameTime.NowTicks;
+            long elapsedTicks = now - previousTicks;
+
+            if (elapsedTicks >= tickLength)
+            {
+                float deltaTime = FrameTime.TicksToDeltaSeconds(elapsedTicks);
+                _worldCoordinator.Step(deltaTime);
+                previousTicks = now;
+            }
+
+            Thread.Sleep(1);
+        }
+    }
+
+
+    private async Task RunEngineLoop()
+    {
+        long engineFrequencyTicks = _engineRate.Value;
+        var dynamicTasks = new List<Task>(_preallocatedTaskSize);
+        var asyncTaskList = new List<Task>();
+
+        long lastTick = FrameTime.NowTicks;
+
+        while (!_cancellationTokenSource.Token.IsCancellationRequested)
+        {
+            long currentTick = FrameTime.NowTicks;
             long elapsedTicks = currentTick - lastTick;
 
-            if (elapsedTicks >= _engineFrequencyTicks)
+            if (elapsedTicks >= engineFrequencyTicks)
             {
                 lastTick = currentTick;
 
@@ -411,31 +450,20 @@ public class AltruistEngine : IAltruistEngine
                     asyncTaskList.Clear();
                 }
 
-                foreach (var task in _dynamicTasks.Values)
+                if (_dynamicTasks.Count > 0)
                 {
-                    dynamicTasks.Add(ExecuteTaskAsync(task));
-                }
+                    foreach (var (key, task) in _dynamicTasks)
+                    {
+                        _dynamicTasks.TryRemove(key, out _);
+                        dynamicTasks.Add(ExecuteTaskAsync(task));
+                    }
 
-                if (dynamicTasks.Count >= Throttle)
-                {
                     await Task.WhenAll(dynamicTasks);
-                }
-                else
-                {
                     dynamicTasks.Clear();
-                }
-
-                if (worldStepTask.IsCompleted)
-                {
-                    long elapsedWorldTicks = currentTick - lastWorldStepTick;
-                    float deltaTime = elapsedWorldTicks * ticksToSeconds;
-                    worldStepTask = Task.Run(() => _worldCoordinator.Step(deltaTime));
-                    lastWorldStepTick = lastTick;
                 }
             }
         }
     }
-
 
     /// <summary>
     /// Schedules a task to be executed at a specific frequency. The task is resolved and its dependencies

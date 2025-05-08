@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using FarseerPhysics.Dynamics;
-using Microsoft.Xna.Framework;
+using System.Numerics;
+using Box2DSharp.Common;
+using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx;
 
@@ -24,7 +25,7 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
     public MovementPhysxOutput CalculateMovement(Body body, EightDirectionMovementPhysxInput input)
     {
         bool moving = input.MoveUp || input.MoveDown || input.MoveLeft || input.MoveRight;
-        var zeroVector = Vector2.Zero;
+        var zeroVector = VectorConstants.ZeroVector;
 
         if (!moving)
         {
@@ -32,12 +33,12 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         }
 
         Vector2 direction = zeroVector;
-        if (input.MoveUp) direction += new Vector2(0, -1);
-        if (input.MoveDown) direction += new Vector2(0, 1);
-        if (input.MoveLeft) direction += new Vector2(-1, 0);
-        if (input.MoveRight) direction += new Vector2(1, 0);
+        if (input.MoveUp) direction += VectorConstants.UpDirection;
+        if (input.MoveDown) direction += VectorConstants.DownDirection;
+        if (input.MoveLeft) direction += VectorConstants.LeftDirection;
+        if (input.MoveRight) direction += VectorConstants.RightDirection;
 
-        if (direction == zeroVector)
+        if (direction.X == 0 && direction.Y == 0)
         {
             return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, zeroVector, zeroVector);
         }
@@ -45,13 +46,18 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         direction.Normalize();
 
         float accelerationFactor = input.Turbo ? 2.0f : 1.0f;
-        var currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
-        currentSpeed = Math.Min(input.CurrentSpeed, input.MaxSpeed);
+        float currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
+        currentSpeed = Math.Min(currentSpeed, input.MaxSpeed);
 
-        var posDelta = direction * currentSpeed;
-        Vector2 velocity = posDelta;
+        Vector2 velocity = direction * currentSpeed;
 
-        return new MovementPhysxOutput(currentSpeed, 0.0f, posDelta.LengthSquared() > 0, velocity, zeroVector);
+        return new MovementPhysxOutput(
+            currentSpeed,
+            0.0f,
+            velocity.LengthSquared() > 0,
+            velocity,
+            zeroVector
+        );
     }
 
     public virtual float CalculateRotation(Body body, EightDirectionMovementPhysxInput input)
@@ -62,24 +68,18 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
     public virtual MovementPhysxOutput CalculateDeceleration(Body body, EightDirectionMovementPhysxInput input)
     {
         Vector2 velocity = body.LinearVelocity;
-        Vector2 force = Vector2.Zero;
+        Vector2 force = VectorConstants.ZeroVector;
+
         if (velocity.LengthSquared() > 0)
         {
-            // Normalize the velocity to get the direction of deceleration
-            Vector2 decelerationDirection = Vector2.Normalize(velocity);
+            Vector2 decelerationDirection = velocity;
+            decelerationDirection.Normalize();
 
-            // Calculate the deceleration force magnitude
             float decelerationForceMagnitude = input.Deceleration * input.CurrentSpeed;
-
-            // Calculate the deceleration force vector
             force = -decelerationDirection * decelerationForceMagnitude * body.Mass;
-            // // Apply the calculated deceleration force to the body
-            // body.ApplyForce(ref force);
         }
 
-        // Update the current speed after applying deceleration
-        var currSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
-        return new MovementPhysxOutput(currSpeed, 0.0f, false, Vector2.Zero, force);
+        float currSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
+        return new MovementPhysxOutput(currSpeed, 0.0f, false, VectorConstants.ZeroVector, force);
     }
-
 }

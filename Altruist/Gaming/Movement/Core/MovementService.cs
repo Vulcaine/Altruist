@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 using Altruist.Physx;
-using FarseerPhysics.Dynamics;
+using Box2DSharp.Dynamics;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Movement;
@@ -72,8 +72,8 @@ public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPla
 
     protected void UpdateEntityPosition(TPlayerEntity entity, Body body)
     {
-        entity.Position = [body.Position.X, body.Position.Y];
-        entity.Rotation = body.Rotation;
+        entity.Position = [body.GetPosition().X, body.GetPosition().Y];
+        entity.Rotation = body.GetTransform().Rotation.Angle;
     }
 }
 
@@ -108,7 +108,6 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
 
         if (result.Moving)
         {
-            entity.CurrentSpeed = result.CurrentSpeed;
             entity.CurrentSpeed = result.CurrentSpeed;
             ClampSpeed(entity);
             _movementPhysx.ApplyMovement(body, result);
@@ -166,13 +165,6 @@ public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : Eigh
     public EightDirectionVehicleMovementService(IPlayerService<TPlayerEntity> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
         : base(playerService, physx, cacheProvider, loggerFactory) { }
 
-
-    // protected override void ApplyRotation(Body body, TPlayerEntity entity, IMovementPacket input)
-    // {
-    //     body.Rotation += entity.RotationSpeed;
-    // }
-
-
     protected override void ApplyMovement(Body body, TPlayerEntity vehicle, IMovementPacket input)
     {
         if (input is not EightDirectionMovementPacket eightDirectionMovementPacket) return;
@@ -198,11 +190,6 @@ public abstract class ForwardSpacehipMovementService<TPlayerEntity> : ForwardMov
     protected ForwardSpacehipMovementService(IPlayerService<TPlayerEntity> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
     {
     }
-
-    // protected override void ApplyRotation(Body body, TPlayerEntity vehicle, IMovementPacket input)
-    // {
-    //     base.ApplyRotation(body, vehicle, input);
-    // }
 
     protected override void ApplyMovement(Body body, TPlayerEntity vehicle, IMovementPacket input)
     {

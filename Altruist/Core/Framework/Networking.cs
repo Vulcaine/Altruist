@@ -14,10 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
+using System.Numerics;
 using System.Reflection;
 using Altruist.UORM;
-using Microsoft.Xna.Framework;
 
 namespace Altruist.Networking;
 
@@ -38,68 +40,198 @@ public interface ISynchronizedEntity
     public string ConnectionId { get; set; }
 }
 
+public sealed class SyncedProperty
+{
+    public string Name { get; }
+    public int BitIndex { get; set; }
+    public bool SyncAlways { get; }
+    public Func<object, object?> Getter { get; }
+
+    public SyncedProperty(string name, int bitIndex, bool syncAlways, Func<object, object?> getter)
+    {
+        Name = name;
+        BitIndex = bitIndex;
+        SyncAlways = syncAlways;
+        Getter = getter;
+    }
+}
 
 public static class Synchronization
 {
-    private static readonly ConcurrentDictionary<Type, (PropertyInfo[], int)> _syncMetadata = new();
     private static readonly ConcurrentDictionary<string, object?[]> _lastSyncedStates = new();
     private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, object?>> _lastSyncedData = new();
+    private static readonly object _syncLock = new();
 
-    private static object _syncLock = new();
+    public static (ulong[], ConcurrentDictionary<string, object?>) GetChangedData<TType>(
+        TType newEntity,
+        string clientId,
+        bool forceAllAsChanged = false
+    ) where TType : ISynchronizedEntity
+    {
+        lock (_syncLock)
+        {
+            var (properties, count) = SyncMetadataHelper.GetSyncMetadata(newEntity.GetType(), onlySyncedProperties: !forceAllAsChanged);
 
-    // lazy load sync metadata, after warmup syncing will be super fast!
-    private static (PropertyInfo[], int) GetSyncMetadata(Type type, bool onlySyncedProperties = true)
+            int maskCount = (count + 63) / 64;
+            var masks = ArrayPool<ulong>.Shared.Rent(maskCount);
+            Array.Clear(masks, 0, maskCount);
+
+            var lastState = _lastSyncedStates.GetOrAdd(clientId, _ => new object[count]);
+            var changedData = _lastSyncedData.GetOrAdd(clientId, _ => new ConcurrentDictionary<string, object?>());
+            changedData.Clear();
+
+            List<int>? syncAlwaysIndices = null;
+            bool nonSyncAlwaysChanged = false;
+
+            for (int i = 0; i < count; i++)
+            {
+                var prop = properties[i];
+                var newValue = prop.Getter(newEntity);
+                var lastValue = lastState[i];
+
+                bool shouldSync = forceAllAsChanged || !AreValuesEqual(newValue, lastValue);
+
+                if (prop.SyncAlways)
+                {
+                    syncAlwaysIndices ??= new List<int>();
+                    syncAlwaysIndices.Add(i);
+                }
+
+                if (shouldSync)
+                {
+                    nonSyncAlwaysChanged = true;
+
+                    int maskIndex = i / 64;
+                    int bitIndex = i % 64;
+                    masks[maskIndex] |= 1UL << bitIndex;
+
+                    changedData[prop.Name] = newValue;
+                    lastState[i] = CloneValueIfNeeded(newValue);
+                }
+            }
+
+            if (nonSyncAlwaysChanged && syncAlwaysIndices is not null)
+            {
+                foreach (var i in syncAlwaysIndices)
+                {
+                    var prop = properties[i];
+                    var newValue = prop.Getter(newEntity);
+
+                    int maskIndex = i / 64;
+                    int bitIndex = i % 64;
+                    masks[maskIndex] |= 1UL << bitIndex;
+
+                    changedData[prop.Name] = newValue;
+                    lastState[i] = CloneValueIfNeeded(newValue);
+                }
+            }
+
+            return (masks, changedData);
+        }
+    }
+
+    private static object? CloneValueIfNeeded(object? value)
+    {
+        if (value is null)
+            return null;
+
+        if (value is Array array)
+            return array.Clone();
+
+        if (value is string or ValueType)
+            return value;
+
+        return value;
+    }
+
+    private static bool AreValuesEqual(object? a, object? b)
+    {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+
+        if (a is Vector2 va && b is Vector2 vb)
+            return va.Equals(vb);
+
+        if (a is Array arrayA && b is Array arrayB)
+        {
+            if (arrayA.Length != arrayB.Length) return false;
+
+            for (int i = 0; i < arrayA.Length; i++)
+            {
+                if (!AreValuesEqual(arrayA.GetValue(i), arrayB.GetValue(i)))
+                    return false;
+            }
+
+            return true;
+        }
+
+        return a.Equals(b);
+    }
+}
+
+public static class SyncMetadataHelper
+{
+    private static readonly ConcurrentDictionary<Type, (List<SyncedProperty>, int)> _syncMetadata = new();
+
+    public static (List<SyncedProperty> Properties, int Count) GetSyncMetadata(Type type, bool onlySyncedProperties = true)
     {
         return _syncMetadata.GetOrAdd(type, t =>
         {
-            var properties = new List<PropertyInfo>();
-            int baseMaxBitIndex = 0;
+            var syncedProperties = new List<SyncedProperty>();
+            int baseMaxBitIndex = -1;
 
-            // Traverse inheritance chain first (base classes first)
+            // Traverse inheritance tree (base classes first)
             var currentType = t.BaseType;
             while (currentType != null && currentType != typeof(object))
             {
-                var baseProperties = currentType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                    .Where(p => ShouldIncludeProperty(p, onlySyncedProperties))
-                    .ToArray();
+                var baseProps = currentType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(p => ShouldIncludeProperty(p, onlySyncedProperties));
 
-                if (onlySyncedProperties)
+                foreach (var prop in baseProps)
                 {
-                    // Get max BitIndex among base class properties
-                    var baseBitIndexes = baseProperties
-                        .Select(p => p.GetCustomAttribute<SyncedAttribute>()?.BitIndex ?? -1)
-                        .Where(index => index >= 0);
+                    var attr = prop.GetCustomAttribute<SyncedAttribute>();
+                    var bitIndex = attr?.BitIndex ?? throw new InvalidOperationException($"Synced property {prop.Name} must have BitIndex");
+                    var syncAlways = attr.SyncAlways;
 
-                    if (baseBitIndexes.Any())
-                        baseMaxBitIndex = Math.Max(baseMaxBitIndex, baseBitIndexes.Max());
+                    if (bitIndex > baseMaxBitIndex)
+                        baseMaxBitIndex = bitIndex;
+
+                    syncedProperties.Add(BuildSyncedProperty(prop, bitIndex, syncAlways ?? false));
                 }
 
-                properties.AddRange(baseProperties);
                 currentType = currentType.BaseType;
             }
 
-            // Now add properties from the current type (DeclaredOnly ensures no base duplication)
-            var localProperties = t.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => ShouldIncludeProperty(p, onlySyncedProperties))
-                .ToArray();
+            // Add local properties
+            var localProps = t.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => ShouldIncludeProperty(p, onlySyncedProperties));
 
-            if (onlySyncedProperties)
+            foreach (var prop in localProps)
             {
-                foreach (var prop in localProperties)
-                {
-                    var attr = prop.GetCustomAttribute<SyncedAttribute>();
-                    if (attr != null)
-                    {
-                        // Offset BitIndex
-                        attr.BitIndex += baseMaxBitIndex + 1;
-                    }
-                }
+                var attr = prop.GetCustomAttribute<SyncedAttribute>();
+                if (attr is null) continue;
+
+                var localBitIndex = attr.BitIndex;
+                var globalBitIndex = baseMaxBitIndex + 1 + localBitIndex;
+
+                syncedProperties.Add(BuildSyncedProperty(prop, globalBitIndex, attr.SyncAlways ?? false));
             }
 
-            properties.AddRange(localProperties);
-            return (properties.ToArray(), properties.Count);
+            return (syncedProperties, syncedProperties.Count);
         });
     }
+
+    private static SyncedProperty BuildSyncedProperty(PropertyInfo prop, int bitIndex, bool syncAlways)
+    {
+        var param = Expression.Parameter(typeof(object), "obj");
+        var casted = Expression.Convert(param, prop.DeclaringType!);
+        var access = Expression.Property(casted, prop);
+        var convert = Expression.Convert(access, typeof(object));
+        var lambda = Expression.Lambda<Func<object, object?>>(convert, param).Compile();
+
+        return new SyncedProperty(prop.Name, bitIndex, syncAlways, lambda);
+    }
+
 
     /// <summary>
     /// Determines if a property should be included based on its attributes.
@@ -120,102 +252,5 @@ public static class Synchronization
         return onlySyncedProperties
             ? Attribute.IsDefined(prop, typeof(SyncedAttribute))
             : Attribute.IsDefined(prop, typeof(VaultColumnAttribute));
-    }
-
-    public static (ulong[], Dictionary<string, object?>) GetChangedData<TType>(TType newEntity, string clientId, bool forceAllAsChanged = false) where TType : ISynchronizedEntity
-    {
-        lock (_syncLock)
-        {
-            var (properties, count) = GetSyncMetadata(newEntity.GetType(), onlySyncedProperties: !forceAllAsChanged);
-
-            int maskCount = (count + 63) / 64; // 1 ulong per 64 properties
-            var masks = new ulong[maskCount];
-
-            var lastState = _lastSyncedStates.GetOrAdd(clientId, _ => new object[count]);
-            var changedData = _lastSyncedData.GetOrAdd(clientId, _ => new ConcurrentDictionary<string, object?>());
-            changedData.Clear();
-
-            var syncAlwaysProperties = new List<int>(); // Collect the indices of SyncAlways properties
-            bool nonSyncAlwaysChanged = false; // Track if any non-SyncAlways property has changed
-
-            // First pass: collect SyncAlways properties
-            for (int i = 0; i < count; i++)
-            {
-                var propertyName = properties[i].Name;
-                var propertySyncedAttribute = properties[i].GetCustomAttribute<SyncedAttribute>();
-                var newValue = properties[i].GetValue(newEntity);
-                var lastStateValue = lastState[i];
-
-                bool isSyncAlways = propertySyncedAttribute != null && propertySyncedAttribute.SyncAlways == true;
-                bool shouldSync = forceAllAsChanged || !AreValuesEqual(newValue, lastStateValue);
-
-                if (isSyncAlways)
-                {
-                    // Collect SyncAlways property indices
-                    syncAlwaysProperties.Add(i);
-                }
-
-                if (shouldSync)
-                {
-                    // For non-SyncAlways properties, mark them as changed and set the flag
-                    nonSyncAlwaysChanged = true;
-
-                    int maskIndex = i / 64;   // Which ulong
-                    int bitIndex = i % 64;    // Which bit inside the ulong
-                    masks[maskIndex] |= 1UL << bitIndex;
-
-                    changedData[propertyName] = newValue;
-                    lastState[i] = newValue;
-                }
-            }
-
-            // Second pass: If any non-SyncAlways property has changed, mark all SyncAlways properties
-            if (nonSyncAlwaysChanged)
-            {
-                foreach (var i in syncAlwaysProperties)
-                {
-                    var propertyName = properties[i].Name;
-                    var newValue = properties[i].GetValue(newEntity);
-                    int maskIndex = i / 64;   // Which ulong
-                    int bitIndex = i % 64;    // Which bit inside the ulong
-                    masks[maskIndex] |= 1UL << bitIndex;
-
-                    changedData[propertyName] = newValue;
-                    lastState[i] = newValue;
-                }
-            }
-
-            return (masks, changedData.ToDictionary());
-        }
-    }
-
-    private static bool AreValuesEqual(object? a, object? b)
-    {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-
-        // Handle Vector2 explicitly
-        if (a is Vector2 va && b is Vector2 vb)
-            return va.Equals(vb);
-
-        // Handle arrays
-        if (a is Array arrayA && b is Array arrayB)
-        {
-            if (arrayA.Length != arrayB.Length) return false;
-
-            for (int i = 0; i < arrayA.Length; i++)
-            {
-                var itemA = arrayA.GetValue(i);
-                var itemB = arrayB.GetValue(i);
-
-                if (!AreValuesEqual(itemA, itemB))
-                    return false;
-            }
-
-            return true;
-        }
-
-        // Fallback to default equality
-        return a.Equals(b);
     }
 }
