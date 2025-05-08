@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Gaming.Inventory</PackageId>
     <Description>Gaming.Inventory module for Altruist framework.</Description>
-    <Version>0.3.1-alpha</Version>
+    <Version>0.3.2-alpha</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>./README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
