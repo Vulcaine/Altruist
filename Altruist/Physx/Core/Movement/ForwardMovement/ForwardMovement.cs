@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using FarseerPhysics.Dynamics;
-using Microsoft.Xna.Framework;
+using Box2DSharp.Dynamics;
+using Box2DSharp.Common;
+using System.Numerics;
 
 namespace Altruist.Physx;
 
@@ -36,7 +37,8 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
             );
         }
 
-        Vector2 direction = new Vector2(MathF.Cos(body.Rotation), MathF.Sin(body.Rotation));
+        float angle = body.GetAngle();
+        Vector2 direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
         float accelerationFactor = input.Turbo ? 2.0f : 1.0f;
 
         float currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
@@ -61,7 +63,8 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
 
     public virtual MovementPhysxOutput CalculateDeceleration(Body body, ForwardMovementPhysxInput input)
     {
-        Vector2 direction = new Vector2(MathF.Cos(body.Rotation), MathF.Sin(body.Rotation));
+        float angle = body.GetAngle();
+        Vector2 direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
 
         float decelerationForce = -input.Deceleration * input.CurrentSpeed;
         Vector2 force = direction * decelerationForce * body.Mass;

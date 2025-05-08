@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Numerics;
 using System.Text.Json.Serialization;
 using Altruist.Networking;
 using Altruist.UORM;
-using FarseerPhysics.Dynamics;
-using FarseerPhysics.Factories;
+using Box2DSharp.Collision.Shapes;
+using Box2DSharp.Dynamics;
 using MessagePack;
-using Microsoft.Xna.Framework;
 
 namespace Altruist.Gaming;
 
@@ -544,14 +544,20 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
 
     public void AttachBody(Body body) => PhysxBody = body;
 
-    public virtual void DetachBody() => PhysxBody = null;
+    public virtual void DetachBody()
+    {
+        PhysxBody?.World.DestroyBody(PhysxBody);
+        PhysxBody = null;
+    }
 
     public virtual PlayerEntity Update()
     {
-        if (PhysxBody != null)
+        var position = PhysxBody?.GetPosition();
+        if (PhysxBody != null && (Position[0] != position?.X || Position[1] != position?.Y))
         {
-            Position = [PhysxBody.Position.X, PhysxBody.Position.Y];
-            Rotation = PhysxBody.Rotation;
+            Position[0] = PhysxBody.GetPosition().X;
+            Position[1] = PhysxBody.GetPosition().Y;
+            Rotation = PhysxBody.GetAngle();
         }
 
         return this;
@@ -561,16 +567,37 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     {
         if (PhysxBody != null) return PhysxBody;
 
-        var body = BodyFactory.CreateRectangle(world, width: Size.X, height: Size.Y, density: 1f, Position);
+        // Define the body
+        var bodyDef = new BodyDef
+        {
+            BodyType = BodyType.DynamicBody,
+            Position = new Vector2(Position[0], Position[1]),
+            Angle = Rotation,
+            FixedRotation = true,
+            LinearDamping = 1f
+        };
 
-        body.BodyType = BodyType.Dynamic;
-        body.Rotation = Rotation;
-        body.FixedRotation = true;
-        body.Friction = 0.2f;
-        body.LinearDamping = 1f;
+        // Create the body
+        var body = world.CreateBody(bodyDef);
+
+        // Define the shape
+        var shape = new PolygonShape();
+        shape.SetAsBox(Size.X * 0.5f, Size.Y * 0.5f); // Box2D uses half-widths
+
+        // Define the fixture
+        var fixtureDef = new FixtureDef
+        {
+            Shape = shape,
+            Density = 1f,
+            Friction = 0.2f
+        };
+
+        // Attach the shape to the body
+        body.CreateFixture(fixtureDef);
         AttachBody(body);
         return body;
     }
+
 }
 
 public abstract class Vehicle : PlayerEntity

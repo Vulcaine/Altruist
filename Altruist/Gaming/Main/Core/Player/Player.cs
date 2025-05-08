@@ -126,6 +126,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
             if (conn == null || !conn.IsConnected)
             {
                 playersToDelete.Add(player.SysId);
+                player.DetachBody();
             }
         }
 

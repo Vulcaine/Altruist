@@ -99,7 +99,6 @@ public abstract class Portal<TContext> : IPortal, IConnectionStore where TContex
                 {
                     break;
                 }
-                ;
 
                 var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
                 if (!await ProcessPacket(packet, packetData, @event, clientId)) break;

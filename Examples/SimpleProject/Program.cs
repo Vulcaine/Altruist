@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Numerics;
 using Altruist;
 using Altruist.Gaming;
 using Altruist.Gaming.Engine;
 using Altruist.Web;
-using Microsoft.Xna.Framework;
+
 using Portals;
 
 AltruistBuilder.Create(args)
@@ -29,7 +30,6 @@ AltruistBuilder.Create(args)
     setup.MapPortal<SimpleGamePortal>("/game").MapPortal<SimpleMovementPortal>("/game"))
     .WebApp()
     .StartServer();
-
 
 public class MainWorldIndex : WorldIndex
 {
