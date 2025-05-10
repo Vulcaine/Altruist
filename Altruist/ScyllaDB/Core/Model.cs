@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
-using Altruist.Database;
+using Altruist.Persistence;
 
 namespace Altruist.ScyllaDB;
 

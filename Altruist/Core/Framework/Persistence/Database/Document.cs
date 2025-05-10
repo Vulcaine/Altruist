@@ -18,7 +18,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using Altruist.UORM;
 
-namespace Altruist.Database;
+namespace Altruist.Persistence;
 
 
 public class Document

@@ -104,19 +104,21 @@ public struct ByteVector2
     }
 }
 
-public abstract class WorldIndex : IVaultModel
+public abstract class WorldIndex : VaultModel
 {
-    public string SysId { get; set; }
+    public override string SysId { get; set; }
+    public override string GroupId { get; set; }
     public Vector2 Position { get; set; }
     public Vector2 Size { get; set; }
     public Vector2 Gravity { get; set; }
     public int Index { get; set; }
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-    public string Type { get; set; } = "WorldIndex";
+    public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public override string Type { get; set; } = "WorldIndex";
 
     public WorldIndex(int index, Vector2 size, Vector2? gravity = null)
     {
         SysId = Guid.NewGuid().ToString();
+        GroupId = "";
         Index = index;
         Size = size;
         Gravity = gravity ?? new Vector2(0, 9.81f);
@@ -356,16 +358,16 @@ public class SpatialGridIndex
     }
 }
 
-public class WorldPartition : IStoredModel
+public class WorldPartition : StoredModel
 {
     private readonly SpatialGridIndex _spatialIndex = new(cellSize: 16);
-    public string SysId { get; set; } = Guid.NewGuid().ToString();
+    public override string SysId { get; set; } = Guid.NewGuid().ToString();
 
     public IntVector2 Index { get; set; }
     public IntVector2 Position { get; set; }
     public IntVector2 Size { get; set; }
     public IntVector2 Epicenter { get; set; }
-    public string Type { get; set; } = "WorldPartition";
+    public override string Type { get; set; } = "WorldPartition";
 
     public WorldPartition(
         string id,
@@ -628,6 +630,7 @@ public abstract class Vehicle : PlayerEntity
     public bool ToggleTurbo { get; set; }
 
     [VaultColumn]
+    [Synced(5)]
     [JsonPropertyName("engineQuality")]
     public float EngineQuality { get; set; }
 

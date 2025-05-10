@@ -280,6 +280,7 @@ public class EngineStaticTask
 
 public class AltruistEngine : IAltruistEngine
 {
+    public static long CurrentTick { get; private set; } = 0;
     private readonly IServiceProvider _serviceProvider;
     private readonly LinkedList<EngineStaticTask> _staticTasks; // that are scheduled to the engine
     private readonly ConcurrentDictionary<TaskIdentifier, Delegate> _dynamicTasks; // that are sent to the engine dynamically
@@ -288,8 +289,8 @@ public class AltruistEngine : IAltruistEngine
     private CancellationTokenSource _cancellationTokenSource;
     private readonly CycleRate _engineRate;
     private readonly int _preallocatedTaskSize;
-    private Thread _physxThread;
-    private Thread _engineThread;
+    private Thread? _physxThread;
+    private Thread? _engineThread;
 
     public CycleRate Rate => _engineRate;
 
@@ -369,7 +370,7 @@ public class AltruistEngine : IAltruistEngine
                     if (_appStatus.Status == ReadyState.Alive && !Enabled)
                     {
                         Enable();
-                        RunEngineLoop();
+                        _ = RunEngineLoop();
                         return;
                     }
 
@@ -400,7 +401,9 @@ public class AltruistEngine : IAltruistEngine
     private void StartPhysicsLoop()
     {
         long previousTicks = FrameTime.NowTicks;
-        long tickLength = (long)(Stopwatch.Frequency / 15.0); // 15 FPS = ~66.6ms
+        // 15 FPS = ~66.6ms
+        // TODO: This should be configurable
+        long tickLength = (long)(Stopwatch.Frequency / 15.0);
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -429,6 +432,7 @@ public class AltruistEngine : IAltruistEngine
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
+            CurrentTick++;
             long currentTick = FrameTime.NowTicks;
             long elapsedTicks = currentTick - lastTick;
 

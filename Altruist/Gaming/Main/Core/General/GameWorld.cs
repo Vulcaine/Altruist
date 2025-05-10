@@ -146,6 +146,7 @@ public class GameWorldManager
     }
 }
 
+[Service(typeof(GameWorldCoordinator))]
 public class GameWorldCoordinator
 {
     private readonly Dictionary<int, GameWorldManager> _worlds = new();

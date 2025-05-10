@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
+using Altruist.Persistence;
 using StackExchange.Redis;
 
 namespace Altruist;
@@ -83,7 +84,6 @@ public interface ICacheProvider
     /// <param name="entities">A dictionary where the key is the cache key and the value is the object to store.</param>
     /// <returns>A task representing the asynchronous batch save operation.</returns>
     Task SaveBatchAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull;
-
     /// <summary>
     /// Removes an object from the cache and returns it.
     /// This method first retrieves the object before removing it, making it useful if the object needs to be used after deletion.
@@ -118,13 +118,51 @@ public interface ICacheProvider
 }
 
 
-public interface IRedisCacheProvider : IExternalCacheProvider
+/// <summary>
+/// Represents a Redis-based cache provider that supports both in-memory and remote Redis operations.
+/// </summary>
+public interface IRedisCacheProvider : IRemoteCacheProvider
 {
+    /// <summary>
+    /// Retrieves all keys stored in Redis for a given type.
+    /// </summary>
+    /// <typeparam name="T">The type of entities whose keys to retrieve.</typeparam>
+    /// <returns>A task representing the asynchronous operation, returning a collection of Redis keys.</returns>
+    /// <remarks>
+    /// This method bypasses in-memory caching and queries Redis directly.
+    /// </remarks>
     Task<IEnumerable<RedisKey>> KeysAsync<T>() where T : notnull;
 }
 
-public interface IExternalCacheProvider : ICacheProvider, IConnectable
+
+public interface IRemoteCacheProvider : ICacheProvider, IConnectable, ISyncService
 {
+    /// <summary>
+    /// Saves the specified entity to both external and the in-memory cache.
+    /// </summary>
+    /// <typeparam name="T">The type of the entity being saved.</typeparam>
+    /// <param name="key">The key under which to store the entity.</param>
+    /// <param name="entity">The entity to be cached.</param>
+    /// <param name="cacheGroupId">Optional group identifier for logical cache separation.</param>
+    /// <returns>A task representing the asynchronous save operation.</returns>
+    /// <remarks>
+    /// This method ensures consistency by writing to both external and in-memory cache layers.
+    /// </remarks>
+    Task SaveRemoteAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull;
+
+    Task<T?> GetRemoteAsync<T>(string key, string cacheGroupId = "") where T : notnull;
+
+    Task SaveBatchRemoteAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull;
+
+    Task<T?> RemoveRemoteAsync<T>(string key, string cacheGroupId = "") where T : notnull;
+
+    Task ClearRemoteAsync<T>(string cacheGroupId = "") where T : notnull;
+
+    Task ClearAllRemoteAsync();
+
+    Task<ICursor<T>> GetAllRemoteAsync<T>(int batchSize = 100, string cacheGroupId = "") where T : notnull;
+
+    Task<ICursor<object>> GetAllRemoteAsync(Type type, string cacheGroupId = "");
 }
 
 

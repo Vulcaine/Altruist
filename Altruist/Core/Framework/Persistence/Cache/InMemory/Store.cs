@@ -50,6 +50,8 @@ public class InMemoryCache : IMemoryCacheProvider
     private readonly ConcurrentDictionary<Type, GroupCache> _cache = new();
     public ICacheServiceToken Token => new InMemoryCacheServiceToken();
 
+    public IEnumerable<Type> AvailableTypes => _cache.Keys;
+
     private EntityCache GetOrCreateEntityCache(Type type, string cacheGroupId = "")
     {
         var groupMap = _cache.GetOrAdd(type, _ => new GroupCache());

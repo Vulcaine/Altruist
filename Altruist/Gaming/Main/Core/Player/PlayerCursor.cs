@@ -85,7 +85,7 @@ public class PlayerCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull
 
 }
 
-
+[Service(typeof(IPlayerCursorFactory))]
 public class PlayerCursorFactory : IPlayerCursorFactory
 {
     private readonly ICacheProvider _cacheProvider;

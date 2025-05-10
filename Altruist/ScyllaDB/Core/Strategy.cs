@@ -16,7 +16,7 @@ limitations under the License.
 
 using System.Reflection;
 using Altruist.Contracts;
-using Altruist.Database;
+using Altruist.Persistence;
 using Altruist.UORM;
 using Cassandra;
 using Microsoft.Extensions.DependencyInjection;

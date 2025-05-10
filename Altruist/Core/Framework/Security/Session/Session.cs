@@ -16,7 +16,7 @@ limitations under the License.
 
 using System.Collections.Concurrent;
 using System.Net;
-using Altruist.Database;
+using Altruist.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 
@@ -98,7 +98,8 @@ public class SessionTokenAuth : IShieldAuth
     {
         if (session.AccessExpiration < now)
         {
-            _sessionCache.TryRemove(session.AccessToken, out _); // Cleanup expired session
+            // Cleanup expired session
+            _sessionCache.TryRemove(session.AccessToken, out _);
             return false;
         }
 

@@ -14,16 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Net;
 using System.Text;
-using Altruist.Database;
+using Altruist.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Server.Kestrel.Https;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -54,7 +49,7 @@ public static class WebAppAuthExtensions
             var repo = repoFactory.Make<TKeyspace>();
             return new TokenSessionSyncService(sp.GetRequiredService<ICacheProvider>(), repo.Select<AuthTokenSessionModel>());
         });
-        builder.Services.AddSingleton(typeof(IVaultCacheSyncService<>), sp => sp.GetRequiredService<TokenSessionSyncService>());
+        builder.Services.AddSingleton<ISyncService>(sp => sp.GetRequiredService<TokenSessionSyncService>());
         builder.Services.AddSingleton<SessionTokenIssuer>();
         builder.Services.AddKeyedScoped<IIssuer>(IssuerKeys.SessionToken, (sp, key) => sp.GetRequiredService<SessionTokenIssuer>());
         return builder;
