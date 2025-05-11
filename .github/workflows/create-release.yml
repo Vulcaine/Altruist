@@ -31,6 +31,8 @@ jobs:
           echo "log<<EOF" >> $GITHUB_OUTPUT
           echo "$prs" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🔁 Create PR via GitHub REST API
         env:
