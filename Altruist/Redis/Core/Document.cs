@@ -16,7 +16,7 @@ limitations under the License.
 
 using System.Reflection;
 using System.Text.Json.Serialization;
-using Altruist.Database;
+using Altruist.Persistence;
 using Altruist.UORM;
 using StackExchange.Redis;
 

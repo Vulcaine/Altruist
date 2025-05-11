@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System;
+
 namespace Altruist.Engine;
 
 
@@ -21,9 +23,12 @@ public class TaskIdentifier : IEquatable<TaskIdentifier>
 {
     public string Id { get; }
 
+    public int Seed { get; }
+
     public TaskIdentifier(string id)
     {
         Id = id ?? throw new ArgumentNullException(nameof(id));
+        Seed = Random.Shared.Next();
     }
 
     public bool Equals(TaskIdentifier? other)
@@ -32,14 +37,16 @@ public class TaskIdentifier : IEquatable<TaskIdentifier>
         return Id.Equals(other.Id, StringComparison.Ordinal);
     }
 
-    public override int GetHashCode()
-    {
-        return Id.GetHashCode();
-    }
+    public override int GetHashCode() => Id.GetHashCode();
 
-    public static TaskIdentifier FromType(Type type)
+    public static TaskIdentifier FromType(Type type) => new(type.FullName!);
+
+    public static TaskIdentifier FromDelegate(Delegate del)
     {
-        return new TaskIdentifier(type.FullName!);
+        var method = del.Method;
+        var declaringType = method.DeclaringType?.FullName ?? $"UnknownType_{Guid.NewGuid()}";
+        var methodName = method.Name;
+        return new TaskIdentifier($"{declaringType}.{methodName}");
     }
 
     public override string ToString() => Id;

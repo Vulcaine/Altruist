@@ -207,33 +207,6 @@ namespace Altruist
             logBuilder.AppendLine("║ ✨ Welcome, traveler! 🧙                           ║");
             logBuilder.AppendLine("╚════════════════════════════════════════════════════╝");
 
-            // if (_settings.EngineEnabled)
-            // {
-            //     var scheduler = App.Services.GetService<MethodScheduler>();
-            //     var methods = scheduler!.RegisterMethods(App.Services);
-            //     var engine = App.Services.GetService<IAltruistEngine>();
-            //     engine!.Start();
-
-            //     logBuilder.AppendLine(PortaledText(
-            //         $"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!"));
-
-            //     if (methods.Any())
-            //     {
-            //         var methodsDisplay = string.Join("\n", methods.Select(m =>
-            //         {
-            //             var regen = m.GetCustomAttribute<CycleAttribute>();
-            //             var frequency = regen!.ToString();
-            //             return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
-            //         }));
-
-            //         logBuilder.AppendLine(PortaledText($"   🚀 Scheduled methods:\n{methodsDisplay}"));
-            //     }
-            //     else
-            //     {
-            //         logBuilder.AppendLine(PortaledText("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!"));
-            //     }
-            // }
-
             Console.WriteLine("\n" + logBuilder.ToString() + "\n");
             Console.WriteLine(_settings.AppStatus.ToString());
 

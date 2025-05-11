@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
+[Service(typeof(GamePortalContext))]
 public class GamePortalContext : PortalContext
 {
     public IPlayerCursorFactory PlayerCursorFactory { get; }

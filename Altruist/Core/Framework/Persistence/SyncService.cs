@@ -14,12 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-namespace Altruist.Database;
+namespace Altruist.Persistence;
 
-public interface IVaultCacheSyncService<TVaultModel> where TVaultModel : class, IVaultModel
+public interface ISyncService
 {
-    public Task Sync();
+    public Task PushAsync();
+    public Task PullAsync();
+}
 
+public interface IVaultCacheSyncService<TVaultModel> : ISyncService where TVaultModel : class, IVaultModel
+{
     public Task SaveAsync(TVaultModel entity, string cacheGroupId = "");
 
     public Task<TVaultModel?> DeleteAsync(string id, string cacheGroupId = "");
@@ -76,7 +80,7 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         return _vault!.Where(x => x.SysId == id).FirstOrDefaultAsync();
     }
 
-    public virtual async Task Sync()
+    public virtual async Task PullAsync()
     {
         ValidateVault();
         var all = await _vault!.ToListAsync();
@@ -87,6 +91,16 @@ public abstract class AbstractVaultCacheSyncService<TVaultModel> : IVaultCacheSy
         }
 
         Task.WaitAll(tasks);
+    }
+
+    public virtual async Task PushAsync()
+    {
+        ValidateVault();
+        var all = await _cacheProvider.GetAllAsync<TVaultModel>();
+        foreach (var item in all)
+        {
+            await _vault!.SaveAsync(item);
+        }
     }
 
     public async Task SaveAsync(TVaultModel entity, string cacheGroupId = "")

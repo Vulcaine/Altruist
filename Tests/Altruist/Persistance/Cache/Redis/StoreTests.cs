@@ -19,6 +19,7 @@ using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Altruist;
+using Altruist.InMemory;
 using Altruist.Redis;
 using Moq;
 using StackExchange.Redis;
@@ -29,6 +30,7 @@ public class RedisCacheProviderTests
     private readonly Mock<IDatabase> _mockDatabase;
     private readonly Mock<IBatch> _mockDatabaseBatch;
     private readonly Mock<IServer> _mockServer;
+    private readonly Mock<InMemoryCache> _mockInMemoryCache;
     private readonly RedisCacheProvider _cacheProvider;
 
     private readonly RedisServiceConfiguration _configuration = (RedisCacheServiceToken.Instance.Configuration as RedisServiceConfiguration)!;
@@ -39,6 +41,7 @@ public class RedisCacheProviderTests
         _mockDatabase = new Mock<IDatabase>();
         _mockServer = new Mock<IServer>();
         _mockDatabaseBatch = new Mock<IBatch>();
+        _mockInMemoryCache = new Mock<InMemoryCache>();
 
         _mockMultiplexer.Setup(m => m.GetDatabase(It.IsAny<int>(), It.IsAny<object>())).Returns(_mockDatabase.Object);
         _mockMultiplexer.Setup(m => m.GetServer(It.IsAny<EndPoint>(), It.IsAny<object>())).Returns(_mockServer.Object);
@@ -46,7 +49,7 @@ public class RedisCacheProviderTests
         _mockDatabase.Setup(m => m.Multiplexer).Returns(_mockMultiplexer.Object);
 
         _configuration.AddDocument<TestEntity>();
-        _cacheProvider = new RedisCacheProvider(_mockMultiplexer.Object);
+        _cacheProvider = new RedisCacheProvider(_mockMultiplexer.Object, _mockInMemoryCache.Object);
     }
 
     private class TestEntity : IStoredModel
@@ -54,6 +57,7 @@ public class RedisCacheProviderTests
         public string SysId { get; set; } = Guid.NewGuid().ToString();
         public string Name { get; set; } = "Test";
         public string Type { get; set; } = "TestEntity";
+        public string GroupId { get; set; } = "";
     }
 
     [Fact]
@@ -69,7 +73,7 @@ public class RedisCacheProviderTests
                      .ReturnsAsync(true);
 
         // Act
-        await _cacheProvider.SaveAsync(key, testEntity);
+        await _cacheProvider.SaveRemoteAsync(key, testEntity);
 
         // Assert
         _mockDatabase.Verify(db => db.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), null, false, When.Always
@@ -87,7 +91,7 @@ public class RedisCacheProviderTests
         _mockDatabase.Setup(db => db.StringGetAsync("TestEntity:123", CommandFlags.None)).ReturnsAsync(json);
 
         // Act
-        var result = await _cacheProvider.GetAsync<TestEntity>(key);
+        var result = await _cacheProvider.GetRemoteAsync<TestEntity>(key);
 
         // Assert
         Assert.NotNull(result);
@@ -157,7 +161,7 @@ public class RedisCacheProviderTests
     public async Task ClearAsync_ShouldDeleteAllKeysForGivenType()
     {
         // Arrange
-        var document = Altruist.Database.Document.From(typeof(TestEntity));
+        var document = Altruist.Persistence.Document.From(typeof(TestEntity));
 
         _mockServer.Setup(s => s.Keys(It.IsAny<int>(), It.IsAny<RedisValue>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<int>(), It.IsAny<CommandFlags>()))
                    .Returns(["123", "456"]);
@@ -165,14 +169,14 @@ public class RedisCacheProviderTests
         _mockDatabase.Setup(db => db.KeyDeleteAsync(It.IsAny<RedisKey[]>(), CommandFlags.None)).ReturnsAsync(2);
 
         // Act
-        await _cacheProvider.ClearAsync<TestEntity>();
+        await _cacheProvider.ClearRemoteAsync<TestEntity>();
 
         // Assert
         _mockDatabase.Verify(db => db.KeyDeleteAsync(It.IsAny<RedisKey[]>(), CommandFlags.None), Times.Once);
     }
 
     [Fact]
-    public async Task SaveBatchAsync_ShouldSaveMultipleEntities()
+    public async Task SaveBatchRemoteAsync_ShouldSaveMultipleEntities()
     {
         // Arrange
         var entities = new Dictionary<string, TestEntity>
@@ -186,7 +190,7 @@ public class RedisCacheProviderTests
         , CommandFlags.None)).ReturnsAsync(true);
 
         // Act
-        await _cacheProvider.SaveBatchAsync(entities);
+        await _cacheProvider.SaveBatchRemoteAsync(entities);
 
         // Assert
         _mockDatabase.Verify(db => db.CreateBatch(It.IsAny<object>()), Times.Once);

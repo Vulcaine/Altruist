@@ -19,7 +19,7 @@ using Altruist.Contracts;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Altruist.Database;
+namespace Altruist.Persistence;
 
 public class VaultAdapter<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {

@@ -15,8 +15,9 @@ limitations under the License.
 */
 
 using System.Linq.Expressions;
+using System.Text.Json.Serialization;
 using Altruist.Contracts;
-using Altruist.Database;
+using Altruist.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 
@@ -41,12 +42,21 @@ public interface ITypedModel
 public interface IStoredModel : ITypedModel
 {
     public string SysId { get; set; }
+    public string GroupId { get; set; }
 }
 
 public abstract class StoredModel : IStoredModel
 {
     public abstract string SysId { get; set; }
+    public virtual string GroupId { get; set; } = "";
     public abstract string Type { get; set; }
+
+    public virtual string Key { get; set; }
+
+    public virtual string Group { get; set; }
+
+    [JsonIgnore]
+    public string StoredId => $"{Group}:{Key}";
 }
 
 public interface IVaultFactory<TToken, TConfig> where TConfig : IConfiguration where TToken : IServiceToken<TConfig>

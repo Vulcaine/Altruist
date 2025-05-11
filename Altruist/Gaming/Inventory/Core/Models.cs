@@ -74,7 +74,16 @@ public abstract class BasicItemProperties
 
 public abstract class ItemTemplate : BasicItemProperties, IVaultModel
 {
+    /// <summary>
+    /// Unique identifier for this item template.
+    /// </summary>
     public string SysId { get; set; } = Guid.NewGuid().ToString();
+
+    /// <summary>
+    /// ID of the group this item belongs to. Used for cached lookups.
+    /// </summary>
+    [JsonPropertyName("groupId")]
+    public string GroupId { get; set; } = "";
 
     [JsonPropertyName("id")]
     public long ItemId { get; set; }
@@ -100,6 +109,12 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     public string SysId { get; set; }
 
     /// <summary>
+    /// ID of the group this item belongs to. Used for cached lookups.
+    /// </summary>
+    [JsonPropertyName("groupId")]
+    public string GroupId { get; set; } = "";
+
+    /// <summary>
     /// Static ID that links this item to its template definition.
     /// Template data is immutable and shared between items of the same type.
     /// </summary>
@@ -114,6 +129,8 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
 
     [JsonPropertyName("slotKey")]
     public SlotKey SlotKey { get; }
+
+
     /// <summary>
     /// Constructs a new inventory item with customizable dimensions, category, and properties.
     /// </summary>

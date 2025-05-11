@@ -23,15 +23,26 @@ public interface IAltruistRouterSender
     Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase;
 }
 
+public interface IClientSynchronizator
+{
+    Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false);
+}
+
 public interface IAltruistRouter
 {
     ClientSender Client { get; }
     RoomSender Room { get; }
     BroadcastSender Broadcast { get; }
-    ClientSynchronizator Synchronize { get; }
-
+    IClientSynchronizator Synchronize { get; }
 }
 
+public class ClientSynchronizator : IClientSynchronizator
+{
+    public Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
+    {
+        throw new NotImplementedException($"ClientSynchronizator.SendAsync() is not implemented. Only working with a gaming module.");
+    }
+}
 
 public abstract class AbstractAltruistRouter : IAltruistRouter
 {
@@ -44,9 +55,9 @@ public abstract class AbstractAltruistRouter : IAltruistRouter
 
     public BroadcastSender Broadcast { get; }
 
-    public ClientSynchronizator Synchronize { get; }
+    public IClientSynchronizator Synchronize { get; }
 
-    public AbstractAltruistRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator)
+    public AbstractAltruistRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, IClientSynchronizator clientSynchronizator)
     {
         _connectionStore = store;
         _codec = codec;
@@ -60,7 +71,7 @@ public abstract class AbstractAltruistRouter : IAltruistRouter
 
 public abstract class DirectRouter : AbstractAltruistRouter
 {
-    protected DirectRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, ClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
+    protected DirectRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, IClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
     }
 }
@@ -117,30 +128,6 @@ public class RoomSender : IAltruistRouterSender
             }
         }
     }
-}
-
-public class ClientSynchronizator
-{
-    private readonly BroadcastSender _broadcast;
-
-    public ClientSynchronizator(BroadcastSender broadcastSender)
-    {
-        _broadcast = broadcastSender;
-    }
-
-    public virtual async Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
-    {
-        var (changeMasks, changedProperties) = Synchronization.GetChangedData(entity, entity.ConnectionId, forceAllAsChanged);
-
-        bool anyChanges = changeMasks.Any(mask => mask != 0);
-        if (!anyChanges)
-            return;
-
-        var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-        var syncData = new SyncPacket("server", entity.GetType().Name, safeCopy);
-        await _broadcast.SendAsync(syncData);
-    }
-
 }
 
 public class BroadcastSender

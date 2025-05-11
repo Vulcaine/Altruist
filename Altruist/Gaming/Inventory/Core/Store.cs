@@ -14,20 +14,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Text.Json.Serialization;
+
 namespace Altruist.Gaming;
 
 public class ItemStorage : IVaultModel
 {
+    /// <summary>
+    /// Unique ID of the item.
+    /// </summary>
+    [JsonPropertyName("sysId")]
     public string SysId { get; set; }
+    /// <summary>
+    /// ID of the group this item belongs to. Used for cached lookups.
+    /// </summary>
+    [JsonPropertyName("groupId")]
+    public string GroupId { get; set; } = "";
+
+    [JsonPropertyName("principal")]
     public IStoragePrincipal Principal { get; }
+
+    [JsonPropertyName("storageId")]
     public string StorageId { get; set; }
+
+    [JsonPropertyName("slotMap")]
     public Dictionary<SlotKey, StorageSlot> SlotMap { get; set; }
 
+    [JsonPropertyName("maxWidth")]
     public short MaxWidth { get; set; } = 10;
+
+    [JsonPropertyName("maxHeight")]
     public short MaxHeight { get; set; } = 10;
 
+    [JsonPropertyName("slotCapacity")]
     public short SlotCapacity { get; set; } = 1;
+
+    [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [JsonPropertyName("type")]
     public string Type { get; set; } = "ItemStorage";
 
     public ItemStorage(

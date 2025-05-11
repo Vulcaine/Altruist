@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 using Altruist;
-using Altruist.Database;
+using Altruist.Persistence;
 using Altruist.UORM;
 using Moq;
 
@@ -188,7 +188,7 @@ public class CqlVaultTests
         // Act
         var query = _vault.BuildSelectQuery();
 
-        string expectedColumns = "id AS Id, name AS Name, timestamp AS Timestamp, type AS Type, sysId AS SysId";
+        string expectedColumns = "id AS Id, name AS Name, timestamp AS Timestamp, type AS Type, sysId AS SysId, groupId AS GroupId";
         string expectedTable = typeof(TestVaultModel).Name;
         string expectedOrderByClause = "ORDER BY Name";
 
@@ -352,6 +352,7 @@ public class TestVaultModel : IVaultModel
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
     public string SysId { get; set; } = Guid.NewGuid().ToString();
+    public string GroupId { get; set; } = "";
 }
 
 [Vault("test", StoreHistory: true)]
@@ -362,4 +363,5 @@ public class TestHistoryVaultModel : IVaultModel
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
     public string SysId { get; set; } = Guid.NewGuid().ToString();
+    public string GroupId { get; set; } = "";
 }

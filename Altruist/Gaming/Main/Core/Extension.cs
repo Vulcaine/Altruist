@@ -46,15 +46,15 @@ public class GameConfig : IConfiguration
 {
     public void Configure(IServiceCollection services)
     {
-        services.AddSingleton<GamePortalContext>();
+        // services.AddSingleton<GamePortalContext>();
         services.AddSingleton<IWorldPartitioner>(sp =>
        {
            return new WorldPartitioner(64, 64);
        });
 
-        services.AddSingleton<IPlayerCursorFactory, PlayerCursorFactory>();
+        // services.AddSingleton<IPlayerCursorFactory, PlayerCursorFactory>();
         services.AddSingleton(typeof(PlayerCursor<>));
-        services.AddSingleton<GameWorldCoordinator>();
+        // services.AddSingleton<GameWorldCoordinator>();
         services.AddSingleton<MovementPhysx>();
         services.AddSingleton(typeof(IPlayerService<>), typeof(AltruistPlayerService<>));
     }

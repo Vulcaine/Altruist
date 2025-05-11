@@ -29,7 +29,9 @@ public class AltruistConfig : IConfiguration
         var typesWithServiceAttr = assemblies
             .SelectMany(SafeGetTypes)
             .Where(t => t.IsClass && !t.IsAbstract)
-            .Where(t => t.GetCustomAttributes<ServiceAttribute>().Any());
+            .Where(t => t.GetCustomAttributes(typeof(ServiceAttribute), inherit: false).Any());
+
+        var registeredServices = new List<string>();
 
         foreach (var type in typesWithServiceAttr)
         {
@@ -43,10 +45,37 @@ public class AltruistConfig : IConfiguration
                 }
 
                 services.Add(new ServiceDescriptor(serviceType, type, attr.Lifetime));
-                logger.LogInformation($"✅ Registered {type.FullName} as {serviceType.FullName} ({attr.Lifetime})");
+
+                var from = GetCleanName(serviceType);
+                var to = GetCleanName(type);
+                registeredServices.Add($"\t{from} → {to} ({attr.Lifetime})");
             }
         }
+
+        if (registeredServices.Count > 0)
+        {
+            logger.LogInformation($"✅ Registered services:\n" + string.Join("\n", registeredServices));
+        }
     }
+
+    private static string GetCleanName(Type type)
+    {
+        if (type.IsGenericType)
+        {
+            var name = type.Name;
+            var tickIndex = name.IndexOf('`');
+            if (tickIndex > 0)
+                name = name.Substring(0, tickIndex);
+
+            var genericArgs = type.GetGenericArguments()
+                .Select(GetCleanName); // Recursive formatting
+            return $"{name}<{string.Join(", ", genericArgs)}>";
+        }
+
+        return type.Name;
+    }
+
+
 
     private static Type InferServiceType(Type implementationType)
     {
