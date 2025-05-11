@@ -334,6 +334,14 @@ public class AltruistEngine : IAltruistEngine
         var existing = _scheduledDynamicTasks.TryGetValue(taskId, out var existingTask);
         if (existingTask != null && !existingTask.IsCompleted)
         {
+            // TODO: Currently, if a task is triggered while an existing one with the same ID is still running,
+            // the new trigger is ignored. This can lead to missed executions if the task isn't scheduled again.
+            //
+            // Consider implementing a trigger queue or flag-based requeue system:
+            // - If a task is already running, queue a "pending" flag or count.
+            // - After the running task completes, check the queue and re-schedule the task if it was triggered again.
+            //
+            // This ensures high-frequency tasks are never silently dropped and are executed at least once per trigger.
             return;
         }
 

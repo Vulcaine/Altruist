@@ -121,7 +121,7 @@ public static class Synchronization
                     || !AreValuesEqual(newValue, lastValue)
                     || (prop.OneTime && lastValue is null);
                 // check for engine ticks
-                shouldSync = forceAllAsChanged || prop.SyncTickFrequency > 0 && currentTick % prop.SyncTickFrequency == 0;
+                shouldSync = forceAllAsChanged || shouldSync && prop.SyncTickFrequency == 0 || prop.SyncTickFrequency > 0 && currentTick % prop.SyncTickFrequency == 0;
 
                 if (prop.SyncAlways)
                 {
