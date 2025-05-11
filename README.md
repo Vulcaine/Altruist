@@ -9,3 +9,6 @@ Altruist is a modular, high-performance game server framework designed for real-
 ## Quick Start
 
 Check out the [Simple Project](https://github.com/Vulcaine/Altruist/tree/main/Examples/SimpleProject)
+
+![Demo of Starship](Assets/Videos/starship.gif)
+
