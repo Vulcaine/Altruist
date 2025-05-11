@@ -1,7 +1,7 @@
 using System.Reflection;
 using Altruist.Codec;
-using Altruist.Database;
 using Altruist.InMemory;
+using Altruist.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
@@ -39,7 +39,7 @@ public class AltruistBuilder
 
         Services.AddSingleton<RoomSender>();
         Services.AddSingleton<BroadcastSender>();
-        Services.AddSingleton<ClientSynchronizator>();
+        Services.AddSingleton<IClientSynchronizator, ClientSynchronizator>();
         // Setup cache
         Services.AddSingleton<InMemoryCache>();
         Services.AddSingleton<IMemoryCacheProvider>(sp => sp.GetRequiredService<InMemoryCache>());

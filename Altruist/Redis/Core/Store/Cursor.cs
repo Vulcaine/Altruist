@@ -30,6 +30,9 @@ public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : not
 
     public bool HasNext { get; private set; } = true;
 
+    // TODO: implement count correctly
+    public int Count { get; } = -1;
+
     public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize, string cacheGroupId = "")
     {
         _redis = redis;

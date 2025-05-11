@@ -16,11 +16,11 @@ limitations under the License.
 
 using System.Reflection;
 using System.Text;
-using Altruist.Contracts;
-using Altruist.Database;
 using Cassandra;
 using Cassandra.Mapping;
 using Altruist.UORM;
+using Altruist.Persistence;
+using Altruist.Contracts;
 
 namespace Altruist.ScyllaDB;
 
@@ -379,7 +379,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
         var tableAttribute = entityType.GetCustomAttribute<VaultAttribute>();
         if (tableAttribute == null)
         {
-            throw new InvalidOperationException($"Type '{entityType.Name}' is missing VaultAttribute.");
+            throw new InvalidOperationException($"Type '{entityType.Name}' is  missing VaultAttribute.");
         }
 
         if (!(keyspace is IScyllaKeyspace))

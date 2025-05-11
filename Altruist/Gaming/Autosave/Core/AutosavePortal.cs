@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
-using Altruist.Database;
 using Altruist.Engine;
+using Altruist.Persistence;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Autosave;

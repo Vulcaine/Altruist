@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System;
+using Cassandra;
+
 namespace Altruist.InMemory
 {
     public class InMemoryCacheTests
@@ -30,7 +33,7 @@ namespace Altruist.InMemory
         {
             // Arrange
             var key = "player1";
-            var entity = new Player { Id = 1, Name = "John" };
+            var entity = new Player { SysId = "1", Name = "John" };
 
             // Act
             await _cache.SaveAsync(key, entity);
@@ -46,7 +49,7 @@ namespace Altruist.InMemory
         {
             // Arrange
             var key = "player1";
-            var entity = new Player { Id = 1, Name = "John" };
+            var entity = new Player { SysId = "1", Name = "John" };
             await _cache.SaveAsync(key, entity);
 
             // Act
@@ -75,7 +78,7 @@ namespace Altruist.InMemory
         {
             // Arrange
             var key = "player1";
-            var entity = new Player { Id = 1, Name = "John" };
+            var entity = new Player { SysId = "1", Name = "John" };
             await _cache.SaveAsync(key, entity);
 
             // Act
@@ -106,8 +109,8 @@ namespace Altruist.InMemory
             // Arrange
             var entities = new Dictionary<string, Player>
             {
-                { "player1", new Player { Id = 1, Name = "John" } },
-                { "player2", new Player { Id = 2, Name = "Jane" } }
+                { "player1", new Player { SysId = "1", Name = "John" } },
+                { "player2", new Player { SysId = "2", Name = "Jane" } }
             };
 
             // Act
@@ -127,8 +130,8 @@ namespace Altruist.InMemory
         public async Task ClearAsync_ShouldClearAllCache()
         {
             // Arrange
-            await _cache.SaveAsync("player1", new Player { Id = 1, Name = "John" });
-            await _cache.SaveAsync("player2", new Player { Id = 2, Name = "Jane" });
+            await _cache.SaveAsync("player1", new Player { SysId = "1", Name = "John" });
+            await _cache.SaveAsync("player2", new Player { SysId = "2", Name = "Jane" });
 
             // Act
             await _cache.ClearAsync<Player>();
@@ -145,8 +148,8 @@ namespace Altruist.InMemory
         public async Task ClearAllAsync_ShouldClearAllCache()
         {
             // Arrange
-            await _cache.SaveAsync("player1", new Player { Id = 1, Name = "John" });
-            await _cache.SaveAsync("player2", new Player { Id = 2, Name = "Jane" });
+            await _cache.SaveAsync("player1", new Player { SysId = "1", Name = "John" });
+            await _cache.SaveAsync("player2", new Player { SysId = "2", Name = "Jane" });
 
             // Act
             await _cache.ClearAllAsync();
@@ -165,9 +168,9 @@ namespace Altruist.InMemory
             // Arrange
             var entities = new Dictionary<string, Player>
             {
-                { "prefix_player1", new Player { Id = 1, Name = "John" } },
-                { "prefix_player2", new Player { Id = 2, Name = "Jane" } },
-                { "other_key", new Player { Id = 3, Name = "Jack" } }
+                { "prefix_player1", new Player { SysId = "1", Name = "John" } },
+                { "prefix_player2", new Player { SysId = "2", Name = "Jane" } },
+                { "other_key", new Player { SysId = "3", Name = "Jack" } }
             };
 
             await _cache.SaveBatchAsync(entities);
@@ -187,8 +190,8 @@ namespace Altruist.InMemory
             // Arrange
             var entities = new Dictionary<string, Player>
             {
-                { "player1", new Player { Id = 1, Name = "John" } },
-                { "player2", new Player { Id = 2, Name = "Jane" } }
+                { "player1", new Player { SysId = "1", Name = "John" } },
+                { "player2", new Player { SysId = "2", Name = "Jane" } }
             };
 
             await _cache.SaveBatchAsync(entities);
@@ -218,10 +221,12 @@ namespace Altruist.InMemory
             Assert.Equal(3, retrievedEntity.Data.Length);
         }
 
-        public class Player
+        public class Player : IStoredModel
         {
-            public int Id { get; set; }
+            public string SysId { get; set; } = Guid.NewGuid().ToString();
             public string Name { get; set; } = "";
+            public string GroupId { get; set; } = "";
+            public string Type { get; set; } = "Player";
         }
 
         public class ComplexEntity

@@ -21,6 +21,7 @@ using StackExchange.Redis;
 using System.Text.Json;
 using System.Text;
 using Altruist.Contracts;
+using Altruist.InMemory;
 
 namespace Altruist.Redis;
 
@@ -31,13 +32,15 @@ public interface IAltruistRedisConnectionProvider : IConnectionStore
 
 public sealed class RedisCacheProvider : IRedisCacheProvider
 {
+    private readonly InMemoryCache _memoryCache;
     private readonly IDatabase _redis;
     private readonly Dictionary<Type, RedisDocument> _documents = new();
 
     private readonly Dictionary<string, RedisDocument> _typeLookup = new();
 
-    public RedisCacheProvider(IConnectionMultiplexer mux)
+    public RedisCacheProvider(IConnectionMultiplexer mux, InMemoryCache inMemoryCache)
     {
+        _memoryCache = inMemoryCache;
         _redis = mux.GetDatabase();
         var documentHelper = new RedisDocumentHelper(mux);
         var documents = documentHelper.CreateDocuments();
@@ -193,17 +196,28 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         return (T)JsonSerializer.Deserialize(jsonSpan, typeDoc.Type)!;
     }
 
-    public async Task<T?> GetAsync<T>(string key, string cacheGroupId = "") where T : notnull
+    public async Task<T?> GetRemoteAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
         return await GetObjectAsync<T>(key, cacheGroupId);
     }
 
-    public async Task SaveAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull
+    public async Task<T?> GetAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
-        await SaveObjectAsync(key, entity, cacheGroupId);
+        return await _memoryCache.GetAsync<T>(key, cacheGroupId);
     }
 
-    public async Task SaveBatchAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull
+    public async Task SaveRemoteAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull
+    {
+        await SaveObjectAsync(key, entity, cacheGroupId);
+        await SaveAsync(key, entity, cacheGroupId);
+    }
+
+    public async Task SaveAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull
+    {
+        await _memoryCache.SaveAsync(key, entity, cacheGroupId);
+    }
+
+    public async Task SaveBatchRemoteAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull
     {
         var batch = _redis.CreateBatch();
         var tasks = new List<Task>();
@@ -215,10 +229,15 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         }
 
         await Task.WhenAll(tasks);
+        await SaveBatchAsync(entities, cacheGroupId);
     }
 
+    public async Task SaveBatchAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull
+    {
+        await _memoryCache.SaveBatchAsync(entities, cacheGroupId);
+    }
 
-    public async Task<T?> RemoveAsync<T>(string key, string cacheGroupId = "") where T : notnull
+    public async Task<T?> RemoveRemoteAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
         var entity = await GetObjectAsync<T>(key, cacheGroupId);
         if (entity != null)
@@ -228,7 +247,12 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         return entity;
     }
 
-    public async Task ClearAsync<T>(string cacheGroupId = "") where T : notnull
+    public async Task<T?> RemoveAsync<T>(string key, string cacheGroupId = "") where T : notnull
+    {
+        return await _memoryCache.RemoveAsync<T>(key, cacheGroupId);
+    }
+
+    public async Task ClearRemoteAsync<T>(string cacheGroupId = "") where T : notnull
     {
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
         var document = GetDocumentOrFail<T>();
@@ -238,13 +262,29 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         {
             await _redis.KeyDeleteAsync(keys);
         }
+
+        await ClearAsync<T>(cacheGroupId);
     }
 
+    public async Task ClearAsync<T>(string cacheGroupId = "") where T : notnull
+    {
+        await _memoryCache.ClearAsync<T>(cacheGroupId);
+    }
 
-    public Task<ICursor<T>> GetAllAsync<T>(int batchSize = 100, string cacheGroupId = "") where T : notnull
+    public Task<ICursor<T>> GetAllRemoteAsync<T>(int batchSize = 100, string cacheGroupId = "") where T : notnull
     {
         var cursor = new RedisCacheCursor<T>(_redis, GetDocumentOrFail<T>(), batchSize, cacheGroupId);
         return Task.FromResult(cursor as ICursor<T>);
+    }
+
+    public Task<ICursor<T>> GetAllRemoteAsync<T>(string cacheGroupId = "") where T : notnull
+    {
+        return GetAllRemoteAsync<T>(100, cacheGroupId);
+    }
+
+    public Task<ICursor<T>> GetAllAsync<T>(string cacheGroupId = "") where T : notnull
+    {
+        return _memoryCache.GetAllAsync<T>(cacheGroupId);
     }
 
     public Task<bool> ContainsAsync<T>(string key, string cacheGroupId = "") where T : notnull
@@ -253,12 +293,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         return _redis.KeyExistsAsync($"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:{key}");
     }
 
-    public async Task<ICursor<T>> GetAllAsync<T>(string cacheGroupId = "") where T : notnull
-    {
-        return await GetAllAsync<T>(100, cacheGroupId);
-    }
-
-    public Task<ICursor<object>> GetAllAsync(Type type, string cacheGroupId = "")
+    public Task<ICursor<object>> GetAllRemoteAsync(Type type, string cacheGroupId = "")
     {
         if (!_documents.TryGetValue(type, out var document))
         {
@@ -271,7 +306,12 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         return Task.FromResult((cursor as ICursor<object>)!) ?? throw new InvalidOperationException("Failed to create cursor.");
     }
 
-    public async Task ClearAllAsync()
+    public Task<ICursor<object>> GetAllAsync(Type type, string cacheGroupId = "")
+    {
+        return _memoryCache.GetAllAsync(type, cacheGroupId);
+    }
+
+    public async Task ClearAllRemoteAsync()
     {
         foreach (var document in _documents.Values)
         {
@@ -283,10 +323,56 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
         }
     }
 
+    public async Task ClearAllAsync()
+    {
+        await _memoryCache.ClearAllAsync();
+    }
+
+    /// <summary>
+    /// Sync data from memory cache to redis
+    /// </summary>
+    /// <returns></returns>
+    public async Task PushAsync()
+    {
+        var allTypes = _documents.Keys;
+        foreach (var type in allTypes)
+        {
+            var memoryCursor = await GetAllAsync(type);
+            foreach (var item in memoryCursor)
+            {
+                if (item is IStoredModel storedModel)
+                {
+                    await SaveRemoteAsync(storedModel.SysId, storedModel, storedModel.GroupId);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Load data from redis into memory cache
+    /// </summary>
+    /// <returns></returns>
+    public async Task PullAsync()
+    {
+        var allTypes = _documents.Keys;
+        foreach (var type in allTypes)
+        {
+            var memoryCursor = await GetAllRemoteAsync(type);
+            foreach (var item in memoryCursor)
+            {
+                if (item is IStoredModel storedModel)
+                {
+                    await SaveAsync(storedModel.SysId, storedModel, storedModel.GroupId);
+                }
+            }
+        }
+    }
+
     public async Task RemoveAndForgetAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
         var document = GetDocumentOrFail<T>();
         await _redis.KeyDeleteAsync($"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:{key}");
+        await RemoveAsync<T>(key, cacheGroupId);
     }
 
     public async Task<IEnumerable<RedisKey>> Keys(string pattern)

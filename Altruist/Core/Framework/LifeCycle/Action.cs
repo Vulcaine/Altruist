@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Altruist.Database;
+using Altruist.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -48,68 +48,52 @@ public class LoadSyncServicesAction : ActionBase
 
     public override async Task Run(IServiceProvider serviceProvider)
     {
-        var syncServices = ServiceProvider.GetServices<object>()
-            .Where(s => s?.GetType().GetInterfaces()
-                .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IVaultCacheSyncService<>)) == true)
-            .ToList();
+        var syncServices = serviceProvider.GetServices<ISyncService>().ToList();
 
         if (syncServices.Count == 0)
         {
-            Logger.LogInformation("ℹ️  No vault cache sync services found to load.");
+            Logger.LogInformation("ℹ️  No sync services found to load.");
             return;
         }
 
-        Logger.LogInformation($"🔄 Starting cache sync for **{syncServices.Count}** vault service(s)...");
+        Logger.LogInformation($"🔄 Starting cache sync for **{syncServices.Count}** service(s)...");
 
         var completed = new List<Type>();
         var failed = new List<(Type Type, string Error)>();
 
-        int index = 1;
-        foreach (var service in syncServices)
+        for (int i = 0; i < syncServices.Count; i++)
         {
+            var service = syncServices[i];
             var serviceType = service.GetType();
+
             try
             {
-                var syncInterface = serviceType.GetInterfaces()
-                    .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IVaultCacheSyncService<>));
+                Logger.LogInformation($"🔁 [{i + 1}/{syncServices.Count}] Syncing `{serviceType.Name}`...");
+                await service.PullAsync();
 
-                if (syncInterface != null)
-                {
-                    var loadMethod = syncInterface.GetMethod("Load");
-                    if (loadMethod != null)
-                    {
-                        Logger.LogInformation($"🔁 [{index}/{syncServices.Count}] Syncing `{serviceType.Name}`...");
-                        var task = (Task)loadMethod.Invoke(service, null)!;
-                        await task;
-
-                        completed.Add(serviceType);
-                        var pct = completed.Count * 100 / syncServices.Count;
-                        Logger.LogInformation($"✅ `{serviceType.Name}` synced successfully. ({pct}%)");
-                    }
-                }
+                completed.Add(serviceType);
+                var pct = completed.Count * 100 / syncServices.Count;
+                Logger.LogInformation($"✅ `{serviceType.Name}` synced successfully. ({pct}%)");
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, $"❌ `{serviceType.Name}` failed to sync.");
                 failed.Add((serviceType, ex.Message));
             }
-
-            index++;
         }
 
-        // Final summary
         if (failed.Count == 0)
         {
-            Logger.LogInformation("🎉 All vault cache services synced successfully!");
+            Logger.LogInformation("🎉 All sync services completed successfully!");
         }
         else
         {
-            Logger.LogWarning($"⚠️ Cache sync completed with **{failed.Count}** failure(s) out of **{syncServices.Count}** services.");
+            Logger.LogWarning($"⚠️ Sync completed with **{failed.Count}** failure(s) out of **{syncServices.Count}** services.");
             Logger.LogWarning("📋 Failed services:");
 
-            foreach (var fail in failed)
+            foreach (var (type, error) in failed)
             {
-                Logger.LogWarning($"   • ❌ `{fail.Type.Name}` → {fail.Error}");
+                Logger.LogWarning($"   • ❌ `{type.Name}` → {error}");
             }
         }
     }

@@ -19,7 +19,7 @@ using System.Reflection;
 using Altruist.UORM;
 using Microsoft.EntityFrameworkCore.Query;
 
-namespace Altruist.Database;
+namespace Altruist.Persistence;
 
 public enum QueryPosition
 {

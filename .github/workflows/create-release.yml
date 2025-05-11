@@ -16,13 +16,23 @@ jobs:
         id: read_version
         run: echo "version=$(cat Altruist/version.txt)" >> $GITHUB_OUTPUT
 
-      - name: 📋 Get commit log
+      - name: 📋 Get merged PR titles
         id: changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          log=$(git log origin/main..origin/staging --pretty=format:"- %s (%an)")
+          prs=$(gh pr list \
+            --base main \
+            --head staging \
+            --state merged \
+            --json number,title \
+            --jq '.[] | "- #" + (.number|tostring) + ": " + .title')
+
           echo "log<<EOF" >> $GITHUB_OUTPUT
-          echo "$log" >> $GITHUB_OUTPUT
+          echo "$prs" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🔁 Create PR via GitHub REST API
         env:

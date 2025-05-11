@@ -19,7 +19,7 @@ using Altruist.Contracts;
 using Altruist.UORM;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Altruist.Database;
+namespace Altruist.Persistence;
 
 public class ReplicationOptions
 {
