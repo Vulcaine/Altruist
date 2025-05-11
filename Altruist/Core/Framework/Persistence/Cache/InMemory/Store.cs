@@ -23,7 +23,6 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.InMemory;
 
 using GroupCache = ConcurrentDictionary<string, EfficientConcurrentCache<object>>;
-using EntityCache = ConcurrentDictionary<string, object>;
 
 public sealed class InMemoryServiceConfiguration : ICacheConfiguration
 {
@@ -60,6 +59,19 @@ public class EfficientConcurrentCache<T> : IEnumerable<T>
         {
             _lock.EnterReadLock();
             try { return _items.Count; }
+            finally { _lock.ExitReadLock(); }
+        }
+    }
+
+    public IEnumerable<string> Keys
+    {
+        get
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                return _indexMap.Keys;
+            }
             finally { _lock.ExitReadLock(); }
         }
     }
@@ -242,16 +254,33 @@ public class InMemoryCache : IMemoryCacheProvider
 
     public Task<List<string>> GetBatchKeysAsync(string baseKey, int skip, int take, string cacheGroupId = "")
     {
-        var keys = _cacheSource.Values
-            .SelectMany(g => g.Values)
-            .SelectMany(d => d.OfType<IStoredModel>())
-            .Select(m => m.SysId)
-            .Where(k => k.StartsWith(baseKey))
-            .Skip(skip)
-            .Take(take)
-            .ToList();
+        var result = new List<string>(take);
+        int skipped = 0;
 
-        return Task.FromResult(keys);
+        foreach (var group in _cacheSource.Values)
+        {
+            if (!group.TryGetValue(cacheGroupId ?? "", out var map))
+                continue;
+
+            foreach (var key in map.Keys)
+            {
+                if (!key.StartsWith(baseKey))
+                    continue;
+
+                if (skipped < skip)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                result.Add(key);
+
+                if (result.Count >= take)
+                    return Task.FromResult(result);
+            }
+        }
+
+        return Task.FromResult(result);
     }
 }
 

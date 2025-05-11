@@ -165,4 +165,5 @@ public class TestModel : IVaultModel
     public DateTime Timestamp { get; set; }
     public string Type { get; set; } = "";
     public string SysId { get; set; } = Guid.NewGuid().ToString();
+    public string GroupId { get; set; } = "";
 }

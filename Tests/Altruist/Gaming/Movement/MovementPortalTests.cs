@@ -53,7 +53,8 @@ public class AltruistMovementPortalTests
         var connectionStoreMock = new Mock<IConnectionStore>();
         var clientSenderMock = new Mock<ClientSender>(connectionStoreMock.Object, codecMock.Object);
         var broadcastMock = new Mock<BroadcastSender>(connectionStoreMock.Object, clientSenderMock.Object);
-        var clientSyncMock = new Mock<ClientSynchronizator>(broadcastMock.Object);
+        var clientSyncMock = new Mock<IClientSynchronizator>();
+        clientSyncMock.Setup(s => s.SendAsync(It.IsAny<ISynchronizedEntity>(), It.IsAny<bool>())).Returns(Task.CompletedTask);
 
         _routerMock.Setup(s => s.Synchronize).Returns(clientSyncMock.Object);
         _routerMock.Setup(s => s.Client).Returns(clientSenderMock.Object);

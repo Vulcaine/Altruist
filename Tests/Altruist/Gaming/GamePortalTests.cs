@@ -16,7 +16,6 @@ limitations under the License.
 
 
 using Altruist.Networking;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -94,7 +93,8 @@ public class AltruistGamePortalTests
         var broadcastMock = new Mock<BroadcastSender>(mockStore, clientMock.Object);
 
         // Mock the ClientSynchronizator with BroadcastSender
-        var clientSyncMock = new Mock<ClientSynchronizator>(broadcastMock.Object);
+        var clientSyncMock = new Mock<IClientSynchronizator>();
+        clientSyncMock.Setup(s => s.SendAsync(It.IsAny<ISynchronizedEntity>(), It.IsAny<bool>())).Returns(Task.CompletedTask);
 
         // Mock the RoomSender and its methods like SendAsync
         var roomSenderMock = new Mock<RoomSender>(mockStore, mockCodec, clientMock.Object) { CallBase = true };
