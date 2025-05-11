@@ -15,43 +15,42 @@ limitations under the License.
 */
 
 using System.Collections;
+using Altruist.InMemory;
 
 namespace Altruist;
 
 public class InMemoryCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
 {
-    private readonly T[] _items;
-    private int CurrentIndex { get; set; }
-    private int BatchSize { get; }
+    private readonly EfficientConcurrentCache<object> _source;
 
-    public bool HasNext => CurrentIndex < _items.Length;
+    public bool HasNext => _source.Count > 0;
 
-    public InMemoryCacheCursor(IEnumerable<T> source, int batchSize)
+    public int Count => _source.Count;
+
+    public InMemoryCacheCursor(EfficientConcurrentCache<object> source, int batchSize = int.MaxValue)
     {
-        _items = source.ToArray();
-        BatchSize = batchSize;
-        CurrentIndex = 0;
+        _source = source;
     }
 
     public Task<IEnumerable<T>> NextBatch()
     {
-        if (!HasNext)
-            return Task.FromResult(Enumerable.Empty<T>());
-
-        int remaining = _items.Length - CurrentIndex;
-        int size = Math.Min(BatchSize, remaining);
-
-        var segment = new ArraySegment<T>(_items, CurrentIndex, size);
-        CurrentIndex += size;
-
-        return Task.FromResult<IEnumerable<T>>(segment);
+        // No batching needed for in-memory — just return all current values
+        throw new NotImplementedException("No batching needed for in-memory — just return all current values.");
     }
 
     public IEnumerator<T> GetEnumerator()
     {
-        CurrentIndex = 0;
-        return ((IEnumerable<T>)_items).GetEnumerator();
+        if (_source == null || _source.Count == 0)
+        {
+            yield break;
+        }
+
+        foreach (var value in _source)
+        {
+            yield return (T)value!;
+        }
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
+

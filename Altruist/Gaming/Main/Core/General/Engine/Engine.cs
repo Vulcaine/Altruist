@@ -213,76 +213,54 @@ public class MethodScheduler
 
     private Func<Task> CreateTaskDelegate(MethodInfo method, object? serviceInstance = null)
     {
-        // var serviceInstance = GetServiceInstance(method.DeclaringType!).Item1;
-        var parameters = method.GetParameters().Length == 0 ? null : new object[0];
-
         if (serviceInstance == null)
-        {
             throw new InvalidOperationException($"Service instance for {method.DeclaringType!.FullName} could not be resolved.");
+
+        if (method.ReturnType == typeof(Task) && method.GetParameters().Length == 0)
+        {
+            var del = (Func<Task>)Delegate.CreateDelegate(typeof(Func<Task>), serviceInstance, method);
+            return del;
         }
 
-        if (method.ReturnType == typeof(Task))
+        if (method.ReturnType == typeof(void) && method.GetParameters().Length == 0)
         {
-            return () => (Task)method.Invoke(serviceInstance, parameters)!;
-        }
-        else if (method.ReturnType == typeof(void))
-        {
+            var del = (Action)Delegate.CreateDelegate(typeof(Action), serviceInstance, method);
             return () =>
             {
-                method.Invoke(serviceInstance, parameters);
+                del();
                 return Task.CompletedTask;
             };
         }
 
-        throw new InvalidOperationException("Only methods returning Task or void are supported.");
-    }
-
-    private (object? serviceInstance, Type resolvedType) GetServiceInstance(Type type)
-    {
-        var serviceInstance = _serviceProvider.GetService(type);
-
-        Type? resolvedType = null;
-        if (serviceInstance == null)
-        {
-            serviceInstance = TryResolveFromInterfaces(type, out resolvedType);
-        }
-
-        return (serviceInstance, resolvedType ?? type);
-    }
-
-    private object? TryResolveFromInterfaces(Type type, out Type? resolvedType)
-    {
-        resolvedType = null;
-
-        foreach (var interfaceType in type.GetInterfaces())
-        {
-            var serviceInstance = _serviceProvider.GetService(interfaceType);
-            if (serviceInstance != null)
-            {
-                resolvedType = interfaceType;
-                return serviceInstance;
-            }
-        }
-
-        return null;
+        throw new InvalidOperationException("Only parameterless methods returning Task or void are supported.");
     }
 }
 
 
 public class EngineStaticTask
 {
+    public TaskIdentifier Id { get; }
     public Delegate Delegate { get; }
     public CycleRate CycleRate { get; }
     public long NextExecuteTime { get; set; }
 
-    public EngineStaticTask(Delegate task, CycleRate cycleRate, long nextExecuteTime) => (Delegate, CycleRate, NextExecuteTime) = (task, cycleRate, nextExecuteTime);
+    public EngineStaticTask(Delegate task, CycleRate cycleRate, long nextExecuteTime)
+    {
+        Delegate = task;
+        CycleRate = cycleRate;
+        NextExecuteTime = nextExecuteTime;
+        Id = TaskIdentifier.FromDelegate(task);
+    }
 }
+
 
 public class AltruistEngine : IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;
     private readonly IServiceProvider _serviceProvider;
-    private readonly LinkedList<EngineStaticTask> _staticTasks; // that are scheduled to the engine
+    // that are scheduled to the engine
+    private readonly LinkedList<EngineStaticTask> _staticTasks;
+    private readonly ConcurrentDictionary<TaskIdentifier, Task> _scheduledDynamicTasks = new();
     private readonly ConcurrentDictionary<TaskIdentifier, Delegate> _dynamicTasks; // that are sent to the engine dynamically
     private readonly Dictionary<string, Action> _precompiledDelegatesCache = new(); // precompiled delegates with dependencies
 
@@ -353,6 +331,13 @@ public class AltruistEngine : IAltruistEngine
 
     public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
     {
+        var existing = _scheduledDynamicTasks.TryGetValue(taskId, out var existingTask);
+        if (existingTask != null && !existingTask.IsCompleted)
+        {
+            return;
+        }
+
+        _scheduledDynamicTasks.TryRemove(taskId, out _);
         _dynamicTasks.AddOrUpdate(taskId, taskDelegate, (_, _) => taskDelegate);
     }
 
@@ -421,13 +406,14 @@ public class AltruistEngine : IAltruistEngine
         }
     }
 
+    // Pre-sized buffer for dynamic tasks
+    private readonly Task[] _taskBuffer = new Task[128];
+    private int _taskCount = 0;
 
     private async Task RunEngineLoop()
     {
         long engineFrequencyTicks = _engineRate.Value;
-        var dynamicTasks = new List<Task>(_preallocatedTaskSize);
-        var asyncTaskList = new List<Task>();
-
+        var staticTaskList = new Dictionary<TaskIdentifier, Task>();
         long lastTick = FrameTime.NowTicks;
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
@@ -444,26 +430,57 @@ public class AltruistEngine : IAltruistEngine
                 {
                     if (elapsedTicks >= task.CycleRate.Value)
                     {
-                        asyncTaskList.Add(ExecuteTaskAsync(task.Delegate));
+                        staticTaskList.TryGetValue(task.Id, out var existingTask);
+
+                        // Prevent double execution of long-running tasks
+                        if (existingTask == null || existingTask.IsCompleted)
+                        {
+                            staticTaskList[task.Id] = ExecuteTaskAsync(task.Delegate);
+                        }
                     }
                 }
 
-                if (asyncTaskList.Count > 0)
+                // Periodically clean up completed static tasks
+                if (staticTaskList.Count > 50)
                 {
-                    await Task.WhenAll(asyncTaskList);
-                    asyncTaskList.Clear();
+                    foreach (var kv in staticTaskList)
+                    {
+                        if (kv.Value.IsCompleted)
+                        {
+                            staticTaskList.Remove(kv.Key);
+                        }
+                    }
                 }
 
+                // Run dynamic tasks efficiently
                 if (_dynamicTasks.Count > 0)
                 {
+                    _taskCount = 0;
+
                     foreach (var (key, task) in _dynamicTasks)
                     {
-                        _dynamicTasks.TryRemove(key, out _);
-                        dynamicTasks.Add(ExecuteTaskAsync(task));
-                    }
+                        _scheduledDynamicTasks.TryGetValue(key, out var existingTask);
 
-                    await Task.WhenAll(dynamicTasks);
-                    dynamicTasks.Clear();
+                        if (existingTask != null && !existingTask.IsCompleted)
+                        {
+                            continue;
+                        }
+
+                        _dynamicTasks.TryRemove(key, out _);
+                        _scheduledDynamicTasks.TryRemove(key, out _);
+
+                        if (_taskCount < _taskBuffer.Length)
+                        {
+                            var asyncTask = ExecuteTaskAsync(task);
+                            _taskBuffer[_taskCount++] = asyncTask;
+                            _scheduledDynamicTasks[key] = asyncTask;
+                        }
+                        else
+                        {
+                            // fallback: grow if overflown (should be rare)
+                            await ExecuteTaskAsync(task);
+                        }
+                    }
                 }
             }
         }

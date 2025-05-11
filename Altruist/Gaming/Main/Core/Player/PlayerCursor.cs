@@ -18,13 +18,16 @@ using Altruist.Gaming;
 
 namespace Altruist;
 
-public class PlayerCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull, PlayerEntity
+public class PlayerCursor<T> : ICursor<T> where T : notnull, PlayerEntity
 {
     private readonly ICacheProvider _cacheProvider;
 
     private ICursor<T> _underlying;
 
     public bool HasNext => _underlying.HasNext;
+
+    public int Count => _underlying.Count;
+
 
     public PlayerCursor(ICacheProvider cacheProvider)
     {
@@ -43,44 +46,9 @@ public class PlayerCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull
         return await _underlying.NextBatch();
     }
 
-    public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
-    {
-        var cursor = await CreateCursorAsync();
-
-        while (true)
-        {
-            if (!HasNext)
-                yield break;
-
-            var batch = await cursor.NextBatch();
-            if (batch.Count() == 0)
-                yield break;
-
-            foreach (var item in batch)
-            {
-                yield return item;
-            }
-        }
-    }
-
     public IEnumerator<T> GetEnumerator()
     {
-        var cursor = CreateCursorAsync().GetAwaiter().GetResult();
-
-        while (true)
-        {
-            if (!HasNext)
-                yield break;
-
-            var batch = cursor.NextBatch().GetAwaiter().GetResult();
-            if (batch.Count() == 0)
-                yield break;
-
-            foreach (var item in batch)
-            {
-                yield return item;
-            }
-        }
+        return _underlying.GetEnumerator();
     }
 
 }

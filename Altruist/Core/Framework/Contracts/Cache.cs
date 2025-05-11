@@ -20,9 +20,15 @@ using StackExchange.Redis;
 
 namespace Altruist;
 
-public interface ICursor<T> where T : notnull
+public interface ICursorToken
+{
+
+}
+
+public interface ICursor<T> : ICursorToken where T : notnull
 {
     bool HasNext { get; }
+    int Count { get; }
     Task<IEnumerable<T>> NextBatch();
     IEnumerator<T> GetEnumerator();
 }

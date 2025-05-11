@@ -53,7 +53,7 @@ public sealed class SyncedProperty
     public int BitIndex { get; set; }
     public bool SyncAlways { get; }
     public bool OneTime { get; }
-    public uint SyncFrequency { get; }
+    public uint SyncTickFrequency { get; }
     public Func<object, object?> Getter { get; }
 
     public SyncedProperty(string name, int bitIndex, bool syncAlways, bool oneTime, uint syncFrequency, Func<object, object?> getter)
@@ -63,7 +63,7 @@ public sealed class SyncedProperty
         SyncAlways = syncAlways;
         Getter = getter;
         OneTime = oneTime;
-        SyncFrequency = syncFrequency;
+        SyncTickFrequency = syncFrequency;
     }
 }
 
@@ -121,7 +121,7 @@ public static class Synchronization
                     || !AreValuesEqual(newValue, lastValue)
                     || (prop.OneTime && lastValue is null);
                 // check for engine ticks
-                shouldSync = forceAllAsChanged || !(prop.SyncFrequency > 0 && currentTick % prop.SyncFrequency != 0);
+                shouldSync = forceAllAsChanged || prop.SyncTickFrequency > 0 && currentTick % prop.SyncTickFrequency == 0;
 
                 if (prop.SyncAlways)
                 {

@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Altruist.Networking;
 using Altruist.UORM;
@@ -552,19 +553,21 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
         PhysxBody = null;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public virtual PlayerEntity Update()
     {
         var position = PhysxBody?.GetPosition();
         if (PhysxBody != null && (Position[0] != position?.X || Position[1] != position?.Y))
         {
-            Position[0] = PhysxBody.GetPosition().X;
-            Position[1] = PhysxBody.GetPosition().Y;
+            Position[0] = position?.X! ?? Position[0];
+            Position[1] = position?.Y! ?? Position[1];
             Rotation = PhysxBody.GetAngle();
         }
 
         return this;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public virtual Body CalculatePhysxBody(World world)
     {
         if (PhysxBody != null) return PhysxBody;
