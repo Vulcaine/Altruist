@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Numerics;
+
 namespace Altruist.Physx;
 
 public class EightDirectionMovementPhysxInput : MovementPhysxInput
 {
-    public bool MoveUp { get; set; }
-    public bool MoveDown { get; set; }
-    public bool MoveLeft { get; set; }
-    public bool MoveRight { get; set; }
+    public Vector2 MoveUpDownVector { get; set; }
+    public Vector2 MoveLeftRightVector { get; set; }
     public bool Turbo { get; set; }
 }

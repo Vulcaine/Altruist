@@ -97,8 +97,7 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
             MaxSpeed = entity.MaxSpeed,
             CurrentSpeed = entity.CurrentSpeed,
             RotationSpeed = entity.RotationSpeed,
-            RotateLeft = forwardMovementPacket.RotateLeft,
-            RotateRight = forwardMovementPacket.RotateRight,
+            RotateLeftRight = forwardMovementPacket.RotateLeftRight,
             Turbo = forwardMovementPacket.Turbo,
             MoveForward = forwardMovementPacket.MoveUp
         };
@@ -136,10 +135,8 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
             Deceleration = entity.Deceleration,
             MaxSpeed = entity.MaxSpeed,
             CurrentSpeed = entity.CurrentSpeed,
-            MoveUp = eightDirectionIMovementPacket.MoveUp,
-            MoveDown = eightDirectionIMovementPacket.MoveDown,
-            MoveLeft = eightDirectionIMovementPacket.MoveLeft,
-            MoveRight = eightDirectionIMovementPacket.MoveRight,
+            MoveUpDownVector = eightDirectionIMovementPacket.MoveUpDownVector,
+            MoveLeftRightVector = eightDirectionIMovementPacket.MoveLeftRightVector,
             Turbo = eightDirectionIMovementPacket.Turbo
         };
 

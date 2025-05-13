@@ -42,8 +42,37 @@ public record MovementPhysxOutput
 public interface IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
 {
     MovementPhysxOutput CalculateMovement(Body body, TInput input);
+    MovementPhysxOutput CalculateJump(Body body, TInput input);
     float CalculateRotation(Body body, TInput input);
     // MovementPhysxOutput CalculateDeceleration(Body body, TInput input);
+}
+
+public abstract class AbstractMovementTypePhysx<TInput> : IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
+{
+    public MovementPhysxOutput CalculateJump(Body body, TInput input)
+    {
+        if (!input.Jump || !input.IsGrounded)
+            return new MovementPhysxOutput(
+                input.CurrentSpeed, 0f, false, body.LinearVelocity, VectorConstants.ZeroVector
+            );
+
+        var velocity = body.LinearVelocity;
+
+        // Prevent double jump
+        if (velocity.Y > 0)
+            return new MovementPhysxOutput(
+                input.CurrentSpeed, 0f, false, velocity, VectorConstants.ZeroVector
+            );
+
+        float jumpImpulse = body.Mass * input.JumpForce;
+        body.ApplyLinearImpulse(new Vector2(0, jumpImpulse), body.GetWorldCenter(), true);
+
+        return new MovementPhysxOutput(input.CurrentSpeed, 0f, false, body.LinearVelocity, VectorConstants.ZeroVector);
+    }
+
+
+    public abstract MovementPhysxOutput CalculateMovement(Body body, TInput input);
+    public abstract float CalculateRotation(Body body, TInput input);
 }
 
 public abstract class MovementPhysxInput
@@ -53,4 +82,8 @@ public abstract class MovementPhysxInput
     public float Acceleration { get; set; }
     public float Deceleration { get; set; }
     public float DeltaTime { get; set; } = 1.0f;
+
+    public bool Jump { get; set; }
+    public float JumpForce { get; set; }
+    public bool IsGrounded { get; set; }
 }

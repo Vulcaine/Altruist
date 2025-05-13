@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Collections.Concurrent;
+using System.Numerics;
 using System.Text.Json.Serialization;
 using Altruist;
 using Altruist.Networking.Codec.MessagePack;
+using Altruist.Physx;
 using MessagePack;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
@@ -243,21 +244,23 @@ namespace Altruist
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("moveUp")][Key(1)] public bool MoveUp { get; set; }
-        [JsonPropertyName("rotateLeft")][Key(2)] public bool RotateLeft { get; set; }
-        [JsonPropertyName("rotateRight")][Key(3)] public bool RotateRight { get; set; }
-        [JsonPropertyName("turbo")][Key(4)] public bool Turbo { get; set; }
 
-        [JsonPropertyName("type")][Key(5)] public string Type { get; set; } = "ForwardMovementPacket";
+        [JsonPropertyName("rotateLeftRight")]
+        [Key(2)]
+        public Vector2 RotateLeftRight { get; set; }
+
+        [JsonPropertyName("turbo")][Key(3)] public bool Turbo { get; set; }
+
+        [JsonPropertyName("type")][Key(4)] public string Type { get; set; } = "ForwardMovementPacket";
 
         public ForwardMovementPacket() { }
 
-        public ForwardMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool rotateLeft = false, bool rotateRight = false, bool turbo = false)
+        public ForwardMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool turbo = false, Vector2? rotateLeftRight = null)
         {
             Header = new PacketHeader(sender, receiver);
             MoveUp = moveUp;
             Turbo = turbo;
-            RotateLeft = rotateLeft;
-            RotateRight = rotateRight;
+            RotateLeftRight = rotateLeftRight ?? VectorConstants.ZeroVector;
         }
     }
 
@@ -265,34 +268,31 @@ namespace Altruist
     public struct EightDirectionMovementPacket : IMovementPacket
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
-        [JsonPropertyName("moveUp")][Key(1)] public bool MoveUp { get; set; }
-        [JsonPropertyName("moveDown")][Key(2)] public bool MoveDown { get; set; }
-        [JsonPropertyName("moveLeft")][Key(3)] public bool MoveLeft { get; set; }
-        [JsonPropertyName("moveRight")][Key(4)] public bool MoveRight { get; set; }
-        [JsonPropertyName("turbo")][Key(5)] public bool Turbo { get; set; }
+        [JsonPropertyName("moveUpDown")]
+        [Key(1)]
+        public Vector2 MoveUpDownVector { get; set; }
+
+        [JsonPropertyName("moveLeftRight")]
+        [Key(2)]
+        public Vector2 MoveLeftRightVector { get; set; }
+        [JsonPropertyName("turbo")][Key(3)] public bool Turbo { get; set; }
 
         public EightDirectionMovementPacket()
         {
             Header = default;
-            MoveUp = false;
-            MoveDown = false;
-            MoveLeft = false;
-            MoveRight = false;
+            MoveUpDownVector = VectorConstants.ZeroVector;
+            MoveLeftRightVector = VectorConstants.ZeroVector;
             Turbo = false;
         }
 
-        public EightDirectionMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool moveDown = false, bool moveLeft = false, bool moveRight = false, bool turbo = false)
+        public EightDirectionMovementPacket(string sender, string? receiver = null, Vector2? moveUpDownVector = null, Vector2? moveLeftRIghtVector = null, bool turbo = false)
         {
             Header = new PacketHeader(sender, receiver);
-            MoveUp = moveUp;
-            MoveDown = moveDown;
-            MoveLeft = moveLeft;
-            MoveRight = moveRight;
+            MoveUpDownVector = moveUpDownVector ?? VectorConstants.ZeroVector;
+            MoveLeftRightVector = moveLeftRIghtVector ?? VectorConstants.ZeroVector;
             Turbo = turbo;
         }
         [JsonPropertyName("type")][Key(6)] public string Type { get; set; } = "EightDirectionMovementPacket";
-
-
     }
 
     // === Helper Classes ===

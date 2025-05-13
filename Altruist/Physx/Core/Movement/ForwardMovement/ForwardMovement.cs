@@ -15,14 +15,13 @@ limitations under the License.
 */
 
 using Box2DSharp.Dynamics;
-using Box2DSharp.Common;
 using System.Numerics;
 
 namespace Altruist.Physx;
 
-public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput>
+public class ForwardMovementPhysx : AbstractMovementTypePhysx<ForwardMovementPhysxInput>
 {
-    public virtual MovementPhysxOutput CalculateMovement(Body body, ForwardMovementPhysxInput input)
+    public override MovementPhysxOutput CalculateMovement(Body body, ForwardMovementPhysxInput input)
     {
         float rotationSpeed = CalculateRotation(body, input);
 
@@ -56,9 +55,9 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
         );
     }
 
-    public virtual float CalculateRotation(Body body, ForwardMovementPhysxInput input)
+    public override float CalculateRotation(Body body, ForwardMovementPhysxInput input)
     {
-        return input.RotateLeft ? -input.RotationSpeed : (input.RotateRight ? input.RotationSpeed : 0);
+        return input.RotationSpeed * (input.RotateLeftRight.Y - input.RotateLeftRight.X);
     }
 
     // public virtual MovementPhysxOutput CalculateDeceleration(Body body, ForwardMovementPhysxInput input)

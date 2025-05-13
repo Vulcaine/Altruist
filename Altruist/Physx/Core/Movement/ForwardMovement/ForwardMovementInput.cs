@@ -14,13 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Numerics;
+
 namespace Altruist.Physx;
 
 public class ForwardMovementPhysxInput : MovementPhysxInput
 {
     public bool MoveForward { get; set; }
-    public bool RotateLeft { get; set; }
-    public bool RotateRight { get; set; }
+    public Vector2 RotateLeftRight { get; set; }
     public bool Turbo { get; set; }
     public float RotationSpeed { get; set; }
 

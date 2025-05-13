@@ -20,23 +20,20 @@ using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx;
 
-public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMovementPhysxInput>
+public class EightDirectionMovementPhysx : AbstractMovementTypePhysx<EightDirectionMovementPhysxInput>
 {
-    public MovementPhysxOutput CalculateMovement(Body body, EightDirectionMovementPhysxInput input)
+    public override MovementPhysxOutput CalculateMovement(Body body, EightDirectionMovementPhysxInput input)
     {
-        bool moving = input.MoveUp || input.MoveDown || input.MoveLeft || input.MoveRight;
         var zeroVector = VectorConstants.ZeroVector;
+        bool moving = input.MoveUpDownVector != zeroVector && input.MoveLeftRightVector != zeroVector;
+
 
         if (!moving)
         {
             return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, zeroVector, zeroVector);
         }
 
-        Vector2 direction = zeroVector;
-        if (input.MoveUp) direction += VectorConstants.UpDirection;
-        if (input.MoveDown) direction += VectorConstants.DownDirection;
-        if (input.MoveLeft) direction += VectorConstants.LeftDirection;
-        if (input.MoveRight) direction += VectorConstants.RightDirection;
+        Vector2 direction = input.MoveLeftRightVector + input.MoveUpDownVector;
 
         if (direction.X == 0 && direction.Y == 0)
         {
@@ -60,7 +57,7 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         );
     }
 
-    public virtual float CalculateRotation(Body body, EightDirectionMovementPhysxInput input)
+    public override float CalculateRotation(Body body, EightDirectionMovementPhysxInput input)
     {
         throw new NotSupportedException("Rotation not supported for EightDirectionMovement");
     }
