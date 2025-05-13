@@ -112,12 +112,12 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
             ClampSpeed(entity);
             _movementPhysx.ApplyMovement(body, result);
         }
-        else
-        {
-            entity.Moving = false;
-            var deceleration = _movementPhysx.Forward.CalculateDeceleration(body, movementInput);
-            _movementPhysx.ApplyMovement(body, deceleration);
-        }
+        // else
+        // {
+        //     entity.Moving = false;
+        //     var deceleration = _movementPhysx.Forward.CalculateDeceleration(body, movementInput);
+        //     _movementPhysx.ApplyMovement(body, deceleration);
+        // }
     }
 }
 
@@ -152,11 +152,11 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
             ClampSpeed(entity);
             _movementPhysx.ApplyMovement(body, result);
         }
-        else
-        {
-            var deceleration = _movementPhysx.EightDirection.CalculateDeceleration(body, movementInput);
-            _movementPhysx.ApplyMovement(body, deceleration);
-        }
+        // else
+        // {
+        //     var deceleration = _movementPhysx.EightDirection.CalculateDeceleration(body, movementInput);
+        //     _movementPhysx.ApplyMovement(body, deceleration);
+        // }
     }
 }
 

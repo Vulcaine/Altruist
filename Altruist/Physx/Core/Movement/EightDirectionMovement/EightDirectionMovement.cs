@@ -65,21 +65,21 @@ public class EightDirectionMovementPhysx : IMovementTypePhysx<EightDirectionMove
         throw new NotSupportedException("Rotation not supported for EightDirectionMovement");
     }
 
-    public virtual MovementPhysxOutput CalculateDeceleration(Body body, EightDirectionMovementPhysxInput input)
-    {
-        Vector2 velocity = body.LinearVelocity;
-        Vector2 force = VectorConstants.ZeroVector;
+    // public virtual MovementPhysxOutput CalculateDeceleration(Body body, EightDirectionMovementPhysxInput input)
+    // {
+    //     Vector2 velocity = body.LinearVelocity;
+    //     Vector2 force = VectorConstants.ZeroVector;
 
-        if (velocity.LengthSquared() > 0)
-        {
-            Vector2 decelerationDirection = velocity;
-            decelerationDirection.Normalize();
+    //     if (velocity.LengthSquared() > 0)
+    //     {
+    //         Vector2 decelerationDirection = velocity;
+    //         decelerationDirection.Normalize();
 
-            float decelerationForceMagnitude = input.Deceleration * input.CurrentSpeed;
-            force = -decelerationDirection * decelerationForceMagnitude * body.Mass;
-        }
+    //         float decelerationForceMagnitude = input.Deceleration * input.CurrentSpeed;
+    //         force = -decelerationDirection * decelerationForceMagnitude * body.Mass;
+    //     }
 
-        float currSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
-        return new MovementPhysxOutput(currSpeed, 0.0f, false, VectorConstants.ZeroVector, force);
-    }
+    //     float currSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
+    //     return new MovementPhysxOutput(currSpeed, 0.0f, false, VectorConstants.ZeroVector, force);
+    // }
 }

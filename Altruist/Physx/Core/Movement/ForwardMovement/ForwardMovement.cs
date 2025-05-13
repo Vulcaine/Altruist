@@ -61,15 +61,15 @@ public class ForwardMovementPhysx : IMovementTypePhysx<ForwardMovementPhysxInput
         return input.RotateLeft ? -input.RotationSpeed : (input.RotateRight ? input.RotationSpeed : 0);
     }
 
-    public virtual MovementPhysxOutput CalculateDeceleration(Body body, ForwardMovementPhysxInput input)
-    {
-        float angle = body.GetAngle();
-        Vector2 direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+    // public virtual MovementPhysxOutput CalculateDeceleration(Body body, ForwardMovementPhysxInput input)
+    // {
+    //     float angle = body.GetAngle();
+    //     Vector2 direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
 
-        float decelerationForce = -input.Deceleration * input.CurrentSpeed;
-        Vector2 force = direction * decelerationForce * body.Mass;
-        float newSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
+    //     float decelerationForce = -input.Deceleration * input.CurrentSpeed;
+    //     Vector2 force = direction * decelerationForce * body.Mass;
+    //     float newSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
 
-        return new MovementPhysxOutput(newSpeed, CalculateRotation(body, input), false, VectorConstants.ZeroVector, force);
-    }
+    //     return new MovementPhysxOutput(newSpeed, CalculateRotation(body, input), false, VectorConstants.ZeroVector, force);
+    // }
 }
