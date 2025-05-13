@@ -35,14 +35,26 @@ public class PeriodicSaveStrategy : IAutosaveStrategy
     public PeriodicSaveStrategy(string cronExpression) => CronExpression = cronExpression;
 }
 
+/// <summary>
+/// Base portal for autosaving game entities into the vault database.
+/// Inherit and override <see cref="GetPersistedEntities"/> to define which entity types should be persisted.
+/// </summary>
 public abstract class AltruistAutosavePortal<TKeyspace> : Portal<GamePortalContext> where TKeyspace : class, IKeyspace, new()
 {
+    /// <summary>In-memory and external cache interface.</summary>
     protected ICacheProvider Cache { get; }
+
+    /// <summary>Database token used for persistence operations.</summary>
     protected IDatabaseServiceToken Token { get; }
 
+    /// <summary>Repository abstraction over the vault keyed by the current keyspace.</summary>
     protected IVaultRepository<TKeyspace> Repository { get; }
 
-    protected AltruistAutosavePortal(GamePortalContext context, IDatabaseServiceToken token, VaultRepositoryFactory vaultRepository, ILoggerFactory loggerFactory)
+    protected AltruistAutosavePortal(
+        GamePortalContext context,
+        IDatabaseServiceToken token,
+        VaultRepositoryFactory vaultRepository,
+        ILoggerFactory loggerFactory)
         : base(context, loggerFactory)
     {
         Cache = context.Cache;
@@ -50,56 +62,83 @@ public abstract class AltruistAutosavePortal<TKeyspace> : Portal<GamePortalConte
         Repository = vaultRepository.Make<TKeyspace>();
     }
 
+    /// <summary>
+    /// Specifies the types of entities that should be persisted during autosave.
+    /// </summary>
+    /// <returns>A list of types that implement <see cref="IVaultModel"/>.</returns>
     public abstract List<Type> GetPersistedEntities();
 
+    /// <summary>
+    /// Triggers an autosave cycle for all defined entities.
+    /// </summary>
     public virtual async Task Save()
     {
         var entities = GetPersistedEntities();
+        if (entities.Count == 0) return;
 
-        if (entities.Count == 0)
-        {
-            return;
-        }
-
-        var tasks = new List<Task>();
-        foreach (var entity in entities)
-        {
-            tasks.Add(SaveEntity(entity, Repository));
-        }
-
+        var tasks = entities.Select(entity => SaveEntityAsync(entity)).ToList();
         await Task.WhenAll(tasks);
     }
 
-    private async Task SaveEntity(Type entity, IVaultRepository<TKeyspace> vaultRepository)
+    /// <summary>
+    /// Saves all cached entries of the given entity type into the vault.
+    /// </summary>
+    private async Task SaveEntityAsync(Type entityType)
     {
-        if (entity is not IVaultModel) return;
+        if (!typeof(IVaultModel).IsAssignableFrom(entityType))
+            return;
 
-        var cursor = await Cache.GetAllAsync(entity);
+        var cursor = await Cache.GetAllAsync(entityType);
         var saveTasks = new List<Task>();
 
         while (cursor.HasNext)
         {
-            var batch = (await cursor.NextBatch()).Where(i => i is IVaultModel).Cast<IVaultModel>().ToList();
-            saveTasks.Add(vaultRepository.Select(entity).SaveBatchAsync(batch));
+            var batch = await cursor.NextBatch();
+            var models = batch.OfType<IVaultModel>().ToList();
+
+            if (models.Count > 0)
+            {
+                var vault = Repository.Select(entityType);
+                saveTasks.Add(vault.SaveBatchAsync(models));
+            }
         }
 
         await Task.WhenAll(saveTasks);
     }
 }
 
-public abstract class RealtimeAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace> where TKeyspace : class, IKeyspace, new()
+/// <summary>
+/// Realtime autosave portal that schedules autosave on a fixed interval.
+/// </summary>
+public abstract class RealtimeAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace>
+    where TKeyspace : class, IKeyspace, new()
 {
-    protected RealtimeAutosavePortal(GamePortalContext context, IDatabaseServiceToken token, VaultRepositoryFactory vaultRepository, RealtimeSaveStrategy saveStrategy, IAltruistEngine engine, ILoggerFactory loggerFactory)
+    protected RealtimeAutosavePortal(
+        GamePortalContext context,
+        IDatabaseServiceToken token,
+        VaultRepositoryFactory vaultRepository,
+        RealtimeSaveStrategy saveStrategy,
+        IAltruistEngine engine,
+        ILoggerFactory loggerFactory)
         : base(context, token, vaultRepository, loggerFactory)
     {
         engine.ScheduleTask(Save, saveStrategy.SaveRate);
     }
 }
 
-public abstract class PeriodicAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace> where TKeyspace : class, IKeyspace, new()
+/// <summary>
+/// Cron-based autosave portal that saves entities on scheduled cron expressions.
+/// </summary>
+public abstract class PeriodicAutosavePortal<TKeyspace> : AltruistAutosavePortal<TKeyspace>
+    where TKeyspace : class, IKeyspace, new()
 {
-    protected PeriodicAutosavePortal(GamePortalContext context,
-    IDatabaseServiceToken token, VaultRepositoryFactory vaultRepository, PeriodicSaveStrategy saveStrategy, IAltruistEngine engine, ILoggerFactory loggerFactory)
+    protected PeriodicAutosavePortal(
+        GamePortalContext context,
+        IDatabaseServiceToken token,
+        VaultRepositoryFactory vaultRepository,
+        PeriodicSaveStrategy saveStrategy,
+        IAltruistEngine engine,
+        ILoggerFactory loggerFactory)
         : base(context, token, vaultRepository, loggerFactory)
     {
         engine.RegisterCronJob(Save, saveStrategy.CronExpression);

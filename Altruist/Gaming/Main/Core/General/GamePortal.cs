@@ -138,104 +138,209 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalConte
     }
 }
 
+public record JoinValidationResult(bool Success, string Message)
+{
+    public static JoinValidationResult Ok => new(true, string.Empty);
+    public static JoinValidationResult Fail(string reason) => new(false, reason);
+}
+
+/// <summary>
+/// Typed player service bound to a specific player entity used within this game session.
+/// For heterogeneous player systems, use a discriminator on the stored entity and project
+/// to runtime classes as needed.
+/// </summary>
+/// <summary>
+/// Represents the main portal for a game session with typed player support.
+/// 
+/// <para>
+/// This class defines the full connection flow for joining, leaving, and syncing with a game session. It includes
+/// overridable template methods to enable extensibility without rewriting the entire logic. These are:
+/// </para>
+/// <list type="bullet">
+///   <item><description><see cref="ValidateJoinRequestAsync"/> — Override to apply custom validation rules for joining.</description></item>
+///   <item><description><see cref="ResolveJoinTargetAsync"/> — Customize room resolution logic.</description></item>
+///   <item><description><see cref="ExecuteJoinAsync"/> — Define what happens after a successful room match.</description></item>
+///   <item><description><see cref="OnJoinGameAsync"/> — Hook called after player successfully joins a room.</description></item>
+///   <item><description><see cref="OnJoinGameFailedAsync"/> — Hook called when join attempt fails.</description></item>
+///   <item><description><see cref="OnLeaveGameAsync"/> — Hook called when a player disconnects from a session.</description></item>
+///   <item><description><see cref="FetchHandshakeRoomsAsync"/> / <see cref="BuildHandshakeResponseAsync"/> — Customize the handshake negotiation.</description></item>
+/// </list>
+/// </summary>
 public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
     protected AltruistGameSessionPortal(GamePortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
     }
 
+    #region Handshake
+
+    /// <summary>
+    /// Handles the initial handshake when a client connects to the game session.
+    /// Sends back available room information and any metadata needed to initialize the client.
+    /// </summary>
     [Gate(IngressEP.Handshake)]
     public async virtual Task HandshakeAsync(HandshakePacket message, string clientId)
     {
-        var rooms = await GetAllRoomsAsync();
-        // TODO: fill out user token
-        var responsePacket = new HandshakePacket("server", rooms.Values.ToArray(), clientId);
-        await Router.Client.SendAsync(clientId, responsePacket);
+        var rooms = await FetchHandshakeRoomsAsync(message, clientId);
+        var response = await BuildHandshakeResponseAsync(message, clientId, rooms);
+        await Router.Client.SendAsync(clientId, response);
     }
 
+    /// <summary>
+    /// Fetches the available rooms to be included in the handshake response.
+    /// Override this to customize the list of rooms a client sees during handshake.
+    /// </summary>
+    protected virtual Task<Dictionary<string, RoomPacket>> FetchHandshakeRoomsAsync(HandshakePacket message, string clientId)
+        => GetAllRoomsAsync();
+
+    /// <summary>
+    /// Constructs the handshake response packet from the list of available rooms.
+    /// Override to include custom metadata or server capabilities in the handshake.
+    /// </summary>
+    protected virtual Task<HandshakePacket> BuildHandshakeResponseAsync(HandshakePacket message, string clientId, Dictionary<string, RoomPacket> rooms)
+        => Task.FromResult(new HandshakePacket("server", rooms.Values.ToArray(), clientId));
+    #endregion
+
+    #region Leave Game
+
+    /// <summary>
+    /// Handles the logic for when a player leaves or disconnects from the game session.
+    /// Cleans up player connection and updates the room state accordingly.
+    /// </summary>
     [Gate(IngressEP.LeaveGame)]
     public async virtual Task ExitGameAsync(LeaveGamePacket message, string clientId)
     {
         var player = await _playerService.GetPlayerAsync(clientId);
+        if (player == null) return;
 
-        if (player != null)
-        {
-            await _playerService.DisconnectAsync(clientId);
-            var room = await FindRoomForClientAsync(clientId);
-            var msg = $"Player {player.Name} left the game";
+        await _playerService.DisconnectAsync(clientId);
+        await OnLeaveGameAsync(player);
 
-            _ = Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId, message.Type));
-            if (room != null)
-            {
-                var broadcastPacket = new LeaveGamePacket("server", clientId);
-                room = room.RemoveConnection(clientId);
-                _ = SaveRoomAsync(room);
-                _ = Router.Room.SendAsync(room.Id, broadcastPacket);
-                if (room.Empty())
-                {
-                    await DeleteRoomAsync(room.Id);
-                }
-            }
-        }
+        var room = await FindRoomForClientAsync(clientId);
+        await HandleLeaveAsync(message, clientId, player, room);
     }
 
+    /// <summary>
+    /// Finalizes the leave operation by updating room state, broadcasting departure,
+    /// and removing the player from any internal structures.
+    /// Override to customize cleanup behavior.
+    /// </summary>
+    protected virtual async Task HandleLeaveAsync(LeaveGamePacket message, string clientId, TPlayerEntity player, RoomPacket? room)
+    {
+        var msg = $"Player {player.Name} left the game";
+        _ = Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId, message.Type));
+
+        if (room != null)
+        {
+            var broadcastPacket = new LeaveGamePacket("server", clientId);
+            room = room.RemoveConnection(clientId);
+            _ = SaveRoomAsync(room);
+            _ = Router.Room.SendAsync(room.Id, broadcastPacket);
+
+            if (room.Empty())
+                await DeleteRoomAsync(room.Id);
+        }
+    }
+    #endregion
+
+    #region Join Game
+
+    /// <summary>
+    /// Handles the main join flow — validates input, resolves a room, and connects the player.
+    /// Override helper methods to customize each step of the join pipeline.
+    /// </summary>
     [Gate(IngressEP.JoinGame)]
     public async virtual Task JoinGameAsync(JoinGamePacket message, string clientId)
     {
-        if (string.IsNullOrEmpty(message.Name))
+        var validation = await ValidateJoinRequestAsync(message, clientId);
+        if (!validation.Success)
         {
-            await Router.Client.SendAsync(clientId, PacketHelper.Failed("Username is required!", clientId, message.Type));
+            Logger.LogWarning("JoinGame failed: {Reason} (ClientId: {ClientId})", validation.Message, clientId);
+            await Router.Client.SendAsync(clientId, PacketHelper.Failed(validation.Message, clientId, message.Type));
+            await OnJoinGameFailedAsync(clientId, message, validation.Message);
             return;
         }
 
-        RoomPacket? room;
-        if (!string.IsNullOrEmpty(message.RoomId))
-        {
-            room = await GetRoomAsync(message.RoomId);
-
-            if (room == null)
-            {
-                var joinFailedMsg = $"Join failed. No such room: {message.RoomId}";
-                await Router.Client.SendAsync(clientId, PacketHelper.Failed(joinFailedMsg, clientId, message.Type));
-                return;
-            }
-        }
-        else
-        {
-            room = await FindAvailableRoomAsync();
-        }
-
+        var room = await ResolveJoinTargetAsync(message, clientId);
         if (room == null)
         {
-            var msg = $"Join failed: No available rooms";
+            var msg = "Join failed: No available or valid room";
+            Logger.LogWarning("JoinGame failed: {Reason} (ClientId: {ClientId})", msg, clientId);
             await Router.Client.SendAsync(clientId, PacketHelper.Failed(msg, clientId, message.Type));
-            Logger.LogWarning(msg);
+            await OnJoinGameFailedAsync(clientId, message, msg);
+            return;
         }
-        else if (room.Has(clientId))
-        {
-            var msg = $"Join failed: {clientId} is already in the game";
-            await Router.Client.SendAsync(clientId, PacketHelper.Failed(msg, clientId, message.Type));
-            Logger.LogWarning(msg);
-        }
-        else
-        {
-            var msg = $"Player {message.Name} joined the room: {room.Id}.";
-            var player = await _playerService.ConnectById(room.Id, clientId, message.Name, message.WorldIndex ?? 0, message.Position);
-            if (player == null)
-            {
-                var joinFailedMsg = $"Join failed. No such room: {message.RoomId}";
-                await Router.Client.SendAsync(clientId, PacketHelper.Failed(joinFailedMsg, clientId, message.Type));
-            }
-            else
-            {
-                await Router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId, message.Type));
-                await Router.Synchronize.SendAsync(player, forceAllAsChanged: true);
-            }
 
-            Logger.LogInformation(msg);
-        }
+        await ExecuteJoinAsync(room, message, clientId);
     }
 
+    protected record JoinValidationResult(bool Success, string Message)
+    {
+        public static JoinValidationResult Ok => new(true, string.Empty);
+        public static JoinValidationResult Fail(string reason) => new(false, reason);
+    }
+
+    /// <summary>
+    /// Validates the join request (e.g. username, input format).
+    /// Override this to implement custom join preconditions like authentication, rate limits, or name filters.
+    /// </summary>
+    protected virtual Task<JoinValidationResult> ValidateJoinRequestAsync(JoinGamePacket msg, string clientId)
+    {
+        if (string.IsNullOrWhiteSpace(msg.Name))
+            return Task.FromResult(JoinValidationResult.Fail("Username is required!"));
+
+        return Task.FromResult(JoinValidationResult.Ok);
+    }
+
+    /// <summary>
+    /// Resolves which room the client should join based on the join packet.
+    /// Override to implement advanced room selection logic such as matchmaking, load balancing, etc.
+    /// </summary>
+    protected virtual async Task<RoomPacket?> ResolveJoinTargetAsync(JoinGamePacket msg, string clientId)
+    {
+        if (!string.IsNullOrEmpty(msg.RoomId))
+            return await GetRoomAsync(msg.RoomId);
+
+        return await FindAvailableRoomAsync();
+    }
+
+    /// <summary>
+    /// Executes the actual join — adds the player to the room, updates game state, and notifies the client.
+    /// Override to inject custom behavior when the player enters a room.
+    /// </summary>
+    protected virtual async Task ExecuteJoinAsync(RoomPacket room, JoinGamePacket msg, string clientId)
+    {
+        if (room.Has(clientId))
+        {
+            var error = $"Join failed: {clientId} is already in the room.";
+            Logger.LogWarning("JoinGame failed: {Reason} (ClientId: {ClientId})", error, clientId);
+            await Router.Client.SendAsync(clientId, PacketHelper.Failed(error, clientId, msg.Type));
+            await OnJoinGameFailedAsync(clientId, msg, error);
+            return;
+        }
+
+        var player = await _playerService.ConnectById(room.Id, clientId, msg.Name, msg.WorldIndex ?? 0, msg.Position);
+        if (player == null)
+        {
+            var failMsg = "Join failed: could not create player.";
+            Logger.LogWarning("JoinGame failed: {Reason} (ClientId: {ClientId})", failMsg, clientId);
+            await Router.Client.SendAsync(clientId, PacketHelper.Failed(failMsg, clientId, msg.Type));
+            await OnJoinGameFailedAsync(clientId, msg, failMsg);
+            return;
+        }
+
+        await Router.Client.SendAsync(clientId, PacketHelper.Success($"Joined room {room.Id}.", clientId, msg.Type));
+        await Router.Synchronize.SendAsync(player, forceAllAsChanged: true);
+        await OnJoinGameAsync(player, room);
+    }
+    #endregion
+
+    #region Cleanup
+
+    /// <summary>
+    /// Cleans up portal and player service state. Invoked when the server shuts down or the portal is disposed.
+    /// You can override this if you want to extend or wrap the cleanup logic.
+    /// </summary>
     public override async Task Cleanup()
     {
         try
@@ -244,8 +349,31 @@ public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePor
         }
         catch (Exception ex)
         {
-            Logger.LogError($"Error cleaning up connections: {ex}");
+            Logger.LogError("Error cleaning up connections: {Exception}", ex);
         }
         await _playerService.Cleanup();
     }
+    #endregion
+
+    #region Extension Hooks
+
+    /// <summary>
+    /// Triggered after a player successfully joins a room. Use this to set player state,
+    /// broadcast join messages, or initialize player-related data.
+    /// </summary>
+    protected virtual Task OnJoinGameAsync(TPlayerEntity player, RoomPacket room) => Task.CompletedTask;
+
+    /// <summary>
+    /// Triggered when a join request fails. Use this to log analytics,
+    /// inform other systems, or audit failed attempts.
+    /// </summary>
+    protected virtual Task OnJoinGameFailedAsync(string clientId, JoinGamePacket message, string reason) => Task.CompletedTask;
+
+    /// <summary>
+    /// Triggered when a player is disconnected or leaves the game session.
+    /// Override to run post-leave operations like persisting player state or freeing resources.
+    /// </summary>
+    protected virtual Task OnLeaveGameAsync(TPlayerEntity player) => Task.CompletedTask;
+
+    #endregion
 }

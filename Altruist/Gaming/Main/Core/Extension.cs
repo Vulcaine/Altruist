@@ -26,7 +26,6 @@ public static class AltruistGamingServiceCollectionExtensions
 {
     public static AltruistConnectionBuilder SetupGameEngine(this AltruistIntermediateBuilder builder, Func<AltruistGameEngineBuilder, AltruistConnectionBuilder> setup)
     {
-        // builder.Services.AddGamingSupport();
         var engineBuilder = new AltruistGameEngineBuilder(builder.Services, builder.Settings, builder.Args);
         return setup.Invoke(engineBuilder);
     }
@@ -46,15 +45,12 @@ public class GameConfig : IConfiguration
 {
     public void Configure(IServiceCollection services)
     {
-        // services.AddSingleton<GamePortalContext>();
         services.AddSingleton<IWorldPartitioner>(sp =>
        {
            return new WorldPartitioner(64, 64);
        });
 
-        // services.AddSingleton<IPlayerCursorFactory, PlayerCursorFactory>();
         services.AddSingleton(typeof(PlayerCursor<>));
-        // services.AddSingleton<GameWorldCoordinator>();
         services.AddSingleton<MovementPhysx>();
         services.AddSingleton(typeof(IPlayerService<>), typeof(AltruistPlayerService<>));
     }
