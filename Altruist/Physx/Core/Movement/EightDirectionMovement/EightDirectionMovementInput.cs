@@ -18,9 +18,16 @@ using System.Numerics;
 
 namespace Altruist.Physx;
 
-public class EightDirectionMovementPhysxInput : MovementPhysxInput
+public class EightDirectionMovementPhysxInput : IMovementStats, IDirectionalInput2D
 {
-    public Vector2 MoveUpDownVector { get; set; }
+    public float CurrentSpeed { get; set; }
+    public float MaxSpeed { get; set; }
+    public float Acceleration { get; set; }
+    public float Deceleration { get; set; }
+    public float DeltaTime { get; set; } = 1.0f;
+
     public Vector2 MoveLeftRightVector { get; set; }
+    public Vector2 MoveUpDownVector { get; set; }
+
     public bool Turbo { get; set; }
 }

@@ -28,12 +28,12 @@ public class VectorConstants
     public static readonly Vector2 DownDirection = new Vector2(0, -1);
 }
 
-public class MovementPhysx
+public class Physx
 {
     public ForwardMovementPhysx Forward { get; }
     public EightDirectionMovementPhysx EightDirection { get; }
 
-    public MovementPhysx()
+    public Physx()
     {
         Forward = new ForwardMovementPhysx();
         EightDirection = new EightDirectionMovementPhysx();

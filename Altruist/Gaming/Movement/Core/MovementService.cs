@@ -24,12 +24,12 @@ public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPla
 {
     protected readonly ILogger _logger;
     protected readonly ICacheProvider _cacheProvider;
-    protected readonly MovementPhysx _movementPhysx;
+    protected readonly Physx.Physx _movementPhysx;
     protected readonly IPlayerService<TPlayerEntity> _playerService;
 
     public BaseMovementService(
     IPlayerService<TPlayerEntity> playerService,
-        MovementPhysx movementPhysx,
+        Physx.Physx movementPhysx,
         ICacheProvider cacheProvider,
         ILoggerFactory loggerFactory)
     {
@@ -81,7 +81,7 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
 {
     public ForwardMovementService(
         IPlayerService<T> playerService,
-        MovementPhysx movementPhysx,
+        Physx.Physx movementPhysx,
         ICacheProvider cacheProvider,
         ILoggerFactory loggerFactory)
         : base(playerService, movementPhysx, cacheProvider, loggerFactory) { }
@@ -122,7 +122,7 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
 
 public abstract class EightDirectionMovementService<T> : BaseMovementService<T> where T : PlayerEntity, new()
 {
-    public EightDirectionMovementService(IPlayerService<T> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+    public EightDirectionMovementService(IPlayerService<T> playerService, Physx.Physx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
         : base(playerService, physx, cacheProvider, loggerFactory) { }
 
     protected override void ApplyMovement(Body body, T entity, IMovementPacket input)
@@ -159,7 +159,7 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
 
 public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : EightDirectionMovementService<TPlayerEntity> where TPlayerEntity : Vehicle, new()
 {
-    public EightDirectionVehicleMovementService(IPlayerService<TPlayerEntity> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+    public EightDirectionVehicleMovementService(IPlayerService<TPlayerEntity> playerService, Physx.Physx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
         : base(playerService, physx, cacheProvider, loggerFactory) { }
 
     protected override void ApplyMovement(Body body, TPlayerEntity vehicle, IMovementPacket input)
@@ -184,7 +184,7 @@ public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : Eigh
 
 public abstract class ForwardSpacehipMovementService<TPlayerEntity> : ForwardMovementService<TPlayerEntity> where TPlayerEntity : Spaceship, new()
 {
-    protected ForwardSpacehipMovementService(IPlayerService<TPlayerEntity> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
+    protected ForwardSpacehipMovementService(IPlayerService<TPlayerEntity> playerService, Physx.Physx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
     {
     }
 

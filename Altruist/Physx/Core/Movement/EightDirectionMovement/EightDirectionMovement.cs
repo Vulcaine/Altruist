@@ -15,19 +15,18 @@ limitations under the License.
 */
 
 using System.Numerics;
-using Box2DSharp.Common;
 using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx;
 
-public class EightDirectionMovementPhysx : AbstractMovementTypePhysx<EightDirectionMovementPhysxInput>
+public class EightDirectionMovementPhysx : AbstractMovementPhysx<EightDirectionMovementPhysxInput>
 {
     public override MovementPhysxOutput CalculateMovement(Body body, EightDirectionMovementPhysxInput input)
     {
         var zeroVector = VectorConstants.ZeroVector;
 
         // Movement is controlled via two directional vectors:
-        // - MoveUpDownVector, MovementLeftRightVector: X represents "up", Y represents "down"
+        // - MoveUpDownVector, MovementLeftRightVector: X represents "up" or "left", Y represents "down" or "right"
         // - Each component is either 0 or 1, indicating active movement in that direction
         if ((input.MoveLeftRightVector.X != 0f && input.MoveLeftRightVector.X != 1f) ||
             (input.MoveLeftRightVector.Y != 0f && input.MoveLeftRightVector.Y != 1f) ||
@@ -67,21 +66,4 @@ public class EightDirectionMovementPhysx : AbstractMovementTypePhysx<EightDirect
         throw new NotSupportedException("Rotation not supported for EightDirectionMovement");
     }
 
-    // public virtual MovementPhysxOutput CalculateDeceleration(Body body, EightDirectionMovementPhysxInput input)
-    // {
-    //     Vector2 velocity = body.LinearVelocity;
-    //     Vector2 force = VectorConstants.ZeroVector;
-
-    //     if (velocity.LengthSquared() > 0)
-    //     {
-    //         Vector2 decelerationDirection = velocity;
-    //         decelerationDirection.Normalize();
-
-    //         float decelerationForceMagnitude = input.Deceleration * input.CurrentSpeed;
-    //         force = -decelerationDirection * decelerationForceMagnitude * body.Mass;
-    //     }
-
-    //     float currSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
-    //     return new MovementPhysxOutput(currSpeed, 0.0f, false, VectorConstants.ZeroVector, force);
-    // }
 }

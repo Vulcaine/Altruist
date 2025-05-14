@@ -19,6 +19,41 @@ using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx;
 
+public interface IMovementStats
+{
+    float CurrentSpeed { get; }
+    float MaxSpeed { get; }
+    float Acceleration { get; }
+    float Deceleration { get; }
+    float DeltaTime { get; }
+}
+
+public interface IJumpCapability
+{
+    bool Jump { get; }
+    float JumpForce { get; }
+    bool IsGrounded { get; }
+}
+
+public interface IRotationCapability
+{
+    float RotationSpeed { get; }
+    Vector2 RotateLeftRight { get; }
+}
+
+public interface IDirectionalInput2D
+{
+    Vector2 MoveLeftRightVector { get; }
+    Vector2 MoveUpDownVector { get; }
+}
+
+public interface IForwardMovementInput
+{
+    bool MoveForward { get; }
+}
+
+
+
 public record MovementPhysxOutput
 {
     public float CurrentSpeed { get; set; }
@@ -39,51 +74,69 @@ public record MovementPhysxOutput
     }
 }
 
-public interface IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
+public interface IMovementPhysx<TInput>
 {
     MovementPhysxOutput CalculateMovement(Body body, TInput input);
     MovementPhysxOutput CalculateJump(Body body, TInput input);
     float CalculateRotation(Body body, TInput input);
-    // MovementPhysxOutput CalculateDeceleration(Body body, TInput input);
+    void StopMovement(Body body);
 }
 
-public abstract class AbstractMovementTypePhysx<TInput> : IMovementTypePhysx<TInput> where TInput : MovementPhysxInput
+
+public interface IForcePhysx
 {
-    public MovementPhysxOutput CalculateJump(Body body, TInput input)
+    void ApplyLinearImpulse(Body body, Vector2 impulse);
+    void ApplyForce(Body body, Vector2 force);
+    void ClearForces(Body body);
+}
+
+public abstract class ForcePhysx : IForcePhysx
+{
+    public void ApplyLinearImpulse(Body body, Vector2 impulse)
     {
-        if (!input.Jump || !input.IsGrounded)
-            return new MovementPhysxOutput(
-                input.CurrentSpeed, 0f, false, body.LinearVelocity, VectorConstants.ZeroVector
-            );
+        body.ApplyLinearImpulse(impulse, body.GetWorldCenter(), true);
+    }
+
+    public void ApplyForce(Body body, Vector2 force)
+    {
+        body.ApplyForce(force, body.GetWorldCenter(), true);
+    }
+
+    public void ClearForces(Body body)
+    {
+        body.SetLinearVelocity(VectorConstants.ZeroVector);
+    }
+}
+
+public class DefaultForcePhysx : ForcePhysx { }
+
+public abstract class AbstractMovementPhysx<TInput> : IMovementPhysx<TInput> where TInput : class
+{
+    public virtual MovementPhysxOutput CalculateJump(Body body, TInput input)
+    {
+        if (input is not IJumpCapability jumpInput)
+            return new MovementPhysxOutput(0, 0, false, body.LinearVelocity, VectorConstants.ZeroVector);
+
+        if (!jumpInput.Jump || !jumpInput.IsGrounded)
+            return new MovementPhysxOutput(0, 0, false, body.LinearVelocity, VectorConstants.ZeroVector);
 
         var velocity = body.LinearVelocity;
 
         // Prevent double jump
         if (velocity.Y > 0)
-            return new MovementPhysxOutput(
-                input.CurrentSpeed, 0f, false, velocity, VectorConstants.ZeroVector
-            );
+            return new MovementPhysxOutput(0, 0, false, velocity, VectorConstants.ZeroVector);
 
-        float jumpImpulse = body.Mass * input.JumpForce;
+        float jumpImpulse = body.Mass * jumpInput.JumpForce;
         body.ApplyLinearImpulse(new Vector2(0, jumpImpulse), body.GetWorldCenter(), true);
 
-        return new MovementPhysxOutput(input.CurrentSpeed, 0f, false, body.LinearVelocity, VectorConstants.ZeroVector);
+        return new MovementPhysxOutput(0, 0, false, body.LinearVelocity, VectorConstants.ZeroVector);
     }
-
 
     public abstract MovementPhysxOutput CalculateMovement(Body body, TInput input);
     public abstract float CalculateRotation(Body body, TInput input);
-}
 
-public abstract class MovementPhysxInput
-{
-    public float CurrentSpeed { get; set; }
-    public float MaxSpeed { get; set; }
-    public float Acceleration { get; set; }
-    public float Deceleration { get; set; }
-    public float DeltaTime { get; set; } = 1.0f;
-
-    public bool Jump { get; set; }
-    public float JumpForce { get; set; }
-    public bool IsGrounded { get; set; }
+    public virtual void StopMovement(Body body)
+    {
+        body.SetLinearVelocity(VectorConstants.ZeroVector);
+    }
 }

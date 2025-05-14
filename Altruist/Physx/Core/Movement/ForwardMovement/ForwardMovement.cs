@@ -19,7 +19,7 @@ using System.Numerics;
 
 namespace Altruist.Physx;
 
-public class ForwardMovementPhysx : AbstractMovementTypePhysx<ForwardMovementPhysxInput>
+public class ForwardMovementPhysx : AbstractMovementPhysx<ForwardMovementPhysxInput>
 {
     public override MovementPhysxOutput CalculateMovement(Body body, ForwardMovementPhysxInput input)
     {
@@ -70,17 +70,4 @@ public class ForwardMovementPhysx : AbstractMovementTypePhysx<ForwardMovementPhy
 
         return input.RotationSpeed * (input.RotateLeftRight.Y - input.RotateLeftRight.X);
     }
-
-
-    // public virtual MovementPhysxOutput CalculateDeceleration(Body body, ForwardMovementPhysxInput input)
-    // {
-    //     float angle = body.GetAngle();
-    //     Vector2 direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
-
-    //     float decelerationForce = -input.Deceleration * input.CurrentSpeed;
-    //     Vector2 force = direction * decelerationForce * body.Mass;
-    //     float newSpeed = Math.Max(0, input.CurrentSpeed - input.Deceleration);
-
-    //     return new MovementPhysxOutput(newSpeed, CalculateRotation(body, input), false, VectorConstants.ZeroVector, force);
-    // }
 }

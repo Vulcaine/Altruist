@@ -51,7 +51,7 @@ public class GameConfig : IConfiguration
        });
 
         services.AddSingleton(typeof(PlayerCursor<>));
-        services.AddSingleton<MovementPhysx>();
+        services.AddSingleton<Physx>();
         services.AddSingleton(typeof(IPlayerService<>), typeof(AltruistPlayerService<>));
     }
 }
