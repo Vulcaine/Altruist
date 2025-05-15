@@ -333,6 +333,13 @@ public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePor
         await Router.Synchronize.SendAsync(player, forceAllAsChanged: true);
         await OnJoinGameAsync(player, room);
 
+        var conn = await GetConnectionAsync(clientId);
+        if (conn != null)
+        {
+            conn.ConnectionState = ConnectionStates.Joined;
+        }
+        // TODO: we must save the updated connection back to the cache.
+
         // enable player updates
         player.Activate();
     }
