@@ -60,7 +60,10 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : P
     {
         foreach (var player in _playerCursor)
         {
-            await Router.Synchronize.SendAsync(player.Update());
+            if (player.Activated)
+            {
+                await Router.Synchronize.SendAsync(player.Update());
+            }
         }
     }
 }

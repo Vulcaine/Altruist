@@ -514,6 +514,18 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     [VaultIgnored]
     public Body? PhysxBody { get; private set; }
 
+    /// <summary>
+    /// Indicates whether the player entity has been activated and placed into the world,
+    /// meaning it has been added to an active game session.
+    /// 
+    /// When a player is activated, the system is allowed to send updates related to that player.
+    /// Use this property to determine if it's valid to send updates to the corresponding client.
+    /// </summary>
+    [JsonIgnore]
+    [IgnoreMember]
+    [VaultIgnored]
+    public bool Activated { get; private set; }
+
     protected virtual void InitDefaults()
     {
         Type = GetType().Name;
@@ -546,6 +558,8 @@ public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
     }
 
     public void AttachBody(Body body) => PhysxBody = body;
+
+    public void Activate() => Activated = true;
 
     public virtual void DetachBody()
     {

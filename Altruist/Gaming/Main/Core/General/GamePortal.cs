@@ -332,6 +332,9 @@ public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePor
         await Router.Client.SendAsync(clientId, PacketHelper.Success($"Joined room {room.Id}.", clientId, msg.Type));
         await Router.Synchronize.SendAsync(player, forceAllAsChanged: true);
         await OnJoinGameAsync(player, room);
+
+        // enable player updates
+        player.Activate();
     }
     #endregion
 

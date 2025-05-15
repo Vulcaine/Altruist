@@ -18,7 +18,7 @@ public class GameClientSynchronizator : IClientSynchronizator
         var (changeMasks, changedProperties) = Synchronization.GetChangedData(entity, entity.ConnectionId, AltruistEngine.CurrentTick, forceAllAsChanged);
 
         bool anyChanges = changeMasks.Any(mask => mask != 0);
-        if (!anyChanges)
+        if (!anyChanges || changedProperties.Count == 0)
             return;
 
         var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
