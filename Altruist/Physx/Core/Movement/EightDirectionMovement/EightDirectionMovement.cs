@@ -23,28 +23,32 @@ public class EightDirectionMovementPhysx : AbstractMovementPhysx<EightDirectionM
 {
     public override MovementPhysxOutput CalculateMovement(Body body, EightDirectionMovementPhysxInput input)
     {
-        var zeroVector = VectorConstants.ZeroVector;
+        // Validate inputs without allocations
+        if (input.MoveLeftRight is < -1 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(input.MoveLeftRight), "MoveLeftRight must be -1, 0, or 1.");
 
-        // Movement is controlled via two directional vectors:
-        // - MoveUpDownVector, MovementLeftRightVector: X represents "up" or "left", Y represents "down" or "right"
-        // - Each component is either 0 or 1, indicating active movement in that direction
-        if ((input.MoveLeftRightVector.X != 0f && input.MoveLeftRightVector.X != 1f) ||
-            (input.MoveLeftRightVector.Y != 0f && input.MoveLeftRightVector.Y != 1f) ||
-            (input.MoveUpDownVector.X != 0f && input.MoveUpDownVector.X != 1f) ||
-            (input.MoveUpDownVector.Y != 0f && input.MoveUpDownVector.Y != 1f))
+        if (input.MoveUpDown is < -1 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(input.MoveUpDown), "MoveUpDown must be -1, 0, or 1.");
+
+        int dx = input.MoveLeftRight;
+        int dy = input.MoveUpDown;
+
+        if (dx == 0 && dy == 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(input),
-                "Movement vector components must be either 0 or 1.");
+            return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, Vector2.Zero, Vector2.Zero);
         }
 
-        Vector2 direction = input.MoveLeftRightVector + input.MoveUpDownVector;
-
-        if (direction == zeroVector)
+        Vector2 direction;
+        if (dx != 0 && dy != 0)
         {
-            return new MovementPhysxOutput(input.CurrentSpeed, 0.0f, false, zeroVector, zeroVector);
+            // Normalize diagonals manually to avoid method call and heap use
+            float inv = 1.0f / MathF.Sqrt(2f);
+            direction = new Vector2(dx * inv, dy * inv);
         }
-
-        direction = Vector2.Normalize(direction);
+        else
+        {
+            direction = new Vector2(dx, dy);
+        }
 
         float accelerationFactor = input.Turbo ? 2.0f : 1.0f;
         float currentSpeed = input.CurrentSpeed + input.Acceleration * accelerationFactor;
@@ -55,9 +59,9 @@ public class EightDirectionMovementPhysx : AbstractMovementPhysx<EightDirectionM
         return new MovementPhysxOutput(
             currentSpeed,
             0.0f,
-            velocity.LengthSquared() > 0,
+            true,
             velocity,
-            zeroVector
+            Vector2.Zero
         );
     }
 

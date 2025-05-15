@@ -26,8 +26,8 @@ public class EightDirectionMovementPhysxInput : IMovementStats, IDirectionalInpu
     public float Deceleration { get; set; }
     public float DeltaTime { get; set; } = 1.0f;
 
-    public Vector2 MoveLeftRightVector { get; set; }
-    public Vector2 MoveUpDownVector { get; set; }
+    public int MoveLeftRight { get; set; }
+    public int MoveUpDown { get; set; }
 
     public bool Turbo { get; set; }
 }

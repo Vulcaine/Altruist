@@ -45,8 +45,11 @@ public interface IRotationCapability
 
 public interface IDirectionalInput2D
 {
-    Vector2 MoveLeftRightVector { get; }
-    Vector2 MoveUpDownVector { get; }
+    // 0 = none, 1 = right, -1 = left
+    int MoveLeftRight { get; }
+
+    // 0 = none, 1 = up, -1 = down
+    int MoveUpDown { get; }
 }
 
 public interface IForwardMovementInput

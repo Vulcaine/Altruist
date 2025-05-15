@@ -135,8 +135,8 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
             Deceleration = entity.Deceleration,
             MaxSpeed = entity.MaxSpeed,
             CurrentSpeed = entity.CurrentSpeed,
-            MoveUpDownVector = eightDirectionIMovementPacket.MoveUpDownVector,
-            MoveLeftRightVector = eightDirectionIMovementPacket.MoveLeftRightVector,
+            MoveUpDown = eightDirectionIMovementPacket.MoveUpDown,
+            MoveLeftRight = eightDirectionIMovementPacket.MoveLeftRight,
             Turbo = eightDirectionIMovementPacket.Turbo
         };
 
