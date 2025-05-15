@@ -38,7 +38,9 @@ public interface IJumpCapability
 public interface IRotationCapability
 {
     float RotationSpeed { get; }
-    Vector2 RotateLeftRight { get; }
+
+    // -1 = left, 1 = right, 0 = no rotation
+    int RotateLeftRight { get; }
 }
 
 public interface IDirectionalInput2D

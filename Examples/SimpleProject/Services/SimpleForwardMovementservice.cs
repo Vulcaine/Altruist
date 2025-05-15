@@ -26,7 +26,7 @@ namespace SimpleGame.Services;
 [Service(typeof(IMovementService<SimpleSpaceship>))]
 public class SimpleForwardMovementService : ForwardSpacehipMovementService<SimpleSpaceship>
 {
-    public SimpleForwardMovementService(IPlayerService<SimpleSpaceship> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
+    public SimpleForwardMovementService(IPlayerService<SimpleSpaceship> playerService, Physx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
     {
     }
 }

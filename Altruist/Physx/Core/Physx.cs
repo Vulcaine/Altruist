@@ -30,13 +30,13 @@ public class VectorConstants
 
 public class Physx
 {
-    public ForwardMovementPhysx Forward { get; }
-    public EightDirectionMovementPhysx EightDirection { get; }
+    public ForwardMovementPhysx MoveForward { get; }
+    public EightDirectionMovementPhysx MoveEightDirection { get; }
 
     public Physx()
     {
-        Forward = new ForwardMovementPhysx();
-        EightDirection = new EightDirectionMovementPhysx();
+        MoveForward = new ForwardMovementPhysx();
+        MoveEightDirection = new EightDirectionMovementPhysx();
     }
 
     public void ApplyMovement(Body body, MovementPhysxOutput input)

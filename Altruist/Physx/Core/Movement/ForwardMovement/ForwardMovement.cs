@@ -25,7 +25,7 @@ public class ForwardMovementPhysx : AbstractMovementPhysx<ForwardMovementPhysxIn
     {
         float rotationSpeed = CalculateRotation(body, input);
 
-        if (!input.MoveForward)
+        if (!input.MoveForward && input.RotateLeftRight == 0)
         {
             return new MovementPhysxOutput(
                 input.CurrentSpeed,
@@ -57,17 +57,13 @@ public class ForwardMovementPhysx : AbstractMovementPhysx<ForwardMovementPhysxIn
 
     public override float CalculateRotation(Body body, ForwardMovementPhysxInput input)
     {
-        // Rotation is handled via RotateLeftRight vector:
-        // - X represents "rotate left", Y represents "rotate right"
-        // - Each component is either 0 or 1, indicating rotation intent
-        // - Both directions cannot be active simultaneously (conflict results in no rotation)
-        if ((input.RotateLeftRight.X != 0f && input.RotateLeftRight.X != 1f) ||
-            (input.RotateLeftRight.Y != 0f && input.RotateLeftRight.Y != 1f))
+        // RotateLeftRight must be -1 (left), 0 (none), or 1 (right)
+        if (input.RotateLeftRight is < -1 or > 1)
         {
             throw new ArgumentOutOfRangeException(nameof(input.RotateLeftRight),
-                "RotateLeftRight values must be either 0 or 1.");
+                "RotateLeftRight must be -1 (left), 0 (none), or 1 (right).");
         }
 
-        return input.RotationSpeed * (input.RotateLeftRight.Y - input.RotateLeftRight.X);
+        return input.RotationSpeed * input.RotateLeftRight;
     }
 }

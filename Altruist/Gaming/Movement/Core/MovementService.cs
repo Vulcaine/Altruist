@@ -102,7 +102,7 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
             MoveForward = forwardMovementPacket.MoveUp
         };
 
-        var result = _movementPhysx.Forward.CalculateMovement(body, movementInput);
+        var result = _movementPhysx.MoveForward.CalculateMovement(body, movementInput);
         entity.Moving = result.Moving;
 
         if (result.Moving)
@@ -140,7 +140,7 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
             Turbo = eightDirectionIMovementPacket.Turbo
         };
 
-        var result = _movementPhysx.EightDirection.CalculateMovement(body, movementInput);
+        var result = _movementPhysx.MoveEightDirection.CalculateMovement(body, movementInput);
         entity.Moving = result.Moving;
 
         if (result.Moving)
