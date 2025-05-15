@@ -25,7 +25,7 @@ public interface IAltruistRouterSender
 
 public interface IClientSynchronizator
 {
-    Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false);
+    Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false, int toState = ConnectionStates.Connected);
 }
 
 public interface IAltruistRouter
@@ -38,7 +38,7 @@ public interface IAltruistRouter
 
 public class ClientSynchronizator : IClientSynchronizator
 {
-    public Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
+    public Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false, int toState = ConnectionStates.Connected)
     {
         throw new NotImplementedException($"ClientSynchronizator.SendAsync() is not implemented. Only working with a gaming module.");
     }
@@ -141,20 +141,23 @@ public class BroadcastSender
         _client = clientSender;
     }
 
-    public async Task SendAsync<TPacketBase>(TPacketBase message, string? excludeClientId = null) where TPacketBase : IPacketBase
+    public async Task SendAsync<TPacketBase>(TPacketBase message, string? excludeClientId = null, int toState = ConnectionStates.Connected) where TPacketBase : IPacketBase
     {
         var connections = await _store.GetAllConnectionsAsync();
 
         foreach (var socket in connections)
         {
-            var clientId = socket.ConnectionId;
-            if (clientId == excludeClientId)
-                continue;
-
-            message.Header.SetReceiver(clientId);
-            if (socket != null && socket.IsConnected)
+            if (socket.ConnectionState == toState)
             {
-                await _client.SendAsync(clientId, message);
+                var clientId = socket.ConnectionId;
+                if (clientId == excludeClientId)
+                    continue;
+
+                message.Header.SetReceiver(clientId);
+                if (socket != null && socket.IsConnected)
+                {
+                    await _client.SendAsync(clientId, message);
+                }
             }
         }
     }

@@ -62,7 +62,7 @@ public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : P
         {
             if (player.Activated)
             {
-                await Router.Synchronize.SendAsync(player.Update());
+                await Router.Synchronize.SendAsync(player.Update(), toState: ConnectionStates.Joined);
             }
         }
     }

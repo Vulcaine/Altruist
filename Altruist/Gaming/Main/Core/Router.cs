@@ -13,7 +13,7 @@ public class GameClientSynchronizator : IClientSynchronizator
         _broadcast = broadcastSender;
     }
 
-    public virtual async Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
+    public virtual async Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false, int toState = ConnectionStates.Connected)
     {
         var (changeMasks, changedProperties) = Synchronization.GetChangedData(entity, entity.ConnectionId, AltruistEngine.CurrentTick, forceAllAsChanged);
 
@@ -23,7 +23,7 @@ public class GameClientSynchronizator : IClientSynchronizator
 
         var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         var syncData = new SyncPacket("server", entity.GetType().Name, safeCopy);
-        await _broadcast.SendAsync(syncData);
+        await _broadcast.SendAsync(syncData, toState: toState);
     }
 
     public Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
