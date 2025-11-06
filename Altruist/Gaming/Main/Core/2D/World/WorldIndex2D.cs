@@ -2,7 +2,7 @@ using System.Numerics;
 
 namespace Altruist.Gaming
 {
-    public sealed class WorldIndex2D : VaultModel
+    public sealed class WorldIndex2D : VaultModel, IWorldIndex
     {
         public override string SysId { get; set; }
         public override string GroupId { get; set; }
@@ -30,5 +30,10 @@ namespace Altruist.Gaming
 
         public int Width => (int)Size.X;
         public int Height => (int)Size.Y;
+
+        int IWorldIndex.Index()
+        {
+            return Index;
+        }
     }
 }

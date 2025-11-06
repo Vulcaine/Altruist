@@ -18,6 +18,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using Altruist.Engine;
+using Altruist.Gaming.TwoD;
 using Cronos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -278,11 +279,11 @@ public class AltruistEngine : IAltruistEngine
 
     private IServerStatus _appStatus;
 
-    private readonly GameWorldCoordinator _worldCoordinator;
+    private readonly IGameWorldCoordinator _worldCoordinator;
 
     public AltruistEngine(
         IServiceProvider serviceProvider,
-        GameWorldCoordinator worldCoordinator,
+        IGameWorldCoordinator worldCoordinator,
         int engineFrequencyHz = 30, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
     {
         var settings = serviceProvider.GetRequiredService<IAltruistContext>();

@@ -19,7 +19,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly List<WorldPartition3D> _partitions;
         private readonly IPhysxWorld3D _physx3D;
 
-        public GameWorldManager3D(WorldIndex3D world, PhysxWorld3D physx3D, IWorldPartitioner3D worldPartitioner, ICacheProvider cacheProvider)
+        public GameWorldManager3D(WorldIndex3D world, IPhysxWorld3D physx3D, IWorldPartitioner3D worldPartitioner, ICacheProvider cacheProvider)
         {
             _index = world ?? throw new ArgumentNullException(nameof(world));
             _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));

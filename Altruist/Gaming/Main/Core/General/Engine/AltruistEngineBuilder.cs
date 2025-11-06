@@ -15,18 +15,26 @@ limitations under the License.
 */
 
 using Altruist.Engine;
+using Altruist.Physx;
+using Altruist.Physx.ThreeD;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Engine;
 
+public enum EngineMode
+{
+    TwoD,
+    ThreeD
+}
+
 public class AltruistGameEngineBuilder
 {
     private IServiceCollection Services { get; }
     private IAltruistContext Settings;
     private string[] _args;
-    private List<WorldIndex> _worlds = new();
+    private List<IWorldIndex> _worlds = new();
 
     public AltruistGameEngineBuilder(IServiceCollection services, IAltruistContext Settings, string[] args)
     {
@@ -40,21 +48,21 @@ public class AltruistGameEngineBuilder
         return new AltruistConnectionBuilder(Services, Settings, _args);
     }
 
-    public AltruistGameEngineBuilder AddWorld(WorldIndex worldIndex)
+    public AltruistGameEngineBuilder AddWorld(IWorldIndex worldIndex)
     {
-        Services.AddKeyedSingleton(typeof(WorldIndex), $"world-{worldIndex.Index}", worldIndex);
+        Services.AddKeyedSingleton(typeof(IWorldIndex), $"world-{worldIndex.Index()}", worldIndex);
         _worlds.Add(worldIndex);
         return this;
     }
 
-    public AltruistConnectionBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
+    public AltruistConnectionBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null, EngineMode mode = EngineMode.TwoD)
     {
         Services.AddSingleton<IAction, EngineStartupAction>();
         Services.AddSingleton<IAltruistEngineRouter, InMemoryEngineRouter>();
         Services.AddSingleton<EngineClientSender>();
         Services.AddSingleton<IAltruistEngine>(sp =>
         {
-            var coordinator = sp.GetRequiredService<GameWorldCoordinator>();
+            var coordinator = sp.GetRequiredService<IGameWorldCoordinator>();
             if (_worlds.Count == 0)
             {
                 throw new InvalidOperationException("Engine requires a physics world but has not been set. Use AddWorld(WorldIndex) to add a world to the universe.");
@@ -62,7 +70,18 @@ public class AltruistGameEngineBuilder
 
             foreach (var world in _worlds)
             {
-                coordinator.AddWorld(world);
+                if (mode == EngineMode.ThreeD)
+                {
+                    var physx = new PhysxWorld3D(sp.GetRequiredService<IPhysxWorldEngine3D>());
+                    coordinator.AddWorld(world, physx);
+                    continue;
+                }
+                else
+                {
+                    var physx = new PhysxWorld2D(sp.GetRequiredService<IPhysxWorldEngine2D>());
+                    coordinator.AddWorld(world, physx);
+                    continue;
+                }
             }
 
             var env = sp.GetRequiredService<IHostEnvironment>();

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+<PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>Boot</PackageId>
+    <Description>Boot module for Altruist framework.</Description>
+    <Version>0.4.1-alpha</Version>
+    <Copyright>Copyright © 2025 Aron Gere</Copyright>
+    <PackageReadmeFile>./README.md</PackageReadmeFile>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
+    <ProjectReference Include="..\Core\Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
+    <PackageReference Include="Altruist" Version="*-*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="3.1.0" />
+  </ItemGroup>
+
+</Project>
