@@ -1,4 +1,7 @@
 // Web/Features/WebsocketFeatureProvider.cs
+using System;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Altruist.Features;
 using Microsoft.Extensions.Configuration;
@@ -11,15 +14,14 @@ namespace Altruist.Web.Features
 
         public object Configure(object stage, IConfiguration config)
         {
-            var opts = new AltruistConfigOptions();
-            config.GetSection("altruist").Bind(opts);
+            var root = new AltruistConfigOptions();
+            config.GetSection("altruist").Bind(root);
 
-            // Not selected => return stage unchanged
-            if (!string.Equals(opts.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(root.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
                 return stage;
 
-            // Ensure we have an AltruistConnectionBuilder to call WithWebsocket on
-            AltruistConnectionBuilder connectionBuilder = stage switch
+            // Normalize to a connection builder
+            AltruistConnectionBuilder connection = stage switch
             {
                 AltruistConnectionBuilder c => c,
                 AltruistIntermediateBuilder i => i.NoEngine(),
@@ -27,20 +29,48 @@ namespace Altruist.Web.Features
                     $"Websocket feature expected stage AltruistConnectionBuilder or AltruistIntermediateBuilder, but got {stage.GetType().Name}.")
             };
 
-            // Apply the transport; returns IAfterConnectionBuilder
-            var afterConn = connectionBuilder.WithWebsocket(ws => ws /* .MapPortal<...>("/...") */);
+            // Attribute-only discovery
+            var discovered = PortalDiscovery.Discover();
 
-            // Return the next stage
-            return afterConn;
+            // Apply transport and map discovered portals
+            var next = connection.WithWebsocket(ws =>
+            {
+                object cur = ws;
+                foreach (var d in discovered)
+                {
+                    cur = MapPortalRuntime(cur, d.PortalType, d.Path);
+                }
+
+                return (dynamic)cur;
+            });
+
+            return next;
+        }
+
+        /// <summary>
+        /// Calls MapPortal&lt;P&gt;(string path) on the websocket setup object via reflection.
+        /// </summary>
+        private static object MapPortalRuntime(object websocketSetup, Type portalType, string path)
+        {
+            var mi = websocketSetup.GetType()
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .Where(m => m.Name == "MapPortal" && m.IsGenericMethodDefinition)
+                .First(m =>
+                {
+                    var ga = m.GetGenericArguments();
+                    if (ga.Length != 1) return false;
+                    var ps = m.GetParameters();
+                    return ps.Length == 1 && ps[0].ParameterType == typeof(string);
+                });
+
+            var closed = mi.MakeGenericMethod(portalType);
+            return closed.Invoke(websocketSetup, new object[] { path })!;
         }
     }
 
     public static class ModuleInitializer
     {
         [ModuleInitializer]
-        public static void Init()
-        {
-            FeatureRegistry.Register(new WebsocketFeatureProvider());
-        }
+        public static void Init() => FeatureRegistry.Register(new WebsocketFeatureProvider());
     }
 }

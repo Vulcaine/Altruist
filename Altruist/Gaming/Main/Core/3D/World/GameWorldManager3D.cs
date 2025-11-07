@@ -9,7 +9,7 @@ using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
-    public sealed class GameWorldManager3D
+    public sealed class GameWorldManager3D : IGameWorldManager
     {
         private readonly WorldIndex3D _index;
         private readonly IWorldPartitioner3D _worldPartitioner;

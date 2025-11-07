@@ -2,7 +2,7 @@ using Altruist.Gaming.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
-    public class WorldPartition3D : StoredModel
+    public class WorldPartition3D : StoredModel, IWorldPartition
     {
         private readonly SpatialGridIndex3D _spatialIndex = new(cellSize: 16);
         public override string SysId { get; set; } = Guid.NewGuid().ToString();
@@ -24,17 +24,17 @@ namespace Altruist.Gaming.ThreeD
             Epicenter = position + size / 2;
         }
 
-        public virtual void AddObject(WorldObjectTypeKey objectType, ObjectMetadata3D objectMetadata)
+        public virtual void AddObject(WorldObjectTypeKey objectType, IObjectMetadata objectMetadata)
         {
             _spatialIndex.Add(objectType, objectMetadata);
         }
 
-        public virtual ObjectMetadata3D? DestroyObject(WorldObjectTypeKey objectType, string id)
+        public virtual IObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string id)
         {
             return _spatialIndex.Remove(objectType, id);
         }
 
-        public virtual IEnumerable<ObjectMetadata3D> GetObjectsByTypeInRadius(
+        public virtual IEnumerable<IObjectMetadata> GetObjectsByTypeInRadius(
             WorldObjectTypeKey objectType,
             int x, int y, int z,
             float radius,
@@ -43,10 +43,10 @@ namespace Altruist.Gaming.ThreeD
             return _spatialIndex.Query(objectType, x, y, z, radius, roomId);
         }
 
-        public virtual HashSet<ObjectMetadata3D> GetObjectsByType(WorldObjectTypeKey objectType) =>
+        public virtual HashSet<IObjectMetadata> GetObjectsByType(WorldObjectTypeKey objectType) =>
             _spatialIndex.GetAllByType(objectType);
 
-        public virtual HashSet<ObjectMetadata3D> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
+        public virtual HashSet<IObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
             _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
     }
 

@@ -6,5 +6,6 @@ namespace Altruist.Gaming
     {
         void Step(float deltaTime);
         void AddWorld(IWorldIndex index, IPhysxWorld physx2D);
+        IGameWorldManager? GetWorld(int index);
     }
 }

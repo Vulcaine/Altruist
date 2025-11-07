@@ -7,7 +7,7 @@ namespace Altruist.Gaming.TwoD
 
         // Use stringified keys like "x:y" to allow JSON serialization
         // Optional, flatten all objects by ID if needed
-        public Dictionary<string, ObjectMetadata2D> InstanceMap { get; set; } = new();
+        public Dictionary<string, IObjectMetadata> InstanceMap { get; set; } = new();
 
         // grid key => metadata id string
         public Dictionary<string, HashSet<string>> Grid { get; set; } = new();
@@ -24,9 +24,13 @@ namespace Altruist.Gaming.TwoD
 
         private static string GetKey(int x, int y) => $"{x}:{y}";
 
-        public virtual void Add(WorldObjectTypeKey type, ObjectMetadata2D obj)
+        public virtual void Add(WorldObjectTypeKey type, IObjectMetadata obj)
         {
-            string key = GetKey((int)(obj.Position.X / CellSize), (int)(obj.Position.Y / CellSize));
+            if (obj is not ObjectMetadata2D obj2d)
+            {
+                return;
+            }
+            string key = GetKey((int)(obj2d.Position.X / CellSize), (int)(obj2d.Position.Y / CellSize));
 
             if (!Grid.TryGetValue(key, out var list))
                 Grid[key] = list = new HashSet<string>();
@@ -41,12 +45,12 @@ namespace Altruist.Gaming.TwoD
             typeDict.Add(obj.InstanceId);
         }
 
-        public virtual ObjectMetadata2D? Remove(WorldObjectTypeKey type, string instanceId)
+        public virtual IObjectMetadata? Remove(WorldObjectTypeKey type, string instanceId)
         {
-            if (!InstanceMap.TryGetValue(instanceId, out var obj))
+            if (!InstanceMap.TryGetValue(instanceId, out var obj) || obj is not ObjectMetadata2D obj2d)
                 return null;
 
-            string key = GetKey((int)(obj.Position.X / CellSize), (int)(obj.Position.Y / CellSize));
+            string key = GetKey(obj2d.Position.X / CellSize, obj2d.Position.Y / CellSize);
             if (Grid.TryGetValue(key, out var list))
             {
                 list.Remove(instanceId);
@@ -62,7 +66,7 @@ namespace Altruist.Gaming.TwoD
             return obj;
         }
 
-        public virtual IEnumerable<ObjectMetadata2D> Query(WorldObjectTypeKey type, int x, int y, float radius, string roomId)
+        public virtual IEnumerable<IObjectMetadata> Query(WorldObjectTypeKey type, int x, int y, float radius, string roomId)
         {
             int minX = (int)((x - radius) / CellSize);
             int maxX = (int)((x + radius) / CellSize);
@@ -70,7 +74,7 @@ namespace Altruist.Gaming.TwoD
             int maxY = (int)((y + radius) / CellSize);
 
             float sqrRadius = radius * radius;
-            var result = new HashSet<ObjectMetadata2D>();
+            var result = new HashSet<IObjectMetadata>();
 
             for (int cx = minX; cx <= maxX; cx++)
             {
@@ -83,10 +87,10 @@ namespace Altruist.Gaming.TwoD
 
                     foreach (var obj in instanceList)
                     {
-                        if (obj.Type != type) continue;
+                        if (obj.Type != type || obj is not ObjectMetadata2D obj2d) continue;
 
-                        float dx = obj.Position.X - x;
-                        float dy = obj.Position.Y - y;
+                        float dx = obj2d.Position.X - x;
+                        float dy = obj2d.Position.Y - y;
 
                         if ((dx * dx + dy * dy) <= sqrRadius)
                             result.Add(obj);
@@ -97,12 +101,12 @@ namespace Altruist.Gaming.TwoD
             return result;
         }
 
-        public virtual Dictionary<string, ObjectMetadata2D> GetByType(WorldObjectTypeKey type)
+        public virtual Dictionary<string, IObjectMetadata> GetByType(WorldObjectTypeKey type)
         {
             return (TypeMap.TryGetValue(type.Value, out var map) ? map : new()).ToDictionary(x => x, x => InstanceMap[x]);
         }
 
-        public virtual HashSet<ObjectMetadata2D> GetAllByType(WorldObjectTypeKey type)
+        public virtual HashSet<IObjectMetadata> GetAllByType(WorldObjectTypeKey type)
         {
             return GetByType(type).Values.ToHashSet();
         }

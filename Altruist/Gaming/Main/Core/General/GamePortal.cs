@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using Altruist.Gaming.ThreeD;
+using Altruist.Gaming.TwoD;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -32,11 +34,11 @@ public class GamePortalContext : PortalContext
 
 public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalContext> where TPlayerEntity : PlayerEntity, new()
 {
-    protected readonly GameWorldCoordinator _worldCoordinator;
+    protected readonly IGameWorldCoordinator _worldCoordinator;
     protected readonly IPlayerService<TPlayerEntity> _playerService;
 
     protected AltruistGamePortal(GamePortalContext context,
-        GameWorldCoordinator worldCoordinator,
+        IGameWorldCoordinator worldCoordinator,
         IPlayerService<TPlayerEntity> playerService,
         ILoggerFactory loggerFactory) : base(context, loggerFactory)
     {
@@ -49,7 +51,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalConte
     /// </summary>
     /// <param name="clientId">The client ID to search for.</param>
     /// <returns>The game world manager associated with the client ID, or null.</returns>
-    protected async Task<GameWorldManager?> FindWorldForClientAsync(string clientId)
+    protected async Task<IGameWorldManager?> FindWorldForClientAsync(string clientId)
     {
         var player = await _playerService.GetPlayerAsync(clientId);
         if (player != null)
@@ -84,17 +86,35 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalConte
         var world = await FindWorldForClientAsync(initiatorClientId);
         if (world != null)
         {
-            var partitions = world.FindPartitionsForPosition(x, y, 0);
-            packet.Header = PacketHeaders.Broadcast;
-
-            foreach (var partition in partitions)
+            if (world is GameWorldManager3D gameWorldManager3D)
             {
-                var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
-                foreach (var client in clients)
+                var partitions = gameWorldManager3D.FindPartitionsForPosition(x, y, 0);
+                packet.Header = PacketHeaders.Broadcast;
+
+                foreach (var partition in partitions)
                 {
-                    await Router.Client.SendAsync(client.InstanceId, packet);
+                    var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
+                    foreach (var client in clients)
+                    {
+                        await Router.Client.SendAsync(client.InstanceId, packet);
+                    }
                 }
             }
+            else if (world is GameWorldManager2D gameWorldManager2D)
+            {
+                var partitions = gameWorldManager2D.FindPartitionsForPosition(x, y, 0);
+                packet.Header = PacketHeaders.Broadcast;
+
+                foreach (var partition in partitions)
+                {
+                    var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
+                    foreach (var client in clients)
+                    {
+                        await Router.Client.SendAsync(client.InstanceId, packet);
+                    }
+                }
+            }
+
         }
     }
 
@@ -140,7 +160,7 @@ public abstract class AltruistGamePortal<TPlayerEntity> : Portal<GamePortalConte
 
 public abstract class AltruistGameSessionPortal<TPlayerEntity> : AltruistGamePortal<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
 {
-    protected AltruistGameSessionPortal(GamePortalContext context, GameWorldCoordinator gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
+    protected AltruistGameSessionPortal(GamePortalContext context, IGameWorldCoordinator gameWorld, IPlayerService<TPlayerEntity> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
     }
 

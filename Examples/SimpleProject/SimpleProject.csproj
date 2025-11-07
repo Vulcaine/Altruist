@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
+    <ProjectReference Include="..\..\Altruist\Boot\Boot.csproj" />
     <ProjectReference Include="..\..\Altruist\Web\Web.csproj" />
     <ProjectReference Include="..\..\Altruist\Gaming\Movement\Movement.csproj" />
   </ItemGroup>

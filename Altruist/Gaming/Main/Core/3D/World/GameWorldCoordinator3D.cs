@@ -40,7 +40,7 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>
         /// Gets the GameWorldManager for a given world index.
         /// </summary>
-        public virtual GameWorldManager3D? GetWorld(int index)
+        public virtual IGameWorldManager? GetWorld(int index)
         {
             return _worlds.TryGetValue(index, out var manager) ? manager : null;
         }

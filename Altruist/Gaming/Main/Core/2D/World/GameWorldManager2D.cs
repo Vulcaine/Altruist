@@ -8,12 +8,12 @@ using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.TwoD
 {
-    public sealed class GameWorldManager2D
+    public sealed class GameWorldManager2D : IGameWorldManager
     {
         private readonly WorldIndex2D _index;
         private readonly IWorldPartitioner2D _worldPartitioner;
         private readonly ICacheProvider _cache;
-        private readonly Dictionary<PartitionIndex2D, WorldPartition2D> _partitionMap = new();
+        private readonly Dictionary<PartitionIndex2D, IWorldPartition> _partitionMap = new();
 
         private readonly List<WorldPartition2D> _partitions;
         private readonly IPhysxWorld2D _physx2D;
@@ -48,7 +48,7 @@ namespace Altruist.Gaming.TwoD
             await Task.WhenAll(saveTasks);
         }
 
-        public IEnumerable<WorldPartition2D> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata, float radius)
+        public IEnumerable<IWorldPartition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata, float radius)
         {
             DestroyObject(objectType, objectMetadata.InstanceId);
             var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
@@ -62,27 +62,35 @@ namespace Altruist.Gaming.TwoD
             AddObjectToPartitions(objectType, objectMetadata, partitions);
         }
 
-        public WorldPartition2D? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata)
+        public IWorldPartition? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata)
         {
             var partition = FindPartitionForPosition(objectMetadata.Position.X, objectMetadata.Position.Y);
-            partition?.AddObject(objectType, objectMetadata);
+            if (partition is WorldPartition2D p2d)
+            {
+                p2d.AddObject(objectType, objectMetadata);
+            }
             return partition;
         }
 
-        public ObjectMetadata2D? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
+        public IObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
             => _partitions.Select(p => p.DestroyObject(objectType, instanceId)).FirstOrDefault(m => m != null);
 
-        public IEnumerable<ObjectMetadata2D> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
+        public IEnumerable<IObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
         {
-            var result = new List<ObjectMetadata2D>();
+            var result = new List<IObjectMetadata>();
             var partitions = FindPartitionsForPosition(x, y, radius);
             foreach (var partition in partitions)
-                result.AddRange(partition.GetObjectsByTypeInRadius(objectType, x, y, radius, roomId));
+            {
+                if (partition is WorldPartition2D p2d)
+                {
+                    result.AddRange(p2d.GetObjectsByTypeInRadius(objectType, x, y, radius, roomId));
+                }
+            }
 
             return result.Distinct();
         }
 
-        public WorldPartition2D? FindPartitionForPosition(int x, int y)
+        public IWorldPartition? FindPartitionForPosition(int x, int y)
         {
             int indexX = (int)Math.Round(x / (double)_worldPartitioner.PartitionWidth);
             int indexY = (int)Math.Round(y / (double)_worldPartitioner.PartitionHeight);
@@ -90,25 +98,36 @@ namespace Altruist.Gaming.TwoD
             return _partitionMap.TryGetValue(new PartitionIndex2D(indexX, indexY), out var p) ? p : null;
         }
 
-        public IEnumerable<WorldPartition2D> FindPartitionsForPosition(int x, int y, float radius)
+        public IEnumerable<IWorldPartition> FindPartitionsForPosition(int x, int y, float radius)
         {
             float minX = x - radius;
             float maxX = x + radius;
             float minY = y - radius;
             float maxY = y + radius;
 
-            return _partitions.Where(partition =>
-                maxX >= partition.Position.X &&
-                minX <= partition.Position.X + partition.Size.X &&
-                maxY >= partition.Position.Y &&
-                minY <= partition.Position.Y + partition.Size.Y
-            );
+            return _partitions.Where(p =>
+            {
+                return maxX >= p.Position.X &&
+                       minX <= p.Position.X + p.Size.X &&
+                       maxY >= p.Position.Y &&
+                       minY <= p.Position.Y + p.Size.Y;
+            });
         }
 
-        private IEnumerable<WorldPartition2D> AddObjectToPartitions(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata, IEnumerable<WorldPartition2D> partitions)
+        private IEnumerable<IWorldPartition> AddObjectToPartitions(
+            WorldObjectTypeKey objectType,
+            ObjectMetadata2D objectMetadata,
+            IEnumerable<IWorldPartition> partitions
+        )
         {
             foreach (var partition in partitions)
-                partition.AddObject(objectType, objectMetadata);
+            {
+                if (partition is WorldPartition2D p2d)
+                {
+                    p2d.AddObject(objectType, objectMetadata);
+                }
+            }
+
             return partitions;
         }
     }

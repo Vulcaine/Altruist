@@ -6,7 +6,7 @@ namespace Altruist.Gaming.ThreeD
         public int CellSize { get; set; }
 
         // All objects by instance id
-        public Dictionary<string, ObjectMetadata3D> InstanceMap { get; set; } = new();
+        public Dictionary<string, IObjectMetadata> InstanceMap { get; set; } = new();
 
         // Grid cell key => set of instance ids
         public Dictionary<string, HashSet<string>> Grid { get; set; } = new();
@@ -23,12 +23,16 @@ namespace Altruist.Gaming.ThreeD
 
         private static string GetKey(int x, int y, int z) => $"{x}:{y}:{z}";
 
-        public virtual void Add(WorldObjectTypeKey type, ObjectMetadata3D obj)
+        public virtual void Add(WorldObjectTypeKey type, IObjectMetadata obj)
         {
+            if (obj is not ObjectMetadata3D obj3d)
+            {
+                return;
+            }
             string key = GetKey(
-                (int)(obj.Position.X / CellSize),
-                (int)(obj.Position.Y / CellSize),
-                (int)(obj.Position.Z / CellSize));
+                obj3d.Position.X / CellSize,
+                obj3d.Position.Y / CellSize,
+                obj3d.Position.Z / CellSize);
 
             if (!Grid.TryGetValue(key, out var list))
                 Grid[key] = list = new HashSet<string>();
@@ -43,15 +47,15 @@ namespace Altruist.Gaming.ThreeD
             typeSet.Add(obj.InstanceId);
         }
 
-        public virtual ObjectMetadata3D? Remove(WorldObjectTypeKey type, string instanceId)
+        public virtual IObjectMetadata? Remove(WorldObjectTypeKey type, string instanceId)
         {
-            if (!InstanceMap.TryGetValue(instanceId, out var obj))
+            if (!InstanceMap.TryGetValue(instanceId, out var obj) || obj is not ObjectMetadata3D obj3d)
                 return null;
 
             string key = GetKey(
-                (int)(obj.Position.X / CellSize),
-                (int)(obj.Position.Y / CellSize),
-                (int)(obj.Position.Z / CellSize));
+                obj3d.Position.X / CellSize,
+                obj3d.Position.Y / CellSize,
+                obj3d.Position.Z / CellSize);
 
             if (Grid.TryGetValue(key, out var cellSet))
                 cellSet.Remove(instanceId);
@@ -63,7 +67,7 @@ namespace Altruist.Gaming.ThreeD
             return obj;
         }
 
-        public virtual IEnumerable<ObjectMetadata3D> Query(
+        public virtual IEnumerable<IObjectMetadata> Query(
             WorldObjectTypeKey type,
             int x, int y, int z,
             float radius,
@@ -95,14 +99,14 @@ namespace Altruist.Gaming.ThreeD
 
                         foreach (var obj in instanceList)
                         {
-                            if (obj.Type != type) continue;
+                            if (obj.Type != type || obj is not ObjectMetadata3D obj3d) continue;
 
-                            float dx = obj.Position.X - x;
-                            float dy = obj.Position.Y - y;
-                            float dz = obj.Position.Z - z;
+                            float dx = obj3d.Position.X - x;
+                            float dy = obj3d.Position.Y - y;
+                            float dz = obj3d.Position.Z - z;
 
                             if ((dx * dx + dy * dy + dz * dz) <= sqrRadius)
-                                result.Add(obj);
+                                result.Add(obj3d);
                         }
                     }
                 }
@@ -111,13 +115,13 @@ namespace Altruist.Gaming.ThreeD
             return result;
         }
 
-        public virtual Dictionary<string, ObjectMetadata3D> GetByType(WorldObjectTypeKey type)
+        public virtual Dictionary<string, IObjectMetadata> GetByType(WorldObjectTypeKey type)
         {
             return (TypeMap.TryGetValue(type.Value, out var set) ? set : new())
                 .ToDictionary(id => id, id => InstanceMap[id]);
         }
 
-        public virtual HashSet<ObjectMetadata3D> GetAllByType(WorldObjectTypeKey type)
+        public virtual HashSet<IObjectMetadata> GetAllByType(WorldObjectTypeKey type)
         {
             return GetByType(type).Values.ToHashSet();
         }
