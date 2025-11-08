@@ -1,7 +1,7 @@
 // Gaming/Features/GameEngineFeatureProvider.cs
 using Altruist.Features;
 using Altruist.Gaming.Engine;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Gaming.Features
 {
@@ -9,14 +9,13 @@ namespace Altruist.Gaming.Features
     {
         public string FeatureId => "game-engine";
 
-        public object Configure(object stage, IConfiguration config)
+        public object Configure(object stage, IServiceProvider services)
         {
-            var root = new AltruistConfigOptions();
-            config.GetSection("altruist").Bind(root);
+            var root = services.GetRequiredService<AltruistConfigOptions>();
 
             var game = root.Game;
             // If no game section or empty, do nothing (Boot only requests this when present, but be defensive)
-            if (game == null || (game.Worlds == null || game.Worlds.Count == 0) && game.Engine == null)
+            if (game == null || ((game.Worlds == null || game.Worlds.Items.Count == 0) && game.Engine == null))
                 return stage;
 
             if (stage is not AltruistIntermediateBuilder intermediate)
@@ -30,7 +29,7 @@ namespace Altruist.Gaming.Features
             {
                 var dim = InferDimension(game);
 
-                foreach (var w in game.Worlds)
+                foreach (var w in game.Worlds.Items)
                 {
                     if (dim == "3D")
                         engine.AddWorld(new WorldIndex3D(w.Index, w.Size.ToVector3(), w.Gravity.ToVector3(), w.Position.ToVector3()));
@@ -50,15 +49,14 @@ namespace Altruist.Gaming.Features
                 );
             });
 
-            // SetupGameEngine returns AltruistConnectionBuilder (next stage)
             return next;
         }
 
         private static string InferDimension(GameConfigOptions game)
         {
             var worlds = game.Worlds ?? new();
-            var any3D = worlds.Any(w => w.Is3D);
-            var any2D = worlds.Any(w => !w.Is3D);
+            var any3D = worlds.Items.Any(w => w.Is3D);
+            var any2D = worlds.Items.Any(w => !w.Is3D);
 
             if (any3D && any2D)
                 throw new InvalidOperationException("Worlds are mixed 2D/3D. Use either all 2D or all 3D.");

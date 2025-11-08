@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Altruist.Features;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Web.Features
 {
@@ -12,10 +13,9 @@ namespace Altruist.Web.Features
     {
         public string FeatureId => "websocket";
 
-        public object Configure(object stage, IConfiguration config)
+        public object Configure(object stage, IServiceProvider services)
         {
-            var root = new AltruistConfigOptions();
-            config.GetSection("altruist").Bind(root);
+            var root = services.GetRequiredService<AltruistConfigOptions>();
 
             if (!string.Equals(root.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
                 return stage;
@@ -64,7 +64,7 @@ namespace Altruist.Web.Features
                 });
 
             var closed = mi.MakeGenericMethod(portalType);
-            return closed.Invoke(websocketSetup, new object[] { path })!;
+            return closed.Invoke(websocketSetup, [path])!;
         }
     }
 }

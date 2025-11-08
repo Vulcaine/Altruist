@@ -23,7 +23,7 @@ namespace Altruist
 
             var sp = AltruistBootstrap.Services.BuildServiceProvider();
             var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AltruistApplication));
-            var opts = sp.GetRequiredService<AltruistOptions>();
+            var opts = sp.GetRequiredService<AltruistConfigOptions>();
 
             var requested = DecideRequestedFeatures(opts);
 
@@ -44,7 +44,7 @@ namespace Altruist
                         $"Feature '{feature}' requested by config, but no module was found to provide it. {suggestion}");
                 }
 
-                var next = provider.Configure(stage, cfg);
+                var next = provider.Configure(stage, sp);
                 if (next is null)
                     throw new InvalidOperationException($"Feature provider for '{feature}' returned a null stage.");
 
@@ -59,8 +59,8 @@ namespace Altruist
                     {
                         var useHost = b.GetType().GetMethod("UseHost", BindingFlags.Public | BindingFlags.Instance);
                         var usePort = b.GetType().GetMethod("UsePort", BindingFlags.Public | BindingFlags.Instance);
-                        useHost?.Invoke(b, new object[] { opts.Server.Host });
-                        usePort?.Invoke(b, new object[] { opts.Server.Port });
+                        useHost?.Invoke(b, [opts.Server.Host]);
+                        usePort?.Invoke(b, [opts.Server.Port]);
                     }
                     catch { }
                     return b;
@@ -82,7 +82,7 @@ namespace Altruist
                 "and the corresponding module is referenced.");
         }
 
-        private static IReadOnlyList<string> DecideRequestedFeatures(AltruistOptions opts)
+        private static IReadOnlyList<string> DecideRequestedFeatures(AltruistConfigOptions opts)
         {
             var features = new List<string>();
 

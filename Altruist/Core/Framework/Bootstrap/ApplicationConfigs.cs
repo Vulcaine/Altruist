@@ -13,11 +13,11 @@ namespace Altruist
     }
 
     [ConfigurationProperties("altruist")]
-    public sealed class AltruistOptions
+    public sealed class AltruistConfigOptions
     {
         public ServerOptions Server { get; set; } = new();
-        public TransportOptions Transport { get; set; } = new();
-        public GameOptions Game { get; set; } = new();
+        public TransportConfigOptions Transport { get; set; } = new();
+        public GameConfigOptions Game { get; set; } = new();
     }
 
     [ConfigurationProperties("altruist:server")]
@@ -28,25 +28,26 @@ namespace Altruist
     }
 
     [ConfigurationProperties("altruist:transport")]
-    public sealed class TransportOptions
+    public sealed class TransportConfigOptions
     {
         public string Mode { get; set; } = "websocket";
     }
 
     [ConfigurationProperties("altruist:game")]
-    public sealed class GameOptions
+    public sealed class GameConfigOptions
     {
-        public EngineOptions Engine { get; set; } = new();
+        public EngineConfigOptions Engine { get; set; } = new();
         public WorldsOptions Worlds { get; set; } = new();
     }
 
     [ConfigurationProperties("altruist:game:engine")]
-    public sealed class EngineOptions
+    public sealed class EngineConfigOptions
     {
         public string Dimension { get; set; } = "2D";
         public int FramerateHz { get; set; } = 60;
         public string Unit { get; set; } = "Ticks";
         public int? Throttle { get; set; }
+        public Vector3 Gravity { get; set; }
     }
 
     [ConfigurationProperties("altruist:game:worlds")]
@@ -73,5 +74,15 @@ namespace Altruist
         public VectorConfig Position { get; set; } = new();
         public float? FixedDeltaTime { get; set; }
         public bool Is3D => Size.Z.HasValue || Gravity.Z.HasValue || Position.Z.HasValue;
+    }
+
+    public sealed class VectorConfig
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float? Z { get; set; }
+
+        public Vector2 ToVector2() => new(X, Y);
+        public Vector3 ToVector3() => new(X, Y, Z ?? 0f);
     }
 }

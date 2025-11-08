@@ -12,6 +12,6 @@ namespace Altruist.Features
     public interface IAltruistFeatureProvider
     {
         string FeatureId { get; }
-        object Configure(object stage, IConfiguration config);
+        object Configure(object stage, IServiceProvider provider);
     }
 }
