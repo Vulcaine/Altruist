@@ -23,10 +23,10 @@ using SimpleGame.Entities;
 
 namespace SimpleGame.Services;
 
-[Service(typeof(IMovementService<SimpleSpaceship>))]
-public class SimpleForwardMovementService : ForwardSpacehipMovementService<SimpleSpaceship>
+[Service(typeof(IMovementService))]
+public class SimpleForwardMovementService : ForwardSpacehipMovementService
 {
-    public SimpleForwardMovementService(IPlayerService<SimpleSpaceship> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
+    public SimpleForwardMovementService(IPlayerService playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
     {
     }
 }

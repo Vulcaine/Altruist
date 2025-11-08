@@ -88,9 +88,29 @@ public interface ITransportClient
 public interface IConnectionManager
 {
     Task HandleConnection(Connection socket, string @event, string clientId);
+    Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId);
+    void AddInterceptor(IInterceptor interceptor);
+    Task RemoveConnectionAsync(string connectionId);
+    Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null);
+    Task<Connection?> GetConnectionAsync(string connectionId);
+    Task<IEnumerable<string>> GetAllConnectionIdsAsync();
+    Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync();
+    Task<ICursor<Connection>> GetAllConnectionsAsync();
+    Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId);
+    Task<RoomPacket> FindAvailableRoomAsync();
+    Task<RoomPacket?> FindRoomForClientAsync(string clientId);
+    Task<RoomPacket> CreateRoomAsync();
+    Task DeleteRoomAsync(string roomName);
+    Task<RoomPacket?> GetRoomAsync(string roomId);
+    Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
+    Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId);
+    Task SaveRoomAsync(RoomPacket room);
+    Task Cleanup();
+    Task<bool> IsConnectionExistsAsync(string connectionId);
+    event Func<string, Exception?, Task> OnDisconnectedAsync;
 }
 
-public interface IPortal : IConnectionManager
+public interface IPortal
 {
-    void AddInterceptor(IInterceptor interceptor);
+
 }

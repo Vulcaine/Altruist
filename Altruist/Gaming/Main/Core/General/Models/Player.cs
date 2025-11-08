@@ -26,7 +26,7 @@ using MessagePack;
 namespace Altruist.Gaming
 {
 
-    public abstract class PlayerEntity : VaultModel, ISynchronizedEntity
+    public class PlayerEntity : VaultModel, ISynchronizedEntity
     {
 #pragma warning disable CS8618 // Non-nullable field is uninitialized. Consider calling the parameterless constructor.
 

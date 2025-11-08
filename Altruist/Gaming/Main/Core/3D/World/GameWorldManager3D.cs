@@ -53,14 +53,14 @@ namespace Altruist.Gaming.ThreeD
         public IEnumerable<WorldPartition3D> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata3D ObjectMetadata3D, float radius)
         {
             DestroyObject(objectType, ObjectMetadata3D.InstanceId);
-            var partitions = FindPartitionsForPosition(ObjectMetadata3D.Position.X, ObjectMetadata3D.Position.Y, radius);
+            var partitions = FindPartitionsForPosition(ObjectMetadata3D.Position.X, ObjectMetadata3D.Position.Y, ObjectMetadata3D.Position.Z, radius);
             AddObjectToPartitions(objectType, ObjectMetadata3D, partitions);
             return partitions;
         }
 
         public void AddDynamicObject(WorldObjectTypeKey objectType, ObjectMetadata3D ObjectMetadata3D, float radius)
         {
-            var partitions = FindPartitionsForPosition(ObjectMetadata3D.Position.X, ObjectMetadata3D.Position.Y, radius);
+            var partitions = FindPartitionsForPosition(ObjectMetadata3D.Position.X, ObjectMetadata3D.Position.Y, ObjectMetadata3D.Position.Z, radius);
             AddObjectToPartitions(objectType, ObjectMetadata3D, partitions);
         }
 
@@ -77,7 +77,7 @@ namespace Altruist.Gaming.ThreeD
         public IEnumerable<IObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, int z, float radius, string roomId)
         {
             var result = new List<IObjectMetadata>();
-            var partitions = FindPartitionsForPosition(x, y, radius);
+            var partitions = FindPartitionsForPosition(x, y, z, radius);
             foreach (var partition in partitions)
                 result.AddRange(partition.GetObjectsByTypeInRadius(objectType, x, y, z, radius, roomId));
 
@@ -93,20 +93,25 @@ namespace Altruist.Gaming.ThreeD
             return _partitionMap.TryGetValue(new PartitionIndex3D(indexX, indexY, indexZ), out var p) ? p : null;
         }
 
-        public IEnumerable<WorldPartition3D> FindPartitionsForPosition(int x, int y, float radius)
+        public IEnumerable<WorldPartition3D> FindPartitionsForPosition(int x, int y, int z, float radius)
         {
             float minX = x - radius;
             float maxX = x + radius;
             float minY = y - radius;
             float maxY = y + radius;
+            float minZ = z - radius;
+            float maxZ = z + radius;
 
             return _partitions.Where(partition =>
                 maxX >= partition.Position.X &&
                 minX <= partition.Position.X + partition.Size.X &&
                 maxY >= partition.Position.Y &&
-                minY <= partition.Position.Y + partition.Size.Y
+                minY <= partition.Position.Y + partition.Size.Y &&
+                maxZ >= partition.Position.Z &&
+                minZ <= partition.Position.Z + partition.Size.Z
             );
         }
+
 
         private IEnumerable<WorldPartition3D> AddObjectToPartitions(WorldObjectTypeKey objectType, ObjectMetadata3D ObjectMetadata3D, IEnumerable<WorldPartition3D> partitions)
         {

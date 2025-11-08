@@ -16,14 +16,14 @@ limitations under the License.
 
 namespace Altruist.Gaming;
 
-public interface IPlayerService<TPlayerEntity> : ICleanUp where TPlayerEntity : PlayerEntity, new()
+public interface IPlayerService : ICleanUp
 {
-    Task<TPlayerEntity?> ConnectById(string roomId, string socketId, string name, int worldIndex, float[]? positon = null);
-    Task<TPlayerEntity?> FindEntityAsync(string playerId);
-    Task UpdatePlayerAsync(TPlayerEntity player);
+    Task<PlayerEntity?> ConnectById(string roomId, string socketId, string name, int worldIndex, float[]? positon = null);
+    Task<PlayerEntity?> FindEntityAsync(string playerId);
+    Task UpdatePlayerAsync(PlayerEntity player);
     Task DisconnectAsync(string socketId);
     Task DeletePlayerAsync(string playerId);
-    Task<TPlayerEntity?> GetPlayerAsync(string playerId);
+    Task<PlayerEntity?> GetPlayerAsync(string playerId);
 }
 
 public interface IPlayerCursorFactory

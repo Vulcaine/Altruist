@@ -158,9 +158,9 @@ public interface ITransportConnectionSetup<TSelf> : ISetup<TSelf>
 
     TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
 
-    TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
+    // TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
 
-    TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
+    // TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
 
     TSelf SetCodec(ICodec encoder);
 }
@@ -183,8 +183,8 @@ public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnection
     public abstract Task Build(IAltruistContext settings);
     public abstract TSelf MapPortal<P>(string path) where P : class, IPortal;
     public abstract TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
-    public abstract TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
-    public abstract TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
+    // public abstract TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
+    // public abstract TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
 
     public TSelf SetCodec(ICodec codec)
     {
@@ -221,47 +221,47 @@ public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetup
         return (TSelf)this;
     }
 
-    public override TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
-    {
-        RegisterRelayPortalServices<P, TImplementation>(host, port, eventName, implementationFactory);
-        return (TSelf)this;
-    }
+    // public override TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
+    // {
+    //     RegisterRelayPortalServices<P, TImplementation>(host, port, eventName, implementationFactory);
+    //     return (TSelf)this;
+    // }
 
-    public override TSelf MapRelayPortal<P>(string host, int port, string eventName)
-    {
-        RegisterRelayPortalServices<P, P>(host, port, eventName, sp => ActivatorUtilities.CreateInstance<P>(sp));
-        return (TSelf)this;
-    }
+    // public override TSelf MapRelayPortal<P>(string host, int port, string eventName)
+    // {
+    //     RegisterRelayPortalServices<P, P>(host, port, eventName, sp => ActivatorUtilities.CreateInstance<P>(sp));
+    //     return (TSelf)this;
+    // }
 
-    private void RegisterRelayPortalServices<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
-        where P : RelayPortal
-        where TImplementation : P
-    {
-        _services.AddSingleton<IRelayService>(sp =>
-        {
-            var instance = implementationFactory(sp);
-            return new AltruistRelayService(
-                "ws",
-                host,
-                port,
-                eventName,
-                instance,
-                sp.GetService<ICodec>()!,
-                sp.GetService<ILoggerFactory>()!,
-                sp.GetService<ITransportClient>()!
-            );
-        });
+    // private void RegisterRelayPortalServices<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
+    //     where P : RelayPortal
+    //     where TImplementation : P
+    // {
+    //     _services.AddSingleton<IRelayService>(sp =>
+    //     {
+    //         var instance = implementationFactory(sp);
+    //         return new AltruistRelayService(
+    //             "ws",
+    //             host,
+    //             port,
+    //             eventName,
+    //             instance,
+    //             sp.GetService<ICodec>()!,
+    //             sp.GetService<ILoggerFactory>()!,
+    //             sp.GetService<ITransportClient>()!
+    //         );
+    //     });
 
-        _services.AddSingleton(sp =>
-        {
-            var instance = ActivatorUtilities.CreateInstance<P>(sp);
-            IRelayService relayService = sp.GetRequiredService<IRelayService>();
+    //     _services.AddSingleton(sp =>
+    //     {
+    //         var instance = ActivatorUtilities.CreateInstance<P>(sp);
+    //         IRelayService relayService = sp.GetRequiredService<IRelayService>();
 
-            IInterceptor interceptor = new RelayInterceptor(relayService);
-            ((IPortal)instance).AddInterceptor(interceptor);
-            return instance;
-        });
-    }
+    //         IInterceptor interceptor = new RelayInterceptor(relayService);
+    //         ((IPortal)instance).AddInterceptor(interceptor);
+    //         return instance;
+    //     });
+    // }
 
     public override Task Build(IAltruistContext settings)
     {

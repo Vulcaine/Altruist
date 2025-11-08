@@ -1,43 +1,36 @@
-/* 
-Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 using System.Security.Claims;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Altruist;
+using Altruist.Security;
 
-namespace Altruist.Security;
-
-public abstract class AuthPortal<TAuthContext> : Portal<PortalContext> where TAuthContext : ISessionAuthContext
+public interface IAuthService<TAuthContext>
 {
-    protected IIssuer Issuer;
+
+}
+
+[Service(typeof(IAuthService<>))]
+public class AuthService<TAuthContext> : IAuthService<TAuthContext> where TAuthContext : ISessionAuthContext
+{
+    protected IIssuer _issuer;
+    private readonly IConnectionManager _connectionManager;
     private readonly TokenSessionSyncService? _syncService;
-    private readonly JwtTokenValidator _tokenValidator;
+    private readonly ITokenValidator _tokenValidator;
+    private readonly IAltruistRouter _router;
 
 
-    protected AuthPortal(PortalContext context, ILoggerFactory loggerFactory, IIssuer issuer, IServiceProvider serviceProvider) : base(context, loggerFactory)
+    public AuthService(
+        IIssuer issuer,
+        IConnectionManager connectionManager, TokenSessionSyncService? syncService, JwtTokenValidator tokenValidator, IAltruistRouter router)
     {
-        Issuer = issuer;
-        _syncService = serviceProvider.GetService<TokenSessionSyncService>();
-        _tokenValidator = serviceProvider.GetRequiredService<JwtTokenValidator>();
+        _issuer = issuer;
+        _connectionManager = connectionManager;
+        _syncService = syncService;
+        _tokenValidator = tokenValidator;
+        _router = router;
     }
 
-    [Gate("upgrade")]
     public virtual async Task Upgrade(TAuthContext context, string clientId)
     {
-        var connection = await GetConnectionAsync(clientId);
+        var connection = await _connectionManager.GetConnectionAsync(clientId);
         if (connection != null)
         {
             var token = await UpgradeAuth(context, clientId);
@@ -45,7 +38,7 @@ public abstract class AuthPortal<TAuthContext> : Portal<PortalContext> where TAu
             if (token != null)
             {
                 // authorized close
-                await Router.Client.SendAsync(clientId, token);
+                await _router.Client.SendAsync(clientId, token);
             }
 
             // unauthorized close
@@ -82,7 +75,7 @@ public abstract class AuthPortal<TAuthContext> : Portal<PortalContext> where TAu
             originalFingerprint = old.Fingerprint;
         }
 
-        var newToken = Issuer.Issue();
+        var newToken = _issuer.Issue();
 
         if (_syncService != null && newToken is TokenIssue tokenIssue)
         {

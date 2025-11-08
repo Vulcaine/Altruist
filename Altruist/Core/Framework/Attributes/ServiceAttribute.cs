@@ -8,7 +8,7 @@ public class ServiceAttribute : Attribute
     public Type? ServiceType { get; }
     public ServiceLifetime Lifetime { get; }
 
-    public ServiceAttribute(Type? serviceType, ServiceLifetime lifetime = ServiceLifetime.Singleton)
+    public ServiceAttribute(Type? serviceType = null, ServiceLifetime lifetime = ServiceLifetime.Singleton)
     {
         ServiceType = serviceType;
         Lifetime = lifetime;

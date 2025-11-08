@@ -22,9 +22,9 @@ using SimpleGame.Entities;
 namespace Portals;
 
 [Portal("/game")]
-public class SimpleGamePortal : AltruistGameSessionPortal<SimpleSpaceship>
+public class SimpleGamePortal : AltruistGameSessionPortal
 {
-    public SimpleGamePortal(GamePortalContext context, IGameWorldCoordinator gameWorld, IPlayerService<SimpleSpaceship> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
+    public SimpleGamePortal(IGameSessionService gameSessionService) : base(gameSessionService)
     {
     }
 }

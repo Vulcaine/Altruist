@@ -18,26 +18,26 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
-public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
+public class AltruistPlayerService : IPlayerService
 {
     private readonly IConnectionStore _store;
     private readonly ICacheProvider _cacheProvider;
 
     private readonly IGameWorldCoordinator _worldCoordinator;
 
-    private ILogger<AltruistPlayerService<TPlayerEntity>> _logger;
+    private ILogger<AltruistPlayerService> _logger;
 
     public AltruistPlayerService(IConnectionStore store, ICacheProvider cacheProvider, IGameWorldCoordinator worldCoordinator, ILoggerFactory loggerFactory)
     {
         _store = store;
-        _logger = loggerFactory.CreateLogger<AltruistPlayerService<TPlayerEntity>>();
+        _logger = loggerFactory.CreateLogger<AltruistPlayerService>();
         _cacheProvider = cacheProvider;
         _worldCoordinator = worldCoordinator;
     }
 
-    public async Task<TPlayerEntity?> ConnectById(string roomId, string socketId, string name, int worldIndex, float[]? position = null)
+    public async Task<PlayerEntity?> ConnectById(string roomId, string socketId, string name, int worldIndex, float[]? position = null)
     {
-        var player = new TPlayerEntity
+        var player = new PlayerEntity
         {
             SysId = socketId,
             ConnectionId = socketId,
@@ -72,9 +72,9 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
     }
 
 
-    public Task<TPlayerEntity?> FindEntityAsync(string playerId)
+    public Task<PlayerEntity?> FindEntityAsync(string playerId)
     {
-        return _cacheProvider.GetAsync<TPlayerEntity>(playerId);
+        return _cacheProvider.GetAsync<PlayerEntity>(playerId);
     }
 
     public async Task DisconnectAsync(string socketId)
@@ -83,15 +83,15 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         _logger.LogInformation($"Player {socketId} disconnected and removed from Redis.");
     }
 
-    public async Task UpdatePlayerAsync(TPlayerEntity player)
+    public async Task UpdatePlayerAsync(PlayerEntity player)
     {
         await _cacheProvider.SaveAsync(player.SysId, player);
         _logger.LogInformation($"Player {player.SysId} updated in Redis.");
     }
 
-    public Task<TPlayerEntity?> GetPlayer(string socketId)
+    public Task<PlayerEntity?> GetPlayer(string socketId)
     {
-        return _cacheProvider.GetAsync<TPlayerEntity>(socketId);
+        return _cacheProvider.GetAsync<PlayerEntity>(socketId);
     }
 
     public async Task DeletePlayerAsync(string playerId)
@@ -100,13 +100,13 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
 
         if (player != null)
         {
-            await _cacheProvider.RemoveAndForgetAsync<TPlayerEntity>(playerId);
+            await _cacheProvider.RemoveAndForgetAsync<PlayerEntity>(playerId);
 
             _logger.LogInformation($"Player and associated spaceship with ID {player.SysId} deleted.");
         }
     }
 
-    public async Task<TPlayerEntity?> GetPlayerAsync(string playerId)
+    public async Task<PlayerEntity?> GetPlayerAsync(string playerId)
     {
         return await FindEntityAsync(playerId);
     }
@@ -117,7 +117,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
         int cursor = 0;
         int batchSize = 100;
 
-        var players = await _cacheProvider.GetAllAsync<TPlayerEntity>();
+        var players = await _cacheProvider.GetAllAsync<PlayerEntity>();
         var playersToDelete = new List<string>();
 
         foreach (var player in players)

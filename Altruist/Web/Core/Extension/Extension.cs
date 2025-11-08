@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Runtime.CompilerServices;
 using Altruist.Features;
 using Altruist.Web.Features;
 using Microsoft.AspNetCore.Builder;

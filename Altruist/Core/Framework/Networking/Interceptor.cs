@@ -44,9 +44,10 @@ public class RelayInterceptor : IInterceptor
 
     public async Task Intercept(InterceptContext context, IPacket eventData)
     {
-        if (context.EventName == _relayService.RelayEvent)
-        {
-            await _relayService.Relay(eventData);
-        }
+        await _relayService.Relay(eventData);
+        // // if (context.EventName == _relayService.RelayEvent)
+        // {
+
+        // }
     }
 }

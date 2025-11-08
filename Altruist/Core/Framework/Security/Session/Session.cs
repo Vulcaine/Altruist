@@ -22,6 +22,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Security;
 
+[Service(typeof(ISyncService))]
 public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionModel>
 {
     public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthTokenSessionModel>? vault = null) : base(cacheProvider, vault)

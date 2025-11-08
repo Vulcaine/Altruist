@@ -1,6 +1,6 @@
 namespace Altruist.Gaming.Movement;
 
-public interface IMovementService<TPlayerEntity> where TPlayerEntity : PlayerEntity
+public interface IMovementService
 {
-    Task<TPlayerEntity?> MovePlayerAsync(string playerId, IMovementPacket input);
+    Task<PlayerEntity?> MovePlayerAsync(string playerId, IMovementPacket input);
 }

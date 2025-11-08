@@ -14,67 +14,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Microsoft.Extensions.Logging;
-
 namespace Altruist.Gaming.Movement;
 
-public class MovementPortalContext : GamePortalContext
+public abstract class AltruistMovementPortal : Portal
 {
-    public MovementPortalContext(IAltruistContext altruistContext, IServiceProvider serviceProvider) : base(altruistContext, serviceProvider)
+    protected readonly IMovementSocketService _movementSocketService;
+    protected AltruistMovementPortal(IMovementSocketService movementSocketService)
     {
+        _movementSocketService = movementSocketService;
     }
-}
-
-public abstract class AltruistMovementPortal<TPlayerEntity, TMovementPacket> : Portal<MovementPortalContext>
-    where TPlayerEntity : PlayerEntity, new()
-    where TMovementPacket : IMovementPacket
-{
-    protected readonly IPlayerService<TPlayerEntity> _playerService;
-    protected readonly IMovementService<TPlayerEntity> _movementService;
-    protected readonly PlayerCursor<TPlayerEntity> _playerCursor;
-
-    protected AltruistMovementPortal(MovementPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory) : base(context, loggerFactory)
-    {
-        _playerService = playerService;
-        _movementService = movementService;
-        _playerCursor = context.PlayerCursorFactory.Create<TPlayerEntity>();
-    }
-
 
     [Gate("move")]
-    public async virtual Task SyncMovement(TMovementPacket movement, string clientId)
+    public async virtual Task SyncMovement(IMovementPacket movement, string clientId)
     {
-        var player = await _playerService.GetPlayerAsync(clientId);
-        if (player == null)
-        {
-            await Router.Client.SendAsync(
-                clientId,
-                PacketHelper.Failed($"Cannot move player with id {clientId}. Not found.", clientId, movement.Type));
-            return;
-        }
-
-        await _movementService.MovePlayerAsync(clientId, movement);
+        await _movementSocketService.SyncMovement(movement, clientId);
     }
 
-    protected virtual async Task UpdateMovementAsync()
-    {
-        foreach (var player in _playerCursor)
-        {
-            await Router.Synchronize.SendAsync(player.Update());
-        }
-    }
 }
 
-public abstract class AltruistForwardMovementPortal<TPlayerEntity, TMovementPacket> : AltruistMovementPortal<TPlayerEntity, TMovementPacket> where TPlayerEntity : PlayerEntity, new()
-where TMovementPacket : IMovementPacket
-{
-    public AltruistForwardMovementPortal(MovementPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory)
-        : base(context, playerService, movementService, loggerFactory) { }
+// public abstract class AltruistForwardMovementPortal : AltruistMovementPortal
+// {
+//     public AltruistForwardMovementPortal(MovementPortalContext context, IPlayerService playerService, IMovementService movementService, ILoggerFactory loggerFactory)
+//         : base(context, playerService, movementService, loggerFactory) { }
 
-}
+// }
 
-public abstract class AltruistEightDirectionMovementPortal<TPlayerEntity, TMovementPacket> : AltruistMovementPortal<TPlayerEntity, TMovementPacket> where TPlayerEntity : PlayerEntity, new() where TMovementPacket : IMovementPacket
-{
-    public AltruistEightDirectionMovementPortal(MovementPortalContext context, IPlayerService<TPlayerEntity> playerService, IMovementService<TPlayerEntity> movementService, ILoggerFactory loggerFactory)
-        : base(context, playerService, movementService, loggerFactory) { }
-}
+// public abstract class AltruistEightDirectionMovementPortal : AltruistMovementPortal
+// {
+//     public AltruistEightDirectionMovementPortal(MovementPortalContext context, IPlayerService playerService, IMovementService movementService, ILoggerFactory loggerFactory)
+//         : base(context, playerService, movementService, loggerFactory) { }
+// }

@@ -94,6 +94,7 @@ public class JwtAuth : IShieldAuth
     }
 }
 
+[Service(typeof(ITokenValidator))]
 public class JwtTokenValidator : ITokenValidator
 {
     private readonly JwtSecurityTokenHandler _tokenHandler;

@@ -16,5 +16,4 @@ limitations under the License.
 
 using Altruist;
 
-
 AltruistApplication.Run();

@@ -14,206 +14,173 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Microsoft.Extensions.Logging;
+using Altruist.Codec;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist;
 
-public class PortalContext(
-    IAltruistContext altruistContext, IServiceProvider serviceProvider)
-    : AbstractSocketPortalContext(altruistContext, serviceProvider)
+public abstract class PortalContext : IPortalContext
 {
-    public override void Initialize() { }
+    public virtual IAltruistRouter Router { get; }
+    public ICodec Codec { get; }
+
+    public IAltruistContext AltruistContext { get; protected set; }
+
+    public IServiceProvider ServiceProvider { get; protected set; }
+
+    public PortalContext(IAltruistContext altruistContext, IServiceProvider provider)
+    {
+        AltruistContext = altruistContext;
+        Codec = provider.GetService<ICodec>() ?? new JsonCodec();
+        Router = provider.GetRequiredService<IAltruistRouter>();
+        Codec = provider.GetService<ICodec>() ?? new JsonCodec();
+        ServiceProvider = provider;
+    }
+
+    public virtual void Initialize()
+    {
+
+    }
 }
 
-public abstract class Portal<TContext> : IPortal, IConnectionStore where TContext : IPortalContext
+public abstract class Portal : IPortal
 {
-    protected readonly TContext _context;
-    protected readonly ILogger Logger;
+    // protected readonly IPortalContext _context;
+    // protected readonly ILogger Logger;
 
-    protected IAltruistRouter Router => _context.Router;
-    private ICodec _codec => _context.Codec;
+    // protected IAltruistRouter Router => _context.Router;
+    // private ICodec _codec => _context.Codec;
 
-    private readonly List<IInterceptor> _interceptors = new();
+    // protected ISocketManager SocketManager;
 
-    public Portal(TContext context, ILoggerFactory loggerFactory)
+    // private readonly List<IInterceptor> _interceptors = new();
+
+    public Portal()
     {
-        _context = context;
-        Logger = loggerFactory.CreateLogger(GetType());
+        // _context = context;
+        // SocketManager = context.ServiceProvider.GetService<ISocketManager>()!;
+        // Logger = loggerFactory.CreateLogger(GetType());
     }
 
-    public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
+    // public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
 
-    public virtual async Task OnDisconnectedAsync(string clientId, Exception? exception = null)
-    {
-        await Cleanup();
-    }
+    // public virtual async Task OnDisconnectedAsync(string clientId, Exception? exception = null)
+    // {
+    //     await Cleanup();
+    // }
 
-    public virtual Task OnConnectedAsync(string clientId)
-    {
-        return Task.CompletedTask;
-    }
+    // public virtual Task OnConnectedAsync(string clientId)
+    // {
+    //     return Task.CompletedTask;
+    // }
 
-    protected async Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId)
-    {
-        if (string.IsNullOrEmpty(packet.Event)) return false;
+    // protected async Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId)
+    // {
+    //     if (string.IsNullOrEmpty(packet.Event)) return false;
 
-        if (EventHandlerRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
-        {
-            var data = bytes;
-            var context = new InterceptContext(@event);
-            var handlerMethod = @delegate.Method;
-            var parameterType = handlerMethod.GetParameters()[0].ParameterType;
+    //     if (EventHandlerRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
+    //     {
+    //         var data = bytes;
+    //         var context = new InterceptContext(@event);
+    //         var handlerMethod = @delegate.Method;
+    //         var parameterType = handlerMethod.GetParameters()[0].ParameterType;
 
-            IPacket? message = _codec.Decoder.Decode<IPacket>(data, parameterType);
+    //         IPacket? message = _codec.Decoder.Decode<IPacket>(data, parameterType);
 
-            var interceptorTasks = _interceptors.Select(interceptor => interceptor.Intercept(context, message));
-            var interceptorExecution = Task.WhenAll(interceptorTasks);
+    //         var interceptorTasks = _interceptors.Select(interceptor => interceptor.Intercept(context, message));
+    //         var interceptorExecution = Task.WhenAll(interceptorTasks);
 
-            Task? handlerTask = data != null ? (Task?)@delegate.DynamicInvoke(message, clientId) : null;
+    //         Task? handlerTask = data != null ? (Task?)@delegate.DynamicInvoke(message, clientId) : null;
 
-            if (handlerTask != null)
-            {
-                await handlerTask;
-            }
+    //         if (handlerTask != null)
+    //         {
+    //             await handlerTask;
+    //         }
 
-            await interceptorExecution;
-        }
-        else
-        {
-            Logger.LogWarning($"No handler found for event: {packet.Event}");
-        }
+    //         await interceptorExecution;
+    //     }
+    //     else
+    //     {
+    //         Logger.LogWarning($"No handler found for event: {packet.Event}");
+    //     }
 
-        return true;
-    }
+    //     return true;
+    // }
 
-    public async Task HandleConnection(Connection connection, string @event, string clientId)
-    {
-        await AddConnectionAsync(clientId, connection);
+    // public async Task HandleConnection(Connection connection, string @event, string clientId)
+    // {
+    //     await AddConnectionAsync(clientId, connection);
 
-        try
-        {
-            while (true)
-            {
-                var packetData = await connection.ReceiveAsync(CancellationToken.None);
-                if (packetData.Length == 0)
-                {
-                    break;
-                }
+    //     try
+    //     {
+    //         while (true)
+    //         {
+    //             var packetData = await connection.ReceiveAsync(CancellationToken.None);
+    //             if (packetData.Length == 0)
+    //             {
+    //                 break;
+    //             }
 
-                var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
-                if (!await ProcessPacket(packet, packetData, @event, clientId)) break;
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError($"Error handling connection: {ex}");
-            await OnDisconnectedAsync(clientId, ex);
-        }
-        finally
-        {
-            await OnDisconnectedAsync(clientId);
-            await RemoveConnectionAsync(clientId);
-            await Cleanup();
-        }
-    }
+    //             var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+    //             if (!await ProcessPacket(packet, packetData, @event, clientId)) break;
+    //         }
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         Logger.LogError($"Error handling connection: {ex}");
+    //         await OnDisconnectedAsync(clientId, ex);
+    //     }
+    //     finally
+    //     {
+    //         await OnDisconnectedAsync(clientId);
+    //         await RemoveConnectionAsync(clientId);
+    //         await Cleanup();
+    //     }
+    // }
+
+    // public Task RemoveConnectionAsync(string connectionId)
+    // {
+    //     return SocketManager.RemoveConnectionAsync(connectionId);
+    // }
+
+    // public Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null)
+    // {
+    //     return SocketManager.AddConnectionAsync(connectionId, socket, roomId);
+    // }
+
+    // public Task<Connection?> GetConnectionAsync(string connectionId)
+    // {
+    //     return SocketManager.GetConnectionAsync(connectionId);
+    // }
+
+    // public Task<IEnumerable<string>> GetAllConnectionIdsAsync()
+    // {
+    //     return SocketManager.GetAllConnectionIdsAsync();
+    // }
+
+    // public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
+    // {
+    //     return await SocketManager.GetAllConnectionsDictAsync();
+    // }
+
+    // public Task<ICursor<Connection>> GetAllConnectionsAsync()
+    // {
+    //     return SocketManager.GetAllConnectionsAsync();
+    // }
+
+    // private async Task<TPacketBase> ReceiveAsync<TPacketBase>(string clientId) where TPacketBase : IPacketBase
+    // {
+    //     var connections = await GetAllConnectionsDictAsync();
+
+    //     if (connections.TryGetValue(clientId, out var connection))
+    //     {
+    //         var data = await connection.ReceiveAsync(CancellationToken.None);
+    //         return _codec.Decoder.Decode<TPacketBase>(data);
+    //     }
+
+    //     return default!;
+    // }
 
 
-    public Task RemoveConnectionAsync(string connectionId)
-    {
-        return _context.RemoveConnectionAsync(connectionId);
-    }
 
-    public Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null)
-    {
-        return _context.AddConnectionAsync(connectionId, socket, roomId);
-    }
-
-    public Task<Connection?> GetConnectionAsync(string connectionId)
-    {
-        return _context.GetConnectionAsync(connectionId);
-    }
-
-    public Task<IEnumerable<string>> GetAllConnectionIdsAsync()
-    {
-        return _context.GetAllConnectionIdsAsync();
-    }
-
-    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
-    {
-        return await _context.GetAllConnectionsDictAsync();
-    }
-
-    public Task<ICursor<Connection>> GetAllConnectionsAsync()
-    {
-        return _context.GetAllConnectionsAsync();
-    }
-
-    private async Task<TPacketBase> ReceiveAsync<TPacketBase>(string clientId) where TPacketBase : IPacketBase
-    {
-        var connections = await GetAllConnectionsDictAsync();
-
-        if (connections.TryGetValue(clientId, out var connection))
-        {
-            var data = await connection.ReceiveAsync(CancellationToken.None);
-            return _codec.Decoder.Decode<TPacketBase>(data);
-        }
-
-        return default!;
-    }
-
-
-    public async Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId)
-    {
-        return await _context.GetConnectionsInRoomAsync(roomId);
-    }
-
-    public async Task<RoomPacket> FindAvailableRoomAsync()
-    {
-        return await _context.FindAvailableRoomAsync();
-    }
-
-    public async Task<RoomPacket?> FindRoomForClientAsync(string clientId)
-    {
-        return await _context.FindRoomForClientAsync(clientId);
-    }
-
-    public async Task<RoomPacket> CreateRoomAsync()
-    {
-        return await _context.CreateRoomAsync();
-    }
-
-    public Task DeleteRoomAsync(string roomName)
-    {
-        return _context.DeleteRoomAsync(roomName);
-    }
-
-    public Task<RoomPacket?> GetRoomAsync(string roomId)
-    {
-        return _context.GetRoomAsync(roomId);
-    }
-
-    public Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
-    {
-        return _context.GetAllRoomsAsync();
-    }
-
-    public Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
-    {
-        return _context.AddClientToRoomAsync(connectionId, roomId);
-    }
-
-    public async Task SaveRoomAsync(RoomPacket room)
-    {
-        await _context.SaveRoomAsync(room);
-    }
-
-    public virtual Task Cleanup()
-    {
-        return Task.CompletedTask;
-    }
-
-    public Task<bool> IsConnectionExistsAsync(string connectionId)
-    {
-        return _context.IsConnectionExistsAsync(connectionId);
-    }
 }

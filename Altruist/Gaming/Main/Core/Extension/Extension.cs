@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Runtime.CompilerServices;
 using Altruist;
 using Altruist.Contracts;
 using Altruist.Features;
@@ -53,6 +52,6 @@ public class GameConfig : IAltruistConfiguration
         services.AddSingleton(typeof(PlayerCursor<>));
         // services.AddSingleton<GameWorldCoordinator>();
         services.AddSingleton<MovementPhysx>();
-        services.AddSingleton(typeof(IPlayerService<>), typeof(AltruistPlayerService<>));
+        services.AddSingleton(typeof(IPlayerService), typeof(AltruistPlayerService));
     }
 }

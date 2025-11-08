@@ -28,44 +28,45 @@ public interface IConnectable : IService
     event Action<Exception> OnFailed;
     event Action<Exception> OnRetryExhausted;
 
-    void RaiseConnectedEvent();
-    void RaiseFailedEvent(Exception ex);
-    void RaiseOnRetryExhaustedEvent(Exception ex);
-    Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000);
+    Task ConnectAsync(
+        string protocol, string host, int port,
+        int maxRetries = 30, int delayMilliseconds = 2000);
+
+    Task ConnectAsync();
 }
 
 public interface IRelayService : IConnectable
 {
-    string RelayEvent { get; }
     Task Relay(IPacket data);
+    Task Relay(byte[] message);
 }
 
-public abstract class AbstractRelayService : IRelayService
-{
-    public abstract string RelayEvent { get; }
+// public abstract class AbstractRelayService : IRelayService
+// {
+//     public abstract string RelayEvent { get; }
 
-    public abstract string ServiceName { get; }
-    public abstract bool IsConnected { get; }
+//     public abstract string ServiceName { get; }
+//     public abstract bool IsConnected { get; }
 
-    public event Action? OnConnected;
-    public event Action<Exception> OnRetryExhausted = _ => { };
-    public event Action<Exception> OnFailed = _ => { };
+//     public event Action? OnConnected;
+//     public event Action<Exception> OnRetryExhausted = _ => { };
+//     public event Action<Exception> OnFailed = _ => { };
 
-    public abstract Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000);
-    public abstract Task Relay(IPacket data);
+//     public abstract Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000);
+//     public abstract Task Relay(IPacket data);
 
-    public void RaiseConnectedEvent()
-    {
-        OnConnected?.Invoke();
-    }
+//     public void RaiseConnectedEvent()
+//     {
+//         OnConnected?.Invoke();
+//     }
 
-    public void RaiseFailedEvent(Exception ex)
-    {
-        OnFailed?.Invoke(ex);
-    }
+//     public void RaiseFailedEvent(Exception ex)
+//     {
+//         OnFailed?.Invoke(ex);
+//     }
 
-    public void RaiseOnRetryExhaustedEvent(Exception ex)
-    {
-        OnRetryExhausted?.Invoke(ex);
-    }
-}
+//     public void RaiseOnRetryExhaustedEvent(Exception ex)
+//     {
+//         OnRetryExhausted?.Invoke(ex);
+//     }
+// }

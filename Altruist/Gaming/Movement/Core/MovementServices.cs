@@ -20,30 +20,30 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Movement;
 
-public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPlayerEntity> where TPlayerEntity : PlayerEntity, new()
+public abstract class BaseMovementService : IMovementService
 {
     protected readonly ILogger _logger;
     protected readonly ICacheProvider _cacheProvider;
     protected readonly MovementPhysx _movementPhysx;
-    protected readonly IPlayerService<TPlayerEntity> _playerService;
+    protected readonly IPlayerService _playerService;
 
     public BaseMovementService(
-    IPlayerService<TPlayerEntity> playerService,
+    IPlayerService playerService,
         MovementPhysx movementPhysx,
         ICacheProvider cacheProvider,
         ILoggerFactory loggerFactory)
     {
-        _logger = loggerFactory.CreateLogger<BaseMovementService<TPlayerEntity>>();
+        _logger = loggerFactory.CreateLogger<BaseMovementService>();
         _playerService = playerService;
         _cacheProvider = cacheProvider;
         _movementPhysx = movementPhysx;
     }
 
-    public async Task<TPlayerEntity?> MovePlayerAsync(string playerId, IMovementPacket input)
+    public async Task<PlayerEntity?> MovePlayerAsync(string playerId, IMovementPacket input)
     {
         try
         {
-            TPlayerEntity? entity = await _playerService.FindEntityAsync(playerId);
+            PlayerEntity? entity = await _playerService.FindEntityAsync(playerId);
             if (entity == null) return null;
             if (entity.PhysxBody == null) throw new Exception("Illegal state of player entity. Physx body is null.");
 
@@ -62,31 +62,32 @@ public abstract class BaseMovementService<TPlayerEntity> : IMovementService<TPla
         return null;
     }
     // protected abstract void ApplyRotation(Body body, TPlayerEntity entity, IMovementPacket input);
-    protected abstract void ApplyMovement(Body body, TPlayerEntity entity, IMovementPacket input);
+    protected abstract void ApplyMovement(Body body, PlayerEntity entity, IMovementPacket input);
 
-    protected void ClampSpeed(TPlayerEntity entity)
+    protected void ClampSpeed(PlayerEntity entity)
     {
         entity.CurrentSpeed = Math.Clamp(entity.CurrentSpeed, 0, entity.MaxSpeed);
     }
 
 
-    protected void UpdateEntityPosition(TPlayerEntity entity, Body body)
+    protected void UpdateEntityPosition(PlayerEntity entity, Body body)
     {
         entity.Position = [body.GetPosition().X, body.GetPosition().Y];
         entity.Rotation = body.GetTransform().Rotation.Angle;
     }
 }
 
-public abstract class ForwardMovementService<T> : BaseMovementService<T> where T : PlayerEntity, new()
+[Service]
+public class ForwardMovementService : BaseMovementService
 {
     public ForwardMovementService(
-        IPlayerService<T> playerService,
+        IPlayerService playerService,
         MovementPhysx movementPhysx,
         ICacheProvider cacheProvider,
         ILoggerFactory loggerFactory)
         : base(playerService, movementPhysx, cacheProvider, loggerFactory) { }
 
-    protected override void ApplyMovement(Body body, T entity, IMovementPacket input)
+    protected override void ApplyMovement(Body body, PlayerEntity entity, IMovementPacket input)
     {
         if (input is not ForwardMovementPacket forwardMovementPacket) return;
 
@@ -121,12 +122,13 @@ public abstract class ForwardMovementService<T> : BaseMovementService<T> where T
     }
 }
 
-public abstract class EightDirectionMovementService<T> : BaseMovementService<T> where T : PlayerEntity, new()
+[Service]
+public class EightDirectionMovementService : BaseMovementService
 {
-    public EightDirectionMovementService(IPlayerService<T> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+    public EightDirectionMovementService(IPlayerService playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
         : base(playerService, physx, cacheProvider, loggerFactory) { }
 
-    protected override void ApplyMovement(Body body, T entity, IMovementPacket input)
+    protected override void ApplyMovement(Body body, PlayerEntity entity, IMovementPacket input)
     {
         if (input is not EightDirectionMovementPacket eightDirectionIMovementPacket) return;
 
@@ -160,19 +162,20 @@ public abstract class EightDirectionMovementService<T> : BaseMovementService<T> 
     }
 }
 
-public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : EightDirectionMovementService<TPlayerEntity> where TPlayerEntity : Vehicle, new()
+[Service]
+public class EightDirectionVehicleMovementService : EightDirectionMovementService
 {
-    public EightDirectionVehicleMovementService(IPlayerService<TPlayerEntity> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
+    public EightDirectionVehicleMovementService(IPlayerService playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory)
         : base(playerService, physx, cacheProvider, loggerFactory) { }
 
-    protected override void ApplyMovement(Body body, TPlayerEntity vehicle, IMovementPacket input)
+    protected override void ApplyMovement(Body body, PlayerEntity vehicle, IMovementPacket input)
     {
-        if (input is not EightDirectionMovementPacket eightDirectionMovementPacket) return;
+        if (input is not EightDirectionMovementPacket eightDirectionMovementPacket || vehicle is not Vehicle v) return;
         base.ApplyMovement(body, vehicle, input);
-        HandleTurboFuel(vehicle, eightDirectionMovementPacket.Turbo);
+        HandleTurboFuel(v, eightDirectionMovementPacket.Turbo);
     }
 
-    private void HandleTurboFuel(TPlayerEntity vehicle, bool turbo)
+    private void HandleTurboFuel(Vehicle vehicle, bool turbo)
     {
         if (turbo && vehicle.TurboFuel > 0)
         {
@@ -185,20 +188,21 @@ public abstract class EightDirectionVehicleMovementService<TPlayerEntity> : Eigh
     }
 }
 
-public abstract class ForwardSpacehipMovementService<TPlayerEntity> : ForwardMovementService<TPlayerEntity> where TPlayerEntity : Spaceship, new()
+[Service]
+public class ForwardSpacehipMovementService : ForwardMovementService
 {
-    protected ForwardSpacehipMovementService(IPlayerService<TPlayerEntity> playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
+    protected ForwardSpacehipMovementService(IPlayerService playerService, MovementPhysx physx, ICacheProvider cacheProvider, ILoggerFactory loggerFactory) : base(playerService, physx, cacheProvider, loggerFactory)
     {
     }
 
-    protected override void ApplyMovement(Body body, TPlayerEntity vehicle, IMovementPacket input)
+    protected override void ApplyMovement(Body body, PlayerEntity vehicle, IMovementPacket input)
     {
-        if (input is not ForwardMovementPacket forwardMovementPacket) return;
+        if (input is not ForwardMovementPacket forwardMovementPacket || vehicle is not Spaceship spaceship) return;
         base.ApplyMovement(body, vehicle, input);
-        HandleTurboFuel(vehicle, forwardMovementPacket.Turbo);
+        HandleTurboFuel(spaceship, forwardMovementPacket.Turbo);
     }
 
-    private void HandleTurboFuel(TPlayerEntity vehicle, bool turbo)
+    private void HandleTurboFuel(Spaceship vehicle, bool turbo)
     {
         if (turbo && vehicle.TurboFuel > 0)
         {
