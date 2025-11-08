@@ -23,11 +23,11 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
     private readonly IConnectionStore _store;
     private readonly ICacheProvider _cacheProvider;
 
-    private readonly GameWorldCoordinator _worldCoordinator;
+    private readonly IGameWorldCoordinator _worldCoordinator;
 
     private ILogger<AltruistPlayerService<TPlayerEntity>> _logger;
 
-    public AltruistPlayerService(IConnectionStore store, ICacheProvider cacheProvider, GameWorldCoordinator worldCoordinator, ILoggerFactory loggerFactory)
+    public AltruistPlayerService(IConnectionStore store, ICacheProvider cacheProvider, IGameWorldCoordinator worldCoordinator, ILoggerFactory loggerFactory)
     {
         _store = store;
         _logger = loggerFactory.CreateLogger<AltruistPlayerService<TPlayerEntity>>();
@@ -54,7 +54,7 @@ public class AltruistPlayerService<TPlayerEntity> : IPlayerService<TPlayerEntity
             return null;
         }
 
-        player.CalculatePhysxBody(world.PhysxWorld.World);
+        // player.CalculatePhysxBody(world.PhysxWorld.World);
         var room = await _store.AddClientToRoomAsync(socketId, roomId);
         if (room == null)
         {

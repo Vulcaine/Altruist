@@ -6,14 +6,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist;
 
-public static class ModuleInitializer
-{
-    [ModuleInitializer]
-    public static void Init()
-    {
-        ServiceConfig.Register(new AltruistConfig());
-    }
-}
+// public static class ConfigModuleInitializer
+// {
+//     [ModuleInitializer]
+//     public static void Init()
+//     {
+//         ServiceConfig.Register(new AltruistConfig());
+//     }
+// }
 
 public class AltruistConfig : IConfiguration
 {

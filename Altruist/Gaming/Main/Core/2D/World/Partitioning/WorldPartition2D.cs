@@ -46,13 +46,12 @@ namespace Altruist.Gaming.TwoD
             _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
     }
 
-    public interface IWorldPartitioner2D
+    public interface IWorldPartitioner2D : IWorldPartitioner
     {
-        int PartitionWidth { get; }
-        int PartitionHeight { get; }
         List<WorldPartition2D> CalculatePartitions(WorldIndex2D world);
     }
 
+    [Service(typeof(IWorldPartitioner))]
     public class WorldPartitioner2D : IWorldPartitioner2D
     {
         public int PartitionWidth { get; }

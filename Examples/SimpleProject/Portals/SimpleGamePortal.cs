@@ -24,7 +24,7 @@ namespace Portals;
 [Portal("/game")]
 public class SimpleGamePortal : AltruistGameSessionPortal<SimpleSpaceship>
 {
-    public SimpleGamePortal(GamePortalContext context, GameWorldCoordinator gameWorld, IPlayerService<SimpleSpaceship> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
+    public SimpleGamePortal(GamePortalContext context, IGameWorldCoordinator gameWorld, IPlayerService<SimpleSpaceship> playerService, ILoggerFactory loggerFactory) : base(context, gameWorld, playerService, loggerFactory)
     {
     }
 }

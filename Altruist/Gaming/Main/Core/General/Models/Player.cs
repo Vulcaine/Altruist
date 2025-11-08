@@ -190,41 +190,41 @@ namespace Altruist.Gaming
             return this;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public virtual Body CalculatePhysxBody(World world)
-        {
-            if (PhysxBody != null) return PhysxBody;
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // public virtual Body CalculatePhysxBody(World world)
+        // {
+        //     if (PhysxBody != null) return PhysxBody;
 
-            // Define the body
-            var bodyDef = new BodyDef
-            {
-                BodyType = BodyType.DynamicBody,
-                Position = new Vector2(Position[0], Position[1]),
-                Angle = Rotation,
-                FixedRotation = true,
-                LinearDamping = 1f
-            };
+        //     // Define the body
+        //     var bodyDef = new BodyDef
+        //     {
+        //         BodyType = BodyType.DynamicBody,
+        //         Position = new Vector2(Position[0], Position[1]),
+        //         Angle = Rotation,
+        //         FixedRotation = true,
+        //         LinearDamping = 1f
+        //     };
 
-            // Create the body
-            var body = world.CreateBody(bodyDef);
+        //     // Create the body
+        //     var body = world.CreateBody(bodyDef);
 
-            // Define the shape
-            var shape = new PolygonShape();
-            shape.SetAsBox(Size.X * 0.5f, Size.Y * 0.5f); // Box2D uses half-widths
+        //     // Define the shape
+        //     var shape = new PolygonShape();
+        //     shape.SetAsBox(Size.X * 0.5f, Size.Y * 0.5f); // Box2D uses half-widths
 
-            // Define the fixture
-            var fixtureDef = new FixtureDef
-            {
-                Shape = shape,
-                Density = 1f,
-                Friction = 0.2f
-            };
+        //     // Define the fixture
+        //     var fixtureDef = new FixtureDef
+        //     {
+        //         Shape = shape,
+        //         Density = 1f,
+        //         Friction = 0.2f
+        //     };
 
-            // Attach the shape to the body
-            body.CreateFixture(fixtureDef);
-            AttachBody(body);
-            return body;
-        }
+        //     // Attach the shape to the body
+        //     body.CreateFixture(fixtureDef);
+        //     AttachBody(body);
+        //     return body;
+        // }
 
     }
 }

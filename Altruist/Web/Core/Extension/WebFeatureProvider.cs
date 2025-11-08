@@ -67,10 +67,4 @@ namespace Altruist.Web.Features
             return closed.Invoke(websocketSetup, new object[] { path })!;
         }
     }
-
-    public static class ModuleInitializer
-    {
-        [ModuleInitializer]
-        public static void Init() => FeatureRegistry.Register(new WebsocketFeatureProvider());
-    }
 }

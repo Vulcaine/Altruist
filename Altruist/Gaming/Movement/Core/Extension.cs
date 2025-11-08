@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Gaming.Movement;
 
-public static class ModuleInitializer
+public static class MovementModuleInitializer
 {
     [ModuleInitializer]
     public static void Init()

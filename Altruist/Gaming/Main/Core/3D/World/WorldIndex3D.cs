@@ -13,6 +13,7 @@ namespace Altruist.Gaming
         public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
         public override string Type { get; set; } = "WorldIndex3D";
 
+
         public WorldIndex3D(
             int index,
             Vector3 size,
@@ -31,5 +32,10 @@ namespace Altruist.Gaming
         public int Width => (int)Size.X;
         public int Height => (int)Size.Y;
         public int Depth => (int)Size.Z;
+
+        int IWorldIndex.Index()
+        {
+            return Index;
+        }
     }
 }

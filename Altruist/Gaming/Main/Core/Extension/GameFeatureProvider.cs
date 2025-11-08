@@ -1,5 +1,4 @@
 // Gaming/Features/GameEngineFeatureProvider.cs
-using System.Runtime.CompilerServices;
 using Altruist.Features;
 using Altruist.Gaming.Engine;
 using Microsoft.Extensions.Configuration;
@@ -78,14 +77,5 @@ namespace Altruist.Gaming.Features
 
         private static CycleUnit ParseUnit(string value)
             => value.Trim().ToLowerInvariant() == "seconds" ? CycleUnit.Seconds : CycleUnit.Ticks;
-    }
-
-    public static class ModuleInitializer
-    {
-        [ModuleInitializer]
-        public static void Init()
-        {
-            FeatureRegistry.Register(new GameEngineFeatureProvider());
-        }
     }
 }

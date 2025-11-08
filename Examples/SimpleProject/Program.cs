@@ -22,18 +22,20 @@ using Altruist.Web;
 
 using Portals;
 
-AltruistBuilder.Create(args)
-    .SetupGameEngine(setup => setup
-        .AddWorld(new MainWorldIndex(0, new Vector2(100, 100), new Vector2(0, 0)))
-        .EnableEngine(FrameRate.Hz30, CycleUnit.Seconds))
-    .WithWebsocket(setup =>
-    setup.MapPortal<SimpleGamePortal>("/game").MapPortal<SimpleMovementPortal>("/game"))
-    .WebApp()
-    .StartServer();
+// AltruistBuilder.Create(args)
+//     .SetupGameEngine(setup => setup
+//         .AddWorld(new MainWorldIndex(0, new Vector2(100, 100), new Vector2(0, 0)))
+//         .EnableEngine(FrameRate.Hz30, CycleUnit.Seconds))
+//     .WithWebsocket(setup =>
+//     setup.MapPortal<SimpleGamePortal>("/game").MapPortal<SimpleMovementPortal>("/game"))
+//     .WebApp()
+//     .StartServer();
 
-public class MainWorldIndex : WorldIndex
-{
-    public MainWorldIndex(int index, Vector2 size, Vector2? gravity = null) : base(index, size, gravity)
-    {
-    }
-}
+// public class MainWorldIndex : WorldIndex
+// {
+//     public MainWorldIndex(int index, Vector2 size, Vector2? gravity = null) : base(index, size, gravity)
+//     {
+//     }
+// }
+
+AltruistApplication.Run();

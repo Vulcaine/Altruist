@@ -17,8 +17,10 @@ limitations under the License.
 using System.Runtime.CompilerServices;
 using Altruist;
 using Altruist.Contracts;
+using Altruist.Features;
 using Altruist.Gaming;
 using Altruist.Gaming.Engine;
+using Altruist.Gaming.Features;
 using Altruist.Physx;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,12 +35,13 @@ public static class AltruistGamingServiceCollectionExtensions
 }
 
 
-public static class ModuleInitializer
+public static class GamingModuleInitializer
 {
     [ModuleInitializer]
     public static void Init()
     {
         ServiceConfig.Register(new GameConfig());
+        FeatureRegistry.Register(new GameEngineFeatureProvider());
     }
 }
 
@@ -46,12 +49,6 @@ public class GameConfig : IConfiguration
 {
     public void Configure(IServiceCollection services)
     {
-        // services.AddSingleton<GamePortalContext>();
-        services.AddSingleton<IWorldPartitioner>(sp =>
-       {
-           return new WorldPartitioner(64, 64);
-       });
-
         // services.AddSingleton<IPlayerCursorFactory, PlayerCursorFactory>();
         services.AddSingleton(typeof(PlayerCursor<>));
         // services.AddSingleton<GameWorldCoordinator>();

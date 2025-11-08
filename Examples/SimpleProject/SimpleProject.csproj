@@ -14,4 +14,41 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Default behavior: treat as 2D if not specified -->
+    <BuildDimension Condition="'$(BuildDimension)' == ''">2D</BuildDimension>
+
+    <!-- Optional: expose a compile-time symbol like DIM_2D or DIM_3D -->
+    <DefineConstants>$(DefineConstants);DIM_$(BuildDimension)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(BuildDimension)' == '2D'">
+    <Compile Remove="**\*.ThreeD.*" />
+    <None Remove="**\*.ThreeD.*" />
+    <EmbeddedResource Remove="**\*.ThreeD.*" />
+  </ItemGroup>
+
+   <ItemGroup Condition="'$(BuildDimension)' == '3D'">
+    <Compile Remove="**\*.TwoD.*" />
+    <None Remove="**\*.TwoD.*" />
+    <EmbeddedResource Remove="**\*.TwoD.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="config.yml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
+    <None Update="config.*.yml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+
+   <Target Name="ValidateBuildDimension" BeforeTargets="CoreCompile">
+    <Error Condition="'$(BuildDimension)' != '2D' and '$(BuildDimension)' != '3D'"
+           Text="BuildDimension must be '2D' or '3D' (current: '$(BuildDimension)')." />
+  </Target>
+
 </Project>

@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Runtime.CompilerServices;
+using Altruist.Features;
+using Altruist.Web.Features;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.WebSockets;
 
@@ -25,5 +28,11 @@ public static class WebExtensions
     {
         builder.Services.AddWebSockets(configure ?? (configure => { }));
         return builder.SetupTransport(WebSocketTransportToken.Instance, setup);
+    }
+
+    public static class WebModuleInitializer
+    {
+        [ModuleInitializer]
+        public static void Init() => FeatureRegistry.Register(new WebsocketFeatureProvider());
     }
 }

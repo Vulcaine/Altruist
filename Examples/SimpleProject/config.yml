@@ -1,0 +1,25 @@
+altruist:
+  server:
+    host: "0.0.0.0"
+    port: 5000
+
+  transport:
+    mode: "websocket"
+
+  game:
+    engine:
+      dimension: "3D"
+      framerateHz: 30
+      unit: "Seconds" # "Ticks" or "Seconds"
+
+    worlds:
+      - index: 0
+        size:
+          x: 100
+          y: 100
+        gravity:
+          x: 0
+          y: 0
+        position:
+          x: 0
+          y: 0

@@ -70,12 +70,12 @@ namespace Altruist.Gaming.ThreeD
             return partition;
         }
 
-        public ObjectMetadata3D? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
+        public IObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
             => _partitions.Select(p => p.DestroyObject(objectType, instanceId)).FirstOrDefault(m => m != null);
 
-        public IEnumerable<ObjectMetadata3D> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, int z, float radius, string roomId)
+        public IEnumerable<IObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, int z, float radius, string roomId)
         {
-            var result = new List<ObjectMetadata3D>();
+            var result = new List<IObjectMetadata>();
             var partitions = FindPartitionsForPosition(x, y, radius);
             foreach (var partition in partitions)
                 result.AddRange(partition.GetObjectsByTypeInRadius(objectType, x, y, z, radius, roomId));

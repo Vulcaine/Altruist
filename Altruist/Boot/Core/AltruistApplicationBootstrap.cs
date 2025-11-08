@@ -1,6 +1,9 @@
 // Altruist.Boot/AltruistApplication.cs
+using System.Reflection;
 using Altruist.Features;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyModel;
 
 namespace Altruist
 {
@@ -10,6 +13,10 @@ namespace Altruist
 
         public static void Run(string[]? args = null)
         {
+            IServiceCollection services = new ServiceCollection();
+            AltruistBootstrap.Bootstrap(services);
+            // EnsureFeatureAssembliesLoaded();
+
             // 1) Load configuration
             var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
             var basePath = AppContext.BaseDirectory;
@@ -82,6 +89,31 @@ namespace Altruist
                 "Configuration did not produce a runnable application. " +
                 "Ensure at least one transport is configured (e.g., 'transport.mode: websocket') " +
                 "and the corresponding module is referenced.");
+        }
+
+        private static void EnsureFeatureAssembliesLoaded()
+        {
+            var ctx = DependencyContext.Default;
+            if (ctx is null) return;
+
+            foreach (var lib in ctx.CompileLibraries.Where(l =>
+                         l.Name.StartsWith("Altruist.", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { Assembly.Load(new AssemblyName(lib.Name)); }
+                catch { /* ignore if not loadable at runtime */ }
+            }
+
+            var dir = AppContext.BaseDirectory;
+            foreach (var path in Directory.EnumerateFiles(dir, "Altruist.*.dll"))
+            {
+                try
+                {
+                    var name = AssemblyName.GetAssemblyName(path);
+                    if (AppDomain.CurrentDomain.GetAssemblies().All(a => a.GetName().Name != name.Name))
+                        Assembly.Load(name);
+                }
+                catch { }
+            }
         }
 
         private static IReadOnlyList<string> DecideRequestedFeatures(AltruistConfigOptions opts)

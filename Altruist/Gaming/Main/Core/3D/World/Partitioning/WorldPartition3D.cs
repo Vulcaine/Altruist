@@ -50,14 +50,13 @@ namespace Altruist.Gaming.ThreeD
             _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
     }
 
-    public interface IWorldPartitioner3D
+    public interface IWorldPartitioner3D : IWorldPartitioner
     {
-        int PartitionWidth { get; }
-        int PartitionHeight { get; }
         int PartitionDepth { get; }
         List<WorldPartition3D> CalculatePartitions(WorldIndex3D world);
     }
 
+    [Service(typeof(IWorldPartitioner))]
     public class WorldPartitioner3D : IWorldPartitioner3D
     {
         public int PartitionWidth { get; }

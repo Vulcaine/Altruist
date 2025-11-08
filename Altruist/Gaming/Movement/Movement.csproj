@@ -18,7 +18,12 @@
     <None Include="README.md" Pack="true" PackagePath=""/>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
+    <PackageReference Include="Altruist.Gaming" Version="0.4.1-alpha" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
     <ProjectReference Include="..\Main\Gaming.csproj" />
   </ItemGroup>
+
 </Project>
