@@ -3,12 +3,13 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using Altruist.Physx;
 using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
+    [Service(typeof(IGameWorldManager))]
     public sealed class GameWorldManager3D : IGameWorldManager
     {
         private readonly WorldIndex3D _index;

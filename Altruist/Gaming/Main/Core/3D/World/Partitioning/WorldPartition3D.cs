@@ -56,6 +56,7 @@ namespace Altruist.Gaming.ThreeD
         List<WorldPartition3D> CalculatePartitions(WorldIndex3D world);
     }
 
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
     [Service(typeof(IWorldPartitioner))]
     [Service(typeof(IWorldPartitioner3D))]
     public class WorldPartitioner3D : IWorldPartitioner3D
@@ -64,7 +65,13 @@ namespace Altruist.Gaming.ThreeD
         public int PartitionHeight { get; }
         public int PartitionDepth { get; }
 
-        public WorldPartitioner3D(int partitionWidth, int partitionHeight, int partitionDepth)
+        public WorldPartitioner3D(
+            [ConfigValue("altruist:game:partitioner:width", "64")]
+            int partitionWidth,
+            [ConfigValue("altruist:game:partitioner:height", "64")]
+            int partitionHeight,
+            [ConfigValue("altruist:game:partitioner:depth", "64")]
+            int partitionDepth)
         {
             PartitionWidth = partitionWidth;
             PartitionHeight = partitionHeight;

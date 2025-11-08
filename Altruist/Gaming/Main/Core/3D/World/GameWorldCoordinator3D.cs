@@ -3,6 +3,7 @@ using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
     [Service(typeof(IGameWorldCoordinator))]
     public class GameWorldCoordinator3D : IGameWorldCoordinator
     {

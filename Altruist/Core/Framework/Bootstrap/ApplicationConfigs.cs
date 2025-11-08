@@ -60,9 +60,9 @@ namespace Altruist
     [ConfigurationProperties("altruist:game:worlds:partitioner")]
     public sealed class PartitionerOptions
     {
-        public int PartitionWidth { get; set; } = 64;
-        public int PartitionHeight { get; set; } = 64;
-        public int? PartitionDepth { get; set; } = 64;
+        public int Width { get; set; } = 64;
+        public int Height { get; set; } = 64;
+        public int? Depth { get; set; } = 64;
     }
 
     [ConfigurationProperties("altruist:game:worlds:items")]

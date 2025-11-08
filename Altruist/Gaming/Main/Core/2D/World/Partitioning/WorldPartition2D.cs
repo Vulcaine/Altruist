@@ -51,6 +51,7 @@ namespace Altruist.Gaming.TwoD
         List<WorldPartition2D> CalculatePartitions(WorldIndex2D world);
     }
 
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
     [Service(typeof(IWorldPartitioner))]
     [Service(typeof(IWorldPartitioner2D))]
     public class WorldPartitioner2D : IWorldPartitioner2D
@@ -59,9 +60,9 @@ namespace Altruist.Gaming.TwoD
         public int PartitionHeight { get; }
 
         public WorldPartitioner2D(
-            [ConfigValue("altruist:game:partitioner2d:partitionWidth", "64")]
+            [ConfigValue("altruist:game:partitioner:width", "64")]
             int partitionWidth,
-            [ConfigValue("altruist:game:partitioner2d:partitionHeight", "64")]
+            [ConfigValue("altruist:game:partitioner:height", "64")]
             int partitionHeight
         )
         {

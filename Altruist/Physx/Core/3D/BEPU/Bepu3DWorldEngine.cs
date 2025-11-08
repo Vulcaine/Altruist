@@ -1,7 +1,4 @@
 // BepuWorldEngine3D.cs  (BEPU engine; implements AddBody/RemoveBody; NO creation API)
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Altruist.Physx.Contracts;
@@ -21,6 +18,7 @@ namespace Altruist.Physx.ThreeD
             => new BepuWorldEngine3D(gravity, fixedDeltaTime);
     }
 
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
     [Service(typeof(IPhysxWorldEngine3D))]
     internal sealed class BepuWorldEngine3D : IPhysxWorldEngine3D
     {

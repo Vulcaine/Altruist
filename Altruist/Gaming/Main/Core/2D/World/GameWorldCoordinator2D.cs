@@ -3,6 +3,7 @@ using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.TwoD
 {
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
     [Service(typeof(IGameWorldCoordinator))]
     public class GameWorldCoordinator2D : IGameWorldCoordinator
     {

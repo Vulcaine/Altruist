@@ -8,7 +8,7 @@ altruist:
 
   game:
     engine:
-      dimension: "2D"
+      dimension: "3D"
       framerateHz: 30
       unit: "Seconds"
       gravity:
@@ -17,9 +17,9 @@ altruist:
 
     worlds:
       partitioner:
-        partitionWidth: 64
-        partitionHeight: 64
-        partitionDepth: 64
+        width: 64
+        height: 64
+        depth: 64
       items:
         - index: 0
           size:

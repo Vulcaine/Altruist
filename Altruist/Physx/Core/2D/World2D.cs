@@ -21,6 +21,7 @@ namespace Altruist.Physx
         IPhysxWorldEngine2D Create(Vector2 gravity, float fixedDeltaTime = 1f / 60f);
     }
 
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
     [Service(typeof(IPhysxBody2D))]
     [Service(typeof(IPhysxBody))]
     public sealed class PhysxWorld2D : IPhysxWorld2D, IDisposable

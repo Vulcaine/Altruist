@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist;
 
-
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public class ServiceAttribute : Attribute
 {

@@ -8,6 +8,8 @@ using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.TwoD
 {
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    [Service(typeof(IGameWorldManager))]
     public sealed class GameWorldManager2D : IGameWorldManager
     {
         private readonly WorldIndex2D _index;

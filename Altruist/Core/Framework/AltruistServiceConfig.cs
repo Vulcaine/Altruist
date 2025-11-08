@@ -35,6 +35,13 @@ namespace Altruist
 
             foreach (var implType in typesWithServiceAttr)
             {
+                // Evaluate @ConditionalOnConfig gates (AND across multiple attributes)
+                if (!ShouldRegister(implType, config, logger))
+                {
+                    logger.LogDebug("⏭️ Skipping {Type} due to ConditionalOnConfig not satisfied.", implType.FullName);
+                    continue;
+                }
+
                 foreach (var svcAttr in implType.GetCustomAttributes<ServiceAttribute>())
                 {
                     var serviceType = svcAttr.ServiceType ?? InferServiceType(implType);
@@ -59,6 +66,50 @@ namespace Altruist
             {
                 logger.LogInformation("✅ Registered services:\n{Services}", string.Join("\n", registeredServices));
             }
+        }
+
+        private static bool ShouldRegister(Type implType, IConfiguration cfg, ILogger logger)
+        {
+            var conds = implType.GetCustomAttributes<ConditionalOnConfigAttribute>(inherit: false).ToArray();
+            if (conds.Length == 0) return true;
+
+            foreach (var c in conds)
+            {
+                var section = cfg.GetSection(c.Path);
+
+                // If havingValue not specified: only require existence of the key/section
+                if (string.IsNullOrEmpty(c.HavingValue))
+                {
+                    if (!section.Exists())
+                    {
+                        logger.LogDebug("ConditionalOnConfig FAILED (missing): {Path}", c.Path);
+                        return false;
+                    }
+
+                    // Exists -> condition satisfied, continue to evaluate others
+                    continue;
+                }
+
+                // havingValue specified: compare scalar value
+                var raw = section.Value;
+
+                // If section exists but is an object (no scalar Value), fail the comparison
+                if (!section.Exists() || raw is null)
+                {
+                    logger.LogDebug("ConditionalOnConfig FAILED (no scalar value): {Path} expected '{Expected}'", c.Path, c.HavingValue);
+                    return false;
+                }
+
+                var comparison = c.CaseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                if (!string.Equals(raw.Trim(), c.HavingValue.Trim(), comparison))
+                {
+                    logger.LogDebug("ConditionalOnConfig FAILED (mismatch): {Path} was '{Actual}', expected '{Expected}'",
+                        c.Path, raw, c.HavingValue);
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static void EnsureConvertersDiscovered(IServiceCollection services, ILogger logger)

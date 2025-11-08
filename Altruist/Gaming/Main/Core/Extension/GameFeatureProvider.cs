@@ -9,6 +9,7 @@ namespace Altruist.Gaming.Features
     {
         public string FeatureId => "game-engine";
 
+
         public object Configure(object stage, IServiceProvider services)
         {
             var root = services.GetRequiredService<AltruistConfigOptions>();
@@ -27,8 +28,7 @@ namespace Altruist.Gaming.Features
             // Build engine via your existing extension API
             var next = intermediate.SetupGameEngine(engine =>
             {
-                var dim = InferDimension(game);
-
+                var dim = game.Engine?.Dimension ?? "2D";
                 foreach (var w in game.Worlds.Items)
                 {
                     if (dim == "3D")
@@ -50,27 +50,6 @@ namespace Altruist.Gaming.Features
             });
 
             return next;
-        }
-
-        private static string InferDimension(GameConfigOptions game)
-        {
-            var worlds = game.Worlds ?? new();
-            var any3D = worlds.Items.Any(w => w.Is3D);
-            var any2D = worlds.Items.Any(w => !w.Is3D);
-
-            if (any3D && any2D)
-                throw new InvalidOperationException("Worlds are mixed 2D/3D. Use either all 2D or all 3D.");
-
-            var inferred = any3D ? "3D" : "2D";
-            var requested = (game.Engine?.Dimension ?? "Auto").Trim();
-
-            if (!requested.Equals("Auto", StringComparison.OrdinalIgnoreCase) &&
-                !requested.Equals(inferred, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException($"Engine.Dimension={requested} conflicts with inferred {inferred}.");
-            }
-
-            return inferred;
         }
 
         private static CycleUnit ParseUnit(string value)

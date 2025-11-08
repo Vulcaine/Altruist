@@ -12,6 +12,7 @@ namespace Altruist.Physx
             => new Box2DWorldEngine2D(gravity, fixedDeltaTime);
     }
 
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
     [Service(typeof(IPhysxWorldEngine2D))]
     internal sealed class Box2DWorldEngine2D : IPhysxWorldEngine2D
     {
