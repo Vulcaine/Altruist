@@ -26,6 +26,7 @@
 
   <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
     <PackageReference Include="Altruist" Version="*-*" />
+    <PackageReference Include="Altruist.Physx" Version="*-*" />
   </ItemGroup>
 
 </Project>

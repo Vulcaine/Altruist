@@ -34,7 +34,6 @@ public class AltruistGameEngineBuilder
     private IServiceCollection Services { get; }
     private IAltruistContext Settings;
     private string[] _args;
-    private List<IWorldIndex> _worlds = new();
 
     public AltruistGameEngineBuilder(IServiceCollection services, IAltruistContext Settings, string[] args)
     {
@@ -51,7 +50,6 @@ public class AltruistGameEngineBuilder
     public AltruistGameEngineBuilder AddWorld(IWorldIndex worldIndex)
     {
         Services.AddKeyedSingleton(typeof(IWorldIndex), $"world-{worldIndex.Index()}", worldIndex);
-        _worlds.Add(worldIndex);
         return this;
     }
 
@@ -63,26 +61,6 @@ public class AltruistGameEngineBuilder
         Services.AddSingleton<IAltruistEngine>(sp =>
         {
             var coordinator = sp.GetRequiredService<IGameWorldCoordinator>();
-            if (_worlds.Count == 0)
-            {
-                throw new InvalidOperationException("Engine requires a physics world but has not been set. Use AddWorld(WorldIndex) to add a world to the universe.");
-            }
-
-            foreach (var world in _worlds)
-            {
-                if (mode == EngineMode.ThreeD)
-                {
-                    var physx = new PhysxWorld3D(sp.GetRequiredService<IPhysxWorldEngine3D>());
-                    coordinator.AddWorld(world, physx);
-                    continue;
-                }
-                else
-                {
-                    var physx = new PhysxWorld2D(sp.GetRequiredService<IPhysxWorldEngine2D>());
-                    coordinator.AddWorld(world, physx);
-                    continue;
-                }
-            }
 
             var env = sp.GetRequiredService<IHostEnvironment>();
             var engine = new AltruistEngine(sp, coordinator, hz, unit, throttle);

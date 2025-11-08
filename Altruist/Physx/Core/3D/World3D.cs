@@ -4,6 +4,9 @@ using Altruist.Physx.Contracts;
 
 namespace Altruist.Physx.ThreeD
 {
+    [Service(typeof(IPhysxBody3D))]
+    [Service(typeof(IPhysxBody))]
+
     public sealed class PhysxWorld3D : IPhysxWorld3D, IDisposable
     {
         public IReadOnlyCollection<IPhysxBody> Bodies => _engine.Bodies;

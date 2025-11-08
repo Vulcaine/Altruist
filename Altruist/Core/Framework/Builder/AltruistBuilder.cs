@@ -17,16 +17,9 @@ public class AltruistBuilder
 
     private AltruistBuilder(string[] args, Func<IServiceCollection, IServiceCollection>? serviceBuilder = null)
     {
-        Services = serviceBuilder != null ? serviceBuilder.Invoke(new ServiceCollection()) : new ServiceCollection();
+        Services = serviceBuilder != null ? serviceBuilder.Invoke(AltruistBootstrap.Services) : AltruistBootstrap.Services;
         _args = args;
-        Services.AddLogging(loggingBuilder =>
-        {
-            loggingBuilder.ClearProviders();
-            var frameworkVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1";
 
-            loggingBuilder.AddProvider(new AltruistLoggerProvider(frameworkVersion));
-        });
-        // Add core services
         Services.AddSingleton<IHostEnvironment>(new HostingEnvironment
         {
             EnvironmentName = Environments.Development,

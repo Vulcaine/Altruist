@@ -13,7 +13,7 @@ public static class MovementModuleInitializer
     }
 }
 
-public class MovementConfig : IConfiguration
+public class MovementConfig : IAltruistConfiguration
 {
     public void Configure(IServiceCollection services)
     {

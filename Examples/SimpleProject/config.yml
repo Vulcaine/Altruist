@@ -8,18 +8,26 @@ altruist:
 
   game:
     engine:
-      dimension: "3D"
+      dimension: "2D"
       framerateHz: 30
-      unit: "Seconds" # "Ticks" or "Seconds"
+      unit: "Seconds"
+      gravity:
+        x: 0
+        y: -9.81
 
     worlds:
-      - index: 0
-        size:
-          x: 100
-          y: 100
-        gravity:
-          x: 0
-          y: 0
-        position:
-          x: 0
-          y: 0
+      partitioner:
+        partitionWidth: 64
+        partitionHeight: 64
+        partitionDepth: 64
+      items:
+        - index: 0
+          size:
+            x: 100
+            y: 100
+          gravity:
+            x: 0
+            y: 0
+          position:
+            x: 0
+            y: 0

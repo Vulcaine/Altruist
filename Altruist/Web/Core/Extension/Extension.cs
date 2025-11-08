@@ -30,9 +30,10 @@ public static class WebExtensions
         return builder.SetupTransport(WebSocketTransportToken.Instance, setup);
     }
 
+    [AltruistModule("Web Core Module")]
     public static class WebModuleInitializer
     {
-        [ModuleInitializer]
+        [AltruistModuleLoader]
         public static void Init() => FeatureRegistry.Register(new WebsocketFeatureProvider());
     }
 }

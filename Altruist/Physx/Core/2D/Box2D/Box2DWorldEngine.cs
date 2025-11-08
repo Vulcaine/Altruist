@@ -1,9 +1,5 @@
 // Box2DWorldEngine2D.cs
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
 using Box2DSharp.Dynamics;
@@ -16,6 +12,7 @@ namespace Altruist.Physx
             => new Box2DWorldEngine2D(gravity, fixedDeltaTime);
     }
 
+    [Service(typeof(IPhysxWorldEngine2D))]
     internal sealed class Box2DWorldEngine2D : IPhysxWorldEngine2D
     {
         public float FixedDeltaTime { get; }
@@ -27,7 +24,12 @@ namespace Altruist.Physx
         private readonly Dictionary<string, Body2DAdapter> _bodies = new();
         private readonly Dictionary<Body, Body2DAdapter> _byNative = new();
 
-        public Box2DWorldEngine2D(Vector2 gravity, float fixedDeltaTime)
+        public Box2DWorldEngine2D(
+            [ConfigValue("altruist:game:engine:gravity", "0, -9.81")]
+            Vector2 gravity,
+            [ConfigValue("altruist:game:engine:fixed-delta", "0.0166f")]
+            float fixedDeltaTime = 1f / 60f
+        )
         {
             FixedDeltaTime = fixedDeltaTime;
             _world = new World(gravity);

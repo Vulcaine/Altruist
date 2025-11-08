@@ -4,6 +4,7 @@ using Altruist.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyModel;
+using Microsoft.Extensions.Logging;
 
 namespace Altruist
 {
@@ -13,35 +14,21 @@ namespace Altruist
 
         public static void Run(string[]? args = null)
         {
-            IServiceCollection services = new ServiceCollection();
-            AltruistBootstrap.Bootstrap(services);
-            // EnsureFeatureAssembliesLoaded();
+            AltruistBootstrap.Bootstrap();
 
-            // 1) Load configuration
-            var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
-            var basePath = AppContext.BaseDirectory;
-
-            var cfg = new ConfigurationBuilder()
-                .SetBasePath(basePath)
-                .AddYamlFile(Path.Combine(basePath, "config.yml"), optional: false, reloadOnChange: true)
-                .AddYamlFile(Path.Combine(basePath, $"config.{env}.yml"), optional: true, reloadOnChange: true)
-                .AddEnvironmentVariables(prefix: "ALTRUIST__")
-                .AddCommandLine(args ?? Array.Empty<string>())
-                .Build();
-
+            var cfg = AppConfigLoader.Load(args);
             Configuration = cfg;
 
-            // 2) Bind root options (with GameConfigOptions nested)
-            var opts = new AltruistConfigOptions();
-            cfg.GetSection("altruist").Bind(opts);
+            AltruistBootstrap.Services.AddSingleton<IConfiguration>(cfg);
 
-            // 3) Determine requested features from config
+            var sp = AltruistBootstrap.Services.BuildServiceProvider();
+            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AltruistApplication));
+            var opts = sp.GetRequiredService<AltruistOptions>();
+
             var requested = DecideRequestedFeatures(opts);
 
-            // 4) Start at the Intermediate stage
             object stage = AltruistBuilder.Create(args ?? Array.Empty<string>());
 
-            // 5) Let providers advance the pipeline (in a stable order)
             foreach (var feature in requested)
             {
                 var provider = FeatureRegistry.Find(feature);
@@ -64,14 +51,18 @@ namespace Altruist
                 stage = next;
             }
 
-            // 6) Finalize: we expect either IAfterConnectionBuilder or AltruistWebApplicationBuilder
             if (stage is IAfterConnectionBuilder afterConn)
             {
                 var web = afterConn.WebApp(b =>
                 {
-                    // If your WebApp builder reads host/port from Configuration, set them here.
-                    b.Configuration["altruist:server:host"] = opts.Server.Host;
-                    b.Configuration["altruist:server:port"] = opts.Server.Port.ToString();
+                    try
+                    {
+                        var useHost = b.GetType().GetMethod("UseHost", BindingFlags.Public | BindingFlags.Instance);
+                        var usePort = b.GetType().GetMethod("UsePort", BindingFlags.Public | BindingFlags.Instance);
+                        useHost?.Invoke(b, new object[] { opts.Server.Host });
+                        usePort?.Invoke(b, new object[] { opts.Server.Port });
+                    }
+                    catch { }
                     return b;
                 });
 
@@ -91,6 +82,28 @@ namespace Altruist
                 "and the corresponding module is referenced.");
         }
 
+        private static IReadOnlyList<string> DecideRequestedFeatures(AltruistOptions opts)
+        {
+            var features = new List<string>();
+
+            var game = opts.Game;
+            var wantsGame =
+                game is not null &&
+                (
+                    (game.Worlds?.Items is not null && game.Worlds.Items.Count > 0) ||
+                    game.Engine is not null
+                );
+
+            if (wantsGame)
+                features.Add("game-engine");
+
+            if (string.Equals(opts.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
+                features.Add("websocket");
+
+            var order = new[] { "game-engine", "websocket" };
+            return features.OrderBy(f => Array.IndexOf(order, f)).ToArray();
+        }
+
         private static void EnsureFeatureAssembliesLoaded()
         {
             var ctx = DependencyContext.Default;
@@ -100,7 +113,7 @@ namespace Altruist
                          l.Name.StartsWith("Altruist.", StringComparison.OrdinalIgnoreCase)))
             {
                 try { Assembly.Load(new AssemblyName(lib.Name)); }
-                catch { /* ignore if not loadable at runtime */ }
+                catch { }
             }
 
             var dir = AppContext.BaseDirectory;
@@ -114,31 +127,6 @@ namespace Altruist
                 }
                 catch { }
             }
-        }
-
-        private static IReadOnlyList<string> DecideRequestedFeatures(AltruistConfigOptions opts)
-        {
-            var features = new List<string>();
-
-            // Game feature is requested if any game options are present AND meaningful
-            var game = opts.Game;
-            var wantsGame =
-                game != null &&
-                (
-                    (game.Worlds != null && game.Worlds.Count > 0) ||
-                    game.Engine != null // engine settings supplied, even if worlds are empty (provider can validate further)
-                );
-
-            if (wantsGame)
-                features.Add("game-engine");
-
-            // Transport requests
-            if (string.Equals(opts.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
-                features.Add("websocket");
-
-            // Sort so engine runs before transport (stable order)
-            var order = new[] { "game-engine", "websocket" };
-            return features.OrderBy(f => Array.IndexOf(order, f)).ToArray();
         }
     }
 }

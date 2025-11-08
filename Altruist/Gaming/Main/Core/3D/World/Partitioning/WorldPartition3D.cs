@@ -57,6 +57,7 @@ namespace Altruist.Gaming.ThreeD
     }
 
     [Service(typeof(IWorldPartitioner))]
+    [Service(typeof(IWorldPartitioner3D))]
     public class WorldPartitioner3D : IWorldPartitioner3D
     {
         public int PartitionWidth { get; }

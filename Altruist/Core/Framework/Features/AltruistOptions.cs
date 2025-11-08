@@ -1,6 +1,5 @@
 // AltruistConfigOptions.cs
 using System.Numerics;
-using Altruist.Physx.ThreeD.Numerics;
 
 namespace Altruist
 {

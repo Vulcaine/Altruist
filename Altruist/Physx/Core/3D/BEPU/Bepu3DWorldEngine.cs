@@ -21,6 +21,7 @@ namespace Altruist.Physx.ThreeD
             => new BepuWorldEngine3D(gravity, fixedDeltaTime);
     }
 
+    [Service(typeof(IPhysxWorldEngine3D))]
     internal sealed class BepuWorldEngine3D : IPhysxWorldEngine3D
     {
         public float FixedDeltaTime { get; }

@@ -21,6 +21,8 @@ namespace Altruist.Physx
         IPhysxWorldEngine2D Create(Vector2 gravity, float fixedDeltaTime = 1f / 60f);
     }
 
+    [Service(typeof(IPhysxBody2D))]
+    [Service(typeof(IPhysxBody))]
     public sealed class PhysxWorld2D : IPhysxWorld2D, IDisposable
     {
         public IReadOnlyCollection<IPhysxBody> Bodies => _engine.Bodies;

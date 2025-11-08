@@ -21,9 +21,9 @@ namespace Altruist;
 
 public static class ServiceConfig
 {
-    public static List<IConfiguration> configurations = new();
+    public static List<IAltruistConfiguration> configurations = new();
 
-    public static void Register(IConfiguration configuration) => configurations.Add(configuration);
+    public static void Register(IAltruistConfiguration configuration) => configurations.Add(configuration);
 
     public static void Configure(IServiceCollection services)
     {

@@ -34,10 +34,10 @@ public static class AltruistGamingServiceCollectionExtensions
     }
 }
 
-
+[AltruistModule("Gaming Core Module")]
 public static class GamingModuleInitializer
 {
-    [ModuleInitializer]
+    [AltruistModuleLoader]
     public static void Init()
     {
         ServiceConfig.Register(new GameConfig());
@@ -45,7 +45,7 @@ public static class GamingModuleInitializer
     }
 }
 
-public class GameConfig : IConfiguration
+public class GameConfig : IAltruistConfiguration
 {
     public void Configure(IServiceCollection services)
     {

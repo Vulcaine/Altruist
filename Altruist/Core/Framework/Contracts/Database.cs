@@ -59,7 +59,7 @@ public abstract class StoredModel : IStoredModel
     public string StoredId => $"{Group}:{Key}";
 }
 
-public interface IVaultFactory<TToken, TConfig> where TConfig : IConfiguration where TToken : IServiceToken<TConfig>
+public interface IVaultFactory<TToken, TConfig> where TConfig : IAltruistConfiguration where TToken : IServiceToken<TConfig>
 {
     public TToken Token { get; }
 }

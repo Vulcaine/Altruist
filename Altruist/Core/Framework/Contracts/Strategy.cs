@@ -21,27 +21,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Contracts;
 
-public interface IConfiguration
+public interface IAltruistConfiguration
 {
     void Configure(IServiceCollection services);
 }
 
-public interface ICacheConfiguration : IConfiguration
+public interface ICacheConfiguration : IAltruistConfiguration
 {
 
 }
 
-public interface ITransportConfiguration : IConfiguration
+public interface ITransportConfiguration : IAltruistConfiguration
 {
 
 }
 
-public interface IDatabaseConfiguration : IConfiguration
+public interface IDatabaseConfiguration : IAltruistConfiguration
 {
     string DatabaseName { get; }
 }
 
-public interface IServiceToken<TConfiguration> where TConfiguration : IConfiguration
+public interface IServiceToken<TConfiguration> where TConfiguration : IAltruistConfiguration
 {
     public string Description { get; }
     public TConfiguration Configuration { get; }

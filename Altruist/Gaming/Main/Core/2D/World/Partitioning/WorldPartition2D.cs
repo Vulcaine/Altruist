@@ -52,12 +52,18 @@ namespace Altruist.Gaming.TwoD
     }
 
     [Service(typeof(IWorldPartitioner))]
+    [Service(typeof(IWorldPartitioner2D))]
     public class WorldPartitioner2D : IWorldPartitioner2D
     {
         public int PartitionWidth { get; }
         public int PartitionHeight { get; }
 
-        public WorldPartitioner2D(int partitionWidth, int partitionHeight)
+        public WorldPartitioner2D(
+            [ConfigValue("altruist:game:partitioner2d:partitionWidth", "64")]
+            int partitionWidth,
+            [ConfigValue("altruist:game:partitioner2d:partitionHeight", "64")]
+            int partitionHeight
+        )
         {
             PartitionWidth = partitionWidth;
             PartitionHeight = partitionHeight;

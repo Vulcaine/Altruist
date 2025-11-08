@@ -24,4 +24,12 @@
     <PackageReference Include="Box2DSharp" Version="0.6.0" />
   </ItemGroup>
 
+   <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
+    <ProjectReference Include="..\Core\Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
+    <PackageReference Include="Altruist" Version="*-*" />
+  </ItemGroup>
+
 </Project>
