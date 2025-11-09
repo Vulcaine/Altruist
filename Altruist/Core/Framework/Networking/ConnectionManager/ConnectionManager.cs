@@ -81,7 +81,7 @@ public class ConnectionManager : IConnectionManager
         return true;
     }
 
-    public async Task HandleConnection(Connection connection, string @event, string clientId)
+    public async Task HandleConnection(AltruistConnection connection, string @event, string clientId)
     {
         await _socketManager.AddConnectionAsync(clientId, connection);
 
@@ -117,12 +117,12 @@ public class ConnectionManager : IConnectionManager
         return _socketManager.RemoveConnectionAsync(connectionId);
     }
 
-    public Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null)
+    public Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null)
     {
         return _socketManager.AddConnectionAsync(connectionId, socket, roomId);
     }
 
-    public Task<Connection?> GetConnectionAsync(string connectionId)
+    public Task<AltruistConnection?> GetConnectionAsync(string connectionId)
     {
         return _socketManager.GetConnectionAsync(connectionId);
     }
@@ -132,12 +132,12 @@ public class ConnectionManager : IConnectionManager
         return _socketManager.GetAllConnectionIdsAsync();
     }
 
-    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
+    public virtual async Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync()
     {
         return await _socketManager.GetAllConnectionsDictAsync();
     }
 
-    public Task<ICursor<Connection>> GetAllConnectionsAsync()
+    public Task<ICursor<AltruistConnection>> GetAllConnectionsAsync()
     {
         return _socketManager.GetAllConnectionsAsync();
     }
@@ -155,7 +155,7 @@ public class ConnectionManager : IConnectionManager
         return default!;
     }
 
-    public async Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId)
+    public async Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId)
     {
         return await _socketManager.GetConnectionsInRoomAsync(roomId);
     }

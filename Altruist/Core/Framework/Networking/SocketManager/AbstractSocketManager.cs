@@ -4,15 +4,15 @@ namespace Altruist;
 
 public interface ISocketManager
 {
-    Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId);
+    Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
     Task<RoomPacket> FindAvailableRoomAsync();
     Task<RoomPacket> CreateRoomAsync();
     Task DeleteRoomAsync(string roomName);
     Task RemoveConnectionAsync(string connectionId);
-    Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null);
-    Task<Connection?> GetConnectionAsync(string connectionId);
+    Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null);
+    Task<AltruistConnection?> GetConnectionAsync(string connectionId);
     Task<IEnumerable<string>> GetAllConnectionIdsAsync();
-    Task<ICursor<Connection>> GetAllConnectionsAsync();
+    Task<ICursor<AltruistConnection>> GetAllConnectionsAsync();
     Task<RoomPacket?> FindRoomForClientAsync(string clientId);
     Task<RoomPacket?> GetRoomAsync(string roomId);
     Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
@@ -20,28 +20,31 @@ public interface ISocketManager
     Task SaveRoomAsync(RoomPacket room);
     Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId);
 
-    Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync();
+    Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync();
 
     Task Cleanup();
 }
 
 [Service(typeof(ISocketManager))]
-public abstract class AbstractSocketManager : IConnectionStore, ISocketManager
+public class SocketManager : IConnectionStore, ISocketManager
 {
     protected readonly IConnectionStore _connectionStore;
 
     // public ICodec Codec { get; }
 
-    public AbstractSocketManager(IServiceProvider serviceProvider)
+    public SocketManager(IServiceProvider serviceProvider)
     {
         // Codec = serviceProvider.GetService<ICodec>() ?? new JsonCodec();
         _connectionStore = serviceProvider.GetRequiredService<IConnectionStore>();
         // Cache = serviceProvider.GetRequiredService<ICacheProvider>();
     }
 
-    public abstract void Initialize();
+    public virtual void Initialize()
+    {
 
-    public virtual async Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId)
+    }
+
+    public virtual async Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId)
     {
         return await _connectionStore.GetConnectionsInRoomAsync(roomId);
     }
@@ -66,12 +69,12 @@ public abstract class AbstractSocketManager : IConnectionStore, ISocketManager
         return _connectionStore.RemoveConnectionAsync(connectionId);
     }
 
-    public virtual Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null)
+    public virtual Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null)
     {
         return _connectionStore.AddConnectionAsync(connectionId, socket, roomId);
     }
 
-    public virtual Task<Connection?> GetConnectionAsync(string connectionId)
+    public virtual Task<AltruistConnection?> GetConnectionAsync(string connectionId)
     {
         return _connectionStore.GetConnectionAsync(connectionId);
     }
@@ -81,7 +84,7 @@ public abstract class AbstractSocketManager : IConnectionStore, ISocketManager
         return _connectionStore.GetAllConnectionIdsAsync();
     }
 
-    public virtual Task<ICursor<Connection>> GetAllConnectionsAsync()
+    public virtual Task<ICursor<AltruistConnection>> GetAllConnectionsAsync()
     {
         return _connectionStore.GetAllConnectionsAsync();
     }
@@ -120,7 +123,7 @@ public abstract class AbstractSocketManager : IConnectionStore, ISocketManager
         return await _connectionStore.IsConnectionExistsAsync(connectionId);
     }
 
-    public virtual async Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync()
+    public virtual async Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync()
     {
         return await _connectionStore.GetAllConnectionsDictAsync();
     }

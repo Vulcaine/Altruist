@@ -7,7 +7,6 @@ public interface IAuthService<TAuthContext>
 
 }
 
-[Service(typeof(IAuthService<>))]
 public class AuthService<TAuthContext> : IAuthService<TAuthContext> where TAuthContext : ISessionAuthContext
 {
     protected IIssuer _issuer;

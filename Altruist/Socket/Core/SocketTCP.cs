@@ -28,6 +28,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Socket;
 
+[Service(typeof(ITransport))]
+[ConditionalOnConfig("altruist:transport:mode", havingValue: "tcp")]
 public sealed class TcpTransport : ITransport
 {
     private readonly int _port;
@@ -44,7 +46,7 @@ public sealed class TcpTransport : ITransport
         _endpoint = @event;
     }
 
-    public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path)
+    public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path) where TType : class
     {
         StartTcpServer(app.ApplicationServices.GetRequiredService<IConnectionManager>(), app.ApplicationServices);
     }
@@ -117,7 +119,7 @@ public sealed class TcpTransport : ITransport
     }
 }
 
-public sealed class CachedTcpConnection : Connection
+public sealed class CachedTcpConnection : AltruistConnection
 {
     [JsonIgnore]
     private TcpConnection? _connection;
@@ -132,7 +134,7 @@ public sealed class CachedTcpConnection : Connection
         LastActivity = udpConnection.LastActivity;
     }
 
-    public CachedTcpConnection(Connection connection)
+    public CachedTcpConnection(AltruistConnection connection)
     {
         ConnectionId = connection.ConnectionId;
         AuthDetails = connection.AuthDetails;
@@ -175,7 +177,7 @@ public sealed class CachedTcpConnection : Connection
     }
 }
 
-public sealed class TcpConnection : Connection
+public sealed class TcpConnection : AltruistConnection
 {
     [JsonIgnore]
     private readonly TcpClient _client;

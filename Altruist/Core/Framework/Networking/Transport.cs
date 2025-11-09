@@ -21,6 +21,6 @@ namespace Altruist.Transport;
 public interface ITransport
 {
     void RouteTraffic(IApplicationBuilder app);
-    void UseTransportEndpoints<TType>(IApplicationBuilder app, string path);
+    void UseTransportEndpoints<TType>(IApplicationBuilder app, string path) where TType : class;
     void UseTransportEndpoints(IApplicationBuilder app, Type type, string path);
 }

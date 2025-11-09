@@ -19,7 +19,7 @@ using Altruist;
 namespace Portals;
 
 [Portal("/game")]
-public class SimpleMovementPortal
+public class SimpleMovementPortal : IPortal
 {
     public SimpleMovementPortal()
     {

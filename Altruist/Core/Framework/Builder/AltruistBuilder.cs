@@ -44,7 +44,6 @@ public class AltruistBuilder
         Services.AddSingleton<IEncoder, JsonMessageEncoder>();
         Services.AddSingleton<IConnectionStore, InMemoryConnectionStore>();
 
-        Services.AddSingleton<IPortalContext, PortalContext>();
         Services.AddSingleton<VaultRepositoryFactory>();
         Services.AddSingleton<DatabaseProviderFactory>();
         Services.AddSingleton(sp => new LoadSyncServicesAction(sp));

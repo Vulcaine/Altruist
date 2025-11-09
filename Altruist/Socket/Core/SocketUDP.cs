@@ -29,6 +29,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Socket;
 
+[Service(typeof(ITransport))]
+[ConditionalOnConfig("altruist:transport:mode", havingValue: "udp")]
 public sealed class UdpTransport : ITransport
 {
     private readonly int _port;
@@ -48,7 +50,7 @@ public sealed class UdpTransport : ITransport
         _store = store;
     }
 
-    public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path)
+    public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path) where TType : class
     {
         StartUdpServer(app.ApplicationServices.GetRequiredService<IConnectionManager>(), app.ApplicationServices);
     }
@@ -132,7 +134,7 @@ public sealed class UdpTransport : ITransport
     }
 }
 
-public sealed class CachedUdpConnection : Connection
+public sealed class CachedUdpConnection : AltruistConnection
 {
     [JsonIgnore]
     private UdpConnection? _udpConnection;
@@ -147,7 +149,7 @@ public sealed class CachedUdpConnection : Connection
         LastActivity = udpConnection.LastActivity;
     }
 
-    public CachedUdpConnection(Connection connection)
+    public CachedUdpConnection(AltruistConnection connection)
     {
         ConnectionId = connection.ConnectionId;
         AuthDetails = connection.AuthDetails;
@@ -190,7 +192,7 @@ public sealed class CachedUdpConnection : Connection
     }
 }
 
-public sealed class UdpConnection : Connection
+public sealed class UdpConnection : AltruistConnection
 {
     [JsonIgnore]
     private readonly UdpClient? _client;

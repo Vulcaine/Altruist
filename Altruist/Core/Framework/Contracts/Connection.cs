@@ -19,7 +19,7 @@ using Altruist.Security;
 
 namespace Altruist;
 
-public interface IConnection : IStoredModel
+public interface IAltruistConnection : IStoredModel
 {
     AuthDetails? AuthDetails { get; }
     string ConnectionId { get; }
@@ -32,7 +32,7 @@ public interface IConnection : IStoredModel
     bool IsConnected { get; }
 }
 
-public class Connection : StoredModel, IConnection
+public class AltruistConnection : StoredModel, IAltruistConnection
 {
     [JsonIgnore] // Not serialized
     public AuthDetails? AuthDetails { get; set; }
@@ -87,16 +87,16 @@ public interface ITransportClient
 
 public interface IConnectionManager
 {
-    Task HandleConnection(Connection socket, string @event, string clientId);
+    Task HandleConnection(AltruistConnection socket, string @event, string clientId);
     Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId);
     void AddInterceptor(IInterceptor interceptor);
     Task RemoveConnectionAsync(string connectionId);
-    Task<bool> AddConnectionAsync(string connectionId, Connection socket, string? roomId = null);
-    Task<Connection?> GetConnectionAsync(string connectionId);
+    Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null);
+    Task<AltruistConnection?> GetConnectionAsync(string connectionId);
     Task<IEnumerable<string>> GetAllConnectionIdsAsync();
-    Task<Dictionary<string, Connection>> GetAllConnectionsDictAsync();
-    Task<ICursor<Connection>> GetAllConnectionsAsync();
-    Task<Dictionary<string, Connection>> GetConnectionsInRoomAsync(string roomId);
+    Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync();
+    Task<ICursor<AltruistConnection>> GetAllConnectionsAsync();
+    Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
     Task<RoomPacket> FindAvailableRoomAsync();
     Task<RoomPacket?> FindRoomForClientAsync(string clientId);
     Task<RoomPacket> CreateRoomAsync();

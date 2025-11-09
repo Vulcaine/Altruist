@@ -103,7 +103,7 @@ public class AltruistPlayerService : IPlayerService
         {
             await _cacheProvider.RemoveAndForgetAsync<PlayerEntity>(playerId);
 
-            _logger.LogInformation($"Player and associated spaceship with ID {player.StorageId} deleted.");
+            _logger.LogInformation($"Player with ID {player.StorageId} deleted.");
         }
     }
 

@@ -1,6 +1,5 @@
 using Altruist;
 using Altruist.Gaming;
-using Cassandra.Data.Linq;
 using Microsoft.Extensions.Logging;
 
 public interface IGameSessionService

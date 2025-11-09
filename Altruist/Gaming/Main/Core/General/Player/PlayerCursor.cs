@@ -18,7 +18,6 @@ using Altruist.Gaming;
 
 namespace Altruist;
 
-[Service(typeof(PlayerCursor<>))]
 public class PlayerCursor<T> : ICursor<T> where T : notnull, PlayerEntity
 {
     private readonly ICacheProvider _cacheProvider;

@@ -14,27 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-
-using Altruist.Gaming;
+using Altruist;
+using Altruist.UORM;
 
 namespace SimpleGame.Entities;
 
-public class SimpleSpaceship : Spaceship
+[Vault("player")]
+public class Spaceship : VaultModel
 {
-    protected override void InitDefaults()
+
+}
+
+[Prefab("Spaceship")]
+public class SimpleSpaceshipPrefab : Prefab3D
+{
+    [PostConstruct]
+    public void Init(IPrefabBuilder prefabBuilder)
     {
-        base.InitDefaults();
-        MaxSpeed = 20f;
-        MaxTurboSpeed = 10f;
-        RotationSpeed = 0.01f;
-        Acceleration = 2f;
-        MaxAcceleration = 5f;
-        Deceleration = 5f;
-        MaxDeceleration = 5f;
-        TurboFuel = 100f;
-        MaxTurboFuel = 100f;
-        ToggleTurbo = false;
-        EngineQuality = 1f;
-        ShootSpeed = 5f;
+        prefabBuilder.AddChild(new Spaceship());
     }
 }

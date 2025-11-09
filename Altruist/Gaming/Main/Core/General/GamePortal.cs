@@ -16,12 +16,12 @@ limitations under the License.
 
 namespace Altruist.Gaming;
 
-public abstract class AltruistGamePortal : Portal
-{
+// public abstract class AltruistGamePortal : Portal
+// {
 
-}
+// }
 
-public abstract class AltruistGameSessionPortal : AltruistGamePortal
+public abstract class AltruistGameSessionPortal : IPortal
 {
     private readonly IGameSessionService _sessionService;
     protected AltruistGameSessionPortal(IGameSessionService gameSessionService)

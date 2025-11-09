@@ -18,6 +18,7 @@ using System.Linq.Expressions;
 using System.Text.Json.Serialization;
 using Altruist.Contracts;
 using Altruist.Persistence;
+using Altruist.UORM;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 
@@ -81,11 +82,20 @@ public interface IVaultModel : IStoredModel
 
 public abstract class VaultModel : StoredModel, IVaultModel
 {
-    public abstract DateTime Timestamp { get; set; }
+    [VaultColumn("createdAt")]
+    public virtual DateTime Timestamp { get; set; }
+
+    [VaultColumn("id")]
+    public override string StorageId { get; set; }
+
+    [VaultColumn("type")]
+    public override string Type { get; set; }
 
     public VaultModel()
     {
         StorageId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(StorageId) ? Guid.NewGuid().ToString() : StorageId);
+        Timestamp = DateTime.UtcNow;
+        Type = GetType().Name;
     }
 }
 
