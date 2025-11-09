@@ -51,8 +51,6 @@ namespace Altruist
             app.MapControllers();
             app.UseMiddleware<ReadinessMiddleware>();
 
-            settings.AppStatus = appStatus;
-
             var portals = PortalDiscovery.Discover().Distinct().ToArray();
 
             if (!int.TryParse(_port, out var portNum)) portNum = 8080;
@@ -99,11 +97,14 @@ namespace Altruist
             logBuilder.AppendLine("╚════════════════════════════════════════════════════╝");
 
             Console.WriteLine("\n" + logBuilder + "\n");
-            Console.WriteLine(settings.AppStatus.ToString());
-
-            if (settings.AppStatus.Status != ReadyState.Alive)
+            if (appStatus != null)
             {
-                logger.LogWarning("🕒 All systems initialized, but I'm still waiting for a few lazy services to show up. Hang tight — no inbound or outbound messages are allowed yet. And if you enabled the engine... nope, not starting that until everyone's here!");
+                Console.WriteLine(appStatus.ToString());
+
+                if (appStatus.Status != ReadyState.Alive)
+                {
+                    logger.LogWarning("🕒 All systems initialized, but I'm still waiting for a few lazy services to show up. Hang tight — no inbound or outbound messages are allowed yet. And if you enabled the engine... nope, not starting that until everyone's here!");
+                }
             }
 
             // Scan & wire any event handlers (safe to pass IServiceProvider)

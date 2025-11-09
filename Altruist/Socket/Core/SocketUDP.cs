@@ -249,12 +249,12 @@ public sealed class UdpConnection : AltruistConnection
 
 
 
-public sealed class UdpConnectionSetup : TransportConnectionSetup<UdpConnectionSetup>
-{
-    public UdpConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
-    {
-    }
-}
+// public sealed class UdpConnectionSetup : TransportConnectionSetup<UdpConnectionSetup>
+// {
+//     public UdpConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
+//     {
+//     }
+// }
 
 public sealed class UdpTransportToken : ITransportServiceToken
 {
@@ -269,16 +269,16 @@ public sealed class UdpSocketConfiguration : ITransportConfiguration
 {
     public Task Configure(IServiceCollection services)
     {
-        ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
-        ILogger logger = factory.CreateLogger("WebsocketSupport");
-        logger.LogInformation("⚡ Udp Socket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
-        services.AddSingleton<ITransport, UdpTransport>();
+        // ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+        // ILogger logger = factory.CreateLogger("WebsocketSupport");
+        // logger.LogInformation("⚡ Udp Socket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
+        // services.AddSingleton<ITransport, UdpTransport>();
 
-        services.AddSingleton<UdpConnectionSetup>();
-        services.AddSingleton<ITransportConnectionSetupBase>(sp => sp.GetRequiredService<UdpConnectionSetup>());
+        // services.AddSingleton<UdpConnectionSetup>();
+        // services.AddSingleton<ITransportConnectionSetupBase>(sp => sp.GetRequiredService<UdpConnectionSetup>());
 
-        services.AddSingleton<ITransportConfiguration, UdpSocketConfiguration>();
-        services.AddSingleton<ITransportServiceToken, UdpTransportToken>();
+        // services.AddSingleton<ITransportConfiguration, UdpSocketConfiguration>();
+        // services.AddSingleton<ITransportServiceToken, UdpTransportToken>();
 
         return Task.CompletedTask;
     }

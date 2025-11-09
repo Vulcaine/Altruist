@@ -15,19 +15,20 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
+using Altruist.Engine;
 
 namespace Altruist;
 
 public interface IServerStatus
 {
     ReadyState Status { get; }
-    void SignalState(ReadyState state);
+    void SignalState(IAltruistEngine engine, ReadyState state);
 }
 
 
 public interface IAltruistContext
 {
-    IServerStatus AppStatus { get; set; }
+    // IServerStatus AppStatus { get; set; }
     ITransportServiceToken TransportToken { get; set; }
     List<IDatabaseServiceToken> DatabaseTokens { get; set; }
     ICacheServiceToken? CacheToken { get; set; }

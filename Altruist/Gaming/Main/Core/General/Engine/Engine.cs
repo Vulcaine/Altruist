@@ -267,7 +267,6 @@ public class AltruistEngine : IAltruistEngine
 
     private CancellationTokenSource _cancellationTokenSource;
     private readonly CycleRate _engineRate;
-    private readonly int _preallocatedTaskSize;
     private Thread? _physxThread;
     private Thread? _engineThread;
 
@@ -282,7 +281,7 @@ public class AltruistEngine : IAltruistEngine
     private readonly IGameWorldCoordinator _worldCoordinator;
 
     public AltruistEngine(
-        IAltruistContext settings,
+        IServerStatus serverStatus,
         IServiceProvider serviceProvider,
         IGameWorldCoordinator worldCoordinator,
         [ConfigValue("altruist:game:engine:frequency")]
@@ -296,10 +295,9 @@ public class AltruistEngine : IAltruistEngine
         _dynamicTasks = new ConcurrentDictionary<TaskIdentifier, Delegate>();
         _engineRate = new CycleRate(engineFrequencyHz, unit);
         Throttle = throttle ?? (int)(1_000_000_000 / (_engineRate.Value + 1));
-        _preallocatedTaskSize = Throttle;
         _cancellationTokenSource = new CancellationTokenSource();
         _serviceProvider = serviceProvider;
-        _appStatus = settings.AppStatus;
+        _appStatus = serverStatus;
         _worldCoordinator = worldCoordinator;
     }
 

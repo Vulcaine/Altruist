@@ -32,6 +32,8 @@ public sealed class InMemoryServiceConfiguration : ICacheConfiguration
     }
 }
 
+[Service(typeof(ICacheServiceToken))]
+[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public sealed class InMemoryCacheServiceToken : ICacheServiceToken
 {
     public static readonly InMemoryCacheServiceToken Instance = new();

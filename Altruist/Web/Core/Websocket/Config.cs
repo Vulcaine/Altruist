@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Web;
 
 [Service(typeof(ITransportServiceToken))]
-[ConditionalOnConfig("altruist:transport:mode", havingValue: "websocket")]
+[ConditionalOnConfig("altruist:server:transport", havingValue: "websocket")]
 public sealed class WebSocketTransportToken : ITransportServiceToken
 {
     public static WebSocketTransportToken Instance = new WebSocketTransportToken();
@@ -16,7 +16,7 @@ public sealed class WebSocketTransportToken : ITransportServiceToken
 
 
 [Service(typeof(ITransportConfiguration))]
-[ConditionalOnConfig("altruist:transport:mode", havingValue: "websocket")]
+[ConditionalOnConfig("altruist:server:transport", havingValue: "websocket")]
 public sealed class WebSocketConfiguration : ITransportConfiguration
 {
     public Task Configure(IServiceCollection services)

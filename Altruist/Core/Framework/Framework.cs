@@ -30,9 +30,15 @@ namespace Altruist
         public string ProcessId { get; } = $"{Environment.MachineName}-{Environment.ProcessId}-${Guid.NewGuid()}";
 
         public ITransportServiceToken TransportToken { get; set; }
-        public List<IDatabaseServiceToken> DatabaseTokens { get; set; } = new List<IDatabaseServiceToken>();
+        public List<IDatabaseServiceToken> DatabaseTokens { get; set; }
         public ICacheServiceToken? CacheToken { get; set; }
-        public IServerStatus AppStatus { get; set; }
+
+        public AltruistServerContext(ITransportServiceToken token, List<IDatabaseServiceToken> databaseServiceTokens, ICacheServiceToken? cacheToken)
+        {
+            TransportToken = token;
+            DatabaseTokens = databaseServiceTokens ?? new();
+            CacheToken = cacheToken;
+        }
 
         public void AddEndpoint(string endpoint) => Endpoints.Add(endpoint);
 

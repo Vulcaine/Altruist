@@ -2,16 +2,8 @@
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+You may not use this file except in compliance with the License.
+You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Globalization;
@@ -32,6 +24,27 @@ namespace Altruist
         private static readonly object _convLock = new();
         private static Dictionary<Type, IConfigConverter>? _converters;
 
+        // ---- Circular construction tracking (per-async-flow) ----
+        private static readonly AsyncLocal<Stack<Type>> _constructionPath = new();
+
+        private static Stack<Type> GetConstructionStack()
+        {
+            var s = _constructionPath.Value;
+            if (s is null)
+            {
+                s = new Stack<Type>();
+                _constructionPath.Value = s;
+            }
+            return s;
+        }
+
+        private static string FormatCyclePath(IEnumerable<Type> path, Type repeat)
+        {
+            // path is a stack (LIFO). We want first->last pretty string.
+            var seq = path.Reverse().Concat(new[] { repeat }).Select(GetCleanName);
+            return string.Join(" → ", seq);
+        }
+
         // --------------------------- Public API ---------------------------
 
         /// <summary>Make sure custom converters are discovered exactly once.</summary>
@@ -45,14 +58,37 @@ namespace Altruist
             }
         }
 
-        /// <summary>Create an instance of <paramref name="impl"/> using DI + optional [ConfigValue] parameters/properties.</summary>
+        /// <summary>Create an instance of <paramref name="impl"/> using DI + optional [ConfigValue] parameters/properties.
+        /// Detects circular construction and throws with a readable path if found.</summary>
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
-            var ctor = SelectCtor(impl);
-            var args = ctor.GetParameters().Select(p => Arg(sp, cfg, p, log)).ToArray();
-            var obj = ctor.Invoke(args);
-            BindConfigProps(cfg, log, impl, obj);
-            return obj!;
+            var path = GetConstructionStack();
+            if (path.Contains(impl))
+            {
+                // Try to break the cycle by resolving from the container (if already registered)
+                var resolved = sp.GetService(impl);
+                if (resolved is not null) return resolved;
+
+                var cycle = FormatCyclePath(path, impl);
+                throw new InvalidOperationException(
+                    $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}");
+            }
+
+            path.Push(impl);
+            try
+            {
+                var ctor = SelectCtor(impl);
+                var args = ctor.GetParameters().Select(p => Arg(sp, cfg, p, log)).ToArray();
+                var obj = ctor.Invoke(args);
+                BindConfigProps(cfg, log, impl, obj);
+                return obj!;
+            }
+            finally
+            {
+                var popped = path.Pop();
+                // sanity: should equal impl, but don't throw if not—just keep stack healthy
+                _ = popped;
+            }
         }
 
         /// <summary>Return true if the type should be registered given ConditionalOnConfig attributes.</summary>
@@ -165,8 +201,7 @@ namespace Altruist
                     var elemType = paramType.GetGenericArguments()[0];
 
                     // GetServices(Type) returns IEnumerable<object>
-                    var servicesEnumObj = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
-                        .GetServices(sp, elemType);
+                    var servicesEnumObj = ServiceProviderServiceExtensions.GetServices(sp, elemType);
 
                     // materialize to List<T> so it's assignable to all the above interfaces
                     var listType = typeof(List<>).MakeGenericType(elemType);
@@ -182,7 +217,7 @@ namespace Altruist
             if (paramType.IsArray)
             {
                 var elemType = paramType.GetElementType()!;
-                var servicesEnumObj = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+                var servicesEnumObj = ServiceProviderServiceExtensions
                     .GetServices(sp, elemType)
                     .Cast<object>()
                     .ToArray();

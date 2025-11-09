@@ -32,7 +32,6 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 
     private readonly HashSet<IConnectable> _connectables = new();
     private readonly HashSet<IConnectable> _connected = new();
-    private readonly IAltruistEngine _engine;
     private readonly ILogger<ServerStatus> _logger;
     private readonly IHostApplicationLifetime _lifetime;
 
@@ -44,11 +43,9 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
         IGeneralDatabaseProvider dbProvider,
         ICacheProvider cacheProvider,
         IEnumerable<IConnectable> otherConnectables,
-        IAltruistEngine engine,
         ILoggerFactory loggerFactory,
         IHostApplicationLifetime lifetime)
     {
-        _engine = engine;
         _logger = loggerFactory.CreateLogger<ServerStatus>();
         _lifetime = lifetime;
 
@@ -67,16 +64,17 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
     public async Task Configure(IServiceCollection services)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = services.BuildServiceProvider().GetRequiredService<IAltruistEngine>();
 
         if (_connectables.Count > 0)
-            StartTimeoutTimer();
+            StartTimeoutTimer(engine);
 
         foreach (var service in _connectables)
         {
             if (service is IRelayService relay)
                 _logger.LogInformation("🔗 Starting relay portal {RelayName}...", relay.ServiceName);
 
-            SubscribeToServiceEvents(service, tcs);
+            SubscribeToServiceEvents(service, tcs, engine);
 
             if (service.IsConnected)
             {
@@ -88,21 +86,20 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
             }
         }
 
-        await CheckAllConnectedAsync(tcs);
+        await CheckAllConnectedAsync(tcs, engine);
     }
 
-    public void SignalState(ReadyState state)
+    public void SignalState(IAltruistEngine engine, ReadyState state)
     {
-        // Couple engine lifetime to readiness state
         if (state == ReadyState.Failed)
-            _engine.Stop();
+            engine.Stop();
         else if (state == ReadyState.Alive)
-            _engine.Start();
+            engine.Start();
 
         Status = state;
     }
 
-    private void StartTimeoutTimer()
+    private void StartTimeoutTimer(IAltruistEngine engine)
     {
         _logger.LogInformation("⌛ Starting server timeout timer...");
         _startupTimeoutTimer?.Dispose();
@@ -110,12 +107,12 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
         {
             if (Status != ReadyState.Alive && !_startup)
             {
-                Shutdown("❌ Startup timed out. Not all services connected in time.");
+                Shutdown(engine, "❌ Startup timed out. Not all services connected in time.");
             }
         }, null, TimeSpan.FromMinutes(1), Timeout.InfiniteTimeSpan);
     }
 
-    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs)
+    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs, IAltruistEngine engine)
     {
         service.OnConnected += () =>
         {
@@ -129,12 +126,12 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
                 if (_connected.Count == _connectables.Count && !_startup && Status != ReadyState.Alive)
                 {
                     _startup = true;
-                    _ = RunStartupActionsAsync(tcs);
+                    _ = RunStartupActionsAsync(tcs, engine);
                 }
                 else if (_connected.Count == _connectables.Count && Status != ReadyState.Alive)
                 {
                     _startupTimeoutTimer?.Dispose();
-                    SignalState(ReadyState.Alive);
+                    SignalState(engine, ReadyState.Alive);
                     _logger.LogInformation("🚀 Altruist is now live again and ready to serve requests.");
                 }
 
@@ -148,43 +145,43 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 
             lock (_connected) _connected.Remove(service);
 
-            StartTimeoutTimer();
-            SignalState(ReadyState.Failed);
+            StartTimeoutTimer(engine);
+            SignalState(engine, ReadyState.Failed);
             LogStatus();
         };
 
         service.OnRetryExhausted += ex =>
         {
-            Shutdown($"{service.ServiceName} failed to connect after all retries.", ex);
+            Shutdown(engine, $"{service.ServiceName} failed to connect after all retries.", ex);
         };
     }
 
-    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs)
+    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs, IAltruistEngine engine)
     {
         lock (_connected)
         {
             if (_connected.Count == _connectables.Count && !_startup)
             {
                 _startup = true;
-                _ = RunStartupActionsAsync(tcs);
+                _ = RunStartupActionsAsync(tcs, engine);
             }
         }
 
         await tcs.Task;
     }
 
-    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs)
+    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs, IAltruistEngine engine)
     {
         _startupTimeoutTimer?.Dispose();
 
-        SignalState(ReadyState.Alive);
+        SignalState(engine, ReadyState.Alive);
         _logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
         tcs.TrySetResult(true);
 
         await Task.CompletedTask;
     }
 
-    private void Shutdown(string reason, Exception? ex = null)
+    private void Shutdown(IAltruistEngine engine, string reason, Exception? ex = null)
     {
         if (ex is not null)
             _logger.LogCritical(ex, "{Reason}", reason);
@@ -193,7 +190,7 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 
         // Gracefully stop the host; last resort could be Environment.Exit(1)
         _lifetime.StopApplication();
-        SignalState(ReadyState.Failed);
+        SignalState(engine, ReadyState.Failed);
     }
 
     private void LogStatus() => Console.WriteLine(ToString());
