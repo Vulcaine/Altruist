@@ -73,7 +73,7 @@ namespace Altruist.Gaming
         float engineQuality
     )
         {
-            SysId = id;
+            StorageId = id;
             Level = level;
             Position = position;
             Rotation = rotation;

@@ -1,11 +1,11 @@
-using Altruist.Gaming.TwoD.Numerics;
+using Altruist.Numerics;
 
 namespace Altruist.Gaming.TwoD
 {
-    public class WorldPartition2D : StoredModel, IWorldPartition
+    public class WorldPartition2D : StoredModel, IWorldPartitionManager
     {
         private readonly SpatialGridIndex2D _spatialIndex = new(cellSize: 16);
-        public override string SysId { get; set; } = Guid.NewGuid().ToString();
+        public override string StorageId { get; set; } = Guid.NewGuid().ToString();
 
         public IntVector2 Index { get; set; }
         public IntVector2 Position { get; set; }
@@ -17,33 +17,33 @@ namespace Altruist.Gaming.TwoD
             string id,
             IntVector2 index, IntVector2 position, IntVector2 size)
         {
-            SysId = id;
+            StorageId = id;
             Index = index;
             Position = position;
             Size = size;
             Epicenter = position + size / 2;
         }
 
-        public virtual void AddObject(WorldObjectTypeKey objectType, IObjectMetadata objectMetadata)
+        public virtual void AddObject(IPrefab2D prefab)
         {
-            _spatialIndex.Add(objectType, objectMetadata);
+            _spatialIndex.Add(prefab);
         }
 
-        public virtual IObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string id)
+        public virtual IPrefab2D? DestroyObject(string id)
         {
-            return _spatialIndex.Remove(objectType, id);
+            return _spatialIndex.Remove(id);
         }
 
-        public virtual IEnumerable<IObjectMetadata> GetObjectsByTypeInRadius(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
+        public virtual IEnumerable<IPrefab2D> GetObjectsByTypeInRadius(string prefabId, int x, int y, float radius, string roomId)
         {
-            return _spatialIndex.Query(objectType, x, y, radius, roomId);
+            return _spatialIndex.Query(prefabId, x, y, radius, roomId);
         }
 
-        public virtual HashSet<IObjectMetadata> GetObjectsByType(WorldObjectTypeKey objectType) =>
-            _spatialIndex.GetAllByType(objectType);
+        public virtual HashSet<IPrefab2D> GetObjectsByType(string prefabId) =>
+            _spatialIndex.GetAllByType(prefabId);
 
-        public virtual HashSet<IObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
-            _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
+        public virtual HashSet<IPrefab2D> GetObjectsByTypeInRoom(string prefabId, string roomId) =>
+            _spatialIndex.GetAllByType(prefabId).Where(x => x.RoomId == roomId).ToHashSet();
     }
 
     public interface IWorldPartitioner2D : IWorldPartitioner

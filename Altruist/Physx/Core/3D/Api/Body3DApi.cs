@@ -1,12 +1,27 @@
 
+using System.Numerics;
 using Altruist.Physx.Contracts;
-using Altruist.Physx.ThreeD.Numerics;
+using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Physx.ThreeD
 {
+    public interface IPhysxBody3D : IPhysxBody
+    {
+        Vector3 Position { get; set; }
+        Quaternion Rotation { get; set; }
+        Vector3 LinearVelocity { get; set; }
+        Vector3 AngularVelocity { get; set; }
+    }
+
     public interface IPhysxBodyApiProvider3D
     {
         IPhysxBody3D CreateBody(PhysxBodyType type, float mass, Transform3D transform);
+
+        /// <summary>Attach a collider to a body (creates a fixture under the hood).</summary>
+        void AddCollider(IPhysxBody3D body, IPhysxCollider3D collider);
+
+        /// <summary>Detach and destroy the collider’s fixture if attached.</summary>
+        void RemoveCollider(IPhysxCollider3D collider);
     }
 
     public static class PhysxBody3D

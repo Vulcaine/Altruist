@@ -1,22 +1,24 @@
 // Transform2D.cs
 using System.Numerics;
+using Altruist.Numerics;
 
-namespace Altruist.Physx.TwoD.Numerics
+namespace Altruist.TwoD.Numerics
 {
     public readonly struct Position2D
     {
-        private readonly Vector2 _v;
-        public float X => _v.X;
-        public float Y => _v.Y;
+        private readonly IntVector2 _v;
+        public int X => _v.X;
+        public int Y => _v.Y;
 
-        public Position2D(float x, float y) => _v = new Vector2(x, y);
-        private Position2D(Vector2 v) => _v = v;
+        public Position2D(int x, int y) => _v = new IntVector2(x, y);
+        private Position2D(IntVector2 v) => _v = v;
 
-        public static Position2D Zero => new(Vector2.Zero);
-        public static Position2D One => new(new Vector2(1f, 1f));
-        public static Position2D Of(float x, float y) => new(x, y);
-        public static Position2D From(Vector2 v) => new(v);
-        public Vector2 ToVector2() => _v;
+        public static Position2D Zero => new(new IntVector2(0, 0));
+        public static Position2D One => new(new IntVector2(1, 1));
+        public static Position2D Of(int x, int y) => new(x, y);
+        public static Position2D From(IntVector2 v) => new(v);
+        public IntVector2 ToVector2() => _v;
+        public Vector2 ToFloatVector2() => new(_v.X, _v.Y);
     }
 
     public readonly struct Size2D

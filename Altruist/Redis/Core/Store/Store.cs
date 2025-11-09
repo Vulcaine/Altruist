@@ -342,7 +342,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
             {
                 if (item is IStoredModel storedModel)
                 {
-                    await SaveRemoteAsync(storedModel.SysId, storedModel, storedModel.GroupId);
+                    await SaveRemoteAsync(storedModel.StorageId, storedModel, storedModel.GroupId);
                 }
             }
         }
@@ -362,7 +362,7 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
             {
                 if (item is IStoredModel storedModel)
                 {
-                    await SaveAsync(storedModel.SysId, storedModel, storedModel.GroupId);
+                    await SaveAsync(storedModel.StorageId, storedModel, storedModel.GroupId);
                 }
             }
         }

@@ -1,6 +1,6 @@
 using System.Numerics;
 using Altruist.Physx.Contracts;
-using Altruist.Physx.ThreeD.Numerics;
+using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Physx.ThreeD
 {
@@ -9,8 +9,7 @@ namespace Altruist.Physx.ThreeD
     {
         Sphere3D,
         Box3D,
-        Capsule3D,
-        ConvexHull3D
+        Capsule3D
     }
 
     public readonly struct PhysxCollisionInfo3D

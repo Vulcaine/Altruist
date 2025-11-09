@@ -1,59 +1,63 @@
-using Altruist.Gaming.ThreeD.Numerics;
+using Altruist.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
-    public class WorldPartition3D : StoredModel, IWorldPartition
+    public interface IWorldPartitionManager3D : IWorldPartitionManager
+    {
+        void AddObject(IPrefab3D objectMetadata);
+        IPrefab3D? DestroyObject(string instanceId);
+        HashSet<IPrefab3D> GetObjectsByType(string prefabId);
+        HashSet<IPrefab3D> GetObjectsByTypeInRoom(string prefabId, string roomId);
+    }
+
+    public class WorldPartitionManager3D : IWorldPartitionManager3D
     {
         private readonly SpatialGridIndex3D _spatialIndex = new(cellSize: 16);
-        public override string SysId { get; set; } = Guid.NewGuid().ToString();
 
         public IntVector3 Index { get; set; }
         public IntVector3 Position { get; set; }
         public IntVector3 Size { get; set; }
         public IntVector3 Epicenter { get; set; }
-        public override string Type { get; set; } = "WorldPartition3D";
 
-        public WorldPartition3D(
-            string id,
+        public WorldPartitionManager3D(
             IntVector3 index, IntVector3 position, IntVector3 size)
         {
-            SysId = id;
             Index = index;
             Position = position;
             Size = size;
             Epicenter = position + size / 2;
         }
 
-        public virtual void AddObject(WorldObjectTypeKey objectType, IObjectMetadata objectMetadata)
+        public virtual void AddObject(IPrefab3D prefab)
         {
-            _spatialIndex.Add(objectType, objectMetadata);
+            _spatialIndex.Add(prefab);
         }
 
-        public virtual IObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string id)
+        public virtual IPrefab3D? DestroyObject(string instanceId)
         {
-            return _spatialIndex.Remove(objectType, id);
+            return _spatialIndex.Remove(instanceId);
         }
 
-        public virtual IEnumerable<IObjectMetadata> GetObjectsByTypeInRadius(
-            WorldObjectTypeKey objectType,
+        public virtual IEnumerable<IPrefab3D> GetObjectsByTypeInRadius(
+            string prefabId,
             int x, int y, int z,
             float radius,
             string roomId)
         {
-            return _spatialIndex.Query(objectType, x, y, z, radius, roomId);
+            return _spatialIndex.Query(prefabId, x, y, z, radius, roomId);
         }
 
-        public virtual HashSet<IObjectMetadata> GetObjectsByType(WorldObjectTypeKey objectType) =>
-            _spatialIndex.GetAllByType(objectType);
+        public virtual HashSet<IPrefab3D> GetObjectsByType(string prefabId) =>
+            _spatialIndex.GetAllByType(prefabId);
 
-        public virtual HashSet<IObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId) =>
-            _spatialIndex.GetAllByType(objectType).Where(x => x.RoomId == roomId).ToHashSet();
+        public virtual HashSet<IPrefab3D> GetObjectsByTypeInRoom(string prefabId, string roomId) =>
+            _spatialIndex.GetAllByType(prefabId).Where(x => x.RoomId == roomId).ToHashSet();
     }
 
     public interface IWorldPartitioner3D : IWorldPartitioner
     {
         int PartitionDepth { get; }
-        List<WorldPartition3D> CalculatePartitions(WorldIndex3D world);
+        List<WorldPartitionManager3D> CalculatePartitions(WorldIndex3D world);
     }
 
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
@@ -78,9 +82,9 @@ namespace Altruist.Gaming.ThreeD
             PartitionDepth = partitionDepth;
         }
 
-        public List<WorldPartition3D> CalculatePartitions(WorldIndex3D world)
+        public List<WorldPartitionManager3D> CalculatePartitions(WorldIndex3D world)
         {
-            var partitions = new List<WorldPartition3D>();
+            var partitions = new List<WorldPartitionManager3D>();
 
             int columns = (int)Math.Ceiling((double)world.Width / PartitionWidth);
             int rows = (int)Math.Ceiling((double)world.Height / PartitionHeight);
@@ -100,8 +104,7 @@ namespace Altruist.Gaming.ThreeD
                         int height = Math.Min(PartitionHeight, world.Height - y);
                         int depth = Math.Min(PartitionDepth, world.Depth - z);
 
-                        var partition = new WorldPartition3D(
-                            id: Guid.NewGuid().ToString(),
+                        var partition = new WorldPartitionManager3D(
                             index: new IntVector3(col, row, slice),
                             position: new IntVector3(x, y, z),
                             size: new IntVector3(width, height, depth)

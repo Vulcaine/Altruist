@@ -1,7 +1,7 @@
 // ColliderApi2D.cs
-using System;
+
 using System.Numerics;
-using Altruist.Physx.TwoD.Numerics;
+using Altruist.TwoD.Numerics;
 
 namespace Altruist.Physx.TwoD
 {

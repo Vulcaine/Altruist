@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
+[Service(typeof(IPlayerService))]
 public class AltruistPlayerService : IPlayerService
 {
     private readonly IConnectionStore _store;
@@ -39,7 +40,7 @@ public class AltruistPlayerService : IPlayerService
     {
         var player = new PlayerEntity
         {
-            SysId = socketId,
+            StorageId = socketId,
             ConnectionId = socketId,
             Name = name,
             Position = position ?? [0, 0],
@@ -85,8 +86,8 @@ public class AltruistPlayerService : IPlayerService
 
     public async Task UpdatePlayerAsync(PlayerEntity player)
     {
-        await _cacheProvider.SaveAsync(player.SysId, player);
-        _logger.LogInformation($"Player {player.SysId} updated in Redis.");
+        await _cacheProvider.SaveAsync(player.StorageId, player);
+        _logger.LogInformation($"Player {player.StorageId} updated in Redis.");
     }
 
     public Task<PlayerEntity?> GetPlayer(string socketId)
@@ -102,7 +103,7 @@ public class AltruistPlayerService : IPlayerService
         {
             await _cacheProvider.RemoveAndForgetAsync<PlayerEntity>(playerId);
 
-            _logger.LogInformation($"Player and associated spaceship with ID {player.SysId} deleted.");
+            _logger.LogInformation($"Player and associated spaceship with ID {player.StorageId} deleted.");
         }
     }
 
@@ -125,7 +126,7 @@ public class AltruistPlayerService : IPlayerService
             var conn = await _store.GetConnectionAsync(player.ConnectionId);
             if (conn == null || !conn.IsConnected)
             {
-                playersToDelete.Add(player.SysId);
+                playersToDelete.Add(player.StorageId);
                 player.DetachBody();
             }
         }

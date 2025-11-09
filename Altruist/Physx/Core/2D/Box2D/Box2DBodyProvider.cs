@@ -1,9 +1,11 @@
 // Box2DPhysxBodyApiProvider2D.cs
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Altruist.Numerics;
 using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
-using Altruist.Physx.TwoD.Numerics;
+using Altruist.TwoD.Numerics;
+using Box2DSharp.Collision.Shapes;
 using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx
@@ -134,10 +136,14 @@ namespace Altruist.Physx
     /// <summary>
     /// Creates Box2D bodies inside the Box2D engine world and returns a Body2DAdapter.
     /// Caller must then register with the world via IPhysxWorld2D.AddBody(adapter).
+    /// Also provides collider attach/detach helpers for Box2D-backed bodies.
     /// </summary>
     public sealed class Box2DPhysxBodyApiProvider2D : IPhysxBodyApiProvider2D
     {
         private readonly Box2DWorldEngine2D _engine;
+
+        // Track created fixtures per high-level collider
+        private readonly Dictionary<IPhysxCollider2D, Fixture> _fixtures = new();
 
         public Box2DPhysxBodyApiProvider2D(IPhysxWorldEngine2D engine)
         {
@@ -145,11 +151,57 @@ namespace Altruist.Physx
                       ?? throw new InvalidOperationException("Engine must be a Box2D-backed engine.");
         }
 
+        /// <summary>
+        /// Attach a collider to a specific Box2D body by creating a Fixture on that body.
+        /// Stores the created fixture so it can be removed later via <see cref="RemoveCollider"/>.
+        /// </summary>
+        public void AddCollider(IPhysxBody2D body, IPhysxCollider2D collider)
+        {
+            if (body is not Body2DAdapter owner)
+                throw new InvalidOperationException("Body must be a Box2D-backed Body2DAdapter.");
+
+            if (_fixtures.ContainsKey(collider))
+                throw new InvalidOperationException("This collider is already attached.");
+
+            // Build a Box2D shape from collider data (no reflection)
+            Shape shape = CreateB2ShapeFromCollider(collider);
+
+            // Prepare fixture
+            var fd = new FixtureDef
+            {
+                Shape = shape,
+                IsSensor = collider.IsTrigger
+            };
+
+            // Density policy: dynamic -> 1.0, else 0.0
+            fd.Density = body.Type == PhysxBodyType.Dynamic ? 1.0f : 0.0f;
+
+            // Create fixture on body and cache it
+            var fixture = owner.Underlying.CreateFixture(fd);
+            _fixtures[collider] = fixture;
+
+            // (filter/material hooks can be added here later)
+        }
+
+        /// <summary>
+        /// Detach (destroy) the collider’s Box2D Fixture from whatever body it’s attached to.
+        /// No-op if the collider is not currently attached.
+        /// </summary>
+        public void RemoveCollider(IPhysxCollider2D collider)
+        {
+            if (!_fixtures.TryGetValue(collider, out var fixture))
+                return;
+
+            var body = fixture.Body;
+            body.DestroyFixture(fixture);
+            _fixtures.Remove(collider);
+        }
+
         public IPhysxBody2D CreateBody(PhysxBodyType type, float mass, Transform2D transform)
         {
             var bd = new BodyDef
             {
-                Position = transform.Position.ToVector2(),
+                Position = transform.Position.ToFloatVector2(),
                 Angle = transform.Rotation.Radians,
                 BodyType = type switch
                 {
@@ -163,7 +215,81 @@ namespace Altruist.Physx
             var id = Guid.NewGuid().ToString("N");
             var adapter = new Body2DAdapter(id, body, type);
 
+            // Box2D mass derives from fixtures (densities/areas). You can override via SetMassData if needed.
             return adapter;
+        }
+
+        // -------------------- helpers --------------------
+
+        private static Shape CreateB2ShapeFromCollider(IPhysxCollider2D c)
+        {
+            var t = c.Transform;
+
+            switch (c.Shape)
+            {
+                case PhysxColliderShape2D.Circle2D:
+                    {
+                        // Convention: Transform.Size.Width => radius
+                        var radius = t.Size.X;
+                        var center = t.Position.ToFloatVector2();
+                        return new CircleShape { Radius = radius, Position = center };
+                    }
+
+                case PhysxColliderShape2D.Box2D:
+                    {
+                        // Convention: Transform.Size => half extents
+                        var hx = t.Size.X;
+                        var hy = t.Size.Y;
+                        var center = t.Position.ToFloatVector2();
+                        var angle = t.Rotation.Radians;
+                        var poly = new PolygonShape();
+                        poly.SetAsBox(hx, hy, center, angle);
+                        return poly;
+                    }
+
+                case PhysxColliderShape2D.Capsule2D:
+                    {
+                        // Minimal approximation as oriented box: halfLength (X) and radius (Y)
+                        var radius = t.Size.X;
+                        var halfLen = t.Size.Y;
+                        var hx = halfLen;
+                        var hy = radius;
+                        var center = t.Position.ToFloatVector2();
+                        var angle = t.Rotation.Radians;
+                        var poly = new PolygonShape();
+                        poly.SetAsBox(hx, hy, center, angle);
+                        return poly;
+                    }
+
+                case PhysxColliderShape2D.Polygon2D:
+                    {
+                        var verts = c.Vertices;
+                        if (verts is null || verts.Length < 3)
+                            throw new InvalidOperationException("Polygon collider requires Vertices with at least 3 points.");
+
+                        // Apply local offset/rotation to vertices
+                        var offset = t.Position.ToVector2();
+                        var angle = t.Rotation.Radians;
+                        var sin = MathF.Sin(angle);
+                        var cos = MathF.Cos(angle);
+
+                        var transformed = new Vector2[verts.Length];
+                        for (int i = 0; i < verts.Length; i++)
+                        {
+                            var v = verts[i];
+                            var x = v.X * cos - v.Y * sin;
+                            var y = v.X * sin + v.Y * cos;
+                            transformed[i] = new Vector2(x + offset.X, y + offset.Y);
+                        }
+
+                        var poly = new PolygonShape();
+                        poly.Set(transformed);
+                        return poly;
+                    }
+
+                default:
+                    throw new NotSupportedException($"Unsupported collider shape: {c.Shape}");
+            }
         }
     }
 }

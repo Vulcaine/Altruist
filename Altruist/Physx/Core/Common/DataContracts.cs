@@ -48,6 +48,7 @@ namespace Altruist.Physx.Contracts
         string Id { get; }
         PhysxBodyType Type { get; set; }
         float Mass { get; set; }
+
         void AddCollider(IPhysxCollider collider);
         bool RemoveCollider(IPhysxCollider collider);
         ReadOnlySpan<IPhysxCollider> GetColliders();

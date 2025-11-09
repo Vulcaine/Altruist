@@ -87,7 +87,7 @@ public class AuthService<TAuthContext> : IAuthService<TAuthContext> where TAuthC
                 RefreshToken = tokenIssue.RefreshToken,
                 PrincipalId = claims.FindFirst(ClaimTypes.Name)?.Value!,
                 Ip = claims.FindFirst("Ip")?.Value!,
-                SysId = tokenIssue.AccessToken,
+                StorageId = tokenIssue.AccessToken,
                 Fingerprint = originalFingerprint
             };
 

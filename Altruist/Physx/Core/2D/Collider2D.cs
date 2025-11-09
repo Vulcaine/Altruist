@@ -1,6 +1,6 @@
 using System.Numerics;
 using Altruist.Physx.Contracts;
-using Altruist.Physx.TwoD.Numerics;
+using Altruist.TwoD.Numerics;
 
 namespace Altruist.Physx.TwoD
 {
@@ -37,8 +37,17 @@ namespace Altruist.Physx.TwoD
 
     public interface IPhysxCollider2D : IPhysxCollider
     {
+        /// <summary>Local transform relative to the owning body.</summary>
         Transform2D Transform { get; set; }
+
+        /// <summary>Shape discriminator.</summary>
         PhysxColliderShape2D Shape { get; }
+
+        /// <summary>
+        /// Optional vertex buffer for polygon colliders (ignored for other shapes).
+        /// Return null for non-polygon shapes.
+        /// </summary>
+        Vector2[]? Vertices { get; }
 
         event Action<PhysxCollisionInfo2D>? OnCollisionEnter;
         event Action<PhysxCollisionInfo2D>? OnCollisionStay;

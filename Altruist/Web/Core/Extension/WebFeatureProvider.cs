@@ -31,7 +31,6 @@ namespace Altruist.Web.Features
             if (!string.Equals(root.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
                 return stage;
 
-            // Normalize to a connection builder
             AltruistConnectionBuilder connection = stage switch
             {
                 AltruistConnectionBuilder c => c,

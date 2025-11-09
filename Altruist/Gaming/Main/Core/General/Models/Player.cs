@@ -19,7 +19,6 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Altruist.Networking;
 using Altruist.UORM;
-using Box2DSharp.Collision.Shapes;
 using Box2DSharp.Dynamics;
 using MessagePack;
 
@@ -34,7 +33,7 @@ namespace Altruist.Gaming
         [JsonPropertyName("id")]
         [VaultColumn]
 
-        public override string SysId { get; set; }
+        public override string StorageId { get; set; }
 
         [Key(1)]
         [Synced(0, SyncAlways: true)]
@@ -140,7 +139,7 @@ namespace Altruist.Gaming
         protected virtual void InitDefaults()
         {
             Type = GetType().Name;
-            SysId = Guid.NewGuid().ToString();
+            StorageId = Guid.NewGuid().ToString();
             ConnectionId = "";
             Name = "Player";
             Level = 1;
@@ -165,7 +164,7 @@ namespace Altruist.Gaming
         public PlayerEntity(string id)
         {
             InitDefaults();
-            SysId = id;
+            StorageId = id;
         }
 
         public void AttachBody(Body body) => PhysxBody = body;

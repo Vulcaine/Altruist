@@ -17,10 +17,8 @@ limitations under the License.
 using Altruist;
 using Altruist.Contracts;
 using Altruist.Features;
-using Altruist.Gaming;
 using Altruist.Gaming.Engine;
 using Altruist.Gaming.Features;
-using Altruist.Physx;
 using Microsoft.Extensions.DependencyInjection;
 
 public static class AltruistGamingServiceCollectionExtensions
@@ -48,10 +46,5 @@ public class GameConfig : IAltruistConfiguration
 {
     public void Configure(IServiceCollection services)
     {
-        // services.AddSingleton<IPlayerCursorFactory, PlayerCursorFactory>();
-        services.AddSingleton(typeof(PlayerCursor<>));
-        // services.AddSingleton<GameWorldCoordinator>();
-        services.AddSingleton<MovementPhysx>();
-        services.AddSingleton(typeof(IPlayerService), typeof(AltruistPlayerService));
     }
 }

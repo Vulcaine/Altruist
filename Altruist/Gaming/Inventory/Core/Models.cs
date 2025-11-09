@@ -77,7 +77,7 @@ public abstract class ItemTemplate : BasicItemProperties, IVaultModel
     /// <summary>
     /// Unique identifier for this item template.
     /// </summary>
-    public string SysId { get; set; } = Guid.NewGuid().ToString();
+    public string StorageId { get; set; } = Guid.NewGuid().ToString();
 
     /// <summary>
     /// ID of the group this item belongs to. Used for cached lookups.
@@ -106,7 +106,7 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// It is generated at runtime and is not the same as the template ID.
     /// </summary>
     [JsonPropertyName("id")]
-    public string SysId { get; set; }
+    public string StorageId { get; set; }
 
     /// <summary>
     /// ID of the group this item belongs to. Used for cached lookups.
@@ -142,7 +142,7 @@ public abstract class GameItem : BasicItemProperties, IVaultModel
     /// <param name="expiryDate">Optional expiration date.</param>
     public GameItem(SlotKey slotKey, int itemPropertySize = 4, byte width = 1, byte height = 1, string itemType = default!, bool isStackable = false, DateTime? expiryDate = null)
     {
-        SysId = Guid.NewGuid().ToString();
+        StorageId = Guid.NewGuid().ToString();
         SlotKey = slotKey;
         Properties = new int[itemPropertySize];
         Category = itemType;

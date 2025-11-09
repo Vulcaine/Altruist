@@ -4,7 +4,7 @@ namespace Altruist.Gaming
 {
     public sealed class WorldIndex2D : VaultModel, IWorldIndex
     {
-        public override string SysId { get; set; }
+        public override string StorageId { get; set; }
         public override string GroupId { get; set; }
         public Vector2 Position { get; set; }
         public Vector2 Size { get; set; }
@@ -20,7 +20,7 @@ namespace Altruist.Gaming
             Vector2? position = null,
             string? groupId = null)
         {
-            SysId = Guid.NewGuid().ToString();
+            StorageId = Guid.NewGuid().ToString();
             GroupId = groupId ?? string.Empty;
             Index = index;
             Size = size;

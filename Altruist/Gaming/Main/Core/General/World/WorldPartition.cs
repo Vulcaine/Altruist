@@ -5,11 +5,8 @@ namespace Altruist.Gaming
         int PartitionWidth { get; }
         int PartitionHeight { get; }
     }
-    public interface IWorldPartition
+    public interface IWorldPartitionManager
     {
-        void AddObject(WorldObjectTypeKey objectType, IObjectMetadata objectMetadata);
-        IObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string id);
-        HashSet<IObjectMetadata> GetObjectsByType(WorldObjectTypeKey objectType);
-        HashSet<IObjectMetadata> GetObjectsByTypeInRoom(WorldObjectTypeKey objectType, string roomId);
+
     }
 }

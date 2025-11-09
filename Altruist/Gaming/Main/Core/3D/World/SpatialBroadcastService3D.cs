@@ -1,13 +1,13 @@
 using Altruist.Gaming.ThreeD;
-using Altruist.Gaming.ThreeD.Numerics;
+using Altruist.Numerics;
 
 namespace Altruist.Gaming;
 
 public interface ISpatialBroadcastService3D : ISpatialBroadcastService
 {
-    Task SpatialBroadcast(string initiatorClientId, IntVector3 position, IPacketBase packet);
+    // Task SpatialBroadcast(string initiatorClientId, IntVector3 position, IPacketBase packet);
 
-    Task SmartSpatialBroadcast(string senderClientId, IntVector3 position, IPacketBase packet, int threshold);
+    // Task SmartSpatialBroadcast(string senderClientId, IntVector3 position, IPacketBase packet, int threshold);
 }
 
 [Service(typeof(ISpatialBroadcastService))]
@@ -42,24 +42,24 @@ public class SpatialBroadcastService3D : ISpatialBroadcastService3D
     /// <param name="x">The X coordinate in the world.</param>
     /// <param name="y">The Y coordinate in the world.</param>
     /// <param name="packet">The packet to be broadcasted.</param>
-    public async Task SpatialBroadcast(string initiatorClientId, IntVector3 position, IPacketBase packet)
-    {
-        var world = await _gameWorldService.FindWorldForClientAsync(initiatorClientId) as GameWorldManager3D;
-        if (world != null)
-        {
-            var partitions = world.FindPartitionsForPosition(position.X, position.Y, position.Z, 0);
-            packet.Header = PacketHeaders.Broadcast;
+    // public async Task SpatialBroadcast(string initiatorClientId, IntVector3 position, IPacketBase packet)
+    // {
+    //     var world = await _gameWorldService.FindWorldForClientAsync(initiatorClientId) as GameWorldManager3D;
+    //     if (world != null)
+    //     {
+    //         var partitions = world.FindPartitionsForPosition(position.X, position.Y, position.Z, 0);
+    //         packet.Header = PacketHeaders.Broadcast;
 
-            foreach (var partition in partitions)
-            {
-                var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
-                foreach (var client in clients)
-                {
-                    await _router.Client.SendAsync(client.InstanceId, packet);
-                }
-            }
-        }
-    }
+    //         foreach (var partition in partitions)
+    //         {
+    //             var clients = partition.GetObjectsByType(WorldObjectTypeKeys.Client);
+    //             foreach (var client in clients)
+    //             {
+    //                 await _router.Client.SendAsync(client.InstanceId, packet);
+    //             }
+    //         }
+    //     }
+    // }
 
     /// <summary>
     /// Sends a packet to clients intelligently based on room size.
@@ -87,16 +87,16 @@ public class SpatialBroadcastService3D : ISpatialBroadcastService3D
     /// Defaults to 100.
     /// </param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task SmartSpatialBroadcast(string senderClientId, IntVector3 position, IPacketBase packet, int threshold = 100)
-    {
-        var room = await _socketManager.FindRoomForClientAsync(senderClientId);
-        if (room != null && room.PlayerCount < threshold)
-        {
-            await _router.Room.SendAsync(room.Id, packet);
-        }
-        else
-        {
-            await SpatialBroadcast(senderClientId, position, packet);
-        }
-    }
+    // public async Task SmartSpatialBroadcast(string senderClientId, IntVector3 position, IPacketBase packet, int threshold = 100)
+    // {
+    //     var room = await _socketManager.FindRoomForClientAsync(senderClientId);
+    //     if (room != null && room.PlayerCount < threshold)
+    //     {
+    //         await _router.Room.SendAsync(room.Id, packet);
+    //     }
+    //     else
+    //     {
+    //         await SpatialBroadcast(senderClientId, position, packet);
+    //     }
+    // }
 }

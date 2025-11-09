@@ -16,8 +16,6 @@ limitations under the License.
 
 using Altruist;
 using Altruist.Gaming;
-using Microsoft.Extensions.Logging;
-using SimpleGame.Entities;
 
 namespace Portals;
 

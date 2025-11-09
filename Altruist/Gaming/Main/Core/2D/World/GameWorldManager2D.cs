@@ -8,17 +8,30 @@ using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.TwoD
 {
+    public interface IGameWorldManager2D : IGameWorldManager
+    {
+        void Initialize();
+        Task SaveAsync();
+        IEnumerable<IWorldPartitionManager> UpdateObjectPosition(IPrefab2D prefab, float radius);
+        void AddDynamicObject(IPrefab2D prefab, float radius);
+        IWorldPartitionManager? AddStaticObject(IPrefab2D prefab);
+        IPrefab2D? DestroyObject(string instanceId);
+        IEnumerable<IPrefab2D> GetNearbyObjectsInRoom(string prefabId, int x, int y, float radius, string roomId);
+        IEnumerable<IWorldPartitionManager> FindPartitionsForPosition(int x, int y, float radius);
+        IWorldPartitionManager? FindPartitionForPosition(int x, int y);
+    }
+
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
     [Service(typeof(IGameWorldManager))]
-    public sealed class GameWorldManager2D : IGameWorldManager
+    public sealed class GameWorldManager2D : IGameWorldManager2D
     {
         private readonly WorldIndex2D _index;
         private readonly IWorldPartitioner2D _worldPartitioner;
         private readonly ICacheProvider _cache;
-        private readonly Dictionary<PartitionIndex2D, IWorldPartition> _partitionMap = new();
+        private readonly Dictionary<PartitionIndex2D, IWorldPartitionManager> _partitionMap = new();
 
         private readonly List<WorldPartition2D> _partitions;
-        private readonly IPhysxWorld2D _physx2D;
+        private readonly IPhysxWorld _physx2D;
 
         public GameWorldManager2D(WorldIndex2D world, IPhysxWorld2D physx2D, IWorldPartitioner2D worldPartitioner, ICacheProvider cacheProvider)
         {
@@ -46,53 +59,56 @@ namespace Altruist.Gaming.TwoD
 
         public async Task SaveAsync()
         {
-            var saveTasks = _partitions.Select(p => _cache.SaveAsync(p.SysId, p));
+            var saveTasks = _partitions.Select(p => _cache.SaveAsync(p.StorageId, p));
             await Task.WhenAll(saveTasks);
         }
 
-        public IEnumerable<IWorldPartition> UpdateObjectPosition(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata, float radius)
+        public IEnumerable<IWorldPartitionManager> UpdateObjectPosition(IPrefab2D prefab, float radius)
         {
-            DestroyObject(objectType, objectMetadata.InstanceId);
-            var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
-            AddObjectToPartitions(objectType, objectMetadata, partitions);
+            DestroyObject(prefab);
+            var partitions = FindPartitionsForPosition(prefab.Transform.Position.X, prefab.Transform.Position.Y, radius);
+            AddObjectToPartitions(prefab, partitions);
             return partitions;
         }
 
-        public void AddDynamicObject(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata, float radius)
+        public void AddDynamicObject(IPrefab2D prefab, float radius)
         {
-            var partitions = FindPartitionsForPosition(objectMetadata.Position.X, objectMetadata.Position.Y, radius);
-            AddObjectToPartitions(objectType, objectMetadata, partitions);
+            var partitions = FindPartitionsForPosition(prefab.Transform.Position.X, prefab.Transform.Position.Y, radius);
+            AddObjectToPartitions(prefab, partitions);
         }
 
-        public IWorldPartition? AddStaticObject(WorldObjectTypeKey objectType, ObjectMetadata2D objectMetadata)
+        public IWorldPartitionManager? AddStaticObject(IPrefab2D prefab)
         {
-            var partition = FindPartitionForPosition(objectMetadata.Position.X, objectMetadata.Position.Y);
+            var partition = FindPartitionForPosition(prefab.Transform.Position.X, prefab.Transform.Position.Y);
             if (partition is WorldPartition2D p2d)
             {
-                p2d.AddObject(objectType, objectMetadata);
+                p2d.AddObject(prefab);
             }
             return partition;
         }
 
-        public IObjectMetadata? DestroyObject(WorldObjectTypeKey objectType, string instanceId)
-            => _partitions.Select(p => p.DestroyObject(objectType, instanceId)).FirstOrDefault(m => m != null);
+        public IPrefab2D? DestroyObject(string instanceId)
+            => _partitions.Select(p => p.DestroyObject(instanceId)).FirstOrDefault(m => m != null);
 
-        public IEnumerable<IObjectMetadata> GetNearbyObjectsInRoom(WorldObjectTypeKey objectType, int x, int y, float radius, string roomId)
+        public IPrefab2D? DestroyObject(IPrefab2D prefab)
+       => DestroyObject(prefab.InstanceId);
+
+        public IEnumerable<IPrefab2D> GetNearbyObjectsInRoom(string prefabId, int x, int y, float radius, string roomId)
         {
-            var result = new List<IObjectMetadata>();
+            var result = new List<IPrefab2D>();
             var partitions = FindPartitionsForPosition(x, y, radius);
             foreach (var partition in partitions)
             {
                 if (partition is WorldPartition2D p2d)
                 {
-                    result.AddRange(p2d.GetObjectsByTypeInRadius(objectType, x, y, radius, roomId));
+                    result.AddRange(p2d.GetObjectsByTypeInRadius(prefabId, x, y, radius, roomId));
                 }
             }
 
             return result.Distinct();
         }
 
-        public IWorldPartition? FindPartitionForPosition(int x, int y)
+        public IWorldPartitionManager? FindPartitionForPosition(int x, int y)
         {
             int indexX = (int)Math.Round(x / (double)_worldPartitioner.PartitionWidth);
             int indexY = (int)Math.Round(y / (double)_worldPartitioner.PartitionHeight);
@@ -100,7 +116,7 @@ namespace Altruist.Gaming.TwoD
             return _partitionMap.TryGetValue(new PartitionIndex2D(indexX, indexY), out var p) ? p : null;
         }
 
-        public IEnumerable<IWorldPartition> FindPartitionsForPosition(int x, int y, float radius)
+        public IEnumerable<IWorldPartitionManager> FindPartitionsForPosition(int x, int y, float radius)
         {
             float minX = x - radius;
             float maxX = x + radius;
@@ -116,17 +132,16 @@ namespace Altruist.Gaming.TwoD
             });
         }
 
-        private IEnumerable<IWorldPartition> AddObjectToPartitions(
-            WorldObjectTypeKey objectType,
-            ObjectMetadata2D objectMetadata,
-            IEnumerable<IWorldPartition> partitions
+        private IEnumerable<IWorldPartitionManager> AddObjectToPartitions(
+            IPrefab2D prefab,
+            IEnumerable<IWorldPartitionManager> partitions
         )
         {
             foreach (var partition in partitions)
             {
                 if (partition is WorldPartition2D p2d)
                 {
-                    p2d.AddObject(objectType, objectMetadata);
+                    p2d.AddObject(prefab);
                 }
             }
 

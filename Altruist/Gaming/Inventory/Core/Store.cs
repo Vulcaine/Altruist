@@ -24,7 +24,7 @@ public class ItemStorage : IVaultModel
     /// Unique ID of the item.
     /// </summary>
     [JsonPropertyName("sysId")]
-    public string SysId { get; set; }
+    public string StorageId { get; set; }
     /// <summary>
     /// ID of the group this item belongs to. Used for cached lookups.
     /// </summary>
@@ -59,7 +59,7 @@ public class ItemStorage : IVaultModel
         IStoragePrincipal principal,
         string storageId, short maxWidth, short maxHeight, short capacity = 1)
     {
-        SysId = Guid.NewGuid().ToString();
+        StorageId = Guid.NewGuid().ToString();
         Principal = principal;
         StorageId = storageId;
         MaxWidth = maxWidth;
@@ -209,7 +209,7 @@ public class ItemStorageProvider
                     }
                 }
 
-                PlaceItemInternal(item.SysId, itemCount, positions);
+                PlaceItemInternal(item.StorageId, itemCount, positions);
                 return AddItemStatus.Success;
             }
         }
@@ -258,7 +258,7 @@ public class ItemStorageProvider
             }
         }
 
-        PlaceItemInternal(item.SysId, itemCount, positions);
+        PlaceItemInternal(item.StorageId, itemCount, positions);
         return SetItemStatus.Success;
     }
 

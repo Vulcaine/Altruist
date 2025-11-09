@@ -15,14 +15,13 @@ limitations under the License.
 */
 
 using Altruist;
-using Altruist.Gaming.Movement;
 
 namespace Portals;
 
 [Portal("/game")]
-public class SimpleMovementPortal : AltruistMovementPortal
+public class SimpleMovementPortal
 {
-    public SimpleMovementPortal(IMovementSocketService movementSocketService) : base(movementSocketService)
+    public SimpleMovementPortal()
     {
     }
 }

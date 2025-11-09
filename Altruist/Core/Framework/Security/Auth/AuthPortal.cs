@@ -93,7 +93,7 @@ public abstract class AuthPortal<TAuthContext> : Portal where TAuthContext : ISe
     //             RefreshToken = tokenIssue.RefreshToken,
     //             PrincipalId = claims.FindFirst(ClaimTypes.Name)?.Value!,
     //             Ip = claims.FindFirst("Ip")?.Value!,
-    //             SysId = tokenIssue.AccessToken,
+    //             StorageId = tokenIssue.AccessToken,
     //             Fingerprint = originalFingerprint
     //         };
 

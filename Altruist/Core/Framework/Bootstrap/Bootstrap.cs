@@ -27,6 +27,7 @@ public static class AltruistBootstrap
     public static void BootstrapServices()
     {
         new AltruistServiceConfig().Configure(Services);
+        new PrefabConfig().Configure(Services);
     }
 
     public static void BootstrapModules()

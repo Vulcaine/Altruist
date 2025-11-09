@@ -7,7 +7,7 @@ namespace Altruist.Gaming.TwoD
 
         // Use stringified keys like "x:y" to allow JSON serialization
         // Optional, flatten all objects by ID if needed
-        public Dictionary<string, IObjectMetadata> InstanceMap { get; set; } = new();
+        public Dictionary<string, IPrefab2D> InstanceMap { get; set; } = new();
 
         // grid key => metadata id string
         public Dictionary<string, HashSet<string>> Grid { get; set; } = new();
@@ -24,39 +24,35 @@ namespace Altruist.Gaming.TwoD
 
         private static string GetKey(int x, int y) => $"{x}:{y}";
 
-        public virtual void Add(WorldObjectTypeKey type, IObjectMetadata obj)
+        public virtual void Add(IPrefab2D prefab)
         {
-            if (obj is not ObjectMetadata2D obj2d)
-            {
-                return;
-            }
-            string key = GetKey((int)(obj2d.Position.X / CellSize), (int)(obj2d.Position.Y / CellSize));
+            string key = GetKey(prefab.Transform.Position.X / CellSize, prefab.Transform.Position.Y / CellSize);
 
             if (!Grid.TryGetValue(key, out var list))
                 Grid[key] = list = new HashSet<string>();
 
-            list.Add(obj.InstanceId);
-            InstanceMap[obj.InstanceId] = obj;
+            list.Add(prefab.InstanceId);
+            InstanceMap[prefab.InstanceId] = prefab;
 
-            var typeKey = type.Value;
+            var typeKey = prefab.PrefabId;
             if (!TypeMap.TryGetValue(typeKey, out var typeDict))
                 TypeMap[typeKey] = typeDict = new HashSet<string>();
 
-            typeDict.Add(obj.InstanceId);
+            typeDict.Add(prefab.InstanceId);
         }
 
-        public virtual IObjectMetadata? Remove(WorldObjectTypeKey type, string instanceId)
+        public virtual IPrefab2D? Remove(string instanceId)
         {
-            if (!InstanceMap.TryGetValue(instanceId, out var obj) || obj is not ObjectMetadata2D obj2d)
+            if (!InstanceMap.TryGetValue(instanceId, out var obj))
                 return null;
 
-            string key = GetKey(obj2d.Position.X / CellSize, obj2d.Position.Y / CellSize);
+            string key = GetKey(obj.Transform.Position.X / CellSize, obj.Transform.Position.Y / CellSize);
             if (Grid.TryGetValue(key, out var list))
             {
                 list.Remove(instanceId);
             }
 
-            if (TypeMap.TryGetValue(type.Value, out var map))
+            if (TypeMap.TryGetValue(obj.PrefabId, out var map))
             {
                 map.Remove(instanceId);
             }
@@ -66,7 +62,7 @@ namespace Altruist.Gaming.TwoD
             return obj;
         }
 
-        public virtual IEnumerable<IObjectMetadata> Query(WorldObjectTypeKey type, int x, int y, float radius, string roomId)
+        public virtual IEnumerable<IPrefab2D> Query(string prefabId, int x, int y, float radius, string roomId)
         {
             int minX = (int)((x - radius) / CellSize);
             int maxX = (int)((x + radius) / CellSize);
@@ -74,7 +70,7 @@ namespace Altruist.Gaming.TwoD
             int maxY = (int)((y + radius) / CellSize);
 
             float sqrRadius = radius * radius;
-            var result = new HashSet<IObjectMetadata>();
+            var result = new HashSet<IPrefab2D>();
 
             for (int cx = minX; cx <= maxX; cx++)
             {
@@ -85,15 +81,15 @@ namespace Altruist.Gaming.TwoD
 
                     var instanceList = list.Select(e => InstanceMap[e]).Where(e => e.RoomId == roomId).ToList();
 
-                    foreach (var obj in instanceList)
+                    foreach (var prefab2D in instanceList)
                     {
-                        if (obj.Type != type || obj is not ObjectMetadata2D obj2d) continue;
+                        if (prefab2D.PrefabId != prefabId) continue;
 
-                        float dx = obj2d.Position.X - x;
-                        float dy = obj2d.Position.Y - y;
+                        float dx = prefab2D.Transform.Position.X - x;
+                        float dy = prefab2D.Transform.Position.Y - y;
 
                         if ((dx * dx + dy * dy) <= sqrRadius)
-                            result.Add(obj);
+                            result.Add(prefab2D);
                     }
                 }
             }
@@ -101,14 +97,14 @@ namespace Altruist.Gaming.TwoD
             return result;
         }
 
-        public virtual Dictionary<string, IObjectMetadata> GetByType(WorldObjectTypeKey type)
+        public virtual Dictionary<string, IPrefab2D> GetByType(string prefabId)
         {
-            return (TypeMap.TryGetValue(type.Value, out var map) ? map : new()).ToDictionary(x => x, x => InstanceMap[x]);
+            return (TypeMap.TryGetValue(prefabId, out var map) ? map : new()).ToDictionary(x => x, x => InstanceMap[x]);
         }
 
-        public virtual HashSet<IObjectMetadata> GetAllByType(WorldObjectTypeKey type)
+        public virtual HashSet<IPrefab2D> GetAllByType(string prefabId)
         {
-            return GetByType(type).Values.ToHashSet();
+            return GetByType(prefabId).Values.ToHashSet();
         }
     }
 
