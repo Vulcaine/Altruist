@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Collections.Concurrent;
-
 namespace Altruist.Engine;
 
 public interface IAltruistEngineRouter : IAltruistRouter { }
 
+[Service(typeof(IAltruistEngineRouter))]
+[Service(typeof(IAltruistRouter))]
+[ConditionalOnConfig("altruist:game:engine")]
 public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRouter
 {
     private readonly IAltruistEngine _engine;
@@ -35,7 +36,7 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
     }
 }
 
-
+[Service]
 public class EngineClientSender : ClientSender
 {
     private readonly IAltruistEngine _engine;
@@ -60,7 +61,8 @@ public class EngineClientSender : ClientSender
     }
 }
 
-
+[Service(typeof(IAltruistEngineRouter))]
+[ConditionalOnConfig("altruist:game:engine")]
 public class InMemoryEngineRouter : EngineRouter
 {
     public InMemoryEngineRouter(IConnectionStore store, ICodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, IClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator, engine)

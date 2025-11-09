@@ -15,36 +15,25 @@ limitations under the License.
 */
 
 using Altruist;
-using Altruist.Contracts;
+
 using Altruist.Features;
-using Altruist.Gaming.Engine;
-using Altruist.Gaming.Features;
-using Microsoft.Extensions.DependencyInjection;
 
-public static class AltruistGamingServiceCollectionExtensions
-{
-    public static AltruistConnectionBuilder SetupGameEngine(this AltruistIntermediateBuilder builder, Func<AltruistGameEngineBuilder, AltruistConnectionBuilder> setup)
-    {
-        // builder.Services.AddGamingSupport();
-        var engineBuilder = new AltruistGameEngineBuilder(builder.Services, builder.Settings, builder.Args);
-        return setup.Invoke(engineBuilder);
-    }
-}
+// public static class AltruistGamingServiceCollectionExtensions
+// {
+//     public static AltruistConnectionBuilder SetupGameEngine(this AltruistIntermediateBuilder builder, Func<AltruistGameEngineBuilder, AltruistConnectionBuilder> setup)
+//     {
+//         // builder.Services.AddGamingSupport();
+//         var engineBuilder = new AltruistGameEngineBuilder(builder.Services, builder.Settings, builder.Args);
+//         return setup.Invoke(engineBuilder);
+//     }
+// }
 
-[AltruistModule("Gaming Core Module")]
-public static class GamingModuleInitializer
-{
-    [AltruistModuleLoader]
-    public static void Init()
-    {
-        ServiceConfig.Register(new GameConfig());
-        FeatureRegistry.Register(new GameEngineFeatureProvider());
-    }
-}
-
-public class GameConfig : IAltruistConfiguration
-{
-    public void Configure(IServiceCollection services)
-    {
-    }
-}
+// [AltruistModule("Gaming Core Module")]
+// public static class GamingModuleLoader
+// {
+//     [AltruistModuleLoader]
+//     public static void Load()
+//     {
+//         FeatureRegistry.Register(new GameEngineFeatureProvider());
+//     }
+// }

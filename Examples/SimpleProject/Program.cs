@@ -16,4 +16,8 @@ limitations under the License.
 
 using Altruist;
 
-AltruistApplication.Run();
+public static class Program
+{
+    public static async Task Main(string[] args)
+        => await AltruistApplication.Run(args);
+}

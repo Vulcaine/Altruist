@@ -36,6 +36,7 @@ public interface IAltruistRouter
     IClientSynchronizator Synchronize { get; }
 }
 
+[Service(typeof(IClientSynchronizator))]
 public class ClientSynchronizator : IClientSynchronizator
 {
     public Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
@@ -76,6 +77,7 @@ public abstract class DirectRouter : AbstractAltruistRouter
     }
 }
 
+[Service]
 public class ClientSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
@@ -103,6 +105,7 @@ public class ClientSender : IAltruistRouterSender
     }
 }
 
+[Service]
 public class RoomSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
@@ -130,6 +133,7 @@ public class RoomSender : IAltruistRouterSender
     }
 }
 
+[Service]
 public class BroadcastSender
 {
     private readonly IConnectionStore _store;

@@ -146,11 +146,75 @@ namespace Altruist
 
         private static object? Arg(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
         {
+            // 1) Config-bound parameter?
             var a = p.GetCustomAttribute<ConfigValueAttribute>(false);
-            return a is not null
-                ? ResolveFromConfig(cfg, p.ParameterType, a, log)
-                : sp.GetService(p.ParameterType)
-                    ?? throw new InvalidOperationException($"Unable to resolve '{p.ParameterType}' for parameter '{p.Name}'.");
+            if (a is not null)
+                return ResolveFromConfig(cfg, p.ParameterType, a, log);
+
+            var paramType = p.ParameterType;
+
+            // 2) IEnumerable<T> / IList<T> / ICollection<T> / IReadOnlyList<T>
+            if (paramType.IsGenericType)
+            {
+                var genDef = paramType.GetGenericTypeDefinition();
+                if (genDef == typeof(IEnumerable<>) ||
+                    genDef == typeof(IList<>) ||
+                    genDef == typeof(ICollection<>) ||
+                    genDef == typeof(IReadOnlyList<>))
+                {
+                    var elemType = paramType.GetGenericArguments()[0];
+
+                    // GetServices(Type) returns IEnumerable<object>
+                    var servicesEnumObj = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+                        .GetServices(sp, elemType);
+
+                    // materialize to List<T> so it's assignable to all the above interfaces
+                    var listType = typeof(List<>).MakeGenericType(elemType);
+                    var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+                    foreach (var s in servicesEnumObj)
+                        list.Add(s);
+
+                    return list;
+                }
+            }
+
+            // 3) Arrays: T[]
+            if (paramType.IsArray)
+            {
+                var elemType = paramType.GetElementType()!;
+                var servicesEnumObj = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+                    .GetServices(sp, elemType)
+                    .Cast<object>()
+                    .ToArray();
+
+                var arr = Array.CreateInstance(elemType, servicesEnumObj.Length);
+                for (int i = 0; i < servicesEnumObj.Length; i++)
+                    arr.SetValue(servicesEnumObj[i], i);
+
+                return arr;
+            }
+
+            // 4) Try resolve the exact service
+            var service = sp.GetService(paramType);
+            if (service is not null)
+                return service;
+
+            // 5) Optional/default value?
+            if (p.HasDefaultValue)
+                return p.DefaultValue;
+
+            // 6) Nullable → null
+            var isNullable = !paramType.IsValueType || Nullable.GetUnderlyingType(paramType) is not null;
+            if (isNullable)
+                return null;
+
+            // 7) Fallback default(T) for value types
+            if (paramType.IsValueType)
+                return Activator.CreateInstance(paramType);
+
+            // 8) Truly unresolved
+            throw new InvalidOperationException(
+                $"Unable to resolve '{paramType}' for parameter '{p.Name}'.");
         }
 
         private static void BindConfigProps(IConfiguration cfg, ILogger log, Type t, object obj)

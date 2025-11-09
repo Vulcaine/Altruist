@@ -80,6 +80,7 @@ public interface IVaultModel : IStoredModel
     DateTime Timestamp { get; set; }
 }
 
+[PrimaryKeyAttribute("id")]
 public abstract class VaultModel : StoredModel, IVaultModel
 {
     [VaultColumn("createdAt")]

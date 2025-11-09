@@ -2,15 +2,21 @@ altruist:
   server:
     host: "0.0.0.0"
     port: 5000
+    transport: "websocket"
 
-  transport:
-    mode: "websocket"
+  persistence:
+    database:
+      provider: "scylladb"
+      contact-points: ["localhost:9042"]
+    cache:
+      provider: "inmemory"
 
   game:
     engine:
+      diagnostics: true
       dimension: "3D"
-      framerateHz: 30
-      unit: "Seconds"
+      frequency: 30
+      unit: "seconds"
       gravity:
         x: 0
         y: -9.81

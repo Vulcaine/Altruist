@@ -26,14 +26,14 @@ namespace Altruist.Web
     // Transport
     // ───────────────────────────────────────────────────────────────────────────
 
-    [Service(typeof(ITransportConnectionSetupBase))]
-    [ConditionalOnConfig("altruist:transport:mode", havingValue: "websocket")]
-    public sealed class WebSocketConnectionSetup : TransportConnectionSetup<WebSocketConnectionSetup>
-    {
-        public WebSocketConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
-        {
-        }
-    }
+    // [Service(typeof(ITransportConnectionSetupBase))]
+    // [ConditionalOnConfig("altruist:transport:mode", havingValue: "websocket")]
+    // public sealed class WebSocketConnectionSetup : TransportConnectionSetup<WebSocketConnectionSetup>
+    // {
+    //     public WebSocketConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
+    //     {
+    //     }
+    // }
 
     public sealed class WebSocketConnection : AltruistConnection
     {

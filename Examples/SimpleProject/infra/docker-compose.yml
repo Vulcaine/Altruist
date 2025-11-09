@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  scylla:
+    image: scylladb/scylla:latest
+    container_name: scylla
+    command:
+      # Defaults suitable for local/dev usage. Remove/adjust for production.
+      - --smp=1                # use 1 CPU (let Docker limits control this in prod)
+      - --memory=2G            # memory reservation for Scylla
+      - --overprovisioned=1    # dev convenience
+      - --developer-mode=1     # dev convenience
+      - --cluster-name=docker-scylla
+    ports:
+      - "9042:9042"   # CQL
+      - "7000:7000"   # intra-node (gossip/replication)
+      - "7001:7001"   # TLS intra-node (if enabled)
+      - "7199:7199"   # JMX
+      - "9180:9180"   # Prometheus metrics
+      - "10000:10000" # REST API
+    volumes:
+      - scylla-data:/var/lib/scylla
+      - scylla-logs:/var/log/scylla
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    healthcheck:
+      # simple TCP check on CQL port
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9042' >/dev/null 2>&1 && echo ok || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  scylla-data:
+  scylla-logs:

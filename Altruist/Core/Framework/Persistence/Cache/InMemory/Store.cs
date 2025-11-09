@@ -26,9 +26,9 @@ using GroupCache = ConcurrentDictionary<string, EfficientConcurrentCache<object>
 
 public sealed class InMemoryServiceConfiguration : ICacheConfiguration
 {
-    public void Configure(IServiceCollection services)
+    public Task Configure(IServiceCollection services)
     {
-
+        return Task.CompletedTask;
     }
 }
 
@@ -160,7 +160,9 @@ public class EfficientConcurrentCache<T> : IEnumerable<T>
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
-
+[Service(typeof(ICacheProvider))]
+[Service(typeof(IMemoryCacheProvider))]
+[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public class InMemoryCache : IMemoryCacheProvider
 {
     private readonly ConcurrentDictionary<Type, GroupCache> _cacheSource = new();
@@ -285,7 +287,8 @@ public class InMemoryCache : IMemoryCacheProvider
 }
 
 
-
+[Service(typeof(IConnectionStore))]
+[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public class InMemoryConnectionStore : AbstractConnectionStore
 {
     public InMemoryConnectionStore(IMemoryCacheProvider memoryCache, ILoggerFactory loggerFactory) : base(memoryCache, loggerFactory)

@@ -1,5 +1,7 @@
 // Altruist/Bootstrap.cs
 using System.Reflection;
+using System.Threading.Tasks;
+using Altruist.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -12,22 +14,25 @@ public static class AltruistBootstrap
     /// <summary>
     /// Entry point called by your app. Add more steps after BootstrapServices as needed.
     /// </summary>
-    public static void Bootstrap()
+    public static async Task Bootstrap()
     {
         EnsureAltruistAssembliesLoaded();
         ConfigureLogging();
         BootstrapModules();
-        BootstrapServices();
+        await BootstrapServices();
     }
+
+    public static IServiceProvider GetServiceProvider() => Services.BuildServiceProvider();
 
     /// <summary>
     /// Scans loaded assemblies for types annotated with [Service] and registers them.
     /// Uses a console logger by default, or the app's configured ILoggerFactory if available.
     /// </summary>
-    public static void BootstrapServices()
+    public static async Task BootstrapServices()
     {
-        new AltruistServiceConfig().Configure(Services);
-        new PrefabConfig().Configure(Services);
+        await new AltruistServiceConfig().Configure(Services);
+        await new PrefabConfig().Configure(Services);
+        await new ConfigAttributeConfiguration().Configure(Services);
     }
 
     public static void BootstrapModules()

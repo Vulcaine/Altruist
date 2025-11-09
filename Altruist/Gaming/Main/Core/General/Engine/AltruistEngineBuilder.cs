@@ -29,55 +29,55 @@ public enum EngineMode
     ThreeD
 }
 
-public class AltruistGameEngineBuilder
-{
-    private IServiceCollection Services { get; }
-    private IAltruistContext Settings;
-    private string[] _args;
+// public class AltruistGameEngineBuilder
+// {
+//     private IServiceCollection Services { get; }
+//     private IAltruistContext Settings;
+//     private string[] _args;
 
-    public AltruistGameEngineBuilder(IServiceCollection services, IAltruistContext Settings, string[] args)
-    {
-        Services = services;
-        this.Settings = Settings;
-        _args = args;
-    }
+//     public AltruistGameEngineBuilder(IServiceCollection services, IAltruistContext Settings, string[] args)
+//     {
+//         Services = services;
+//         this.Settings = Settings;
+//         _args = args;
+//     }
 
-    public AltruistConnectionBuilder NoEngine()
-    {
-        return new AltruistConnectionBuilder(Services, Settings, _args);
-    }
+//     // public AltruistConnectionBuilder NoEngine()
+//     // {
+//     //     return new AltruistConnectionBuilder(Services, Settings, _args);
+//     // }
 
-    public AltruistGameEngineBuilder AddWorld(IWorldIndex worldIndex)
-    {
-        Services.AddKeyedSingleton(typeof(IWorldIndex), $"world-{worldIndex.Index()}", worldIndex);
-        return this;
-    }
+//     public AltruistGameEngineBuilder AddWorld(IWorldIndex worldIndex)
+//     {
+//         Services.AddKeyedSingleton(typeof(IWorldIndex), $"world-{worldIndex.Index()}", worldIndex);
+//         return this;
+//     }
 
-    public AltruistConnectionBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null, EngineMode mode = EngineMode.TwoD)
-    {
-        Services.AddSingleton<IAction, EngineStartupAction>();
-        Services.AddSingleton<IAltruistEngineRouter, InMemoryEngineRouter>();
-        Services.AddSingleton<EngineClientSender>();
-        Services.AddSingleton<IAltruistEngine>(sp =>
-        {
-            var coordinator = sp.GetRequiredService<IGameWorldCoordinator>();
+//     public AltruistConnectionBuilder EnableEngine(int hz, CycleUnit unit = CycleUnit.Ticks, int? throttle = null, EngineMode mode = EngineMode.TwoD)
+//     {
+//         // Services.AddSingleton<IAction, EngineStartupConfiguration>();
+//         // Services.AddSingleton<IAltruistEngineRouter, InMemoryEngineRouter>();
+//         // Services.AddSingleton<EngineClientSender>();
+//         // Services.AddSingleton<IAltruistEngine>(sp =>
+//         // {
+//         //     var coordinator = sp.GetRequiredService<IGameWorldCoordinator>();
 
-            var env = sp.GetRequiredService<IHostEnvironment>();
-            var engine = new AltruistEngine(sp, coordinator, hz, unit, throttle);
+//         //     var env = sp.GetRequiredService<IHostEnvironment>();
+//         //     var engine = new AltruistEngine(sp, coordinator, hz, unit, throttle);
 
-            if (env.IsDevelopment())
-            {
-                return new EngineWithDiagnostics(engine, sp.GetRequiredService<ILoggerFactory>());
-            }
-            else
-            {
-                return engine;
-            }
-        });
+//         //     if (env.IsDevelopment())
+//         //     {
+//         //         return new EngineWithDiagnostics(engine, sp.GetRequiredService<ILoggerFactory>());
+//         //     }
+//         //     else
+//         //     {
+//         //         return engine;
+//         //     }
+//         // });
 
-        Services.AddSingleton<IAltruistRouter>(sp => sp.GetRequiredService<IAltruistEngineRouter>());
-        Services.AddSingleton<MethodScheduler>();
-        Settings.EngineEnabled = true;
-        return new AltruistConnectionBuilder(Services, Settings, _args);
-    }
-}
+//         // Services.AddSingleton<IAltruistRouter>(sp => sp.GetRequiredService<IAltruistEngineRouter>());
+//         // Services.AddSingleton<MethodScheduler>();
+//         Settings.EngineEnabled = true;
+//         return new AltruistConnectionBuilder(Services, Settings, _args);
+//     }
+// }

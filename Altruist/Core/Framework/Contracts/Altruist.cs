@@ -22,7 +22,6 @@ public interface IServerStatus
 {
     ReadyState Status { get; }
     void SignalState(ReadyState state);
-    Task StartupAsync(AppManager manager);
 }
 
 

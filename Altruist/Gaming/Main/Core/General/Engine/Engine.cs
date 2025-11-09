@@ -81,7 +81,7 @@ public static class FrameTime
     public static float TicksToDeltaSeconds(long ticks) => (float)(ticks * TicksToSeconds);
 }
 
-
+[Service]
 public class MethodScheduler
 {
     private readonly IAltruistEngine _engine;
@@ -254,7 +254,7 @@ public class EngineStaticTask
     }
 }
 
-
+[Service]
 public class AltruistEngine : IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;
@@ -282,11 +282,16 @@ public class AltruistEngine : IAltruistEngine
     private readonly IGameWorldCoordinator _worldCoordinator;
 
     public AltruistEngine(
+        IAltruistContext settings,
         IServiceProvider serviceProvider,
         IGameWorldCoordinator worldCoordinator,
-        int engineFrequencyHz = 30, CycleUnit unit = CycleUnit.Ticks, int? throttle = null)
+        [ConfigValue("altruist:game:engine:frequency")]
+        int engineFrequencyHz = 30,
+        [ConfigValue("altruist:game:engine:unit")]
+        CycleUnit unit = CycleUnit.Ticks,
+        [ConfigValue("altruist:game:engine:throttle")]
+        int? throttle = null)
     {
-        var settings = serviceProvider.GetRequiredService<IAltruistContext>();
         _staticTasks = new LinkedList<EngineStaticTask>();
         _dynamicTasks = new ConcurrentDictionary<TaskIdentifier, Delegate>();
         _engineRate = new CycleRate(engineFrequencyHz, unit);
@@ -568,10 +573,11 @@ public class AltruistEngine : IAltruistEngine
     }
 }
 
-
+[Service(typeof(IAltruistEngine))]
+[ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
 public class EngineWithDiagnostics : IAltruistEngine
 {
-    private readonly IAltruistEngine _wrappedEngine;
+    private readonly AltruistEngine _wrappedEngine;
     private readonly ILogger _logger;
 
     private readonly double _engineFrequencyHz;
@@ -579,7 +585,7 @@ public class EngineWithDiagnostics : IAltruistEngine
     private readonly int _taskTrackCount = 100;
 
 
-    public EngineWithDiagnostics(IAltruistEngine wrappedEngine, ILoggerFactory loggerFactory)
+    public EngineWithDiagnostics(AltruistEngine wrappedEngine, ILoggerFactory loggerFactory)
     {
         _wrappedEngine = wrappedEngine;
         _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();

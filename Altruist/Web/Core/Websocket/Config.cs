@@ -19,10 +19,11 @@ public sealed class WebSocketTransportToken : ITransportServiceToken
 [ConditionalOnConfig("altruist:transport:mode", havingValue: "websocket")]
 public sealed class WebSocketConfiguration : ITransportConfiguration
 {
-    public void Configure(IServiceCollection services)
+    public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
         ILogger logger = factory.CreateLogger("WebsocketSupport");
         logger.LogInformation("⚡ WebSocket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
+        return Task.CompletedTask;
     }
 }

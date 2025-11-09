@@ -9,7 +9,7 @@ namespace Altruist
 {
     public class AltruistModuleConfig : IAltruistConfiguration
     {
-        public void Configure(IServiceCollection services)
+        public Task Configure(IServiceCollection services)
         {
             var logger = services.BuildServiceProvider()
                 .GetRequiredService<ILoggerFactory>()
@@ -88,6 +88,7 @@ namespace Altruist
             }
 
             BindConfigurationClasses(services, logger);
+            return Task.CompletedTask;
         }
 
         private static void BindConfigurationClasses(IServiceCollection services, ILogger logger)

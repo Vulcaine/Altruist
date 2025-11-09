@@ -14,9 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Reflection;
 using Altruist.Contracts;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -29,7 +27,7 @@ namespace Altruist
     /// </summary>
     public class PrefabConfig : IAltruistConfiguration
     {
-        public void Configure(IServiceCollection services)
+        public Task Configure(IServiceCollection services)
         {
             var cfg = AppConfigLoader.Load();
             var logger = services.BuildServiceProvider()
@@ -72,6 +70,8 @@ namespace Altruist
 
             if (registered.Count > 0)
                 logger.LogInformation("🎮 Registered prefabs:\n{Prefabs}", string.Join("\n", registered));
+
+            return Task.CompletedTask;
         }
 
         private static IEnumerable<Type> FindPrefabTypes()

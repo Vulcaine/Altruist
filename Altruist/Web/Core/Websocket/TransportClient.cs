@@ -54,8 +54,12 @@ public sealed class WebSocketTransport : ITransport
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("Route path cannot be null or whitespace.", nameof(path));
 
+        // If a non-shield type is passed, treat it as "no shield" instead of throwing.
         if (shieldType is not null && !typeof(ShieldAttribute).IsAssignableFrom(shieldType))
-            throw new ArgumentException($"shieldType must derive from {nameof(ShieldAttribute)}.", nameof(shieldType));
+        {
+            // Optional: log a warning here if you have a logger available.
+            shieldType = null;
+        }
 
         _routes[path] = new RouteInfo(path, shieldType);
     }

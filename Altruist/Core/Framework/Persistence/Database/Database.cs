@@ -97,6 +97,7 @@ public interface IKeyspaceSetup
     Task Build();
 }
 
+[Service]
 public class VaultRepositoryFactory
 {
     private readonly IServiceProvider _provider;
@@ -113,7 +114,7 @@ public class VaultRepositoryFactory
     }
 }
 
-
+[Service]
 public class DatabaseProviderFactory
 {
     private readonly IServiceProvider _provider;

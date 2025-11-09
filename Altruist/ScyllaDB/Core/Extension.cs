@@ -14,30 +14,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Threading.Tasks;
 using Altruist.Persistence;
 
 namespace Altruist.ScyllaDB;
 
-public static class Extension
-{
-    public static AltruistApplicationBuilder WithScyllaDB(this AltruistDatabaseBuilder builder, Func<ScyllaDBConnectionSetup, ScyllaDBConnectionSetup>? setup = null)
-    {
-        return builder.SetupDatabase(ScyllaDBToken.Instance, setup);
-    }
+// public static class Extension
+// {
+//     public static AltruistApplicationBuilder WithScyllaDB(this AltruistDatabaseBuilder builder, Func<ScyllaDBConnectionSetup, ScyllaDBConnectionSetup>? setup = null)
+//     {
+//         return builder.SetupDatabase(ScyllaDBToken.Instance, setup);
+//     }
 
-    public static KeyspaceSetup<TKeyspace> ForgeVaults<TKeyspace>(this KeyspaceSetup<TKeyspace> setup)
-     where TKeyspace : class, IKeyspace
-    {
-        var vaultModelTypes = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(a => a.GetTypes())
-            .Where(t => typeof(IVaultModel).IsAssignableFrom(t) && t is { IsClass: true, IsAbstract: false });
+//     public static KeyspaceSetup<TKeyspace> ForgeVaults<TKeyspace>(this KeyspaceSetup<TKeyspace> setup)
+//      where TKeyspace : class, IKeyspace
+//     {
+//         var vaultModelTypes = AppDomain.CurrentDomain.GetAssemblies()
+//             .SelectMany(a => a.GetTypes())
+//             .Where(t => typeof(IVaultModel).IsAssignableFrom(t) && t is { IsClass: true, IsAbstract: false });
 
-        foreach (var type in vaultModelTypes)
-        {
-            setup.AddVault(type);
-        }
+//         foreach (var type in vaultModelTypes)
+//         {
+//             setup.AddVault(type);
+//         }
 
-        return setup;
-    }
+//         return setup;
+//     }
 
-}
+//     [AltruistModule("ScyllaDB Module")]
+//     public static class GamingModuleLoader
+//     {
+//         [AltruistModuleLoader]
+//         public static async Task Load()
+//         {
+//             await new ScyllaDBConfiguration().Configure(AltruistBootstrap.Services);
+//         }
+//     }
+// }

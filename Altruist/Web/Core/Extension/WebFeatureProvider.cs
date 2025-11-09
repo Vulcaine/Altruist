@@ -18,67 +18,67 @@ using System.Reflection;
 using Altruist.Features;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Altruist.Web.Features
-{
-    public sealed class WebsocketFeatureProvider : IAltruistFeatureProvider
-    {
-        public string FeatureId => "websocket";
+// namespace Altruist.Web.Features
+// {
+//     public sealed class WebsocketFeatureProvider : IAltruistFeatureProvider
+//     {
+//         public string FeatureId => "websocket";
 
-        public object Configure(object stage, IServiceProvider services)
-        {
-            var root = services.GetRequiredService<AltruistConfigOptions>();
+//         public object Configure(object stage, IServiceProvider services)
+//         {
+//             var root = services.GetRequiredService<AltruistConfigOptions>();
 
-            if (!string.Equals(root.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
-                return stage;
+//             if (!string.Equals(root.Transport.Mode, "websocket", StringComparison.OrdinalIgnoreCase))
+//                 return stage;
 
-            AltruistConnectionBuilder connection = stage switch
-            {
-                AltruistConnectionBuilder c => c,
-                AltruistIntermediateBuilder i => i.NoEngine(),
-                _ => throw new InvalidOperationException(
-                    $"Websocket feature expected stage AltruistConnectionBuilder or AltruistIntermediateBuilder, but got {stage.GetType().Name}.")
-            };
+//             AltruistConnectionBuilder connection = stage switch
+//             {
+//                 AltruistConnectionBuilder c => c,
+//                 AltruistIntermediateBuilder i => i.NoEngine(),
+//                 _ => throw new InvalidOperationException(
+//                     $"Websocket feature expected stage AltruistConnectionBuilder or AltruistIntermediateBuilder, but got {stage.GetType().Name}.")
+//             };
 
-            // Attribute-only discovery
-            var discovered = PortalDiscovery.Discover();
-            // Apply transport and map discovered portals
-            var next = connection.WithWebsocket(ws =>
-            {
-                object cur = ws;
-                foreach (var d in discovered)
-                {
-                    cur = MapPortalRuntime(cur, d.PortalType, d.Path);
-                }
+//             // Attribute-only discovery
+//             var discovered = PortalDiscovery.Discover();
+//             // Apply transport and map discovered portals
+//             var next = connection.WithWebsocket(ws =>
+//             {
+//                 object cur = ws;
+//                 foreach (var d in discovered)
+//                 {
+//                     cur = MapPortalRuntime(cur, d.PortalType, d.Path);
+//                 }
 
-                return (dynamic)cur;
-            });
+//                 return (dynamic)cur;
+//             });
 
-            return next;
-        }
+//             return next;
+//         }
 
-        private IEnumerable<Assembly> GetAssemblies()
-        {
-            throw new NotImplementedException();
-        }
+//         private IEnumerable<Assembly> GetAssemblies()
+//         {
+//             throw new NotImplementedException();
+//         }
 
-        /// <summary>
-        /// Calls MapPortal&lt;P&gt;(string path) on the websocket setup object via reflection.
-        /// </summary>
-        private static object MapPortalRuntime(object websocketSetup, Type portalType, string path)
-        {
-            var mi = websocketSetup.GetType()
-                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-                .Where(m => m.Name == "MapPortal" && m.IsGenericMethodDefinition)
-                .First(m =>
-                {
-                    var ga = m.GetGenericArguments();
-                    if (ga.Length != 1) return false;
-                    var ps = m.GetParameters();
-                    return ps.Length == 1 && ps[0].ParameterType == typeof(string);
-                });
+//         /// <summary>
+//         /// Calls MapPortal&lt;P&gt;(string path) on the websocket setup object via reflection.
+//         /// </summary>
+//         private static object MapPortalRuntime(object websocketSetup, Type portalType, string path)
+//         {
+//             var mi = websocketSetup.GetType()
+//                 .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+//                 .Where(m => m.Name == "MapPortal" && m.IsGenericMethodDefinition)
+//                 .First(m =>
+//                 {
+//                     var ga = m.GetGenericArguments();
+//                     if (ga.Length != 1) return false;
+//                     var ps = m.GetParameters();
+//                     return ps.Length == 1 && ps[0].ParameterType == typeof(string);
+//                 });
 
-            var closed = mi.MakeGenericMethod(portalType);
-            return closed.Invoke(websocketSetup, [path])!;
-        }
-    }
-}
+//             var closed = mi.MakeGenericMethod(portalType);
+//             return closed.Invoke(websocketSetup, [path])!;
+//         }
+//     }
+// }

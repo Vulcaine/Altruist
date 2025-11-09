@@ -18,6 +18,7 @@ using Altruist.Contracts;
 
 namespace Altruist
 {
+    [Service(typeof(IAltruistContext))]
     public class AltruistServerContext : IAltruistContext
     {
         public ServerInfo ServerInfo { get; set; } = new ServerInfo("Altruist Server", "ws", "localhost", 3001);

@@ -33,6 +33,10 @@ public interface IConnectable : IService
         int maxRetries = 30, int delayMilliseconds = 2000);
 
     Task ConnectAsync();
+
+    void RaiseOnRetryExhaustedEvent(Exception ex);
+    void RaiseFailedEvent(Exception ex);
+    void RaiseConnectedEvent();
 }
 
 public interface IRelayService : IConnectable

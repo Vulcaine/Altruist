@@ -29,7 +29,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Socket;
 
 [Service(typeof(ITransport))]
-[ConditionalOnConfig("altruist:transport:mode", havingValue: "tcp")]
+[ConditionalOnConfig("altruist:transport:mode", "tcp")]
 public sealed class TcpTransport : ITransport
 {
     private readonly int _port;
@@ -219,13 +219,15 @@ public sealed class TcpConnection : AltruistConnection
 }
 
 
-public sealed class TcpConnectionSetup : TransportConnectionSetup<TcpConnectionSetup>
-{
-    public TcpConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
-    {
-    }
-}
+// public sealed class TcpConnectionSetup : TransportConnectionSetup<TcpConnectionSetup>
+// {
+//     public TcpConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
+//     {
+//     }
+// }
 
+[Service(typeof(ITransportServiceToken))]
+[ConditionalOnConfig("app:server:transport:mode", "tcp")]
 public sealed class TcpTransportToken : ITransportServiceToken
 {
     public static TcpTransportToken Instance = new TcpTransportToken();
@@ -234,19 +236,16 @@ public sealed class TcpTransportToken : ITransportServiceToken
     public string Description => "📡 Transport: Tcp Socket";
 }
 
+[Service(typeof(ITransportConfiguration))]
+[ConditionalOnConfig("app:server:transport:mode", "tcp")]
 public sealed class TcpSocketConfiguration : ITransportConfiguration
 {
-    public void Configure(IServiceCollection services)
+    public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
         ILogger logger = factory.CreateLogger("WebsocketSupport");
         logger.LogInformation("⚡ Tcp Socket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
-        services.AddSingleton<ITransport, TcpTransport>();
 
-        services.AddSingleton<TcpConnectionSetup>();
-        services.AddSingleton<ITransportConnectionSetupBase>(sp => sp.GetRequiredService<TcpConnectionSetup>());
-
-        services.AddSingleton<ITransportConfiguration, TcpSocketConfiguration>();
-        services.AddSingleton<ITransportServiceToken, TcpTransportToken>();
+        return Task.CompletedTask;
     }
 }

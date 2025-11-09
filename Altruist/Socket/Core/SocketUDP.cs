@@ -267,7 +267,7 @@ public sealed class UdpTransportToken : ITransportServiceToken
 
 public sealed class UdpSocketConfiguration : ITransportConfiguration
 {
-    public void Configure(IServiceCollection services)
+    public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
         ILogger logger = factory.CreateLogger("WebsocketSupport");
@@ -279,5 +279,7 @@ public sealed class UdpSocketConfiguration : ITransportConfiguration
 
         services.AddSingleton<ITransportConfiguration, UdpSocketConfiguration>();
         services.AddSingleton<ITransportServiceToken, UdpTransportToken>();
+
+        return Task.CompletedTask;
     }
 }

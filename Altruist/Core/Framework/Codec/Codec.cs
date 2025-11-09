@@ -15,11 +15,11 @@ limitations under the License.
 */
 
 using System.Text.Json;
-using MessagePack;
-using MessagePack.Resolvers;
 
 namespace Altruist.Codec;
 
+[Service(typeof(IEncoder))]
+[ConditionalOnConfig("altruist:codec:provider", havingValue: "json")]
 public class JsonMessageEncoder : IEncoder
 {
     public byte[] Encode<TPacket>(TPacket message)
@@ -37,7 +37,8 @@ public class JsonMessageEncoder : IEncoder
     }
 }
 
-
+[Service(typeof(IDecoder))]
+[ConditionalOnConfig("altruist:codec:provider", havingValue: "json")]
 public class JsonMessageDecoder : IDecoder
 {
     private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
@@ -62,9 +63,8 @@ public class JsonMessageDecoder : IDecoder
     }
 }
 
-
-
-
+[Service(typeof(ICodec))]
+[ConditionalOnConfig("altruist:codec:provider", havingValue: "json")]
 public class JsonCodec : ICodec
 {
     public IEncoder Encoder { get; } = new JsonMessageEncoder();

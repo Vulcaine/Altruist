@@ -1,10 +1,43 @@
 // Altruist/ConfigValueAttribute.cs
-using System.Globalization;
-using System.Numerics;
-using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist;
 
+/// <summary>
+/// Marks a configuration class that should be discovered and executed by
+/// <see cref="ConfigAttributeConfiguration"/>.
+/// 
+/// ⚠️ May only be applied to types that implement <see cref="IAltruistConfiguration"/>.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+public sealed class ConfigurationAttribute : Attribute
+{
+    /// <summary>
+    /// Optional service type to register this configuration as (defaults to the implementation type).
+    /// </summary>
+    public Type? ServiceType { get; }
+
+    /// <summary>
+    /// Chosen service lifetime for registration (defaults to Singleton).
+    /// </summary>
+    public ServiceLifetime Lifetime { get; }
+
+    /// <summary>
+    /// Execution order. Lower runs earlier; higher runs later.
+    /// Defaults to 0. Use <see cref="int.MaxValue"/> to force last.
+    /// </summary>
+    public int Order { get; }
+
+    /// <param name="serviceType">Optional abstraction/interface to register this config as.</param>
+    /// <param name="lifetime">Service lifetime (Singleton by default).</param>
+    /// <param name="order">Execution order; higher runs later. Defaults to 0.</param>
+    public ConfigurationAttribute(Type? serviceType = null, ServiceLifetime lifetime = ServiceLifetime.Singleton, int order = 0)
+    {
+        ServiceType = serviceType;
+        Lifetime = lifetime;
+        Order = order;
+    }
+}
 /// <summary>
 /// Marks a constructor parameter or a settable property to be resolved from IConfiguration.
 /// Example: [ConfigValue("altruist:game:partitioner2d:partitionWidth", "64")]
@@ -42,65 +75,4 @@ public interface IConfigConverter
 public interface IConfigConverter<T> : IConfigConverter
 {
     new T? Convert(string value);
-}
-
-[ConfigConverter(typeof(Vector2))]
-public sealed class Vector2ConfigConverter : IConfigConverter<Vector2>
-{
-    public Type TargetType => typeof(Vector2);
-
-    public Vector2 Convert(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-
-        var s = value.Trim();
-        if (s.StartsWith("{") || s.StartsWith("["))
-        {
-            var dto = JsonSerializer.Deserialize<Vector2Dto>(s, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                      ?? throw new FormatException("Invalid Vector2 JSON default.");
-            return new Vector2(dto.X, dto.Y);
-        }
-
-        var parts = s.Split(',');
-        if (parts.Length != 2) throw new FormatException("Vector2 must be 'x,y' or JSON object.");
-        return new Vector2(
-            float.Parse(parts[0].Trim(), CultureInfo.InvariantCulture),
-            float.Parse(parts[1].Trim(), CultureInfo.InvariantCulture)
-        );
-    }
-
-    object? IConfigConverter.Convert(string value) => Convert(value);
-
-    private sealed class Vector2Dto { public float X { get; set; } public float Y { get; set; } }
-}
-
-[ConfigConverter(typeof(Vector3))]
-public sealed class Vector3ConfigConverter : IConfigConverter<Vector3>
-{
-    public Type TargetType => typeof(Vector3);
-
-    public Vector3 Convert(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-
-        var s = value.Trim();
-        if (s.StartsWith("{") || s.StartsWith("["))
-        {
-            var dto = JsonSerializer.Deserialize<Vector3Dto>(s, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                      ?? throw new FormatException("Invalid Vector3 JSON default.");
-            return new Vector3(dto.X, dto.Y, dto.Z);
-        }
-
-        var parts = s.Split(',');
-        if (parts.Length != 3) throw new FormatException("Vector3 must be 'x,y,z' or JSON object.");
-        return new Vector3(
-            float.Parse(parts[0].Trim(), CultureInfo.InvariantCulture),
-            float.Parse(parts[1].Trim(), CultureInfo.InvariantCulture),
-            float.Parse(parts[2].Trim(), CultureInfo.InvariantCulture)
-        );
-    }
-
-    object? IConfigConverter.Convert(string value) => Convert(value);
-
-    private sealed class Vector3Dto { public float X { get; set; } public float Y { get; set; } public float Z { get; set; } }
 }

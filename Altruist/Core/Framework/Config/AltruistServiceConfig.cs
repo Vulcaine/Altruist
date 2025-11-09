@@ -25,7 +25,8 @@ namespace Altruist
 {
     public class AltruistServiceConfig : IAltruistConfiguration
     {
-        public void Configure(IServiceCollection services)
+
+        public Task Configure(IServiceCollection services)
         {
             var cfg = GetConfig();
             var logger = GetLogger(services);
@@ -38,6 +39,7 @@ namespace Altruist
             RegisterPortals(services, cfg, logger, registered);
 
             LogRegistered(logger, registered);
+            return Task.CompletedTask;
         }
 
         // ---------- High-level helpers ----------
@@ -93,33 +95,37 @@ namespace Altruist
             }
         }
 
-        private static void RegisterPortals(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg)
+        private void RegisterPortals(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg)
         {
-            var portals = PortalDiscovery.Discover().Select(d => d.PortalType).Distinct();
+            var provider = services.BuildServiceProvider();
+            IAltruistContext _settings = provider.GetRequiredService<IAltruistContext>();
+            var portals = PortalDiscovery.Discover().Distinct();
             foreach (var t in portals)
             {
-                if (!t.IsClass || t.IsAbstract) continue;
-                if (!DependencyResolver.ShouldRegister(t, cfg, log)) continue;
+                if (!t.PortalType.IsClass || t.PortalType.IsAbstract) continue;
+                if (!DependencyResolver.ShouldRegister(t.PortalType, cfg, log)) continue;
 
                 services.Add(new ServiceDescriptor(
-                    t,
+                    t.PortalType,
                     sp =>
                     {
-                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, t, log);
+                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, t.PortalType, log);
                         try
                         {
                             DependencyResolver.InvokePostConstruct(obj, sp, cfg, log);
                         }
                         catch (Exception ex)
                         {
-                            log.LogError(ex, "❌ PostConstruct failed on portal {Type}.", t.FullName);
+                            log.LogError(ex, "❌ PostConstruct failed on portal {Type}.", t.PortalType.FullName);
                             throw;
                         }
                         return obj!;
                     },
                     ServiceLifetime.Transient));
 
-                reg.Add($"\t{DependencyResolver.GetCleanName(t)} → {DependencyResolver.GetCleanName(t)} (Transient) [Portal]");
+                _settings.AddEndpoint(t.Path);
+
+                reg.Add($"\t{DependencyResolver.GetCleanName(t.PortalType)} → {DependencyResolver.GetCleanName(t.PortalType)} (Transient) [Portal]");
             }
         }
     }

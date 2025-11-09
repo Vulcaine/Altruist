@@ -18,7 +18,6 @@ using Cassandra;
 
 namespace Altruist.ScyllaDB;
 
-
 public interface IScyllaKeyspace : IKeyspace
 {
     ScyllaReplicationOptions? Options { get; set; }

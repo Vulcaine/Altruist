@@ -19,17 +19,17 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist;
 
-public static class ServiceConfig
-{
-    public static List<IAltruistConfiguration> configurations = new();
+// public static class ServiceConfig
+// {
+//     public static List<IAltruistConfiguration> configurations = new();
 
-    public static void Register(IAltruistConfiguration configuration) => configurations.Add(configuration);
+//     public static void Register(IAltruistConfiguration configuration) => configurations.Add(configuration);
 
-    public static void Configure(IServiceCollection services)
-    {
-        foreach (var configuration in configurations)
-        {
-            configuration.Configure(services);
-        }
-    }
-}
+//     public static void Configure(IServiceCollection services)
+//     {
+//         foreach (var configuration in configurations)
+//         {
+//             configuration.Configure(services);
+//         }
+//     }
+// }

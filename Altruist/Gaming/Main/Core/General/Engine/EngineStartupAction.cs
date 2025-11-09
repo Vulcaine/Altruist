@@ -16,29 +16,29 @@ limitations under the License.
 */
 
 using System.Reflection;
+using Altruist.Contracts;
 using Altruist.Engine;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Engine;
 
-public class EngineStartupAction : ActionBase
+[Configuration]
+public class EngineStartupConfiguration : IAltruistConfiguration
 {
-    public EngineStartupAction(IServiceProvider serviceProvider) : base(serviceProvider)
+    public async Task Configure(IServiceCollection services)
     {
-    }
-
-    public override Task Run(IServiceProvider serviceProvider)
-    {
+        var serviceProvider = services.BuildServiceProvider();
+        var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
         var settings = serviceProvider.GetRequiredService<IAltruistContext>();
         if (settings.EngineEnabled)
         {
-            Logger.LogInformation("🚀 Starting engine...");
+            logger.LogInformation("🚀 Starting engine...");
             var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
             var methods = scheduler!.RegisterMethods(serviceProvider);
             var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
             engine!.Start();
-            Logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
+            logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
 
             if (methods.Any())
             {
@@ -49,14 +49,12 @@ public class EngineStartupAction : ActionBase
                     return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
                 }));
 
-                Logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
+                logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
             }
             else
             {
-                Logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
+                logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
             }
         }
-
-        return Task.CompletedTask;
     }
 }

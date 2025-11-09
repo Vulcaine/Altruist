@@ -18,7 +18,7 @@ using Cassandra;
 
 namespace Altruist.ScyllaDB;
 
-
+[Service]
 public class AltruistScyllaDefaultRetryPolicy : IExtendedRetryPolicy, IRetryPolicy
 {
     private DefaultRetryPolicy _defaultRetryPolicy = new DefaultRetryPolicy();

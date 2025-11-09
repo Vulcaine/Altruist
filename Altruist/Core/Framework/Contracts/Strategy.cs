@@ -15,15 +15,13 @@ limitations under the License.
 */
 
 using Altruist.Persistence;
-using Altruist.Transport;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Altruist.Contracts;
 
 public interface IAltruistConfiguration
 {
-    void Configure(IServiceCollection services);
+    Task Configure(IServiceCollection services);
 }
 
 public interface ICacheConfiguration : IAltruistConfiguration
@@ -73,226 +71,220 @@ public interface IContactSetup<TSelf> : ISetup<TSelf> where TSelf : IContactSetu
     TSelf AddContactPoint(string connectionString);
 }
 
-public interface IReconnectSetup<TSelf> : ISetup<TSelf> where TSelf : IReconnectSetup<TSelf>
-{
-    TSelf Reconnect(int afterSeconds);
-}
+// public interface IReconnectSetup<TSelf> : ISetup<TSelf> where TSelf : IReconnectSetup<TSelf>
+// {
+//     TSelf Reconnect(int afterSeconds);
+// }
 
-public interface IExternalContactSetup<TSelf> : IContactSetup<TSelf>, IReconnectSetup<TSelf> where TSelf : IExternalContactSetup<TSelf>
-{
+// public interface IExternalContactSetup<TSelf> : IContactSetup<TSelf>, IReconnectSetup<TSelf> where TSelf : IExternalContactSetup<TSelf>
+// {
 
-}
+// }
 
-public abstract class ExternalConnectionSetupBase<TSelf> : ConnectionSetupBase<TSelf>, IReconnectSetup<TSelf> where TSelf : ExternalConnectionSetupBase<TSelf>
-{
-    protected int _reconnectAfterSeconds = 0;
-    protected ExternalConnectionSetupBase(IServiceCollection services) : base(services)
-    {
+// public abstract class ExternalConnectionSetupBase<TSelf> : ConnectionSetupBase<TSelf>, IReconnectSetup<TSelf> where TSelf : ExternalConnectionSetupBase<TSelf>
+// {
+//     protected int _reconnectAfterSeconds = 0;
+//     protected ExternalConnectionSetupBase(IServiceCollection services) : base(services)
+//     {
 
-    }
+//     }
 
-    public TSelf Reconnect(int afterSeconds)
-    {
-        _reconnectAfterSeconds = afterSeconds;
-        return (TSelf)this;
-    }
-}
+//     public TSelf Reconnect(int afterSeconds)
+//     {
+//         _reconnectAfterSeconds = afterSeconds;
+//         return (TSelf)this;
+//     }
+// }
 
-// Base class for general connection setups
-public abstract class ConnectionSetupBase<TSelf> : IContactSetup<TSelf>
-    where TSelf : ConnectionSetupBase<TSelf>
-{
-    protected readonly IServiceCollection _services;
-    protected List<string> _contactPoints = new List<string>();
+// // Base class for general connection setups
+// public abstract class ConnectionSetupBase<TSelf> : IContactSetup<TSelf>
+//     where TSelf : ConnectionSetupBase<TSelf>
+// {
+//     protected readonly IServiceCollection _services;
+//     protected List<string> _contactPoints = new List<string>();
 
-    protected ConnectionSetupBase(IServiceCollection services)
-    {
-        _services = services;
-    }
+//     protected ConnectionSetupBase(IServiceCollection services)
+//     {
+//         _services = services;
+//     }
 
-    public virtual TSelf AddContactPoint(string host, int port)
-    {
-        _contactPoints.Add($"{host}:{port}");
-        return (TSelf)this;
-    }
+//     public virtual TSelf AddContactPoint(string host, int port)
+//     {
+//         _contactPoints.Add($"{host}:{port}");
+//         return (TSelf)this;
+//     }
 
-    public virtual TSelf AddContactPoint(string connectionString)
-    {
-        _contactPoints.Add(connectionString);
-        return (TSelf)this;
-    }
+//     public virtual TSelf AddContactPoint(string connectionString)
+//     {
+//         _contactPoints.Add(connectionString);
+//         return (TSelf)this;
+//     }
 
-    public abstract Task Build(IAltruistContext settings);
-}
+//     public abstract Task Build(IAltruistContext settings);
+// }
 
-public interface ICacheConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : ICacheConnectionSetup<TSelf> { }
+// public interface ICacheConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : ICacheConnectionSetup<TSelf> { }
 
-public interface ICacheConnectionSetupBase { }
+// public interface ICacheConnectionSetupBase { }
 
-public abstract class CacheConnectionSetup<TSelf> : ExternalConnectionSetupBase<TSelf>, ICacheConnectionSetup<TSelf> where TSelf : CacheConnectionSetup<TSelf>
-{
-    protected CacheConnectionSetup(IServiceCollection services) : base(services)
-    {
-    }
-}
+// public abstract class CacheConnectionSetup<TSelf> : ExternalConnectionSetupBase<TSelf>, ICacheConnectionSetup<TSelf> where TSelf : CacheConnectionSetup<TSelf>
+// {
+//     protected CacheConnectionSetup(IServiceCollection services) : base(services)
+//     {
+//     }
+// }
 
-public interface IDatabaseConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : IDatabaseConnectionSetup<TSelf> { }
+// public interface IDatabaseConnectionSetup<TSelf> : IExternalContactSetup<TSelf> where TSelf : IDatabaseConnectionSetup<TSelf> { }
 
-public abstract class DatabaseConnectionSetup<TSelf> : ExternalConnectionSetupBase<TSelf>, IDatabaseConnectionSetup<TSelf> where TSelf : DatabaseConnectionSetup<TSelf>
-{
-    protected Dictionary<string, IKeyspaceSetup> Keyspaces { get; } = new();
-    protected IDatabaseServiceToken Token { get; }
+// public abstract class DatabaseConnectionSetup<TSelf> : ExternalConnectionSetupBase<TSelf>, IDatabaseConnectionSetup<TSelf> where TSelf : DatabaseConnectionSetup<TSelf>
+// {
+//     protected Dictionary<string, IKeyspaceSetup> Keyspaces { get; } = new();
+//     protected IDatabaseServiceToken Token { get; }
 
-    protected DatabaseConnectionSetup(IServiceCollection services, IDatabaseServiceToken token) : base(services)
-    {
-        Token = token;
-    }
+//     protected DatabaseConnectionSetup(IServiceCollection services, IDatabaseServiceToken token) : base(services)
+//     {
+//         Token = token;
+//     }
 
-    public abstract TSelf CreateKeyspace<TKeyspace>(Func<KeyspaceSetup<TKeyspace>, KeyspaceSetup<TKeyspace>>? setupAction = null) where TKeyspace : class, IKeyspace, new();
-}
+//     public abstract TSelf CreateKeyspace<TKeyspace>(Func<KeyspaceSetup<TKeyspace>, KeyspaceSetup<TKeyspace>>? setupAction = null) where TKeyspace : class, IKeyspace, new();
+// }
 
-public interface ITransportConnectionSetup<TSelf> : ISetup<TSelf>
-    where TSelf : ITransportConnectionSetup<TSelf>
-{
-    TSelf MapPortal<P>(string path) where P : class, IPortal;
+// public interface ITransportConnectionSetup<TSelf> : ISetup<TSelf>
+//     where TSelf : ITransportConnectionSetup<TSelf>
+// {
+//     TSelf MapPortal<P>(string path) where P : class, IPortal;
 
-    TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
+//     TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
 
-    // TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
+//     TSelf SetCodec(ICodec encoder);
+// }
 
-    // TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
+// public interface ITransportConnectionSetupBase
+// {
+//     Dictionary<Type, (string Path, Func<IServiceProvider, IPortal>? Factory)> Portals { get; }
+// }
 
-    TSelf SetCodec(ICodec encoder);
-}
+// public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnectionSetup<TSelf>, ITransportConnectionSetupBase where TSelf : TransportConnectionSetupBase<TSelf>
+// {
+//     public Dictionary<Type, (string Path, Func<IServiceProvider, IPortal>? Factory)> Portals { get; } = new();
+//     protected readonly IServiceCollection _services;
+//     protected readonly IAltruistContext _altruistContext;
+//     public TransportConnectionSetupBase(IServiceCollection services)
+//     {
+//         _services = services;
+//         _altruistContext = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
+//     }
+//     public abstract Task Build(IAltruistContext settings);
+//     public abstract TSelf MapPortal<P>(string path) where P : class, IPortal;
+//     public abstract TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
 
-public interface ITransportConnectionSetupBase
-{
-    Dictionary<Type, (string Path, Func<IServiceProvider, IPortal>? Factory)> Portals { get; }
-}
-
-public abstract class TransportConnectionSetupBase<TSelf> : ITransportConnectionSetup<TSelf>, ITransportConnectionSetupBase where TSelf : TransportConnectionSetupBase<TSelf>
-{
-    public Dictionary<Type, (string Path, Func<IServiceProvider, IPortal>? Factory)> Portals { get; } = new();
-    protected readonly IServiceCollection _services;
-    protected readonly IAltruistContext _altruistContext;
-    public TransportConnectionSetupBase(IServiceCollection services)
-    {
-        _services = services;
-        _altruistContext = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
-    }
-    public abstract Task Build(IAltruistContext settings);
-    public abstract TSelf MapPortal<P>(string path) where P : class, IPortal;
-    public abstract TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory) where P : class, IPortal where TImplementation : class, P;
-    // public abstract TSelf MapRelayPortal<P>(string host, int port, string eventName) where P : RelayPortal;
-    // public abstract TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory) where P : RelayPortal where TImplementation : class, P;
-
-    public TSelf SetCodec(ICodec codec)
-    {
-        _services.AddSingleton(codec.Encoder);
-        _services.AddSingleton(codec.Decoder);
-        _services.AddSingleton(codec);
-        return (TSelf)this;
-    }
+//     public TSelf SetCodec(ICodec codec)
+//     {
+//         _services.AddSingleton(codec.Encoder);
+//         _services.AddSingleton(codec.Decoder);
+//         _services.AddSingleton(codec);
+//         return (TSelf)this;
+//     }
 
 
-}
+// }
 
-public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetupBase<TSelf>
-    where TSelf : TransportConnectionSetup<TSelf>
-{
-    private readonly IAltruistContext _settings;
+// public abstract class TransportConnectionSetup<TSelf> : TransportConnectionSetupBase<TSelf>
+//     where TSelf : TransportConnectionSetup<TSelf>
+// {
+//     private readonly IAltruistContext _settings;
 
-    protected TransportConnectionSetup(IServiceCollection services, IAltruistContext settings)
-        : base(services)
-    {
-        _settings = settings;
-    }
+//     protected TransportConnectionSetup(IServiceCollection services, IAltruistContext settings)
+//         : base(services)
+//     {
+//         _settings = settings;
+//     }
 
 
-    public override TSelf MapPortal<P>(string path)
-    {
-        Portals[typeof(P)] = (path, null);
-        return (TSelf)this;
-    }
+//     public override TSelf MapPortal<P>(string path)
+//     {
+//         Portals[typeof(P)] = (path, null);
+//         return (TSelf)this;
+//     }
 
-    public override TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory)
-    {
-        Portals[typeof(P)] = (path, implementationFactory);
-        return (TSelf)this;
-    }
+//     public override TSelf MapPortal<P, TImplementation>(string path, Func<IServiceProvider, TImplementation> implementationFactory)
+//     {
+//         Portals[typeof(P)] = (path, implementationFactory);
+//         return (TSelf)this;
+//     }
 
-    // public override TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
-    // {
-    //     RegisterRelayPortalServices<P, TImplementation>(host, port, eventName, implementationFactory);
-    //     return (TSelf)this;
-    // }
+//     // public override TSelf MapRelayPortal<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
+//     // {
+//     //     RegisterRelayPortalServices<P, TImplementation>(host, port, eventName, implementationFactory);
+//     //     return (TSelf)this;
+//     // }
 
-    // public override TSelf MapRelayPortal<P>(string host, int port, string eventName)
-    // {
-    //     RegisterRelayPortalServices<P, P>(host, port, eventName, sp => ActivatorUtilities.CreateInstance<P>(sp));
-    //     return (TSelf)this;
-    // }
+//     // public override TSelf MapRelayPortal<P>(string host, int port, string eventName)
+//     // {
+//     //     RegisterRelayPortalServices<P, P>(host, port, eventName, sp => ActivatorUtilities.CreateInstance<P>(sp));
+//     //     return (TSelf)this;
+//     // }
 
-    // private void RegisterRelayPortalServices<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
-    //     where P : RelayPortal
-    //     where TImplementation : P
-    // {
-    //     _services.AddSingleton<IRelayService>(sp =>
-    //     {
-    //         var instance = implementationFactory(sp);
-    //         return new AltruistRelayService(
-    //             "ws",
-    //             host,
-    //             port,
-    //             eventName,
-    //             instance,
-    //             sp.GetService<ICodec>()!,
-    //             sp.GetService<ILoggerFactory>()!,
-    //             sp.GetService<ITransportClient>()!
-    //         );
-    //     });
+//     // private void RegisterRelayPortalServices<P, TImplementation>(string host, int port, string eventName, Func<IServiceProvider, TImplementation> implementationFactory)
+//     //     where P : RelayPortal
+//     //     where TImplementation : P
+//     // {
+//     //     _services.AddSingleton<IRelayService>(sp =>
+//     //     {
+//     //         var instance = implementationFactory(sp);
+//     //         return new AltruistRelayService(
+//     //             "ws",
+//     //             host,
+//     //             port,
+//     //             eventName,
+//     //             instance,
+//     //             sp.GetService<ICodec>()!,
+//     //             sp.GetService<ILoggerFactory>()!,
+//     //             sp.GetService<ITransportClient>()!
+//     //         );
+//     //     });
 
-    //     _services.AddSingleton(sp =>
-    //     {
-    //         var instance = ActivatorUtilities.CreateInstance<P>(sp);
-    //         IRelayService relayService = sp.GetRequiredService<IRelayService>();
+//     //     _services.AddSingleton(sp =>
+//     //     {
+//     //         var instance = ActivatorUtilities.CreateInstance<P>(sp);
+//     //         IRelayService relayService = sp.GetRequiredService<IRelayService>();
 
-    //         IInterceptor interceptor = new RelayInterceptor(relayService);
-    //         ((IPortal)instance).AddInterceptor(interceptor);
-    //         return instance;
-    //     });
-    // }
+//     //         IInterceptor interceptor = new RelayInterceptor(relayService);
+//     //         ((IPortal)instance).AddInterceptor(interceptor);
+//     //         return instance;
+//     //     });
+//     // }
 
-    public override Task Build(IAltruistContext settings)
-    {
-        foreach (var portal in Portals)
-        {
-            var type = portal.Key;
-            var path = portal.Value.Path;
-            var factory = portal.Value.Factory;
+//     // public override Task Build(IAltruistContext settings)
+//     // {
+//     //     foreach (var portal in Portals)
+//     //     {
+//     //         var type = portal.Key;
+//     //         var path = portal.Value.Path;
+//     //         var factory = portal.Value.Factory;
 
-            if (factory != null)
-            {
-                _services.AddSingleton(type, factory);
-            }
-            else
-            {
-                _services.AddSingleton(type);
-            }
+//     //         if (factory != null)
+//     //         {
+//     //             _services.AddSingleton(type, factory);
+//     //         }
+//     //         else
+//     //         {
+//     //             _services.AddSingleton(type);
+//     //         }
 
-            _settings.AddEndpoint(path);
+//     //         _settings.AddEndpoint(path);
 
-            if (typeof(IPortal).IsAssignableFrom(type))
-            {
-                _services.AddSingleton(typeof(IPortal), sp => sp.GetRequiredService(type));
-            }
-            else
-            {
-                throw new InvalidOperationException($"Portal type {type.Name} does not implement IPortal.");
-            }
-        }
+//     //         if (typeof(IPortal).IsAssignableFrom(type))
+//     //         {
+//     //             _services.AddSingleton(typeof(IPortal), sp => sp.GetRequiredService(type));
+//     //         }
+//     //         else
+//     //         {
+//     //             throw new InvalidOperationException($"Portal type {type.Name} does not implement IPortal.");
+//     //         }
+//     //     }
 
-        return Task.CompletedTask;
-    }
-}
+//     //     return Task.CompletedTask;
+//     // }
+// }
 

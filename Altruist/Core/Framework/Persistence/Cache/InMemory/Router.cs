@@ -16,6 +16,8 @@ limitations under the License.
 
 namespace Altruist.InMemory;
 
+[Service(typeof(IAltruistRouter))]
+[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public class InMemoryDirectRouter : DirectRouter
 {
     public InMemoryDirectRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, IClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)

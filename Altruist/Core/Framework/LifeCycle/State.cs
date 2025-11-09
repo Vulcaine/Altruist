@@ -6,18 +6,14 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 */
 
 using System.Text;
+using Altruist.Contracts;
 using Altruist.Engine;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist;
@@ -29,96 +25,62 @@ public enum ReadyState
     Alive = 2
 }
 
-public class ServerStatus : IServerStatus
+[Configuration(typeof(IServerStatus))]
+public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 {
     public ReadyState Status { get; private set; } = ReadyState.Starting;
 
-    private readonly IServiceProvider _serviceProvider;
     private readonly HashSet<IConnectable> _connectables = new();
     private readonly HashSet<IConnectable> _connected = new();
+    private readonly IAltruistEngine _engine;
+    private readonly ILogger<ServerStatus> _logger;
+    private readonly IHostApplicationLifetime _lifetime;
+
     private bool _startup;
     private Timer? _startupTimeoutTimer;
 
-    public ServerStatus(IServiceProvider serviceProvider)
+    // All dependencies are injected; no manual BuildServiceProvider gymnastics.
+    public ServerStatus(
+        IGeneralDatabaseProvider dbProvider,
+        ICacheProvider cacheProvider,
+        IEnumerable<IConnectable> otherConnectables,
+        IAltruistEngine engine,
+        ILoggerFactory loggerFactory,
+        IHostApplicationLifetime lifetime)
     {
-        _serviceProvider = serviceProvider;
+        _engine = engine;
+        _logger = loggerFactory.CreateLogger<ServerStatus>();
+        _lifetime = lifetime;
 
-        var context = serviceProvider.GetRequiredService<IAltruistContext>();
-        var dbProviders = serviceProvider.GetServices<IGeneralDatabaseProvider>();
-        var cacheProviders = serviceProvider.GetServices<ICacheProvider>();
-        var relayServices = serviceProvider.GetServices<IRelayService>();
-        var allOtherConnectibles = serviceProvider.GetServices<IConnectable>().ToList();
+        _connectables.Add(dbProvider);
 
-        foreach (var dbToken in context.DatabaseTokens)
-        {
-            var db = dbProviders.FirstOrDefault(s => s.Token == dbToken)
-                ?? throw new InvalidOperationException($"❌ Database service with token `{dbToken}` not found.");
-            _connectables.Add(db);
-        }
+        if (cacheProvider is IConnectable connectable) _connectables.Add(connectable);
 
-        if (context.CacheToken is { } cacheToken)
-        {
-            var cache = cacheProviders.FirstOrDefault(c => c.Token == cacheToken)
-                ?? throw new InvalidOperationException($"❌ Cache service with token `{cacheToken}` not found.");
-            if (cache is IConnectable connectable)
-            {
-                _connectables.Add(connectable);
-            }
-        }
-
-        foreach (var connectable in allOtherConnectibles)
-        {
-            _connectables.Add(connectable);
-        }
-
-        foreach (var relayService in relayServices)
-        {
-            _connectables.Add(relayService);
-        }
+        // User/feature supplied connectables
+        foreach (var c in otherConnectables) _connectables.Add(c);
     }
 
-    public void SignalState(ReadyState state)
+    /// <summary>
+    /// Kicks off the startup sequence (connect + wait + advertise readiness).
+    /// Called automatically during startup via the [Configuration] mechanism.
+    /// </summary>
+    public async Task Configure(IServiceCollection services)
     {
-        var engine = _serviceProvider.GetService<IAltruistEngine>();
-
-        if (engine != null)
-        {
-            if (state == ReadyState.Failed)
-                engine.Stop();
-            else if (state == ReadyState.Alive)
-                engine.Start();
-        }
-
-        Status = state;
-    }
-
-    public async Task StartupAsync(AppManager manager)
-    {
-        var app = manager.App;
-        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<AppManager>();
-        var actions = app.Services.GetServices<IAction>();
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         if (_connectables.Count > 0)
-        {
-            StartTimeoutTimer(manager, logger);
-        }
+            StartTimeoutTimer();
 
         foreach (var service in _connectables)
         {
             if (service is IRelayService relay)
-            {
-                logger.LogInformation($"🔗 Starting relay portal {relay.ServiceName}...");
-            }
+                _logger.LogInformation("🔗 Starting relay portal {RelayName}...", relay.ServiceName);
 
-            SubscribeToServiceEvents(service, manager, actions, tcs, logger);
+            SubscribeToServiceEvents(service, tcs);
 
             if (service.IsConnected)
             {
-                lock (_connected)
-                {
-                    _connected.Add(service);
-                }
+                lock (_connected) _connected.Add(service);
             }
             else
             {
@@ -126,51 +88,54 @@ public class ServerStatus : IServerStatus
             }
         }
 
-        await CheckAllConnectedAsync(actions, logger, manager.App.Services, tcs);
+        await CheckAllConnectedAsync(tcs);
     }
 
-    private void StartTimeoutTimer(AppManager manager, ILogger logger)
+    public void SignalState(ReadyState state)
     {
-        logger.LogInformation("⌛ Starting server timeout timer...");
+        // Couple engine lifetime to readiness state
+        if (state == ReadyState.Failed)
+            _engine.Stop();
+        else if (state == ReadyState.Alive)
+            _engine.Start();
+
+        Status = state;
+    }
+
+    private void StartTimeoutTimer()
+    {
+        _logger.LogInformation("⌛ Starting server timeout timer...");
         _startupTimeoutTimer?.Dispose();
         _startupTimeoutTimer = new Timer(_ =>
         {
             if (Status != ReadyState.Alive && !_startup)
             {
-                manager.Shutdown(null, "❌ Startup timed out. Not all services connected in time.");
+                Shutdown("❌ Startup timed out. Not all services connected in time.");
             }
         }, null, TimeSpan.FromMinutes(1), Timeout.InfiniteTimeSpan);
     }
 
-    private void SubscribeToServiceEvents(
-        IConnectable service,
-        AppManager manager,
-        IEnumerable<IAction> actions,
-        TaskCompletionSource<bool> tcs,
-        ILogger logger)
+    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs)
     {
         service.OnConnected += () =>
         {
             lock (_connected)
             {
-                if (_connected.Contains(service))
-                {
-                    return;
-                }
+                if (_connected.Contains(service)) return;
 
-                logger.LogInformation($"✅ {service.ServiceName} is alive.");
+                _logger.LogInformation("✅ {Service} is alive.", service.ServiceName);
                 _connected.Add(service);
 
                 if (_connected.Count == _connectables.Count && !_startup && Status != ReadyState.Alive)
                 {
                     _startup = true;
-                    _ = RunStartupActionsAsync(actions, logger, manager.App.Services, tcs);
+                    _ = RunStartupActionsAsync(tcs);
                 }
                 else if (_connected.Count == _connectables.Count && Status != ReadyState.Alive)
                 {
                     _startupTimeoutTimer?.Dispose();
                     SignalState(ReadyState.Alive);
-                    logger.LogInformation("🚀 Altruist is now live again and ready to serve requests.");
+                    _logger.LogInformation("🚀 Altruist is now live again and ready to serve requests.");
                 }
 
                 LogStatus();
@@ -179,69 +144,63 @@ public class ServerStatus : IServerStatus
 
         service.OnFailed += ex =>
         {
-            logger.LogError($"❌ Lost connection to the service {service.ServiceName}, reason: {ex.Message}");
+            _logger.LogError("❌ Lost connection to the service {Service}, reason: {Reason}", service.ServiceName, ex.Message);
 
-            lock (_connected)
-            {
-                _connected.Remove(service);
-            }
+            lock (_connected) _connected.Remove(service);
 
-            StartTimeoutTimer(manager, logger);
+            StartTimeoutTimer();
             SignalState(ReadyState.Failed);
             LogStatus();
         };
 
         service.OnRetryExhausted += ex =>
         {
-            manager.Shutdown(ex, $"{service.ServiceName} failed to connect after all retries.");
+            Shutdown($"{service.ServiceName} failed to connect after all retries.", ex);
         };
     }
 
-    private async Task CheckAllConnectedAsync(
-        IEnumerable<IAction> actions,
-        ILogger logger,
-        IServiceProvider serviceProvider,
-        TaskCompletionSource<bool> tcs)
+    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs)
     {
         lock (_connected)
         {
             if (_connected.Count == _connectables.Count && !_startup)
             {
                 _startup = true;
-                _ = RunStartupActionsAsync(actions, logger, serviceProvider, tcs);
+                _ = RunStartupActionsAsync(tcs);
             }
         }
 
         await tcs.Task;
     }
 
-    private async Task RunStartupActionsAsync(
-        IEnumerable<IAction> actions,
-        ILogger logger,
-        IServiceProvider serviceProvider,
-        TaskCompletionSource<bool> tcs)
+    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs)
     {
         _startupTimeoutTimer?.Dispose();
-        logger.LogInformation("✅ All required services connected. Running startup actions...");
-        foreach (var action in actions)
-            await action.Run(serviceProvider);
 
         SignalState(ReadyState.Alive);
-        logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
+        _logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
         tcs.TrySetResult(true);
+
+        await Task.CompletedTask;
     }
 
-    private void LogStatus()
+    private void Shutdown(string reason, Exception? ex = null)
     {
-        Console.WriteLine(ToString());
+        if (ex is not null)
+            _logger.LogCritical(ex, "{Reason}", reason);
+        else
+            _logger.LogCritical("{Reason}", reason);
+
+        // Gracefully stop the host; last resort could be Environment.Exit(1)
+        _lifetime.StopApplication();
+        SignalState(ReadyState.Failed);
     }
+
+    private void LogStatus() => Console.WriteLine(ToString());
 
     public override string ToString()
     {
-        if (_connectables.Count == 0)
-        {
-            return string.Empty;
-        }
+        if (_connectables.Count == 0) return string.Empty;
 
         const int nameColWidth = 24;
         const int statusColWidth = 16;
@@ -265,14 +224,11 @@ public class ServerStatus : IServerStatus
         }
 
         sb.AppendLine(bottomBorder);
-
         return sb.ToString();
     }
-
 }
 
-
-public class ReadinessMiddleware
+public sealed class ReadinessMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IServerStatus _appStatus;
