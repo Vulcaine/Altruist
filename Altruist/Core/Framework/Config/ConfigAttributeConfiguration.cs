@@ -71,7 +71,7 @@ namespace Altruist
                         sp =>
                         {
                             var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<ConfigAttributeConfiguration>();
-                            var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, type, logger);
+                            var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, type, logger, attr.Lifetime);
                             try
                             {
                                 DependencyResolver.InvokePostConstruct(instance, sp, cfg, logger);

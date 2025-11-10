@@ -189,7 +189,15 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
             _logger.LogCritical("{Reason}", reason);
 
         // Gracefully stop the host; last resort could be Environment.Exit(1)
-        _lifetime.StopApplication();
+        if (_lifetime != null)
+        {
+            _lifetime.StopApplication();
+        }
+        else
+        {
+            Environment.Exit(1);
+        }
+
         SignalState(engine, ReadyState.Failed);
     }
 

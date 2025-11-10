@@ -21,6 +21,9 @@ namespace Altruist
     /// </summary>
     public static class DependencyResolver
     {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, Lazy<object>> _singletonCache
+            = new System.Collections.Concurrent.ConcurrentDictionary<Type, Lazy<object>>();
+
         private static readonly object _convLock = new();
         private static Dictionary<Type, IConfigConverter>? _converters;
 
@@ -58,14 +61,32 @@ namespace Altruist
             }
         }
 
-        /// <summary>Create an instance of <paramref name="impl"/> using DI + optional [ConfigValue] parameters/properties.
-        /// Detects circular construction and throws with a readable path if found.</summary>
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
+    => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
+
+        public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log, ServiceLifetime lifetime)
+        {
+            if (lifetime == ServiceLifetime.Singleton)
+            {
+                // Ensure exactly one instance per AppDomain for this impl type.
+                // (If you need per-provider semantics later, key by a composite that includes the provider.)
+                var lazy = _singletonCache.GetOrAdd(
+                    impl,
+                    _ => new Lazy<object>(() => CreateInstanceInternal(sp, cfg, impl, log), System.Threading.LazyThreadSafetyMode.ExecutionAndPublication)
+                );
+                return lazy.Value;
+            }
+
+            // Transient (and for now, anything else): always create a fresh instance
+            return CreateInstanceInternal(sp, cfg, impl, log);
+        }
+
+        private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
             var path = GetConstructionStack();
             if (path.Contains(impl))
             {
-                // Try to break the cycle by resolving from the container (if already registered)
+                // try container first (may already have been created/registered)
                 var resolved = sp.GetService(impl);
                 if (resolved is not null) return resolved;
 
@@ -85,9 +106,7 @@ namespace Altruist
             }
             finally
             {
-                var popped = path.Pop();
-                // sanity: should equal impl, but don't throw if not—just keep stack healthy
-                _ = popped;
+                _ = path.Pop();
             }
         }
 

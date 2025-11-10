@@ -18,7 +18,6 @@ using System.Reflection;
 using Altruist.Contracts;
 using Altruist.Persistence;
 using Altruist.UORM;
-using Cassandra;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

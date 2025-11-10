@@ -133,81 +133,84 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
                 continue;
             }
 
-            // Get the typed repository service we registered above
             var repoServiceType = typeof(IVaultRepository<>).MakeGenericType(ksInstance.GetType());
             dynamic vaultRepo = sp.GetRequiredService(repoServiceType);
 
-            // ---- Original flow (minimal reflection identical to your Build()) ----
+            _ = ConnectScyllaDBInBg(provider, group, ksInstance, sp, vaultRepo, logger);
+        }
 
-            await provider.ConnectAsync();
-            await provider.CreateKeySpaceAsync(ksInstance.Name, ksInstance.Options);
 
-            var tableModels = group.Where(m => m.GetCustomAttribute<VaultAttribute>() != null);
-            foreach (var vault in tableModels)
+        logger.LogInformation("⚡ ScyllaDB support activated. Ready to store and distribute data across realms with incredible speed! 🌌");
+    }
+
+    private async Task ConnectScyllaDBInBg(IScyllaDbProvider provider, IEnumerable<Type> group, IScyllaKeyspace ksInstance, IServiceProvider sp, dynamic vaultRepo, ILogger<ScyllaDBConfiguration> logger)
+    {
+        await provider.ConnectAsync();
+        await provider.CreateKeySpaceAsync(ksInstance.Name, ksInstance.Options);
+
+        var tableModels = group.Where(m => m.GetCustomAttribute<VaultAttribute>() != null);
+        foreach (var vault in tableModels)
+        {
+            try
             {
-                try
-                {
-                    await provider.CreateTableAsync(vault, ksInstance);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, $"Failed to create table for {vault.Name}. Reason: {ex.Message}");
-                    continue;
-                }
+                await provider.CreateTableAsync(vault, ksInstance);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to create table for {vault.Name}. Reason: {ex.Message}");
+                continue;
+            }
 
-                // Instantiate model to run hooks
-                var vaultInstance = vault.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
+            // Instantiate model to run hooks
+            var vaultInstance = vault.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
 
-                // BeforeCreate
-                try
-                {
-                    if (vaultInstance is IBeforeVaultCreate before)
-                        await before.BeforeCreateAsync(sp);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, $"Failed to run before actions for {vault.Name}. Reason: {ex.Message}");
-                }
+            // BeforeCreate
+            try
+            {
+                if (vaultInstance is IBeforeVaultCreate before)
+                    await before.BeforeCreateAsync(sp);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to run before actions for {vault.Name}. Reason: {ex.Message}");
+            }
 
-                // OnCreate preload
-                try
+            // OnCreate preload
+            try
+            {
+                if (vaultInstance is IOnVaultCreate preload)
                 {
-                    if (vaultInstance is IOnVaultCreate preload)
+                    var loaded = await preload.OnCreateAsync(sp) ?? new List<IVaultModel>();
+                    if (loaded.Count > 0)
                     {
-                        var loaded = await preload.OnCreateAsync(sp) ?? new List<IVaultModel>();
-                        if (loaded.Count > 0)
-                        {
-                            var remoteVault = vaultRepo.Select(vault);
-                            var count = await remoteVault.CountAsync();
+                        var remoteVault = vaultRepo.Select(vault);
+                        var count = await remoteVault.CountAsync();
 
-                            if (count == 0)
-                            {
-                                await vaultRepo.Select(vault).SaveBatchAsync(loaded);
-                                logger.LogInformation($"Streamed {loaded.Count} items into {vault.Name} vault.");
-                            }
+                        if (count == 0)
+                        {
+                            await vaultRepo.Select(vault).SaveBatchAsync(loaded);
+                            logger.LogInformation($"Streamed {loaded.Count} items into {vault.Name} vault.");
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, $"Failed to run preload actions for {vault.Name}. Reason: {ex.Message}");
-                }
-
-                // AfterCreate
-                try
-                {
-                    if (vaultInstance is IAfterVaultCreate after)
-                        await after.AfterCreateAsync(sp);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, $"Failed to run after actions for {vault.Name}. Reason: {ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to run preload actions for {vault.Name}. Reason: {ex.Message}");
             }
 
-            await provider.ShutdownAsync();
+            // AfterCreate
+            try
+            {
+                if (vaultInstance is IAfterVaultCreate after)
+                    await after.AfterCreateAsync(sp);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"Failed to run after actions for {vault.Name}. Reason: {ex.Message}");
+            }
         }
 
-        logger.LogInformation("⚡ ScyllaDB support activated. Ready to store and distribute data across realms with incredible speed! 🌌");
+        await provider.ShutdownAsync();
     }
 }

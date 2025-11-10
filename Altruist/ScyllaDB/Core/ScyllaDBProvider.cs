@@ -7,11 +7,11 @@ You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 
 using System.Reflection;
 using System.Text;
+using Altruist.Contracts;
+using Altruist.Persistence;
+using Altruist.UORM;
 using Cassandra;
 using Cassandra.Mapping;
-using Altruist.UORM;
-using Altruist.Persistence;
-using Altruist.Contracts;
 
 namespace Altruist.ScyllaDB;
 
@@ -421,15 +421,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
         {
             while (!_healthCheckCts.Token.IsCancellationRequested)
             {
-                try
-                {
-                    await HealthCheckAsync();
-                    await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCheckCts.Token);
-                }
-                catch (Exception ex)
-                {
-
-                }
+                await HealthCheckAsync();
+                await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCheckCts.Token);
             }
         });
     }

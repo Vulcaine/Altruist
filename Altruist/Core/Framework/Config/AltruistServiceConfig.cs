@@ -77,7 +77,7 @@ namespace Altruist
                     svcType,
                     sp =>
                     {
-                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log);
+                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, svcAttr.Lifetime);
                         try
                         {
                             DependencyResolver.InvokePostConstruct(obj, sp, cfg, log);
