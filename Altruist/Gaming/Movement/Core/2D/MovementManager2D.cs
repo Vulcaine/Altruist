@@ -1,4 +1,6 @@
+
 // MovementManager2D.cs (Movement module)
+
 using System.Numerics;
 using Altruist.Physx.TwoD;
 
@@ -26,18 +28,26 @@ namespace Altruist.Gaming.Movement.TwoD
     [Service(typeof(IMovementManager2D))]
     public sealed class MovementManager2D : IMovementManager2D
     {
-        private readonly IPhysxMovementEngine _physxMovement;
+        private readonly IPhysxMovementEngine2D _physxMovement;
 
         private sealed class Entry
         {
             public IPhysxBody2D Body = default!;
             public MovementDriver2D Driver = default!;
-            public MovementIntent2D Intent = new(Vector2.Zero, 0f, false, false, Vector2.Zero);
+            // default intent now includes Jump=false explicitly (for clarity)
+            public MovementIntent2D Intent = new(
+                Move: Vector2.Zero,
+                AimAngleRad: 0f,
+                Jump: false,
+                Boost: false,
+                Dash: false,
+                Knockback: Vector2.Zero
+            );
         }
 
         private readonly Dictionary<string, Entry> _players = new(StringComparer.Ordinal);
 
-        public MovementManager2D(IPhysxMovementEngine physxMovement, IMovementPipeline2D defaultPipeline)
+        public MovementManager2D(IPhysxMovementEngine2D physxMovement, IMovementPipeline2D defaultPipeline)
         {
             _physxMovement = physxMovement;
         }
@@ -61,7 +71,13 @@ namespace Altruist.Gaming.Movement.TwoD
             {
                 Body = body,
                 Driver = driver,
-                Intent = new MovementIntent2D(Vector2.Zero, initialState.AngleRad)
+                Intent = new MovementIntent2D(
+                    Move: Vector2.Zero,
+                    AimAngleRad: initialState.AngleRad,
+                    Jump: false,
+                    Boost: false,
+                    Dash: false,
+                    Knockback: Vector2.Zero)
             };
             return true;
         }
@@ -77,7 +93,16 @@ namespace Altruist.Gaming.Movement.TwoD
         public void ClearPlayerIntent(string playerId)
         {
             if (_players.TryGetValue(playerId, out var e))
-                e.Intent = new MovementIntent2D(Vector2.Zero, e.Driver.State.AngleRad);
+            {
+                e.Intent = new MovementIntent2D(
+                    Move: Vector2.Zero,
+                    AimAngleRad: e.Driver.State.AngleRad,
+                    Jump: false,
+                    Boost: false,
+                    Dash: false,
+                    Knockback: Vector2.Zero
+                );
+            }
         }
 
         public bool SetPlayerProfile(string playerId, MovementProfile2D profile)

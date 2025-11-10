@@ -7,10 +7,10 @@ public sealed class MovementDriver2D
     public MovementState2D State { get; private set; }
 
     public IMovementPipeline2D Pipeline { get; set; }
-    private readonly IPhysxMovementEngine _physx;
+    private readonly IPhysxMovementEngine2D _physx;
 
     public MovementDriver2D(object body, MovementProfile2D profile,
-                            MovementState2D initialState, IMovementPipeline2D pipeline, IPhysxMovementEngine physx)
+                            MovementState2D initialState, IMovementPipeline2D pipeline, IPhysxMovementEngine2D physx)
     {
         Body = body; Profile = profile; Pipeline = pipeline; _physx = physx;
         State = initialState;
@@ -20,7 +20,7 @@ public sealed class MovementDriver2D
     {
         var result = Pipeline.Evaluate(intent, State, Profile, dt);
         _physx.Apply(Body, result, dt);
-        // cache State.Velocty/Angle here
+        // cache State.Velocity/Angle here
         State = State with { Velocity = result.LinearVelocity, AngleRad = State.AngleRad + result.AngularDeltaRad };
     }
 }
