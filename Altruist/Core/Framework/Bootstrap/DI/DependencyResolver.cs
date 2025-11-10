@@ -318,7 +318,7 @@ namespace Altruist
                 TryAddConverter(map, temp, t, log);
             }
             if (map.Count > 0)
-                log.LogInformation("🔧 Discovered {Count} ConfigConverter(s).", map.Count);
+                log.LogDebug("🔧 Discovered {Count} ConfigConverter(s).", map.Count);
             return map;
         }
 

@@ -56,7 +56,7 @@ namespace Altruist
             TypeDiscovery.FindTypesWithAttribute<TAttr>(GetAssemblies());
 
         private static void LogRegistered(ILogger logger, List<string> reg)
-        { if (reg.Count > 0) logger.LogInformation("✅ Registered services:\n{Services}", string.Join("\n", reg)); }
+        { if (reg.Count > 0) logger.LogDebug("✅ Registered services:\n{Services}", string.Join("\n", reg)); }
 
         // ---------- Service & Portal registration ----------
 

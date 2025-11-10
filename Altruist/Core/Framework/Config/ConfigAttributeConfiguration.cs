@@ -121,7 +121,7 @@ namespace Altruist
                     }
 
                     await configInstance.Configure(services).ConfigureAwait(false);
-                    logger.LogInformation("✅ Ran Configure for {Type} (Order={Order}).", type.FullName, attr.Order);
+                    logger.LogDebug("✅ Ran Configure for {Type} (Order={Order}).", type.FullName, attr.Order);
                 }
                 catch (TargetInvocationException tie) when (tie.InnerException is not null)
                 {

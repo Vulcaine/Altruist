@@ -69,7 +69,7 @@ namespace Altruist
             }
 
             if (registered.Count > 0)
-                logger.LogInformation("🎮 Registered prefabs:\n{Prefabs}", string.Join("\n", registered));
+                logger.LogDebug("🎮 Registered prefabs:\n{Prefabs}", string.Join("\n", registered));
 
             return Task.CompletedTask;
         }

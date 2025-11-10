@@ -15,7 +15,7 @@ namespace Altruist
                 .GetRequiredService<ILoggerFactory>()
                 .CreateLogger<AltruistModuleConfig>();
 
-            logger.LogInformation("🧩 Discovering Altruist modules...");
+            logger.LogDebug("🧩 Discovering Altruist modules...");
 
             var assemblies = AppDomain.CurrentDomain.GetAssemblies()
                 .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
@@ -28,7 +28,7 @@ namespace Altruist
 
             if (modules.Length == 0)
             {
-                logger.LogInformation("ℹ️ No modules annotated with [AltruistModule] found.");
+                logger.LogDebug("ℹ️ No modules annotated with [AltruistModule] found.");
             }
             else
             {
@@ -84,7 +84,7 @@ namespace Altruist
                 }
 
                 if (invoked.Count > 0)
-                    logger.LogInformation("✅ Invoked module loaders:\n{List}", string.Join("\n", invoked.Select(s => "\t" + s)));
+                    logger.LogDebug("✅ Invoked module loaders:\n{List}", string.Join("\n", invoked.Select(s => "\t" + s)));
             }
 
             BindConfigurationClasses(services, logger);
@@ -106,7 +106,7 @@ namespace Altruist
 
             if (cfgTypes.Length == 0)
             {
-                logger.LogInformation("ℹ️ No classes annotated with [ConfigurationProperties] found.");
+                logger.LogDebug("ℹ️ No classes annotated with [ConfigurationProperties] found.");
                 return;
             }
 
@@ -137,7 +137,7 @@ namespace Altruist
                     var ireadOnlyListType = typeof(IReadOnlyList<>).MakeGenericType(t);
                     services.AddSingleton(ienumType, sp => sp.GetRequiredService(listType));
                     services.AddSingleton(ireadOnlyListType, sp => sp.GetRequiredService(listType));
-                    logger.LogInformation("🔧 Bound config array '{Path}' to {Type}.", attr.Path, listType.Name);
+                    logger.LogDebug("🔧 Bound config array '{Path}' to {Type}.", attr.Path, listType.Name);
                 }
                 else
                 {
@@ -150,7 +150,7 @@ namespace Altruist
 
                     section.Bind(instance);
                     services.AddSingleton(t, instance);
-                    logger.LogInformation("🔧 Bound config '{Path}' to {Type}.", attr.Path, t.Name);
+                    logger.LogDebug("🔧 Bound config '{Path}' to {Type}.", attr.Path, t.Name);
                 }
             }
         }
