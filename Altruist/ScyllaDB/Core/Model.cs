@@ -42,6 +42,7 @@ public abstract class ScyllaKeyspace : IScyllaKeyspace
     public IDatabaseServiceToken DatabaseToken => ScyllaDBToken.Instance;
 }
 
+[Keyspace("altruist")]
 public class DefaultScyllaKeyspace : ScyllaKeyspace
 {
 }
