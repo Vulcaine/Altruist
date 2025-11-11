@@ -18,32 +18,32 @@ namespace Altruist.Gaming;
 
 public abstract class AltruistGameSessionPortal : IPortal
 {
-    protected readonly IGameSessionService _sessionService;
+    protected readonly IGameSessionService _gameSessionService;
     protected AltruistGameSessionPortal(IGameSessionService gameSessionService)
     {
-        _sessionService = gameSessionService;
+        _gameSessionService = gameSessionService;
     }
 
     [Gate(IngressEP.Handshake)]
     public async virtual Task HandshakeAsync(HandshakePacket message, string clientId)
     {
-        await _sessionService.HandshakeAsync(message, clientId);
+        await _gameSessionService.HandshakeAsync(message, clientId);
     }
 
     [Gate(IngressEP.LeaveGame)]
     public async virtual Task ExitGameAsync(LeaveGamePacket message, string clientId)
     {
-        await _sessionService.ExitGameAsync(message, clientId);
+        await _gameSessionService.ExitGameAsync(message, clientId);
     }
 
     [Gate(IngressEP.JoinGame)]
     public async virtual Task JoinGameAsync(JoinGamePacket message, string clientId)
     {
-        await _sessionService.JoinGameAsync(message, clientId);
+        await _gameSessionService.JoinGameAsync(message, clientId);
     }
 
     public async Task Cleanup()
     {
-        await _sessionService.Cleanup();
+        await _gameSessionService.Cleanup();
     }
 }

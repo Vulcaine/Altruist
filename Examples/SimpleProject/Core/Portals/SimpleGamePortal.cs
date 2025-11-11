@@ -3,12 +3,11 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using Altruist;
 using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
 using SimpleGame.Entities;
 
-namespace Portals;
+namespace Altruist.SimpleGame;
 
 [Portal("/game")]
 public class SimpleGamePortal : AltruistGameSessionPortal
@@ -30,6 +29,7 @@ public class SimpleGamePortal : AltruistGameSessionPortal
     public override async Task JoinGameAsync(JoinGamePacket message, string clientId)
     {
         await base.JoinGameAsync(message, clientId);
+        PlayerSessionContext context = (await _gameSessionService.GetContext<PlayerSessionContext>(clientId))!;
 
         // THIS SHOULD GO ONCE AT STARTUP OR CHARACTER CREATION
         // await _prefabManager.CreateAsync<SimpleSpaceshipPrefab>(cfg =>
@@ -37,7 +37,7 @@ public class SimpleGamePortal : AltruistGameSessionPortal
         //     cfg.Get<Spaceship>().Speed = 5;       // optional
         // });
 
-        var handle = await _prefabManager.LoadAsync<SimpleSpaceshipPrefab>("");
+        var handle = await _prefabManager.LoadAsync<SimpleSpaceshipPrefab>(context.PlayerId);
         var shipInstance = handle.Manifest;
         await _gameworldManager.AddDynamicObject(shipInstance);
     }
