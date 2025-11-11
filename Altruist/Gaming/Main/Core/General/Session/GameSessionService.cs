@@ -23,7 +23,6 @@ public class GameSessionService : IGameSessionService
     private readonly IAltruistRouter _router;
     private readonly ILogger _logger;
 
-    // clientId -> list of arbitrary context objects
     private readonly ConcurrentDictionary<string, List<object>> _contexts =
         new(StringComparer.Ordinal);
 
@@ -110,7 +109,6 @@ public class GameSessionService : IGameSessionService
         {
             var msg = $"Player {message.Name} joined the room: {room.Id}.";
             _logger.LogInformation(msg);
-            // Userland code can now SetContext<Account/Character/etc>(clientId, value) elsewhere.
         }
     }
 

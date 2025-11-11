@@ -14,8 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using Altruist;
 using Altruist.UORM;
 using Microsoft.EntityFrameworkCore.Query;
 
@@ -36,48 +38,55 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ICqlDatabaseProvider _databaseProvider;
-    private Dictionary<QueryPosition, HashSet<string>> _queryParts;
-    private Dictionary<QueryPosition, List<object>> _queryParameters;
+
+    // Query state (no reflection involved)
+    private readonly Dictionary<QueryPosition, HashSet<string>> _queryParts = new()
+    {
+        { QueryPosition.SELECT,   new HashSet<string>(StringComparer.Ordinal) },
+        { QueryPosition.FROM,     new HashSet<string>(StringComparer.Ordinal) },
+        { QueryPosition.WHERE,    new HashSet<string>(StringComparer.Ordinal) },
+        { QueryPosition.ORDER_BY, new HashSet<string>(StringComparer.Ordinal) },
+        { QueryPosition.LIMIT,    new HashSet<string>(StringComparer.Ordinal) },
+        { QueryPosition.UPDATE,   new HashSet<string>(StringComparer.Ordinal) },
+        { QueryPosition.SET,      new HashSet<string>(StringComparer.Ordinal) }
+    };
+
+    private readonly Dictionary<QueryPosition, List<object?>> _queryParameters = new()
+    {
+        { QueryPosition.SELECT,   new List<object?>() },
+        { QueryPosition.FROM,     new List<object?>() },
+        { QueryPosition.WHERE,    new List<object?>() },
+        { QueryPosition.ORDER_BY, new List<object?>() },
+        { QueryPosition.LIMIT,    new List<object?>() },
+        { QueryPosition.UPDATE,   new List<object?>() },
+        { QueryPosition.SET,      new List<object?>() }
+    };
 
     public IKeyspace Keyspace { get; }
-
     protected Document _document { get; }
+
+    // -------- Static caches to avoid per-call reflection --------
+    private static readonly VaultMetadata _vaultMeta = VaultRegistry.GetByClr(typeof(TVaultModel));
+
+    // Timestamp setter (optional) compiled once per model type
+    private static readonly Action<object, DateTime>? _timestampSetter =
+        TimestampSetterFactory.Create(typeof(TVaultModel));
 
     public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace, Document document, IServiceProvider serviceProvider)
     {
-        _document = document;
         _databaseProvider = databaseProvider;
-        _queryParts = new Dictionary<QueryPosition, HashSet<string>>()
-        {
-            { QueryPosition.SELECT, new HashSet<string>() },
-            { QueryPosition.FROM, new HashSet<string>() },
-            { QueryPosition.WHERE, new HashSet<string>() },
-            { QueryPosition.ORDER_BY, new HashSet<string>() },
-            { QueryPosition.LIMIT, new HashSet<string>() },
-            { QueryPosition.UPDATE, new HashSet<string>() },
-            { QueryPosition.SET, new HashSet<string>() }
-        };
-
-        _queryParameters = new Dictionary<QueryPosition, List<object>>()
-        {
-            { QueryPosition.SELECT, new List<object>() },
-            { QueryPosition.FROM, new List<object>() },
-            { QueryPosition.WHERE, new List<object>() },
-            { QueryPosition.ORDER_BY, new List<object>() },
-            { QueryPosition.LIMIT, new List<object>() },
-            { QueryPosition.UPDATE, new List<object>() },
-            { QueryPosition.SET, new List<object>() }
-        };
-
+        _document = document;           // holds Name, Columns, PropertyAccessors, StoreHistory, etc.
         Keyspace = keyspace;
         _serviceProvider = serviceProvider;
     }
 
+    // ---------------------------- Public API ----------------------------
+
     public Task SaveAsync(TVaultModel entity, bool? saveHistory = false) =>
-        SaveEntityAsync(entity, saveHistory, false);
+        SaveEntityAsync(entity!, saveHistory, validate: false);
 
     public Task SaveAsync(object entity, bool? saveHistory = false) =>
-        SaveEntityAsync(entity, saveHistory);
+        SaveEntityAsync(entity, saveHistory, validate: true);
 
     public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
         SaveEntitiesAsync(entities.Cast<object>(), saveHistory);
@@ -85,167 +94,11 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     public Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false) =>
         SaveEntitiesAsync(entities, saveHistory);
 
-
-    private void ValidateEntityType(Type entityType)
-    {
-        if (!typeof(IVaultModel).IsAssignableFrom(entityType))
-        {
-            throw new InvalidOperationException($"Entity type {entityType.Name} does not implement IVaultModel.");
-        }
-    }
-
-    private string BuildInsertQuery(string tableName, IEnumerable<string> columns) =>
-        $"INSERT INTO {tableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", columns.Select(_ => "?"))})";
-
-    private string BuildHistoryQuery(string tableName, IEnumerable<string> columns) =>
-        $"INSERT INTO {tableName}_history ({string.Join(", ", columns)}, timestamp) VALUES ({string.Join(", ", columns.Select(_ => "?"))}, ?)";
-
-    private object?[] GetParameterValues(object entity, IEnumerable<string> fields, bool includeTimestamp = false)
-    {
-        var values = fields.Select(field => _document.PropertyAccessors[field](entity)).ToList();
-
-        if (includeTimestamp)
-        {
-            var now = DateTime.UtcNow;
-            var prop = entity.GetType().GetProperty("Timestamp");
-            prop?.SetValue(entity, now);
-            values.Add(now);
-        }
-
-        return values.ToArray();
-    }
-
-    private async Task SaveEntityAsync(object entity, bool? saveHistory = false, bool? validate = false)
-    {
-        if (entity == null) throw new ArgumentNullException(nameof(entity));
-
-        var type = entity.GetType();
-        if (validate == true) ValidateEntityType(type);
-
-        var tableAttr = type.GetCustomAttribute<VaultAttribute>();
-        var tableName = tableAttr?.Name ?? type.Name;
-
-        var columns = _document.Columns;
-        var fields = columns.Keys;
-
-        var insertQuery = BuildInsertQuery(tableName, columns.Values);
-        var parameters = GetParameterValues(entity, fields, false).ToList();
-
-        var queries = new List<string> { insertQuery };
-
-        if (tableAttr?.StoreHistory == true && saveHistory == true)
-        {
-            var historyQuery = BuildHistoryQuery(tableName, fields);
-            queries.Add(historyQuery);
-
-            var historyParams = GetParameterValues(entity, fields, true);
-            parameters.AddRange(historyParams.Skip(fields.Count()));
-        }
-        else if (saveHistory == true)
-        {
-            throw new Exception($"History is not enabled for the table {tableName}. Consider adding StoreHistory=true");
-        }
-
-        var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
-
-        bool canSave = true;
-        if (entity is IBeforeVaultSave before)
-        {
-            canSave = await before.BeforeSaveAsync(_serviceProvider);
-        }
-
-        if (canSave)
-        {
-            await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
-        }
-
-        if (entity is IAfterVaultSave after)
-        {
-            await after.AfterSaveAsync(_serviceProvider);
-        }
-    }
-
-
-    private async Task SaveEntitiesAsync(IEnumerable<object> entities, bool? saveHistory = false)
-    {
-        if (entities == null || !entities.Any())
-            throw new ArgumentException("Entities cannot be null or empty.");
-
-        var type = entities.First().GetType();
-        ValidateEntityType(type);
-
-        var tableName = _document.Name;
-        var columns = _document.Columns;
-        var fields = columns.Keys;
-
-        var insertQuery = BuildInsertQuery(tableName, columns.Values);
-        var historyQuery = BuildHistoryQuery(tableName, columns.Values);
-
-        var queries = new List<string>();
-        var allParams = new List<object?>();
-
-        foreach (var entity in entities)
-        {
-            bool canSave = true;
-
-            if (entity is IBeforeVaultSave before)
-            {
-                canSave = await before.BeforeSaveAsync(_serviceProvider);
-            }
-
-            if (canSave)
-            {
-                queries.Add(insertQuery);
-                allParams.AddRange(GetParameterValues(entity, fields, false));
-
-                if (_document.StoreHistory == true)
-                {
-                    queries.Add(historyQuery);
-                    allParams.AddRange(GetParameterValues(entity, fields, true).Skip(fields.Count()));
-                }
-                else if (saveHistory == true)
-                {
-                    throw new Exception($"History is not enabled for the table {tableName}. Consider adding StoreHistory=true");
-                }
-            }
-        }
-
-        var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
-
-        await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
-
-        foreach (var entity in entities)
-        {
-            if (entity is IAfterVaultSave after)
-            {
-                await after.AfterSaveAsync(_serviceProvider);
-            }
-        }
-    }
-
-
-    private void AddToQuery(QueryPosition position, string queryPart, object parameter = null!)
-    {
-        if (!_queryParts.ContainsKey(position))
-            throw new ArgumentOutOfRangeException($"Invalid query position: {position}");
-
-        _queryParts[position].Add(queryPart);
-        if (parameter != null)
-        {
-            _queryParameters[position].Add(parameter);
-        }
-    }
-
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
     {
         string whereClause = ConvertWherePredicateToString(predicate);
         AddToQuery(QueryPosition.WHERE, whereClause);
-        if (_queryParts[QueryPosition.SELECT].Count == 0)
-        {
-            AddToQuery(QueryPosition.SELECT,
-    string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}")));
-
-        }
+        EnsureProjectionSelected();
         return this;
     }
 
@@ -253,8 +106,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         string orderByClause = ConvertOrderByToString(keySelector);
         AddToQuery(QueryPosition.ORDER_BY, orderByClause);
-        // we have to make sure the ordered property is selected
-        AddToQuery(QueryPosition.SELECT, orderByClause);
+        AddToQuery(QueryPosition.SELECT, orderByClause); // ensure ordered column is projected
         return this;
     }
 
@@ -269,18 +121,14 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     public IVault<TVaultModel> Take(int count)
     {
         AddToQuery(QueryPosition.LIMIT, $"LIMIT {count}");
-        if (_queryParts[QueryPosition.SELECT].Count == 0)
-        {
-            AddToQuery(QueryPosition.SELECT,
-     string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}")));
-
-        }
+        EnsureProjectionSelected();
         return this;
     }
 
     public async Task<List<TVaultModel>> ToListAsync()
     {
         string query = BuildSelectQuery();
+        // Only DB call is the “expensive” op
         return (await _databaseProvider.QueryAsync<TVaultModel>(query, _queryParameters[QueryPosition.SELECT])).ToList();
     }
 
@@ -306,27 +154,19 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public async Task<long> CountAsync()
     {
-        string countQuery = $"SELECT COUNT(*) FROM {_document.Name}";
-        string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
+        var countQuery = $"SELECT COUNT(*) FROM {_document.Name}";
+        var whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(whereClause))
-        {
             countQuery += $" WHERE {whereClause}";
-        }
 
         return await _databaseProvider.ExecuteCountAsync(countQuery, _queryParameters[QueryPosition.WHERE]);
     }
 
     public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
-        var setClauseParts = new List<object>();
         var updatedProperties = ExtractSetProperties(setPropertyCalls);
-
-        foreach (var property in updatedProperties)
-        {
-            setClauseParts.Add($"{property.Key} = {property.Value}");
-        }
-
-        _queryParameters[QueryPosition.SET] = setClauseParts;
+        _queryParameters[QueryPosition.SET] = updatedProperties
+            .Select(kv => (object)$"{kv.Key} = {ConvertToCqlValue(kv.Value)}").ToList();
 
         string updateQuery = BuildUpdateQuery();
         var concatenatedParameters = _queryParameters[QueryPosition.WHERE]
@@ -335,74 +175,225 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         return await _databaseProvider.ExecuteAsync(updateQuery, concatenatedParameters);
     }
 
-    private Dictionary<string, object> ExtractSetProperties(
-        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    public async Task<bool> DeleteAsync()
     {
-        var updatedProperties = new Dictionary<string, object>();
+        string deleteQuery = $"DELETE FROM {_document.Name}";
+        var whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
+        if (!string.IsNullOrEmpty(whereClause))
+            deleteQuery += $" WHERE {whereClause}";
 
-        if (setPropertyCalls.Body is MemberInitExpression memberInit)
+        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _queryParameters[QueryPosition.WHERE]);
+        return affectedRows > 0;
+    }
+
+    public Task<ICursor<TVaultModel>> ToCursorAsync()
+    {
+        throw new NotImplementedException();
+    }
+
+    public IVault<TVaultModel> Skip(int count)
+    {
+        // No native OFFSET in Cassandra
+        throw new NotSupportedException("Cassandra does not support skipping rows. Use paging with a WHERE clause instead.");
+    }
+
+    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(
+     Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
+    {
+        if (_queryParts[QueryPosition.SELECT].Contains("*"))
+            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
+
+        foreach (var column in ConvertSelectExpressionToString(selector))
+            AddToQuery(QueryPosition.SELECT, column);
+
+        var query = BuildSelectQuery();
+        return await _databaseProvider.QueryAsync<TResult>(query, _queryParameters[QueryPosition.SELECT]);
+    }
+
+    private IEnumerable<string> ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
+    {
+        if (selector.Body is NewExpression ne && ne.Members is not null)
         {
-            foreach (var binding in memberInit.Bindings.OfType<MemberAssignment>())
+            foreach (var m in ne.Members)
             {
-                string propertyName = binding.Member.Name;
-                object propertyValue = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
+                var propName = m.Name;
+                var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+                yield return $"{column} AS {propName}";
+            }
+            yield break;
+        }
 
-                updatedProperties[propertyName] = propertyValue;
+        throw new NotSupportedException("Unsupported expression type for SELECT. Use: x => new(...) with properties.");
+    }
+
+    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    {
+        // Reuse the pipeline to build WHERE once (no extra work besides DB call)
+        Where(predicate);
+
+        var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
+        var query = string.IsNullOrEmpty(where)
+            ? $"SELECT COUNT(*) FROM {_document.Name}"
+            : $"SELECT COUNT(*) FROM {_document.Name} WHERE {where}";
+
+        var count = await _databaseProvider.ExecuteCountAsync(query, _queryParameters[QueryPosition.WHERE]);
+        return count > 0;
+    }
+
+    // ---------------------------- Saves (no reflection per call) ----------------------------
+
+    private async Task SaveEntityAsync(object entity, bool? saveHistory = false, bool validate = false)
+    {
+        if (entity is null) throw new ArgumentNullException(nameof(entity));
+        if (validate && entity is not IVaultModel)
+            throw new InvalidOperationException($"Entity type {entity.GetType().Name} does not implement IVaultModel.");
+
+        // table name & columns from Document (pre-built, no reflection)
+        var tableName = _document.Name;
+        var fields = _document.Columns.Keys;
+        var insertQuery = BuildInsertQuery(tableName, _document.Columns.Values);
+
+        var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
+        var queries = new List<string> { insertQuery };
+
+        // history (from Document flag) — no attribute reflection here
+        if (_document.StoreHistory == true)
+        {
+            if (saveHistory == true)
+            {
+                var historyQuery = BuildHistoryQuery(tableName, _document.Columns.Values);
+                queries.Add(historyQuery);
+
+                var historyParams = GetParameterValues(entity, fields, includeTimestamp: true);
+                parameters.AddRange(historyParams.Skip(fields.Count()));
+            }
+        }
+        else if (saveHistory == true)
+        {
+            throw new InvalidOperationException($"History is not enabled for the table {tableName}. Consider enabling StoreHistory=true.");
+        }
+
+        var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
+
+        var canSave = true;
+        if (entity is IBeforeVaultSave before)
+            canSave = await before.BeforeSaveAsync(_serviceProvider);
+
+        if (canSave)
+            await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
+
+        if (entity is IAfterVaultSave after)
+            await after.AfterSaveAsync(_serviceProvider);
+    }
+
+    private async Task SaveEntitiesAsync(IEnumerable<object> entities, bool? saveHistory = false)
+    {
+        if (entities is null) throw new ArgumentNullException(nameof(entities));
+        var list = entities as IList<object> ?? entities.ToList();
+        if (list.Count == 0) throw new ArgumentException("Entities cannot be empty.", nameof(entities));
+
+        // Validate once
+        if (list[0] is not IVaultModel)
+            throw new InvalidOperationException($"Entity type {list[0].GetType().Name} does not implement IVaultModel.");
+
+        var tableName = _document.Name;
+        var fields = _document.Columns.Keys;
+        var insertQuery = BuildInsertQuery(tableName, _document.Columns.Values);
+        var historyQuery = BuildHistoryQuery(tableName, _document.Columns.Values);
+
+        var queries = new List<string>();
+        var allParams = new List<object?>();
+
+        foreach (var e in list)
+        {
+            var canSave = true;
+            if (e is IBeforeVaultSave b) canSave = await b.BeforeSaveAsync(_serviceProvider);
+            if (!canSave) continue;
+
+            queries.Add(insertQuery);
+            allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
+
+            if (_document.StoreHistory == true)
+            {
+                if (saveHistory == true)
+                {
+                    queries.Add(historyQuery);
+                    allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: true).Skip(fields.Count()));
+                }
+            }
+            else if (saveHistory == true)
+            {
+                throw new InvalidOperationException($"History is not enabled for the table {tableName}. Consider enabling StoreHistory=true.");
             }
         }
 
-        return updatedProperties;
+        if (queries.Count == 0) return;
+
+        var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
+        await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
+
+        foreach (var e in list)
+            if (e is IAfterVaultSave a) await a.AfterSaveAsync(_serviceProvider);
     }
 
+    // ---------------------------- Query building helpers ----------------------------
+
+    private void EnsureProjectionSelected()
+    {
+        if (_queryParts[QueryPosition.SELECT].Count == 0)
+        {
+            AddToQuery(QueryPosition.SELECT,
+                string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}")));
+        }
+    }
+
+    private void AddToQuery(QueryPosition position, string queryPart, object? parameter = null)
+    {
+        _queryParts[position].Add(queryPart);
+        if (parameter is not null)
+            _queryParameters[position].Add(parameter);
+    }
 
     public string BuildSelectQuery()
     {
-        string selectQuery = $"SELECT {string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"))} FROM {_document.Name}";
+        var select = _queryParts[QueryPosition.SELECT].Count == 0
+            ? string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"))
+            : string.Join(", ", _queryParts[QueryPosition.SELECT]);
 
-        string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            selectQuery += $" WHERE {whereClause}";
-        }
+        string selectQuery = $"SELECT {select} FROM {_document.Name}";
 
-        string orderByClause = string.Join(", ", _queryParts[QueryPosition.ORDER_BY]);
-        if (!string.IsNullOrEmpty(orderByClause))
-        {
-            selectQuery += $" ORDER BY {orderByClause}";
-        }
+        var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
+        if (!string.IsNullOrEmpty(where)) selectQuery += $" WHERE {where}";
 
-        string limitClause = string.Join(" ", _queryParts[QueryPosition.LIMIT]);
-        if (!string.IsNullOrEmpty(limitClause))
-        {
-            selectQuery += $" {limitClause}";
-        }
+        var orderBy = string.Join(", ", _queryParts[QueryPosition.ORDER_BY]);
+        if (!string.IsNullOrEmpty(orderBy)) selectQuery += $" ORDER BY {orderBy}";
+
+        var limit = string.Join(" ", _queryParts[QueryPosition.LIMIT]);
+        if (!string.IsNullOrEmpty(limit)) selectQuery += $" {limit}";
 
         return selectQuery;
     }
 
     public string BuildUpdateQuery()
     {
-        string updateQuery = $"UPDATE {_document.Name} SET {string.Join(", ", _queryParts[QueryPosition.SET])}";
+        var set = string.Join(", ", _queryParts[QueryPosition.SET]);
+        var updateQuery = $"UPDATE {_document.Name} SET {set}";
 
-        string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            updateQuery += $" WHERE {whereClause}";
-        }
+        var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
+        if (!string.IsNullOrEmpty(where)) updateQuery += $" WHERE {where}";
 
         return updateQuery;
     }
 
     private string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
     {
-        if (predicate.Body is BinaryExpression binaryExpression)
+        if (predicate.Body is BinaryExpression be)
         {
-            var left = ParseExpression(binaryExpression.Left);
-            var rightValue = ExpressionUtils.Evaluate(binaryExpression.Right);
-            string right = ConvertToCqlValue(rightValue);
-            string @operator = GetOperator(binaryExpression.NodeType);
-
-            return $"{left} {@operator} {right}";
+            var left = ParseExpression(be.Left);
+            var rightVal = ExpressionUtils.Evaluate(be.Right);
+            var right = ConvertToCqlValue(rightVal);
+            var op = GetOperator(be.NodeType);
+            return $"{left} {op} {right}";
         }
 
         throw new NotSupportedException("Unsupported expression type in WHERE clause.");
@@ -410,47 +401,19 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     private string ParseExpression(Expression expression)
     {
-        if (expression is MemberExpression memberExpression)
+        if (expression is MemberExpression me)
         {
-            _document.Columns.TryGetValue(memberExpression.Member.Name, out var column);
-            return column ?? Document.ToCamelCase(memberExpression.Member.Name);
+            // Map property to column using Document (precomputed lookup)
+            if (_document.Columns.TryGetValue(me.Member.Name, out var column))
+                return column;
+            return Document.ToCamelCase(me.Member.Name);
         }
 
         throw new NotSupportedException("Unsupported expression type.");
     }
 
-
-    private string ConvertTimeSpanToDatabaseFormat(TimeSpan ts)
-    {
-        if (ts.TotalSeconds < 60)
-            return $"{ts.Seconds}s";
-        if (ts.TotalMinutes < 60)
-            return $"{ts.Minutes}m";
-        if (ts.TotalHours < 24)
-            return $"{ts.Hours}h";
-        return $"{ts.Days}d";
-    }
-
-    private string ConvertToCqlValue(object? value)
-    {
-        if (value == null)
-            return "NULL";
-
-        return value switch
-        {
-            string s => $"'{s.Replace("'", "''")}'", // escape single quotes
-            bool b => b ? "TRUE" : "FALSE",
-            DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-            TimeSpan ts => $"'{ConvertTimeSpanToDatabaseFormat(ts)}'",
-            Enum e => $"'{e}'",
-            _ => value.ToString()!
-        };
-    }
-
-
-    private string GetOperator(ExpressionType expressionType)
-    {
-        return expressionType switch
+    private static string GetOperator(ExpressionType expressionType) =>
+        expressionType switch
         {
             ExpressionType.Equal => "=",
             ExpressionType.GreaterThan => ">",
@@ -459,113 +422,113 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             ExpressionType.OrElse => "OR",
             _ => throw new NotSupportedException($"Unsupported operator: {expressionType}")
         };
-    }
 
     private string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        if (keySelector.Body is MemberExpression memberExpression)
-        {
-            return memberExpression.Member.Name;
-        }
+        if (keySelector.Body is MemberExpression me)
+            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
 
         throw new NotSupportedException("Unsupported expression type in ORDER BY clause.");
     }
 
     private string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        if (keySelector.Body is MemberExpression memberExpression)
-        {
-            return $"{memberExpression.Member.Name}";
-        }
+        if (keySelector.Body is MemberExpression me)
+            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
 
         throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
     }
 
-    private string ConvertSetClauseToString(Expression<Func<TVaultModel, TVaultModel>> updatedValues)
+    private Dictionary<string, object> ExtractSetProperties(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
-        var bindings = new List<string>();
+        var updated = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        if (updatedValues.Body is MemberInitExpression memberInit)
+        if (setPropertyCalls.Body is MemberInitExpression mi)
         {
-            foreach (var binding in memberInit.Bindings)
+            foreach (var binding in mi.Bindings.OfType<MemberAssignment>())
             {
-                if (binding is MemberAssignment memberAssignment)
-                {
-                    string column = memberAssignment.Member.Name;
-                    string value = ParseExpression(memberAssignment.Expression); // Assuming it's a simple assignment
-                    bindings.Add($"{column} = {value}");
-                }
+                var propName = binding.Member.Name;
+                var value = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
+                // Map to column name using Document to avoid reflection during write
+                var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+                updated[column] = value;
             }
         }
 
-        return string.Join(", ", bindings);
+        return updated;
     }
 
-    public async Task<bool> DeleteAsync()
-    {
-        string deleteQuery = $"DELETE FROM {_document.Name}";
+    private string BuildInsertQuery(string tableName, IEnumerable<string> columns) =>
+        $"INSERT INTO {tableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", columns.Select(_ => "?"))})";
 
-        string whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(whereClause))
+    private string BuildHistoryQuery(string tableName, IEnumerable<string> columns) =>
+        $"INSERT INTO {tableName}_history ({string.Join(", ", columns)}, timestamp) VALUES ({string.Join(", ", columns.Select(_ => "?"))}, ?)";
+
+    private object?[] GetParameterValues(object entity, IEnumerable<string> fields, bool includeTimestamp)
+    {
+        // All getters are precompiled delegates inside Document.PropertyAccessors
+        var values = fields.Select(field => _document.PropertyAccessors[field](entity)).ToList();
+
+        if (includeTimestamp && _timestampSetter is not null)
         {
-            deleteQuery += $" WHERE {whereClause}";
+            var now = DateTime.UtcNow;
+            _timestampSetter(entity, now);
+            values.Add(now);
         }
 
-        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _queryParameters[QueryPosition.WHERE]);
-        return affectedRows > 0;
+        return values.ToArray();
     }
 
-    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    private static string ConvertTimeSpanToDatabaseFormat(TimeSpan ts)
     {
-        Where(predicate); // Reuse existing Where() method
-
-        string query = $"SELECT COUNT(*) FROM {_document.Name} WHERE {string.Join(" AND ", _queryParts[QueryPosition.WHERE])}";
-        long count = await _databaseProvider.ExecuteAsync(query, _queryParameters[QueryPosition.WHERE]);
-
-        return count > 0;
+        if (ts.TotalSeconds < 60) return $"{ts.Seconds}s";
+        if (ts.TotalMinutes < 60) return $"{ts.Minutes}m";
+        if (ts.TotalHours < 24) return $"{ts.Hours}h";
+        return $"{ts.Days}d";
     }
 
-
-    public IVault<TVaultModel> Skip(int count)
-    {
-        // No native OFFSET in Cassandra, must be handled at the application level
-        throw new NotSupportedException("Cassandra does not support skipping rows. Use paging with a WHERE clause instead.");
-    }
-
-
-    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
-    {
-        if (_queryParts[QueryPosition.SELECT].Contains("*"))
+    private static string ConvertToCqlValue(object? value) =>
+        value switch
         {
-            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
-        }
-
-        IEnumerable<string> selectedColumns = ConvertSelectExpressionToString(selector);
-        foreach (var column in selectedColumns)
-        {
-            AddToQuery(QueryPosition.SELECT, column);
-        }
-
-        string query = BuildSelectQuery();
-        return await _databaseProvider.QueryAsync<TResult>(query, _queryParameters[QueryPosition.SELECT]);
-    }
-
-    private IEnumerable<string> ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
-    {
-        if (selector.Body is NewExpression newExpression)
-        {
-            return newExpression.Members!.Select(m => m.Name);
-        }
-
-        throw new NotSupportedException("Unsupported expression type for SELECT.");
-    }
-
-    public Task<ICursor<TVaultModel>> ToCursorAsync()
-    {
-        throw new NotImplementedException();
-    }
+            null => "NULL",
+            string s => $"'{s.Replace("'", "''")}'",
+            bool b => b ? "TRUE" : "FALSE",
+            DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
+            TimeSpan ts => $"'{ConvertTimeSpanToDatabaseFormat(ts)}'",
+            Enum e => $"'{e}'",
+            _ => value.ToString()!
+        };
 }
 
+// ---------------------------- Tiny helper to precompile Timestamp setter ----------------------------
+
+internal static class TimestampSetterFactory
+{
+    private static readonly ConcurrentDictionary<Type, Action<object, DateTime>?> _cache = new();
+
+    public static Action<object, DateTime>? Create(Type modelType)
+    {
+        return _cache.GetOrAdd(modelType, static t =>
+        {
+            // We try to find a property named "Timestamp" with a set method (case-sensitive).
+            var prop = t.GetProperty("Timestamp", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (prop is null || !prop.CanWrite || prop.PropertyType != typeof(DateTime))
+                return null;
+
+            // Build: (object target, DateTime value) => ((T)target).Timestamp = value;
+            var target = Expression.Parameter(typeof(object), "target");
+            var value = Expression.Parameter(typeof(DateTime), "value");
+
+            var casted = Expression.Convert(target, t);
+            var member = Expression.Property(casted, prop);
+            var assign = Expression.Assign(member, value);
+
+            var lambda = Expression.Lambda<Action<object, DateTime>>(assign, target, value);
+            return lambda.Compile();
+        });
+    }
+}
 
 public static class ExpressionUtils
 {
@@ -573,6 +536,7 @@ public static class ExpressionUtils
     {
         if (e.NodeType == ExpressionType.Constant)
             return ((ConstantExpression)e).Value;
+        // Compilation once per unique expression; acceptable vs DB roundtrip
         return Expression.Lambda(e).Compile().DynamicInvoke();
     }
 }

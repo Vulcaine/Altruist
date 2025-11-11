@@ -23,9 +23,9 @@ public interface IBeforeVaultCreate
 }
 
 
-public interface IOnVaultCreate
+public interface IOnVaultCreate<T> where T : class, IVaultModel
 {
-    Task<List<IVaultModel>> OnCreateAsync(IServiceProvider serviceProvider);
+    Task<List<T>> OnCreateAsync(IServiceProvider serviceProvider);
 }
 
 public interface IAfterVaultCreate
