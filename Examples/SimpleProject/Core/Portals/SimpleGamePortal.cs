@@ -1,22 +1,12 @@
 /* 
 Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0
 */
 
 using Altruist;
 using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
+using SimpleGame.Entities;
 
 namespace Portals;
 
@@ -24,17 +14,31 @@ namespace Portals;
 public class SimpleGamePortal : AltruistGameSessionPortal
 {
     private readonly IGameWorldManager3D _gameworldManager;
-    public SimpleGamePortal(IGameSessionService gameSessionService,
-        IGameWorldManager3D gameworldManager
-    ) : base(gameSessionService)
+    private readonly IPrefabManager3D _prefabManager;
+
+    public SimpleGamePortal(
+        IGameSessionService gameSessionService,
+        IGameWorldManager3D gameworldManager,
+        IPrefabManager3D prefabManager)
+        : base(gameSessionService)
     {
         _gameworldManager = gameworldManager;
+        _prefabManager = prefabManager;
     }
 
     [Gate(IngressEP.JoinGame)]
-    public async virtual Task JoinGameAsync(JoinGamePacket message, string clientId)
+    public override async Task JoinGameAsync(JoinGamePacket message, string clientId)
     {
         await base.JoinGameAsync(message, clientId);
-        // _gameworldManager.AddDynamicObject()
+
+        // THIS SHOULD GO ONCE AT STARTUP OR CHARACTER CREATION
+        // await _prefabManager.CreateAsync<SimpleSpaceshipPrefab>(cfg =>
+        // {
+        //     cfg.Get<Spaceship>().Speed = 5;       // optional
+        // });
+
+        var handle = await _prefabManager.LoadAsync<SimpleSpaceshipPrefab>("");
+        var shipInstance = handle.Manifest;
+        await _gameworldManager.AddDynamicObject(shipInstance);
     }
 }

@@ -74,7 +74,7 @@ namespace Altruist
                             var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, type, logger, attr.Lifetime);
                             try
                             {
-                                DependencyResolver.InvokePostConstruct(instance, sp, cfg, logger);
+                                _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, logger);
                             }
                             catch (Exception ex)
                             {

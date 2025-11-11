@@ -80,7 +80,7 @@ namespace Altruist
                         var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, svcAttr.Lifetime);
                         try
                         {
-                            DependencyResolver.InvokePostConstruct(obj, sp, cfg, log);
+                            _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
                         }
                         catch (Exception ex)
                         {
@@ -112,7 +112,7 @@ namespace Altruist
                         var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, t.PortalType, log);
                         try
                         {
-                            DependencyResolver.InvokePostConstruct(obj, sp, cfg, log);
+                            _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
                         }
                         catch (Exception ex)
                         {

@@ -66,7 +66,7 @@ public sealed class ScyllaDBKeyspaceConfiguration : IAltruistConfiguration
             services.AddSingleton(ksType, sp =>
             {
                 var inst = DependencyResolver.CreateWithConfiguration(sp, _cfg, ksType, _logger);
-                DependencyResolver.InvokePostConstruct(inst, sp, _cfg, _logger);
+                _ = DependencyResolver.InvokePostConstructAsync(inst, sp, _cfg, _logger);
                 return inst!;
             });
 

@@ -58,7 +58,7 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
             {
                 var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<ScyllaDBConfiguration>();
                 var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, ksType, logger);
-                DependencyResolver.InvokePostConstruct(instance, sp, cfg, logger);
+                _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, logger);
                 return instance!;
             });
 

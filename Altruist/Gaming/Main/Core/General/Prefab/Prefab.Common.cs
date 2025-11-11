@@ -30,21 +30,40 @@ namespace Altruist.Gaming
     public readonly record struct PrefabChildRef(string StorageId, string Keyspace, string Type);
 
     /// <summary>
-    /// Handle for working with a prefab manifest + fast child loading.
+    /// Handle for working with a prefab manifest + fast child loading (lazy).
     /// </summary>
+    /// <remarks>
+    /// TPrefab is covariant, so it must only occur in output positions.
+    /// </remarks>
     public interface IPrefabHandle<out TPrefab> where TPrefab : VaultModel
     {
+        /// <summary>The loaded prefab manifest, correctly typed.</summary>
         TPrefab Manifest { get; }
 
-        /// <summary>Flat list of children (as stored on the manifest).</summary>
+        /// <summary>Flat child refs (structure-only, no lazy loads yet).</summary>
         IReadOnlyList<PrefabChildRef> Children { get; }
 
-        /// <summary>Load a specific child row using the child's Keyspace + Type + StorageId.</summary>
-        Task<TModel?> LoadChildAsync<TModel>(PrefabChildRef child) where TModel : class, IVaultModel;
+        /// <summary>Load a specific child row by its reference (keyspace+type+id).</summary>
+        Task<TModel?> LoadChildAsync<TModel>(PrefabChildRef child)
+            where TModel : class, IVaultModel;
+
+        /// <summary>Convenience: load the first child of type TModel, if any.</summary>
+        Task<TModel?> GetChildAsync<TModel>()
+            where TModel : class, IVaultModel;
+
+        /// <summary>Convenience: load all children of type TModel (in order).</summary>
+        Task<IReadOnlyList<TModel>> GetChildrenAsync<TModel>()
+            where TModel : class, IVaultModel;
+
+        /// <summary>
+        /// “Instantiate” for runtime: currently just returns the already loaded typed manifest.
+        /// Kept synchronous so TPrefab remains in a purely covariant position.
+        /// </summary>
+        TPrefab Instantiate();
     }
 
     // ───────────────────────────────────────────────────────────────────────────
-    // PrefabHandle — flat children, no tree, no nodes
+    // PrefabHandle — flat children, lazy loads on demand
     // ───────────────────────────────────────────────────────────────────────────
 
     internal sealed class PrefabHandle : IPrefabHandle<VaultModel>
@@ -59,28 +78,27 @@ namespace Altruist.Gaming
         // memo loaded children by StorageId (per manifest)
         private readonly Dictionary<string, IVaultModel> _loaded = new(StringComparer.Ordinal);
 
-        public PrefabHandle(VaultModel manifest,
-                            List<PrefabChildRef> edges,
-                            ICacheProvider cache,
-                            IRepositoryFactory repos,
-                            PrefabManagerBase manager)
+        public PrefabHandle(
+            VaultModel manifest,
+            List<PrefabChildRef> edges,
+            ICacheProvider cache,
+            IRepositoryFactory repos,
+            PrefabManagerBase manager)
         {
-            Manifest = manifest;
-            Children = edges ?? [];
-            _cache = cache;
-            _repos = repos;
-            _manager = manager;
+            Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
+            Children = edges ?? new List<PrefabChildRef>();
+            _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+            _repos = repos ?? throw new ArgumentNullException(nameof(repos));
+            _manager = manager ?? throw new ArgumentNullException(nameof(manager));
         }
 
         public async Task<TModel?> LoadChildAsync<TModel>(PrefabChildRef child) where TModel : class, IVaultModel
         {
             if (string.IsNullOrWhiteSpace(child.StorageId)) return null;
 
-            // memo by StorageId (sufficient because StorageId is unique within its keyspace)
             if (_loaded.TryGetValue(child.StorageId, out var memo) && memo is TModel typedMemo)
                 return typedMemo;
 
-            // resolve CLR type via registry (fast dictionary)
             var clr = VaultRegistry.GetClr(child.Type);
 
             // cache partitioned by keyspace
@@ -95,7 +113,8 @@ namespace Altruist.Gaming
             // repo per keyspace
             var repo = _repos.Make(child.Keyspace);
             dynamic vault = repo.Select(clr);
-            var row = await vault.Where((Func<dynamic, bool>)(x => x.StorageId == child.StorageId)).FirstOrDefaultAsync();
+            var row = await vault.Where((Func<dynamic, bool>)(x => x.StorageId == child.StorageId))
+                                 .FirstOrDefaultAsync();
             if (row is null) return null;
 
             var typed = (IVaultModel)row;
@@ -104,6 +123,29 @@ namespace Altruist.Gaming
             _manager.TrackLoaded(((IVaultModel)Manifest).StorageId, typed);
             return typed as TModel;
         }
+
+        public async Task<TModel?> GetChildAsync<TModel>() where TModel : class, IVaultModel
+        {
+            var typeKey = VaultRegistry.GetTypeKey(typeof(TModel));
+            var first = Children.FirstOrDefault(c => string.Equals(c.Type, typeKey, StringComparison.Ordinal));
+            if (string.IsNullOrEmpty(first.StorageId)) return null;
+            return await LoadChildAsync<TModel>(first);
+        }
+
+        public async Task<IReadOnlyList<TModel>> GetChildrenAsync<TModel>() where TModel : class, IVaultModel
+        {
+            var typeKey = VaultRegistry.GetTypeKey(typeof(TModel));
+            var matches = Children.Where(c => string.Equals(c.Type, typeKey, StringComparison.Ordinal)).ToArray();
+            var list = new List<TModel>(matches.Length);
+            foreach (var c in matches)
+            {
+                var m = await LoadChildAsync<TModel>(c);
+                if (m != null) list.Add(m);
+            }
+            return list;
+        }
+
+        public VaultModel Instantiate() => Manifest;
 
         private static string CacheKey_Model(string sysId) => $"VM:{sysId}";
     }
@@ -116,8 +158,17 @@ namespace Altruist.Gaming
 
         public TPrefab Manifest => (TPrefab)_inner.Manifest;
         public IReadOnlyList<PrefabChildRef> Children => _inner.Children;
+
         public Task<TModel?> LoadChildAsync<TModel>(PrefabChildRef child) where TModel : class, IVaultModel
             => _inner.LoadChildAsync<TModel>(child);
+
+        public Task<TModel?> GetChildAsync<TModel>() where TModel : class, IVaultModel
+            => _inner.GetChildAsync<TModel>();
+
+        public Task<IReadOnlyList<TModel>> GetChildrenAsync<TModel>() where TModel : class, IVaultModel
+            => _inner.GetChildrenAsync<TModel>();
+
+        public TPrefab Instantiate() => (TPrefab)_inner.Instantiate();
     }
 
     // ───────────────────────────────────────────────────────────────────────────
@@ -144,11 +195,9 @@ namespace Altruist.Gaming
             Func<TPrefab, List<PrefabChildRef>> getEdges)
             where TPrefab : VaultModel
         {
-            // Resolve manifest keyspace from registry
             var manifestKs = VaultRegistry.GetKeyspace(typeof(TPrefab));
             var repo = _repos.Make(manifestKs);
 
-            // Load manifest
             var manifest = await repo.Select<TPrefab>()
                                      .Where(p => p.StorageId == prefabSysId)
                                      .FirstOrDefaultAsync();
@@ -157,7 +206,6 @@ namespace Altruist.Gaming
 
             var edges = getEdges(manifest) ?? new List<PrefabChildRef>();
 
-            // Optionally cache manifest snapshot per manifest keyspace (structure-only)
             await _cache.SaveAsync(CacheKey_Manifest(prefabSysId), edges, manifestKs);
 
             var inner = new PrefabHandle(manifest, edges, _cache, _repos, this);
@@ -167,37 +215,30 @@ namespace Altruist.Gaming
         public async Task SaveCoreAsync<TPrefab>(TPrefab prefab)
             where TPrefab : VaultModel
         {
-            // 1) Collect currently loaded models for this prefab (weak set)
             var toSave = new List<IVaultModel>();
             if (_loadedByPrefab.TryGetValue(prefab.StorageId, out var map))
             {
                 foreach (var kv in map)
-                {
                     if (kv.Value.TryGetTarget(out var model))
                         toSave.Add(model);
-                }
             }
 
-            // 2) Optional: tie models to prefab via GroupId
             foreach (var m in toSave)
                 m.GroupId = prefab.StorageId;
 
-            // 3) Persist loaded nodes grouped by CLR type; each group uses that type’s keyspace
             foreach (var grp in toSave.GroupBy(m => m.GetType()))
             {
                 var ksName = VaultRegistry.GetKeyspace(grp.Key);
                 var repo = _repos.Make(ksName);
-                var vault = repo.Select(grp.Key);                  // ITypeErasedVault
+                var vault = repo.Select(grp.Key);
                 await vault.SaveBatchAsync(grp.Cast<object>());
             }
 
-            // 4) Persist the manifest itself in its own keyspace
             prefab.Timestamp = DateTime.UtcNow;
             var manifestKs = VaultRegistry.GetKeyspace(typeof(TPrefab));
             var manifestRepo = _repos.Make(manifestKs);
             await manifestRepo.Select<TPrefab>().SaveAsync(prefab);
 
-            // 5) Invalidate cached manifest and any cached loaded children
             await _cache.RemoveAndForgetAsync<object>(CacheKey_Manifest(prefab.StorageId), manifestKs);
             foreach (var m in toSave)
             {
@@ -209,9 +250,7 @@ namespace Altruist.Gaming
         internal void TrackLoaded(string prefabSysId, IVaultModel model)
         {
             var map = _loadedByPrefab.GetOrAdd(prefabSysId, _ => new(StringComparer.Ordinal));
-            map.AddOrUpdate(model.StorageId,
-                addValueFactory: _ => new WeakReference<IVaultModel>(model),
-                updateValueFactory: (_, __) => new WeakReference<IVaultModel>(model));
+            map[model.StorageId] = new WeakReference<IVaultModel>(model);
         }
 
         private static string CacheKey_Manifest(string prefabSysId) => $"PF:{prefabSysId}:manifest";

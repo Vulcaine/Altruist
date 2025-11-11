@@ -55,7 +55,7 @@ namespace Altruist.Gaming
                         // Enforce/Invoke [PostConstruct] if any
                         try
                         {
-                            DependencyResolver.InvokePostConstruct(obj, sp, cfg, logger);
+                            _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, logger);
                         }
                         catch (Exception ex)
                         {

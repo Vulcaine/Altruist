@@ -151,7 +151,7 @@ namespace Altruist
         ///  - arguments are resolved via DI and/or [ConfigValue] just like constructor parameters.
         /// If no such method exists, this is a no-op.
         /// </summary>
-        public static void InvokePostConstruct(object instance, IServiceProvider sp, IConfiguration cfg, ILogger log)
+        public static async Task InvokePostConstructAsync(object instance, IServiceProvider sp, IConfiguration cfg, ILogger log)
         {
             if (instance is null) throw new ArgumentNullException(nameof(instance));
             var type = instance.GetType();
@@ -162,31 +162,43 @@ namespace Altruist
                 .ToArray();
 
             if (methods.Length == 0) return;
-
             if (methods.Length > 1)
                 throw new InvalidOperationException($"Type '{type.FullName}' declares multiple [PostConstruct] methods. Only one is allowed.");
 
             var m = methods[0];
 
-            // Enforce "public void" instance method
             if (!m.IsPublic || m.IsStatic)
                 throw new InvalidOperationException($"[PostConstruct] method '{type.FullName}.{m.Name}' must be a public instance method.");
 
-            if (m.ReturnType != typeof(void))
-                throw new InvalidOperationException($"[PostConstruct] method '{type.FullName}.{m.Name}' must return void.");
+            var rt = m.ReturnType;
+            var isVoid = rt == typeof(void);
+            var isTask = rt == typeof(Task);
+            var isValueTask = rt == typeof(ValueTask);
 
-            // Resolve parameters using the same logic as constructor args
+            if (!isVoid && !isTask && !isValueTask)
+                throw new InvalidOperationException($"[PostConstruct] '{type.FullName}.{m.Name}' must return void, Task, or ValueTask.");
+
             var args = m.GetParameters().Select(p => Arg(sp, cfg, p, log)).ToArray();
 
             try
             {
-                m.Invoke(instance, args);
+                var result = m.Invoke(instance, args);
+                if (isTask) await (Task)result!;
+                else if (isValueTask) await (ValueTask)result!;
             }
             catch (TargetInvocationException tie) when (tie.InnerException is not null)
             {
                 log.LogError(tie.InnerException, "PostConstruct method {Method} on {Type} threw.", m.Name, type.FullName);
                 throw;
             }
+        }
+
+        // optional convenience
+        public static async Task<T> CreateWithPostConstructAsync<T>(IServiceProvider sp, IConfiguration cfg, ILogger log)
+        {
+            var instance = ActivatorUtilities.CreateInstance<T>(sp)!;
+            await InvokePostConstructAsync(instance!, sp, cfg, log);
+            return instance;
         }
 
         // ---------------------- Internal helpers -------------------------

@@ -260,27 +260,59 @@ public class ScyllaDbProvider : IScyllaDbProvider
     public async Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel
         => await CreateTableAsync(typeof(TVaultModel), keyspace).ConfigureAwait(false);
 
+    private static readonly Type OpenGeneric_List = typeof(List<>);
+    private static readonly Type OpenGeneric_IList = typeof(IList<>);
+    private static readonly Type OpenGeneric_IReadOnlyList = typeof(IReadOnlyList<>);
+    private static readonly Type OpenGeneric_HashSet = typeof(HashSet<>);
+    private static readonly Type OpenGeneric_ISet = typeof(ISet<>);
+    private static readonly Type OpenGeneric_Dictionary = typeof(Dictionary<,>);
+    private static readonly Type OpenGeneric_IDictionary = typeof(IDictionary<,>);
+    private static readonly Type OpenGeneric_IReadOnlyDictionary = typeof(IReadOnlyDictionary<,>);
+    private static readonly Type OpenGeneric_Nullable = typeof(Nullable<>);
+
     private string MapTypeToCql(Type type)
     {
-        // Arrays -> list<...>
+        // Treat Nullable<T> as T
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == OpenGeneric_Nullable)
+            type = Nullable.GetUnderlyingType(type)!;
+
+        // byte[] must remain blob, not list<tinyint>
+        if (type == typeof(byte[])) return "blob";
+
+        // Arrays -> list<elem> (except byte[])
         if (type.IsArray)
         {
             var e = type.GetElementType()!;
             var elem = MapPrimitiveOrNull(e);
-            if (elem != null) return $"list<{elem}>";
-            throw new NotSupportedException($"Array element type {e.Name} is not supported.");
+            return elem != null ? $"list<{elem}>" : "text";
         }
 
-        // List<T> -> list<...> (primitive elements); otherwise store as JSON text
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+        // Lists -> list<elem>
+        if (type.IsGenericType &&
+            (type.GetGenericTypeDefinition() == OpenGeneric_List ||
+             type.GetGenericTypeDefinition() == OpenGeneric_IList ||
+             type.GetGenericTypeDefinition() == OpenGeneric_IReadOnlyList))
         {
             var e = type.GetGenericArguments()[0];
             var elem = MapPrimitiveOrNull(e);
             return elem != null ? $"list<{elem}>" : "text";
         }
 
-        // Dictionary<K,V> -> map<k,v> (primitive key/value); otherwise store as JSON text
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+        // Sets -> set<elem>
+        if (type.IsGenericType &&
+            (type.GetGenericTypeDefinition() == OpenGeneric_HashSet ||
+             type.GetGenericTypeDefinition() == OpenGeneric_ISet))
+        {
+            var e = type.GetGenericArguments()[0];
+            var elem = MapPrimitiveOrNull(e);
+            return elem != null ? $"set<{elem}>" : "text";
+        }
+
+        // Dictionaries -> map<k,v>
+        if (type.IsGenericType &&
+            (type.GetGenericTypeDefinition() == OpenGeneric_Dictionary ||
+             type.GetGenericTypeDefinition() == OpenGeneric_IDictionary ||
+             type.GetGenericTypeDefinition() == OpenGeneric_IReadOnlyDictionary))
         {
             var args = type.GetGenericArguments();
             var k = MapPrimitiveOrNull(args[0]);
@@ -292,22 +324,39 @@ public class ScyllaDbProvider : IScyllaDbProvider
         var direct = MapPrimitiveOrNull(type);
         if (direct != null) return direct;
 
-        // Anything else (e.g., complex records like PrefabNodeRef) -> JSON text
+        // Fallback for complex types (records, your Prefab*Ref structs, etc.) – store as JSON text
         return "text";
     }
 
-    // maps a CLR primitive we support to its CQL name; returns null if not supported
-    private static string? MapPrimitiveOrNull(Type type) => type switch
+    // Return CQL name for a supported scalar, otherwise null.
+    // Keep this tiny and predictable. You can extend later.
+    private static string? MapPrimitiveOrNull(Type t) => t switch
     {
-        var t when t == typeof(string) => "text",
-        var t when t == typeof(int) => "int",
-        var t when t == typeof(Guid) => "uuid",
-        var t when t == typeof(bool) => "boolean",
-        var t when t == typeof(double) => "double",
-        var t when t == typeof(float) => "float",
-        var t when t == typeof(DateTime) => "timestamp",
-        var t when t == typeof(byte[]) => "blob",
-        var t when t == typeof(TimeSpan) => "bigint", // if you really want ticks; otherwise consider duration
+        // textual
+        { } when t == typeof(string) => "text",
+        // integral
+        { } when t == typeof(long) => "bigint",
+        { } when t == typeof(int) => "int",
+        { } when t == typeof(short) => "smallint",
+        { } when t == typeof(sbyte) || t == typeof(byte) => "tinyint",
+        // numeric
+        { } when t == typeof(double) => "double",
+        { } when t == typeof(float) => "float",
+        { } when t == typeof(decimal) => "decimal",
+        // boolean
+        { } when t == typeof(bool) => "boolean",
+        // time & uuid
+        { } when t == typeof(DateTime) => "timestamp",         // store as UTC
+        { } when t == typeof(DateTimeOffset) => "timestamp",   // store as UTC
+        { } when t == typeof(Guid) => "uuid",                  // if you need time ordering, use timeuuid in your model instead
+                                                               // networking
+        { } when t.FullName == "System.Net.IPAddress" => "inet",
+        // big ints
+        { } when t == typeof(System.Numerics.BigInteger) => "varint",
+        // durations (if you want to keep ticks, keep bigint instead; otherwise map to CQL 'duration' with a custom converter)
+        // { } when t == typeof(TimeSpan) => "duration",
+        { } when t == typeof(TimeSpan) => null, // prefer custom converter (ticks->bigint) or duration with driver-specific binding
+                                                // byte[] handled earlier
         _ => null
     };
 
