@@ -14,12 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Numerics;
-using Altruist;
 using Altruist.Gaming.Movement.ThreeD;
-using SimpleGame;
 
-namespace Portals;
+namespace Altruist.SimpleGame.Portals;
 
 [Portal("/game")]
 public class SimpleMovementPortal : IPortal
@@ -31,23 +28,19 @@ public class SimpleMovementPortal : IPortal
     }
 
     [Gate("move")]
-    public void MoveRequest(string clientId, MoveRequest3D moveRequest)
+    public void Move3D(MoveRequest3D req, string clientId)
     {
-        // Build world move vector from flags
-        var move = moveRequest.GetDirection();
-        if (move.LengthSquared() > 1f) move = Vector3.Normalize(move);
-
-        // Signed yaw turn (-1..+1)
-        var yaw = moveRequest.GetTurn();
-
-        var intent = new MovementIntent3D(
-            Move: move,
-            TurnYaw: yaw,
-            Jump: moveRequest.WantsJump(),
-            AimDirection: default,
-            Boost: false,
-            Dash: false,
-            Knockback: default
+        var intent = MovementIntent3D.FromButtons(
+            forward: req.Forward == true,
+            back: req.Back == true,
+            left: req.Left == true,
+            right: req.Right == true,
+            flyUp: req.FlyUp == true,
+            flyDown: req.FlyDown == true,
+            turnYaw: req.TurnYaw ?? 0f,
+            jump: req.Jump == true,
+            boost: req.Boost == true,
+            dash: req.Dash == true
         );
 
         _movementManager.SetPlayerIntent(clientId, intent);

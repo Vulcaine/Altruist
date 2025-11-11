@@ -1,32 +1,24 @@
-using System.Numerics;
-
-namespace SimpleGame;
-
-public class MoveRequest3D
+namespace Altruist.SimpleGame
 {
-    public bool? Jump;
-    public bool? MoveUp;
-    public bool? MoveDown;
-    public bool? MoveLeft;
-    public bool? MoveRight;
-
-    public bool? RotateLeft;
-    public bool? RotateRight;
-
     /// <summary>
-    /// World-space movement input. For ground games keep Y=0; for fly/jetpack fill Y too.
+    /// Minimal 3D input DTO for server. Matches MovementIntent3D.FromButtons signature.
     /// </summary>
-    public Vector3 GetDirection() => new(
-        (MoveRight == true ? 1f : 0f) + (MoveLeft == true ? -1f : 0f),
-        (MoveUp == true ? 1f : 0f) + (MoveDown == true ? -1f : 0f),
-        0f // use Z if you map forward/back here; keep 0 if you map forward to Y in 2D plane
-    );
+    public sealed class MoveRequest3D
+    {
+        // Movement (XZ for ground; set FlyUp/FlyDown for flight/jetpack)
+        public bool? Forward { get; set; }
+        public bool? Back { get; set; }
+        public bool? Left { get; set; }
+        public bool? Right { get; set; }
+        public bool? FlyUp { get; set; }
+        public bool? FlyDown { get; set; }
 
-    /// <summary>
-    /// Signed yaw turn scalar (-1..+1). Positive = turn right.
-    /// </summary>
-    public float GetTurn() =>
-        (RotateRight == true ? 1f : 0f) + (RotateLeft == true ? -1f : 0f);
+        // Turning (signed scalar in [-1..+1], Right = +1)
+        public float? TurnYaw { get; set; }
 
-    public bool WantsJump() => Jump == true;
+        // Actions
+        public bool? Jump { get; set; }
+        public bool? Boost { get; set; }
+        public bool? Dash { get; set; }
+    }
 }

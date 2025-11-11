@@ -3,6 +3,10 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
 
@@ -12,8 +16,10 @@ namespace Altruist.Gaming.TwoD
     {
         void Initialize();
         Task SaveAsync();
-        IEnumerable<IWorldPartitionManager> UpdateObjectPosition(IPrefab2D prefab, float radius);
-        void AddDynamicObject(IPrefab2D prefab, float radius);
+
+        Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IPrefab2D prefab);
+        Task AddDynamicObject(IPrefab2D prefab);
+
         IWorldPartitionManager? AddStaticObject(IPrefab2D prefab);
         IPrefab2D? DestroyObject(string instanceId);
         IEnumerable<IPrefab2D> GetNearbyObjectsInRoom(string prefabId, int x, int y, float radius, string roomId);
@@ -28,12 +34,19 @@ namespace Altruist.Gaming.TwoD
         private readonly WorldIndex2D _index;
         private readonly IWorldPartitioner2D _worldPartitioner;
         private readonly ICacheProvider _cache;
+        private readonly IPrefabManager2D _prefabManager;
         private readonly Dictionary<PartitionIndex2D, IWorldPartitionManager> _partitionMap = new();
 
         private readonly List<WorldPartition2D> _partitions;
         private readonly IPhysxWorld _physx2D;
 
-        public GameWorldManager2D(WorldIndex2D world, IPhysxWorld2D physx2D, IWorldPartitioner2D worldPartitioner, ICacheProvider cacheProvider)
+        public GameWorldManager2D(
+            WorldIndex2D world,
+            IPhysxWorld2D physx2D,
+            IWorldPartitioner2D worldPartitioner,
+            ICacheProvider cacheProvider,
+            IPrefabManager2D prefabManager
+        )
         {
             _index = world ?? throw new ArgumentNullException(nameof(world));
             _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));
@@ -41,6 +54,7 @@ namespace Altruist.Gaming.TwoD
 
             _physx2D = physx2D ?? throw new ArgumentNullException(nameof(physx2D));
             _partitions = new List<WorldPartition2D>();
+            _prefabManager = prefabManager ?? throw new ArgumentNullException(nameof(prefabManager));
         }
 
         public IPhysxWorld PhysxWorld => _physx2D;
@@ -63,22 +77,42 @@ namespace Altruist.Gaming.TwoD
             await Task.WhenAll(saveTasks);
         }
 
-        public IEnumerable<IWorldPartitionManager> UpdateObjectPosition(IPrefab2D prefab, float radius)
+        public async Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IPrefab2D prefab)
         {
+            if (prefab is null) return Enumerable.Empty<IWorldPartitionManager>();
+
             DestroyObject(prefab);
-            var partitions = FindPartitionsForPosition(prefab.Transform.Position.X, prefab.Transform.Position.Y, radius);
+
+            // compute radius from collider bounds
+            var radius = await ComputePartitionRadiusAsync(prefab);
+
+            var partitions = FindPartitionsForPosition(
+                prefab.Transform.Position.X,
+                prefab.Transform.Position.Y,
+                radius);
+
             AddObjectToPartitions(prefab, partitions);
-            return partitions;
+            return partitions.ToList();
         }
 
-        public void AddDynamicObject(IPrefab2D prefab, float radius)
+        public async Task AddDynamicObject(IPrefab2D prefab)
         {
-            var partitions = FindPartitionsForPosition(prefab.Transform.Position.X, prefab.Transform.Position.Y, radius);
+            if (prefab is null) return;
+
+            var radius = await ComputePartitionRadiusAsync(prefab);
+
+            var partitions = FindPartitionsForPosition(
+                prefab.Transform.Position.X,
+                prefab.Transform.Position.Y,
+                radius);
+
             AddObjectToPartitions(prefab, partitions);
         }
 
         public IWorldPartitionManager? AddStaticObject(IPrefab2D prefab)
         {
+            if (prefab is null) return null;
+
             var partition = FindPartitionForPosition(prefab.Transform.Position.X, prefab.Transform.Position.Y);
             if (partition is WorldPartition2D p2d)
             {
@@ -91,7 +125,7 @@ namespace Altruist.Gaming.TwoD
             => _partitions.Select(p => p.DestroyObject(instanceId)).FirstOrDefault(m => m != null);
 
         public IPrefab2D? DestroyObject(IPrefab2D prefab)
-       => DestroyObject(prefab.InstanceId);
+            => DestroyObject(prefab.InstanceId);
 
         public IEnumerable<IPrefab2D> GetNearbyObjectsInRoom(string prefabId, int x, int y, float radius, string roomId)
         {
@@ -124,12 +158,11 @@ namespace Altruist.Gaming.TwoD
             float maxY = y + radius;
 
             return _partitions.Where(p =>
-            {
-                return maxX >= p.Position.X &&
-                       minX <= p.Position.X + p.Size.X &&
-                       maxY >= p.Position.Y &&
-                       minY <= p.Position.Y + p.Size.Y;
-            });
+                maxX >= p.Position.X &&
+                minX <= p.Position.X + p.Size.X &&
+                maxY >= p.Position.Y &&
+                minY <= p.Position.Y + p.Size.Y
+            );
         }
 
         private IEnumerable<IWorldPartitionManager> AddObjectToPartitions(
@@ -146,6 +179,20 @@ namespace Altruist.Gaming.TwoD
             }
 
             return partitions;
+        }
+
+        /// <summary>
+        /// Computes a search radius for partition queries from prefab collider bounds.
+        /// Uses half of the largest axis of the AABB (with a tiny floor to avoid zero).
+        /// </summary>
+        private async Task<float> ComputePartitionRadiusAsync(IPrefab2D prefab)
+        {
+            var bounds = await _prefabManager.ComputeBoundsAsync(prefab);
+            var size = bounds.Size;
+            var r = MathF.Max(size.X, size.Y) * 0.5f;
+            if (r <= 0f || float.IsNaN(r) || float.IsInfinity(r))
+                r = 0.5f; // minimal sensible radius
+            return r;
         }
     }
 }

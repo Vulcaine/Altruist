@@ -16,13 +16,25 @@ limitations under the License.
 
 using Altruist;
 using Altruist.Gaming;
+using Altruist.Gaming.ThreeD;
 
 namespace Portals;
 
 [Portal("/game")]
 public class SimpleGamePortal : AltruistGameSessionPortal
 {
-    public SimpleGamePortal(IGameSessionService gameSessionService) : base(gameSessionService)
+    private readonly IGameWorldManager3D _gameworldManager;
+    public SimpleGamePortal(IGameSessionService gameSessionService,
+        IGameWorldManager3D gameworldManager
+    ) : base(gameSessionService)
     {
+        _gameworldManager = gameworldManager;
+    }
+
+    [Gate(IngressEP.JoinGame)]
+    public async virtual Task JoinGameAsync(JoinGamePacket message, string clientId)
+    {
+        await base.JoinGameAsync(message, clientId);
+        // _gameworldManager.AddDynamicObject()
     }
 }

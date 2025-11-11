@@ -11,10 +11,13 @@ namespace Altruist.Gaming.TwoD
         private readonly IWorldPartitioner2D _partitioner;
         private readonly ICacheProvider _cache;
 
-        public GameWorldCoordinator2D(IWorldPartitioner2D partitioner, ICacheProvider cache)
+        private readonly IPrefabManager2D _prefabManager;
+
+        public GameWorldCoordinator2D(IWorldPartitioner2D partitioner, ICacheProvider cache, IPrefabManager2D prefabManager)
         {
             _partitioner = partitioner;
             _cache = cache;
+            _prefabManager = prefabManager;
         }
 
         /// <summary>
@@ -25,7 +28,7 @@ namespace Altruist.Gaming.TwoD
             if (_worlds.ContainsKey(index.Index))
                 throw new InvalidOperationException($"World {index.Index} already exists.");
 
-            var manager = new GameWorldManager2D(index, physx2D, _partitioner, _cache);
+            var manager = new GameWorldManager2D(index, physx2D, _partitioner, _cache, _prefabManager);
             manager.Initialize();
             _worlds[index.Index] = manager;
         }

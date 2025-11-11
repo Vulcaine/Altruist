@@ -15,8 +15,8 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.ScyllaDB;
 
 /// <summary>
-/// Simple database bootstrapper: discovers all vault models ([Vault]) and ensures
-/// their ScyllaDB tables exist. Runs optional lifecycle hooks:
+/// Simple database bootstrapper: discovers all vault models (annotated with [Vault] or [Prefab])
+/// and ensures their ScyllaDB tables exist. Runs optional lifecycle hooks:
 /// IBeforeVaultCreate, IOnVaultCreate (preload), IAfterVaultCreate.
 ///
 /// It registers IVaultRepository&lt;TKeyspace&gt; and ScyllaVaultRepository&lt;TKeyspace&gt; for each
@@ -45,7 +45,9 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
             .Distinct()
             .ToArray();
 
-        var vaultTypes = TypeDiscovery.FindTypesWithAttribute<VaultAttribute>(assemblies)
+        // NOTE: Because PrefabAttribute : VaultAttribute, searching for VaultAttribute
+        // automatically includes types annotated with [Prefab] too.
+        var vaultOrPrefabTypes = TypeDiscovery.FindTypesWithAttribute<VaultAttribute>(assemblies)
             .Where(t => t is not null && t.IsClass && !t.IsAbstract && typeof(IVaultModel).IsAssignableFrom(t))
             .Distinct()
             .ToArray();
@@ -85,14 +87,14 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
             return;
         }
 
-        if (vaultTypes.Length == 0)
+        if (vaultOrPrefabTypes.Length == 0)
         {
-            logger.LogInformation("ℹ️ No [Vault]-annotated IVaultModel types found.");
+            logger.LogInformation("ℹ️ No [Vault]/[Prefab]-annotated IVaultModel types found.");
             return;
         }
 
-        // Group vaults by keyspace name from [Vault(Keyspace=...)] (default 'altruist')
-        var byKeyspace = vaultTypes.GroupBy(t =>
+        // Group models by keyspace name from [Vault(Keyspace=...)] (default 'altruist')
+        var byKeyspace = vaultOrPrefabTypes.GroupBy(t =>
         {
             var va = t.GetCustomAttribute<VaultAttribute>();
             return string.IsNullOrWhiteSpace(va?.Keyspace) ? "altruist" : va!.Keyspace!;
@@ -129,7 +131,7 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
 
             if (ksInstance is null)
             {
-                logger.LogWarning("⚠️ Keyspace '{Keyspace}' could not be resolved; skipping its vaults.", keyspaceName);
+                logger.LogWarning("⚠️ Keyspace '{Keyspace}' could not be resolved; skipping its vaults/prefabs.", keyspaceName);
                 continue;
             }
 
@@ -139,78 +141,83 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
             _ = ConnectScyllaDBInBg(provider, group, ksInstance, sp, vaultRepo, logger);
         }
 
-
-        logger.LogInformation("⚡ ScyllaDB support activated. Ready to store and distribute data across realms with incredible speed! 🌌");
+        logger.LogInformation("⚡ ScyllaDB support activated. Vaults and Prefabs will be persisted. 🌌");
     }
 
-    private async Task ConnectScyllaDBInBg(IScyllaDbProvider provider, IEnumerable<Type> group, IScyllaKeyspace ksInstance, IServiceProvider sp, dynamic vaultRepo, ILogger<ScyllaDBConfiguration> logger)
+    private async Task ConnectScyllaDBInBg(
+        IScyllaDbProvider provider,
+        IEnumerable<Type> group,
+        IScyllaKeyspace ksInstance,
+        IServiceProvider sp,
+        dynamic vaultRepo,
+        ILogger<ScyllaDBConfiguration> logger)
     {
         await provider.ConnectAsync();
         await provider.CreateKeySpaceAsync(ksInstance.Name, ksInstance.Options);
 
-        var tableModels = group.Where(m => m.GetCustomAttribute<VaultAttribute>() != null);
-        foreach (var vault in tableModels)
+        // Types have [Vault] or [Prefab] (Prefab derives from Vault)
+        var tableModels = group.ToArray();
+
+        foreach (var modelType in tableModels)
         {
             try
             {
-                await provider.CreateTableAsync(vault, ksInstance);
+                await provider.CreateTableAsync(modelType, ksInstance);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, $"Failed to create table for {vault.Name}. Reason: {ex.Message}");
+                logger.LogError(ex, $"Failed to create table for {modelType.Name}. Reason: {ex.Message}");
                 continue;
             }
 
             // Instantiate model to run hooks
-            var vaultInstance = vault.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
+            var instance = modelType.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
 
             // BeforeCreate
             try
             {
-                if (vaultInstance is IBeforeVaultCreate before)
+                if (instance is IBeforeVaultCreate before)
                     await before.BeforeCreateAsync(sp);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, $"Failed to run before actions for {vault.Name}. Reason: {ex.Message}");
+                logger.LogError(ex, $"Failed to run before actions for {modelType.Name}. Reason: {ex.Message}");
             }
 
             // OnCreate preload
             try
             {
-                if (vaultInstance is IOnVaultCreate preload)
+                if (instance is IOnVaultCreate preload)
                 {
                     var loaded = await preload.OnCreateAsync(sp) ?? new List<IVaultModel>();
                     if (loaded.Count > 0)
                     {
-                        var remoteVault = vaultRepo.Select(vault);
+                        var remoteVault = vaultRepo.Select(modelType);
                         var count = await remoteVault.CountAsync();
 
                         if (count == 0)
                         {
-                            await vaultRepo.Select(vault).SaveBatchAsync(loaded);
-                            logger.LogInformation($"Streamed {loaded.Count} items into {vault.Name} vault.");
+                            await vaultRepo.Select(modelType).SaveBatchAsync(loaded);
+                            logger.LogInformation($"Streamed {loaded.Count} items into {modelType.Name}.");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, $"Failed to run preload actions for {vault.Name}. Reason: {ex.Message}");
+                logger.LogError(ex, $"Failed to run preload actions for {modelType.Name}. Reason: {ex.Message}");
             }
 
             // AfterCreate
             try
             {
-                if (vaultInstance is IAfterVaultCreate after)
+                if (instance is IAfterVaultCreate after)
                     await after.AfterCreateAsync(sp);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, $"Failed to run after actions for {vault.Name}. Reason: {ex.Message}");
+                logger.LogError(ex, $"Failed to run after actions for {modelType.Name}. Reason: {ex.Message}");
             }
         }
-
-        await provider.ShutdownAsync();
     }
 }

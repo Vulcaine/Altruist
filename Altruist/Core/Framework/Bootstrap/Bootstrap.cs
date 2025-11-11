@@ -1,6 +1,5 @@
 // Altruist/Bootstrap.cs
 using System.Reflection;
-using System.Threading.Tasks;
 using Altruist.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -11,6 +10,7 @@ public static class AltruistBootstrap
 {
     public static readonly IServiceCollection Services = new ServiceCollection();
 
+    private static readonly List<IAltruistConfiguration> Configurations = new List<IAltruistConfiguration>();
     /// <summary>
     /// Entry point called by your app. Add more steps after BootstrapServices as needed.
     /// </summary>
@@ -31,9 +31,14 @@ public static class AltruistBootstrap
     public static async Task BootstrapServices()
     {
         await new AltruistServiceConfig().Configure(Services);
-        await new PrefabConfig().Configure(Services);
+        foreach (var config in Configurations)
+        {
+            await config.Configure(Services);
+        }
         await new ConfigAttributeConfiguration().Configure(Services);
     }
+
+    public static void AddConfiguration(IAltruistConfiguration config) => Configurations.Add(config);
 
     public static void BootstrapModules()
     {

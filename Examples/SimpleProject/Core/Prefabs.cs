@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using Altruist;
+using Altruist.Gaming.ThreeD;
 using Altruist.UORM;
 
 namespace SimpleGame.Entities;
@@ -22,15 +23,17 @@ namespace SimpleGame.Entities;
 [Vault("player")]
 public class Spaceship : VaultModel
 {
-
 }
 
 [Prefab("Spaceship")]
 public class SimpleSpaceshipPrefab : Prefab3D
 {
     [PostConstruct]
-    public void Init(IPrefabBuilder prefabBuilder)
+    public void Init()
     {
-        prefabBuilder.AddChild(new Spaceship());
+        // Build the prefab structure with the editor (no DB writes here)
+        var editor = new PrefabEditor3D(this);
+        editor.Add(new Spaceship());
+        // editor.Pop(); // optional if you plan to add siblings after
     }
 }

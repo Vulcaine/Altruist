@@ -262,30 +262,54 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     private string MapTypeToCql(Type type)
     {
+        // Arrays -> list<...>
         if (type.IsArray)
         {
-            var e = type.GetElementType();
-            if (e == typeof(float)) return "list<float>";
-            if (e == typeof(double)) return "list<double>";
-            if (e == typeof(int)) return "list<int>";
-            if (e == typeof(string)) return "list<text>";
-            throw new NotSupportedException($"Array type {e!.Name} is not supported.");
+            var e = type.GetElementType()!;
+            var elem = MapPrimitiveOrNull(e);
+            if (elem != null) return $"list<{elem}>";
+            throw new NotSupportedException($"Array element type {e.Name} is not supported.");
         }
 
-        return type switch
+        // List<T> -> list<...> (primitive elements); otherwise store as JSON text
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
         {
-            _ when type == typeof(string) => "text",
-            _ when type == typeof(int) => "int",
-            _ when type == typeof(Guid) => "uuid",
-            _ when type == typeof(bool) => "boolean",
-            _ when type == typeof(double) => "double",
-            _ when type == typeof(float) => "float",
-            _ when type == typeof(DateTime) => "timestamp",
-            _ when type == typeof(byte[]) => "blob",
-            _ when type == typeof(TimeSpan) => "bigint",
-            _ => throw new NotSupportedException($"Type {type.Name} is not supported.")
-        };
+            var e = type.GetGenericArguments()[0];
+            var elem = MapPrimitiveOrNull(e);
+            return elem != null ? $"list<{elem}>" : "text";
+        }
+
+        // Dictionary<K,V> -> map<k,v> (primitive key/value); otherwise store as JSON text
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+        {
+            var args = type.GetGenericArguments();
+            var k = MapPrimitiveOrNull(args[0]);
+            var v = MapPrimitiveOrNull(args[1]);
+            return (k != null && v != null) ? $"map<{k},{v}>" : "text";
+        }
+
+        // Direct primitives
+        var direct = MapPrimitiveOrNull(type);
+        if (direct != null) return direct;
+
+        // Anything else (e.g., complex records like PrefabNodeRef) -> JSON text
+        return "text";
     }
+
+    // maps a CLR primitive we support to its CQL name; returns null if not supported
+    private static string? MapPrimitiveOrNull(Type type) => type switch
+    {
+        var t when t == typeof(string) => "text",
+        var t when t == typeof(int) => "int",
+        var t when t == typeof(Guid) => "uuid",
+        var t when t == typeof(bool) => "boolean",
+        var t when t == typeof(double) => "double",
+        var t when t == typeof(float) => "float",
+        var t when t == typeof(DateTime) => "timestamp",
+        var t when t == typeof(byte[]) => "blob",
+        var t when t == typeof(TimeSpan) => "bigint", // if you really want ticks; otherwise consider duration
+        _ => null
+    };
 
     public async Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
     {
@@ -421,8 +445,15 @@ public class ScyllaDbProvider : IScyllaDbProvider
         {
             while (!_healthCheckCts.Token.IsCancellationRequested)
             {
-                await HealthCheckAsync();
-                await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCheckCts.Token);
+                try
+                {
+                    await HealthCheckAsync();
+                    await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCheckCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    continue;
+                }
             }
         });
     }

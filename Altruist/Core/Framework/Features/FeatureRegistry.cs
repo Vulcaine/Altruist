@@ -1,5 +1,4 @@
 // Features/FeatureRegistry.cs
-using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace Altruist.Features

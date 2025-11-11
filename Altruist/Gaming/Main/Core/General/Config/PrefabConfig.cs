@@ -15,10 +15,12 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
+using Altruist.Gaming.ThreeD;
+using Altruist.Gaming.TwoD;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace Altruist
+namespace Altruist.Gaming
 {
     /// <summary>
     /// Registers all concrete Prefab types (2D &amp; 3D) with DI, using the same dependency &amp; config

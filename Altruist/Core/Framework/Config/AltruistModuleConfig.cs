@@ -9,7 +9,7 @@ namespace Altruist
 {
     public class AltruistModuleConfig : IAltruistConfiguration
     {
-        public Task Configure(IServiceCollection services)
+        public async Task Configure(IServiceCollection services)
         {
             var logger = services.BuildServiceProvider()
                 .GetRequiredService<ILoggerFactory>()
@@ -35,6 +35,7 @@ namespace Altruist
                 var invoked = new List<string>();
                 foreach (var type in modules)
                 {
+                    // Require public static class
                     if (!(type.IsAbstract && type.IsSealed) || !(type.IsPublic || type.IsNestedPublic))
                     {
                         logger.LogWarning("⚠️ Type '{Type}' has [AltruistModule] but is not a public static class. Skipping.", type.FullName);
@@ -56,11 +57,15 @@ namespace Altruist
 
                     foreach (var m in loaders)
                     {
-                        if (m.ReturnType != typeof(void))
+                        var returnsVoid = m.ReturnType == typeof(void);
+                        var returnsTask = m.ReturnType == typeof(Task);
+
+                        if (!returnsVoid && !returnsTask)
                         {
-                            logger.LogWarning("⚠️ {Module}.{Method} must return void. Skipping.", moduleName, m.Name);
+                            logger.LogWarning("⚠️ {Module}.{Method} must return void or Task. Skipping.", moduleName, m.Name);
                             continue;
                         }
+
                         if (m.GetParameters().Length != 0)
                         {
                             logger.LogWarning("⚠️ {Module}.{Method} must be parameterless. Skipping.", moduleName, m.Name);
@@ -69,7 +74,10 @@ namespace Altruist
 
                         try
                         {
-                            m.Invoke(obj: null, parameters: null);
+                            var result = m.Invoke(obj: null, parameters: null);
+                            if (returnsTask && result is Task task)
+                                await task;
+
                             invoked.Add($"{moduleName}.{m.Name}()");
                         }
                         catch (TargetInvocationException tie)
@@ -88,7 +96,6 @@ namespace Altruist
             }
 
             BindConfigurationClasses(services, logger);
-            return Task.CompletedTask;
         }
 
         private static void BindConfigurationClasses(IServiceCollection services, ILogger logger)

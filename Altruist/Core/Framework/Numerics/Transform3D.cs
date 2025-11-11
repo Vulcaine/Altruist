@@ -11,6 +11,7 @@ namespace Altruist.ThreeD.Numerics
         public int Z => _v.Z;
 
         public Position3D(int x, int y, int z) => _v = new IntVector3(x, y, z);
+        public Position3D(float x, float y, float z) => _v = new IntVector3((int)x, (int)y, (int)z);
         private Position3D(IntVector3 v) => _v = v;
 
         public static Position3D Zero => new(new IntVector3(0, 0, 0));
