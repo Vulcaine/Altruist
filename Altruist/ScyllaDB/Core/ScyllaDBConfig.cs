@@ -6,6 +6,7 @@ You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Collections;
+using System.Linq;
 using System.Reflection;
 using Altruist.Contracts;
 using Altruist.Persistence;
@@ -20,10 +21,10 @@ public sealed class ScyllaDBToken : IDatabaseServiceToken
 {
     public static ScyllaDBToken Instance { get; } = new ScyllaDBToken();
     public IDatabaseConfiguration Configuration => new ScyllaDBConfiguration();
-
     public string Description => "💾 Database: ScyllaDB";
 }
 
+// NOTE: Present but unused per your instruction to avoid repos entirely.
 public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TScyllaKeyspace>
     where TScyllaKeyspace : class, IScyllaKeyspace
 {
@@ -31,22 +32,11 @@ public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TSc
         : base(provider, databaseProvider, keyspace) { }
 }
 
-/// <summary>
-/// Single ScyllaDB bootstrapper:
-/// - Discovers all keyspaces (<see cref="IScyllaKeyspace"/> with [Keyspace]) and vault models ([Vault]/[Prefab] &amp; <see cref="IVaultModel"/>)
-/// - Registers:
-///     * Keyspace singletons
-///     * IVaultRepository&lt;TKeyspace&gt; → ScyllaVaultRepository&lt;TKeyspace&gt;
-///     * For each vault model T: IVault&lt;T&gt; (resolved via the proper keyspace repository)
-/// - Creates keyspaces/tables and runs lifecycle hooks:
-///     IBeforeVaultCreate, IOnVaultCreate&lt;T&gt;, IAfterVaultCreate
-/// </summary>
 [Configuration]
 public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
 {
     public string DatabaseName => "ScyllaDB";
 
-    // ----------------------- Public entrypoint -----------------------
     public async Task Configure(IServiceCollection services)
     {
         var cfg = AppConfigLoader.Load();
@@ -55,72 +45,86 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
         var keyspaceTypes = FindKeyspaceTypes(assemblies).ToArray();
         var vaultModelTypes = FindVaultModelTypes(assemblies).ToArray();
 
-        RegisterKeyspacesAndRepositories(services, cfg, keyspaceTypes);
-        RegisterVaultsAndPopulateRegistry(services, vaultModelTypes);
+        RegisterKeyspaces(services, cfg, keyspaceTypes);
+        RegisterVaultsAndPopulateRegistry(services, keyspaceTypes, vaultModelTypes);
 
         await BootstrapAsync(services, keyspaceTypes, vaultModelTypes);
     }
 
-    // ----------------------- Registration steps -----------------------
-    private static void RegisterKeyspacesAndRepositories(IServiceCollection services, IConfiguration cfg, Type[] keyspaceTypes)
+    // ----------------------- Registration -----------------------
+
+    private static void RegisterKeyspaces(IServiceCollection services, IConfiguration cfg, Type[] keyspaceTypes)
     {
         foreach (var ksType in keyspaceTypes)
         {
+            // Concrete singleton
             services.AddSingleton(ksType, sp =>
             {
                 var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<ScyllaDBConfiguration>();
-                var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, ksType, logger);
-                _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, logger);
-                return instance!;
+                var inst = DependencyResolver.CreateWithConfiguration(sp, cfg, ksType, logger);
+                _ = DependencyResolver.InvokePostConstructAsync(inst, sp, cfg, logger);
+                return inst!;
             });
 
-            var iVaultRepoType = typeof(IVaultRepository<>).MakeGenericType(ksType);
-            var scyllaRepoType = typeof(ScyllaVaultRepository<>).MakeGenericType(ksType);
-
-            services.AddSingleton(iVaultRepoType, sp =>
-            {
-                var provider = sp.GetRequiredService<IScyllaDbProvider>();
-                var ksInstance = sp.GetRequiredService(ksType);
-                return Activator.CreateInstance(scyllaRepoType, sp, provider, ksInstance)!;
-            });
-
-            // Also expose the concrete repo type if requested
-            services.AddSingleton(scyllaRepoType, sp => sp.GetRequiredService(iVaultRepoType));
+            // Expose as IKeyspace & IScyllaKeyspace for discovery
+            services.AddSingleton(typeof(IKeyspace), sp => (IKeyspace)sp.GetRequiredService(ksType));
+            services.AddSingleton(typeof(IScyllaKeyspace), sp => (IScyllaKeyspace)sp.GetRequiredService(ksType));
         }
     }
 
-    private static void RegisterVaultsAndPopulateRegistry(IServiceCollection services, Type[] vaultModelTypes)
+    private static void RegisterVaultsAndPopulateRegistry(
+        IServiceCollection services,
+        Type[] keyspaceTypes,
+        Type[] vaultModelTypes)
     {
         foreach (var modelType in vaultModelTypes)
         {
             var ksName = GetKeyspaceName(modelType);
 
-            // 1) Populate global registry
+            // Populate VaultRegistry for hot paths
             Altruist.VaultRegistry.Register(modelType, ksName);
 
-            // 2) Register IVault<TModel> resolving through the correct keyspace repository
+            // IVault<TModel> → CqlVault<TModel> (constructed manually; no repos)
             var vaultIface = typeof(IVault<>).MakeGenericType(modelType);
             services.AddTransient(vaultIface, sp =>
             {
-                var allKeyspaces = sp.GetServices<IKeyspace>().OfType<IScyllaKeyspace>().ToList();
-
-                var ksInstance = allKeyspaces.FirstOrDefault(k =>
-                    string.Equals(k.Name, ksName, StringComparison.OrdinalIgnoreCase));
+                // Resolve the target keyspace instance by name
+                var ksInstance = sp.GetServices<IKeyspace>()
+                    .OfType<IScyllaKeyspace>()
+                    .FirstOrDefault(k => string.Equals(k.Name, ksName, StringComparison.OrdinalIgnoreCase));
 
                 if (ksInstance is null)
-                    throw new InvalidOperationException(
-                        $"Keyspace '{ksName}' for model '{modelType.Name}' is not registered.");
+                {
+                    var ksType = ResolveKeyspaceTypeByName(keyspaceTypes, ksName)
+                        ?? throw new InvalidOperationException($"Keyspace '{ksName}' for model '{modelType.Name}' is not registered.");
+                    ksInstance = (IScyllaKeyspace)sp.GetRequiredService(ksType);
+                }
 
-                var repoServiceType = typeof(IVaultRepository<>).MakeGenericType(ksInstance.GetType());
-                dynamic repo = sp.GetRequiredService(repoServiceType);
+                // Resolve CQL provider (IScyllaDbProvider should implement ICqlDatabaseProvider)
+                var cqlProvider =
+                    sp.GetService<ICqlDatabaseProvider>() ??
+                    (ICqlDatabaseProvider)sp.GetRequiredService<IScyllaDbProvider>();
 
-                // Returns IVault<TModel> (runtime generic)
-                return repo.Select(modelType);
+                // Build Document for the model type (no per-op reflection)
+                var document = GetDocumentForModel(modelType);
+
+                // Create CqlVault<TModel> via reflection once at resolution
+                var cqlVaultType = typeof(CqlVault<>).MakeGenericType(modelType);
+                var instance = Activator.CreateInstance(
+                    cqlVaultType,
+                    cqlProvider,               // ICqlDatabaseProvider
+                    ksInstance,                // IKeyspace
+                    document,                  // Document
+                    sp                         // IServiceProvider
+                );
+
+                return instance!;
             });
         }
     }
 
     // ----------------------- Bootstrap (create + hooks) -----------------------
+
     private static async Task BootstrapAsync(IServiceCollection services, Type[] keyspaceTypes, Type[] vaultModelTypes)
     {
         using var sp = services.BuildServiceProvider();
@@ -153,21 +157,14 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
                 continue;
             }
 
-            var repoServiceType = typeof(IVaultRepository<>).MakeGenericType(ksInstance.GetType());
-            dynamic vaultRepo = sp.GetRequiredService(repoServiceType);
-
             await provider.ConnectAsync();
             await provider.CreateKeySpaceAsync(ksInstance.Name, ksInstance.Options);
 
-            await CreateTablesAndRunHooksAsync(provider, sp, logger, vaultRepo, ksInstance, group.ToArray());
+            await CreateTablesAndRunHooksAsync(provider, sp, logger, ksInstance, group.ToArray());
             await provider.ShutdownAsync();
         }
 
-        var registeredCount = vaultModelTypes.Length;
-        if (registeredCount > 0)
-            logger.LogInformation("⚡ ScyllaDB activated. {Count} vault model(s) registered and bootstrapped. 🌌", registeredCount);
-        else
-            logger.LogInformation("⚡ ScyllaDB activated. No vault models discovered. 🌌");
+        logger.LogInformation("⚡ ScyllaDB activated. {Count} vault model(s) registered and bootstrapped. 🌌", vaultModelTypes.Length);
     }
 
     private static IScyllaKeyspace? ResolveKeyspaceInstance(
@@ -181,16 +178,7 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
 
         if (ksInstance is null)
         {
-            var ksType = keyspaceTypes.FirstOrDefault(t =>
-            {
-                try
-                {
-                    var tmp = (IScyllaKeyspace)ActivatorUtilities.CreateInstance(sp, t);
-                    return string.Equals(tmp.Name, keyspaceName, StringComparison.OrdinalIgnoreCase);
-                }
-                catch { return false; }
-            });
-
+            var ksType = ResolveKeyspaceTypeByName(keyspaceTypes, keyspaceName);
             if (ksType is not null)
                 ksInstance = (IScyllaKeyspace)sp.GetRequiredService(ksType);
         }
@@ -198,11 +186,17 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
         return ksInstance;
     }
 
+    private static Type? ResolveKeyspaceTypeByName(Type[] keyspaceTypes, string keyspaceName) =>
+        keyspaceTypes.FirstOrDefault(t =>
+        {
+            var attr = t.GetCustomAttribute<KeyspaceAttribute>();
+            return attr != null && string.Equals(attr.Name, keyspaceName, StringComparison.OrdinalIgnoreCase);
+        });
+
     private static async Task CreateTablesAndRunHooksAsync(
         IScyllaDbProvider provider,
         IServiceProvider sp,
         ILogger<ScyllaDBConfiguration> logger,
-        dynamic vaultRepo,
         IScyllaKeyspace ksInstance,
         Type[] modelTypes)
     {
@@ -232,7 +226,7 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
                 logger.LogError(ex, $"Failed to run before actions for {modelType.Name}. Reason: {ex.Message}");
             }
 
-            // OnCreate preload (generic IOnVaultCreate<T> via reflection shim)
+            // OnCreate preload (generic IOnVaultCreate<T>)
             try
             {
                 var preloadInterface = instance!
@@ -248,20 +242,29 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
                     var taskObj = (Task)onCreateAsync.Invoke(instance, new object[] { sp })!;
                     await taskObj.ConfigureAwait(false);
 
-                    var result = taskObj.GetType().GetProperty("Result")!.GetValue(taskObj)!;
-
-                    int loadedCount = 0;
-                    foreach (var _ in (IEnumerable)result) loadedCount++;
-
-                    if (loadedCount > 0)
+                    var resultObj = taskObj.GetType().GetProperty("Result")!.GetValue(taskObj);
+                    if (resultObj is IEnumerable result)
                     {
-                        var remoteVault = vaultRepo.Select(modelType);
-                        var count = await remoteVault.CountAsync();
+                        int loadedCount = 0;
+                        foreach (var _ in result) loadedCount++;
 
-                        if (count == 0)
+                        if (loadedCount > 0)
                         {
-                            await remoteVault.SaveBatchAsync(result);
-                            logger.LogInformation($"Streamed {loadedCount} items into {modelType.Name}.");
+                            // Resolve IVault<TModel> directly (CqlVault<TModel> from DI)
+                            var vaultIface = typeof(IVault<>).MakeGenericType(modelType);
+                            var remoteVaultObj = sp.GetRequiredService(vaultIface);
+
+                            // Use the type-erased surface to avoid dynamic binder issues
+                            var typeErased = (ITypeErasedVault)remoteVaultObj;
+
+                            var count = await typeErased.CountAsync();
+                            if (count == 0)
+                            {
+                                // Convert result to IEnumerable<object> for the type-erased overload
+                                var payload = result.Cast<object>().ToList();
+                                await typeErased.SaveBatchAsync(payload);
+                                logger.LogInformation($"Streamed {loadedCount} items into {modelType.Name}.");
+                            }
                         }
                     }
                 }
@@ -284,24 +287,44 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
         }
     }
 
-    // ----------------------- Discovery helpers -----------------------
+    // ----------------------- Helpers -----------------------
+
+    private static Document GetDocumentForModel(Type modelType)
+    {
+        // Prefer a generic Document.For<T>() if present
+        var forGeneric = typeof(Document).GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .FirstOrDefault(m => m.Name == "For" && m.IsGenericMethodDefinition && m.GetParameters().Length == 0);
+        if (forGeneric is not null)
+        {
+            var closed = forGeneric.MakeGenericMethod(modelType);
+            var doc = closed.Invoke(null, null);
+            if (doc is Document d1) return d1;
+        }
+
+        // Try a non-generic overload: Document.For(Type) or Document.From(Type)
+        var forType = typeof(Document).GetMethod("For", BindingFlags.Public | BindingFlags.Static, new[] { typeof(Type) })
+                   ?? typeof(Document).GetMethod("From", BindingFlags.Public | BindingFlags.Static, new[] { typeof(Type) });
+        if (forType is not null)
+        {
+            var doc = forType.Invoke(null, new object[] { modelType });
+            if (doc is Document d2) return d2;
+        }
+
+        throw new InvalidOperationException($"Document builder not found for model '{modelType.Name}'. Expected Document.For<T>() or Document.For(Type).");
+    }
+
     private static Assembly[] DiscoverAssemblies() =>
         AppDomain.CurrentDomain.GetAssemblies()
             .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
             .ToArray();
 
     private static IEnumerable<Type> FindKeyspaceTypes(Assembly[] assemblies) =>
-        assemblies.SelectMany(a =>
-            {
-                try { return a.GetTypes(); }
-                catch (ReflectionTypeLoadException e) { return e.Types.Where(t => t != null)!; }
-            })
+        TypeDiscovery.FindTypesWithAttribute<KeyspaceAttribute>(assemblies)
             .Where(t =>
                 t is not null &&
                 t.IsClass &&
                 !t.IsAbstract &&
-                typeof(IScyllaKeyspace).IsAssignableFrom(t) &&
-                t.GetCustomAttribute<KeyspaceAttribute>() is not null)!;
+                typeof(IScyllaKeyspace).IsAssignableFrom(t))!;
 
     private static IEnumerable<Type> FindVaultModelTypes(Assembly[] assemblies) =>
         TypeDiscovery.FindTypesWithAttribute<VaultAttribute>(assemblies)

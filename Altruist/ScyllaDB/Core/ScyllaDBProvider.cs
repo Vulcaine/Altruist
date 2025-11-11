@@ -441,6 +441,22 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
         await _session!.ExecuteAsync(new SimpleStatement(sb.ToString())).ConfigureAwait(false);
 
+        // === CREATE SECONDARY INDEXES FROM [VaultColumnIndex] ===
+        if (document.Indexes is not null && document.Indexes.Count > 0)
+        {
+            var pkSet = new HashSet<string>(keyColumns, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var idxCol in document.Indexes.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                // skip if it's part of the primary key (no index needed/allowed)
+                if (pkSet.Contains(idxCol)) continue;
+
+                var indexName = $"{tableName}_{idxCol}_idx";
+                var indexCql = $"CREATE INDEX IF NOT EXISTS {indexName} ON {ks.Name}.{tableName} ({idxCol});";
+                await _session.ExecuteAsync(new SimpleStatement(indexCql)).ConfigureAwait(false);
+            }
+        }
+
         // === CREATE HISTORY TABLE (if enabled) ===
         if (storeHistory)
         {
