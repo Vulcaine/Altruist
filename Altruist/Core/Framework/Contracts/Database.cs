@@ -56,8 +56,8 @@ public abstract class StoredModel : IStoredModel
 
     public virtual string Group { get; set; }
 
-    [JsonIgnore]
-    public string StoredId => $"{Group}:{Key}";
+    // [JsonIgnore]
+    // public string StoredId => $"{Group}:{Key}";
 }
 
 public interface IVaultFactory<TToken, TConfig> where TConfig : IAltruistConfiguration where TToken : IServiceToken<TConfig>
