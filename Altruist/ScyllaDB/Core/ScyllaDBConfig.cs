@@ -7,10 +7,11 @@ You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 
 using System.Collections;
 using System.Reflection;
-using Altruist;
+
 using Altruist.Contracts;
 using Altruist.Persistence;
 using Altruist.UORM;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -82,7 +83,8 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
             services.AddSingleton(vaultIface, sp =>
             {
                 var existing = TryGetRegisteredVault(sp, modelType, vaultIface);
-                if (existing is not null) return existing;
+                if (existing is not null)
+                    return existing;
 
                 var ksInstance = sp.GetServices<IKeyspace>()
                     .OfType<IScyllaKeyspace>()
@@ -121,7 +123,8 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
         try
         {
             var reg = VaultRegistry.GetVault(modelType);
-            if (reg is not null) return reg;
+            if (reg is not null)
+                return reg;
         }
         catch { }
         return null;
@@ -247,7 +250,8 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
                     if (resultObj is IEnumerable resultEnumerable)
                     {
                         int loadedCount = 0;
-                        foreach (var _ in resultEnumerable) loadedCount++;
+                        foreach (var _ in resultEnumerable)
+                            loadedCount++;
 
                         if (loadedCount > 0)
                         {
@@ -308,7 +312,8 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
         {
             var closed = forGeneric.MakeGenericMethod(modelType);
             var doc = closed.Invoke(null, null);
-            if (doc is Document d1) return d1;
+            if (doc is Document d1)
+                return d1;
         }
 
         var forType = typeof(Document).GetMethod("For", BindingFlags.Public | BindingFlags.Static, new[] { typeof(Type) })
@@ -316,7 +321,8 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
         if (forType is not null)
         {
             var doc = forType.Invoke(null, new object[] { modelType });
-            if (doc is Document d2) return d2;
+            if (doc is Document d2)
+                return d2;
         }
 
         throw new InvalidOperationException($"Document builder not found for model '{modelType.Name}'. Expected Document.For<T>() or Document.For(Type).");

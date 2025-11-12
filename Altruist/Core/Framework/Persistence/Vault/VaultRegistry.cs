@@ -2,10 +2,7 @@
 Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace Altruist
 {
@@ -49,7 +46,8 @@ namespace Altruist
 
         public static void Register(Type clrType, string keyspace)
         {
-            if (clrType is null) throw new ArgumentNullException(nameof(clrType));
+            if (clrType is null)
+                throw new ArgumentNullException(nameof(clrType));
 
             var typeKey = GetDefaultTypeKey(clrType);
             var md = new VaultMetadata(typeKey, clrType, keyspace);
@@ -69,21 +67,25 @@ namespace Altruist
             if (string.IsNullOrWhiteSpace(typeKey))
                 throw new ArgumentException("Type key is required.", nameof(typeKey));
 
-            if (_byTypeKey.TryGetValue(typeKey, out var md)) return md;
+            if (_byTypeKey.TryGetValue(typeKey, out var md))
+                return md;
 
             if (_simpleNameCollision.ContainsKey(typeKey))
                 throw new InvalidOperationException(
                     $"VaultRegistry: simple type name '{typeKey}' is ambiguous; store the full name instead.");
 
-            if (_bySimpleName.TryGetValue(typeKey, out md)) return md;
+            if (_bySimpleName.TryGetValue(typeKey, out md))
+                return md;
 
             throw new InvalidOperationException($"VaultRegistry: type key '{typeKey}' not registered.");
         }
 
         public static VaultMetadata GetByClr(Type clrType)
         {
-            if (clrType == null) throw new ArgumentNullException(nameof(clrType));
-            if (_byClr.TryGetValue(clrType, out var md)) return md;
+            if (clrType == null)
+                throw new ArgumentNullException(nameof(clrType));
+            if (_byClr.TryGetValue(clrType, out var md))
+                return md;
             throw new InvalidOperationException($"VaultRegistry: CLR type '{clrType.FullName}' not registered.");
         }
 
@@ -93,15 +95,19 @@ namespace Altruist
 
         public static void RegisterVaultInstance(Type modelClrType, object vaultInstance)
         {
-            if (modelClrType is null) throw new ArgumentNullException(nameof(modelClrType));
-            if (vaultInstance is null) throw new ArgumentNullException(nameof(vaultInstance));
+            if (modelClrType is null)
+                throw new ArgumentNullException(nameof(modelClrType));
+            if (vaultInstance is null)
+                throw new ArgumentNullException(nameof(vaultInstance));
             _vaultByClr[modelClrType] = vaultInstance;
         }
 
         public static void RegisterFindByIdDelegate(Type modelClrType, Func<string, Task<IVaultModel?>> finder)
         {
-            if (modelClrType is null) throw new ArgumentNullException(nameof(modelClrType));
-            if (finder is null) throw new ArgumentNullException(nameof(finder));
+            if (modelClrType is null)
+                throw new ArgumentNullException(nameof(modelClrType));
+            if (finder is null)
+                throw new ArgumentNullException(nameof(finder));
             _findById[modelClrType] = finder;
         }
 
@@ -114,16 +120,21 @@ namespace Altruist
 
         public static object GetVault(Type modelClrType)
         {
-            if (modelClrType is null) throw new ArgumentNullException(nameof(modelClrType));
-            if (_vaultByClr.TryGetValue(modelClrType, out var v)) return v;
+            if (modelClrType is null)
+                throw new ArgumentNullException(nameof(modelClrType));
+            if (_vaultByClr.TryGetValue(modelClrType, out var v))
+                return v;
             throw new InvalidOperationException($"VaultRegistry: IVault<{modelClrType.FullName}> instance not registered.");
         }
 
         public static Task<IVaultModel?> FindByStorageIdAsync(Type modelClrType, string storageId)
         {
-            if (modelClrType is null) throw new ArgumentNullException(nameof(modelClrType));
-            if (storageId is null) throw new ArgumentNullException(nameof(storageId));
-            if (_findById.TryGetValue(modelClrType, out var f)) return f(storageId);
+            if (modelClrType is null)
+                throw new ArgumentNullException(nameof(modelClrType));
+            if (storageId is null)
+                throw new ArgumentNullException(nameof(storageId));
+            if (_findById.TryGetValue(modelClrType, out var f))
+                return f(storageId);
             throw new InvalidOperationException($"VaultRegistry: no finder registered for {modelClrType.FullName}.");
         }
 
