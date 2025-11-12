@@ -6,7 +6,7 @@ public interface ILoginService
     Task<SignupResult> SignupAsync(SignupRequest request);
 }
 
-public sealed class LoginResult
+public class LoginResult
 {
     public bool Success { get; }
     public string? Error { get; }
@@ -18,7 +18,7 @@ public sealed class LoginResult
     public static LoginResult RFailure(string error) => new LoginResult(false, error, null);
 }
 
-public sealed class SignupResult
+public class SignupResult
 {
     public bool Success { get; }
     public string? Error { get; }
