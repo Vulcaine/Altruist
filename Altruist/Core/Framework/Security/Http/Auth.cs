@@ -16,8 +16,8 @@ limitations under the License.
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Altruist.Security.Auth;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
@@ -36,17 +36,18 @@ namespace Altruist.Security;
 /// </remarks>
 public abstract class AuthController : ControllerBase
 {
-    protected readonly ILoginService _loginService;
     protected readonly IIssuer _issuer;
     protected readonly TokenSessionSyncService? _syncService;
 
+    protected readonly ILoginService _loginService;
+
     protected readonly ILogger<AuthController> _logger;
 
-    protected AuthController(IIssuer issuer, ILoggerFactory loggerFactory, IServiceProvider serviceProvider)
+    protected AuthController(IIssuer issuer, ILoginService loginService, TokenSessionSyncService tokenSessionSyncService, ILoggerFactory loggerFactory)
     {
-        _loginService = LoginService(serviceProvider);
         _issuer = issuer;
-        _syncService = serviceProvider.GetService<TokenSessionSyncService>();
+        _loginService = loginService;
+        _syncService = tokenSessionSyncService;
         _logger = loggerFactory.CreateLogger<AuthController>();
     }
 
@@ -128,13 +129,6 @@ public abstract class AuthController : ControllerBase
     /// Useful for controlling concurrent session behavior or targeting specific session invalidations.
     /// </summary>
     protected virtual string SessionGroupKeyStrategy(string principalId) => principalId;
-
-
-    /// <summary>
-    /// Provides the login service instance to handle username/password authentication.
-    /// Must be implemented in derived classes.
-    /// </summary>
-    protected abstract ILoginService LoginService(IServiceProvider serviceProvider);
 }
 
 /// <summary>
@@ -143,17 +137,21 @@ public abstract class AuthController : ControllerBase
 public abstract class JwtAuthController : AuthController
 {
     protected readonly JwtTokenValidator _tokenValidator;
-    protected JwtAuthController(IIssuer issuer,
-    ILoggerFactory loggerFactory, IServiceProvider serviceProvider)
-        : base(issuer, loggerFactory, serviceProvider)
+    protected JwtAuthController(
+        JwtTokenValidator jwtTokenValidator,
+        ILoginService loginService,
+        TokenSessionSyncService tokenSessionSyncService,
+        IIssuer issuer,
+        ILoggerFactory loggerFactory)
+        : base(issuer, loginService, tokenSessionSyncService, loggerFactory)
     {
-        _tokenValidator = serviceProvider.GetRequiredService<JwtTokenValidator>();
+        _tokenValidator = jwtTokenValidator;
     }
 
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignupRequest request)
     {
-        var account = await _loginService.Signup(request);
+        var account = await _loginService.SignupAsync(request);
 
         if (account != null)
         {
@@ -173,7 +171,7 @@ public abstract class JwtAuthController : AuthController
     {
         try
         {
-            var account = await _loginService.Login(request);
+            var account = await _loginService.LoginAsync(request);
             if (account == null)
             {
                 _logger.LogWarning($"[login-email][{request.Email}] ❌ Login failed");
@@ -201,7 +199,7 @@ public abstract class JwtAuthController : AuthController
     {
         try
         {
-            var account = await _loginService.Login(request);
+            var account = await _loginService.LoginAsync(request);
             if (account == null)
             {
                 _logger.LogWarning($"[login-uname][{request.Username}] ❌ Login failed");
