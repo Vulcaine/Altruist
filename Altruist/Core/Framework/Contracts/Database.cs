@@ -86,7 +86,7 @@ public interface IVaultOnSave
     void OnSave();
 }
 
-[PrimaryKeyAttribute("id")]
+[VaultPrimaryKey("id")]
 public abstract class VaultModel : StoredModel, IVaultModel
 {
     [VaultColumn("createdAt")]

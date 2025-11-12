@@ -66,11 +66,11 @@ public static class ReflectionUtils
         var pkPropNames = new List<string>();
         foreach (var t in GetTypeHierarchy(entityType))
         {
-            var pkAttr = t.GetCustomAttribute<PrimaryKeyAttribute>(inherit: false);
-            if (pkAttr?.PropertyNames is null)
+            var pkAttr = t.GetCustomAttribute<VaultPrimaryKeyAttribute>(inherit: false);
+            if (pkAttr?.Keys is null)
                 continue;
 
-            foreach (var name in pkAttr.PropertyNames)
+            foreach (var name in pkAttr.Keys)
             {
                 if (!string.IsNullOrWhiteSpace(name) && !pkPropNames.Contains(name))
                     pkPropNames.Add(name);
