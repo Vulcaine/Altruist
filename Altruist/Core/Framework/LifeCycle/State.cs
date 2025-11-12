@@ -27,7 +27,7 @@ public enum ReadyState
     Alive = 2
 }
 
-[AppConfiguration(typeof(IServerStatus))]
+[ServiceConfiguration(typeof(IServerStatus))]
 public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 {
     public ReadyState Status { get; private set; } = ReadyState.Starting;
