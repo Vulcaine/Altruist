@@ -73,17 +73,7 @@ public class VaultAdapter<TVaultModel> : IVault<TVaultModel> where TVaultModel :
         return _underlying.SaveAsync(entity, saveHistory);
     }
 
-    public Task SaveAsync(object entity, bool? saveHistory = false)
-    {
-        return _underlying.SaveAsync(entity, saveHistory);
-    }
-
     public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
-    {
-        return _underlying.SaveBatchAsync(entities, saveHistory);
-    }
-
-    public Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false)
     {
         return _underlying.SaveBatchAsync(entities, saveHistory);
     }
@@ -161,19 +151,6 @@ public abstract class VaultRepository<TKeyspace> : IVaultRepository<TKeyspace> w
         _databaseProvider.ChangeKeyspaceAsync(_keyspace.Name);
         return vault;
     }
-
-    public ITypeErasedVault Select(Type type)
-    {
-        // Ensure the type implements IVaultModel
-        if (!typeof(IVaultModel).IsAssignableFrom(type))
-        {
-            throw new InvalidOperationException($"Type {type.Name} does not implement IVaultModel.");
-        }
-        var vaultInterfaceType = typeof(VaultAdapter<>).MakeGenericType(type);
-        var vault = _serviceProvider.GetService(vaultInterfaceType);
-        return (ITypeErasedVault)vault!;
-    }
-
 
     // This is the only generic method, never called directly
     protected IVault<IVaultModel> SelectGeneric<T>() where T : class, IVaultModel

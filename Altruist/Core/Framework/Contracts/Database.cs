@@ -114,7 +114,6 @@ public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
 {
     IDatabaseServiceToken Token { get; }
     IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-    ITypeErasedVault Select(Type type);
 }
 
 public interface IGeneralDatabaseProvider : IConnectable
@@ -146,15 +145,7 @@ public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
     Task<long> ExecuteCountAsync(string cqlQuery, List<object>? parameters = null);
 }
 
-
-public interface ITypeErasedVault
-{
-    Task SaveAsync(object entity, bool? saveHistory = false);
-    Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false);
-    Task<long> CountAsync();
-}
-
-public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : class, IVaultModel
+public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     IKeyspace Keyspace { get; }
     IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
@@ -169,6 +160,7 @@ public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : clas
     Task SaveAsync(TVaultModel entity, bool? saveHistory = false);
     Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false);
     Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
+    Task<long> CountAsync();
     Task<bool> DeleteAsync();
     Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate);
     IVault<TVaultModel> Skip(int count);
@@ -209,6 +201,4 @@ public interface IAnyVaultRepository
     IKeyspace Keyspace { get; }
 
     IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-
-    ITypeErasedVault Select(Type modelType);
 }

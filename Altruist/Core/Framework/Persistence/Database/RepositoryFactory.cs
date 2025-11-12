@@ -77,16 +77,6 @@ namespace Altruist
                 dynamic d = _typedRepo;
                 return (IVault<TVaultModel>)d.Select<TVaultModel>();
             }
-
-            public ITypeErasedVault Select(Type modelType)
-            {
-                if (modelType is null) throw new ArgumentNullException(nameof(modelType));
-                var m = _typedRepo.GetType().GetMethod("Select", new[] { typeof(Type) });
-                if (m is null)
-                    throw new MissingMethodException(_typedRepo.GetType().FullName, "Select(Type)");
-
-                return (ITypeErasedVault)m.Invoke(_typedRepo, new object[] { modelType })!;
-            }
         }
     }
 }

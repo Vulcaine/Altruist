@@ -218,14 +218,6 @@ public sealed class TcpConnection : AltruistConnection
     }
 }
 
-
-// public sealed class TcpConnectionSetup : TransportConnectionSetup<TcpConnectionSetup>
-// {
-//     public TcpConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
-//     {
-//     }
-// }
-
 [Service(typeof(ITransportServiceToken))]
 [ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
 public sealed class TcpTransportToken : ITransportServiceToken

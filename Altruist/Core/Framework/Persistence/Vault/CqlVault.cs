@@ -39,7 +39,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     private readonly IServiceProvider _serviceProvider;
     private readonly ICqlDatabaseProvider _databaseProvider;
 
-    // Query state (no reflection involved)
     private readonly Dictionary<QueryPosition, HashSet<string>> _queryParts = new()
     {
         { QueryPosition.SELECT,   new HashSet<string>(StringComparer.Ordinal) },
@@ -65,37 +64,25 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     public IKeyspace Keyspace { get; }
     protected Document _document { get; }
 
-    // -------- Static caches to avoid per-call reflection --------
     private static readonly VaultMetadata _vaultMeta = VaultRegistry.GetByClr(typeof(TVaultModel));
 
-    // Timestamp setter (optional) compiled once per model type
     private static readonly Action<object, DateTime>? _timestampSetter =
         TimestampSetterFactory.Create(typeof(TVaultModel));
 
     public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace, Document document, IServiceProvider serviceProvider)
     {
         _databaseProvider = databaseProvider;
-        _document = document;           // holds Name, Columns, PropertyAccessors, StoreHistory, etc.
+        _document = document;
         Keyspace = keyspace;
         _serviceProvider = serviceProvider;
     }
 
-    // ---------------------------- Public API ----------------------------
-
     public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
-        await SaveEntityAsync(entity!, saveHistory, validate: false);
-    }
-
-    public async Task SaveAsync(object entity, bool? saveHistory = false)
-    {
-        await SaveEntityAsync(entity, saveHistory, validate: true);
+        await SaveEntityAsync(entity, saveHistory);
     }
 
     public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
-        SaveEntitiesAsync(entities.Cast<object>(), saveHistory);
-
-    public Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false) =>
         SaveEntitiesAsync(entities, saveHistory);
 
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
@@ -110,7 +97,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         string orderByClause = ConvertOrderByToString(keySelector);
         AddToQuery(QueryPosition.ORDER_BY, orderByClause);
-        AddToQuery(QueryPosition.SELECT, orderByClause); // ensure ordered column is projected
+        AddToQuery(QueryPosition.SELECT, orderByClause);
         return this;
     }
 
@@ -132,7 +119,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     public async Task<List<TVaultModel>> ToListAsync()
     {
         string query = BuildSelectQuery();
-        // Only DB call is the “expensive” op
         return (await _databaseProvider.QueryAsync<TVaultModel>(query, _queryParameters[QueryPosition.SELECT])).ToList();
     }
 
@@ -197,12 +183,11 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public IVault<TVaultModel> Skip(int count)
     {
-        // No native OFFSET in Cassandra
         throw new NotSupportedException("Cassandra does not support skipping rows. Use paging with a WHERE clause instead.");
     }
 
     public async Task<IEnumerable<TResult>> SelectAsync<TResult>(
-     Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
+        Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
     {
         if (_queryParts[QueryPosition.SELECT].Contains("*"))
             throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
@@ -232,7 +217,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
     {
-        // Reuse the pipeline to build WHERE once (no extra work besides DB call)
         Where(predicate);
 
         var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
@@ -244,15 +228,11 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         return count > 0;
     }
 
-    // ---------------------------- Saves (no reflection per call) ----------------------------
-
-    private async Task SaveEntityAsync(object entity, bool? saveHistory = false, bool validate = false)
+    private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
     {
         if (entity is null) throw new ArgumentNullException(nameof(entity));
-        if (validate && entity is not IVaultModel)
-            throw new InvalidOperationException($"Entity type {entity.GetType().Name} does not implement IVaultModel.");
+        entity.OnSave();
 
-        // table name & columns from Document (pre-built, no reflection)
         var tableName = _document.Name;
         var fields = _document.Columns.Keys;
         var insertQuery = BuildInsertQuery(tableName, _document.Columns.Values);
@@ -260,7 +240,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
         var queries = new List<string> { insertQuery };
 
-        // history (from Document flag) — no attribute reflection here
         if (_document.StoreHistory == true)
         {
             if (saveHistory == true)
@@ -288,19 +267,13 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         if (entity is IAfterVaultSave after)
             await after.AfterSaveAsync(_serviceProvider);
-
-        (entity as TVaultModel)!.OnSave();
     }
 
-    private async Task SaveEntitiesAsync(IEnumerable<object> entities, bool? saveHistory = false)
+    private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
         if (entities is null) throw new ArgumentNullException(nameof(entities));
-        var list = entities as IList<object> ?? entities.ToList();
+        var list = entities as IList<TVaultModel> ?? entities.ToList();
         if (list.Count == 0) throw new ArgumentException("Entities cannot be empty.", nameof(entities));
-
-        // Validate once
-        if (list[0] is not IVaultModel)
-            throw new InvalidOperationException($"Entity type {list[0].GetType().Name} does not implement IVaultModel.");
 
         var tableName = _document.Name;
         var fields = _document.Columns.Keys;
@@ -341,8 +314,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         foreach (var e in list)
             if (e is IAfterVaultSave a) await a.AfterSaveAsync(_serviceProvider);
     }
-
-    // ---------------------------- Query building helpers ----------------------------
 
     private void EnsureProjectionSelected()
     {
@@ -409,7 +380,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         if (expression is MemberExpression me)
         {
-            // Map property to column using Document (precomputed lookup)
             if (_document.Columns.TryGetValue(me.Member.Name, out var column))
                 return column;
             return Document.ToCamelCase(me.Member.Name);
@@ -456,7 +426,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             {
                 var propName = binding.Member.Name;
                 var value = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
-                // Map to column name using Document to avoid reflection during write
                 var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
                 updated[column] = value;
             }
@@ -471,9 +440,8 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     private string BuildHistoryQuery(string tableName, IEnumerable<string> columns) =>
         $"INSERT INTO {tableName}_history ({string.Join(", ", columns)}, timestamp) VALUES ({string.Join(", ", columns.Select(_ => "?"))}, ?)";
 
-    private object?[] GetParameterValues(object entity, IEnumerable<string> fields, bool includeTimestamp)
+    private object?[] GetParameterValues(TVaultModel entity, IEnumerable<string> fields, bool includeTimestamp)
     {
-        // All getters are precompiled delegates inside Document.PropertyAccessors
         var values = fields.Select(field => _document.PropertyAccessors[field](entity)).ToList();
 
         if (includeTimestamp && _timestampSetter is not null)
@@ -507,8 +475,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         };
 }
 
-// ---------------------------- Tiny helper to precompile Timestamp setter ----------------------------
-
 internal static class TimestampSetterFactory
 {
     private static readonly ConcurrentDictionary<Type, Action<object, DateTime>?> _cache = new();
@@ -517,12 +483,10 @@ internal static class TimestampSetterFactory
     {
         return _cache.GetOrAdd(modelType, static t =>
         {
-            // We try to find a property named "Timestamp" with a set method (case-sensitive).
             var prop = t.GetProperty("Timestamp", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (prop is null || !prop.CanWrite || prop.PropertyType != typeof(DateTime))
                 return null;
 
-            // Build: (object target, DateTime value) => ((T)target).Timestamp = value;
             var target = Expression.Parameter(typeof(object), "target");
             var value = Expression.Parameter(typeof(DateTime), "value");
 
@@ -542,7 +506,6 @@ public static class ExpressionUtils
     {
         if (e.NodeType == ExpressionType.Constant)
             return ((ConstantExpression)e).Value;
-        // Compilation once per unique expression; acceptable vs DB roundtrip
         return Expression.Lambda(e).Compile().DynamicInvoke();
     }
 }
