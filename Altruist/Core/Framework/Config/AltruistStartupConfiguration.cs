@@ -1,9 +1,10 @@
 using System.Text;
+
 using Altruist.Contracts;
 using Altruist.Transport;
 using Altruist.Web.Features;
+
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -58,7 +59,8 @@ namespace Altruist
             // Build the (single) HTTP server
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
             builder.Logging.ClearProviders();
-            foreach (var d in rootServices) builder.Services.Add(d);
+            foreach (var d in rootServices)
+                builder.Services.Add(d);
 
             // MVC controllers (they’ll be mounted under http base path)
             builder.Services.AddControllers();
@@ -103,7 +105,8 @@ namespace Altruist
 
             // ServerInfo + pretty banner
             var logger = loggerFactory.CreateLogger<AltruistStartupConfiguration>();
-            if (!int.TryParse(_httpPort, out var portNum)) portNum = 8080;
+            if (!int.TryParse(_httpPort, out var portNum))
+                portNum = 8080;
 
             // Prefer “ws” scheme if WS enabled, otherwise “http”
             var scheme = useWebSocket ? "ws" : "http";
@@ -138,8 +141,10 @@ namespace Altruist
         private static string NormalizePath(string? path, string defaultIfEmpty = "/")
         {
             var p = string.IsNullOrWhiteSpace(path) ? defaultIfEmpty : path!.Trim();
-            if (!p.StartsWith("/")) p = "/" + p;
-            if (p.Length > 1 && p.EndsWith("/")) p = p.TrimEnd('/');
+            if (!p.StartsWith("/"))
+                p = "/" + p;
+            if (p.Length > 1 && p.EndsWith("/"))
+                p = p.TrimEnd('/');
             return p;
         }
 
@@ -147,8 +152,10 @@ namespace Altruist
         {
             var a = NormalizePath(basePath);
             var b = NormalizePath(child);
-            if (a == "/") return b; // root + /x => /x
-            if (b == "/") return a; // /a + / => /a
+            if (a == "/")
+                return b; // root + /x => /x
+            if (b == "/")
+                return a; // /a + / => /a
             return a + (b == "/" ? "" : b);
         }
 
