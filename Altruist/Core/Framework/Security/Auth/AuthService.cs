@@ -21,7 +21,7 @@ public class AuthService : IAuthService
         IIssuer issuer,
         IConnectionManager connectionManager,
         TokenSessionSyncService? syncService,
-        JwtTokenValidator tokenValidator,
+        ITokenValidator tokenValidator,
         IAltruistRouter router)
     {
         _issuer = issuer;

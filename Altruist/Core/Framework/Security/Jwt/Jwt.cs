@@ -27,10 +27,10 @@ namespace Altruist.Security;
 [ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
 public class JwtAuth : IShieldAuth
 {
-    private readonly JwtTokenValidator _tokenValidator;
+    private readonly IJwtTokenValidator _tokenValidator;
     private readonly TokenSessionSyncService? _syncService;
 
-    public JwtAuth(JwtTokenValidator tokenValidator, IServiceProvider serviceProvider)
+    public JwtAuth(IJwtTokenValidator tokenValidator, IServiceProvider serviceProvider)
     {
         _tokenValidator = tokenValidator;
         _syncService = serviceProvider.GetService<TokenSessionSyncService>();
@@ -97,9 +97,15 @@ public class JwtAuth : IShieldAuth
     }
 }
 
+public interface IJwtTokenValidator : ITokenValidator
+{
+    ClaimsPrincipal GetClaimsPrincipal(string token);
+}
+
 [Service(typeof(ITokenValidator))]
+[Service(typeof(IJwtTokenValidator))]
 [ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
-public class JwtTokenValidator : ITokenValidator
+public class JwtTokenValidator : IJwtTokenValidator
 {
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly TokenValidationParameters _validationParams;

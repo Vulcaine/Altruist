@@ -138,9 +138,9 @@ public abstract class AuthController : ControllerBase
 /// </summary>
 public abstract class JwtAuthController : AuthController
 {
-    protected readonly JwtTokenValidator _tokenValidator;
+    protected readonly IJwtTokenValidator _tokenValidator;
     protected JwtAuthController(
-        JwtTokenValidator jwtTokenValidator,
+        IJwtTokenValidator jwtTokenValidator,
         ILoginService loginService,
         TokenSessionSyncService tokenSessionSyncService,
         IIssuer issuer,
