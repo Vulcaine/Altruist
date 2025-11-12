@@ -625,19 +625,30 @@ public class SqlDbProvider : ISqlDatabaseProvider
     {
         if (!await _pingLock.WaitAsync(0))
             return;
+
         try
         {
-            if (_conn != null)
+            // Use a separate, short-lived connection for the health check to avoid
+            // "command already in progress" on the shared _conn.
+            await using var pingConn = new NpgsqlConnection(BuildConnectionString());
+            await pingConn.OpenAsync().ConfigureAwait(false);
+
+            await using var cmd = pingConn.CreateCommand();
+            cmd.CommandText = "SELECT 1";
+            cmd.CommandTimeout = 3;
+
+            await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+
+            if (!IsConnected)
             {
-                using var cmd = _conn.CreateCommand();
-                cmd.CommandText = "SELECT 1";
-                await cmd.ExecuteScalarAsync().ConfigureAwait(false);
-                if (!IsConnected)
-                {
-                    IsConnected = true;
-                    OnConnected?.Invoke();
-                }
+                IsConnected = true;
+                OnConnected?.Invoke();
             }
+        }
+        catch (Npgsql.NpgsqlOperationInProgressException)
+        {
+            // If the pool/connection is busy for some reason, just skip this tick.
+            // We don't want health checks to interfere with normal operations.
         }
         catch (Exception ex)
         {
@@ -652,6 +663,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
             _pingLock.Release();
         }
     }
+
 
     private void StopHealthChecks() => _healthCts.Cancel();
 

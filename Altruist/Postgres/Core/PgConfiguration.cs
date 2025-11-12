@@ -3,7 +3,8 @@ Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
 You may not use this file except in compliance with the License.
-You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Collections;
@@ -43,7 +44,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         var cfg = AppConfigLoader.Load();
         var assemblies = DiscoverAssemblies();
 
-        var schemaTypes = FindSchemaTypes(assemblies).ToArray();          // optional; falls back to DefaultSchema
+        var schemaTypes = FindSchemaTypes(assemblies).ToArray(); // optional; falls back to DefaultSchema
         var vaultModelTypes = FindVaultModelTypes(assemblies).ToArray();
 
         RegisterSchemas(services, cfg, schemaTypes);
@@ -76,7 +77,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
     {
         foreach (var modelType in vaultModelTypes)
         {
-            var schemaName = GetSchemaName(modelType); // from [Vault(Keyspace=...)] or defaults to "public"
+            var schemaName = GetSchemaName(modelType); // from [Vault(Keyspace=...)] or defaults
 
             VaultRegistry.Register(modelType, schemaName);
 
@@ -90,7 +91,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
                 // Resolve an IKeyspace with the requested name; if none registered, use a lightweight default
                 var schemaInstance = sp.GetServices<IKeyspace>()
                     .FirstOrDefault(s => string.Equals(s.Name, schemaName, StringComparison.OrdinalIgnoreCase))
-                    ?? new DefaultSchema();
+                    ?? new DefaultSchema(schemaName);
 
                 var sqlProvider = sp.GetRequiredService<ISqlDatabaseProvider>();
                 var document = GetDocumentForModel(modelType);
@@ -124,6 +125,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
 
     private static async Task BootstrapAsync(IServiceCollection services, Type[] schemaTypes, Type[] vaultModelTypes)
     {
+        // Build provider and KEEP it alive for the whole bootstrap (no fire-and-forget)
         using var sp = services.BuildServiceProvider();
         var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresDBConfiguration>();
 
@@ -140,12 +142,6 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             return;
         }
 
-        _ = connectInBg(provider, sp, logger, schemaTypes, vaultModelTypes);
-        logger.LogInformation("🐘 PostgreSQL activated. {Count} vault model(s) registered and bootstrapped. ✨", vaultModelTypes.Length);
-    }
-
-    private static async Task connectInBg(ISqlDatabaseProvider provider, IServiceProvider sp, ILogger<PostgresDBConfiguration> logger, Type[] schemaTypes, Type[] vaultModelTypes)
-    {
         var groups = vaultModelTypes.GroupBy(GetSchemaName);
         var allSchemaInstances = sp.GetServices<IKeyspace>().ToList();
 
@@ -154,7 +150,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             var schemaName = group.Key;
 
             var schemaInstance = ResolveSchemaInstance(sp, schemaTypes, allSchemaInstances, schemaName)
-                                 ?? new DefaultSchema();
+                                 ?? new DefaultSchema(schemaName);
 
             await provider.ConnectAsync();
             await provider.CreateSchemaAsync(schemaInstance.Name, null);
@@ -163,6 +159,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             await provider.ShutdownAsync();
         }
 
+        logger.LogInformation("🐘 PostgreSQL activated. {Count} vault model(s) registered and bootstrapped. ✨", vaultModelTypes.Length);
     }
 
     private static IKeyspace? ResolveSchemaInstance(
@@ -263,16 +260,16 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
                                     .MakeGenericMethod(modelType);
                                 var toListMethod = typeof(Enumerable).GetMethod("ToList", BindingFlags.Public | BindingFlags.Static)!
                                     .MakeGenericMethod(modelType);
-                                var typedList = toListMethod.Invoke(null, [castMethod.Invoke(null, new object[] { resultObj })!])!;
+                                var typedList = toListMethod.Invoke(null, new object[] { castMethod.Invoke(null, new object[] { resultObj })! })!;
 
-                                var saveBatch = vaultIface.GetMethod("SaveBatchAsync", [typeof(IEnumerable<>).MakeGenericType(modelType), typeof(bool?)])
-                                               ?? vaultIface.GetMethod("SaveBatchAsync", [typeof(IEnumerable<>).MakeGenericType(modelType)]);
+                                var saveBatch = vaultIface.GetMethod("SaveBatchAsync", new[] { typeof(IEnumerable<>).MakeGenericType(modelType), typeof(bool?) })
+                                               ?? vaultIface.GetMethod("SaveBatchAsync", new[] { typeof(IEnumerable<>).MakeGenericType(modelType) });
 
                                 object? saveTaskObj;
                                 if (saveBatch!.GetParameters().Length == 2)
-                                    saveTaskObj = saveBatch.Invoke(vault, [typedList, null]);
+                                    saveTaskObj = saveBatch.Invoke(vault, new object?[] { typedList, null });
                                 else
-                                    saveTaskObj = saveBatch.Invoke(vault, [typedList]);
+                                    saveTaskObj = saveBatch.Invoke(vault, new object?[] { typedList });
 
                                 await ((Task)saveTaskObj!).ConfigureAwait(false);
                                 logger.LogInformation($"Streamed {loadedCount} items into {modelType.Name}.");
@@ -328,11 +325,16 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         return string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!;
     }
 
-    [Keyspace("altruist")]
     private sealed class DefaultSchema : IKeyspace
     {
-        public string Name { get; set; } = "altruist";
+        public DefaultSchema(string? name = null)
+        {
+            Name = string.IsNullOrWhiteSpace(name) ? "public" : name!;
+        }
 
+        public string Name { get; }
+
+        // Required by IKeyspace
         public IDatabaseServiceToken DatabaseToken => PostgresDBToken.Instance;
     }
 }
