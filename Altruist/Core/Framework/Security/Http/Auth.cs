@@ -16,7 +16,9 @@ limitations under the License.
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+
 using Altruist.Security.Auth;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -151,7 +153,8 @@ public abstract class JwtAuthController : AuthController
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignupRequest request)
     {
-        var account = await _loginService.SignupAsync(request);
+        var signupResult = await _loginService.SignupAsync(request);
+        var account = signupResult.Model;
 
         if (account != null)
         {
@@ -171,7 +174,8 @@ public abstract class JwtAuthController : AuthController
     {
         try
         {
-            var account = await _loginService.LoginAsync(request);
+            var loginResult = await _loginService.LoginAsync(request);
+            var account = loginResult.Model;
             if (account == null)
             {
                 _logger.LogWarning($"[login-email][{request.Email}] ❌ Login failed");
@@ -199,7 +203,8 @@ public abstract class JwtAuthController : AuthController
     {
         try
         {
-            var account = await _loginService.LoginAsync(request);
+            var loginResult = await _loginService.LoginAsync(request);
+            var account = loginResult.Model;
             if (account == null)
             {
                 _logger.LogWarning($"[login-uname][{request.Username}] ❌ Login failed");
