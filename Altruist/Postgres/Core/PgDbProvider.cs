@@ -449,107 +449,134 @@ public class SqlDbProvider : ISqlDatabaseProvider
     {
         await EnsureConnectedAsync();
 
-        var document = Document.From(entityType);
+        var doc = Document.From(entityType);
         var tableAttr = entityType.GetCustomAttribute<VaultAttribute>()
                        ?? throw new InvalidOperationException($"Type '{entityType.Name}' is missing VaultAttribute.");
 
-        string schemaName = (schema?.Name) ?? "public";
-        schemaName = NormLower(schemaName);
-
-        string tableName = $"{QuoteIdent(schemaName)}.{QuoteIdent(document.Name)}";
+        string schemaName = NormLower(schema?.Name ?? "public");
+        string tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(doc.Name)}";
         bool storeHistory = tableAttr.StoreHistory;
 
-        var keyColumns = ReflectionUtils.GetPrimaryKeyColumns(entityType);
-        if (keyColumns.Count == 0)
+        // Build column list from Document.Columns (prop -> physical column)
+        // We need the CLR type to map to SQL type.
+        var colDefs = new List<string>(doc.Columns.Count);
+        foreach (var kv in doc.Columns)
+        {
+            var propName = kv.Key;     // logical property (e.g., GroupId)
+            var columnName = kv.Value;   // physical column (e.g., groupId)
+
+            var prop = entityType.GetProperty(propName, BindingFlags.Public | BindingFlags.Instance)
+                       ?? throw new InvalidOperationException(
+                           $"Property '{propName}' not found on '{entityType.Name}' while building table '{doc.Name}'.");
+
+            colDefs.Add($"{QuoteIdent(columnName)} {MapTypeToSql(prop.PropertyType)}");
+        }
+
+        // Primary key: attribute stores property names — translate to physical columns via Document.Columns
+        var pkCols = ResolvePrimaryKeyColumns(doc);
+        if (pkCols.Count == 0)
             throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}' or its base types.");
 
-        var sortingAttr = document.SortingBy;
-        var sortingKey = ReflectionUtils.ResolveSortingColumnName(document, entityType);
-        bool sortAscending = sortingAttr?.Ascending ?? true;
-
-        var mappableProps = ReflectionUtils.GetMappableProperties(entityType);
-        var columns = mappableProps.Select(p =>
-        {
-            var colName = ReflectionUtils.GetColumnName(p);
-            return $"{QuoteIdent(colName)} {MapTypeToSql(p.PropertyType)}";
-        });
-
+        // CREATE TABLE
         var sb = new StringBuilder();
-        sb.Append($"CREATE TABLE IF NOT EXISTS {tableName} (");
-        sb.Append(string.Join(", ", columns));
+        sb.Append($"CREATE TABLE IF NOT EXISTS {tableFqn} (");
+        sb.Append(string.Join(", ", colDefs));
         sb.Append(", PRIMARY KEY (");
-        if (sortingKey is not null)
-        {
-            sb.Append(string.Join(", ", keyColumns.Select(QuoteIdent)));
-            sb.Append(", ");
-            sb.Append(QuoteIdent(sortingKey));
-        }
-        else
-        {
-            sb.Append(string.Join(", ", keyColumns.Select(QuoteIdent)));
-        }
+        sb.Append(string.Join(", ", pkCols.Select(QuoteIdent)));
         sb.Append("));");
 
-        using (var cmd = _conn!.CreateCommand())
+        await using (var cmd = _conn!.CreateCommand())
         {
             cmd.CommandText = sb.ToString();
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
-        if (sortingKey is not null && !keyColumns.Contains(sortingKey, StringComparer.OrdinalIgnoreCase))
+        // Secondary indexes from Document.Indexes (already physical column names in Document.From)
+        if (doc.Indexes is not null && doc.Indexes.Count > 0)
         {
-            var idx = $"{document.Name}_{sortingKey}_idx";
-            using var idxCmd = _conn!.CreateCommand();
-            idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(idx)} ON {tableName} ({QuoteIdent(sortingKey)} {(sortAscending ? "" : "DESC")});";
-            await idxCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-
-        if (document.Indexes is not null && document.Indexes.Count > 0)
-        {
-            var pkSet = new HashSet<string>(keyColumns, StringComparer.OrdinalIgnoreCase);
-            foreach (var idxCol in document.Indexes.Distinct(StringComparer.OrdinalIgnoreCase))
+            var pkSet = new HashSet<string>(pkCols, StringComparer.OrdinalIgnoreCase);
+            foreach (var idxCol in doc.Indexes.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (pkSet.Contains(idxCol))
-                    continue;
-                var indexName = $"{document.Name}_{idxCol}_idx";
-                using var idxCmd = _conn!.CreateCommand();
-                idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(indexName)} ON {tableName} ({QuoteIdent(idxCol)});";
+                    continue; // skip PK columns
+
+                var indexName = $"{doc.Name}_{idxCol}_idx";
+                await using var idxCmd = _conn!.CreateCommand();
+                idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(indexName)} ON {tableFqn} ({QuoteIdent(idxCol)});";
                 await idxCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
         }
 
+        // Optional: index for SortingBy (don’t change PK; just index it)
+        var sortCol = ResolveSortingColumn(doc);
+        if (sortCol is not null && !pkCols.Contains(sortCol, StringComparer.OrdinalIgnoreCase))
+        {
+            var idx = $"{doc.Name}_{sortCol}_idx";
+            await using var idxCmd = _conn!.CreateCommand();
+            idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(idx)} ON {tableFqn} ({QuoteIdent(sortCol)});";
+            await idxCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        // History table (mirror Document columns)
         if (storeHistory)
         {
-            string history = $"{QuoteIdent(schemaName)}.{QuoteIdent(document.Name + "_history")}";
+            string historyFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(doc.Name + "_history")}";
 
-            var histCols = mappableProps.Select(p =>
+            var histCols = new List<string>(doc.Columns.Count);
+            foreach (var kv in doc.Columns)
             {
-                var colName = ReflectionUtils.GetColumnName(p);
-                return $"{QuoteIdent(colName)} {MapTypeToSql(p.PropertyType)}";
-            });
+                var prop = entityType.GetProperty(kv.Key, BindingFlags.Public | BindingFlags.Instance)!;
+                histCols.Add($"{QuoteIdent(kv.Value)} {MapTypeToSql(prop.PropertyType)}");
+            }
 
             var hist = new StringBuilder();
-            hist.Append($"CREATE TABLE IF NOT EXISTS {history} (");
+            hist.Append($"CREATE TABLE IF NOT EXISTS {historyFqn} (");
             hist.Append(string.Join(", ", histCols));
             hist.Append(", \"timestamp\" timestamptz NOT NULL, ");
             hist.Append("PRIMARY KEY (");
-            hist.Append(string.Join(", ", keyColumns.Select(QuoteIdent)));
+            hist.Append(string.Join(", ", pkCols.Select(QuoteIdent)));
             hist.Append(", \"timestamp\"));");
 
-            using (var cmd = _conn!.CreateCommand())
+            await using (var cmd = _conn!.CreateCommand())
             {
                 cmd.CommandText = hist.ToString();
                 await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
 
-            foreach (var key in keyColumns)
+            // Helpful indexes on history PK components (excluding timestamp which is already in PK)
+            foreach (var key in pkCols)
             {
-                using var idxCmd = _conn!.CreateCommand();
-                var idxName = $"{document.Name}_history_{key}_idx";
-                idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(idxName)} ON {history} ({QuoteIdent(key)});";
+                var idxName = $"{doc.Name}_history_{key}_idx";
+                await using var idxCmd = _conn!.CreateCommand();
+                idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(idxName)} ON {historyFqn} ({QuoteIdent(key)});";
                 await idxCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    private static List<string> ResolvePrimaryKeyColumns(Document doc)
+    {
+        var result = new List<string>();
+        var keys = doc.PrimaryKey?.Keys ?? Array.Empty<string>();
+        foreach (var keyProp in keys)
+        {
+            if (doc.Columns.TryGetValue(keyProp, out var col))
+                result.Add(col);
+            else
+                result.Add(Document.ToCamelCase(keyProp)); // safe fallback
+        }
+        return result;
+    }
+
+    private static string? ResolveSortingColumn(Document doc)
+    {
+        var sortProp = doc.SortingBy?.Name;
+        if (string.IsNullOrWhiteSpace(sortProp))
+            return null;
+
+        return doc.Columns.TryGetValue(sortProp, out var col)
+            ? col
+            : Document.ToCamelCase(sortProp);
     }
 
     private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
