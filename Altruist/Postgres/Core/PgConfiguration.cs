@@ -140,6 +140,12 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             return;
         }
 
+        _ = connectInBg(provider, sp, logger, schemaTypes, vaultModelTypes);
+        logger.LogInformation("🐘 PostgreSQL activated. {Count} vault model(s) registered and bootstrapped. ✨", vaultModelTypes.Length);
+    }
+
+    private static async Task connectInBg(ISqlDatabaseProvider provider, IServiceProvider sp, ILogger<PostgresDBConfiguration> logger, Type[] schemaTypes, Type[] vaultModelTypes)
+    {
         var groups = vaultModelTypes.GroupBy(GetSchemaName);
         var allSchemaInstances = sp.GetServices<IKeyspace>().ToList();
 
@@ -157,7 +163,6 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             await provider.ShutdownAsync();
         }
 
-        logger.LogInformation("🐘 PostgreSQL activated. {Count} vault model(s) registered and bootstrapped. ✨", vaultModelTypes.Length);
     }
 
     private static IKeyspace? ResolveSchemaInstance(

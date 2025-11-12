@@ -2,6 +2,7 @@
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
+You may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 http://www.apache.org/licenses/LICENSE-2.0
 */
@@ -24,7 +25,56 @@ namespace Altruist.Postgres;
 public class SqlDbProvider : ISqlDatabaseProvider
 {
     private NpgsqlConnection? _conn;
-    private readonly string _connectionString;
+
+    // Separate config entries (built into a connection string internally)
+    private readonly string _host;
+    private readonly int _port;
+    private readonly string _username;
+    private readonly string _password;  // keep original casing
+    private readonly string _database;
+
+    // Optional tuning flags
+    private readonly bool _pooling;
+    private readonly string _sslModeRaw;             // lowercased raw input preserved for parse
+    private readonly bool _trustServerCertificate;   // useful for local dev if SSL is enabled
+
+    // ---------- helpers ----------
+    private static string NormLower(string? s) => (s ?? string.Empty).Trim().ToLowerInvariant();
+
+    private static Npgsql.SslMode ParseSslMode(string rawLower)
+    {
+        // Accept common variants, all lowercased
+        return rawLower switch
+        {
+            "" or "disable" => Npgsql.SslMode.Disable,
+            "allow" => Npgsql.SslMode.Allow,
+            "prefer" => Npgsql.SslMode.Prefer,
+            "require" => Npgsql.SslMode.Require,
+            "verifyca" or "verify-ca" => Npgsql.SslMode.VerifyCA,
+            "verifyfull" or "verify-full" => Npgsql.SslMode.VerifyFull,
+            _ => Npgsql.SslMode.Disable
+        };
+    }
+
+    private string BuildConnectionString(string? overrideHost = null, int? overridePort = null)
+    {
+        var csb = new NpgsqlConnectionStringBuilder
+        {
+            Host = overrideHost ?? _host,
+            Port = overridePort ?? _port,
+            Username = _username,
+            Password = _password,     // do NOT lowercase passwords
+            Database = _database,
+            Pooling = _pooling,
+            SslMode = ParseSslMode(_sslModeRaw)
+        };
+
+        if (_trustServerCertificate)
+            csb.TrustServerCertificate = true;
+
+        return csb.ConnectionString;
+    }
+
     public bool IsConnected { get; private set; }
 
     public string ServiceName { get; } = "PostgreSQL";
@@ -35,9 +85,35 @@ public class SqlDbProvider : ISqlDatabaseProvider
     public event Action<Exception>? OnRetryExhausted;
 
     public SqlDbProvider(
-        [AppConfigValue("altruist:persistence:database:connection-string")] string connectionString)
+        [AppConfigValue("altruist:persistence:database:host")] string host,
+        [AppConfigValue("altruist:persistence:database:port", "5432")] int port,
+        [AppConfigValue("altruist:persistence:database:username")] string username,
+        [AppConfigValue("altruist:persistence:database:password")] string password,
+        [AppConfigValue("altruist:persistence:database:database")] string database,
+        // optional knobs (all defaults match local dev)
+        [AppConfigValue("altruist:persistence:database:pooling", "true")] bool pooling = true,
+        [AppConfigValue("altruist:persistence:database:ssl-mode", "disable")] string sslMode = "disable",
+        [AppConfigValue("altruist:persistence:database:trust-server-certificate", "false")] bool trustServerCertificate = false
+    )
     {
-        _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
+        // Normalize all string inputs to lowercase first (as requested).
+        // NOTE: Password is intentionally NOT lowercased.
+        var hostLower = NormLower(host);
+        var userLower = NormLower(username);
+        var dbLower = NormLower(database);
+        var sslLower = NormLower(sslMode);
+
+        _host = string.IsNullOrWhiteSpace(hostLower) ? "localhost" : hostLower;
+        _port = port <= 0 ? 5432 : port;
+
+        // For PostgreSQL, unquoted identifiers fold to lower-case; normalizing user/db helps avoid surprises.
+        _username = string.IsNullOrWhiteSpace(userLower) ? throw new ArgumentNullException(nameof(username)) : userLower;
+        _database = string.IsNullOrWhiteSpace(dbLower) ? throw new ArgumentNullException(nameof(database)) : dbLower;
+
+        _password = password ?? throw new ArgumentNullException(nameof(password)); // keep original casing
+        _pooling = pooling;
+        _sslModeRaw = sslLower; // store lowercased raw; we map to enum later
+        _trustServerCertificate = trustServerCertificate;
     }
 
     #region Connection lifecycle
@@ -56,7 +132,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
         {
             try
             {
-                _conn = new NpgsqlConnection(_connectionString);
+                _conn = new NpgsqlConnection(BuildConnectionString());
                 await _conn.OpenAsync().ConfigureAwait(false);
                 RaiseConnectedEvent();
                 StartHealthChecks();
@@ -81,18 +157,15 @@ public class SqlDbProvider : ISqlDatabaseProvider
     {
         Exception? last = null;
 
+        // Normalize override host to lowercase as well
+        var hostLower = NormLower(host);
+
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
-                var csb = new NpgsqlConnectionStringBuilder(_connectionString)
-                {
-                    Host = host,
-                    Port = port
-                    // protocol is ignored by Npgsql; TLS etc. is controlled via SSL/TLS settings in the conn string
-                };
-
-                _conn = new NpgsqlConnection(csb.ConnectionString);
+                // Protocol is ignored by Npgsql; SSL is controlled by SslMode.
+                _conn = new NpgsqlConnection(BuildConnectionString(overrideHost: hostLower, overridePort: port));
                 await _conn.OpenAsync().ConfigureAwait(false);
                 RaiseConnectedEvent();
                 StartHealthChecks();
@@ -135,7 +208,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
     {
         await EnsureConnectedAsync();
         using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = $"SET search_path TO \"{schema}\";";
+        cmd.CommandText = $"SET search_path TO \"{NormLower(schema)}\";";
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
@@ -365,7 +438,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
     {
         await EnsureConnectedAsync();
         using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{schema}\";";
+        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
@@ -381,6 +454,8 @@ public class SqlDbProvider : ISqlDatabaseProvider
                        ?? throw new InvalidOperationException($"Type '{entityType.Name}' is missing VaultAttribute.");
 
         string schemaName = (schema?.Name) ?? "public";
+        schemaName = NormLower(schemaName);
+
         string tableName = $"{QuoteIdent(schemaName)}.{QuoteIdent(document.Name)}";
         bool storeHistory = tableAttr.StoreHistory;
 
@@ -396,8 +471,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
         var columns = mappableProps.Select(p =>
         {
             var colName = ReflectionUtils.GetColumnName(p);
-            var sqlType = MapTypeToSql(p.PropertyType);
-            return $"{QuoteIdent(colName)} {sqlType}";
+            return $"{QuoteIdent(colName)} {MapTypeToSql(p.PropertyType)}";
         });
 
         var sb = new StringBuilder();
@@ -451,8 +525,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
             var histCols = mappableProps.Select(p =>
             {
                 var colName = ReflectionUtils.GetColumnName(p);
-                var sqlType = MapTypeToSql(p.PropertyType);
-                return $"{QuoteIdent(colName)} {sqlType}";
+                return $"{QuoteIdent(colName)} {MapTypeToSql(p.PropertyType)}";
             });
 
             var hist = new StringBuilder();
