@@ -190,9 +190,9 @@ public class ScyllaDbProvider : IScyllaDbProvider
             await ensureConnected();
 
             if ((parameters?.Count ?? 0) == 0)
-                return await _mapper!.FetchAsync<TVaultModel>(cqlQuery).ConfigureAwait(false);
+                return await _mapper!.FetchAsync<TVaultModel>(cqlQuery);
 
-            return await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters).ConfigureAwait(false);
+            return await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters);
         }
         catch (Exception ex)
         {
@@ -201,8 +201,10 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
         finally
         {
-            if (!IsConnected)
+            if (IsConnected)
+            {
                 RaiseConnectedEvent();
+            }
         }
     }
 
