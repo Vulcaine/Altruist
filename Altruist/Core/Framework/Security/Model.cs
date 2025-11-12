@@ -109,13 +109,14 @@ public class SignupRequest
 
     public SignupRequest(string password, string? username = null, string? email = null)
     {
-        if (username == null && email == null)
+        if (username == null || email == null)
         {
             throw new BadHttpRequestException("Username or email must be provided.");
         }
 
         Username = username;
         Password = password;
+        Email = email;
     }
 }
 

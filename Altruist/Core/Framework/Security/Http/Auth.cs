@@ -183,7 +183,7 @@ public abstract class JwtAuthController : AuthController
         else
         {
             _logger.LogWarning($"[signup][{request.Email}] ❌ Signup failed");
-            return BadRequest("Signup failed. Try again.");
+            return BadRequest(signupResult.Error);
         }
     }
 
