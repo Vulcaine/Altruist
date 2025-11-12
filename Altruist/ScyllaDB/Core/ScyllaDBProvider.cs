@@ -94,7 +94,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public async Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000)
     {
-        if (_contactPoints is null || _contactPoints.Count == 0 || IsConnected)
+        if (_contactPoints is null || _contactPoints.Count == 0)
             return;
 
         var clusterBuilder = _builder ?? Cluster.Builder().WithDefaultKeyspace("altruist");
@@ -197,7 +197,6 @@ public class ScyllaDbProvider : IScyllaDbProvider
         catch (NoHostAvailableException ex)
         {
             await ConnectAsync();
-            Thread.Sleep(1000);
             return await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters);
         }
         catch (Exception ex)

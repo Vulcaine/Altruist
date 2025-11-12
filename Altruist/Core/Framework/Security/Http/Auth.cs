@@ -153,6 +153,24 @@ public abstract class JwtAuthController : AuthController
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignupRequest request)
     {
+        if (request.Email == null || string.IsNullOrWhiteSpace(request.Email))
+        {
+            _logger.LogWarning("[signup] ❌ Signup failed – missing email");
+            return BadRequest("Email is required.");
+        }
+
+        if (request.Username == null || string.IsNullOrWhiteSpace(request.Username))
+        {
+            _logger.LogWarning("[signup] ❌ Signup failed – missing username");
+            return BadRequest("Username is required.");
+        }
+
+        if (request.Password == null || string.IsNullOrWhiteSpace(request.Password))
+        {
+            _logger.LogWarning("[signup] ❌ Signup failed – missing password");
+            return BadRequest("Password is required.");
+        }
+
         var signupResult = await _loginService.SignupAsync(request);
         var account = signupResult.Model;
 
@@ -165,7 +183,7 @@ public abstract class JwtAuthController : AuthController
         else
         {
             _logger.LogWarning($"[signup][{request.Email}] ❌ Signup failed");
-            return BadRequest();
+            return BadRequest("Signup failed. Try again.");
         }
     }
 
