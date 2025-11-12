@@ -595,11 +595,22 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
                 await a.AfterSaveAsync(_serviceProvider);
     }
 
-    private string BuildInsertQuery(string tableName, IEnumerable<string> columns) =>
-        $"INSERT INTO {tableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", columns.Select(_ => "?"))})";
+    private static string Q(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
 
-    private string BuildHistoryQuery(string tableName, IEnumerable<string> columns) =>
-        $"INSERT INTO {tableName}_history ({string.Join(", ", columns)}, timestamp) VALUES ({string.Join(", ", columns.Select(_ => "?"))}, ?)";
+    private string BuildInsertQuery(string tableName, IEnumerable<string> columns)
+    {
+        // tableName is logical (e.g., "account"). Quote it.
+        var cols = columns.Select(Q);
+        var values = string.Join(", ", columns.Select(_ => "?"));
+        return $"INSERT INTO {Q(tableName)} ({string.Join(", ", cols)}) VALUES ({values})";
+    }
+
+    private string BuildHistoryQuery(string tableName, IEnumerable<string> columns)
+    {
+        var cols = columns.Select(Q);
+        var values = string.Join(", ", columns.Select(_ => "?"));
+        return $"INSERT INTO {Q(tableName + "_history")} ({string.Join(", ", cols)}, {Q("timestamp")}) VALUES ({values}, ?)";
+    }
 
     private object?[] GetParameterValues(TVaultModel entity, IEnumerable<string> fields, bool includeTimestamp)
     {

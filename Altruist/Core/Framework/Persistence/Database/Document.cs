@@ -76,9 +76,7 @@ public class Document
     public static Document From(Type type)
     {
         if (!typeof(IStoredModel).IsAssignableFrom(type))
-        {
             throw new InvalidOperationException($"The type {type.FullName} must implement IModel.");
-        }
 
         var vaultAttribute = type.GetCustomAttribute<VaultAttribute>();
         var name = vaultAttribute?.Name ?? type.Name;
@@ -93,24 +91,26 @@ public class Document
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
-            var columnName = columnAttr?.Name ?? ToCamelCase(prop.Name);
+            // DEFAULT: field name lowercased (NOT camelCase)
+            var physical = columnAttr?.Name ?? prop.Name.ToLowerInvariant();
             var fieldName = prop.Name;
 
             fields.Add(fieldName);
-            columns[fieldName] = columnName;
+            columns[fieldName] = physical;
 
-            // compile and cache accessor
+            // accessor cache
             accessors[fieldName] = CompileAccessor(prop);
 
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
             {
-                var indexName = columnAttr?.Name ?? ToCamelCase(prop.Name);
-                indexes.Add(indexName);
+                // store physical name for indexes too
+                indexes.Add(physical);
             }
         }
 
         return new Document(
-            vaultAttribute!, type, name, fields, columns, indexes, accessors, primaryKey, sortingBy, vaultAttribute == null ? false : vaultAttribute.StoreHistory);
+            vaultAttribute!, type, name, fields, columns, indexes, accessors,
+            primaryKey, sortingBy, vaultAttribute != null && vaultAttribute.StoreHistory);
     }
 
     private static Func<object, object?> CompileAccessor(PropertyInfo property)
