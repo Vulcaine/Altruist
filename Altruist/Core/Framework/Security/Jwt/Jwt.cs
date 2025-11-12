@@ -22,6 +22,8 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Security;
 
+[Service(typeof(IShieldAuth))]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
 public class JwtAuth : IShieldAuth
 {
     private readonly JwtTokenValidator _tokenValidator;
@@ -95,6 +97,7 @@ public class JwtAuth : IShieldAuth
 }
 
 [Service(typeof(ITokenValidator))]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
 public class JwtTokenValidator : ITokenValidator
 {
     private readonly JwtSecurityTokenHandler _tokenHandler;

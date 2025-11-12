@@ -45,6 +45,8 @@ public class JwtToken : TokenIssue
     public override string Type { get; set; } = "JwtToken";
 }
 
+[Service(typeof(IIssuer))]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "session")]
 public class SessionTokenIssuer : IIssuer
 {
     private readonly TimeSpan _accessTokenExpiration;
@@ -67,6 +69,8 @@ public class SessionTokenIssuer : IIssuer
     }
 }
 
+[Service(typeof(IIssuer))]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
 public class JwtTokenIssuer : IIssuer
 {
     public JwtBearerOptions JwtOptions { get; }

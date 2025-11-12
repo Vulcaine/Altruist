@@ -19,8 +19,8 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
-using Altruist.Security;
 using Altruist.Contracts;
+using Altruist.Security;
 using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +29,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Socket;
 
 [Service(typeof(ITransport))]
-[ConditionalOnConfig("altruist:transport:mode", "tcp")]
+[ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
 public sealed class TcpTransport : ITransport
 {
     private readonly int _port;

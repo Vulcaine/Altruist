@@ -20,8 +20,8 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
-using Altruist.Security;
 using Altruist.Contracts;
+using Altruist.Security;
 using Altruist.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,7 +30,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Socket;
 
 [Service(typeof(ITransport))]
-[ConditionalOnConfig("altruist:transport:mode", havingValue: "udp")]
+[ConditionalOnConfig("altruist:server:transport:mode", havingValue: "udp")]
 public sealed class UdpTransport : ITransport
 {
     private readonly int _port;

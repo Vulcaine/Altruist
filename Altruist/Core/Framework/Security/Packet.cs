@@ -58,7 +58,7 @@ public abstract class TokenIssue : IIssue
 
 public interface ISessionAuthContext : IPacketBase
 {
-    public string StatelessToken { get; }
+    public string Token { get; }
 }
 
 [MessagePackObject]
@@ -74,7 +74,7 @@ public struct SessionAuthContext : ISessionAuthContext
 
     [JsonPropertyName("token")]
     [Key(2)]
-    public string StatelessToken { get; set; } = string.Empty;
+    public string Token { get; set; } = string.Empty;
 
     public SessionAuthContext()
     {

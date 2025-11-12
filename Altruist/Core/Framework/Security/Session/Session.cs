@@ -23,6 +23,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Security;
 
 [Service(typeof(ISyncService))]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "session")]
 public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionModel>
 {
     public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthTokenSessionModel>? vault = null) : base(cacheProvider, vault)
@@ -30,6 +31,8 @@ public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSe
     }
 }
 
+[Service(typeof(IShieldAuth))]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "session")]
 public class SessionTokenAuth : IShieldAuth
 {
     private readonly TokenSessionSyncService _syncService;

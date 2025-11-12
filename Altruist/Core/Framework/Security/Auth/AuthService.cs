@@ -2,12 +2,13 @@ using System.Security.Claims;
 using Altruist;
 using Altruist.Security;
 
-public interface IAuthService<TAuthContext>
+public interface IAuthService
 {
-
+    Task Upgrade(SessionAuthContext context, string clientId);
 }
 
-public class AuthService<TAuthContext> : IAuthService<TAuthContext> where TAuthContext : ISessionAuthContext
+[Service(typeof(IAuthService))]
+public class AuthService : IAuthService
 {
     protected IIssuer _issuer;
     private readonly IConnectionManager _connectionManager;
@@ -15,10 +16,12 @@ public class AuthService<TAuthContext> : IAuthService<TAuthContext> where TAuthC
     private readonly ITokenValidator _tokenValidator;
     private readonly IAltruistRouter _router;
 
-
     public AuthService(
         IIssuer issuer,
-        IConnectionManager connectionManager, TokenSessionSyncService? syncService, JwtTokenValidator tokenValidator, IAltruistRouter router)
+        IConnectionManager connectionManager,
+        TokenSessionSyncService? syncService,
+        JwtTokenValidator tokenValidator,
+        IAltruistRouter router)
     {
         _issuer = issuer;
         _connectionManager = connectionManager;
@@ -27,28 +30,24 @@ public class AuthService<TAuthContext> : IAuthService<TAuthContext> where TAuthC
         _router = router;
     }
 
-    public virtual async Task Upgrade(TAuthContext context, string clientId)
+    public virtual async Task Upgrade(SessionAuthContext context, string clientId)
     {
         var connection = await _connectionManager.GetConnectionAsync(clientId);
         if (connection != null)
         {
             var token = await UpgradeAuth(context, clientId);
-
             if (token != null)
             {
-                // authorized close
                 await _router.Client.SendAsync(clientId, token);
             }
-
-            // unauthorized close
             await connection.CloseOutputAsync();
             await connection.CloseAsync();
         }
     }
 
-    public virtual async Task<IIssue?> UpgradeAuth(TAuthContext context, string clientId)
+    private async Task<IIssue?> UpgradeAuth(SessionAuthContext context, string clientId)
     {
-        var token = context.StatelessToken.Split(";")[0];
+        var token = context.Token.Split(";")[0];
         var claims = _tokenValidator.ValidateToken(token);
         if (claims == null)
         {
@@ -64,13 +63,11 @@ public class AuthService<TAuthContext> : IAuthService<TAuthContext> where TAuthC
         string? originalFingerprint = null;
         if (_syncService != null)
         {
-            var old = await _syncService.DeleteAsync(context.StatelessToken, groupKey);
-
+            var old = await _syncService.DeleteAsync(context.Token, groupKey);
             if (old == null)
             {
                 return null;
             }
-
             originalFingerprint = old.Fingerprint;
         }
 

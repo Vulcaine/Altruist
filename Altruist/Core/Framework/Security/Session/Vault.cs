@@ -16,13 +16,13 @@ limitations under the License.
 
 using System.Security.Cryptography;
 using System.Text;
+using Altruist.UORM;
 
 namespace Altruist.Security;
 
+[Vault("security")]
 public class AuthTokenSessionModel : VaultModel, IIdGenerator
 {
-    public override string StorageId { get; set; }
-    public override string Type { get; set; }
     public string PrincipalId { get; set; } = string.Empty;
 
     /// <summary>
