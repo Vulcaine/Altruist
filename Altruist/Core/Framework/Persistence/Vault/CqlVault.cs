@@ -277,6 +277,11 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         if (list.Count == 0)
             throw new ArgumentException("Entities cannot be empty.", nameof(entities));
 
+        foreach (var entity in list)
+        {
+            entity.OnSave();
+        }
+
         var tableName = _document.Name;
         var fields = _document.Columns.Keys;
         var insertQuery = BuildInsertQuery(tableName, _document.Columns.Values);
