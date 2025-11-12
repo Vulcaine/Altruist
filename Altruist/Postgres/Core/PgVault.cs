@@ -545,9 +545,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             throw new ArgumentNullException(nameof(entity));
         entity.OnSave();
 
-        var tableName = _document.Name;
         var fields = _document.Columns.Keys;
-        var insertQuery = BuildInsertQuery(tableName, _document.Columns.Values);
+        var insertQuery = BuildInsertQuery(_document.Name, _document.Columns.Values);
 
         var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
         var queries = new List<string> { insertQuery };
@@ -556,7 +555,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         {
             if (saveHistory == true)
             {
-                var historyQuery = BuildHistoryQuery(tableName, _document.Columns.Values);
+                var historyQuery = BuildHistoryQuery(_document.Name, _document.Columns.Values);
                 queries.Add(historyQuery);
 
                 var historyParams = GetParameterValues(entity, fields, includeTimestamp: true);
@@ -565,22 +564,20 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         }
         else if (saveHistory == true)
         {
-            throw new InvalidOperationException($"History is not enabled for the table {tableName}. Consider enabling StoreHistory=true.");
+            throw new InvalidOperationException($"History is not enabled for the table {_document.Name}. Consider enabling StoreHistory=true.");
         }
 
-        // The provider should translate "?" placeholders to Npgsql parameters (e.g., $1..n)
         var batchQuery = string.Join(";", queries) + ";";
 
         var canSave = true;
         if (entity is IBeforeVaultSave before)
             canSave = await before.BeforeSaveAsync(_serviceProvider);
-
         if (canSave)
             await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
-
         if (entity is IAfterVaultSave after)
             await after.AfterSaveAsync(_serviceProvider);
     }
+
 
     private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
@@ -590,15 +587,12 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         if (list.Count == 0)
             throw new ArgumentException("Entities cannot be empty.", nameof(entities));
 
-        foreach (var entity in list)
-        {
-            entity.OnSave();
-        }
+        foreach (var e in list)
+            e.OnSave();
 
-        var tableName = _document.Name;
         var fields = _document.Columns.Keys;
-        var insertQuery = BuildInsertQuery(tableName, _document.Columns.Values);
-        var historyQuery = BuildHistoryQuery(tableName, _document.Columns.Values);
+        var insertQuery = BuildInsertQuery(_document.Name, _document.Columns.Values);
+        var historyQuery = BuildHistoryQuery(_document.Name, _document.Columns.Values);
 
         var queries = new List<string>();
         var allParams = new List<object?>();
@@ -624,7 +618,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             }
             else if (saveHistory == true)
             {
-                throw new InvalidOperationException($"History is not enabled for the table {tableName}. Consider enabling StoreHistory=true.");
+                throw new InvalidOperationException($"History is not enabled for the table {_document.Name}. Consider enabling StoreHistory=true.");
             }
         }
 
@@ -639,11 +633,21 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
                 await a.AfterSaveAsync(_serviceProvider);
     }
 
-    private string BuildInsertQuery(string tableName, IEnumerable<string> columns) =>
-        $"INSERT INTO {tableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", columns.Select(_ => "?"))})";
+    private string BuildInsertQuery(string tableNameIgnored, IEnumerable<string> columns)
+    {
+        // ignore the string param; always use the qualified table
+        var cols = string.Join(", ", columns.Select(QuoteIdent));
+        var vals = string.Join(", ", columns.Select(_ => "?"));
+        return $"INSERT INTO {QualifiedTableName()} ({cols}) VALUES ({vals})";
+    }
 
-    private string BuildHistoryQuery(string tableName, IEnumerable<string> columns) =>
-        $"INSERT INTO {tableName}_history ({string.Join(", ", columns)}, timestamp) VALUES ({string.Join(", ", columns.Select(_ => "?"))}, ?)";
+    private string BuildHistoryQuery(string tableNameIgnored, IEnumerable<string> columns)
+    {
+        var histQualified = $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(_document.Name + "_history")}";
+        var cols = string.Join(", ", columns.Select(QuoteIdent));
+        var vals = string.Join(", ", columns.Select(_ => "?"));
+        return $"INSERT INTO {histQualified} ({cols}, {QuoteIdent("timestamp")}) VALUES ({vals}, ?)";
+    }
 
     private object?[] GetParameterValues(TVaultModel entity, IEnumerable<string> fields, bool includeTimestamp)
     {
