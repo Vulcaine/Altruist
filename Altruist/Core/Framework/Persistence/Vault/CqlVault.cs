@@ -378,21 +378,46 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     }
 
     private string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        if (predicate.Body is BinaryExpression be)
-        {
-            var left = ParseExpression(be.Left);
-            var rightVal = ExpressionUtils.Evaluate(be.Right);
-            var right = ConvertToCqlValue(rightVal);
-            var op = GetOperator(be.NodeType);
-            return $"{left} {op} {right}";
-        }
+    => ToWhere(predicate.Body);
 
-        throw new NotSupportedException("Unsupported expression type in WHERE clause.");
+    private string ToWhere(Expression expr)
+    {
+        switch (expr)
+        {
+            case BinaryExpression be:
+                // Logical combinators: (left) AND/OR (right)
+                if (be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse)
+                {
+                    var op = GetOperator(be.NodeType);
+                    var left = ToWhere(be.Left);
+                    var right = ToWhere(be.Right);
+                    return $"({left}) {op} ({right})";
+                }
+
+                // Comparisons: col <op> value
+                var col = ReadColumnName(be.Left);
+                var valueObj = ExpressionUtils.Evaluate(be.Right);
+                var valueSql = ConvertToCqlValue(valueObj);
+                var cmp = GetOperator(be.NodeType);
+                return $"{col} {cmp} {valueSql}";
+
+            case UnaryExpression ue when ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked:
+                // strip conversions and re-evaluate
+                return ToWhere(ue.Operand);
+
+            default:
+                throw new NotSupportedException("Unsupported expression type in WHERE clause.");
+        }
     }
 
-    private string ParseExpression(Expression expression)
+    private string ReadColumnName(Expression expression)
     {
+        while (expression is UnaryExpression ue &&
+               (ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked))
+        {
+            expression = ue.Operand;
+        }
+
         if (expression is MemberExpression me)
         {
             if (_document.Columns.TryGetValue(me.Member.Name, out var column))
@@ -400,19 +425,23 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             return Document.ToCamelCase(me.Member.Name);
         }
 
-        throw new NotSupportedException("Unsupported expression type.");
+        throw new NotSupportedException("Unsupported member expression in WHERE left-hand side.");
     }
 
+
     private static string GetOperator(ExpressionType expressionType) =>
-        expressionType switch
-        {
-            ExpressionType.Equal => "=",
-            ExpressionType.GreaterThan => ">",
-            ExpressionType.LessThan => "<",
-            ExpressionType.AndAlso => "AND",
-            ExpressionType.OrElse => "OR",
-            _ => throw new NotSupportedException($"Unsupported operator: {expressionType}")
-        };
+    expressionType switch
+    {
+        ExpressionType.Equal => "=",
+        ExpressionType.NotEqual => "!=",
+        ExpressionType.GreaterThan => ">",
+        ExpressionType.GreaterThanOrEqual => ">=",
+        ExpressionType.LessThan => "<",
+        ExpressionType.LessThanOrEqual => "<=",
+        ExpressionType.AndAlso => "AND",
+        ExpressionType.OrElse => "OR",
+        _ => throw new NotSupportedException($"Unsupported operator: {expressionType}")
+    };
 
     private string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
