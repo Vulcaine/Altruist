@@ -12,7 +12,7 @@ using Altruist.UORM;
 
 using Microsoft.EntityFrameworkCore;
 
-namespace Altruist.ScyllaDB;
+namespace Altruist;
 
 /// <summary>
 /// Small reflection helpers used by ScyllaDbProvider to keep that file lean.

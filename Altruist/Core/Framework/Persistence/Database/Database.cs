@@ -128,3 +128,32 @@ public class DatabaseProviderFactory
 
     public IGeneralDatabaseProvider Make(IDatabaseServiceToken token) => _provider.GetServices<IGeneralDatabaseProvider>().Where(p => p.Token == token).First();
 }
+
+/// <summary>
+/// Generic SQL provider contract used by PgVault and the Postgres configuration.
+/// Implemented by SqlDbProvider (Npgsql-based).
+/// </summary>
+public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
+{
+    Task ConnectAsync(int maxRetries, int delayMilliseconds);
+    Task ShutdownAsync(Exception? ex = null);
+
+    // Query APIs (parameter list aligns with Vaults using "?" placeholders)
+    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string sql, List<object>? parameters = null)
+        where TVaultModel : class, IVaultModel;
+
+    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string sql, List<object>? parameters = null)
+        where TVaultModel : class, IVaultModel;
+
+    Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null);
+
+    /// <summary>Executes INSERT/UPDATE/DELETE or batched statements; returns affected rows (driver-dependent).</summary>
+    Task<long> ExecuteAsync(string sql, List<object>? parameters = null);
+
+    // Optional POCO-based ops (no-ops in current SqlDbProvider; kept for parity with Scylla provider)
+    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+
+    // Bootstrap / DDL
+    Task CreateSchemaAsync(string schema, ReplicationOptions? options = null);
+}
