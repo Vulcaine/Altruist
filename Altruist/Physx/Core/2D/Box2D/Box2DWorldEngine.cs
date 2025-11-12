@@ -1,7 +1,9 @@
 // Box2DWorldEngine2D.cs
 using System.Numerics;
+
 using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
+
 using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx
@@ -26,9 +28,9 @@ namespace Altruist.Physx
         private readonly Dictionary<Body, Body2DAdapter> _byNative = new();
 
         public Box2DWorldEngine2D(
-            [ConfigValue("altruist:game:engine:gravity", "0, -9.81")]
+            [AppConfigValue("altruist:game:engine:gravity", "0, -9.81")]
             Vector2 gravity,
-            [ConfigValue("altruist:game:engine:fixed-delta", "0.0166f")]
+            [AppConfigValue("altruist:game:engine:fixed-delta", "0.0166f")]
             float fixedDeltaTime = 1f / 60f
         )
         {
@@ -38,7 +40,8 @@ namespace Altruist.Physx
 
         public void Step(float deltaTime)
         {
-            if (_world.BodyCount == 0) return;
+            if (_world.BodyCount == 0)
+                return;
             _world.Step(deltaTime, velocityIterations: 8, positionIterations: 3);
         }
 
@@ -98,7 +101,8 @@ namespace Altruist.Physx
                 if (_map.TryGetValue(fixture.Body, out var adapter))
                 {
                     _hits.Add(new PhysxRaycastHit2D(adapter, point, normal, fraction));
-                    if (_hits.Count >= _max) return 0f;
+                    if (_hits.Count >= _max)
+                        return 0f;
                 }
                 return fraction;
             }

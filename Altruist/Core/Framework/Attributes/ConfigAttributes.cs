@@ -3,6 +3,22 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist;
 
+[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+public sealed class ServiceConfigurationAttribute : Attribute
+{
+    public Type? ServiceType { get; }
+    public ServiceLifetime Lifetime { get; }
+    public int Order { get; }
+
+    public ServiceConfigurationAttribute(Type? serviceType = null, ServiceLifetime lifetime = ServiceLifetime.Singleton, int order = 0)
+    {
+        ServiceType = serviceType;
+        Lifetime = lifetime;
+        Order = order;
+    }
+}
+
+
 /// <summary>
 /// Marks a configuration class that should be discovered and executed by
 /// <see cref="ConfigAttributeConfiguration"/>.
@@ -10,7 +26,7 @@ namespace Altruist;
 /// ⚠️ May only be applied to types that implement <see cref="IAltruistConfiguration"/>.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-public sealed class ConfigurationAttribute : Attribute
+public sealed class AppConfigurationAttribute : Attribute
 {
     /// <summary>
     /// Optional service type to register this configuration as (defaults to the implementation type).
@@ -31,7 +47,7 @@ public sealed class ConfigurationAttribute : Attribute
     /// <param name="serviceType">Optional abstraction/interface to register this config as.</param>
     /// <param name="lifetime">Service lifetime (Singleton by default).</param>
     /// <param name="order">Execution order; higher runs later. Defaults to 0.</param>
-    public ConfigurationAttribute(Type? serviceType = null, ServiceLifetime lifetime = ServiceLifetime.Singleton, int order = 0)
+    public AppConfigurationAttribute(Type? serviceType = null, ServiceLifetime lifetime = ServiceLifetime.Singleton, int order = 0)
     {
         ServiceType = serviceType;
         Lifetime = lifetime;
@@ -43,7 +59,7 @@ public sealed class ConfigurationAttribute : Attribute
 /// Example: [ConfigValue("altruist:game:partitioner2d:partitionWidth", "64")]
 /// </summary>
 [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
-public sealed class ConfigValueAttribute : Attribute
+public sealed class AppConfigValueAttribute : Attribute
 {
     /// <summary>Configuration path (e.g., "altruist:game:partitioner2d:partitionWidth").</summary>
     public string Path { get; }
@@ -51,7 +67,7 @@ public sealed class ConfigValueAttribute : Attribute
     /// <summary>Optional default value (string). Will be converted to the target type if config is missing.</summary>
     public string? Default { get; }
 
-    public ConfigValueAttribute(string path, string? @default = null)
+    public AppConfigValueAttribute(string path, string? @default = null)
     {
         Path = path ?? throw new ArgumentNullException(nameof(path));
         Default = @default;

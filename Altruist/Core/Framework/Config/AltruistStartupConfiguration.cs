@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist
 {
-    [Configuration(order: int.MaxValue)]
+    [AppConfiguration(order: int.MaxValue)]
     public sealed class AltruistStartupConfiguration : IAltruistConfiguration
     {
         private readonly ApplicationArgs _args;
@@ -28,13 +28,13 @@ namespace Altruist
     ApplicationArgs args,
 
     // HTTP: present => we host controllers on same server
-    [ConfigValue("altruist:server:http:host", null)] string? httpHost,
-    [ConfigValue("altruist:server:http:port", null)] string? httpPort,
-    [ConfigValue("altruist:server:http:path", "/")] string httpPath,
+    [AppConfigValue("altruist:server:http:host", null)] string? httpHost,
+    [AppConfigValue("altruist:server:http:port", null)] string? httpPort,
+    [AppConfigValue("altruist:server:http:path", "/")] string httpPath,
 
     // Transport: if mode == websocket => mount WS endpoints on same HTTP server
-    [ConfigValue("altruist:server:transport:mode", null)] string? transportMode,
-    [ConfigValue("altruist:server:transport:config:path", "/ws")] string transportPath,
+    [AppConfigValue("altruist:server:transport:mode", null)] string? transportMode,
+    [AppConfigValue("altruist:server:transport:config:path", "/ws")] string transportPath,
 
     IServiceCollection rootServices,
     ILoggerFactory loggerFactory,

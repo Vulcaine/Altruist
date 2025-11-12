@@ -9,8 +9,10 @@ You may obtain a copy of the License at
 */
 
 using System.Text;
+
 using Altruist.Contracts;
 using Altruist.Engine;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,7 +27,7 @@ public enum ReadyState
     Alive = 2
 }
 
-[Configuration(typeof(IServerStatus))]
+[AppConfiguration(typeof(IServerStatus))]
 public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 {
     public ReadyState Status { get; private set; } = ReadyState.Starting;
@@ -51,10 +53,12 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 
         _connectables.Add(dbProvider);
 
-        if (cacheProvider is IConnectable connectable) _connectables.Add(connectable);
+        if (cacheProvider is IConnectable connectable)
+            _connectables.Add(connectable);
 
         // User/feature supplied connectables
-        foreach (var c in otherConnectables) _connectables.Add(c);
+        foreach (var c in otherConnectables)
+            _connectables.Add(c);
     }
 
     /// <summary>
@@ -78,7 +82,8 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 
             if (service.IsConnected)
             {
-                lock (_connected) _connected.Add(service);
+                lock (_connected)
+                    _connected.Add(service);
             }
             else
             {
@@ -118,7 +123,8 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
         {
             lock (_connected)
             {
-                if (_connected.Contains(service)) return;
+                if (_connected.Contains(service))
+                    return;
 
                 _logger.LogInformation("✅ {Service} is alive.", service.ServiceName);
                 _connected.Add(service);
@@ -143,7 +149,8 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
         {
             _logger.LogError("❌ Lost connection to the service {Service}, reason: {Reason}", service.ServiceName, ex.Message);
 
-            lock (_connected) _connected.Remove(service);
+            lock (_connected)
+                _connected.Remove(service);
 
             StartTimeoutTimer(engine);
             SignalState(engine, ReadyState.Failed);
@@ -205,7 +212,8 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
 
     public override string ToString()
     {
-        if (_connectables.Count == 0) return string.Empty;
+        if (_connectables.Count == 0)
+            return string.Empty;
 
         const int nameColWidth = 24;
         const int statusColWidth = 16;

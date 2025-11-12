@@ -32,7 +32,7 @@ public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TSc
         : base(provider, databaseProvider, keyspace) { }
 }
 
-[Configuration]
+[AppConfiguration]
 public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
 {
     public string DatabaseName => "ScyllaDB";

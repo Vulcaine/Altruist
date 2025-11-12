@@ -60,9 +60,9 @@ namespace Altruist.Gaming.TwoD
         public int PartitionHeight { get; }
 
         public WorldPartitioner2D(
-            [ConfigValue("altruist:game:partitioner:width", "64")]
+            [AppConfigValue("altruist:game:partitioner:width", "64")]
             int partitionWidth,
-            [ConfigValue("altruist:game:partitioner:height", "64")]
+            [AppConfigValue("altruist:game:partitioner:height", "64")]
             int partitionHeight
         )
         {

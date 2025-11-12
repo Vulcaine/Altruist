@@ -287,11 +287,11 @@ public class AltruistEngine : IAltruistEngine
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
         IGameWorldCoordinator worldCoordinator,
-        [ConfigValue("altruist:game:engine:frequency")]
+        [AppConfigValue("altruist:game:engine:frequency")]
         int engineFrequencyHz = 30,
-        [ConfigValue("altruist:game:engine:unit")]
+        [AppConfigValue("altruist:game:engine:unit")]
         CycleUnit unit = CycleUnit.Ticks,
-        [ConfigValue("altruist:game:engine:throttle")]
+        [AppConfigValue("altruist:game:engine:throttle")]
         int? throttle = null)
     {
         _staticTasks = new LinkedList<EngineStaticTask>();

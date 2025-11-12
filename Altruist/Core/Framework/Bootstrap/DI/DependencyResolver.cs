@@ -8,6 +8,7 @@ You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 
 using System.Globalization;
 using System.Reflection;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -53,7 +54,8 @@ namespace Altruist
         /// <summary>Make sure custom converters are discovered exactly once.</summary>
         public static void EnsureConverters(IServiceCollection services, ILogger log)
         {
-            if (_converters is not null) return;
+            if (_converters is not null)
+                return;
             lock (_convLock)
             {
                 if (_converters is null)
@@ -88,7 +90,8 @@ namespace Altruist
             {
                 // try container first (may already have been created/registered)
                 var resolved = sp.GetService(impl);
-                if (resolved is not null) return resolved;
+                if (resolved is not null)
+                    return resolved;
 
                 var cycle = FormatCyclePath(path, impl);
                 throw new InvalidOperationException(
@@ -135,7 +138,8 @@ namespace Altruist
             {
                 var name = type.Name;
                 var i = name.IndexOf('`');
-                if (i > 0) name = name[..i];
+                if (i > 0)
+                    name = name[..i];
                 var args = type.GetGenericArguments().Select(GetCleanName);
                 return $"{name}<{string.Join(", ", args)}>";
             }
@@ -153,7 +157,8 @@ namespace Altruist
         /// </summary>
         public static async Task InvokePostConstructAsync(object instance, IServiceProvider sp, IConfiguration cfg, ILogger log)
         {
-            if (instance is null) throw new ArgumentNullException(nameof(instance));
+            if (instance is null)
+                throw new ArgumentNullException(nameof(instance));
             var type = instance.GetType();
 
             var methods = type
@@ -161,7 +166,8 @@ namespace Altruist
                 .Where(m => m.GetCustomAttribute<PostConstructAttribute>(inherit: true) is not null)
                 .ToArray();
 
-            if (methods.Length == 0) return;
+            if (methods.Length == 0)
+                return;
             if (methods.Length > 1)
                 throw new InvalidOperationException($"Type '{type.FullName}' declares multiple [PostConstruct] methods. Only one is allowed.");
 
@@ -183,8 +189,10 @@ namespace Altruist
             try
             {
                 var result = m.Invoke(instance, args);
-                if (isTask) await (Task)result!;
-                else if (isValueTask) await (ValueTask)result!;
+                if (isTask)
+                    await (Task)result!;
+                else if (isValueTask)
+                    await (ValueTask)result!;
             }
             catch (TargetInvocationException tie) when (tie.InnerException is not null)
             {
@@ -214,7 +222,7 @@ namespace Altruist
         private static object? Arg(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
         {
             // 1) Config-bound parameter?
-            var a = p.GetCustomAttribute<ConfigValueAttribute>(false);
+            var a = p.GetCustomAttribute<AppConfigValueAttribute>(false);
             if (a is not null)
                 return ResolveFromConfig(cfg, p.ParameterType, a, log);
 
@@ -287,8 +295,9 @@ namespace Altruist
         {
             foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanWrite))
             {
-                var a = p.GetCustomAttribute<ConfigValueAttribute>(false);
-                if (a is null) continue;
+                var a = p.GetCustomAttribute<AppConfigValueAttribute>(false);
+                if (a is null)
+                    continue;
                 p.SetValue(obj, ResolveFromConfig(cfg, p.PropertyType, a, log));
             }
         }
@@ -305,7 +314,8 @@ namespace Altruist
         private static bool Exists(IConfigurationSection s, ConditionalOnConfigAttribute c, ILogger log)
         {
             var ok = s.Exists();
-            if (!ok) log.LogDebug("ConditionalOnConfig missing: {Path}", c.Path);
+            if (!ok)
+                log.LogDebug("ConditionalOnConfig missing: {Path}", c.Path);
             return ok;
         }
 
@@ -315,7 +325,8 @@ namespace Altruist
             var ok = s.Exists() && raw is not null &&
                      string.Equals(raw.Trim(), c.HavingValue!.Trim(),
                                    c.CaseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-            if (!ok) log.LogDebug("ConditionalOnConfig mismatch: {Path}", c.Path);
+            if (!ok)
+                log.LogDebug("ConditionalOnConfig mismatch: {Path}", c.Path);
             return ok;
         }
 
@@ -348,22 +359,26 @@ namespace Altruist
 
         private static IConfigConverter? CreateConverter(IServiceProvider sp, Type t)
         {
-            try { return (IConfigConverter?)ActivatorUtilities.CreateInstance(sp, t); }
+            try
+            { return (IConfigConverter?)ActivatorUtilities.CreateInstance(sp, t); }
             catch
             {
-                try { return (IConfigConverter?)Activator.CreateInstance(t); }
+                try
+                { return (IConfigConverter?)Activator.CreateInstance(t); }
                 catch { return null; }
             }
         }
 
         // ------------------- Config conversion pipeline ------------------
 
-        public static object? ResolveFromConfig(IConfiguration cfg, Type target, ConfigValueAttribute a, ILogger _)
+        public static object? ResolveFromConfig(IConfiguration cfg, Type target, AppConfigValueAttribute a, ILogger _)
         {
             var s = cfg.GetSection(a.Path);
-            if (s.Exists()) return BindOrConvert(s, target);
+            if (s.Exists())
+                return BindOrConvert(s, target);
 
-            if (a.Default is not null) return DefaultTo(target, a.Default);
+            if (a.Default is not null)
+                return DefaultTo(target, a.Default);
 
             return Nullable.GetUnderlyingType(target) is not null || !target.IsValueType
                 ? null
@@ -372,7 +387,8 @@ namespace Altruist
 
         private static object? BindOrConvert(IConfigurationSection s, Type target)
         {
-            if (!IsSimple(target)) return BindSection(s, target);
+            if (!IsSimple(target))
+                return BindSection(s, target);
             var raw = s.Value;
             return raw is null ? null : ConvertTo(raw, target);
         }
@@ -389,7 +405,8 @@ namespace Altruist
             if (!IsSimple(target))
             {
                 var c = TryConverter(raw, target);
-                if (c.success) return c.value;
+                if (c.success)
+                    return c.value;
 
                 try
                 {
@@ -417,31 +434,50 @@ namespace Altruist
         private static object? ConvertTo(string raw, Type target)
         {
             var t = Nullable.GetUnderlyingType(target) ?? target;
-            var c = TryConverter(raw, t); if (c.success) return c.value;
+            var c = TryConverter(raw, t);
+            if (c.success)
+                return c.value;
 
-            if (t.IsEnum) return Enum.Parse(t, raw, true);
-            if (t == typeof(Guid)) return Guid.Parse(raw);
-            if (t == typeof(TimeSpan)) return TimeSpan.Parse(raw, CultureInfo.InvariantCulture);
-            if (t == typeof(DateTime)) return DateTime.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-            if (t == typeof(DateTimeOffset)) return DateTimeOffset.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-            if (t == typeof(string)) return raw;
+            if (t.IsEnum)
+                return Enum.Parse(t, raw, true);
+            if (t == typeof(Guid))
+                return Guid.Parse(raw);
+            if (t == typeof(TimeSpan))
+                return TimeSpan.Parse(raw, CultureInfo.InvariantCulture);
+            if (t == typeof(DateTime))
+                return DateTime.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            if (t == typeof(DateTimeOffset))
+                return DateTimeOffset.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            if (t == typeof(string))
+                return raw;
 
             return ParseNumericOrChangeType(raw, t);
         }
 
         private static object ParseNumericOrChangeType(string raw, Type t)
         {
-            if (t == typeof(float)) return float.Parse(Norm(raw), NumberStyles.Float | NumberStyles.AllowThousands, CultureBox);
-            if (t == typeof(double)) return double.Parse(Norm(raw), NumberStyles.Float | NumberStyles.AllowThousands, CultureBox);
-            if (t == typeof(decimal)) return decimal.Parse(Norm(raw), NumberStyles.Number, CultureBox);
-            if (t == typeof(byte)) return byte.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
-            if (t == typeof(sbyte)) return sbyte.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
-            if (t == typeof(short)) return short.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
-            if (t == typeof(ushort)) return ushort.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
-            if (t == typeof(int)) return int.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
-            if (t == typeof(uint)) return uint.Parse(Norm(raw), NumberStyles.Integer, CultureBox);
-            if (t == typeof(long)) return long.Parse(Norm(raw), NumberStyles.Integer, CultureBox);
-            if (t == typeof(ulong)) return ulong.Parse(Norm(raw), NumberStyles.Integer, CultureBox);
+            if (t == typeof(float))
+                return float.Parse(Norm(raw), NumberStyles.Float | NumberStyles.AllowThousands, CultureBox);
+            if (t == typeof(double))
+                return double.Parse(Norm(raw), NumberStyles.Float | NumberStyles.AllowThousands, CultureBox);
+            if (t == typeof(decimal))
+                return decimal.Parse(Norm(raw), NumberStyles.Number, CultureBox);
+            if (t == typeof(byte))
+                return byte.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
+            if (t == typeof(sbyte))
+                return sbyte.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
+            if (t == typeof(short))
+                return short.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
+            if (t == typeof(ushort))
+                return ushort.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
+            if (t == typeof(int))
+                return int.Parse(Norm(raw, false), NumberStyles.Integer, CultureBox);
+            if (t == typeof(uint))
+                return uint.Parse(Norm(raw), NumberStyles.Integer, CultureBox);
+            if (t == typeof(long))
+                return long.Parse(Norm(raw), NumberStyles.Integer, CultureBox);
+            if (t == typeof(ulong))
+                return ulong.Parse(Norm(raw), NumberStyles.Integer, CultureBox);
 
             return System.Convert.ChangeType(raw, t, CultureBox)!;
         }
@@ -451,20 +487,26 @@ namespace Altruist
         private static string Norm(string s, bool allowUL = true)
         {
             s = s.Trim().Replace("_", "");
-            if (s.Length == 0) return s;
+            if (s.Length == 0)
+                return s;
 
             var last = char.ToLowerInvariant(s[^1]);
-            if (last is 'f' or 'd' or 'm') return s[..^1];
-            if (!allowUL) return s;
+            if (last is 'f' or 'd' or 'm')
+                return s[..^1];
+            if (!allowUL)
+                return s;
 
             int end = s.Length;
-            while (end > 0 && "ul".Contains(char.ToLowerInvariant(s[end - 1]))) end--;
+            while (end > 0 && "ul".Contains(char.ToLowerInvariant(s[end - 1])))
+                end--;
             return end != s.Length ? s[..end] : s;
         }
 
         private static (bool success, object? value) TryConverter(string raw, Type t)
         {
-            var dict = _converters; if (dict is null) return (false, null);
+            var dict = _converters;
+            if (dict is null)
+                return (false, null);
             return dict.TryGetValue(t, out var conv) ? (true, conv.Convert(raw)) : (false, null);
         }
     }

@@ -10,13 +10,21 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Security;
 
+[ServiceConfiguration]
 public sealed class AuthConfiguration : IAltruistConfiguration
 {
-    [ConfigValue("altruist:security:key", "VGhpcy1pcy1hLWRldmVsb3BtZW50LXNlY3JldC1rZXktMTIzNDU2")]
     public string SecretKey { get; set; } = "";
-
-    [ConfigValue("altruist:security:mode", "jwt")]
     public string Mode { get; set; } = "";
+
+    public AuthConfiguration(
+        [AppConfigValue("altruist:security:key", "VGhpcy1pcy1hLWRldmVsb3BtZW50LXNlY3JldC1rZXktMTIzNDU2")]
+        string secretKey,
+        [AppConfigValue("altruist:security:mode", "jwt")]
+        string mode)
+    {
+        SecretKey = secretKey;
+        Mode = mode;
+    }
 
     public Task Configure(IServiceCollection services)
     {
@@ -60,17 +68,4 @@ public sealed class AuthConfiguration : IAltruistConfiguration
 
         return Task.CompletedTask;
     }
-}
-
-
-[AltruistModule]
-public static class GamingExtension
-{
-
-    [AltruistModuleLoader]
-    public static async Task Load()
-    {
-        AltruistBootstrap.AddConfiguration(new AuthConfiguration());
-    }
-
 }

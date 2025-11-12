@@ -70,11 +70,11 @@ namespace Altruist.Gaming.ThreeD
         public int PartitionDepth { get; }
 
         public WorldPartitioner3D(
-            [ConfigValue("altruist:game:partitioner:width", "64")]
+            [AppConfigValue("altruist:game:partitioner:width", "64")]
             int partitionWidth,
-            [ConfigValue("altruist:game:partitioner:height", "64")]
+            [AppConfigValue("altruist:game:partitioner:height", "64")]
             int partitionHeight,
-            [ConfigValue("altruist:game:partitioner:depth", "64")]
+            [AppConfigValue("altruist:game:partitioner:depth", "64")]
             int partitionDepth)
         {
             PartitionWidth = partitionWidth;

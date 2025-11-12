@@ -1,6 +1,6 @@
 // Altruist/Bootstrap.cs
 using System.Reflection;
-using Altruist.Contracts;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -10,7 +10,6 @@ public static class AltruistBootstrap
 {
     public static readonly IServiceCollection Services = new ServiceCollection();
 
-    private static readonly List<IAltruistConfiguration> Configurations = new List<IAltruistConfiguration>();
     /// <summary>
     /// Entry point called by your app. Add more steps after BootstrapServices as needed.
     /// </summary>
@@ -31,15 +30,15 @@ public static class AltruistBootstrap
     public static async Task BootstrapServices()
     {
         await new AltruistServiceConfig().Configure(Services);
-        foreach (var config in Configurations)
-        {
-            await config.Configure(Services);
-        }
         await new ConfigAttributeConfiguration().Configure(Services);
     }
 
-    public static void AddConfiguration(IAltruistConfiguration config) => Configurations.Add(config);
-
+    /*************  ✨ Windsurf Command ⭐  *************/
+    /// <summary>
+    /// Scans loaded assemblies for types annotated with [AltruistModule] and configures them.
+    /// <see cref="AltruistModuleConfig"/> handles the discovery and configuration of modules.
+    /// </summary>
+    /*******  bf0ac18b-5b39-4b94-bd7c-b52d8da9c2b2  *******/
     public static void BootstrapModules()
     {
         new AltruistModuleConfig().Configure(Services);

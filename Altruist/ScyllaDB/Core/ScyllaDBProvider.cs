@@ -7,9 +7,11 @@ You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 
 using System.Reflection;
 using System.Text;
+
 using Altruist.Contracts;
 using Altruist.Persistence;
 using Altruist.UORM;
+
 using Cassandra;
 using Cassandra.Mapping;
 
@@ -31,7 +33,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
     public IDatabaseServiceToken Token { get; private set; } = ScyllaDBToken.Instance;
 
     public ScyllaDbProvider(
-        [ConfigValue("altruist:persistence:database:contact-points")] List<string> contactPoints,
+        [AppConfigValue("altruist:persistence:database:contact-points")] List<string> contactPoints,
         Builder? builder = null)
     {
         _contactPoints = contactPoints;
@@ -85,7 +87,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
     public async Task ShutdownAsync(Exception? ex = null)
     {
         StopHealthChecks();
-        if (_session == null) return;
+        if (_session == null)
+            return;
         await _session.ShutdownAsync();
     }
 
@@ -123,9 +126,11 @@ public class ScyllaDbProvider : IScyllaDbProvider
             }
             catch (Exception ex)
             {
-                if (attempt == 1) RaiseFailedEvent(ex);
+                if (attempt == 1)
+                    RaiseFailedEvent(ex);
                 lastException = ex;
-                if (attempt < maxRetries) await Task.Delay(delayMilliseconds).ConfigureAwait(false);
+                if (attempt < maxRetries)
+                    await Task.Delay(delayMilliseconds).ConfigureAwait(false);
             }
         }
 
@@ -134,7 +139,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     public async Task ConnectAsync(string protocol, string host, int port, int maxRetries = 30, int delayMilliseconds = 2000)
     {
-        if (IsConnected) return;
+        if (IsConnected)
+            return;
 
         var clusterBuilder = (_builder ?? Cluster.Builder().WithDefaultKeyspace("altruist"))
             .AddContactPoint(host)
@@ -158,9 +164,11 @@ public class ScyllaDbProvider : IScyllaDbProvider
             }
             catch (Exception ex)
             {
-                if (attempt == 1) RaiseFailedEvent(ex);
+                if (attempt == 1)
+                    RaiseFailedEvent(ex);
                 lastException = ex;
-                if (attempt < maxRetries) await Task.Delay(delayMilliseconds).ConfigureAwait(false);
+                if (attempt < maxRetries)
+                    await Task.Delay(delayMilliseconds).ConfigureAwait(false);
             }
         }
 
@@ -193,7 +201,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
         finally
         {
-            if (!IsConnected) RaiseConnectedEvent();
+            if (!IsConnected)
+                RaiseConnectedEvent();
         }
     }
 
@@ -239,7 +248,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
         }
         finally
         {
-            if (!IsConnected) RaiseConnectedEvent();
+            if (!IsConnected)
+                RaiseConnectedEvent();
         }
     }
 
@@ -277,7 +287,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
             type = Nullable.GetUnderlyingType(type)!;
 
         // byte[] must remain blob, not list<tinyint>
-        if (type == typeof(byte[])) return "blob";
+        if (type == typeof(byte[]))
+            return "blob";
 
         // Arrays -> list<elem> (except byte[])
         if (type.IsArray)
@@ -322,7 +333,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
         // Direct primitives
         var direct = MapPrimitiveOrNull(type);
-        if (direct != null) return direct;
+        if (direct != null)
+            return direct;
 
         // Fallback for complex types (records, your Prefab*Ref structs, etc.) – store as JSON text
         return "text";
@@ -449,7 +461,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
             foreach (var idxCol in document.Indexes.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 // skip if it's part of the primary key (no index needed/allowed)
-                if (pkSet.Contains(idxCol)) continue;
+                if (pkSet.Contains(idxCol))
+                    continue;
 
                 var indexName = $"{tableName}_{idxCol}_idx";
                 var indexCql = $"CREATE INDEX IF NOT EXISTS {indexName} ON {ks.Name}.{tableName} ({idxCol});";
@@ -525,7 +538,8 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
     private async Task HealthCheckAsync()
     {
-        if (!await _pingLock.WaitAsync(0)) return;
+        if (!await _pingLock.WaitAsync(0))
+            return;
         try
         {
             if (_session != null)

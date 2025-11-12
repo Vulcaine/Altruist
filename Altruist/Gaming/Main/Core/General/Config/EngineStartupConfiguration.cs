@@ -16,14 +16,16 @@ limitations under the License.
 */
 
 using System.Reflection;
+
 using Altruist.Contracts;
 using Altruist.Engine;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Engine;
 
-[Configuration]
+[AppConfiguration]
 public class EngineStartupConfiguration : IAltruistConfiguration
 {
     public async Task Configure(IServiceCollection services)

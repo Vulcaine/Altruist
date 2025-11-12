@@ -17,6 +17,7 @@ limitations under the License.
 using Altruist.Contracts;
 using Altruist.Gaming.ThreeD;
 using Altruist.Gaming.TwoD;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -27,6 +28,7 @@ namespace Altruist.Gaming
     /// binding logic as services. Prefabs are registered as Transient. After activation, a single
     /// [PostConstruct] public void method (if present) is invoked with DI/[ConfigValue]-resolved parameters.
     /// </summary>
+    [ServiceConfiguration]
     public class PrefabConfig : IAltruistConfiguration
     {
         public Task Configure(IServiceCollection services)
@@ -90,7 +92,8 @@ namespace Altruist.Gaming
             {
                 foreach (var t in a.GetTypes())
                 {
-                    if (!t.IsClass || t.IsAbstract) continue;
+                    if (!t.IsClass || t.IsAbstract)
+                        continue;
 
                     // Accept subclasses of either 2D or 3D prefab base
                     if (prefab2DBase.IsAssignableFrom(t) || prefab3DBase.IsAssignableFrom(t))
