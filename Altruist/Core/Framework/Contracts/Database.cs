@@ -75,24 +75,29 @@ public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheCo
     IVault<TVaultModel> Make<TVaultModel>() where TVaultModel : class, IVaultModel;
 }
 
-public interface IVaultModel : IStoredModel
+public interface IVaultModel : IStoredModel, IVaultOnSave
 {
     DateTime Timestamp { get; set; }
+}
+
+public interface IVaultOnSave
+{
+    void OnSave();
 }
 
 [PrimaryKeyAttribute("id")]
 public abstract class VaultModel : StoredModel, IVaultModel
 {
     [VaultColumn("createdAt")]
-    public virtual DateTime Timestamp { get; set; }
+    public virtual DateTime Timestamp { get; set; } = default!;
 
     [VaultColumn("id")]
-    public override string StorageId { get; set; }
+    public override string StorageId { get; set; } = default!;
 
     [VaultColumn("type")]
-    public override string Type { get; set; }
+    public override string Type { get; set; } = default!;
 
-    public VaultModel()
+    public void OnSave()
     {
         StorageId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(StorageId) ? Guid.NewGuid().ToString() : StorageId);
         Timestamp = DateTime.UtcNow;

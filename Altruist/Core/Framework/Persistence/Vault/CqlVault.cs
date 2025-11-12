@@ -82,11 +82,15 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     // ---------------------------- Public API ----------------------------
 
-    public Task SaveAsync(TVaultModel entity, bool? saveHistory = false) =>
-        SaveEntityAsync(entity!, saveHistory, validate: false);
+    public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
+    {
+        await SaveEntityAsync(entity!, saveHistory, validate: false);
+    }
 
-    public Task SaveAsync(object entity, bool? saveHistory = false) =>
-        SaveEntityAsync(entity, saveHistory, validate: true);
+    public async Task SaveAsync(object entity, bool? saveHistory = false)
+    {
+        await SaveEntityAsync(entity, saveHistory, validate: true);
+    }
 
     public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
         SaveEntitiesAsync(entities.Cast<object>(), saveHistory);
@@ -284,6 +288,8 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
         if (entity is IAfterVaultSave after)
             await after.AfterSaveAsync(_serviceProvider);
+
+        (entity as TVaultModel)!.OnSave();
     }
 
     private async Task SaveEntitiesAsync(IEnumerable<object> entities, bool? saveHistory = false)
