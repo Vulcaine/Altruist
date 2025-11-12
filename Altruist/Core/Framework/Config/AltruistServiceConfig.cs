@@ -75,12 +75,15 @@ namespace Altruist
 
             foreach (var svcAttr in implType.GetCustomAttributes<ServiceAttribute>())
             {
-                var svcType = svcAttr.ServiceType ?? DependencyResolver.InferServiceType(implType);
+                var lifetime = svcAttr.Lifetime;
+                var serviceType = svcAttr.ServiceType ?? implType;
+
+                // 1) Always register the concrete implementation → instance
                 services.Add(new ServiceDescriptor(
-                    svcType,
+                    implType,
                     sp =>
                     {
-                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, svcAttr.Lifetime);
+                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
                         try
                         {
                             _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
@@ -92,9 +95,20 @@ namespace Altruist
                         }
                         return obj!;
                     },
-                    svcAttr.Lifetime));
+                    lifetime));
 
-                reg.Add($"\t{DependencyResolver.GetCleanName(svcType)} → {DependencyResolver.GetCleanName(implType)} ({svcAttr.Lifetime})");
+                reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
+
+                // 2) If an abstraction/interface was provided, forward it to the same impl instance
+                if (serviceType != implType)
+                {
+                    services.Add(new ServiceDescriptor(
+                        serviceType,
+                        sp => sp.GetRequiredService(implType),
+                        lifetime));
+
+                    reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
+                }
             }
         }
 
