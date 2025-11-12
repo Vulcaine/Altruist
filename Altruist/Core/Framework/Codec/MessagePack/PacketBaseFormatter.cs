@@ -26,7 +26,7 @@ public class PacketBaseFormatter : IMessagePackFormatter<IPacketBase?>
         specificFormatter.Serialize(ref writer, value, options);
     }
 
-    public IPacketBase??? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)
+    public IPacketBase? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)
     {
         if (reader.TryReadNil())
             return null;
