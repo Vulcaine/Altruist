@@ -29,8 +29,8 @@ public static class AltruistBootstrap
     /// </summary>
     public static async Task BootstrapServices()
     {
-        await new ConfigAttributeConfiguration().Configure(Services);
         await new AltruistServiceConfig().Configure(Services);
+        await new ConfigAttributeConfiguration().Configure(Services);
     }
 
     public static async Task BootstrapModules()
