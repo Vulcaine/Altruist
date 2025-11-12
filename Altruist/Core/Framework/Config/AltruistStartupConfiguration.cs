@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist
 {
-    [AppConfiguration(order: int.MaxValue)]
+    [ServiceConfiguration(order: int.MaxValue)]
     public sealed class AltruistStartupConfiguration : IAltruistConfiguration
     {
         private readonly ApplicationArgs _args;

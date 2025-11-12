@@ -28,31 +28,6 @@ public sealed class ServiceConfigurationAttribute : Attribute
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public sealed class AppConfigurationAttribute : Attribute
 {
-    /// <summary>
-    /// Optional service type to register this configuration as (defaults to the implementation type).
-    /// </summary>
-    public Type? ServiceType { get; }
-
-    /// <summary>
-    /// Chosen service lifetime for registration (defaults to Singleton).
-    /// </summary>
-    public ServiceLifetime Lifetime { get; }
-
-    /// <summary>
-    /// Execution order. Lower runs earlier; higher runs later.
-    /// Defaults to 0. Use <see cref="int.MaxValue"/> to force last.
-    /// </summary>
-    public int Order { get; }
-
-    /// <param name="serviceType">Optional abstraction/interface to register this config as.</param>
-    /// <param name="lifetime">Service lifetime (Singleton by default).</param>
-    /// <param name="order">Execution order; higher runs later. Defaults to 0.</param>
-    public AppConfigurationAttribute(Type? serviceType = null, ServiceLifetime lifetime = ServiceLifetime.Singleton, int order = 0)
-    {
-        ServiceType = serviceType;
-        Lifetime = lifetime;
-        Order = order;
-    }
 }
 /// <summary>
 /// Marks a constructor parameter or a settable property to be resolved from IConfiguration.

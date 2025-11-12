@@ -25,7 +25,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Engine;
 
-[AppConfiguration]
+[ServiceConfiguration]
 public class EngineStartupConfiguration : IAltruistConfiguration
 {
     public async Task Configure(IServiceCollection services)
