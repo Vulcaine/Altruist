@@ -24,7 +24,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Security;
 
-[Service(typeof(ISyncService))]
+[Service]
 [ConditionalOnConfig("altruist:security:mode", havingValue: "session")]
 public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionModel>
 {
