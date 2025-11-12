@@ -120,9 +120,11 @@ internal sealed class QueryState
         if (HasAny(QueryPosition.SELECT))
             return this;
 
-        var projection = string.Join(", ", doc.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"));
+        var projection = string.Join(", ", doc.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
         return With(QueryPosition.SELECT, projection);
     }
+
+    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
 }
 
 /// <summary>
@@ -233,39 +235,42 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     public async Task<long> CountAsync()
     {
         var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-        var countQuery = string.IsNullOrEmpty(whereClause)
-            ? $"SELECT COUNT(*) FROM {_document.Name}"
-            : $"SELECT COUNT(*) FROM {_document.Name} WHERE {whereClause}";
+        var from = QualifiedTableName();
+        var sql = string.IsNullOrEmpty(whereClause)
+            ? $"SELECT COUNT(*) FROM {from}"
+            : $"SELECT COUNT(*) FROM {from} WHERE {whereClause}";
 
-        return await _databaseProvider.ExecuteCountAsync(countQuery, _state.Parameters[QueryPosition.WHERE]);
+        return await _databaseProvider.ExecuteCountAsync(sql, _state.Parameters[QueryPosition.WHERE]);
     }
 
     public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
         var updatedProperties = ExtractSetProperties(setPropertyCalls);
-        var setStrings = updatedProperties.Select(kv => (object)$"{kv.Key} = {ConvertToSqlValue(kv.Value)}").ToList();
+        // quote column identifiers here
+        var setStrings = updatedProperties.Select(kv =>
+            (object)$"{QuoteIdent(kv.Key)} = {ConvertToSqlValue(kv.Value)}").ToList();
 
-        // bake SET entries into a local state for this execution
         var st = _state;
         foreach (var s in setStrings)
             st = st.With(QueryPosition.SET, (string)s)!;
 
-        string updateQuery = BuildUpdateQuery(st);
+        var sql = BuildUpdateQuery(st);
         var concatenated = st.Parameters[QueryPosition.WHERE]
             .Concat(st.Parameters[QueryPosition.SET]).ToList();
 
-        return await _databaseProvider.ExecuteAsync(updateQuery, concatenated);
+        return await _databaseProvider.ExecuteAsync(sql, concatenated);
     }
 
     public async Task<bool> DeleteAsync()
     {
-        string deleteQuery = $"DELETE FROM {_document.Name}";
+        var from = QualifiedTableName();
         var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(whereClause))
-            deleteQuery += $" WHERE {whereClause}";
+        var sql = string.IsNullOrEmpty(whereClause)
+            ? $"DELETE FROM {from}"
+            : $"DELETE FROM {from} WHERE {whereClause}";
 
-        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _state.Parameters[QueryPosition.WHERE]);
-        return affectedRows > 0;
+        var affected = await _databaseProvider.ExecuteAsync(sql, _state.Parameters[QueryPosition.WHERE]);
+        return affected > 0;
     }
 
     public Task<ICursor<TVaultModel>> ToCursorAsync()
@@ -314,42 +319,44 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     private string BuildSelectQuery(QueryState st)
     {
-        var select = st.Parts[QueryPosition.SELECT].Count == 0
-            ? string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"))
+        var select =
+            st.Parts[QueryPosition.SELECT].Count == 0
+            ? string.Join(", ", _document.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
             : string.Join(", ", st.Parts[QueryPosition.SELECT]);
 
-        string selectQuery = $"SELECT {select} FROM {_document.Name}";
+        var sql = $"SELECT {select} FROM {QualifiedTableName()}";
 
         var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(where))
-            selectQuery += $" WHERE {where}";
+            sql += $" WHERE {where}";
 
         var orderBy = string.Join(", ", st.Parts[QueryPosition.ORDER_BY]);
         if (!string.IsNullOrEmpty(orderBy))
-            selectQuery += $" ORDER BY {orderBy}";
+            sql += $" ORDER BY {orderBy}";
 
         var limit = string.Join(" ", st.Parts[QueryPosition.LIMIT]);
         if (!string.IsNullOrEmpty(limit))
-            selectQuery += $" {limit}";
+            sql += $" {limit}";
 
         var offset = string.Join(" ", st.Parts[QueryPosition.OFFSET]);
         if (!string.IsNullOrEmpty(offset))
-            selectQuery += $" {offset}";
+            sql += $" {offset}";
 
-        return selectQuery;
+        return sql;
     }
 
     private string BuildUpdateQuery(QueryState st)
     {
         var set = string.Join(", ", st.Parts[QueryPosition.SET]);
-        var updateQuery = $"UPDATE {_document.Name} SET {set}";
+        var sql = $"UPDATE {QualifiedTableName()} SET {set}";
 
         var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
         if (!string.IsNullOrEmpty(where))
-            updateQuery += $" WHERE {where}";
+            sql += $" WHERE {where}";
 
-        return updateQuery;
+        return sql;
     }
+
 
     private IEnumerable<string> ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
     {
@@ -359,11 +366,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             {
                 var propName = m.Name;
                 var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
-                yield return $"{column} AS {propName}";
+                yield return $"{QuoteIdent(column)} AS {QuoteIdent(propName)}";
             }
             yield break;
         }
-
         throw new NotSupportedException("Unsupported expression type for SELECT. Use: x => new(...) with properties.");
     }
 
@@ -450,7 +456,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     private bool TryReadColumnName(Expression expression, ParameterExpression modelParam, out string column)
     {
-        // Peel conversions first
         while (expression is UnaryExpression ue &&
                (ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked))
             expression = ue.Operand;
@@ -458,13 +463,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         if (expression is MemberExpression me && IsRootedInParameter(me, modelParam))
         {
             var propName = me.Member.Name;
-            if (_document.Columns.TryGetValue(propName, out var col))
-            {
-                column = col;
-                return true;
-            }
-
-            column = Document.ToCamelCase(propName);
+            var col = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+            column = QuoteIdent(col);
             return true;
         }
 
@@ -498,16 +498,20 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     private string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         if (keySelector.Body is MemberExpression me)
-            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
-
+        {
+            var col = _document.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
+            return QuoteIdent(col);
+        }
         throw new NotSupportedException("Unsupported expression type in ORDER BY clause.");
     }
 
     private string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         if (keySelector.Body is MemberExpression me)
-            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
-
+        {
+            var col = _document.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
+            return QuoteIdent(col);
+        }
         throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
     }
 
@@ -529,6 +533,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
         return updated;
     }
+
+    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
+    private string QualifiedTableName() => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(_document.Name)}";
 
     // ------------------------ Insert/History/save helpers ------------------------
 
