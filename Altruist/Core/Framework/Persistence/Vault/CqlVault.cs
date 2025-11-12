@@ -378,56 +378,100 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     }
 
     private string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
-    => ToWhere(predicate.Body);
+    {
+        var modelParam = predicate.Parameters[0];
+        var sql = ToWhere(predicate.Body, modelParam);
+        return sql;
+    }
 
-    private string ToWhere(Expression expr)
+    private string ToWhere(Expression expr, ParameterExpression modelParam)
     {
         switch (expr)
         {
-            case BinaryExpression be:
-                // Logical combinators: (left) AND/OR (right)
-                if (be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse)
+            case UnaryExpression ue when ue.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked:
+                return ToWhere(ue.Operand, modelParam);
+
+            case BinaryExpression be when be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse:
                 {
                     var op = GetOperator(be.NodeType);
-                    var left = ToWhere(be.Left);
-                    var right = ToWhere(be.Right);
+                    var left = ToWhere(be.Left, modelParam);
+                    var right = ToWhere(be.Right, modelParam);
                     return $"({left}) {op} ({right})";
                 }
 
-                // Comparisons: col <op> value
-                var col = ReadColumnName(be.Left);
-                var valueObj = ExpressionUtils.Evaluate(be.Right);
-                var valueSql = ConvertToCqlValue(valueObj);
-                var cmp = GetOperator(be.NodeType);
-                return $"{col} {cmp} {valueSql}";
+            case BinaryExpression be when IsComparison(be.NodeType):
+                {
+                    // We only allow COLUMN op VALUE
+                    // If the left is not a model member, try swapping sides (e.g., value == acc.Prop).
+                    if (!TryReadColumnName(be.Left, modelParam, out var col))
+                    {
+                        if (TryReadColumnName(be.Right, modelParam, out var colSwapped))
+                        {
+                            // Swap and flip comparison if needed (only matters for <, >, <=, >=)
+                            var cmp = FlipOperator(be.NodeType);
+                            var val = ExpressionUtils.Evaluate(be.Left);
+                            return $"{colSwapped} {cmp} {ConvertToCqlValue(val)}";
+                        }
 
-            case UnaryExpression ue when ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked:
-                // strip conversions and re-evaluate
-                return ToWhere(ue.Operand);
+                        throw new NotSupportedException("WHERE comparison must involve a model property.");
+                    }
+
+                    var valueObj = ExpressionUtils.Evaluate(be.Right);
+                    return $"{col} {GetOperator(be.NodeType)} {ConvertToCqlValue(valueObj)}";
+                }
 
             default:
-                throw new NotSupportedException("Unsupported expression type in WHERE clause.");
+                throw new NotSupportedException("Unsupported expression in WHERE.");
         }
     }
 
-    private string ReadColumnName(Expression expression)
+    private static bool IsComparison(ExpressionType t) =>
+        t is ExpressionType.Equal or ExpressionType.NotEqual
+          or ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual
+          or ExpressionType.LessThan or ExpressionType.LessThanOrEqual;
+
+    private static ExpressionType FlipOperator(ExpressionType t) => t switch
     {
+        ExpressionType.GreaterThan => ExpressionType.LessThan,
+        ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual,
+        ExpressionType.LessThan => ExpressionType.GreaterThan,
+        ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual,
+        // Equal / NotEqual are symmetric
+        _ => t
+    };
+
+    private bool TryReadColumnName(Expression expression, ParameterExpression modelParam, out string column)
+    {
+        // Peel conversions first
         while (expression is UnaryExpression ue &&
                (ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked))
-        {
             expression = ue.Operand;
-        }
 
-        if (expression is MemberExpression me)
+        if (expression is MemberExpression me && IsRootedInParameter(me, modelParam))
         {
-            if (_document.Columns.TryGetValue(me.Member.Name, out var column))
-                return column;
-            return Document.ToCamelCase(me.Member.Name);
+            var propName = me.Member.Name;
+            if (_document.Columns.TryGetValue(propName, out var col))
+            {
+                column = col;
+                return true;
+            }
+
+            column = Document.ToCamelCase(propName);
+            return true;
         }
 
-        throw new NotSupportedException("Unsupported member expression in WHERE left-hand side.");
+        column = "";
+        return false;
     }
 
+    private static bool IsRootedInParameter(MemberExpression me, ParameterExpression modelParam)
+    {
+        Expression? root = me.Expression;
+        while (root is MemberExpression inner)
+            root = inner.Expression;
+
+        return root == modelParam;
+    }
 
     private static string GetOperator(ExpressionType expressionType) =>
     expressionType switch
