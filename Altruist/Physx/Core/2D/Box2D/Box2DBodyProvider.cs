@@ -1,10 +1,11 @@
 // Box2DPhysxBodyApiProvider2D.cs
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Altruist.Numerics;
+
 using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
 using Altruist.TwoD.Numerics;
+
 using Box2DSharp.Collision.Shapes;
 using Box2DSharp.Dynamics;
 

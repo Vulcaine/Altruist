@@ -16,9 +16,8 @@ limitations under the License.
 
 using System.Net.WebSockets;
 using System.Text.Json.Serialization;
-using Altruist.Contracts;
+
 using Altruist.Security;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Web
 {
@@ -53,13 +52,15 @@ namespace Altruist.Web
 
         public override async Task SendAsync(byte[] data)
         {
-            if (!IsConnected) throw new InvalidOperationException("WebSocket is not open.");
+            if (!IsConnected)
+                throw new InvalidOperationException("WebSocket is not open.");
             await _webSocket!.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
         }
 
         public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
         {
-            if (!IsConnected) return Array.Empty<byte>();
+            if (!IsConnected)
+                return Array.Empty<byte>();
 
             var buffer = new byte[4096];
             var result = await _webSocket!.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);

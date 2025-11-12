@@ -14,14 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Altruist.Socket;
-using Altruist.Web;
-using Microsoft.Extensions.Logging;
-using StackExchange.Redis;
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
+
 using Altruist.Contracts;
 using Altruist.InMemory;
+
+using StackExchange.Redis;
 
 namespace Altruist.Redis;
 
@@ -132,8 +131,10 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
             }
         };
 
-        if (_redis.Multiplexer.IsConnected) RaiseConnectedEvent();
-        else _onRetryExhausted?.Invoke(new Exception("Connection failed"));
+        if (_redis.Multiplexer.IsConnected)
+            RaiseConnectedEvent();
+        else
+            _onRetryExhausted?.Invoke(new Exception("Connection failed"));
     }
 
     public bool IsConnected => _redis.Multiplexer.IsConnected;
@@ -166,7 +167,8 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     {
         var document = GetDocumentOrFail<T>();
         var json = await _redis.StringGetAsync($"{document.Name}{(string.IsNullOrEmpty(cacheGroupId) ? "" : $"_{cacheGroupId}")}:{key}");
-        if (json.IsNullOrEmpty) return default;
+        if (json.IsNullOrEmpty)
+            return default;
 
         ReadOnlyMemory<byte> jsonMemory = Encoding.UTF8.GetBytes(json.ToString()).AsMemory();
 

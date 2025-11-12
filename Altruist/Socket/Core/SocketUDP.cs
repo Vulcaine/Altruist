@@ -20,12 +20,13 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
+
 using Altruist.Contracts;
 using Altruist.Security;
 using Altruist.Transport;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Altruist.Socket;
 

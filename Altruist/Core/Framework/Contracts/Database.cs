@@ -15,10 +15,11 @@ limitations under the License.
 */
 
 using System.Linq.Expressions;
-using System.Text.Json.Serialization;
+
 using Altruist.Contracts;
 using Altruist.Persistence;
 using Altruist.UORM;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 

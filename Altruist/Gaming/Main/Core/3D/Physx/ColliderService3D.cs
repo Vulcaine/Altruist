@@ -3,10 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using System;
 using System.Numerics;
-using System.Threading.Tasks;
-using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
@@ -16,7 +13,8 @@ namespace Altruist.Gaming.ThreeD
         public Vector3 Center => (Min + Max) * 0.5f;
         public static Bounds3D FromCenterSize(Vector3 center, Vector3 size)
         {
-            var half = size * 0.5f; return new(center - half, center + half);
+            var half = size * 0.5f;
+            return new(center - half, center + half);
         }
     }
 
@@ -52,7 +50,8 @@ namespace Altruist.Gaming.ThreeD
                     .GetMethod(nameof(IPrefabHandle<Prefab3D>.LoadChildAsync))!
                     .MakeGenericMethod(clr);
                 var rowObj = await (Task<object?>)method.Invoke(prefab, new object[] { child })!;
-                if (rowObj is not Collider3DModel base3d || base3d.IsTrigger) continue;
+                if (rowObj is not Collider3DModel base3d || base3d.IsTrigger)
+                    continue;
 
                 Bounds3D b = rowObj switch
                 {
@@ -103,7 +102,8 @@ namespace Altruist.Gaming.ThreeD
             float r = c.Radius ?? t.Scale.X;
             float h = c.HalfLength ?? t.Scale.Y;
             var axis = c.Axis ?? new Vector3(0, 1, 0);
-            if (axis == Vector3.Zero) axis = new Vector3(0, 1, 0);
+            if (axis == Vector3.Zero)
+                axis = new Vector3(0, 1, 0);
             axis = Vector3.Normalize(axis);
 
             var axisW = Vector3.Transform(axis, t.Rotation.ToQuaternion());

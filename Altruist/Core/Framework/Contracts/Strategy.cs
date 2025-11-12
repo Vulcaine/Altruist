@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Altruist.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Contracts;

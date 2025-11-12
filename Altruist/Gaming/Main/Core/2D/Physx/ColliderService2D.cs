@@ -3,9 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using System;
 using System.Numerics;
-using System.Threading.Tasks;
 
 namespace Altruist.Gaming.TwoD
 {
@@ -15,7 +13,8 @@ namespace Altruist.Gaming.TwoD
         public Vector2 Center => (Min + Max) * 0.5f;
         public static Bounds2D FromCenterSize(Vector2 center, Vector2 size)
         {
-            var half = size * 0.5f; return new(center - half, center + half);
+            var half = size * 0.5f;
+            return new(center - half, center + half);
         }
     }
 
@@ -53,7 +52,8 @@ namespace Altruist.Gaming.TwoD
                     .GetMethod(nameof(IPrefabHandle<Prefab2D>.LoadChildAsync))!
                     .MakeGenericMethod(clr);
                 var rowObj = await (Task<object?>)method.Invoke(prefab, new object[] { child })!;
-                if (rowObj is not Collider2DModel base2d || base2d.IsTrigger) continue;
+                if (rowObj is not Collider2DModel base2d || base2d.IsTrigger)
+                    continue;
 
                 Bounds2D b = rowObj switch
                 {

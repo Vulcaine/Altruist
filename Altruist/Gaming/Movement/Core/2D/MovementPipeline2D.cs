@@ -14,7 +14,6 @@
  */
 
 using System.Numerics;
-using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.Movement.TwoD
 {
@@ -52,23 +51,34 @@ namespace Altruist.Gaming.Movement.TwoD
             };
 
             // Kinematics
-            if (_kin.HasFlag(Planar2D.ForwardOnly)) modules.Add(new KinematicsForwardOnly2D());
-            if (_kin.HasFlag(Planar2D.FreeStrafe)) modules.Add(new KinematicsFreeStrafe2D());
+            if (_kin.HasFlag(Planar2D.ForwardOnly))
+                modules.Add(new KinematicsForwardOnly2D());
+            if (_kin.HasFlag(Planar2D.FreeStrafe))
+                modules.Add(new KinematicsFreeStrafe2D());
 
             // Rotation
-            if (_rot.HasFlag(Rotation2D.FaceAim)) modules.Add(new RotationFaceAim2D());
-            if (_rot.HasFlag(Rotation2D.FaceVelocity)) modules.Add(new RotationFaceVelocity2D());
-            if (_rot.HasFlag(Rotation2D.YawRate)) modules.Add(new RotationYawRate2D());
+            if (_rot.HasFlag(Rotation2D.FaceAim))
+                modules.Add(new RotationFaceAim2D());
+            if (_rot.HasFlag(Rotation2D.FaceVelocity))
+                modules.Add(new RotationFaceVelocity2D());
+            if (_rot.HasFlag(Rotation2D.YawRate))
+                modules.Add(new RotationYawRate2D());
 
             // Dynamics
-            if (_dyn.HasFlag(Dynamics2D.LinearAccel)) modules.Add(new DynamicsLinearAccel2D());
-            if (_dyn.HasFlag(Dynamics2D.ExponentialDrag)) modules.Add(new DynamicsDrag2D());
-            if (_dyn.HasFlag(Dynamics2D.TractionCurve)) modules.Add(new DynamicsTraction2D());
+            if (_dyn.HasFlag(Dynamics2D.LinearAccel))
+                modules.Add(new DynamicsLinearAccel2D());
+            if (_dyn.HasFlag(Dynamics2D.ExponentialDrag))
+                modules.Add(new DynamicsDrag2D());
+            if (_dyn.HasFlag(Dynamics2D.TractionCurve))
+                modules.Add(new DynamicsTraction2D());
 
             // Forces
-            if (_forces.HasFlag(Forces2D.Boost)) modules.Add(new ForceBoost2D());
-            if (_forces.HasFlag(Forces2D.Dash)) modules.Add(new ForceDash2D());
-            if (_forces.HasFlag(Forces2D.Knockback)) modules.Add(new ForceKnockback2D());
+            if (_forces.HasFlag(Forces2D.Boost))
+                modules.Add(new ForceBoost2D());
+            if (_forces.HasFlag(Forces2D.Dash))
+                modules.Add(new ForceDash2D());
+            if (_forces.HasFlag(Forces2D.Knockback))
+                modules.Add(new ForceKnockback2D());
 
             // Compose into a single pipeline
             var tweaks = _constraintTweaks.ToArray();
@@ -109,10 +119,12 @@ namespace Altruist.Gaming.Movement.TwoD
         public MovementResult2D Evaluate(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt)
         {
             // Apply constraint tweaks configured on the builder (idempotent if your profiles are per-entity)
-            foreach (var t in _tweaks) t(profile);
+            foreach (var t in _tweaks)
+                t(profile);
 
             var ctx = new MoveContext2D { Desired = Vector2.Zero, Velocity = state.Velocity, TargetAngle = state.AngleRad, AngularDelta = 0f, Force = Vector2.Zero };
-            for (int i = 0; i < _modules.Length; i++) _modules[i].Execute(intent, state, profile, dt, ctx);
+            for (int i = 0; i < _modules.Length; i++)
+                _modules[i].Execute(intent, state, profile, dt, ctx);
             return new MovementResult2D(ctx.Velocity, ctx.AngularDelta, ctx.Force);
         }
     }
@@ -127,7 +139,8 @@ namespace Altruist.Gaming.Movement.TwoD
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
             var move = intent.Move;
-            if (move.LengthSquared() < profile.Deadzone * profile.Deadzone) move = Vector2.Zero;
+            if (move.LengthSquared() < profile.Deadzone * profile.Deadzone)
+                move = Vector2.Zero;
             ctx.Desired = move;
         }
     }
@@ -136,7 +149,8 @@ namespace Altruist.Gaming.Movement.TwoD
     {
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
-            if (profile.GridSnap <= 0f || ctx.Desired == Vector2.Zero) return;
+            if (profile.GridSnap <= 0f || ctx.Desired == Vector2.Zero)
+                return;
             var dir = ctx.Desired;
             var angle = MathF.Atan2(dir.Y, dir.X);
             var step = profile.GridSnap;
@@ -152,7 +166,8 @@ namespace Altruist.Gaming.Movement.TwoD
         {
             // Use Y component as forward throttle in local facing
             var throttle = intent.Move.Y;
-            if (MathF.Abs(throttle) < profile.Deadzone) throttle = 0f;
+            if (MathF.Abs(throttle) < profile.Deadzone)
+                throttle = 0f;
             var forward = new Vector2(MathF.Cos(state.AngleRad), MathF.Sin(state.AngleRad));
             ctx.Desired += forward * throttle;
         }
@@ -184,12 +199,15 @@ namespace Altruist.Gaming.Movement.TwoD
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
             var v = ctx.Velocity;
-            if (v.LengthSquared() < 1e-4f && ctx.Desired.LengthSquared() > 1e-6f) v = ctx.Desired;
-            if (v.LengthSquared() < 1e-6f) return;
+            if (v.LengthSquared() < 1e-4f && ctx.Desired.LengthSquared() > 1e-6f)
+                v = ctx.Desired;
+            if (v.LengthSquared() < 1e-6f)
+                return;
             var angle = MathF.Atan2(v.Y, v.X);
             var diff = angle - state.AngleRad;
             ctx.AngularDelta += NormalizeAngle(diff);
-            static float NormalizeAngle(float a) { while (a > MathF.PI) a -= 2 * MathF.PI; while (a < -MathF.PI) a += 2 * MathF.PI; return a; }
+            static float NormalizeAngle(float a)
+            { while (a > MathF.PI) a -= 2 * MathF.PI; while (a < -MathF.PI) a += 2 * MathF.PI; return a; }
         }
     }
 
@@ -209,13 +227,15 @@ namespace Altruist.Gaming.Movement.TwoD
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
             var desiredVel = ctx.Desired;
-            if (desiredVel != Vector2.Zero) desiredVel = Vector2.Normalize(desiredVel) * profile.MaxSpeed;
+            if (desiredVel != Vector2.Zero)
+                desiredVel = Vector2.Normalize(desiredVel) * profile.MaxSpeed;
             var current = ctx.Velocity;
             var diff = desiredVel - current;
             var accel = diff;
             var maxAccel = (Vector2.Dot(diff, desiredVel) >= 0 ? profile.Acceleration : profile.Deceleration) * dt;
             var len = accel.Length();
-            if (len > maxAccel && len > 1e-5f) accel = accel * (maxAccel / len);
+            if (len > maxAccel && len > 1e-5f)
+                accel = accel * (maxAccel / len);
             ctx.Velocity = current + accel;
         }
     }
@@ -234,7 +254,8 @@ namespace Altruist.Gaming.Movement.TwoD
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
             // Simple blend towards desired direction to simulate traction
-            if (ctx.Desired == Vector2.Zero || ctx.Velocity == Vector2.Zero) return;
+            if (ctx.Desired == Vector2.Zero || ctx.Velocity == Vector2.Zero)
+                return;
             var vDir = Vector2.Normalize(ctx.Velocity);
             var dDir = Vector2.Normalize(ctx.Desired);
             var blend = Math.Clamp(profile.Traction, 0f, 1f);
@@ -249,9 +270,11 @@ namespace Altruist.Gaming.Movement.TwoD
     {
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
-            if (!intent.Boost) return;
+            if (!intent.Boost)
+                return;
             var v = ctx.Velocity;
-            if (v == Vector2.Zero && ctx.Desired != Vector2.Zero) v = Vector2.Normalize(ctx.Desired) * 0.01f;
+            if (v == Vector2.Zero && ctx.Desired != Vector2.Zero)
+                v = Vector2.Normalize(ctx.Desired) * 0.01f;
             ctx.Velocity = v * profile.BoostMultiplier;
         }
     }
@@ -260,7 +283,8 @@ namespace Altruist.Gaming.Movement.TwoD
     {
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
-            if (!intent.Dash) return;
+            if (!intent.Dash)
+                return;
             var dir = ctx.Desired != Vector2.Zero ? Vector2.Normalize(ctx.Desired) :
                       new Vector2(MathF.Cos(state.AngleRad), MathF.Sin(state.AngleRad));
             ctx.Velocity = dir * profile.DashSpeed;
@@ -271,7 +295,8 @@ namespace Altruist.Gaming.Movement.TwoD
     {
         public void Execute(in MovementIntent2D intent, in MovementState2D state, MovementProfile2D profile, float dt, MoveContext2D ctx)
         {
-            if (intent.Knockback == Vector2.Zero) return;
+            if (intent.Knockback == Vector2.Zero)
+                return;
             ctx.Force += intent.Knockback; // leave integration to physx engine
         }
     }

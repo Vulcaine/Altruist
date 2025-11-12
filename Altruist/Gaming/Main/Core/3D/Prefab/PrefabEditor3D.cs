@@ -3,7 +3,6 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using Altruist.UORM;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Gaming.ThreeD
@@ -50,7 +49,8 @@ namespace Altruist.Gaming.ThreeD
         public TModel? Resolve<TModel>(string storageId)
             where TModel : class, IVaultModel
         {
-            if (string.IsNullOrWhiteSpace(storageId)) return default;
+            if (string.IsNullOrWhiteSpace(storageId))
+                return default;
 
             var repo = _repos.Make(VaultRegistry.GetKeyspace(typeof(TModel)));
             return repo.Select<TModel>()

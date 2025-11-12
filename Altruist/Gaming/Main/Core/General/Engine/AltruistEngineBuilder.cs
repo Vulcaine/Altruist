@@ -14,13 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Altruist.Engine;
-using Altruist.Physx;
-using Altruist.Physx.ThreeD;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-
 namespace Altruist.Gaming.Engine;
 
 public enum EngineMode

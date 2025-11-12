@@ -14,8 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System;
-
 namespace Altruist.Engine;
 
 
@@ -33,7 +31,8 @@ public class TaskIdentifier : IEquatable<TaskIdentifier>
 
     public bool Equals(TaskIdentifier? other)
     {
-        if (other == null) return false;
+        if (other == null)
+            return false;
         return Id.Equals(other.Id, StringComparison.Ordinal);
     }
 

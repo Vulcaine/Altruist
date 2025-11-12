@@ -3,10 +3,6 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
 
@@ -79,7 +75,8 @@ namespace Altruist.Gaming.TwoD
 
         public async Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IPrefab2D prefab)
         {
-            if (prefab is null) return Enumerable.Empty<IWorldPartitionManager>();
+            if (prefab is null)
+                return Enumerable.Empty<IWorldPartitionManager>();
 
             DestroyObject(prefab);
 
@@ -97,7 +94,8 @@ namespace Altruist.Gaming.TwoD
 
         public async Task AddDynamicObject(IPrefab2D prefab)
         {
-            if (prefab is null) return;
+            if (prefab is null)
+                return;
 
             var radius = await ComputePartitionRadiusAsync(prefab);
 
@@ -111,7 +109,8 @@ namespace Altruist.Gaming.TwoD
 
         public IWorldPartitionManager? AddStaticObject(IPrefab2D prefab)
         {
-            if (prefab is null) return null;
+            if (prefab is null)
+                return null;
 
             var partition = FindPartitionForPosition(prefab.Transform.Position.X, prefab.Transform.Position.Y);
             if (partition is WorldPartition2D p2d)

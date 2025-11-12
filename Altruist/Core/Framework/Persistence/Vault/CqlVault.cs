@@ -17,8 +17,7 @@ limitations under the License.
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
-using Altruist;
-using Altruist.UORM;
+
 using Microsoft.EntityFrameworkCore.Query;
 
 namespace Altruist.Persistence;
@@ -230,7 +229,8 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
     {
-        if (entity is null) throw new ArgumentNullException(nameof(entity));
+        if (entity is null)
+            throw new ArgumentNullException(nameof(entity));
         entity.OnSave();
 
         var tableName = _document.Name;
@@ -271,9 +271,11 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
-        if (entities is null) throw new ArgumentNullException(nameof(entities));
+        if (entities is null)
+            throw new ArgumentNullException(nameof(entities));
         var list = entities as IList<TVaultModel> ?? entities.ToList();
-        if (list.Count == 0) throw new ArgumentException("Entities cannot be empty.", nameof(entities));
+        if (list.Count == 0)
+            throw new ArgumentException("Entities cannot be empty.", nameof(entities));
 
         var tableName = _document.Name;
         var fields = _document.Columns.Keys;
@@ -286,8 +288,10 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         foreach (var e in list)
         {
             var canSave = true;
-            if (e is IBeforeVaultSave b) canSave = await b.BeforeSaveAsync(_serviceProvider);
-            if (!canSave) continue;
+            if (e is IBeforeVaultSave b)
+                canSave = await b.BeforeSaveAsync(_serviceProvider);
+            if (!canSave)
+                continue;
 
             queries.Add(insertQuery);
             allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
@@ -306,13 +310,15 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             }
         }
 
-        if (queries.Count == 0) return;
+        if (queries.Count == 0)
+            return;
 
         var batchQuery = $"BEGIN BATCH {string.Join(" ", queries)} APPLY BATCH;";
         await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
 
         foreach (var e in list)
-            if (e is IAfterVaultSave a) await a.AfterSaveAsync(_serviceProvider);
+            if (e is IAfterVaultSave a)
+                await a.AfterSaveAsync(_serviceProvider);
     }
 
     private void EnsureProjectionSelected()
@@ -340,13 +346,16 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         string selectQuery = $"SELECT {select} FROM {_document.Name}";
 
         var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where)) selectQuery += $" WHERE {where}";
+        if (!string.IsNullOrEmpty(where))
+            selectQuery += $" WHERE {where}";
 
         var orderBy = string.Join(", ", _queryParts[QueryPosition.ORDER_BY]);
-        if (!string.IsNullOrEmpty(orderBy)) selectQuery += $" ORDER BY {orderBy}";
+        if (!string.IsNullOrEmpty(orderBy))
+            selectQuery += $" ORDER BY {orderBy}";
 
         var limit = string.Join(" ", _queryParts[QueryPosition.LIMIT]);
-        if (!string.IsNullOrEmpty(limit)) selectQuery += $" {limit}";
+        if (!string.IsNullOrEmpty(limit))
+            selectQuery += $" {limit}";
 
         return selectQuery;
     }
@@ -357,7 +366,8 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         var updateQuery = $"UPDATE {_document.Name} SET {set}";
 
         var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where)) updateQuery += $" WHERE {where}";
+        if (!string.IsNullOrEmpty(where))
+            updateQuery += $" WHERE {where}";
 
         return updateQuery;
     }
@@ -456,9 +466,12 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     private static string ConvertTimeSpanToDatabaseFormat(TimeSpan ts)
     {
-        if (ts.TotalSeconds < 60) return $"{ts.Seconds}s";
-        if (ts.TotalMinutes < 60) return $"{ts.Minutes}m";
-        if (ts.TotalHours < 24) return $"{ts.Hours}h";
+        if (ts.TotalSeconds < 60)
+            return $"{ts.Seconds}s";
+        if (ts.TotalMinutes < 60)
+            return $"{ts.Minutes}m";
+        if (ts.TotalHours < 24)
+            return $"{ts.Hours}h";
         return $"{ts.Days}d";
     }
 

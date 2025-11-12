@@ -17,9 +17,11 @@ limitations under the License.
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
+
 using Altruist.Engine;
-using Altruist.Gaming.TwoD;
+
 using Cronos;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -119,7 +121,8 @@ public class MethodScheduler
             foreach (var method in methods)
             {
                 var attr = method.GetCustomAttribute<CycleAttribute>();
-                if (attr == null) continue;
+                if (attr == null)
+                    continue;
 
                 if (attr.IsCron())
                 {

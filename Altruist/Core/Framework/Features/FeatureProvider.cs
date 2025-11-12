@@ -1,6 +1,4 @@
 // Features/IAltruistFeatureProvider.cs
-using Microsoft.Extensions.Configuration;
-
 namespace Altruist.Features
 {
     /// <summary>
