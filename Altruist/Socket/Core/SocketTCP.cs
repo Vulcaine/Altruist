@@ -227,7 +227,7 @@ public sealed class TcpConnection : AltruistConnection
 // }
 
 [Service(typeof(ITransportServiceToken))]
-[ConditionalOnConfig("altruist:server:transport", "tcp")]
+[ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
 public sealed class TcpTransportToken : ITransportServiceToken
 {
     public static TcpTransportToken Instance = new TcpTransportToken();
@@ -237,7 +237,7 @@ public sealed class TcpTransportToken : ITransportServiceToken
 }
 
 [Service(typeof(ITransportConfiguration))]
-[ConditionalOnConfig("altruist:server:transport", "tcp")]
+[ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
 public sealed class TcpSocketConfiguration : ITransportConfiguration
 {
     public Task Configure(IServiceCollection services)
