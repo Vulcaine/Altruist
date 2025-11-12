@@ -33,32 +33,102 @@ public enum QueryPosition
     SET
 }
 
+/// <summary>
+/// Immutable per-chain query state.
+/// Each fluent call creates a new state with one extra piece added.
+/// </summary>
+internal sealed class QueryState
+{
+    public readonly Dictionary<QueryPosition, HashSet<string>> Parts;
+    public readonly Dictionary<QueryPosition, List<object?>> Parameters;
+
+    public QueryState()
+    {
+        Parts = new Dictionary<QueryPosition, HashSet<string>>
+        {
+            { QueryPosition.SELECT,   new HashSet<string>(StringComparer.Ordinal) },
+            { QueryPosition.FROM,     new HashSet<string>(StringComparer.Ordinal) },
+            { QueryPosition.WHERE,    new HashSet<string>(StringComparer.Ordinal) },
+            { QueryPosition.ORDER_BY, new HashSet<string>(StringComparer.Ordinal) },
+            { QueryPosition.LIMIT,    new HashSet<string>(StringComparer.Ordinal) },
+            { QueryPosition.UPDATE,   new HashSet<string>(StringComparer.Ordinal) },
+            { QueryPosition.SET,      new HashSet<string>(StringComparer.Ordinal) }
+        };
+
+        Parameters = new Dictionary<QueryPosition, List<object?>>
+        {
+            { QueryPosition.SELECT,   new List<object?>() },
+            { QueryPosition.FROM,     new List<object?>() },
+            { QueryPosition.WHERE,    new List<object?>() },
+            { QueryPosition.ORDER_BY, new List<object?>() },
+            { QueryPosition.LIMIT,    new List<object?>() },
+            { QueryPosition.UPDATE,   new List<object?>() },
+            { QueryPosition.SET,      new List<object?>() }
+        };
+    }
+
+    private QueryState(Dictionary<QueryPosition, HashSet<string>> parts,
+                       Dictionary<QueryPosition, List<object?>> parameters)
+    {
+        Parts = parts;
+        Parameters = parameters;
+    }
+
+    public QueryState With(QueryPosition pos, string part, object? parameter = null)
+    {
+        // clone shallow; copy only the mutated bucket
+        var newParts = new Dictionary<QueryPosition, HashSet<string>>(Parts.Count);
+        foreach (var kv in Parts)
+        {
+            if (kv.Key == pos)
+            {
+                var copy = new HashSet<string>(kv.Value, StringComparer.Ordinal);
+                copy.Add(part);
+                newParts[kv.Key] = copy;
+            }
+            else
+            {
+                newParts[kv.Key] = kv.Value;
+            }
+        }
+
+        var newParams = new Dictionary<QueryPosition, List<object?>>(Parameters.Count);
+        foreach (var kv in Parameters)
+        {
+            if (kv.Key == pos && parameter is not null)
+            {
+                var copy = new List<object?>(kv.Value);
+                copy.Add(parameter);
+                newParams[kv.Key] = copy;
+            }
+            else
+            {
+                newParams[kv.Key] = kv.Value;
+            }
+        }
+
+        return new QueryState(newParts, newParams);
+    }
+
+    public bool HasAny(QueryPosition pos) => Parts[pos].Count > 0;
+
+    public QueryState EnsureProjectionSelected(Document doc)
+    {
+        if (HasAny(QueryPosition.SELECT))
+            return this;
+
+        var projection = string.Join(", ", doc.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"));
+        return With(QueryPosition.SELECT, projection);
+    }
+}
+
 public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ICqlDatabaseProvider _databaseProvider;
 
-    private readonly Dictionary<QueryPosition, HashSet<string>> _queryParts = new()
-    {
-        { QueryPosition.SELECT,   new HashSet<string>(StringComparer.Ordinal) },
-        { QueryPosition.FROM,     new HashSet<string>(StringComparer.Ordinal) },
-        { QueryPosition.WHERE,    new HashSet<string>(StringComparer.Ordinal) },
-        { QueryPosition.ORDER_BY, new HashSet<string>(StringComparer.Ordinal) },
-        { QueryPosition.LIMIT,    new HashSet<string>(StringComparer.Ordinal) },
-        { QueryPosition.UPDATE,   new HashSet<string>(StringComparer.Ordinal) },
-        { QueryPosition.SET,      new HashSet<string>(StringComparer.Ordinal) }
-    };
-
-    private readonly Dictionary<QueryPosition, List<object?>> _queryParameters = new()
-    {
-        { QueryPosition.SELECT,   new List<object?>() },
-        { QueryPosition.FROM,     new List<object?>() },
-        { QueryPosition.WHERE,    new List<object?>() },
-        { QueryPosition.ORDER_BY, new List<object?>() },
-        { QueryPosition.LIMIT,    new List<object?>() },
-        { QueryPosition.UPDATE,   new List<object?>() },
-        { QueryPosition.SET,      new List<object?>() }
-    };
+    // immutable per-chain state
+    private readonly QueryState _state;
 
     public IKeyspace Keyspace { get; }
     protected Document _document { get; }
@@ -69,12 +139,155 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         TimestampSetterFactory.Create(typeof(TVaultModel));
 
     public CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace, Document document, IServiceProvider serviceProvider)
+    : this(databaseProvider, keyspace, document, serviceProvider, new QueryState())
+    { }
+
+    private CqlVault(ICqlDatabaseProvider databaseProvider, IKeyspace keyspace, Document document, IServiceProvider serviceProvider, QueryState state)
     {
         _databaseProvider = databaseProvider;
         _document = document;
         Keyspace = keyspace;
         _serviceProvider = serviceProvider;
+        _state = state;
     }
+
+    // ------------------------ Fluent query ops (return NEW instance) ------------------------
+
+    public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
+    {
+        string whereClause = ConvertWherePredicateToString(predicate);
+        var next = _state.With(QueryPosition.WHERE, whereClause)
+                         .EnsureProjectionSelected(_document);
+        return New(next);
+    }
+
+    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    {
+        string orderByClause = ConvertOrderByToString(keySelector);
+        var next = _state.With(QueryPosition.ORDER_BY, orderByClause)
+                         .With(QueryPosition.SELECT, orderByClause);
+        return New(next);
+    }
+
+    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    {
+        string orderByDescClause = ConvertOrderByDescendingToString(keySelector);
+        var next = _state.With(QueryPosition.ORDER_BY, orderByDescClause + " DESC")
+                         .With(QueryPosition.SELECT, orderByDescClause);
+        return New(next);
+    }
+
+    public IVault<TVaultModel> Take(int count)
+    {
+        var next = _state.With(QueryPosition.LIMIT, $"LIMIT {count}")
+                         .EnsureProjectionSelected(_document);
+        return New(next);
+    }
+
+    public IVault<TVaultModel> Skip(int count)
+        => throw new NotSupportedException("Cassandra does not support skipping rows. Use paging with a WHERE clause instead.");
+
+    // ------------------------ Terminal ops (use current state) ------------------------
+
+    public async Task<List<TVaultModel>> ToListAsync()
+    {
+        var st = _state.EnsureProjectionSelected(_document);
+        string query = BuildSelectQuery(st);
+        return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT])).ToList();
+    }
+
+    public async Task<TVaultModel?> FirstOrDefaultAsync()
+    {
+        var st = _state.EnsureProjectionSelected(_document)
+                       .With(QueryPosition.LIMIT, "LIMIT 1");
+        string query = BuildSelectQuery(st);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
+        return result.FirstOrDefault();
+    }
+
+    public async Task<TVaultModel?> FirstAsync()
+    {
+        var st = _state.EnsureProjectionSelected(_document)
+                       .With(QueryPosition.LIMIT, "LIMIT 1");
+        string query = BuildSelectQuery(st);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
+        return result.First();
+    }
+
+    public async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
+    {
+        var next = (CqlVault<TVaultModel>)Where(predicate);
+        return await next.ToListAsync();
+    }
+
+    public async Task<long> CountAsync()
+    {
+        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
+        var countQuery = string.IsNullOrEmpty(whereClause)
+            ? $"SELECT COUNT(*) FROM {_document.Name}"
+            : $"SELECT COUNT(*) FROM {_document.Name} WHERE {whereClause}";
+
+        return await _databaseProvider.ExecuteCountAsync(countQuery, _state.Parameters[QueryPosition.WHERE]);
+    }
+
+    public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    {
+        var updatedProperties = ExtractSetProperties(setPropertyCalls);
+        var setStrings = updatedProperties.Select(kv => (object)$"{kv.Key} = {ConvertToCqlValue(kv.Value)}").ToList();
+
+        // bake SET entries into a local state for this execution
+        var st = _state;
+        foreach (var s in setStrings)
+            st = st.With(QueryPosition.SET, (string)s)!;
+
+        string updateQuery = BuildUpdateQuery(st);
+        var concatenated = st.Parameters[QueryPosition.WHERE]
+            .Concat(st.Parameters[QueryPosition.SET]).ToList();
+
+        return await _databaseProvider.ExecuteAsync(updateQuery, concatenated);
+    }
+
+    public async Task<bool> DeleteAsync()
+    {
+        string deleteQuery = $"DELETE FROM {_document.Name}";
+        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
+        if (!string.IsNullOrEmpty(whereClause))
+            deleteQuery += $" WHERE {whereClause}";
+
+        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _state.Parameters[QueryPosition.WHERE]);
+        return affectedRows > 0;
+    }
+
+    public Task<ICursor<TVaultModel>> ToCursorAsync()
+        => throw new NotImplementedException();
+
+    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(
+        Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
+    {
+        if (_state.Parts[QueryPosition.SELECT].Contains("*"))
+            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
+
+        var st = _state;
+        foreach (var column in ConvertSelectExpressionToString(selector))
+            st = st.With(QueryPosition.SELECT, column);
+
+        var query = BuildSelectQuery(st);
+        return await _databaseProvider.QueryAsync<TResult>(query, st.Parameters[QueryPosition.SELECT]);
+    }
+
+    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    {
+        var next = (CqlVault<TVaultModel>)Where(predicate);
+        var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
+        var query = string.IsNullOrEmpty(where)
+            ? $"SELECT COUNT(*) FROM {_document.Name}"
+            : $"SELECT COUNT(*) FROM {_document.Name} WHERE {where}";
+
+        var count = await _databaseProvider.ExecuteCountAsync(query, next._state.Parameters[QueryPosition.WHERE]);
+        return count > 0;
+    }
+
+    // ------------------------ Non-query ops (unchanged) ------------------------
 
     public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
@@ -84,118 +297,44 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
         SaveEntitiesAsync(entities, saveHistory);
 
-    public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
+    private CqlVault<TVaultModel> New(QueryState st)
+        => new CqlVault<TVaultModel>(_databaseProvider, Keyspace, _document, _serviceProvider, st);
+
+    // ------------------------ Query building helpers ------------------------
+
+    private string BuildSelectQuery(QueryState st)
     {
-        string whereClause = ConvertWherePredicateToString(predicate);
-        AddToQuery(QueryPosition.WHERE, whereClause);
-        EnsureProjectionSelected();
-        return this;
+        var select = st.Parts[QueryPosition.SELECT].Count == 0
+            ? string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"))
+            : string.Join(", ", st.Parts[QueryPosition.SELECT]);
+
+        string selectQuery = $"SELECT {select} FROM {_document.Name}";
+
+        var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
+        if (!string.IsNullOrEmpty(where))
+            selectQuery += $" WHERE {where}";
+
+        var orderBy = string.Join(", ", st.Parts[QueryPosition.ORDER_BY]);
+        if (!string.IsNullOrEmpty(orderBy))
+            selectQuery += $" ORDER BY {orderBy}";
+
+        var limit = string.Join(" ", st.Parts[QueryPosition.LIMIT]);
+        if (!string.IsNullOrEmpty(limit))
+            selectQuery += $" {limit}";
+
+        return selectQuery;
     }
 
-    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    private string BuildUpdateQuery(QueryState st)
     {
-        string orderByClause = ConvertOrderByToString(keySelector);
-        AddToQuery(QueryPosition.ORDER_BY, orderByClause);
-        AddToQuery(QueryPosition.SELECT, orderByClause);
-        return this;
-    }
+        var set = string.Join(", ", st.Parts[QueryPosition.SET]);
+        var updateQuery = $"UPDATE {_document.Name} SET {set}";
 
-    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        string orderByDescClause = ConvertOrderByDescendingToString(keySelector);
-        AddToQuery(QueryPosition.ORDER_BY, orderByDescClause + " DESC");
-        AddToQuery(QueryPosition.SELECT, orderByDescClause);
-        return this;
-    }
+        var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
+        if (!string.IsNullOrEmpty(where))
+            updateQuery += $" WHERE {where}";
 
-    public IVault<TVaultModel> Take(int count)
-    {
-        AddToQuery(QueryPosition.LIMIT, $"LIMIT {count}");
-        EnsureProjectionSelected();
-        return this;
-    }
-
-    public async Task<List<TVaultModel>> ToListAsync()
-    {
-        string query = BuildSelectQuery();
-        return (await _databaseProvider.QueryAsync<TVaultModel>(query, _queryParameters[QueryPosition.SELECT])).ToList();
-    }
-
-    public async Task<TVaultModel?> FirstOrDefaultAsync()
-    {
-        string query = BuildSelectQuery() + " LIMIT 1";
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, _queryParameters[QueryPosition.SELECT]);
-        return result.FirstOrDefault();
-    }
-
-    public async Task<TVaultModel?> FirstAsync()
-    {
-        string query = BuildSelectQuery() + " LIMIT 1";
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, _queryParameters[QueryPosition.SELECT]);
-        return result.First();
-    }
-
-    public async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        Where(predicate);
-        return await ToListAsync();
-    }
-
-    public async Task<long> CountAsync()
-    {
-        var countQuery = $"SELECT COUNT(*) FROM {_document.Name}";
-        var whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(whereClause))
-            countQuery += $" WHERE {whereClause}";
-
-        return await _databaseProvider.ExecuteCountAsync(countQuery, _queryParameters[QueryPosition.WHERE]);
-    }
-
-    public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        var updatedProperties = ExtractSetProperties(setPropertyCalls);
-        _queryParameters[QueryPosition.SET] = updatedProperties
-            .Select(kv => (object)$"{kv.Key} = {ConvertToCqlValue(kv.Value)}").ToList();
-
-        string updateQuery = BuildUpdateQuery();
-        var concatenatedParameters = _queryParameters[QueryPosition.WHERE]
-            .Concat(_queryParameters[QueryPosition.SET]).ToList();
-
-        return await _databaseProvider.ExecuteAsync(updateQuery, concatenatedParameters);
-    }
-
-    public async Task<bool> DeleteAsync()
-    {
-        string deleteQuery = $"DELETE FROM {_document.Name}";
-        var whereClause = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(whereClause))
-            deleteQuery += $" WHERE {whereClause}";
-
-        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _queryParameters[QueryPosition.WHERE]);
-        return affectedRows > 0;
-    }
-
-    public Task<ICursor<TVaultModel>> ToCursorAsync()
-    {
-        throw new NotImplementedException();
-    }
-
-    public IVault<TVaultModel> Skip(int count)
-    {
-        throw new NotSupportedException("Cassandra does not support skipping rows. Use paging with a WHERE clause instead.");
-    }
-
-    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(
-        Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
-    {
-        if (_queryParts[QueryPosition.SELECT].Contains("*"))
-            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
-
-        foreach (var column in ConvertSelectExpressionToString(selector))
-            AddToQuery(QueryPosition.SELECT, column);
-
-        var query = BuildSelectQuery();
-        return await _databaseProvider.QueryAsync<TResult>(query, _queryParameters[QueryPosition.SELECT]);
+        return updateQuery;
     }
 
     private IEnumerable<string> ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
@@ -214,18 +353,148 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         throw new NotSupportedException("Unsupported expression type for SELECT. Use: x => new(...) with properties.");
     }
 
-    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    private string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
     {
-        Where(predicate);
-
-        var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        var query = string.IsNullOrEmpty(where)
-            ? $"SELECT COUNT(*) FROM {_document.Name}"
-            : $"SELECT COUNT(*) FROM {_document.Name} WHERE {where}";
-
-        var count = await _databaseProvider.ExecuteCountAsync(query, _queryParameters[QueryPosition.WHERE]);
-        return count > 0;
+        var modelParam = predicate.Parameters[0];
+        var sql = ToWhere(predicate.Body, modelParam);
+        return sql;
     }
+
+    private string ToWhere(Expression expr, ParameterExpression modelParam)
+    {
+        switch (expr)
+        {
+            case UnaryExpression ue when ue.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked:
+                return ToWhere(ue.Operand, modelParam);
+
+            case BinaryExpression be when be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse:
+                {
+                    var op = GetOperator(be.NodeType);
+                    var left = ToWhere(be.Left, modelParam);
+                    var right = ToWhere(be.Right, modelParam);
+                    return $"({left}) {op} ({right})";
+                }
+
+            case BinaryExpression be when IsComparison(be.NodeType):
+                {
+                    // Allow col == value and value == col (with flipped op for <, >, <=, >=)
+                    if (!TryReadColumnName(be.Left, modelParam, out var col))
+                    {
+                        if (TryReadColumnName(be.Right, modelParam, out var colSwapped))
+                        {
+                            var cmp = FlipOperator(be.NodeType);
+                            var val = ExpressionUtils.Evaluate(be.Left);
+                            return $"{colSwapped} {GetOperator(cmp)} {ConvertToCqlValue(val)}";
+                        }
+                        throw new NotSupportedException("WHERE comparison must involve a model property.");
+                    }
+
+                    var valueObj = ExpressionUtils.Evaluate(be.Right);
+                    return $"{col} {GetOperator(be.NodeType)} {ConvertToCqlValue(valueObj)}";
+                }
+
+            default:
+                throw new NotSupportedException("Unsupported expression in WHERE.");
+        }
+    }
+
+    private static bool IsComparison(ExpressionType t) =>
+        t is ExpressionType.Equal or ExpressionType.NotEqual
+          or ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual
+          or ExpressionType.LessThan or ExpressionType.LessThanOrEqual;
+
+    private static ExpressionType FlipOperator(ExpressionType t) => t switch
+    {
+        ExpressionType.GreaterThan => ExpressionType.LessThan,
+        ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual,
+        ExpressionType.LessThan => ExpressionType.GreaterThan,
+        ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual,
+        _ => t // Equal / NotEqual are symmetric
+    };
+
+    private bool TryReadColumnName(Expression expression, ParameterExpression modelParam, out string column)
+    {
+        // Peel conversions first
+        while (expression is UnaryExpression ue &&
+               (ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked))
+            expression = ue.Operand;
+
+        if (expression is MemberExpression me && IsRootedInParameter(me, modelParam))
+        {
+            var propName = me.Member.Name;
+            if (_document.Columns.TryGetValue(propName, out var col))
+            {
+                column = col;
+                return true;
+            }
+
+            column = Document.ToCamelCase(propName);
+            return true;
+        }
+
+        column = "";
+        return false;
+    }
+
+    private static bool IsRootedInParameter(MemberExpression me, ParameterExpression modelParam)
+    {
+        Expression? root = me.Expression;
+        while (root is MemberExpression inner)
+            root = inner.Expression;
+
+        return root == modelParam;
+    }
+
+    private static string GetOperator(ExpressionType expressionType) =>
+        expressionType switch
+        {
+            ExpressionType.Equal => "=",
+            ExpressionType.NotEqual => "!=",
+            ExpressionType.GreaterThan => ">",
+            ExpressionType.GreaterThanOrEqual => ">=",
+            ExpressionType.LessThan => "<",
+            ExpressionType.LessThanOrEqual => "<=",
+            ExpressionType.AndAlso => "AND",
+            ExpressionType.OrElse => "OR",
+            _ => throw new NotSupportedException($"Unsupported operator: {expressionType}")
+        };
+
+    private string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    {
+        if (keySelector.Body is MemberExpression me)
+            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
+
+        throw new NotSupportedException("Unsupported expression type in ORDER BY clause.");
+    }
+
+    private string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    {
+        if (keySelector.Body is MemberExpression me)
+            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
+
+        throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
+    }
+
+    private Dictionary<string, object> ExtractSetProperties(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    {
+        var updated = new Dictionary<string, object>(StringComparer.Ordinal);
+
+        if (setPropertyCalls.Body is MemberInitExpression mi)
+        {
+            foreach (var binding in mi.Bindings.OfType<MemberAssignment>())
+            {
+                var propName = binding.Member.Name;
+                var value = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
+                var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+                updated[column] = value;
+            }
+        }
+
+        return updated;
+    }
+
+    // ------------------------ Insert/History/save helpers ------------------------
 
     private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
     {
@@ -324,202 +593,6 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         foreach (var e in list)
             if (e is IAfterVaultSave a)
                 await a.AfterSaveAsync(_serviceProvider);
-    }
-
-    private void EnsureProjectionSelected()
-    {
-        if (_queryParts[QueryPosition.SELECT].Count == 0)
-        {
-            AddToQuery(QueryPosition.SELECT,
-                string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}")));
-        }
-    }
-
-    private void AddToQuery(QueryPosition position, string queryPart, object? parameter = null)
-    {
-        _queryParts[position].Add(queryPart);
-        if (parameter is not null)
-            _queryParameters[position].Add(parameter);
-    }
-
-    public string BuildSelectQuery()
-    {
-        var select = _queryParts[QueryPosition.SELECT].Count == 0
-            ? string.Join(", ", _document.Columns.Select(kvp => $"{kvp.Value} AS {kvp.Key}"))
-            : string.Join(", ", _queryParts[QueryPosition.SELECT]);
-
-        string selectQuery = $"SELECT {select} FROM {_document.Name}";
-
-        var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where))
-            selectQuery += $" WHERE {where}";
-
-        var orderBy = string.Join(", ", _queryParts[QueryPosition.ORDER_BY]);
-        if (!string.IsNullOrEmpty(orderBy))
-            selectQuery += $" ORDER BY {orderBy}";
-
-        var limit = string.Join(" ", _queryParts[QueryPosition.LIMIT]);
-        if (!string.IsNullOrEmpty(limit))
-            selectQuery += $" {limit}";
-
-        return selectQuery;
-    }
-
-    public string BuildUpdateQuery()
-    {
-        var set = string.Join(", ", _queryParts[QueryPosition.SET]);
-        var updateQuery = $"UPDATE {_document.Name} SET {set}";
-
-        var where = string.Join(" AND ", _queryParts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where))
-            updateQuery += $" WHERE {where}";
-
-        return updateQuery;
-    }
-
-    private string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        var modelParam = predicate.Parameters[0];
-        var sql = ToWhere(predicate.Body, modelParam);
-        return sql;
-    }
-
-    private string ToWhere(Expression expr, ParameterExpression modelParam)
-    {
-        switch (expr)
-        {
-            case UnaryExpression ue when ue.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked:
-                return ToWhere(ue.Operand, modelParam);
-
-            case BinaryExpression be when be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse:
-                {
-                    var op = GetOperator(be.NodeType);
-                    var left = ToWhere(be.Left, modelParam);
-                    var right = ToWhere(be.Right, modelParam);
-                    return $"({left}) {op} ({right})";
-                }
-
-            case BinaryExpression be when IsComparison(be.NodeType):
-                {
-                    // We only allow COLUMN op VALUE
-                    // If the left is not a model member, try swapping sides (e.g., value == acc.Prop).
-                    if (!TryReadColumnName(be.Left, modelParam, out var col))
-                    {
-                        if (TryReadColumnName(be.Right, modelParam, out var colSwapped))
-                        {
-                            // Swap and flip comparison if needed (only matters for <, >, <=, >=)
-                            var cmp = FlipOperator(be.NodeType);
-                            var val = ExpressionUtils.Evaluate(be.Left);
-                            return $"{colSwapped} {cmp} {ConvertToCqlValue(val)}";
-                        }
-
-                        throw new NotSupportedException("WHERE comparison must involve a model property.");
-                    }
-
-                    var valueObj = ExpressionUtils.Evaluate(be.Right);
-                    return $"{col} {GetOperator(be.NodeType)} {ConvertToCqlValue(valueObj)}";
-                }
-
-            default:
-                throw new NotSupportedException("Unsupported expression in WHERE.");
-        }
-    }
-
-    private static bool IsComparison(ExpressionType t) =>
-        t is ExpressionType.Equal or ExpressionType.NotEqual
-          or ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual
-          or ExpressionType.LessThan or ExpressionType.LessThanOrEqual;
-
-    private static ExpressionType FlipOperator(ExpressionType t) => t switch
-    {
-        ExpressionType.GreaterThan => ExpressionType.LessThan,
-        ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual,
-        ExpressionType.LessThan => ExpressionType.GreaterThan,
-        ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual,
-        // Equal / NotEqual are symmetric
-        _ => t
-    };
-
-    private bool TryReadColumnName(Expression expression, ParameterExpression modelParam, out string column)
-    {
-        // Peel conversions first
-        while (expression is UnaryExpression ue &&
-               (ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked))
-            expression = ue.Operand;
-
-        if (expression is MemberExpression me && IsRootedInParameter(me, modelParam))
-        {
-            var propName = me.Member.Name;
-            if (_document.Columns.TryGetValue(propName, out var col))
-            {
-                column = col;
-                return true;
-            }
-
-            column = Document.ToCamelCase(propName);
-            return true;
-        }
-
-        column = "";
-        return false;
-    }
-
-    private static bool IsRootedInParameter(MemberExpression me, ParameterExpression modelParam)
-    {
-        Expression? root = me.Expression;
-        while (root is MemberExpression inner)
-            root = inner.Expression;
-
-        return root == modelParam;
-    }
-
-    private static string GetOperator(ExpressionType expressionType) =>
-    expressionType switch
-    {
-        ExpressionType.Equal => "=",
-        ExpressionType.NotEqual => "!=",
-        ExpressionType.GreaterThan => ">",
-        ExpressionType.GreaterThanOrEqual => ">=",
-        ExpressionType.LessThan => "<",
-        ExpressionType.LessThanOrEqual => "<=",
-        ExpressionType.AndAlso => "AND",
-        ExpressionType.OrElse => "OR",
-        _ => throw new NotSupportedException($"Unsupported operator: {expressionType}")
-    };
-
-    private string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        if (keySelector.Body is MemberExpression me)
-            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
-
-        throw new NotSupportedException("Unsupported expression type in ORDER BY clause.");
-    }
-
-    private string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        if (keySelector.Body is MemberExpression me)
-            return _document.Columns.TryGetValue(me.Member.Name, out var col) ? col : me.Member.Name;
-
-        throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
-    }
-
-    private Dictionary<string, object> ExtractSetProperties(
-        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        var updated = new Dictionary<string, object>(StringComparer.Ordinal);
-
-        if (setPropertyCalls.Body is MemberInitExpression mi)
-        {
-            foreach (var binding in mi.Bindings.OfType<MemberAssignment>())
-            {
-                var propName = binding.Member.Name;
-                var value = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
-                var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
-                updated[column] = value;
-            }
-        }
-
-        return updated;
     }
 
     private string BuildInsertQuery(string tableName, IEnumerable<string> columns) =>
