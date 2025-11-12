@@ -16,8 +16,9 @@ limitations under the License.
 
 namespace Altruist.Gaming;
 
-using MessagePack;
 using System.Text.Json.Serialization;
+
+using MessagePack;
 
 [MessagePackObject]
 public readonly struct SlotKey : IEquatable<SlotKey>

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+
 using Altruist;
 using Altruist.Security;
 

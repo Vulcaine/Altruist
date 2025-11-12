@@ -13,11 +13,14 @@ public static class PortalDiscovery
         foreach (var asm in AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic))
         {
             Type[] types;
-            try { types = asm.GetTypes(); } catch { continue; }
+            try
+            { types = asm.GetTypes(); }
+            catch { continue; }
 
             foreach (var t in types)
             {
-                if (!t.IsClass || t.IsAbstract) continue;
+                if (!t.IsClass || t.IsAbstract)
+                    continue;
 
                 var attrs = t.GetCustomAttributes(typeof(PortalAttribute), inherit: false)
                              .Cast<PortalAttribute>();
@@ -25,7 +28,8 @@ public static class PortalDiscovery
                 foreach (var attr in attrs)
                 {
                     var path = attr.Endpoint; // map Endpoint -> Path
-                    if (string.IsNullOrWhiteSpace(path)) continue;
+                    if (string.IsNullOrWhiteSpace(path))
+                        continue;
 
                     var key = $"{t.FullName}|{path}";
                     if (seen.Add(key))

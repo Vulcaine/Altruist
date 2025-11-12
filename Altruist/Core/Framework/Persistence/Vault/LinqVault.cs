@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Linq.Expressions;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 
@@ -175,7 +176,8 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
             if (entity is IBeforeVaultSave beforeHook)
             {
                 var proceed = await beforeHook.BeforeSaveAsync(_serviceProvider);
-                if (!proceed) continue;
+                if (!proceed)
+                    continue;
             }
 
             filteredEntities.Add(entity);

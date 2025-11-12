@@ -17,9 +17,12 @@ limitations under the License.
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+
 using Altruist.Networking;
 using Altruist.UORM;
+
 using Box2DSharp.Dynamics;
+
 using MessagePack;
 
 namespace Altruist.Gaming

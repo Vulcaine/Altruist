@@ -15,7 +15,9 @@ limitations under the License.
 */
 
 using System.Linq.Expressions;
+
 using Altruist.Contracts;
+
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.DependencyInjection;
 

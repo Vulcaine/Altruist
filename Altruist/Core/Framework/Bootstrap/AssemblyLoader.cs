@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.Loader;
+
 using Microsoft.Extensions.DependencyModel;
 using Microsoft.Extensions.Logging;
 
@@ -25,7 +26,8 @@ public static class AssemblyLoader
             foreach (var asmName in dc.GetDefaultAssemblyNames())
             {
                 var name = asmName.Name!;
-                if (!loadedNames.Add(name)) continue;
+                if (!loadedNames.Add(name))
+                    continue;
 
                 try
                 {
@@ -47,7 +49,8 @@ public static class AssemblyLoader
             try
             {
                 var an = AssemblyName.GetAssemblyName(path); // throws if not a .NET assembly
-                if (!loadedNames.Add(an.Name!)) continue;
+                if (!loadedNames.Add(an.Name!))
+                    continue;
 
                 AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
                 log?.LogDebug("Loaded (dir): {Assembly}", an.Name);

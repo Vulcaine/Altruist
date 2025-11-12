@@ -77,13 +77,15 @@ namespace Altruist.Gaming.TwoD
                 for (int cy = minY; cy <= maxY; cy++)
                 {
                     string key = GetKey(cx, cy);
-                    if (!Grid.TryGetValue(key, out var list)) continue;
+                    if (!Grid.TryGetValue(key, out var list))
+                        continue;
 
                     var instanceList = list.Select(e => InstanceMap[e]).Where(e => e.RoomId == roomId).ToList();
 
                     foreach (var prefab2D in instanceList)
                     {
-                        if (prefab2D.PrefabId != prefabId) continue;
+                        if (prefab2D.PrefabId != prefabId)
+                            continue;
 
                         float dx = prefab2D.Transform.Position.X - x;
                         float dy = prefab2D.Transform.Position.Y - y;

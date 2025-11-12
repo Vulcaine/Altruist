@@ -56,7 +56,8 @@ namespace Altruist.Gaming.Movement.ThreeD
 
         public bool AddPlayer(string playerId, IPhysxBody3D body, MovementProfile3D profile, MovementState3D initialState, IMovementPipeline3D pipeline)
         {
-            if (string.IsNullOrWhiteSpace(playerId) || _players.ContainsKey(playerId)) return false;
+            if (string.IsNullOrWhiteSpace(playerId) || _players.ContainsKey(playerId))
+                return false;
 
             var driver = new MovementDriver3D(body, profile, initialState, pipeline, _physxMovement);
 
@@ -100,14 +101,16 @@ namespace Altruist.Gaming.Movement.ThreeD
 
         public bool SetPlayerProfile(string playerId, MovementProfile3D profile)
         {
-            if (!_players.TryGetValue(playerId, out var e)) return false;
+            if (!_players.TryGetValue(playerId, out var e))
+                return false;
             e.Driver.Profile = profile;
             return true;
         }
 
         public bool SetPlayerPipeline(string playerId, IMovementPipeline3D pipeline)
         {
-            if (!_players.TryGetValue(playerId, out var e)) return false;
+            if (!_players.TryGetValue(playerId, out var e))
+                return false;
             e.Driver.Pipeline = pipeline;
             return true;
         }

@@ -6,8 +6,10 @@ You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Reflection;
+
 using Altruist.Persistence;
 using Altruist.UORM;
+
 using Microsoft.EntityFrameworkCore;
 
 namespace Altruist.ScyllaDB;
@@ -33,7 +35,8 @@ public static class ReflectionUtils
     {
         // 1) Try property name (case-insensitive) anywhere in the hierarchy
         var byName = GetPropertyCaseInsensitive(entityType, name);
-        if (byName is not null) return byName;
+        if (byName is not null)
+            return byName;
 
         // 2) Try VaultColumnAttribute.Name == name (case-insensitive) across the hierarchy
         foreach (var t in GetTypeHierarchy(entityType))
@@ -41,7 +44,8 @@ public static class ReflectionUtils
             foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
                 var col = p.GetCustomAttribute<VaultColumnAttribute>();
-                if (col?.Name is null) continue;
+                if (col?.Name is null)
+                    continue;
                 if (string.Equals(col.Name, name, StringComparison.OrdinalIgnoreCase))
                     return p;
             }
@@ -63,7 +67,8 @@ public static class ReflectionUtils
         foreach (var t in GetTypeHierarchy(entityType))
         {
             var pkAttr = t.GetCustomAttribute<PrimaryKeyAttribute>(inherit: false);
-            if (pkAttr?.PropertyNames is null) continue;
+            if (pkAttr?.PropertyNames is null)
+                continue;
 
             foreach (var name in pkAttr.PropertyNames)
             {
@@ -99,7 +104,8 @@ public static class ReflectionUtils
 
         // Try to resolve the property case-insensitively
         var prop = GetPropertyCaseInsensitive(entityType, sorting.Name);
-        if (prop is null) return sorting.Name.ToLowerInvariant();
+        if (prop is null)
+            return sorting.Name.ToLowerInvariant();
 
         return GetColumnName(prop);
     }
@@ -118,8 +124,10 @@ public static class ReflectionUtils
         {
             foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
-                if (p.GetIndexParameters().Length != 0) continue; // skip indexers
-                if (p.GetCustomAttribute<VaultIgnoredAttribute>() != null) continue;
+                if (p.GetIndexParameters().Length != 0)
+                    continue; // skip indexers
+                if (p.GetCustomAttribute<VaultIgnoredAttribute>() != null)
+                    continue;
 
                 map[p.Name] = p; // most derived wins
             }
@@ -150,7 +158,8 @@ public static class ReflectionUtils
         foreach (var t in GetTypeHierarchy(type))
         {
             var p = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            if (p != null) return p;
+            if (p != null)
+                return p;
         }
         return null;
     }

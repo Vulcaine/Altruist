@@ -35,7 +35,8 @@ namespace Altruist
 
         public override string ToString()
         {
-            if (Type == SupportedBackplaneType.None) return "";
+            if (Type == SupportedBackplaneType.None)
+                return "";
             return $"📡 Backplane[{TypeToString(Type).ToUpper()}] - {ServerInfo.Protocol}://{ServerInfo.Host}:{ServerInfo.Port}";
         }
 

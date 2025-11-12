@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+
 using Altruist;
+
 using Microsoft.Extensions.Logging;
 
 public interface IGameSessionService
@@ -136,7 +138,8 @@ public class GameSessionService : IGameSessionService
             // ensure only one instance per type (last write wins)
             for (int i = list.Count - 1; i >= 0; --i)
             {
-                if (list[i] is T) { list.RemoveAt(i); break; }
+                if (list[i] is T)
+                { list.RemoveAt(i); break; }
             }
             list.Add(value!);
         }
@@ -152,7 +155,8 @@ public class GameSessionService : IGameSessionService
                 // return the most recently added of type T (if any)
                 for (int i = list.Count - 1; i >= 0; --i)
                 {
-                    if (list[i] is T t) return Task.FromResult<T?>(t);
+                    if (list[i] is T t)
+                        return Task.FromResult<T?>(t);
                 }
             }
         }
@@ -167,7 +171,8 @@ public class GameSessionService : IGameSessionService
             {
                 for (int i = list.Count - 1; i >= 0; --i)
                 {
-                    if (list[i] is T) { list.RemoveAt(i); break; }
+                    if (list[i] is T)
+                    { list.RemoveAt(i); break; }
                 }
                 if (list.Count == 0)
                     _contexts.TryRemove(clientId, out _);

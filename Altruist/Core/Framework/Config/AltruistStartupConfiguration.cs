@@ -25,23 +25,23 @@ namespace Altruist
         private readonly string _wsContextPath;
 
         public AltruistStartupConfiguration(
-    ApplicationArgs args,
+            ApplicationArgs args,
 
-    // HTTP: present => we host controllers on same server
-    [AppConfigValue("altruist:server:http:host", null)] string? httpHost,
-    [AppConfigValue("altruist:server:http:port", null)] string? httpPort,
-    [AppConfigValue("altruist:server:http:path", "/")] string httpPath,
+            // HTTP: present => we host controllers on same server
+            [AppConfigValue("altruist:server:http:host", null)] string? httpHost,
+            [AppConfigValue("altruist:server:http:port", null)] string? httpPort,
+            [AppConfigValue("altruist:server:http:path", "/")] string httpPath,
 
-    // Transport: if mode == websocket => mount WS endpoints on same HTTP server
-    [AppConfigValue("altruist:server:transport:mode", null)] string? transportMode,
-    [AppConfigValue("altruist:server:transport:config:path", "/ws")] string transportPath,
+            // Transport: if mode == websocket => mount WS endpoints on same HTTP server
+            [AppConfigValue("altruist:server:transport:mode", null)] string? transportMode,
+            [AppConfigValue("altruist:server:transport:config:path", "/ws")] string transportPath,
 
-    IServiceCollection rootServices,
-    ILoggerFactory loggerFactory,
-    IAltruistContext settings,
-    IServerStatus appStatus,
-    ITransport? transport = null
-)
+            IServiceCollection rootServices,
+            ILoggerFactory loggerFactory,
+            IAltruistContext settings,
+            IServerStatus appStatus,
+            ITransport? transport = null
+        )
         {
             _args = args;
 

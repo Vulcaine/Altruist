@@ -8,7 +8,8 @@ namespace Altruist.Gaming.Movement.ThreeD
         public void Execute(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt, MoveContext3D ctx)
         {
             var desiredVel = ctx.Desired;
-            if (desiredVel != Vector3.Zero) desiredVel = Vector3.Normalize(desiredVel) * profile.MaxSpeed;
+            if (desiredVel != Vector3.Zero)
+                desiredVel = Vector3.Normalize(desiredVel) * profile.MaxSpeed;
 
             var current = ctx.Velocity;
             var diff = desiredVel - current;
@@ -16,7 +17,8 @@ namespace Altruist.Gaming.Movement.ThreeD
             var accel = diff;
             var maxAccel = (Vector3.Dot(diff, desiredVel) >= 0 ? profile.Acceleration : profile.Deceleration) * dt;
             var len = accel.Length();
-            if (len > maxAccel && len > 1e-5f) accel = accel * (maxAccel / len);
+            if (len > maxAccel && len > 1e-5f)
+                accel = accel * (maxAccel / len);
 
             ctx.Velocity = current + accel;
         }
@@ -35,7 +37,8 @@ namespace Altruist.Gaming.Movement.ThreeD
     {
         public void Execute(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt, MoveContext3D ctx)
         {
-            if (ctx.Desired == Vector3.Zero || ctx.Velocity == Vector3.Zero) return;
+            if (ctx.Desired == Vector3.Zero || ctx.Velocity == Vector3.Zero)
+                return;
 
             var vDir = Vector3.Normalize(ctx.Velocity);
             var dDir = Vector3.Normalize(ctx.Desired);

@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Text.Json.Serialization;
+
 using MessagePack;
 
 namespace Altruist.Gaming;

@@ -2,6 +2,7 @@
 // MovementManager2D.cs (Movement module)
 
 using System.Numerics;
+
 using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.Movement.TwoD
@@ -63,7 +64,8 @@ namespace Altruist.Gaming.Movement.TwoD
 
         public bool AddPlayer(string playerId, IPhysxBody2D body, MovementProfile2D profile, MovementState2D initialState, IMovementPipeline2D pipeline)
         {
-            if (string.IsNullOrWhiteSpace(playerId) || _players.ContainsKey(playerId)) return false;
+            if (string.IsNullOrWhiteSpace(playerId) || _players.ContainsKey(playerId))
+                return false;
 
             var driver = new MovementDriver2D(body, profile, initialState, pipeline, _physxMovement);
 
@@ -107,14 +109,16 @@ namespace Altruist.Gaming.Movement.TwoD
 
         public bool SetPlayerProfile(string playerId, MovementProfile2D profile)
         {
-            if (!_players.TryGetValue(playerId, out var e)) return false;
+            if (!_players.TryGetValue(playerId, out var e))
+                return false;
             e.Driver.Profile = profile;
             return true;
         }
 
         public bool SetPlayerPipeline(string playerId, IMovementPipeline2D pipeline)
         {
-            if (!_players.TryGetValue(playerId, out var e)) return false;
+            if (!_players.TryGetValue(playerId, out var e))
+                return false;
             e.Driver.Pipeline = pipeline;
             return true;
         }

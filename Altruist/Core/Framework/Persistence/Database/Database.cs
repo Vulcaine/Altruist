@@ -15,8 +15,10 @@ limitations under the License.
 */
 
 using System.Reflection;
+
 using Altruist.Contracts;
 using Altruist.UORM;
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence;

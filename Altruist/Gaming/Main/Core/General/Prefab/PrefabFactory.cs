@@ -43,7 +43,8 @@ namespace Altruist.Gaming
 
         public async Task<object> CreateAsync(Type type)
         {
-            if (type is null) throw new ArgumentNullException(nameof(type));
+            if (type is null)
+                throw new ArgumentNullException(nameof(type));
             var logger = _lf.CreateLogger<PrefabFactory>();
             var instance = ActivatorUtilities.CreateInstance(_sp, type)!;
             await DependencyResolver.InvokePostConstructAsync(instance, _sp, _cfg, logger);

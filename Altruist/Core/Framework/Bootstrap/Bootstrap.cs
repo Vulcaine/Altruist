@@ -17,7 +17,7 @@ public static class AltruistBootstrap
     {
         EnsureAltruistAssembliesLoaded();
         ConfigureLogging();
-        BootstrapModules();
+        await BootstrapModules();
         await BootstrapServices();
     }
 
@@ -29,19 +29,13 @@ public static class AltruistBootstrap
     /// </summary>
     public static async Task BootstrapServices()
     {
-        await new AltruistServiceConfig().Configure(Services);
         await new ConfigAttributeConfiguration().Configure(Services);
+        await new AltruistServiceConfig().Configure(Services);
     }
 
-    /*************  ✨ Windsurf Command ⭐  *************/
-    /// <summary>
-    /// Scans loaded assemblies for types annotated with [AltruistModule] and configures them.
-    /// <see cref="AltruistModuleConfig"/> handles the discovery and configuration of modules.
-    /// </summary>
-    /*******  bf0ac18b-5b39-4b94-bd7c-b52d8da9c2b2  *******/
-    public static void BootstrapModules()
+    public static async Task BootstrapModules()
     {
-        new AltruistModuleConfig().Configure(Services);
+        await new AltruistModuleConfig().Configure(Services);
     }
 
     /// <summary>

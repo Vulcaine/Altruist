@@ -1,4 +1,5 @@
 using System.Numerics;
+
 using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.Movement.TwoD
@@ -64,7 +65,8 @@ namespace Altruist.Gaming.Movement.TwoD
             var y = MathF.Max(-1f, MathF.Min(1f, v.Y));
             var c = new Vector2(x, y);
             var len = c.Length();
-            if (len < 1e-5f) return Vector2.Zero;
+            if (len < 1e-5f)
+                return Vector2.Zero;
             return len > 1f ? c / len : c;
         }
     }

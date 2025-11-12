@@ -1,12 +1,15 @@
 // BepuWorldEngine3D.cs  (BEPU engine; implements AddBody/RemoveBody; NO creation API)
 using System.Numerics;
 using System.Runtime.InteropServices;
+
 using Altruist.Physx.Contracts;
+
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using BepuPhysics.CollisionDetection;
 using BepuPhysics.Constraints;
 using BepuPhysics.Trees;
+
 using BepuUtilities;
 using BepuUtilities.Memory;
 
@@ -64,15 +67,18 @@ namespace Altruist.Physx.ThreeD
         {
             var d = ray.To - ray.From;
             var maxT = d.Length();
-            if (maxT <= 0f) return Array.Empty<PhysxRaycastHit3D>();
+            if (maxT <= 0f)
+                return Array.Empty<PhysxRaycastHit3D>();
             d /= maxT;
 
             var collector = new ClosestHitCollector();
             _simulation.RayCast(ray.From, d, maxT, ref collector);
-            if (!collector.Hit) return Array.Empty<PhysxRaycastHit3D>();
+            if (!collector.Hit)
+                return Array.Empty<PhysxRaycastHit3D>();
 
             var found = _bodies.Values.FirstOrDefault(b => b.Handle.Equals(collector.Body));
-            if (found == null) return Array.Empty<PhysxRaycastHit3D>();
+            if (found == null)
+                return Array.Empty<PhysxRaycastHit3D>();
 
             return new[] { new PhysxRaycastHit3D(found, collector.Point, collector.Normal, collector.T) };
         }

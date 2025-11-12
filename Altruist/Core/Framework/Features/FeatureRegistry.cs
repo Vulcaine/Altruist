@@ -22,13 +22,18 @@ namespace Altruist.Features
             foreach (var asm in asms)
             {
                 Type[] types;
-                try { types = asm.GetTypes(); } catch { continue; }
+                try
+                { types = asm.GetTypes(); }
+                catch { continue; }
 
                 foreach (var t in types)
                 {
-                    if (t.IsAbstract || t.IsInterface) continue;
-                    if (!typeof(IAltruistFeatureProvider).IsAssignableFrom(t)) continue;
-                    if (t.GetConstructor(Type.EmptyTypes) is null) continue;
+                    if (t.IsAbstract || t.IsInterface)
+                        continue;
+                    if (!typeof(IAltruistFeatureProvider).IsAssignableFrom(t))
+                        continue;
+                    if (t.GetConstructor(Type.EmptyTypes) is null)
+                        continue;
 
                     var instance = (IAltruistFeatureProvider)Activator.CreateInstance(t)!;
                     Register(instance);

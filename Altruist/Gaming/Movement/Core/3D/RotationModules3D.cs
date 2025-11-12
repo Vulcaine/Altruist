@@ -15,7 +15,8 @@ namespace Altruist.Gaming.Movement.ThreeD
     {
         public void Execute(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt, MoveContext3D ctx)
         {
-            if (intent.AimDirection == Vector3.Zero) return;
+            if (intent.AimDirection == Vector3.Zero)
+                return;
             var forward = Vector3.Normalize(intent.AimDirection);
             var up = Vector3.UnitY;
             ctx.Target = LookRotation(forward, up);
@@ -65,8 +66,10 @@ namespace Altruist.Gaming.Movement.ThreeD
         public void Execute(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt, MoveContext3D ctx)
         {
             var v = ctx.Velocity;
-            if (v.LengthSquared() < 1e-4f && ctx.Desired.LengthSquared() > 1e-6f) v = ctx.Desired;
-            if (v.LengthSquared() < 1e-6f) return;
+            if (v.LengthSquared() < 1e-4f && ctx.Desired.LengthSquared() > 1e-6f)
+                v = ctx.Desired;
+            if (v.LengthSquared() < 1e-6f)
+                return;
 
             var target = RotationFaceAim3D_Look(v);
             var deltaQ = target * Quaternion.Inverse(state.Orientation);

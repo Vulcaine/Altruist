@@ -85,7 +85,8 @@ namespace Altruist.Gaming.Movement.ThreeD
             var z = MathF.Max(-1f, MathF.Min(1f, v.Z));
             var c = new Vector3(x, y, z);
             var len = c.Length();
-            if (len < 1e-5f) return Vector3.Zero;
+            if (len < 1e-5f)
+                return Vector3.Zero;
             return len > 1f ? c / len : c;
         }
 

@@ -16,7 +16,9 @@ limitations under the License.
 
 using System.Net;
 using System.Security.Claims;
+
 using Altruist.Security;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 

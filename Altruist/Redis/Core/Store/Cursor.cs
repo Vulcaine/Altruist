@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Text.Json;
+
 using StackExchange.Redis;
 
 namespace Altruist.Redis;

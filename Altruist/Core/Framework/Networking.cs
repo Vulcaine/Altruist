@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Numerics;
 using System.Reflection;
+
 using Altruist.UORM;
 
 namespace Altruist.Networking;
@@ -178,15 +179,18 @@ public static class Synchronization
 
     private static bool AreValuesEqual(object? a, object? b)
     {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
+        if (a == null && b == null)
+            return true;
+        if (a == null || b == null)
+            return false;
 
         if (a is Vector2 va && b is Vector2 vb)
             return va.Equals(vb);
 
         if (a is Array arrayA && b is Array arrayB)
         {
-            if (arrayA.Length != arrayB.Length) return false;
+            if (arrayA.Length != arrayB.Length)
+                return false;
 
             for (int i = 0; i < arrayA.Length; i++)
             {
@@ -224,7 +228,8 @@ public static class SyncMetadataHelper
                 {
                     var attr = prop.GetCustomAttribute<SyncedAttribute>();
 
-                    if (attr is null) continue;
+                    if (attr is null)
+                        continue;
 
                     var bitIndex = attr.BitIndex;
                     var syncAlways = attr.SyncAlways;
@@ -245,7 +250,8 @@ public static class SyncMetadataHelper
             foreach (var prop in localProps)
             {
                 var attr = prop.GetCustomAttribute<SyncedAttribute>();
-                if (attr is null) continue;
+                if (attr is null)
+                    continue;
 
                 var localBitIndex = attr.BitIndex;
                 var globalBitIndex = baseMaxBitIndex + 1 + localBitIndex;

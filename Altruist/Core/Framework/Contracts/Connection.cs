@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Text.Json.Serialization;
+
 using Altruist.Security;
 
 namespace Altruist;

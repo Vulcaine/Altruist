@@ -1,6 +1,8 @@
 using System.Net.WebSockets;
+
 using Altruist.Security;
 using Altruist.Transport;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
@@ -167,7 +169,8 @@ public sealed class WebSocketTransportClient : ITransportClient
 
     public async Task SendAsync(byte[] data)
     {
-        if (!IsConnected) throw new InvalidOperationException("WebSocket is not connected.");
+        if (!IsConnected)
+            throw new InvalidOperationException("WebSocket is not connected.");
         await _webSocket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
     }
 

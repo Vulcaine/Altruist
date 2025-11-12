@@ -1,6 +1,8 @@
 // Altruist/Modules/AltruistModuleConfig.cs
 using System.Reflection;
+
 using Altruist.Contracts;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -164,7 +166,8 @@ namespace Altruist
 
         private static IEnumerable<Type> SafeGetTypes(Assembly asm)
         {
-            try { return asm.GetTypes(); }
+            try
+            { return asm.GetTypes(); }
             catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t is not null)!; }
         }
     }

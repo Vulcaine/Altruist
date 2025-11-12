@@ -16,7 +16,9 @@ limitations under the License.
 
 using System.Linq.Expressions;
 using System.Reflection;
+
 using Altruist;
+
 using Microsoft.Extensions.DependencyInjection;
 
 public static class EventHandlerRegistry<TType>

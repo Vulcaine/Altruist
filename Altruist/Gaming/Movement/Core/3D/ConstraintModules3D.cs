@@ -8,7 +8,8 @@ namespace Altruist.Gaming.Movement.ThreeD
         public void Execute(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt, MoveContext3D ctx)
         {
             var move = intent.Move;
-            if (move.LengthSquared() < profile.Deadzone * profile.Deadzone) move = Vector3.Zero;
+            if (move.LengthSquared() < profile.Deadzone * profile.Deadzone)
+                move = Vector3.Zero;
             ctx.Desired = move;
         }
     }
@@ -17,7 +18,8 @@ namespace Altruist.Gaming.Movement.ThreeD
     {
         public void Execute(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt, MoveContext3D ctx)
         {
-            if (profile.DirectionSnapRad <= 0f || ctx.Desired == Vector3.Zero) return;
+            if (profile.DirectionSnapRad <= 0f || ctx.Desired == Vector3.Zero)
+                return;
 
             // Snap azimuth around Y and elevation from XZ-plane
             var dir = Vector3.Normalize(ctx.Desired);

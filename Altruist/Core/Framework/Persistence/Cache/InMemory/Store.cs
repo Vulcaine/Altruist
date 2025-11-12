@@ -16,7 +16,9 @@ limitations under the License.
 
 using System.Collections;
 using System.Collections.Concurrent;
+
 using Altruist.Contracts;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -60,7 +62,8 @@ public class EfficientConcurrentCache<T> : IEnumerable<T>
         get
         {
             _lock.EnterReadLock();
-            try { return _items.Count; }
+            try
+            { return _items.Count; }
             finally { _lock.ExitReadLock(); }
         }
     }

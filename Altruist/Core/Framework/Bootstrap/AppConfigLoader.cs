@@ -10,10 +10,12 @@ namespace Altruist
 
         public static IConfiguration Load(string[]? args = null)
         {
-            if (_config is not null) return _config;
+            if (_config is not null)
+                return _config;
             lock (_lock)
             {
-                if (_config is not null) return _config;
+                if (_config is not null)
+                    return _config;
 
                 var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
                 var basePath = AppContext.BaseDirectory;
@@ -33,12 +35,14 @@ namespace Altruist
 
         public static void Set(IConfiguration configuration)
         {
-            lock (_lock) { _config = configuration; }
+            lock (_lock)
+            { _config = configuration; }
         }
 
         public static void Reset()
         {
-            lock (_lock) { _config = null; }
+            lock (_lock)
+            { _config = null; }
         }
     }
 }

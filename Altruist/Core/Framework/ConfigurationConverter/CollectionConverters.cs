@@ -10,7 +10,8 @@ public sealed class ListStringConfigConverter : IConfigConverter<List<string>>
 
     public List<string>? Convert(string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return new List<string>();
+        if (string.IsNullOrWhiteSpace(value))
+            return new List<string>();
 
         var s = value.Trim();
 
@@ -67,7 +68,8 @@ public sealed class DictionaryStringStringConfigConverter : IConfigConverter<Dic
 
     public Dictionary<string, string>? Convert(string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(value))
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var s = value.Trim();
 
@@ -87,10 +89,12 @@ public sealed class DictionaryStringStringConfigConverter : IConfigConverter<Dic
         foreach (var pair in pairs)
         {
             var idx = pair.IndexOf('=');
-            if (idx <= 0 || idx == pair.Length - 1) continue;
+            if (idx <= 0 || idx == pair.Length - 1)
+                continue;
             var k = pair[..idx].Trim();
             var v = pair[(idx + 1)..].Trim();
-            if (k.Length > 0) result[k] = v;
+            if (k.Length > 0)
+                result[k] = v;
         }
         return result;
     }

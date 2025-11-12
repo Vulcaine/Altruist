@@ -16,6 +16,7 @@ limitations under the License.
 
 using Altruist.Contracts;
 using Altruist.Persistence;
+
 using StackExchange.Redis;
 
 namespace Altruist;

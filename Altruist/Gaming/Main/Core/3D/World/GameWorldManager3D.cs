@@ -67,7 +67,8 @@ namespace Altruist.Gaming.ThreeD
 
         public async Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IPrefab3D prefab)
         {
-            if (prefab is null) return Enumerable.Empty<WorldPartitionManager3D>();
+            if (prefab is null)
+                return Enumerable.Empty<WorldPartitionManager3D>();
 
             DestroyObject(prefab);
 
@@ -84,7 +85,8 @@ namespace Altruist.Gaming.ThreeD
 
         public async Task AddDynamicObject(IPrefab3D prefab)
         {
-            if (prefab is null) return;
+            if (prefab is null)
+                return;
 
             var radius = await ComputePartitionRadiusAsync(prefab);
             var partitions = FindPartitionsForPosition(
@@ -98,7 +100,8 @@ namespace Altruist.Gaming.ThreeD
 
         public WorldPartitionManager3D? AddStaticObject(IPrefab3D prefab)
         {
-            if (prefab is null) return null;
+            if (prefab is null)
+                return null;
 
             var partition = FindPartitionForPosition(
                 prefab.Transform.Position.X,

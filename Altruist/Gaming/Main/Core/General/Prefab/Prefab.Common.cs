@@ -51,7 +51,8 @@ namespace Altruist.Gaming
 
         public async Task<TModel?> LoadChildAsync<TModel>(PrefabChildRef child) where TModel : class, IVaultModel
         {
-            if (string.IsNullOrWhiteSpace(child.StorageId)) return null;
+            if (string.IsNullOrWhiteSpace(child.StorageId))
+                return null;
 
             if (_loaded.TryGetValue(child.StorageId, out var memo) && memo is TModel typedMemo)
                 return typedMemo;
@@ -67,7 +68,8 @@ namespace Altruist.Gaming
             }
 
             var row = await VaultRegistry.FindByStorageIdAsync(clr, child.StorageId);
-            if (row is null) return null;
+            if (row is null)
+                return null;
 
             await _cache.SaveAsync(CacheKey_Model(child.StorageId), row, child.Keyspace);
             _loaded[child.StorageId] = row;
@@ -79,7 +81,8 @@ namespace Altruist.Gaming
         {
             var typeKey = VaultRegistry.GetTypeKey(typeof(TModel));
             var first = Children.FirstOrDefault(c => string.Equals(c.Type, typeKey, StringComparison.Ordinal));
-            if (string.IsNullOrEmpty(first.StorageId)) return null;
+            if (string.IsNullOrEmpty(first.StorageId))
+                return null;
             return await LoadChildAsync<TModel>(first);
         }
 
@@ -91,7 +94,8 @@ namespace Altruist.Gaming
             foreach (var c in matches)
             {
                 var m = await LoadChildAsync<TModel>(c);
-                if (m != null) list.Add(m);
+                if (m != null)
+                    list.Add(m);
             }
             return list;
         }

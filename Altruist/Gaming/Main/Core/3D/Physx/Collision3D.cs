@@ -4,6 +4,7 @@ Licensed under the Apache License, Version 2.0
 */
 
 using System.Numerics;
+
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
 

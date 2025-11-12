@@ -12,7 +12,8 @@ public sealed class Vector2ConfigConverter : IConfigConverter<Vector2>
 
     public Vector2 Convert(string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return default;
+        if (string.IsNullOrWhiteSpace(value))
+            return default;
 
         var s = value.Trim();
         if (s.StartsWith("{") || s.StartsWith("["))
@@ -23,7 +24,8 @@ public sealed class Vector2ConfigConverter : IConfigConverter<Vector2>
         }
 
         var parts = s.Split(',');
-        if (parts.Length != 2) throw new FormatException("Vector2 must be 'x,y' or JSON object.");
+        if (parts.Length != 2)
+            throw new FormatException("Vector2 must be 'x,y' or JSON object.");
         return new Vector2(
             float.Parse(parts[0].Trim(), CultureInfo.InvariantCulture),
             float.Parse(parts[1].Trim(), CultureInfo.InvariantCulture)
@@ -42,7 +44,8 @@ public sealed class Vector3ConfigConverter : IConfigConverter<Vector3>
 
     public Vector3 Convert(string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return default;
+        if (string.IsNullOrWhiteSpace(value))
+            return default;
 
         var s = value.Trim();
         if (s.StartsWith("{") || s.StartsWith("["))
@@ -53,7 +56,8 @@ public sealed class Vector3ConfigConverter : IConfigConverter<Vector3>
         }
 
         var parts = s.Split(',');
-        if (parts.Length != 3) throw new FormatException("Vector3 must be 'x,y,z' or JSON object.");
+        if (parts.Length != 3)
+            throw new FormatException("Vector3 must be 'x,y,z' or JSON object.");
         return new Vector3(
             float.Parse(parts[0].Trim(), CultureInfo.InvariantCulture),
             float.Parse(parts[1].Trim(), CultureInfo.InvariantCulture),

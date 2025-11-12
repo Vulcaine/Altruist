@@ -1,5 +1,6 @@
 
 using System.Numerics;
+
 using Altruist.Physx.Contracts;
 using Altruist.ThreeD.Numerics;
 

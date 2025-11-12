@@ -4,6 +4,7 @@
 
 using Altruist.Physx.Contracts;
 using Altruist.ThreeD.Numerics;
+
 using BepuPhysics;
 using BepuPhysics.Collidables;
 

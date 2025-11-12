@@ -6,6 +6,7 @@ Licensed under the Apache License, Version 2.0
 namespace Altruist;
 
 using System;
+
 using Altruist.UORM;
 
 /// <summary>

@@ -30,14 +30,16 @@ public class ConnectionManager : IConnectionManager
     private async Task RaiseOnDisconnectedAsync(string clientId, Exception? exception)
     {
         var handlers = _onDisconnectedAsync;
-        if (handlers is null) return;
+        if (handlers is null)
+            return;
 
         // Snapshot & invoke each handler; don't let one failure cancel the rest
         var calls = handlers.GetInvocationList()
             .Cast<Func<string, Exception?, Task>>()
             .Select(async h =>
             {
-                try { await h(clientId, exception).ConfigureAwait(false); }
+                try
+                { await h(clientId, exception).ConfigureAwait(false); }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "OnDisconnectedAsync handler threw for client {ClientId}.", clientId);
@@ -50,7 +52,8 @@ public class ConnectionManager : IConnectionManager
 
     public async Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId)
     {
-        if (string.IsNullOrEmpty(packet.Event)) return false;
+        if (string.IsNullOrEmpty(packet.Event))
+            return false;
 
         if (EventHandlerRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
         {
@@ -96,7 +99,8 @@ public class ConnectionManager : IConnectionManager
                 }
 
                 var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
-                if (!await ProcessPacket(packet, packetData, @event, clientId)) break;
+                if (!await ProcessPacket(packet, packetData, @event, clientId))
+                    break;
             }
         }
         catch (Exception ex)

@@ -15,8 +15,10 @@ limitations under the License.
 */
 
 using System.Reflection;
+
 using Altruist.Contracts;
 using Altruist.Web.Features;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -68,7 +70,8 @@ namespace Altruist
 
         private static void RegisterServiceType(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg, Type implType)
         {
-            if (!DependencyResolver.ShouldRegister(implType, cfg, log)) return;
+            if (!DependencyResolver.ShouldRegister(implType, cfg, log))
+                return;
 
             foreach (var svcAttr in implType.GetCustomAttributes<ServiceAttribute>())
             {
@@ -102,8 +105,10 @@ namespace Altruist
             var portals = PortalDiscovery.Discover().Distinct();
             foreach (var t in portals)
             {
-                if (!t.PortalType.IsClass || t.PortalType.IsAbstract) continue;
-                if (!DependencyResolver.ShouldRegister(t.PortalType, cfg, log)) continue;
+                if (!t.PortalType.IsClass || t.PortalType.IsAbstract)
+                    continue;
+                if (!DependencyResolver.ShouldRegister(t.PortalType, cfg, log))
+                    continue;
 
                 services.Add(new ServiceDescriptor(
                     t.PortalType,

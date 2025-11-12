@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Reflection;
+
 using Microsoft.Extensions.DependencyInjection;
 
 public static class IServiceProviderExtensions

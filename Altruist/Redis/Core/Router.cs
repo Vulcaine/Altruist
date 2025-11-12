@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using Altruist.Engine;
+
 using StackExchange.Redis;
 
 namespace Altruist.Redis;

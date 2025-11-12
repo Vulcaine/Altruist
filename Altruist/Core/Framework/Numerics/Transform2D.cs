@@ -1,5 +1,6 @@
 // Transform2D.cs
 using System.Numerics;
+
 using Altruist.Numerics;
 
 namespace Altruist.TwoD.Numerics

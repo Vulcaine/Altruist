@@ -15,7 +15,10 @@ public sealed class MovementDriver3D
     public MovementDriver3D(object body, MovementProfile3D profile,
                             MovementState3D initialState, IMovementPipeline3D pipeline, IPhysxMovementEngine3D physx)
     {
-        Body = body; Profile = profile; Pipeline = pipeline; _physx = physx;
+        Body = body;
+        Profile = profile;
+        Pipeline = pipeline;
+        _physx = physx;
         State = initialState;
     }
 

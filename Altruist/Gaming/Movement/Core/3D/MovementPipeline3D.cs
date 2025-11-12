@@ -36,23 +36,34 @@ namespace Altruist.Gaming.Movement.ThreeD
             };
 
             // Kinematics
-            if (_kin.HasFlag(Planar3D.GroundPlane)) modules.Add(new KinematicsGround3D());
-            if (_kin.HasFlag(Planar3D.FreeFlight)) modules.Add(new KinematicsFreeFlight3D());
+            if (_kin.HasFlag(Planar3D.GroundPlane))
+                modules.Add(new KinematicsGround3D());
+            if (_kin.HasFlag(Planar3D.FreeFlight))
+                modules.Add(new KinematicsFreeFlight3D());
 
             // Rotation
-            if (_rot.HasFlag(Rotation3D.FaceAim)) modules.Add(new RotationFaceAim3D());
-            if (_rot.HasFlag(Rotation3D.FaceVelocity)) modules.Add(new RotationFaceVelocity3D());
-            if (_rot.HasFlag(Rotation3D.YawPitchRollRate)) modules.Add(new RotationYPRRate3D());
+            if (_rot.HasFlag(Rotation3D.FaceAim))
+                modules.Add(new RotationFaceAim3D());
+            if (_rot.HasFlag(Rotation3D.FaceVelocity))
+                modules.Add(new RotationFaceVelocity3D());
+            if (_rot.HasFlag(Rotation3D.YawPitchRollRate))
+                modules.Add(new RotationYPRRate3D());
 
             // Dynamics
-            if (_dyn.HasFlag(Dynamics3D.LinearAccel)) modules.Add(new DynamicsLinearAccel3D());
-            if (_dyn.HasFlag(Dynamics3D.ExponentialDrag)) modules.Add(new DynamicsDrag3D());
-            if (_dyn.HasFlag(Dynamics3D.TractionCurve)) modules.Add(new DynamicsTraction3D());
+            if (_dyn.HasFlag(Dynamics3D.LinearAccel))
+                modules.Add(new DynamicsLinearAccel3D());
+            if (_dyn.HasFlag(Dynamics3D.ExponentialDrag))
+                modules.Add(new DynamicsDrag3D());
+            if (_dyn.HasFlag(Dynamics3D.TractionCurve))
+                modules.Add(new DynamicsTraction3D());
 
             // Forces
-            if (_forces.HasFlag(Forces3D.Boost)) modules.Add(new ForceBoost3D());
-            if (_forces.HasFlag(Forces3D.Dash)) modules.Add(new ForceDash3D());
-            if (_forces.HasFlag(Forces3D.Knockback)) modules.Add(new ForceKnockback3D());
+            if (_forces.HasFlag(Forces3D.Boost))
+                modules.Add(new ForceBoost3D());
+            if (_forces.HasFlag(Forces3D.Dash))
+                modules.Add(new ForceDash3D());
+            if (_forces.HasFlag(Forces3D.Knockback))
+                modules.Add(new ForceKnockback3D());
 
             var tweaks = _constraintTweaks.ToArray();
             return new MovementPipeline3D(modules, tweaks);
@@ -90,7 +101,8 @@ namespace Altruist.Gaming.Movement.ThreeD
 
         public MovementResult3D Evaluate(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt)
         {
-            foreach (var t in _tweaks) t(profile);
+            foreach (var t in _tweaks)
+                t(profile);
 
             var ctx = new MoveContext3D
             {

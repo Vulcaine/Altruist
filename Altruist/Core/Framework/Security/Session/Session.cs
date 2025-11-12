@@ -16,7 +16,9 @@ limitations under the License.
 
 using System.Collections.Concurrent;
 using System.Net;
+
 using Altruist.Persistence;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 

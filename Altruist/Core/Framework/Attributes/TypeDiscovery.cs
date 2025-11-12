@@ -16,7 +16,8 @@ namespace Altruist
 
         public static IEnumerable<Type> SafeGetTypes(Assembly asm)
         {
-            try { return asm.GetTypes(); }
+            try
+            { return asm.GetTypes(); }
             catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t is not null)!; }
         }
     }

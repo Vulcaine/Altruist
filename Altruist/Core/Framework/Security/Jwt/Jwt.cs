@@ -16,6 +16,7 @@ limitations under the License.
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;

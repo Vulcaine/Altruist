@@ -88,7 +88,8 @@ namespace Altruist.Gaming.ThreeD
                     for (int cz = minZ; cz <= maxZ; cz++)
                     {
                         string key = GetKey(cx, cy, cz);
-                        if (!Grid.TryGetValue(key, out var list)) continue;
+                        if (!Grid.TryGetValue(key, out var list))
+                            continue;
 
                         var instanceList = list
                             .Select(id => InstanceMap[id])
@@ -97,7 +98,8 @@ namespace Altruist.Gaming.ThreeD
 
                         foreach (var prefab3D in instanceList)
                         {
-                            if (prefab3D.PrefabId != prefabId) continue;
+                            if (prefab3D.PrefabId != prefabId)
+                                continue;
 
                             float dx = prefab3D.Transform.Position.X - x;
                             float dy = prefab3D.Transform.Position.Y - y;

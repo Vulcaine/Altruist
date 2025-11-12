@@ -12,7 +12,10 @@ public sealed class MovementDriver2D
     public MovementDriver2D(object body, MovementProfile2D profile,
                             MovementState2D initialState, IMovementPipeline2D pipeline, IPhysxMovementEngine2D physx)
     {
-        Body = body; Profile = profile; Pipeline = pipeline; _physx = physx;
+        Body = body;
+        Profile = profile;
+        Pipeline = pipeline;
+        _physx = physx;
         State = initialState;
     }
 

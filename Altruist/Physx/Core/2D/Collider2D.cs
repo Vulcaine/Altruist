@@ -1,4 +1,5 @@
 using System.Numerics;
+
 using Altruist.Physx.Contracts;
 using Altruist.TwoD.Numerics;
 
@@ -28,9 +29,13 @@ namespace Altruist.Physx.TwoD
             IPhysxBody2D selfBody, IPhysxBody2D otherBody,
             Vector2 point, Vector2 normal, float impulse)
         {
-            SelfCollider = selfCol; OtherCollider = otherCol;
-            SelfBody = selfBody; OtherBody = otherBody;
-            Point = point; Normal = normal; Impulse = impulse;
+            SelfCollider = selfCol;
+            OtherCollider = otherCol;
+            SelfBody = selfBody;
+            OtherBody = otherBody;
+            Point = point;
+            Normal = normal;
+            Impulse = impulse;
         }
     }
 

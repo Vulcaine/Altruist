@@ -1,4 +1,5 @@
 using System.Numerics;
+
 using Altruist.Numerics;
 
 namespace Altruist.ThreeD.Numerics
