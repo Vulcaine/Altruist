@@ -1,5 +1,7 @@
 using System.Text;
+
 using Altruist.Contracts;
+
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,4 +60,17 @@ public sealed class AuthConfiguration : IAltruistConfiguration
 
         return Task.CompletedTask;
     }
+}
+
+
+[AltruistModule]
+public static class GamingExtension
+{
+
+    [AltruistModuleLoader]
+    public static async Task Load()
+    {
+        AltruistBootstrap.AddConfiguration(new AuthConfiguration());
+    }
+
 }
