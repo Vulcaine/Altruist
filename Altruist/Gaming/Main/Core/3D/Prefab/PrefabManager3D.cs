@@ -32,10 +32,9 @@ namespace Altruist.Gaming.ThreeD
 
         public PrefabManager3D(
             ICacheProvider cache,
-            IRepositoryFactory repos,
             IColliderService3D colliders,
             IPrefabFactory3D factory)
-            : base(cache, repos)
+            : base(cache)
         {
             _colliders = colliders;
             _factory = factory;
@@ -62,7 +61,6 @@ namespace Altruist.Gaming.ThreeD
                 manifest: prefab,
                 edges: prefab.Edges,
                 cache: _cache,
-                repos: _repos,
                 manager: this);
 
             return new PrefabHandle<Prefab3D>(inner);

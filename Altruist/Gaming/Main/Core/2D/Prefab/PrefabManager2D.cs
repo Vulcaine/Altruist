@@ -32,10 +32,9 @@ namespace Altruist.Gaming.TwoD
 
         public PrefabManager2D(
             ICacheProvider cache,
-            IRepositoryFactory repos,
             IColliderService2D colliders,
             IPrefabFactory2D factory)
-            : base(cache, repos)
+            : base(cache)
         {
             _colliders = colliders;
             _factory = factory;
@@ -62,7 +61,6 @@ namespace Altruist.Gaming.TwoD
                 manifest: prefab,
                 edges: prefab.Edges,
                 cache: _cache,
-                repos: _repos,
                 manager: this);
 
             return new PrefabHandle<Prefab2D>(inner);
