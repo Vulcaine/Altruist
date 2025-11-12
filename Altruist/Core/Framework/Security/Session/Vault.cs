@@ -40,8 +40,6 @@ public class AuthTokenSessionModel : VaultModel, IIdGenerator
 
     public AuthTokenSessionModel()
     {
-        StorageId = GenerateId();
-        Type = GetType().Name;
     }
 
     public bool IsAccessTokenValid() => AccessExpiration > DateTime.UtcNow;
