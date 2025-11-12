@@ -389,22 +389,25 @@ public class SqlDbProvider : ISqlDatabaseProvider
         return cmd;
     }
 
-    private static string ReplaceQuestionMarks(string sql, int count)
+    private static string ReplaceQuestionMarks(string sql, int expectedCount)
     {
-        var sb = new StringBuilder(sql.Length + count * 2);
-        bool inSingle = false;
+        var sb = new StringBuilder(sql.Length + expectedCount * 3);
+        bool inSingle = false; // 'string'
+        bool inDouble = false; // "identifier"
+        int paramIndex = 0;
 
-        for (int i = 0, paramIndex = 0; i < sql.Length; i++)
+        for (int i = 0; i < sql.Length; i++)
         {
             char c = sql[i];
 
-            if (c == '\'')
+            if (!inDouble && c == '\'')
             {
                 sb.Append(c);
+                // handle escaped single quote ''
                 if (i + 1 < sql.Length && sql[i + 1] == '\'')
                 {
+                    sb.Append(sql[i + 1]);
                     i++;
-                    sb.Append('\'');
                 }
                 else
                 {
@@ -413,10 +416,17 @@ public class SqlDbProvider : ISqlDatabaseProvider
                 continue;
             }
 
-            if (!inSingle && c == '?')
+            if (!inSingle && c == '"')
+            {
+                sb.Append(c);
+                inDouble = !inDouble;
+                continue;
+            }
+
+            if (!inSingle && !inDouble && c == '?')
             {
                 paramIndex++;
-                sb.Append('$').Append(paramIndex.ToString());
+                sb.Append("@p").Append(paramIndex);
                 continue;
             }
 
