@@ -478,3 +478,33 @@ public class PacketHelper
         return new SuccessPacket("server", message, successType, receiver);
     }
 }
+
+public sealed class RoomBroadcast
+{
+    public string RoomId { get; }
+    public IPacketBase Packet { get; }
+
+    public RoomBroadcast(string roomId, IPacketBase packet)
+    {
+        RoomId = roomId ?? throw new ArgumentNullException(nameof(roomId));
+        Packet = packet ?? throw new ArgumentNullException(nameof(packet));
+    }
+}
+
+public sealed class ResultPacket
+{
+    public IPacketBase Packet { get; }
+
+    public ResultPacket(IPacketBase packet)
+    {
+        Packet = packet ?? throw new ArgumentNullException(nameof(packet));
+    }
+
+    // Failure helper: wraps PacketHelper.Failed
+    public static ResultPacket Failed(string reason, string receiver, string failType)
+        => new ResultPacket(PacketHelper.Failed(reason, receiver, failType));
+
+    // Success helper: wraps PacketHelper.Success
+    public static ResultPacket Success(string message, string receiver, string successType)
+        => new ResultPacket(PacketHelper.Success(message, receiver, successType));
+}

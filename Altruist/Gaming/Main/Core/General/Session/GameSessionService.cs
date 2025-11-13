@@ -4,13 +4,38 @@ using Altruist;
 
 using Microsoft.Extensions.Logging;
 
+public sealed class GameSessionResult
+{
+    public List<IPacketBase> ClientPackets { get; } = new();
+    public List<RoomBroadcast> RoomBroadcasts { get; } = new();
+
+    public static GameSessionResult Empty => new GameSessionResult();
+}
+
 public interface IGameSessionService
 {
     // Core session lifecycle
     Task Cleanup();
-    Task ExitGameAsync(LeaveGamePacket message, string clientId);
-    Task JoinGameAsync(JoinGamePacket message, string clientId);
-    Task HandshakeAsync(HandshakePacket message, string clientId);
+
+    /// <summary>
+    /// Exit the game:
+    ///   - returns a RoomBroadcast (if the player was in a room)
+    ///   - returns null if no broadcast is needed (e.g. client not in any room).
+    /// </summary>
+    Task<RoomBroadcast?> ExitGameAsync(LeaveGamePacket message, string clientId);
+
+    /// <summary>
+    /// Join game:
+    ///   - on failure: ResultPacket(FailedPacket)
+    ///   - on success: ResultPacket(SuccessPacket) or other dedicated packet
+    /// </summary>
+    Task<ResultPacket> JoinGameAsync(JoinGamePacket message, string clientId);
+
+    /// <summary>
+    /// Handshake:
+    ///   - returns ResultPacket(HandshakePacket) or other dedicated packet.
+    /// </summary>
+    Task<ResultPacket> HandshakeAsync(HandshakePacket message, string clientId);
 
     // ---- Minimal Session Context API (type-only) ----
     Task SetContext<T>(string clientId, T value);
@@ -22,7 +47,6 @@ public interface IGameSessionService
 public class GameSessionService : IGameSessionService
 {
     private readonly ISocketManager _socketManager;
-    private readonly IAltruistRouter _router;
     private readonly ILogger _logger;
 
     private readonly ConcurrentDictionary<string, List<object>> _contexts =
@@ -30,11 +54,9 @@ public class GameSessionService : IGameSessionService
 
     public GameSessionService(
         ISocketManager socketManager,
-        IAltruistRouter router,
         ILoggerFactory loggerFactory)
     {
         _socketManager = socketManager;
-        _router = router;
         _logger = loggerFactory.CreateLogger(GetType());
     }
 
@@ -42,41 +64,63 @@ public class GameSessionService : IGameSessionService
     // Session lifecycle methods
     // -------------------------
 
-    public async virtual Task HandshakeAsync(HandshakePacket message, string clientId)
+    public virtual async Task<ResultPacket> HandshakeAsync(
+        HandshakePacket message,
+        string clientId)
     {
         var rooms = await _socketManager.GetAllRoomsAsync();
-        var responsePacket = new HandshakePacket("server", rooms.Values.ToArray(), clientId);
-        await _router.Client.SendAsync(clientId, responsePacket);
+
+        var responsePacket = new HandshakePacket(
+            sender: "server",
+            rooms: rooms.Values.ToArray(),
+            receiver: clientId
+        );
+
+        // Dedicated packet → ResultPacket(IPacketBase)
+        return new ResultPacket(responsePacket);
     }
 
-    public async virtual Task ExitGameAsync(LeaveGamePacket message, string clientId)
+    public virtual async Task<RoomBroadcast?> ExitGameAsync(
+        LeaveGamePacket message,
+        string clientId)
     {
+        // Find room for client (if any)
         var room = await _socketManager.FindRoomForClientAsync(clientId);
-        var msg = $"Disconnected from the server";
 
-        _ = _router.Client.SendAsync(clientId, PacketHelper.Success(msg, clientId, message.Type));
-
-        if (room != null)
+        if (room == null)
         {
-            var broadcastPacket = new LeaveGamePacket("server", clientId);
-            room = room.RemoveConnection(clientId);
-            _ = _socketManager.SaveRoomAsync(room);
-            _ = _router.Room.SendAsync(room.Id, broadcastPacket);
+            // No room → nothing to broadcast, just clear context and return null.
+            ClearAllContexts(clientId);
+            return null;
+        }
 
-            if (room.Empty())
-                await _socketManager.DeleteRoomAsync(room.Id);
+        // Remove client from room & persist
+        room = room.RemoveConnection(clientId);
+        await _socketManager.SaveRoomAsync(room);
+
+        // Build broadcast packet to the room
+        var broadcastPacket = new LeaveGamePacket("server", clientId);
+
+        // Optionally delete empty room
+        if (room.Empty())
+        {
+            await _socketManager.DeleteRoomAsync(room.Id);
         }
 
         // Clear contexts on exit (optional — comment out to keep sticky contexts)
         ClearAllContexts(clientId);
+
+        return new RoomBroadcast(room.Id, broadcastPacket);
     }
 
-    public async virtual Task JoinGameAsync(JoinGamePacket message, string clientId)
+    public virtual async Task<ResultPacket> JoinGameAsync(
+        JoinGamePacket message,
+        string clientId)
     {
         if (string.IsNullOrEmpty(message.Name))
         {
-            await _router.Client.SendAsync(clientId, PacketHelper.Failed("Username is required!", clientId, message.Type));
-            return;
+            // failure → ResultPacket(FailedPacket)
+            return ResultPacket.Failed("Username is required!", clientId, message.Type);
         }
 
         RoomPacket? room;
@@ -86,8 +130,7 @@ public class GameSessionService : IGameSessionService
             if (room == null)
             {
                 var joinFailedMsg = $"Join failed. No such room: {message.RoomId}";
-                await _router.Client.SendAsync(clientId, PacketHelper.Failed(joinFailedMsg, clientId, message.Type));
-                return;
+                return ResultPacket.Failed(joinFailedMsg, clientId, message.Type);
             }
         }
         else
@@ -97,21 +140,24 @@ public class GameSessionService : IGameSessionService
 
         if (room == null)
         {
-            var msg = $"Join failed: No available rooms";
-            await _router.Client.SendAsync(clientId, PacketHelper.Failed(msg, clientId, message.Type));
+            var msg = "Join failed: No available rooms";
             _logger.LogWarning(msg);
+            return ResultPacket.Failed(msg, clientId, message.Type);
         }
-        else if (room.Has(clientId))
+
+        if (room.Has(clientId))
         {
             var msg = $"Join failed: {clientId} is already in the game";
-            await _router.Client.SendAsync(clientId, PacketHelper.Failed(msg, clientId, message.Type));
             _logger.LogWarning(msg);
+            return ResultPacket.Failed(msg, clientId, message.Type);
         }
-        else
-        {
-            var msg = $"Player {message.Name} joined the room: {room.Id}.";
-            _logger.LogInformation(msg);
-        }
+
+        // Success branch – for now we just return a SuccessPacket.
+        var successMsg = $"Player {message.Name} joined the room: {room.Id}.";
+        _logger.LogInformation(successMsg);
+
+        // Success → ResultPacket(SuccessPacket)
+        return ResultPacket.Success(successMsg, clientId, message.Type);
     }
 
     public async Task Cleanup()
