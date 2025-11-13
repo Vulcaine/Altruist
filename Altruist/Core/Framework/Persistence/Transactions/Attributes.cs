@@ -2,7 +2,7 @@ using System.Data;
 
 namespace Altruist.Persistence;
 
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Method)]
 public sealed class TransactionalAttribute : Attribute
 {
     public IsolationLevel IsolationLevel { get; }
