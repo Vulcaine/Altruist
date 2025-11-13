@@ -221,7 +221,7 @@ public abstract class JwtAuthController : AuthController
     {
         try
         {
-            var loginResult = await _loginService.LoginAsync(request);
+            var loginResult = await _loginService.LoginAsync(new UsernamePasswordLoginRequest(request.Username, request.Password));
             var account = loginResult.Model;
             if (account == null)
             {

@@ -94,6 +94,9 @@ public class LoginRequest
 {
     [JsonPropertyName("fingerprint")]
     public string? Fingerprint { get; set; }
+
+    [JsonPropertyName("rememberMe")]
+    public bool? RememberMe { get; set; }
 }
 
 public class SignupRequest

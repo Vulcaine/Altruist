@@ -2,7 +2,7 @@
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
-You may not use this file except in compliance with the License.
+you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 http://www.apache.org/licenses/LICENSE-2.0
 */
@@ -17,6 +17,8 @@ using Altruist.UORM;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+
+using Npgsql;
 
 namespace Altruist.Postgres;
 
@@ -44,12 +46,20 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         var cfg = AppConfigLoader.Load();
         var assemblies = DiscoverAssemblies();
 
+        // 1) Register schemas + vaults as before
         var schemaTypes = FindSchemaTypes(assemblies).ToArray(); // optional; falls back to DefaultSchema
         var vaultModelTypes = FindVaultModelTypes(assemblies).ToArray();
 
         RegisterSchemas(services, cfg, schemaTypes);
         RegisterVaultsAndPopulateRegistry(services, schemaTypes, vaultModelTypes);
 
+        // 2) Ensure NpgsqlDataSource is available (for transactional decorator)
+        RegisterNpgsqlDataSource(services, cfg);
+
+        // 3) Populate the TransactionalRegistry and wrap transactional services
+        RegisterTransactionalServices(services, assemblies);
+
+        // 4) Bootstrap DB objects
         await BootstrapAsync(services, schemaTypes, vaultModelTypes);
     }
 
@@ -336,5 +346,96 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
 
         // Required by IKeyspace
         public IDatabaseServiceToken DatabaseToken => PostgresDBToken.Instance;
+    }
+
+    // -------------------------------
+    // NEW: Npgsql + transactional wiring
+    // -------------------------------
+
+    private static void RegisterNpgsqlDataSource(IServiceCollection services, IConfiguration cfg)
+    {
+        // You can adapt this to whatever config shape you already use.
+        var connString = cfg.GetConnectionString("postgres")
+                         ?? cfg["Altruist:Postgres:ConnectionString"];
+
+        if (string.IsNullOrWhiteSpace(connString))
+            throw new InvalidOperationException("PostgreSQL connection string not found in configuration.");
+
+        services.AddSingleton(sp =>
+        {
+            var builder = new NpgsqlDataSourceBuilder(connString);
+            // TODO: configure type mappings, etc as needed
+            return builder.Build();
+        });
+    }
+
+    /// <summary>
+    /// Discover all [Transactional] methods, populate registry, and wrap matching services with TransactionalDecorator.
+    /// </summary>
+    private static void RegisterTransactionalServices(IServiceCollection services, Assembly[] assemblies)
+    {
+        // 1) Scan assemblies and populate registry (methods, attributes, declaring types)
+        TransactionalRegistry.WarmUp(assemblies);
+
+        // 2) Wrap DI registrations that have transactional methods on their implementation type.
+        //    We only touch services that already have an ImplementationType (not factory/instance only).
+        var descriptors = services.ToList();
+        services.Clear();
+
+        foreach (var descriptor in descriptors)
+        {
+            if (descriptor.ImplementationType is { } implType &&
+                TransactionalRegistry.HasTransactionalMethods(implType))
+            {
+                services.Add(WrapServiceIfTransactional(descriptor, implType));
+            }
+            else
+            {
+                services.Add(descriptor);
+            }
+        }
+    }
+
+    private static ServiceDescriptor WrapServiceIfTransactional(ServiceDescriptor descriptor, Type implType)
+    {
+        // We will create a factory that:
+        // - resolves implementation via ActivatorUtilities
+        // - wraps it with TransactionalDecorator<T>
+        var serviceType = descriptor.ServiceType;
+        var lifetime = descriptor.Lifetime;
+
+        // We support interface- or class-based registrations
+        var decoratorFactory = BuildDecoratorFactory(serviceType, implType);
+
+        return new ServiceDescriptor(serviceType, decoratorFactory, lifetime);
+    }
+
+    private static Func<IServiceProvider, object> BuildDecoratorFactory(Type serviceType, Type implType)
+    {
+        // For open generic services you’d need more logic; here we assume closed types.
+        var useType = implType;
+
+        return sp =>
+        {
+            // Create the original implementation instance
+            var inner = ActivatorUtilities.CreateInstance(sp, useType);
+
+            // If the serviceType is an interface implemented by implType, we want the proxy as that interface
+            var proxyServiceType = serviceType.IsAssignableFrom(useType) ? serviceType : useType;
+
+            var createMethod = typeof(DispatchProxy)
+                .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Single(m => m.Name == nameof(DispatchProxy.Create) && m.GetGenericArguments().Length == 2)
+                .MakeGenericMethod(proxyServiceType, typeof(TransactionalDecorator<>).MakeGenericType(proxyServiceType));
+
+            var proxy = (object)createMethod.Invoke(null, null)!;
+
+            // Set decorator fields
+            var decorator = (dynamic)proxy; // TransactionalDecorator<proxyServiceType>
+            decorator.Inner = inner;
+            decorator.DataSource = sp.GetRequiredService<NpgsqlDataSource>();
+
+            return proxy;
+        };
     }
 }
