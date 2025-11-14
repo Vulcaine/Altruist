@@ -43,11 +43,16 @@ public abstract class TokenIssue : IIssue
     [JsonPropertyName("refreshToken")]
     public string RefreshToken { get; set; } = "";
 
+    // used to identify accounts/users
     [Key(4)]
+    [JsonPropertyName("principalId")]
+    public string PrincipalId { get; set; } = "";
+
+    [Key(5)]
     [JsonPropertyName("accessExpiration")]
     public DateTime AccessExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
 
-    [Key(5)]
+    [Key(6)]
     [JsonPropertyName("refreshExpiration")]
     public DateTime RefreshExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromDays(7);
 

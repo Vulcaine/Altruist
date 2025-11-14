@@ -115,30 +115,34 @@ public class JwtTokenIssuer : IIssuer
     public IIssue Issue()
     {
         var signingKey = JwtOptions.TokenValidationParameters.IssuerSigningKey
-            as SymmetricSecurityKey ?? throw new InvalidOperationException("Signing key is not configured.");
+            as SymmetricSecurityKey
+            ?? throw new InvalidOperationException("Signing key is not configured.");
 
         var creds = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
+    {
+        new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+    };
 
         if (_customClaims != null)
             claims.AddRange(_customClaims);
 
-        var accessToken = GenerateJwtToken(claims, DateTime.UtcNow.AddHours(1));
+        var subject =
+            claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value;
 
-        string refreshToken;
-        refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry) + ";jwt";
+        var accessToken = GenerateJwtToken(claims, DateTime.UtcNow.AddHours(1));
+        var refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry) + ";jwt";
 
         return new JwtToken
         {
             AccessToken = $"{accessToken};jwt",
-            RefreshToken = $"{refreshToken}",
-            Algorithm = creds.Algorithm
+            RefreshToken = refreshToken,
+            Algorithm = creds.Algorithm,
+            PrincipalId = subject ?? ""
         };
     }
+
 }
 
 
