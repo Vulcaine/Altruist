@@ -286,10 +286,13 @@ namespace Altruist
 
             var diagnostics = BuildConditionalDiagnostics(paramType, cfg, log);
 
-            throw new InvalidOperationException(
+            var msg =
                 $"❌ Unable to resolve required dependency '{implName}' for constructor parameter '{p.Name}' in type '{ctorOwner}'.\n" +
                 diagnostics +
-                $"👉 Make sure an implementation is registered or annotate one with [Service(typeof({implName}))].");
+                $"👉 Make sure an implementation is registered or annotate one with [Service(typeof({implName}))].";
+
+            FailAndExit(log, msg);
+            throw new InvalidOperationException(msg);
         }
 
         /// <summary>
@@ -330,6 +333,37 @@ namespace Altruist
             sb.AppendLine();
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Logs a critical dependency resolution failure and terminates the process.
+        /// </summary>
+        private static void FailAndExit(ILogger log, string message, Exception? ex = null)
+        {
+            try
+            {
+                if (ex is not null)
+                    log.LogCritical(ex, message);
+                else
+                    log.LogCritical(message);
+
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("💀 FATAL: " + message);
+                Console.ResetColor();
+
+                // Give the logger a moment to flush
+                System.Threading.Thread.Sleep(200);
+
+                // Ensure a clean exit
+                Environment.Exit(1);
+            }
+            catch
+            {
+                // As a last resort, try to exit immediately
+                try
+                { Environment.FailFast(message, ex); }
+                catch { /* ignore */ }
+            }
         }
 
         /// <summary>
