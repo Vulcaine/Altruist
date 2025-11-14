@@ -162,7 +162,7 @@ namespace Altruist
                 var del = method.CreateDelegate(delegateType, instance);
 
                 // Register under the event name
-                EventHandlerRegistry<IPortal>.Register(gate.Event, del);
+                PortalGateRegistry<IPortal>.Register(gate.Event, del);
 
                 log.LogDebug("🔐 Registered gate '{Event}' → {Type}.{Method}()", gate.Event, type.Name, method.Name);
             }

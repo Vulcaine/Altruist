@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,7 @@ namespace Altruist
             if (string.IsNullOrEmpty(packet.Event))
                 return false;
 
-            if (EventHandlerRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
+            if (PortalGateRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
             {
                 var data = bytes;
                 var context = new InterceptContext(@event);
@@ -78,7 +78,7 @@ namespace Altruist
             await _socketManager.AddConnectionAsync(clientId, connection).ConfigureAwait(false);
 
             // Notify all portals about new connection
-            var portals = EventHandlerRegistry<IPortal>.GetAllHandlers();
+            var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
             {
                 try
