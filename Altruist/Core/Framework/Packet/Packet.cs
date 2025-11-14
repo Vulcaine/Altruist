@@ -21,14 +21,15 @@ using Altruist.Networking.Codec.MessagePack;
 
 using MessagePack;
 
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
-
 namespace Altruist
 {
-
     public static class PacketHeaders
     {
-        public static PacketHeader Broadcast = new PacketHeader("server");
+        // Framework can later overwrite timestamp/receiver/etc as needed
+        public static PacketHeader Broadcast = new PacketHeader
+        {
+            Sender = "server"
+        };
     }
 
     // === Base Interfaces ===
@@ -50,15 +51,16 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
 
         [JsonPropertyName("type")][Key(1)] public string Type { get; set; }
+
         public DecodeType()
         {
             Header = default;
             Type = "";
         }
 
-        public DecodeType(PacketHeader header, string type)
+        public DecodeType(string type)
         {
-            Header = header;
+            Header = default;
             Type = type;
         }
     }
@@ -69,26 +71,27 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("processId")][Key(1)] public string ProcessId { get; set; }
         [JsonPropertyName("message")][Key(2)] public IPacketBase Message { get; set; }
-        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "InterprocessPacket";
-
-        public InterprocessPacket(string processId, IPacketBase message)
-        {
-            Header = message.Header;
-            Message = message;
-            ProcessId = processId;
-        }
+        [JsonPropertyName("type")][Key(3)] public string Type { get; set; }
 
         public InterprocessPacket()
         {
             Header = default;
-            Message = default!;
             ProcessId = "";
+            Message = default!;
+            Type = "InterprocessPacket";
+        }
+
+        public InterprocessPacket(string processId, IPacketBase message)
+        {
+            Header = default;
+            ProcessId = processId;
+            Message = message;
+            Type = "InterprocessPacket";
         }
     }
 
     public interface IMovementPacket : IPacketBase
     {
-
     }
 
     // === Common Header Struct ===
@@ -96,28 +99,17 @@ namespace Altruist
     [MessagePackObject]
     public struct PacketHeader
     {
-        [JsonPropertyName("header")][Key(0)] public long Timestamp { get; }
+        // Framework will set this when sending
+        [JsonPropertyName("header")][Key(0)] public long Timestamp { get; set; }
 
         [JsonPropertyName("receiver")][Key(1)] public string? Receiver { get; set; }
-        [JsonPropertyName("sender")][Key(2)] public string Sender { get; }
-
-        public PacketHeader()
-        {
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            Sender = "";
-        }
+        [JsonPropertyName("sender")][Key(2)] public string Sender { get; set; }
 
         public void SetReceiver(string clientId) => Receiver = clientId;
-
-        public PacketHeader(string sender, string? receiver = null)
-        {
-            Sender = sender;
-            Receiver = receiver;
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        }
     }
 
     // === Packet Structs ===
+
     [MessagePackObject]
     public struct SyncPacket : IPacketBase
     {
@@ -126,23 +118,24 @@ namespace Altruist
         [JsonPropertyName("entityType")][Key(1)] public string EntityType { get; set; }
         [JsonPropertyName("data")][Key(2)] public Dictionary<string, object?> Data { get; set; }
 
+        [JsonPropertyName("type")][Key(3)] public string Type { get; set; }
+
         public SyncPacket()
         {
             Header = default;
             EntityType = "";
             Data = new Dictionary<string, object?>();
+            Type = "SyncPacket";
         }
 
-        public SyncPacket(string sender, string entityType, Dictionary<string, object?> data, string? receiver = null)
+        public SyncPacket(string entityType, Dictionary<string, object?> data)
         {
-            Header = new PacketHeader(sender, receiver);
+            Header = default;
             EntityType = entityType;
             Data = data;
+            Type = "SyncPacket";
         }
-
-        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "SyncPacket";
     }
-
 
     [MessagePackObject]
     public struct AltruistPacket : IPacketBase
@@ -150,95 +143,121 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("event")][Key(1)] public string Event { get; set; }
 
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; }
+
         public AltruistPacket()
         {
             Header = default;
             Event = "";
+            Type = "AltruistPacket";
         }
 
-        public AltruistPacket(string sender, string eventName, string? receiver = null)
+        public AltruistPacket(string eventName)
         {
-            Header = new PacketHeader(sender, receiver);
+            Header = default;
             Event = eventName;
+            Type = "AltruistPacket";
         }
-
-        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "AltruistPacket";
-
-
     }
 
-
+    // Standardized success envelope:
+    //  - Code (int)
+    //  - Payload (actual packet)
     [MessagePackObject]
     public struct SuccessPacket : IPacketBase
     {
-        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
-        [JsonPropertyName("message")][Key(1)] public string Message { get; set; }
-        [JsonPropertyName("successType")][Key(2)] public string SuccessType { get; set; }
+        [JsonPropertyName("header")]
+        [Key(0)]
+        public PacketHeader Header { get; set; }
 
-        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "SuccessMessage";
+        [JsonPropertyName("code")]
+        [Key(1)]
+        public int Code { get; set; }
+
+        [JsonPropertyName("payload")]
+        [Key(2)]
+        public IPacketBase Payload { get; set; }
+
+        [JsonPropertyName("type")]
+        [Key(3)]
+        public string Type { get; set; }
 
         public SuccessPacket()
         {
             Header = default;
-            Message = "";
-            SuccessType = "";
+            Code = 0;
+            Payload = default!;
+            Type = "SuccessPacket";
         }
 
-        public SuccessPacket(string sender, string message, string successType, string? receiver = null)
+        public SuccessPacket(int code, IPacketBase payload)
         {
-            Header = new PacketHeader(sender, receiver);
-            Message = message;
-            SuccessType = successType;
+            Header = default;
+            Code = code;
+            Payload = payload;
+            Type = "SuccessPacket";
         }
     }
 
+    // Standardized failure envelope:
+    //  - Code (int)
+    //  - Reason (string)
+    //  - Payload (actual packet, optional context)
     [MessagePackObject]
     public struct FailedPacket : IPacketBase
     {
-        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
-        [JsonPropertyName("reason")][Key(1)] public string Reason { get; set; }
+        [JsonPropertyName("header")]
+        [Key(0)]
+        public PacketHeader Header { get; set; }
 
-        [JsonPropertyName("message")][Key(2)] public string FailType { get; set; }
+        [JsonPropertyName("code")]
+        [Key(1)]
+        public int Code { get; set; }
 
-        [JsonPropertyName("type")][Key(3)] public string Type { get; set; } = "FailedPacket";
+        [JsonPropertyName("reason")]
+        [Key(2)]
+        public string Reason { get; set; }
+
+        [JsonPropertyName("payload")]
+        [Key(3)]
+        public IPacketBase Payload { get; set; }
+
+        [JsonPropertyName("type")]
+        [Key(4)]
+        public string Type { get; set; }
 
         public FailedPacket()
         {
             Header = default;
+            Code = 0;
             Reason = "";
-            FailType = "";
+            Payload = default!;
+            Type = "FailedPacket";
         }
 
-        public FailedPacket(string sender, string reason, string failType, string? receiver = null)
+        public FailedPacket(int code, string reason, IPacketBase payload)
         {
-            Header = new PacketHeader(sender, receiver);
+            Header = default;
+            Code = code;
             Reason = reason;
-            FailType = failType;
+            Payload = payload;
+            Type = "FailedPacket";
         }
-
-
     }
-
 
     [MessagePackObject]
     public struct ShootingPacket : IPacketBase
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
 
+        [JsonPropertyName("type")][Key(1)] public string Type { get; set; }
+
         public ShootingPacket()
         {
             Header = default;
+            Type = "ShootingPacket";
         }
-
-        public ShootingPacket(string sender, string? receiver = null)
-        {
-            Header = new PacketHeader(sender, receiver);
-        }
-        [JsonPropertyName("type")][Key(1)] public string Type { get; set; } = "ShootingPacket";
-
-
     }
-
 
     [MessagePackObject]
     public struct ForwardMovementPacket : IMovementPacket
@@ -249,17 +268,26 @@ namespace Altruist
         [JsonPropertyName("rotateRight")][Key(3)] public bool RotateRight { get; set; }
         [JsonPropertyName("turbo")][Key(4)] public bool Turbo { get; set; }
 
-        [JsonPropertyName("type")][Key(5)] public string Type { get; set; } = "ForwardMovementPacket";
+        [JsonPropertyName("type")][Key(5)] public string Type { get; set; }
 
-        public ForwardMovementPacket() { }
-
-        public ForwardMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool rotateLeft = false, bool rotateRight = false, bool turbo = false)
+        public ForwardMovementPacket()
         {
-            Header = new PacketHeader(sender, receiver);
+            Header = default;
+            MoveUp = false;
+            RotateLeft = false;
+            RotateRight = false;
+            Turbo = false;
+            Type = "ForwardMovementPacket";
+        }
+
+        public ForwardMovementPacket(bool moveUp, bool rotateLeft, bool rotateRight, bool turbo)
+        {
+            Header = default;
             MoveUp = moveUp;
-            Turbo = turbo;
             RotateLeft = rotateLeft;
             RotateRight = rotateRight;
+            Turbo = turbo;
+            Type = "ForwardMovementPacket";
         }
     }
 
@@ -273,6 +301,8 @@ namespace Altruist
         [JsonPropertyName("moveRight")][Key(4)] public bool MoveRight { get; set; }
         [JsonPropertyName("turbo")][Key(5)] public bool Turbo { get; set; }
 
+        [JsonPropertyName("type")][Key(6)] public string Type { get; set; }
+
         public EightDirectionMovementPacket()
         {
             Header = default;
@@ -281,20 +311,19 @@ namespace Altruist
             MoveLeft = false;
             MoveRight = false;
             Turbo = false;
+            Type = "EightDirectionMovementPacket";
         }
 
-        public EightDirectionMovementPacket(string sender, string? receiver = null, bool moveUp = false, bool moveDown = false, bool moveLeft = false, bool moveRight = false, bool turbo = false)
+        public EightDirectionMovementPacket(bool moveUp, bool moveDown, bool moveLeft, bool moveRight, bool turbo)
         {
-            Header = new PacketHeader(sender, receiver);
+            Header = default;
             MoveUp = moveUp;
             MoveDown = moveDown;
             MoveLeft = moveLeft;
             MoveRight = moveRight;
             Turbo = turbo;
+            Type = "EightDirectionMovementPacket";
         }
-        [JsonPropertyName("type")][Key(6)] public string Type { get; set; } = "EightDirectionMovementPacket";
-
-
     }
 
     // === Helper Classes ===
@@ -307,7 +336,8 @@ namespace Altruist
 
         public Vector2Message()
         {
-
+            X = 0;
+            Y = 0;
         }
 
         public Vector2Message(float x, float y)
@@ -323,20 +353,21 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("rooms")][Key(1)] public RoomPacket[] Rooms { get; set; }
 
-        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "HandshakePacket";
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; }
 
         public HandshakePacket()
         {
             Header = default;
             Rooms = Array.Empty<RoomPacket>();
+            Type = "HandshakePacket";
         }
 
-        public HandshakePacket(string sender, RoomPacket[] rooms, string? receiver = null)
+        public HandshakePacket(RoomPacket[] rooms)
         {
-            Header = new PacketHeader(sender, receiver);
-            Rooms = rooms;
+            Header = default;
+            Rooms = rooms ?? Array.Empty<RoomPacket>();
+            Type = "HandshakePacket";
         }
-
     }
 
     [MessagePackObject]
@@ -347,27 +378,27 @@ namespace Altruist
         [JsonPropertyName("roomId")][Key(2)] public string? RoomId { get; set; }
         [JsonPropertyName("world")][Key(3)] public int? WorldIndex { get; set; }
         [JsonPropertyName("position")][Key(4)] public float[]? Position { get; set; }
-        [JsonPropertyName("type")][Key(5)] public string Type { get; set; } = "JoinGamePacket";
+        [JsonPropertyName("type")][Key(5)] public string Type { get; set; }
 
         public JoinGamePacket()
         {
             Header = default;
             Name = string.Empty;
             RoomId = string.Empty;
-            Position = [0, 0];
+            Position = new[] { 0f, 0f };
             WorldIndex = 0;
+            Type = "JoinGamePacket";
         }
 
-        public JoinGamePacket(string sender, string name, string? roomid = null, int? worldIndex = 0, float[]? position = null, string? receiver = null)
+        public JoinGamePacket(string name, string? roomId = null, int? worldIndex = 0, float[]? position = null)
         {
-            Header = new PacketHeader(sender, receiver);
+            Header = default;
             Name = name;
-            RoomId = roomid;
-            Position = position ?? [0, 0];
+            RoomId = roomId;
+            Position = position ?? new[] { 0f, 0f };
             WorldIndex = worldIndex;
+            Type = "JoinGamePacket";
         }
-
-
     }
 
     [MessagePackObject]
@@ -376,30 +407,30 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("clientId")][Key(1)] public string ClientId { get; set; }
 
+        [JsonPropertyName("type")][Key(2)] public string Type { get; set; }
+
         public LeaveGamePacket()
         {
             Header = default;
             ClientId = string.Empty;
+            Type = "LeaveGamePacket";
         }
 
-        public LeaveGamePacket(string sender, string clientId, string? receiver = null)
+        public LeaveGamePacket(string clientId)
         {
-            Header = new PacketHeader(sender, receiver);
+            Header = default;
             ClientId = clientId;
+            Type = "LeaveGamePacket";
         }
-
-        [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "LeaveGamePacket";
     }
 
     [MessagePackObject]
-    // [Document(StorageType = StorageType.Json, IndexName = "connections", Prefixes = new[] { "connections" })]
     public class RoomPacket : IPacketBase
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
 
         [JsonPropertyName("id")]
         [Key(1)]
-
         public string Id { get; set; }
 
         [JsonPropertyName("maxCapacity")]
@@ -410,7 +441,7 @@ namespace Altruist
         [Key(3)]
         public HashSet<string> ConnectionIds { get; set; }
 
-        [JsonPropertyName("type")][Key(4)] public string Type { get; set; } = "RoomPacket";
+        [JsonPropertyName("type")][Key(4)] public string Type { get; set; }
 
         [IgnoreMember]
         public int PlayerCount => (ConnectionIds ?? new HashSet<string>()).Count;
@@ -421,31 +452,26 @@ namespace Altruist
             Id = string.Empty;
             MaxCapactiy = 100;
             ConnectionIds = new HashSet<string>();
+            Type = "RoomPacket";
         }
 
         public RoomPacket(string roomId, uint maxCapacity = 100)
         {
+            Header = default;
             Id = roomId;
             MaxCapactiy = maxCapacity;
             ConnectionIds = new HashSet<string>();
+            Type = "RoomPacket";
         }
 
         public bool Has(string connectionId) => ConnectionIds.Contains(connectionId);
 
-        public bool Full()
-        {
-            return PlayerCount >= MaxCapactiy;
-        }
+        public bool Full() => PlayerCount >= MaxCapactiy;
 
-        public bool Empty()
-        {
-            return PlayerCount == 0;
-        }
+        public bool Empty() => PlayerCount == 0;
 
-        public bool IsDefault()
-        {
-            return EqualityComparer<RoomPacket>.Default.Equals(this, default);
-        }
+        public bool IsDefault() =>
+            EqualityComparer<RoomPacket>.Default.Equals(this, default);
 
         public RoomPacket AddConnection(string connectionId)
         {
@@ -466,18 +492,9 @@ namespace Altruist
             return $"Room[{Id}]: {PlayerCount}/{MaxCapactiy}";
         }
     }
-
 }
 
-public class PacketHelper
-{
-    public static FailedPacket Failed(string reason, string receiver, string failType) => new FailedPacket("server", reason, failType, receiver);
-
-    public static SuccessPacket Success(string message, string receiver, string successType)
-    {
-        return new SuccessPacket("server", message, successType, receiver);
-    }
-}
+// === Broadcasting / result helpers ===
 
 public sealed class RoomBroadcast
 {
@@ -500,10 +517,12 @@ public sealed class ResultPacket
         Packet = packet ?? throw new ArgumentNullException(nameof(packet));
     }
 
-    public static ResultPacket Failed(string reason, string receiver, string failType)
-        => new ResultPacket(PacketHelper.Failed(reason, receiver, failType));
-    public static ResultPacket Success(string message, string receiver, string successType)
-        => new ResultPacket(PacketHelper.Success(message, receiver, successType));
+    public static ResultPacket Success(int code, IPacketBase payload)
+        => new ResultPacket(new SuccessPacket(code, payload));
+
+    public static ResultPacket Failed(int code, string reason, IPacketBase payload)
+        => new ResultPacket(new FailedPacket(code, reason, payload));
+
     public static ResultPacket Result(IPacketBase packet)
-   => new ResultPacket(packet);
+        => new ResultPacket(packet);
 }
