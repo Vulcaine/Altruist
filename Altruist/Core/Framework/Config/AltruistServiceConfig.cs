@@ -66,12 +66,15 @@ namespace Altruist
                 var lifetime = svcAttr.Lifetime;
                 var serviceType = svcAttr.ServiceType ?? implType;
 
+                // 👇 NEW: plan and pre-register transitive dependencies bottom-up
+                DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
+
                 // Register concrete implementation
                 services.Add(new ServiceDescriptor(
                     implType,
                     sp =>
                     {
-                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log);
+                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
                         try
                         { _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log); }
                         catch (Exception ex)
