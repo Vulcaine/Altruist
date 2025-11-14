@@ -10,12 +10,11 @@ namespace Altruist
 
         public static async Task Run(string[]? args = null)
         {
-            await AltruistBootstrap.Bootstrap();
-
             var cfg = AppConfigLoader.Load(args);
             Configuration = cfg;
 
-            AltruistBootstrap.Services.AddSingleton<IConfiguration>(cfg);
+            AltruistBootstrap.Services.AddSingleton(cfg);
+            await AltruistBootstrap.Bootstrap();
         }
     }
 }

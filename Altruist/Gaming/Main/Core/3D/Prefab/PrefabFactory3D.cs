@@ -12,6 +12,7 @@ public interface IPrefabFactory3D
 }
 
 [Service(typeof(IPrefabFactory3D))]
+[ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
 public sealed class PrefabFactory3D : IPrefabFactory3D
 {
     private readonly IServiceProvider _sp;
