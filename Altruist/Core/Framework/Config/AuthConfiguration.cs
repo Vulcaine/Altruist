@@ -53,8 +53,6 @@ public sealed class AuthConfiguration : IAltruistConfiguration
                 .AddJwtBearer(o => { o.TokenValidationParameters = validationParameters; });
 
             services.AddAuthorization((AuthorizationOptions _) => { });
-            services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
-
             logger.LogInformation("🔐 JWT authentication activated. Your app is armored and ready to secure connections!");
         }
         else if (string.Equals(Mode, "session", StringComparison.OrdinalIgnoreCase))
