@@ -234,7 +234,6 @@ namespace Altruist
                 var genDef = paramType.GetGenericTypeDefinition();
                 var elemType = paramType.GetGenericArguments()[0];
 
-                // Supported collection interfaces
                 if (genDef == typeof(IEnumerable<>) ||
                     genDef == typeof(IList<>) ||
                     genDef == typeof(ICollection<>) ||
@@ -281,13 +280,77 @@ namespace Altruist
             if (paramType.IsValueType)
                 return Activator.CreateInstance(paramType);
 
-            // 8) Truly unresolved reference type → throw
+            // 8) Truly unresolved reference type → analyze & throw smart error
             var implName = GetCleanName(paramType);
             var ctorOwner = GetCleanName(p.Member.DeclaringType!);
+
+            var diagnostics = BuildConditionalDiagnostics(paramType, cfg, log);
+
             throw new InvalidOperationException(
-                $"❌ Unable to resolve required dependency '{implName}' for constructor parameter '{p.Name}' " +
-                $"in type '{ctorOwner}'.\n" +
+                $"❌ Unable to resolve required dependency '{implName}' for constructor parameter '{p.Name}' in type '{ctorOwner}'.\n" +
+                diagnostics +
                 $"👉 Make sure an implementation is registered or annotate one with [Service(typeof({implName}))].");
+        }
+
+        /// <summary>
+        /// If the requested dependency type matches (or could match) a service
+        /// that was filtered out by [ConditionalOnConfig], suggest the config keys.
+        /// </summary>
+        private static string BuildConditionalDiagnostics(Type missingType, IConfiguration cfg, ILogger log)
+        {
+            var allConditional = FindConditionallyFilteredTypes();
+            var matches = allConditional
+                .Where(t => missingType.IsAssignableFrom(t.Type))
+                .ToArray();
+
+            if (matches.Length == 0)
+                return string.Empty;
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("🔍 Found conditional services that match this type but were not enabled:");
+
+            foreach (var m in matches)
+            {
+                sb.AppendLine($"   • {GetCleanName(m.Type)}");
+
+                foreach (var cond in m.Conditions)
+                {
+                    bool exists = cfg.GetSection(cond.Path).Exists();
+                    string status = exists ? "✔️ Found" : "❌ Missing";
+                    string expected = string.IsNullOrEmpty(cond.HavingValue)
+                        ? "(must exist)"
+                        : $"= \"{cond.HavingValue}\"";
+
+                    sb.AppendLine($"      - Config: {cond.Path} {expected} → {status}");
+                }
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("🧭 To enable, add the missing keys to your configuration.");
+            sb.AppendLine();
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Discover all types marked with [ConditionalOnConfig].
+        /// Returns tuples of (Type, List of Conditions).
+        /// </summary>
+        private static List<(Type Type, List<ConditionalOnConfigAttribute> Conditions)> FindConditionallyFilteredTypes()
+        {
+            var assemblies = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
+                .ToArray();
+
+            var results = new List<(Type, List<ConditionalOnConfigAttribute>)>();
+            foreach (var t in assemblies.SelectMany(a => a.GetTypes()))
+            {
+                var attrs = t.GetCustomAttributes<ConditionalOnConfigAttribute>(false).ToList();
+                if (attrs.Count > 0)
+                    results.Add((t, attrs));
+            }
+            return results;
         }
 
         private static object CreateCollectionOf(Type elemType, Type genDef, IEnumerable<object> services)
