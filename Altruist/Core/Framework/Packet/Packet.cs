@@ -500,11 +500,10 @@ public sealed class ResultPacket
         Packet = packet ?? throw new ArgumentNullException(nameof(packet));
     }
 
-    // Failure helper: wraps PacketHelper.Failed
     public static ResultPacket Failed(string reason, string receiver, string failType)
         => new ResultPacket(PacketHelper.Failed(reason, receiver, failType));
-
-    // Success helper: wraps PacketHelper.Success
     public static ResultPacket Success(string message, string receiver, string successType)
         => new ResultPacket(PacketHelper.Success(message, receiver, successType));
+    public static ResultPacket Result(IPacketBase packet)
+   => new ResultPacket(packet);
 }
