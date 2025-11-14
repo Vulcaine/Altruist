@@ -6,6 +6,7 @@ using Altruist.Web.Features;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist
@@ -60,7 +61,12 @@ namespace Altruist
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
             builder.Logging.ClearProviders();
             foreach (var d in rootServices)
+            {
+                if (d.ServiceType == typeof(IHostApplicationLifetime))
+                    continue; // don't override internal host service
+
                 builder.Services.Add(d);
+            }
 
             // MVC controllers (they’ll be mounted under http base path)
             builder.Services.AddControllers();
@@ -171,7 +177,7 @@ namespace Altruist
 ███████║██║     ██║   ██████╔╝██║   ██║██║███████╗   ██║       ██║   ██║╚██║
 ██╔══██║██║     ██║   ██╔══██╗██║   ██║██║╚════██║   ██║       ╚██╗ ██╔╝ ██║
 ██║  ██║███████╗██║   ██║  ██║╚██████╔╝██║███████║   ██║        ╚████╔╝  ██║
-╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚══════╝   ╚═╝         ╚═══╝   ╚═╝                                               
+╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚══════╝   ╚═╝         ╚═══╝   ╚═╝
 "));
             logBuilder.AppendLine(frameLine);
 
