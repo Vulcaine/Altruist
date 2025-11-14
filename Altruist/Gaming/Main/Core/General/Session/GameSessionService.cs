@@ -29,13 +29,13 @@ public interface IGameSessionService
     ///   - on failure: ResultPacket(FailedPacket)
     ///   - on success: ResultPacket(SuccessPacket) or other dedicated packet
     /// </summary>
-    Task<ResultPacket> JoinGameAsync(JoinGamePacket message, string clientId);
+    Task<IResultPacket> JoinGameAsync(JoinGamePacket message, string clientId);
 
     /// <summary>
     /// Handshake:
     ///   - returns ResultPacket(HandshakePacket) or other dedicated packet.
     /// </summary>
-    Task<ResultPacket> HandshakeAsync(HandshakePacket message, string clientId);
+    Task<IResultPacket> HandshakeAsync(HandshakePacket message, string clientId);
 
     // ---- Minimal Session Context API (type-only) ----
     Task SetContext<T>(string clientId, T value);
@@ -64,20 +64,17 @@ public class GameSessionService : IGameSessionService
     // Session lifecycle methods
     // -------------------------
 
-    public virtual async Task<ResultPacket> HandshakeAsync(
+    public virtual async Task<IResultPacket> HandshakeAsync(
         HandshakePacket message,
         string clientId)
     {
         var rooms = await _socketManager.GetAllRoomsAsync();
 
         var responsePacket = new HandshakePacket(
-            sender: "server",
-            rooms: rooms.Values.ToArray(),
-            receiver: clientId
+            rooms: rooms.Values.ToArray()
         );
 
-        // Dedicated packet → ResultPacket(IPacketBase)
-        return new ResultPacket(responsePacket);
+        return ResultPacket.Success(TransportCode.Accepted, responsePacket);
     }
 
     public virtual async Task<RoomBroadcast?> ExitGameAsync(
@@ -99,7 +96,7 @@ public class GameSessionService : IGameSessionService
         await _socketManager.SaveRoomAsync(room);
 
         // Build broadcast packet to the room
-        var broadcastPacket = new LeaveGamePacket("server", clientId);
+        var broadcastPacket = new LeaveGamePacket(clientId);
 
         // Optionally delete empty room
         if (room.Empty())
@@ -113,14 +110,16 @@ public class GameSessionService : IGameSessionService
         return new RoomBroadcast(room.Id, broadcastPacket);
     }
 
-    public virtual async Task<ResultPacket> JoinGameAsync(
+    public virtual async Task<IResultPacket> JoinGameAsync(
         JoinGamePacket message,
         string clientId)
     {
         if (string.IsNullOrEmpty(message.Name))
         {
             // failure → ResultPacket(FailedPacket)
-            return ResultPacket.Failed("Username is required!", clientId, message.Type);
+            return ResultPacket.Failed(
+                TransportCode.BadRequest,
+                "Username is required!");
         }
 
         RoomPacket? room;
@@ -130,7 +129,7 @@ public class GameSessionService : IGameSessionService
             if (room == null)
             {
                 var joinFailedMsg = $"Join failed. No such room: {message.RoomId}";
-                return ResultPacket.Failed(joinFailedMsg, clientId, message.Type);
+                return ResultPacket.Failed(TransportCode.BadRequest, joinFailedMsg);
             }
         }
         else
@@ -142,14 +141,16 @@ public class GameSessionService : IGameSessionService
         {
             var msg = "Join failed: No available rooms";
             _logger.LogWarning(msg);
-            return ResultPacket.Failed(msg, clientId, message.Type);
+            return ResultPacket.Failed(
+                TransportCode.BadRequest,
+                msg);
         }
 
         if (room.Has(clientId))
         {
             var msg = $"Join failed: {clientId} is already in the game";
             _logger.LogWarning(msg);
-            return ResultPacket.Failed(msg, clientId, message.Type);
+            return ResultPacket.Failed(TransportCode.BadRequest, msg);
         }
 
         // Success branch – for now we just return a SuccessPacket.
@@ -157,7 +158,7 @@ public class GameSessionService : IGameSessionService
         _logger.LogInformation(successMsg);
 
         // Success → ResultPacket(SuccessPacket)
-        return ResultPacket.Success(successMsg, clientId, message.Type);
+        return ResultPacket.Success(TransportCode.BadRequest, successMsg);
     }
 
     public async Task Cleanup()

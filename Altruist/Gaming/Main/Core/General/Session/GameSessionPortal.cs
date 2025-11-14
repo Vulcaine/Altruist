@@ -76,10 +76,10 @@ public abstract class AltruistGameSessionPortal : IPortal
     // Hooks: default returns input result
     // -----------------------------------
 
-    protected virtual Task<ResultPacket> OnHandshakeReceived(
+    protected virtual Task<IResultPacket> OnHandshakeReceived(
         HandshakePacket message,
         string clientId,
-        ResultPacket result)
+        IResultPacket result)
         => Task.FromResult(result);
 
     protected virtual Task<RoomBroadcast?> OnExitGameReceived(
@@ -88,10 +88,10 @@ public abstract class AltruistGameSessionPortal : IPortal
         RoomBroadcast? result)
         => Task.FromResult(result);
 
-    protected virtual Task<ResultPacket> OnJoinGameReceived(
+    protected virtual Task<IResultPacket> OnJoinGameReceived(
         JoinGamePacket message,
         string clientId,
-        ResultPacket result)
+        IResultPacket result)
         => Task.FromResult(result);
 
     // -----------------------------------
@@ -99,19 +99,22 @@ public abstract class AltruistGameSessionPortal : IPortal
     // -----------------------------------
 
     // For handshake / join (ResultPacket → client)
-    protected virtual async Task PublishResultAsync(string clientId, ResultPacket result)
+    protected virtual async Task PublishResultAsync(string clientId, IResultPacket result)
     {
-        var packet = result.Packet;
-        var receiver = packet.Header.Receiver;
-
-        // If receiver not set in packet, fall back to the calling client
-        if (string.IsNullOrEmpty(receiver))
+        if (result is IResultPacketWithPayload payloadPacket)
         {
-            receiver = clientId;
-            packet.Header.SetReceiver(receiver);
+            var packet = payloadPacket.Payload;
+            var receiver = packet.Header.Receiver;
+
+            if (string.IsNullOrEmpty(receiver))
+            {
+                receiver = clientId;
+                packet.Header.SetReceiver(receiver);
+            }
+
+            await _router.Client.SendAsync(receiver, packet);
         }
 
-        await _router.Client.SendAsync(receiver, packet);
     }
 
     // For exit game (RoomBroadcast → room)

@@ -79,13 +79,7 @@ public struct SessionAuthContext : ISessionAuthContext
 
     public SessionAuthContext()
     {
-        Header = new PacketHeader();
-        Type = nameof(SessionAuthContext);
-    }
-
-    public SessionAuthContext(string sender, string? receiver = null)
-    {
-        Header = new PacketHeader(sender, receiver);
+        Header = default;
         Type = nameof(SessionAuthContext);
     }
 }

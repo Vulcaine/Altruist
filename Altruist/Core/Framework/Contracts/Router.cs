@@ -100,6 +100,7 @@ public class ClientSender : IAltruistRouterSender
 
     public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
     {
+        message.Stamp("server", clientId, DateTime.UtcNow);
         var encodedMessage = _codec.Encoder.Encode(message);
         await SendAsync(clientId, encodedMessage);
     }

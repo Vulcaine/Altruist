@@ -101,9 +101,8 @@ public struct ItemDropPacket : IPacketBase
         ItemId = "";
     }
 
-    public ItemDropPacket(string sender, string itemId, int[] properties, string? receiver = null)
+    public ItemDropPacket(string itemId, int[] properties)
     {
-        Header = new PacketHeader(sender, receiver);
         ItemId = itemId;
         Properties = properties;
     }
@@ -135,10 +134,9 @@ public struct ItemRemovePacket : IPacketBase
 
     }
 
-    public ItemRemovePacket(string sender, SlotKey slotKey, string? receiver = null)
+    public ItemRemovePacket(SlotKey slotKey)
     {
         SlotKey = slotKey;
-        Header = new PacketHeader(sender, receiver);
     }
 }
 
@@ -175,13 +173,12 @@ public struct ItemPickUpPacket : IPacketBase
         ItemId = "";
     }
 
-    public ItemPickUpPacket(string sender, string itemId, short itemCount, string? targetStorageId = "inventory", string? targetSlotId = "inventory", string? receiver = null)
+    public ItemPickUpPacket(string itemId, short itemCount, string? targetStorageId = "inventory", string? targetSlotId = "inventory")
     {
         ItemId = itemId;
         ItemCount = itemCount;
         TargetSlotId = targetSlotId;
         TargetStorageId = targetStorageId;
-        Header = new PacketHeader(sender, receiver);
     }
 }
 
@@ -229,13 +226,12 @@ public struct ItemSetPacket : IPacketBase
         ItemId = "";
     }
 
-    public ItemSetPacket(string sender, string storageId, string itemId, SlotKey slotKey, short itemCount = 1, string? receiver = null)
+    public ItemSetPacket(string storageId, string itemId, SlotKey slotKey, short itemCount = 1)
     {
         SlotKey = slotKey;
         StorageId = storageId;
         ItemId = itemId;
         ItemCount = itemCount;
-        Header = new PacketHeader(sender, receiver);
     }
 }
 
@@ -281,13 +277,12 @@ public struct InventoryMoveItemPacket : IPacketBase
         ItemId = "";
     }
 
-    public InventoryMoveItemPacket(string sender, SlotKey fromSlot, SlotKey toSlot, string itemId, short itemCount = 1, string? receiver = null)
+    public InventoryMoveItemPacket(SlotKey fromSlot, SlotKey toSlot, string itemId, short itemCount = 1)
     {
         SlotKey = fromSlot;
         TargetSlotKey = toSlot;
         ItemId = itemId;
         ItemCount = itemCount;
-        Header = new PacketHeader(sender, receiver);
     }
 }
 
@@ -319,10 +314,9 @@ public struct InventorySortPacket : IPacketBase
         StorageId = "inventory";
     }
 
-    public InventorySortPacket(string sender, string storageId, string? receiver = null)
+    public InventorySortPacket(string storageId)
     {
         StorageId = storageId;
-        Header = new PacketHeader(sender, receiver);
     }
 }
 
@@ -341,9 +335,8 @@ public struct StorageInfoPacket : IPacketBase
 
     [JsonPropertyName("type")][Key(2)] public string Type { get; set; } = "StorageInfoPacket";
 
-    public StorageInfoPacket(string sender, string storageId, string? receiver = null)
+    public StorageInfoPacket(string storageId)
     {
         StorageId = storageId;
-        Header = new PacketHeader(sender, receiver);
     }
 }

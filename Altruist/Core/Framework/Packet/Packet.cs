@@ -42,7 +42,55 @@ namespace Altruist
     {
         PacketHeader Header { get; set; }
 
+        void Stamp(string sender, string receiver, DateTime receivedAt)
+        {
+            Header.Stamp(sender, receiver, receivedAt);
+        }
+
         void SetReceiver(string clientId) => Header.SetReceiver(clientId);
+        void SetTimestamp(DateTime receivedAt) => Header.SetTimestamp(receivedAt);
+    }
+
+    [MessagePackObject]
+    public struct TextPacket : IPacketBase
+    {
+        // =============================
+        // Header (framework will fill)
+        // =============================
+        [JsonPropertyName("header")]
+        [Key(0)]
+        public PacketHeader Header { get; set; }
+
+        // =============================
+        // Packet Text Content
+        // =============================
+        [JsonPropertyName("text")]
+        [Key(1)]
+        public string Text { get; set; }
+
+        // =============================
+        // Type Identifier
+        // =============================
+        [JsonPropertyName("type")]
+        [Key(2)]
+        public string Type { get; set; }
+
+        // =============================
+        // Constructors
+        // =============================
+        public TextPacket()
+        {
+            Header = default;      // framework fills these later
+            Text = string.Empty;
+            Type = nameof(TextPacket);
+        }
+
+        public TextPacket(string text)
+        {
+            Header = default;      // framework fills sender/receiver/timestamp
+            Text = text;
+            Type = nameof(TextPacket);
+        }
     }
 
     [MessagePackObject]
@@ -105,7 +153,9 @@ namespace Altruist
         [JsonPropertyName("receiver")][Key(1)] public string? Receiver { get; set; }
         [JsonPropertyName("sender")][Key(2)] public string Sender { get; set; }
 
+        public void Stamp(string sender, string receiver, DateTime tt) => (Sender, Receiver, Timestamp) = (sender, receiver, tt.Ticks);
         public void SetReceiver(string clientId) => Receiver = clientId;
+        public void SetTimestamp(DateTime tt) => Timestamp = tt.Ticks;
     }
 
     // === Packet Structs ===
@@ -160,11 +210,21 @@ namespace Altruist
         }
     }
 
+    public interface IResultPacket
+    {
+
+    }
+
+    public interface IResultPacketWithPayload : IResultPacket
+    {
+        IPacketBase Payload { get; }
+    }
+
     // Standardized success envelope:
     //  - Code (int)
     //  - Payload (actual packet)
     [MessagePackObject]
-    public struct SuccessPacket : IPacketBase
+    public struct SuccessPacket : IPacketBase, IResultPacketWithPayload
     {
         [JsonPropertyName("header")]
         [Key(0)]
@@ -176,7 +236,7 @@ namespace Altruist
 
         [JsonPropertyName("payload")]
         [Key(2)]
-        public IPacketBase Payload { get; set; }
+        public IPacketBase? Payload { get; set; }
 
         [JsonPropertyName("type")]
         [Key(3)]
@@ -190,7 +250,7 @@ namespace Altruist
             Type = "SuccessPacket";
         }
 
-        public SuccessPacket(int code, IPacketBase payload)
+        public SuccessPacket(int code, IPacketBase? payload = null)
         {
             Header = default;
             Code = code;
@@ -204,7 +264,7 @@ namespace Altruist
     //  - Reason (string)
     //  - Payload (actual packet, optional context)
     [MessagePackObject]
-    public struct FailedPacket : IPacketBase
+    public struct FailedPacket : IPacketBase, IResultPacket
     {
         [JsonPropertyName("header")]
         [Key(0)]
@@ -218,10 +278,6 @@ namespace Altruist
         [Key(2)]
         public string Reason { get; set; }
 
-        [JsonPropertyName("payload")]
-        [Key(3)]
-        public IPacketBase Payload { get; set; }
-
         [JsonPropertyName("type")]
         [Key(4)]
         public string Type { get; set; }
@@ -231,16 +287,14 @@ namespace Altruist
             Header = default;
             Code = 0;
             Reason = "";
-            Payload = default!;
             Type = "FailedPacket";
         }
 
-        public FailedPacket(int code, string reason, IPacketBase payload)
+        public FailedPacket(int code, string reason)
         {
             Header = default;
             Code = code;
             Reason = reason;
-            Payload = payload;
             Type = "FailedPacket";
         }
     }
@@ -508,21 +562,14 @@ public sealed class RoomBroadcast
     }
 }
 
-public sealed class ResultPacket
+public static class ResultPacket
 {
-    public IPacketBase Packet { get; }
+    public static SuccessPacket Success(int code, IPacketBase? payload = null)
+        => new SuccessPacket(code, payload);
 
-    public ResultPacket(IPacketBase packet)
-    {
-        Packet = packet ?? throw new ArgumentNullException(nameof(packet));
-    }
+    public static SuccessPacket Success(int code, string message)
+       => new SuccessPacket(code, new TextPacket(message));
 
-    public static ResultPacket Success(int code, IPacketBase payload)
-        => new ResultPacket(new SuccessPacket(code, payload));
-
-    public static ResultPacket Failed(int code, string reason, IPacketBase payload)
-        => new ResultPacket(new FailedPacket(code, reason, payload));
-
-    public static ResultPacket Result(IPacketBase packet)
-        => new ResultPacket(packet);
+    public static FailedPacket Failed(int code, string reason)
+        => new FailedPacket(code, reason);
 }

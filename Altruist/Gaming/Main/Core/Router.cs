@@ -22,7 +22,7 @@ public class GameClientSynchronizator : IClientSynchronizator
             return;
 
         var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-        var syncData = new SyncPacket("server", entity.GetType().Name, safeCopy);
+        var syncData = new SyncPacket(entity.GetType().Name, safeCopy);
         await _broadcast.SendAsync(syncData);
     }
 
