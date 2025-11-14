@@ -1,16 +1,93 @@
-namespace Altruist.Security;
-
-public class AuthPortal : IPortal
+namespace Altruist.Security
 {
-    protected readonly IAuthService _authService;
-    public AuthPortal(IAuthService authService)
+    public interface IAuthPortal : IPortal
     {
-        _authService = authService;
+        SessionAuthContext OnUpgrade(SessionAuthContext context, string clientId);
+        Task OnUpgradeSuccess(SessionAuthContext context, string clientId, IIssue issue);
+        Task OnUpgradeFailed(SessionAuthContext context, string clientId);
     }
 
-    [Gate("upgrade")]
-    public Task UpgradeAuth(SessionAuthContext context, string clientId)
+    public class AuthPortal : IAuthPortal
     {
-        return _authService.Upgrade(context, clientId);
+        protected readonly IAuthService _authService;
+        protected readonly IAltruistRouter _router;
+        protected readonly IConnectionManager _connectionManager;
+
+        public AuthPortal(
+            IAuthService authService,
+            IAltruistRouter router,
+            IConnectionManager connectionManager)
+        {
+            _authService = authService;
+            _router = router;
+            _connectionManager = connectionManager;
+        }
+
+        /// <summary>
+        /// Hook called before upgrade, allows modifying the context.
+        /// Default: returns the context unchanged.
+        /// </summary>
+        public virtual SessionAuthContext OnUpgrade(SessionAuthContext context, string clientId)
+            => context;
+
+        /// <summary>
+        /// Hook called after a successful upgrade (token issued).
+        /// Default: no-op.
+        /// </summary>
+        public virtual Task OnUpgradeSuccess(SessionAuthContext context, string clientId, IIssue issue)
+            => Task.CompletedTask;
+
+        /// <summary>
+        /// Hook called after a failed upgrade attempt.
+        /// Default: no-op.
+        /// </summary>
+        public virtual Task OnUpgradeFailed(SessionAuthContext context, string clientId)
+            => Task.CompletedTask;
+
+        [Gate("upgrade")]
+        public async Task UpgradeAuth(SessionAuthContext context, string clientId)
+        {
+            // 1) Let user customize / validate / enrich the context
+            context = OnUpgrade(context, clientId);
+
+            // 2) Ask service to perform the actual upgrade
+            var issue = await _authService.Upgrade(context, clientId);
+
+            var connection = await _connectionManager.GetConnectionAsync(clientId);
+
+            if (issue != null)
+            {
+                await OnUpgradeSuccess(context, clientId, issue);
+
+                if (issue is IPacketBase packet)
+                {
+                    await _router.Client.SendAsync(clientId, packet);
+                }
+
+                if (connection != null)
+                {
+                    await connection.CloseOutputAsync();
+                    await connection.CloseAsync();
+                }
+            }
+            else
+            {
+                await OnUpgradeFailed(context, clientId);
+
+                var textPayload = new TextPacket("Authentication upgrade failed.");
+                var result = ResultPacket.Failed(
+                    code: TransportCode.Unauthorized,
+                    reason: "Invalid or expired token"
+                );
+
+                await _router.Client.SendAsync(clientId, result);
+
+                if (connection != null)
+                {
+                    await connection.CloseOutputAsync();
+                    await connection.CloseAsync();
+                }
+            }
+        }
     }
 }

@@ -85,7 +85,6 @@ public interface ITransportClient
     bool IsConnected { get; }
 }
 
-
 public interface IConnectionManager
 {
     Task HandleConnection(AltruistConnection socket, string @event, string clientId);
@@ -108,10 +107,5 @@ public interface IConnectionManager
     Task SaveRoomAsync(RoomPacket room);
     Task Cleanup();
     Task<bool> IsConnectionExistsAsync(string connectionId);
-    event Func<string, Exception?, Task> OnDisconnectedAsync;
 }
 
-public interface IPortal
-{
-
-}
