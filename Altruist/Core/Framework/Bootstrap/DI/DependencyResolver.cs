@@ -228,25 +228,23 @@ namespace Altruist
 
             var paramType = p.ParameterType;
 
-            // 2) IEnumerable<T> / IList<T> / ICollection<T> / IReadOnlyList<T>
+            // 2) Handle all supported collection kinds (Spring-style)
             if (paramType.IsGenericType)
             {
                 var genDef = paramType.GetGenericTypeDefinition();
+                var elemType = paramType.GetGenericArguments()[0];
+
+                // Supported collection interfaces
                 if (genDef == typeof(IEnumerable<>) ||
                     genDef == typeof(IList<>) ||
                     genDef == typeof(ICollection<>) ||
-                    genDef == typeof(IReadOnlyList<>))
+                    genDef == typeof(IReadOnlyList<>) ||
+                    genDef == typeof(List<>) ||
+                    genDef == typeof(HashSet<>))
                 {
-                    var elemType = paramType.GetGenericArguments()[0];
                     var servicesEnumObj = ServiceProviderServiceExtensions.GetServices(sp, elemType);
-
-                    // materialize to List<T> so it's assignable to all the above interfaces
-                    var listType = typeof(List<>).MakeGenericType(elemType);
-                    var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-                    foreach (var s in servicesEnumObj)
-                        list.Add(s);
-
-                    return list;
+                    var resultCollection = CreateCollectionOf(elemType, genDef, servicesEnumObj);
+                    return resultCollection;
                 }
             }
 
@@ -275,23 +273,50 @@ namespace Altruist
             if (p.HasDefaultValue)
                 return p.DefaultValue;
 
-            // 6) Nullable → null
-            var isNullable = Nullable.GetUnderlyingType(paramType) is not null;
-            if (isNullable)
+            // 6) Nullable value types (T?) → default(T?)
+            if (Nullable.GetUnderlyingType(paramType) is not null)
                 return null;
 
-            // 7) Fallback default(T) for value types
+            // 7) Fallback default(T) for structs
             if (paramType.IsValueType)
                 return Activator.CreateInstance(paramType);
 
-            // 8) Truly unresolved — this is the important new error case
+            // 8) Truly unresolved reference type → throw
             var implName = GetCleanName(paramType);
             var ctorOwner = GetCleanName(p.Member.DeclaringType!);
-
             throw new InvalidOperationException(
                 $"❌ Unable to resolve required dependency '{implName}' for constructor parameter '{p.Name}' " +
                 $"in type '{ctorOwner}'.\n" +
                 $"👉 Make sure an implementation is registered or annotate one with [Service(typeof({implName}))].");
+        }
+
+        private static object CreateCollectionOf(Type elemType, Type genDef, IEnumerable<object> services)
+        {
+            // Convert enumerable to array first
+            var elements = services.ToList();
+
+            // Handle HashSet<T> explicitly
+            if (genDef == typeof(HashSet<>))
+            {
+                var setType = typeof(HashSet<>).MakeGenericType(elemType);
+                var set = Activator.CreateInstance(setType)!;
+
+                var addMethod = setType.GetMethod("Add", new[] { elemType })!;
+                foreach (var s in elements)
+                    addMethod.Invoke(set, new[] { s });
+
+                return set;
+            }
+
+            // Default: List<T> (covers IEnumerable, IList, ICollection, IReadOnlyList)
+            var listType = typeof(List<>).MakeGenericType(elemType);
+            var list = Activator.CreateInstance(listType)!;
+
+            var addMethod2 = listType.GetMethod("Add", new[] { elemType })!;
+            foreach (var s in elements)
+                addMethod2.Invoke(list, new[] { s });
+
+            return list;
         }
 
         private static void BindConfigProps(IConfiguration cfg, ILogger log, Type t, object obj)
