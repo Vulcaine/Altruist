@@ -169,7 +169,9 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             await provider.ShutdownAsync();
         }
 
-        logger.LogInformation("🐘 PostgreSQL activated. {Count} vault model(s) registered and bootstrapped. ✨", vaultModelTypes.Length);
+        logger.LogInformation(
+            "🐘 PostgreSQL activated. {Count} vault model(s) registered and bootstrapped. ✨",
+            vaultModelTypes.Length);
     }
 
     private static IKeyspace? ResolveSchemaInstance(
@@ -270,10 +272,17 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
                                     .MakeGenericMethod(modelType);
                                 var toListMethod = typeof(Enumerable).GetMethod("ToList", BindingFlags.Public | BindingFlags.Static)!
                                     .MakeGenericMethod(modelType);
-                                var typedList = toListMethod.Invoke(null, new object[] { castMethod.Invoke(null, new object[] { resultObj })! })!;
+                                var typedList = toListMethod.Invoke(
+                                    null,
+                                    new object[] { castMethod.Invoke(null, new object[] { resultObj })! })!;
 
-                                var saveBatch = vaultIface.GetMethod("SaveBatchAsync", new[] { typeof(IEnumerable<>).MakeGenericType(modelType), typeof(bool?) })
-                                               ?? vaultIface.GetMethod("SaveBatchAsync", new[] { typeof(IEnumerable<>).MakeGenericType(modelType) });
+                                var saveBatch = vaultIface.GetMethod("SaveBatchAsync", new[]
+                                    {
+                                        typeof(IEnumerable<>).MakeGenericType(modelType),
+                                        typeof(bool?)
+                                    })
+                                               ?? vaultIface.GetMethod("SaveBatchAsync", new[]
+                                                   { typeof(IEnumerable<>).MakeGenericType(modelType) });
 
                                 object? saveTaskObj;
                                 if (saveBatch!.GetParameters().Length == 2)
@@ -349,14 +358,63 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
     }
 
     // -------------------------------
-    // NEW: Npgsql + transactional wiring
+    // Npgsql + transactional wiring
     // -------------------------------
 
     private static void RegisterNpgsqlDataSource(IServiceCollection services, IConfiguration cfg)
     {
-        // You can adapt this to whatever config shape you already use.
-        var connString = cfg.GetConnectionString("postgres")
-                         ?? cfg["Altruist:Postgres:ConnectionString"];
+        // 1) Try classic connection string first (backwards compatibility).
+        var connString = cfg.GetConnectionString("postgres");
+
+        // 2) If not found, build from structured config:
+        //    altruist:persistence:database:{provider,host,port,username,password,database}
+        if (string.IsNullOrWhiteSpace(connString))
+        {
+            var dbSection = cfg.GetSection("altruist:persistence:database");
+
+            var provider = dbSection["provider"];
+            if (!string.Equals(provider, "postgres", StringComparison.OrdinalIgnoreCase))
+            {
+                // If the configured provider is not postgres, don't register a data source.
+                // This configuration object should only be used when provider == postgres.
+                throw new InvalidOperationException(
+                    $"PostgresDBConfiguration used but provider is '{provider ?? "<null>"}'.");
+            }
+
+            var host = dbSection["host"] ?? "localhost";
+            var portString = dbSection["port"] ?? "5432";
+            var username = dbSection["username"];
+            var password = dbSection["password"];
+            var database = dbSection["database"];
+
+            if (string.IsNullOrWhiteSpace(username) ||
+                string.IsNullOrWhiteSpace(password) ||
+                string.IsNullOrWhiteSpace(database))
+            {
+                throw new InvalidOperationException(
+                    "PostgreSQL configuration is incomplete. " +
+                    "Expected altruist:persistence:database:username, :password, :database.");
+            }
+
+            if (!int.TryParse(portString, out var port))
+                port = 5432;
+
+            var builder = new NpgsqlConnectionStringBuilder
+            {
+                Host = host,
+                Port = port,
+                Username = username,
+                Password = password,
+                Database = database,
+
+                // Optional: tune as needed
+                // Pooling = true,
+                // MaximumPoolSize = 100,
+                // SslMode = SslMode.Disable
+            };
+
+            connString = builder.ConnectionString;
+        }
 
         if (string.IsNullOrWhiteSpace(connString))
             throw new InvalidOperationException("PostgreSQL connection string not found in configuration.");
@@ -364,7 +422,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         services.AddSingleton(sp =>
         {
             var builder = new NpgsqlDataSourceBuilder(connString);
-            // TODO: configure type mappings, etc as needed
+            // configure mappings here if needed
             return builder.Build();
         });
     }
