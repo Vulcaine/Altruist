@@ -100,10 +100,11 @@ namespace Altruist
 
         private void RegisterPortals(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg)
         {
-            var provider = services.BuildServiceProvider();
-            IAltruistContext settings = provider.GetRequiredService<IAltruistContext>();
+            var settings = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
 
-            var portals = PortalDiscovery.Discover().Distinct();
+            var portals = PortalDiscovery.Discover().Distinct().ToArray();
+            var toWarmUp = new List<Type>();
+
             foreach (var d in portals)
             {
                 var portalType = d.PortalType;
@@ -119,7 +120,9 @@ namespace Altruist
                         // Create instance + post-construct
                         var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, portalType, log);
                         try
-                        { _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, log); }
+                        {
+                            _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, log);
+                        }
                         catch (Exception ex)
                         {
                             log.LogError(ex, "❌ PostConstruct failed on portal {Type}.", portalType.FullName);
@@ -129,42 +132,71 @@ namespace Altruist
                         // Register [Gate]-annotated methods from THIS instance
                         RegisterGateMethodsFromInstance(instance!, log);
 
+                        // Also register instance so ConnectionManager can call OnConnected/OnDisconnected
+                        if (instance is IPortal portalInstance)
+                            PortalGateRegistry<IPortal>.RegisterInstance(portalInstance);
+
                         return instance!;
                     },
                     ServiceLifetime.Transient));
 
-                // Expose endpoint path in settings
                 settings.AddEndpoint(d.Path);
-
                 reg.Add($"\t{DependencyResolver.GetCleanName(portalType)} → {DependencyResolver.GetCleanName(portalType)} (Transient) [Portal]");
+                toWarmUp.Add(portalType);
+            }
+
+            // ── Warm-up: force-create one instance of each portal to trigger gate registration ──
+            if (toWarmUp.Count > 0)
+            {
+                using var warmupProvider = services.BuildServiceProvider();
+                foreach (var t in toWarmUp)
+                {
+                    try
+                    {
+                        _ = warmupProvider.GetRequiredService(t);
+                        log.LogDebug("🔥 Warmed up portal {PortalType} to register [Gate] methods.", t.FullName);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogError(ex, "❌ Failed to warm up portal {PortalType}.", t.FullName);
+                        throw;
+                    }
+                }
             }
         }
-
-        // -------- gate registration helpers (moved from registry) --------
 
         private static void RegisterGateMethodsFromInstance(object instance, ILogger log)
         {
             var type = instance.GetType();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                              .Where(m => m.GetCustomAttribute<GateAttribute>() != null);
+
+            foreach (var method in methods)
             {
-                var gate = method.GetCustomAttribute<GateAttribute>();
-                if (gate is null)
-                    continue;
+                var attr = method.GetCustomAttribute<GateAttribute>()!;
+                var pars = method.GetParameters();
 
-                ValidateGateMethodSignature(method);
+                if (method.ReturnType != typeof(Task))
+                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} marked with [Gate] must return Task.");
 
-                var parameters = method.GetParameters();
+                if (pars.Length is < 1 or > 2)
+                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} marked with [Gate] must have 1 or 2 parameters.");
+
+                if (!typeof(IPacket).IsAssignableFrom(pars[0].ParameterType))
+                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} first parameter must implement IPacket.");
+
+                if (pars.Length == 2 && pars[1].ParameterType != typeof(string))
+                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} second parameter must be string (clientId).");
+
                 var delegateType = Expression.GetDelegateType(
-                    parameters.Select(p => p.ParameterType)
-                              .Concat(new[] { method.ReturnType })
-                              .ToArray());
+                    pars.Select(p => p.ParameterType)
+                        .Concat(new[] { typeof(Task) })
+                        .ToArray());
 
                 var del = method.CreateDelegate(delegateType, instance);
+                PortalGateRegistry<IPortal>.Register(attr.Event, del);
 
-                // Register under the event name
-                PortalGateRegistry<IPortal>.Register(gate.Event, del);
-
-                log.LogDebug("🔐 Registered gate '{Event}' → {Type}.{Method}()", gate.Event, type.Name, method.Name);
+                log.LogDebug("🔒 Registered gate for event '{Event}' -> {Method} on {Type}.", attr.Event, method.Name, type.FullName);
             }
         }
 
