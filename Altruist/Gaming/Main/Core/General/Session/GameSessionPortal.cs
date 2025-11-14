@@ -10,7 +10,7 @@ You may obtain a copy of the License at
 
 namespace Altruist.Gaming;
 
-public abstract class AltruistGameSessionPortal : IPortal
+public abstract class AltruistGameSessionPortal : Portal
 {
     protected readonly IGameSessionService _gameSessionService;
     protected readonly IAltruistRouter _router;

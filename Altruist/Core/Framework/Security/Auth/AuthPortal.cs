@@ -1,13 +1,13 @@
 namespace Altruist.Security
 {
-    public interface IAuthPortal : IPortal
+    public interface IAuthPortal
     {
         SessionAuthContext OnUpgrade(SessionAuthContext context, string clientId);
         Task OnUpgradeSuccess(SessionAuthContext context, string clientId, IIssue issue);
         Task OnUpgradeFailed(SessionAuthContext context, string clientId);
     }
 
-    public class AuthPortal : IAuthPortal
+    public class AuthPortal : Portal, IAuthPortal
     {
         protected readonly IAuthService _authService;
         protected readonly IAltruistRouter _router;

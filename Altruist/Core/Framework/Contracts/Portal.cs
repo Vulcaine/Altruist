@@ -14,3 +14,8 @@ public interface IPortal
     /// </summary>
     Task OnDisconnectedAsync(string clientId, Exception? exception) => Task.CompletedTask;
 }
+
+public abstract class Portal : IPortal
+{
+
+}
