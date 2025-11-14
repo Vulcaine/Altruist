@@ -17,5 +17,8 @@ public interface IPortal
 
 public abstract class Portal : IPortal
 {
+    // These are now real virtual methods subclasses can override.
+    public virtual Task OnConnectedAsync(string clientId) => Task.CompletedTask;
 
+    public virtual Task OnDisconnectedAsync(string clientId, Exception? exception) => Task.CompletedTask;
 }

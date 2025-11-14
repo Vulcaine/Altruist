@@ -67,6 +67,11 @@ public abstract class AltruistGameSessionPortal : Portal
         await PublishResultAsync(clientId, finalResult);
     }
 
+    public override async Task OnDisconnectedAsync(string clientId, Exception? exception)
+    {
+        _gameSessionService.ClearAllContexts(clientId);
+    }
+
     public async Task Cleanup()
     {
         await _gameSessionService.Cleanup();

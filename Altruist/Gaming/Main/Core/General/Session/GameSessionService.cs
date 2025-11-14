@@ -14,6 +14,8 @@ public sealed class GameSessionResult
 
 public interface IGameSessionService
 {
+    void ClearAllContexts(string clientId);
+
     // Core session lifecycle
     Task Cleanup();
 
@@ -165,13 +167,15 @@ public class GameSessionService : IGameSessionService
     {
         try
         {
+            _contexts.Clear();
             await _socketManager.Cleanup();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error cleaning up connections.");
+            _logger.LogError(ex, "Error cleaning up connections and contexts.");
         }
     }
+
 
     // -------------------------
     // Minimal type-only context API
@@ -228,7 +232,7 @@ public class GameSessionService : IGameSessionService
         return Task.CompletedTask;
     }
 
-    private void ClearAllContexts(string clientId)
+    public void ClearAllContexts(string clientId)
     {
         _contexts.TryRemove(clientId, out _);
     }
