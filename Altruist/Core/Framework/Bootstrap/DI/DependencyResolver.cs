@@ -276,7 +276,7 @@ namespace Altruist
                 return p.DefaultValue;
 
             // 6) Nullable → null
-            var isNullable = !paramType.IsValueType || Nullable.GetUnderlyingType(paramType) is not null;
+            var isNullable = Nullable.GetUnderlyingType(paramType) is not null;
             if (isNullable)
                 return null;
 
