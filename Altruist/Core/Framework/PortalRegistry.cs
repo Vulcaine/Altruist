@@ -1,112 +1,33 @@
-/* 
+/*
 Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0
 */
 
-using System.Linq.Expressions;
-using System.Reflection;
+using System.Collections.Concurrent;
 
-using Altruist;
-
-using Microsoft.Extensions.DependencyInjection;
-
-public static class EventHandlerRegistry<TType>
+public static class EventHandlerRegistry<TMarker>
 {
-    private static readonly Dictionary<string, Delegate> _eventHandlers = new();
-    private static readonly List<TType> _instances = new();
+    private static readonly ConcurrentDictionary<string, List<Delegate>> _handlers =
+        new(StringComparer.Ordinal);
 
-    // Method to scan and register event handlers for any type T (e.g., IPortal, ITemple)
-    public static void ScanAndRegisterHandlers(IServiceProvider serviceProvider)
+    /// <summary>Register a handler delegate for an event name.</summary>
+    public static void Register(string eventName, Delegate handler)
     {
-        var instances = serviceProvider.GetServices<TType>(); // Get all instances of T (e.g., IPortal or ITemple)
-        foreach (var instance in instances)
-        {
-            // store instance so we can later call OnConnectedAsync / OnDisconnectedAsync
-            _instances.Add(instance);
-            RegisterEventHandlers(instance);
-        }
+        if (string.IsNullOrWhiteSpace(eventName))
+            throw new ArgumentException("eventName cannot be null/empty.", nameof(eventName));
+        if (handler is null)
+            throw new ArgumentNullException(nameof(handler));
+
+        var list = _handlers.GetOrAdd(eventName, _ => new List<Delegate>());
+        lock (list)
+        { list.Add(handler); }
     }
 
-    // Register event handlers from a specific instance
-    private static void RegisterEventHandlers(TType instance)
+    /// <summary>Get all handlers for an event. Returns empty if none.</summary>
+    public static IReadOnlyList<Delegate> Get(string eventName)
     {
-        var methods = instance!.GetType()
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Where(m => m.GetCustomAttribute<GateAttribute>() != null);
-
-        foreach (var method in methods)
-        {
-            var attribute = method.GetCustomAttribute<GateAttribute>();
-            var parameters = method.GetParameters();
-
-            if (attribute != null)
-            {
-                ValidateMethod(method, parameters);
-
-                var delegateType = Expression.GetDelegateType(
-                    parameters.Select(p => p.ParameterType)
-                              .Concat(new[] { method.ReturnType })
-                              .ToArray());
-
-                var @delegate = method.CreateDelegate(delegateType, instance);
-
-                _eventHandlers[attribute.Event] = @delegate;
-            }
-        }
-    }
-
-    // Validate the method to ensure it adheres to the correct signature for event handlers
-    private static void ValidateMethod(MethodInfo method, ParameterInfo[] parameters)
-    {
-        if (method.ReturnType != typeof(Task))
-        {
-            throw new InvalidOperationException($"Method {method.Name} marked with [Gate] must return Task.");
-        }
-
-        if (parameters.Length == 1)
-        {
-            if (!typeof(IPacket).IsAssignableFrom(parameters[0].ParameterType))
-            {
-                throw new InvalidOperationException(
-                    $"Method {method.Name} marked with [Gate] must have the first parameter as a subtype of IPacket.");
-            }
-        }
-        else if (parameters.Length == 2)
-        {
-            if (!typeof(IPacket).IsAssignableFrom(parameters[0].ParameterType) ||
-                parameters[1].ParameterType != typeof(string))
-            {
-                throw new InvalidOperationException(
-                    $"Method {method.Name} marked with [Gate] must have exactly two parameters: (IPacket, string).");
-            }
-        }
-        else
-        {
-            throw new InvalidOperationException(
-                $"Method {method.Name} marked with [Gate] must have exactly 1 or 2 parameters.");
-        }
-    }
-
-    // Try to retrieve an event handler for a specific event name
-    public static bool TryGetHandler(string eventName, out Delegate handler)
-    {
-        return _eventHandlers.TryGetValue(eventName, out handler!);
-    }
-
-    // Return all registered instances (e.g., all IPortal implementations)
-    public static IReadOnlyList<TType> GetAllHandlers()
-    {
-        return _instances.AsReadOnly();
+        return _handlers.TryGetValue(eventName, out var list)
+            ? list.ToArray()
+            : Array.Empty<Delegate>();
     }
 }

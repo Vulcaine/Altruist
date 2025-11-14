@@ -1,19 +1,9 @@
-/* 
+/*
 Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0
 */
 
+using System.Linq.Expressions;
 using System.Reflection;
 
 using Altruist.Contracts;
@@ -27,13 +17,11 @@ namespace Altruist
 {
     public class AltruistServiceConfig : IAltruistConfiguration
     {
-
         public Task Configure(IServiceCollection services)
         {
             var cfg = GetConfig();
             var logger = GetLogger(services);
 
-            // one-time converter discovery for config binding
             DependencyResolver.EnsureConverters(services, logger);
 
             var registered = new List<string>();
@@ -78,16 +66,14 @@ namespace Altruist
                 var lifetime = svcAttr.Lifetime;
                 var serviceType = svcAttr.ServiceType ?? implType;
 
-                // 1) Always register the concrete implementation → instance
+                // Register concrete implementation
                 services.Add(new ServiceDescriptor(
                     implType,
                     sp =>
                     {
-                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
+                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log);
                         try
-                        {
-                            _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
-                        }
+                        { _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log); }
                         catch (Exception ex)
                         {
                             log.LogError(ex, "❌ PostConstruct failed on service {Type}.", implType.FullName);
@@ -99,7 +85,7 @@ namespace Altruist
 
                 reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
 
-                // 2) If an abstraction/interface was provided, forward it to the same impl instance
+                // Forward abstraction (if provided) to the same impl instance
                 if (serviceType != implType)
                 {
                     services.Add(new ServiceDescriptor(
@@ -115,36 +101,93 @@ namespace Altruist
         private void RegisterPortals(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg)
         {
             var provider = services.BuildServiceProvider();
-            IAltruistContext _settings = provider.GetRequiredService<IAltruistContext>();
+            IAltruistContext settings = provider.GetRequiredService<IAltruistContext>();
+
             var portals = PortalDiscovery.Discover().Distinct();
-            foreach (var t in portals)
+            foreach (var d in portals)
             {
-                if (!t.PortalType.IsClass || t.PortalType.IsAbstract)
+                var portalType = d.PortalType;
+                if (!portalType.IsClass || portalType.IsAbstract)
                     continue;
-                if (!DependencyResolver.ShouldRegister(t.PortalType, cfg, log))
+                if (!DependencyResolver.ShouldRegister(portalType, cfg, log))
                     continue;
 
                 services.Add(new ServiceDescriptor(
-                    t.PortalType,
+                    portalType,
                     sp =>
                     {
-                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, t.PortalType, log);
+                        // Create instance + post-construct
+                        var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, portalType, log);
                         try
-                        {
-                            _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
-                        }
+                        { _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, log); }
                         catch (Exception ex)
                         {
-                            log.LogError(ex, "❌ PostConstruct failed on portal {Type}.", t.PortalType.FullName);
+                            log.LogError(ex, "❌ PostConstruct failed on portal {Type}.", portalType.FullName);
                             throw;
                         }
-                        return obj!;
+
+                        // Register [Gate]-annotated methods from THIS instance
+                        RegisterGateMethodsFromInstance(instance!, log);
+
+                        return instance!;
                     },
                     ServiceLifetime.Transient));
 
-                _settings.AddEndpoint(t.Path);
+                // Expose endpoint path in settings
+                settings.AddEndpoint(d.Path);
 
-                reg.Add($"\t{DependencyResolver.GetCleanName(t.PortalType)} → {DependencyResolver.GetCleanName(t.PortalType)} (Transient) [Portal]");
+                reg.Add($"\t{DependencyResolver.GetCleanName(portalType)} → {DependencyResolver.GetCleanName(portalType)} (Transient) [Portal]");
+            }
+        }
+
+        // -------- gate registration helpers (moved from registry) --------
+
+        private static void RegisterGateMethodsFromInstance(object instance, ILogger log)
+        {
+            var type = instance.GetType();
+            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                var gate = method.GetCustomAttribute<GateAttribute>();
+                if (gate is null)
+                    continue;
+
+                ValidateGateMethodSignature(method);
+
+                var parameters = method.GetParameters();
+                var delegateType = Expression.GetDelegateType(
+                    parameters.Select(p => p.ParameterType)
+                              .Concat(new[] { method.ReturnType })
+                              .ToArray());
+
+                var del = method.CreateDelegate(delegateType, instance);
+
+                // Register under the event name
+                EventHandlerRegistry<IPortal>.Register(gate.Event, del);
+
+                log.LogDebug("🔐 Registered gate '{Event}' → {Type}.{Method}()", gate.Event, type.Name, method.Name);
+            }
+        }
+
+        private static void ValidateGateMethodSignature(MethodInfo method)
+        {
+            if (method.ReturnType != typeof(Task))
+                throw new InvalidOperationException($"[Gate] method {method.DeclaringType!.Name}.{method.Name} must return Task.");
+
+            var p = method.GetParameters();
+
+            if (p.Length == 1)
+            {
+                if (!typeof(IPacket).IsAssignableFrom(p[0].ParameterType))
+                    throw new InvalidOperationException($"[Gate] {method.Name} must have signature (IPacket) or (IPacket, string).");
+            }
+            else if (p.Length == 2)
+            {
+                if (!typeof(IPacket).IsAssignableFrom(p[0].ParameterType) || p[1].ParameterType != typeof(string))
+                    throw new InvalidOperationException($"[Gate] {method.Name} must have signature (IPacket) or (IPacket, string).");
+            }
+            else
+            {
+                throw new InvalidOperationException($"[Gate] {method.Name} must have exactly 1 or 2 parameters.");
             }
         }
     }

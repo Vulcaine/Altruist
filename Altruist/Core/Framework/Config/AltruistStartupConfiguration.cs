@@ -130,9 +130,6 @@ namespace Altruist
                 }
             }
 
-            // Event handlers discovery after DI is fully built
-            EventHandlerRegistry<IPortal>.ScanAndRegisterHandlers(app.Services);
-
             // Listen & serve
             var connectionString = $"http://{_httpHost}:{portNum}";
             app.Run(connectionString);
