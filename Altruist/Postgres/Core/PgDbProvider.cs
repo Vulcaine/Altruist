@@ -593,9 +593,11 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     private static string MapTypeToSql(Type type)
     {
+        // Unwrap Nullable<T>
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
             type = Nullable.GetUnderlyingType(type)!;
 
+        // Primitive / scalar mappings
         if (type == typeof(string))
             return "text";
         if (type == typeof(bool))
@@ -621,17 +623,46 @@ public class SqlDbProvider : ISqlDatabaseProvider
         if (type == typeof(Guid))
             return "uuid";
         if (type == typeof(byte[]))
-            return "bytea";
+            return "bytea"; // binary blob
         if (type == typeof(TimeSpan))
             return "interval";
 
+        // Array mappings (except byte[], already handled above)
         if (type.IsArray)
+        {
+            var elem = type.GetElementType()!;
+
+            if (elem == typeof(short))
+                return "smallint[]";
+            if (elem == typeof(int))
+                return "integer[]";
+            if (elem == typeof(long))
+                return "bigint[]";
+            if (elem == typeof(string))
+                return "text[]";
+            if (elem == typeof(float))
+                return "real[]";
+            if (elem == typeof(double))
+                return "double precision[]";
+            if (elem == typeof(Guid))
+                return "uuid[]";
+
+            // Fallback for other array element types
             return "jsonb";
+        }
+
+        // Generic collections (List<>, etc.) – you can get fancy here if you want:
         if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type) && type != typeof(string))
+        {
+            // If you want, you could inspect generic type arguments and map List<int> → integer[], etc.
+            // But simple & safe default is jsonb.
             return "jsonb";
+        }
 
         if (type.IsEnum)
             return "text";
+
+        // Fallback for complex / unknown types
         return "jsonb";
     }
 
