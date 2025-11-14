@@ -69,20 +69,24 @@ public static class DependencyPlanner
 
             foreach (var p in ctor.GetParameters())
             {
-                // Skip config-bound parameters
+                // Skip config-bound & optional params
                 if (p.GetCustomAttribute<AppConfigValueAttribute>(false) is not null)
+                    continue;
+                if (p.HasDefaultValue)
+                    continue;
+
+                // Ignore non-serviceable types (string, primitives, enums, pointers, delegates, etc.)
+                if (IsNonServiceable(p.ParameterType))
                     continue;
 
                 // Expand collection/array to its element abstraction
-                var abstractions = ExpandParameterToAbstractions(p.ParameterType);
-
-                foreach (var abs in abstractions)
+                foreach (var abs in ExpandParameterToAbstractions(p.ParameterType))
                 {
+                    if (IsNonServiceable(abs))
+                        continue;      // e.g., string[], int[], IEnumerable<string>
                     if (IsSkippable(abs))
-                        continue; // framework-provided, etc.
+                        continue;           // framework-provided, ILogger<T>
                     deps.Add(abs);
-                    // recursively bake graph for at least one impl, but we don't know impl yet.
-                    // We'll resolve concrete impl later during registration.
                 }
             }
 
@@ -126,21 +130,27 @@ public static class DependencyPlanner
             // For each abstraction dep, ensure at least one implementation is registered
             foreach (var abs in node.DirectDeps)
             {
-                // If already registered, skip
+                if (IsNonServiceable(abs))
+                    continue;
                 if (IsAlreadyRegistered(services, abs))
                     continue;
 
-                // Find candidate impls (prefer those explicitly decorated with [Service])
                 var candidates = FindCandidateImplementations(abs, cfg, log);
 
                 if (candidates.Count == 0)
                 {
-                    // Could be framework provided (and filtered above), but still no impl.
-                    // This will fail later in resolver with a good message; we just proceed.
+                    // If 'abs' is a concrete class and ShouldRegister says OK, we can register it as-is.
+                    if (abs.IsClass && !abs.IsAbstract && DependencyResolver.ShouldRegister(abs, cfg, log))
+                    {
+                        RegisterBottomUp(abs, services, cfg, log, visiting, visited);
+                        RegisterOne(services, cfg, log, abs, abs, ServiceLifetime.Singleton);
+                    }
+
+                    // otherwise, leave it unresolved; the runtime resolver will produce a helpful error.
                     continue;
                 }
 
-                // Heuristic: pick the first candidate (you could improve with some tie-breakers later)
+                // Pick the first candidate (use [Service] to disambiguate in apps)
                 var chosen = candidates[0];
 
                 // Ensure dependencies of candidate are registered first
@@ -150,10 +160,8 @@ public static class DependencyPlanner
                 RegisterOne(services, cfg, log, chosen.impl, abs, chosen.lifetime);
             }
 
-            // Finally ensure 'implType' itself is registered (concrete self mapping),
-            // if it's not yet in the container. We don't register an interface mapping here
-            // because that is controlled by the caller in AltruistServiceConfig.
-            if (!IsAlreadyRegistered(services, implType))
+            // Ensure 'implType' itself is registered (self mapping), if not present
+            if (!IsAlreadyRegistered(services, implType) && !IsNonServiceable(implType))
             {
                 RegisterOne(services, cfg, log, implType, implType, ServiceLifetime.Singleton);
             }
@@ -179,6 +187,41 @@ public static class DependencyPlanner
             return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// Non-serviceable = things we must not try to wire up via DI:
+    /// primitives, enums, string, pointers, byrefs, delegates, simple BCLs, Nullable<T> of simple, etc.
+    /// </summary>
+    private static bool IsNonServiceable(Type t)
+    {
+        // unwrap Nullable<T>
+        var nn = Nullable.GetUnderlyingType(t) ?? t;
+
+        if (nn.IsPointer || nn.IsByRef)
+            return true;
+
+        // Simple primitives/enums/string/DateTime/etc.
+        if (IsSimple(nn))
+            return true;
+
+        // Delegates (Func<>, Action<>, custom delegates)
+        if (typeof(Delegate).IsAssignableFrom(nn))
+            return true;
+
+        // Open generics are not serviceable here
+        if (nn.ContainsGenericParameters)
+            return true;
+
+        return false;
+    }
+
+    // A local copy; keep in sync with DependencyResolver's notion of "simple"
+    private static bool IsSimple(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) ||
+               type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid);
     }
 
     // ---------------- candidates ----------------
@@ -210,7 +253,6 @@ public static class DependencyPlanner
             .Distinct()
             .ToList();
 
-        // If many implicit candidates exist, we take the first; user should disambiguate with [Service].
         return implicitImpls;
     }
 
@@ -229,8 +271,10 @@ public static class DependencyPlanner
         Type serviceType,
         ServiceLifetime lifetime)
     {
-        // Avoid duplicates
+        // Avoid duplicates; also avoid ever registering non-serviceable/framework types
         if (IsAlreadyRegistered(services, serviceType))
+            return;
+        if (IsNonServiceable(serviceType) || IsSkippable(serviceType))
             return;
 
         services.Add(new ServiceDescriptor(
@@ -238,7 +282,6 @@ public static class DependencyPlanner
             sp =>
             {
                 var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
-                // Fire PostConstruct if present (async-friendly)
                 _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
                 return obj!;
             },
@@ -258,7 +301,8 @@ public static class DependencyPlanner
         if (t.IsArray)
         {
             var e = t.GetElementType()!;
-            yield return e;
+            if (!IsNonServiceable(e))
+                yield return e;
             yield break;
         }
 
@@ -274,12 +318,14 @@ public static class DependencyPlanner
                 def == typeof(List<>) ||
                 def == typeof(HashSet<>))
             {
-                yield return t.GetGenericArguments()[0];
+                var e = t.GetGenericArguments()[0];
+                if (!IsNonServiceable(e))
+                    yield return e;
                 yield break;
             }
         }
 
-        // a regular single abstraction
+        // regular single dependency
         yield return t;
     }
 }
