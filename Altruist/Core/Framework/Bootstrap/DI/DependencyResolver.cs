@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -238,8 +238,6 @@ namespace Altruist
                     genDef == typeof(IReadOnlyList<>))
                 {
                     var elemType = paramType.GetGenericArguments()[0];
-
-                    // GetServices(Type) returns IEnumerable<object>
                     var servicesEnumObj = ServiceProviderServiceExtensions.GetServices(sp, elemType);
 
                     // materialize to List<T> so it's assignable to all the above interfaces
@@ -286,9 +284,14 @@ namespace Altruist
             if (paramType.IsValueType)
                 return Activator.CreateInstance(paramType);
 
-            // 8) Truly unresolved
+            // 8) Truly unresolved — this is the important new error case
+            var implName = GetCleanName(paramType);
+            var ctorOwner = GetCleanName(p.Member.DeclaringType!);
+
             throw new InvalidOperationException(
-                $"Unable to resolve '{paramType}' for parameter '{p.Name}'.");
+                $"❌ Unable to resolve required dependency '{implName}' for constructor parameter '{p.Name}' " +
+                $"in type '{ctorOwner}'.\n" +
+                $"👉 Make sure an implementation is registered or annotate one with [Service(typeof({implName}))].");
         }
 
         private static void BindConfigProps(IConfiguration cfg, ILogger log, Type t, object obj)
