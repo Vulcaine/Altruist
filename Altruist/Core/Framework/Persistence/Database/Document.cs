@@ -19,6 +19,8 @@ using System.Reflection;
 
 using Altruist.UORM;
 
+using Microsoft.Extensions.Logging;
+
 namespace Altruist.Persistence;
 
 
@@ -44,6 +46,8 @@ public class Document
 
     public string TypePropertyName;
 
+    private readonly ILogger<Document>? _logger;
+
     // Precompiled property accessors: PropertyName -> (object instance) => value
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; set; } = new();
 
@@ -58,7 +62,9 @@ public class Document
         Dictionary<string, Func<object, object?>> propertyAccessors,
         VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
         VaultSortingByAttribute? sortingByAttribute = null,
-        bool storeHistory = false)
+        bool storeHistory = false,
+        ILoggerFactory? loggerFactory = null
+        )
     {
         PrimaryKey = primaryKeyAttribute;
         Header = header;
@@ -73,10 +79,11 @@ public class Document
         SortingBy = sortingByAttribute;
         StoreHistory = storeHistory;
 
+        _logger = loggerFactory?.CreateLogger<Document>();
         Validate();
     }
 
-    public static Document From(Type type)
+    public static Document From(Type type, ILoggerFactory? loggerFactory = null)
     {
         if (!typeof(IStoredModel).IsAssignableFrom(type))
             throw new InvalidOperationException($"The type {type.FullName} must implement IModel.");
@@ -129,7 +136,8 @@ public class Document
             accessors,
             primaryKey,
             sortingBy,
-            vaultAttribute != null && vaultAttribute.StoreHistory);
+            vaultAttribute != null && vaultAttribute.StoreHistory,
+            loggerFactory);
     }
 
     private static Func<object, object?> CompileAccessor(PropertyInfo property)
@@ -181,10 +189,12 @@ public class Document
 
         foreach (var col in overlap)
         {
-            Console.WriteLine(
-                $"[Altruist.Persistence] WARNING: In vault '{Name}', column '{col}' " +
+
+            _logger?.LogWarning(
+                $"In vault '{Name}', column '{col}' " +
                 "is marked with both VaultUniqueColumn and VaultColumnIndex. " +
-                "Unique implies index; dropping the redundant non-unique index.");
+                "Unique implies index; dropping the redundant non-unique index."
+            );
 
             Indexes.RemoveAll(x => string.Equals(x, col, StringComparison.OrdinalIgnoreCase));
         }

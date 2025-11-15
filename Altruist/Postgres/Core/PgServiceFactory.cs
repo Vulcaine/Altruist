@@ -8,6 +8,7 @@ using System.Reflection;
 using Altruist.UORM;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Altruist.Persistence.Postgres
 {
@@ -53,11 +54,12 @@ namespace Altruist.Persistence.Postgres
             var schemaName = GetSchemaName(modelType);
 
             // Try to resolve a registered IKeyspace with that name; if none, use a lightweight default
+            var loggerFactory = sp.GetService<ILoggerFactory>();
             var schema = sp.GetServices<IKeyspace>()
                            .FirstOrDefault(s => string.Equals(s.Name, schemaName, StringComparison.OrdinalIgnoreCase))
                         ?? new DefaultSchema(schemaName);
 
-            var document = Document.From(modelType);
+            var document = Document.From(modelType, loggerFactory);
             var vaultType = typeof(PgVault<>).MakeGenericType(modelType);
 
             // PgVault<T>(ISqlDatabaseProvider provider, IKeyspace keyspace, Document document, IServiceProvider services)

@@ -6,6 +6,8 @@ Licensed under the Apache License, Version 2.0 (the "License");
 
 using Altruist.Persistence;
 
+using Microsoft.Extensions.Logging;
+
 namespace Altruist.Migrations.Postgres;
 
 [Service(typeof(IVaultSchemaMigrator))]
@@ -16,14 +18,20 @@ public sealed class PostgresVaultSchemaMigrator : IVaultSchemaMigrator
     private readonly IMigrationPlanner _planner;
     private readonly IMigrationExecutor _executor;
 
+    private readonly ILoggerFactory _logger;
+
     public PostgresVaultSchemaMigrator(
         ISchemaInspector inspector,
         IMigrationPlanner planner,
-        IMigrationExecutor executor)
+        IMigrationExecutor executor,
+        ILoggerFactory loggerFactory
+        )
     {
         _inspector = inspector;
         _planner = planner;
         _executor = executor;
+
+        _logger = loggerFactory;
     }
 
     public async Task Migrate(IKeyspace schema, Type[] modelTypes, CancellationToken ct = default)
@@ -32,7 +40,7 @@ public sealed class PostgresVaultSchemaMigrator : IVaultSchemaMigrator
         var current = await _inspector.GetCurrentModelAsync(schema, ct).ConfigureAwait(false);
 
         // 2) desired model from vault models
-        var desiredDocs = modelTypes.Select(Document.From).ToArray();
+        var desiredDocs = modelTypes.Select(e => Document.From(e, _logger)).ToArray();
 
         // 3) diff -> operations
         var operations = _planner.Plan(current, desiredDocs, schema.Name);
