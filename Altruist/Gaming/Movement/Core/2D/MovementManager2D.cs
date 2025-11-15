@@ -130,7 +130,7 @@ namespace Altruist.Gaming.Movement.TwoD
                 state = e.Driver.State;
                 return true;
             }
-            state = default;
+            state = default!;
             return false;
         }
     }

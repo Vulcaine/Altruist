@@ -15,6 +15,7 @@ namespace Altruist
     public sealed class AltruistStartupConfiguration : IAltruistConfiguration
     {
         public bool IsConfigured { get; set; }
+
         private readonly ApplicationArgs _args;
 
         // HTTP config (optional – if unset we don't host HTTP)
@@ -25,6 +26,12 @@ namespace Altruist
         // Packet transport (optional)
         private readonly string? _packetTransport;
         private readonly string _wsContextPath;
+
+        // Dependencies we need at runtime
+        private readonly ILoggerFactory _loggerFactory;
+        private readonly IAltruistContext _settings;
+        private readonly IServerStatus _appStatus;
+        private readonly ITransport? _transport;
 
         public AltruistStartupConfiguration(
             ApplicationArgs args,
@@ -38,7 +45,6 @@ namespace Altruist
             [AppConfigValue("altruist:server:transport:mode", null)] string? transportMode,
             [AppConfigValue("altruist:server:transport:config:path", "/ws")] string transportPath,
 
-            IServiceCollection rootServices,
             ILoggerFactory loggerFactory,
             IAltruistContext settings,
             IServerStatus appStatus,
@@ -51,16 +57,36 @@ namespace Altruist
             _httpPort = NormalizeEmpty(httpPort);
             _httpContextPath = NormalizePath(httpPath, defaultIfEmpty: "/");
 
-            _packetTransport = NormalizeEmpty(transportMode);   // reuse field name; now means server.transport.mode
-            _wsContextPath = NormalizePath(transportPath, defaultIfEmpty: "/ws"); // now server.transport.config.path
+            _packetTransport = NormalizeEmpty(transportMode);
+            _wsContextPath = NormalizePath(transportPath, defaultIfEmpty: "/ws");
 
+            _loggerFactory = loggerFactory;
+            _settings = settings;
+            _appStatus = appStatus;
+            _transport = transport;
+        }
+
+        /// <summary>
+        /// Configuration stage is a no-op here; we just need this type to be registered
+        /// so that Bootstrap can resolve it later and call StartAsync.
+        /// </summary>
+        public Task Configure(IServiceCollection services) => Task.CompletedTask;
+
+        /// <summary>
+        /// Build and run the single HTTP server after all services and PostConstruct hooks are done.
+        /// </summary>
+        public async Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+        {
             // If there's no HTTP block, there's nothing to start here (WS requires HTTP server).
             if (string.IsNullOrWhiteSpace(_httpHost) || string.IsNullOrWhiteSpace(_httpPort))
                 return;
 
             // Build the (single) HTTP server
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
+
             builder.Logging.ClearProviders();
+
+            // Bring all root DI registrations into the web host
             foreach (var d in rootServices)
             {
                 if (d.ServiceType == typeof(IHostApplicationLifetime))
@@ -92,51 +118,49 @@ namespace Altruist
             }
 
             app.UseRouting();
-            app.MapControllers();                    // controllers live under PathBase if set
-            app.UseMiddleware<ReadinessMiddleware>(); // health/readiness
+            app.MapControllers();                       // controllers live under PathBase if set
+            app.UseMiddleware<ReadinessMiddleware>();   // health/readiness
 
             // Discover “portals” and mount them under the transport path
-            if (useWebSocket && transport is not null)
+            if (useWebSocket && _transport is not null)
             {
                 var portals = PortalDiscovery.Discover().Distinct().ToArray();
                 foreach (var (type, path) in portals)
                 {
                     // Prefix each discovered path with transport path
                     var wsMappedPath = CombinePaths(_wsContextPath, path);
-                    transport.UseTransportEndpoints(app, type, wsMappedPath);
+                    _transport.UseTransportEndpoints(app, type, wsMappedPath);
                 }
 
                 // Let transport do any final routing hooks it needs
-                transport.RouteTraffic(app);
+                _transport.RouteTraffic(app);
             }
 
             // ServerInfo + pretty banner
-            var logger = loggerFactory.CreateLogger<AltruistStartupConfiguration>();
+            var logger = _loggerFactory.CreateLogger<AltruistStartupConfiguration>();
             if (!int.TryParse(_httpPort, out var portNum))
                 portNum = 8080;
 
             // Prefer “ws” scheme if WS enabled, otherwise “http”
             var scheme = useWebSocket ? "ws" : "http";
-            settings.ServerInfo = new ServerInfo("Altruist Server", scheme, _httpHost!, portNum);
+            _settings.ServerInfo = new ServerInfo("Altruist Server", scheme, _httpHost!, portNum);
 
-            var logBuilder = BuildStartupLog(settings);
+            var logBuilder = BuildStartupLog(_settings);
             Console.WriteLine("\n" + logBuilder + "\n");
 
-            if (appStatus != null)
+            if (_appStatus != null)
             {
-                Console.WriteLine(appStatus.ToString());
-                if (appStatus.Status != ReadyState.Alive)
+                Console.WriteLine(_appStatus.ToString());
+                if (_appStatus.Status != ReadyState.Alive)
                 {
                     logger.LogWarning("🕒 Services still warming up. No inbound/outbound packets yet; engine start is deferred.");
                 }
             }
 
-            // Listen & serve
+            // Listen & serve (this will block until shutdown)
             var connectionString = $"http://{_httpHost}:{portNum}";
-            app.Run(connectionString);
+            await app.RunAsync(connectionString);
         }
-
-        public Task Configure(IServiceCollection services) => Task.CompletedTask;
 
         // ---------- helpers ----------
 

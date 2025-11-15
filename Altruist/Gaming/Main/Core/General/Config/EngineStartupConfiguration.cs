@@ -30,7 +30,7 @@ public class EngineStartupConfiguration : IAltruistConfiguration
 {
     public bool IsConfigured { get; set; }
 
-    public async Task Configure(IServiceCollection services)
+    public Task Configure(IServiceCollection services)
     {
         var serviceProvider = services.BuildServiceProvider();
         var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
@@ -60,5 +60,7 @@ public class EngineStartupConfiguration : IAltruistConfiguration
                 logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
             }
         }
+
+        return Task.CompletedTask;
     }
 }

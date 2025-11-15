@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
@@ -50,7 +50,7 @@ namespace Altruist.Gaming.ThreeD
         public async Task<TPrefab> CreateAsync<TPrefab>(Action<PrefabConfigContext3D>? configure = null)
             where TPrefab : Prefab3D
         {
-            var prefab = await _factory.CreateAsync<TPrefab>(configure);
+            var prefab = await _factory.CreateAsync<TPrefab>(configure!);
             await SaveCoreAsync(prefab);
             return prefab;
         }

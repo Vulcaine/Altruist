@@ -122,7 +122,7 @@ namespace Altruist.Gaming.Movement.ThreeD
                 state = e.Driver.State;
                 return true;
             }
-            state = default;
+            state = default!;
             return false;
         }
 

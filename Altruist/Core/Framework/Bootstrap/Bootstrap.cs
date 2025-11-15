@@ -19,9 +19,22 @@ public static class AltruistBootstrap
         ConfigureLogging();
         await BootstrapModules();
         await BootstrapServices();
-        await RunPostConstructsAsync();
+
+        // Build a single root provider
+        using var provider = Services.BuildServiceProvider();
+
+        // 1) Run global [PostConstruct] for all services
+        await RunPostConstructsAsync(provider);
+
+        // 2) Start the HTTP server (if AltruistStartupConfiguration is registered)
+        var startup = provider.GetService<AltruistStartupConfiguration>();
+        if (startup is not null)
+        {
+            await startup.StartAsync(Services);
+        }
     }
 
+    // If you still need this somewhere else, keep it:
     public static IServiceProvider GetServiceProvider() => Services.BuildServiceProvider();
 
     /// <summary>
@@ -59,19 +72,14 @@ public static class AltruistBootstrap
     }
 
     /// <summary>
-    /// After all services/modules are registered, build a provider and run [PostConstruct]
+    /// After all services/modules are registered, run [PostConstruct]
     /// for every service whose concrete type declares one.
-    /// This guarantees that PostConstruct runs when the DI graph is fully available.
     /// </summary>
-    private static async Task RunPostConstructsAsync()
+    private static async Task RunPostConstructsAsync(IServiceProvider provider)
     {
-        // Build a temporary provider for the initialization pass
-        using var provider = Services.BuildServiceProvider();
-
         var cfg = AppConfigLoader.Load();
         var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
 
-        // Avoid doing work twice for the same service type
         var processedServiceTypes = new HashSet<Type>();
 
         foreach (var descriptor in Services)
@@ -80,7 +88,6 @@ public static class AltruistBootstrap
             if (serviceType is null)
                 continue;
 
-            // Skip duplicates
             if (!processedServiceTypes.Add(serviceType))
                 continue;
 
@@ -91,8 +98,7 @@ public static class AltruistBootstrap
             }
             catch
             {
-                // If resolution fails here, just skip; normal resolution errors
-                // will surface when the app actually requests the service.
+                // If resolution fails here, skip – real errors will surface when used.
                 continue;
             }
 
@@ -100,13 +106,10 @@ public static class AltruistBootstrap
                 continue;
 
             var implType = instance.GetType();
-
-            // Check whether this type actually has a [PostConstruct] method
             if (!HasPostConstruct(implType))
                 continue;
 
             var log = loggerFactory.CreateLogger(implType);
-
             await DependencyResolver.InvokePostConstructAsync(instance, provider, cfg, log);
         }
     }

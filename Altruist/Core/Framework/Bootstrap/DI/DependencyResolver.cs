@@ -399,7 +399,7 @@ namespace Altruist
                     genDef == typeof(HashSet<>))
                 {
                     var servicesEnumObj = ServiceProviderServiceExtensions.GetServices(sp, elemType);
-                    var resultCollection = CreateCollectionOf(elemType, genDef, servicesEnumObj);
+                    var resultCollection = CreateCollectionOf(elemType, genDef, servicesEnumObj!);
                     return resultCollection;
                 }
             }

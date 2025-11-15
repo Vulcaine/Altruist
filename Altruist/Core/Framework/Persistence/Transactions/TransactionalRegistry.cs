@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,6 @@ public static class TransactionalRegistry
     private static readonly ConcurrentDictionary<Type, ImmutableArray<TransactionalMetadata>> _byDeclaringType =
         new();
 
-    private static volatile bool _initialized;
     private static readonly object _initLock = new();
 
     /// <summary>
@@ -111,8 +110,6 @@ public static class TransactionalRegistry
                     }
                 }
             }
-
-            _initialized = true;
         }
     }
 

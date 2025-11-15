@@ -195,7 +195,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
     {
         var st = _state.EnsureProjectionSelected(_document);
         string query = BuildSelectQuery(st);
-        return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT])).ToList();
+        return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!)).ToList();
     }
 
     public async Task<TVaultModel?> FirstOrDefaultAsync()
@@ -203,7 +203,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         var st = _state.EnsureProjectionSelected(_document)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         string query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!);
         return result.FirstOrDefault();
     }
 
@@ -212,7 +212,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         var st = _state.EnsureProjectionSelected(_document)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         string query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!);
         return result.First();
     }
 
@@ -229,7 +229,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             ? $"SELECT COUNT(*) FROM {_document.Name}"
             : $"SELECT COUNT(*) FROM {_document.Name} WHERE {whereClause}";
 
-        return await _databaseProvider.ExecuteCountAsync(countQuery, _state.Parameters[QueryPosition.WHERE]);
+        return await _databaseProvider.ExecuteCountAsync(countQuery, _state.Parameters[QueryPosition.WHERE]!);
     }
 
     public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
@@ -246,7 +246,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         var concatenated = st.Parameters[QueryPosition.WHERE]
             .Concat(st.Parameters[QueryPosition.SET]).ToList();
 
-        return await _databaseProvider.ExecuteAsync(updateQuery, concatenated);
+        return await _databaseProvider.ExecuteAsync(updateQuery, concatenated!);
     }
 
     public async Task<bool> DeleteAsync()
@@ -256,7 +256,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
         if (!string.IsNullOrEmpty(whereClause))
             deleteQuery += $" WHERE {whereClause}";
 
-        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _state.Parameters[QueryPosition.WHERE]);
+        long affectedRows = await _databaseProvider.ExecuteAsync(deleteQuery, _state.Parameters[QueryPosition.WHERE]!);
         return affectedRows > 0;
     }
 
@@ -274,7 +274,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             st = st.With(QueryPosition.SELECT, column);
 
         var query = BuildSelectQuery(st);
-        return await _databaseProvider.QueryAsync<TResult>(query, st.Parameters[QueryPosition.SELECT]);
+        return await _databaseProvider.QueryAsync<TResult>(query, st.Parameters[QueryPosition.SELECT]!);
     }
 
     public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
@@ -285,7 +285,7 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
             ? $"SELECT COUNT(*) FROM {_document.Name}"
             : $"SELECT COUNT(*) FROM {_document.Name} WHERE {where}";
 
-        var count = await _databaseProvider.ExecuteCountAsync(query, next._state.Parameters[QueryPosition.WHERE]);
+        var count = await _databaseProvider.ExecuteCountAsync(query, next._state.Parameters[QueryPosition.WHERE]!);
         return count > 0;
     }
 

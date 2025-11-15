@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,9 +67,10 @@ public abstract class AltruistGameSessionPortal : Portal
         await PublishResultAsync(clientId, finalResult);
     }
 
-    public override async Task OnDisconnectedAsync(string clientId, Exception? exception)
+    public override Task OnDisconnectedAsync(string clientId, Exception? exception)
     {
         _gameSessionService.ClearAllContexts(clientId);
+        return Task.CompletedTask;
     }
 
     public async Task Cleanup()
