@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,43 +33,43 @@ namespace Altruist.Gaming.Engine;
 public class FrameRate
 {
     /// <summary>
-    /// 1Hz (1 update per second).  
+    /// 1Hz (1 update per second).
     /// Use for extremely low-priority updates, background tasks, or turn-based games.
     /// </summary>
     public static int Hz1 = 1;
 
     /// <summary>
-    /// 10Hz (10 updates per second).  
+    /// 10Hz (10 updates per second).
     /// Suitable for slow-paced games, AI processing, or non-critical events in large-scale MMOs.
     /// </summary>
     public static int Hz10 = 10;
 
     /// <summary>
-    /// 30Hz (30 updates per second).  
+    /// 30Hz (30 updates per second).
     /// Good for real-time multiplayer in strategy games, MMORPGs, or casual games with moderate responsiveness.
     /// </summary>
     public static int Hz30 = 30;
 
     /// <summary>
-    /// 60Hz (60 updates per second).  
+    /// 60Hz (60 updates per second).
     /// Recommended for most action-oriented multiplayer games, including shooters, racing games, and platformers.
     /// </summary>
     public static int Hz60 = 60;
 
     /// <summary>
-    /// 120Hz (120 updates per second).  
+    /// 120Hz (120 updates per second).
     /// Used for high-speed, competitive games where low latency is critical (e.g., esports, racing games, FPS with high refresh rates).
     /// </summary>
     public static int Hz120 = 120;
 
     /// <summary>
-    /// 128Hz (128 updates per second).  
+    /// 128Hz (128 updates per second).
     /// Commonly used in professional esports FPS titles (e.g., CS:GO, Valorant) for ultra-responsive gameplay.
     /// </summary>
     public static int Hz128 = 128;
 
     /// <summary>
-    /// 256Hz (256 updates per second).  
+    /// 256Hz (256 updates per second).
     /// Extremely high update rate, mainly useful for advanced physics simulations, VR applications, and low-latency esports games.
     /// </summary>
     public static int Hz256 = 256;
@@ -86,11 +86,11 @@ public static class FrameTime
 [Service]
 public class MethodScheduler
 {
-    private readonly IAltruistEngine _engine;
+    private readonly IEngineCore _engine;
     private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<Type, (object? serviceInstance, HashSet<MethodInfo>)> _registeredMethodsByType;
 
-    public MethodScheduler(IAltruistEngine engine, IServiceProvider serviceProvider)
+    public MethodScheduler(IEngineCore engine, IServiceProvider serviceProvider)
     {
         _engine = engine;
         _serviceProvider = serviceProvider;
@@ -257,8 +257,22 @@ public class EngineStaticTask
     }
 }
 
-[Service]
-public class AltruistEngine : IAltruistEngine
+public interface IEngineCore
+{
+    CycleRate Rate { get; }
+    bool Enabled { get; }
+    void Enable();
+    void Disable();
+    void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
+    void Start();
+    void Stop();
+    void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
+    void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
+}
+
+
+[Service(typeof(IEngineCore))]
+public class AltruistEngine : IEngineCore, IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;
     private readonly IServiceProvider _serviceProvider;
@@ -510,7 +524,7 @@ public class AltruistEngine : IAltruistEngine
     /// <param name="rate">The cycle rate (frequency) at which the task should be executed. If not specified,
     /// it defaults to the engine's rate. The frequency must not exceed the engine's frequency rate.</param>
     /// <exception cref="ArgumentException">Thrown if the provided rate exceeds the engine's rate.</exception>
-    /// <exception cref="InvalidOperationException">Thrown if a required dependency cannot be resolved or if 
+    /// <exception cref="InvalidOperationException">Thrown if a required dependency cannot be resolved or if
     /// a precompiled delegate cannot be created.</exception>
     public void ScheduleTask(Delegate taskDelegate, CycleRate? rate = null)
     {
@@ -575,10 +589,44 @@ public class AltruistEngine : IAltruistEngine
 }
 
 [Service(typeof(IAltruistEngine))]
+[ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "false")]
+public class EngineWithoutDiagnostics : IAltruistEngine
+{
+    private readonly IEngineCore _core;
+
+    public EngineWithoutDiagnostics(IEngineCore core)
+    {
+        _core = core;
+    }
+
+    public CycleRate Rate => _core.Rate;
+
+    public bool Enabled => _core.Enabled;
+
+    public void Enable() => _core.Enable();
+
+    public void Disable() => _core.Disable();
+
+    public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
+        => _core.RegisterCronJob(jobDelegate, cronExpression, serviceInstance);
+
+    public void Start() => _core.Start();
+
+    public void Stop() => _core.Stop();
+
+    public void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null)
+        => _core.ScheduleTask(taskDelegate, cycleRate);
+
+    public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
+        => _core.SendTask(taskId, taskDelegate);
+}
+
+
+[Service(typeof(IAltruistEngine))]
 [ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
 public class EngineWithDiagnostics : IAltruistEngine
 {
-    private readonly AltruistEngine _wrappedEngine;
+    private readonly IEngineCore _wrappedEngine;
     private readonly ILogger _logger;
 
     private readonly double _engineFrequencyHz;
@@ -586,7 +634,7 @@ public class EngineWithDiagnostics : IAltruistEngine
     private readonly int _taskTrackCount = 100;
 
 
-    public EngineWithDiagnostics(AltruistEngine wrappedEngine, ILoggerFactory loggerFactory)
+    public EngineWithDiagnostics(IEngineCore wrappedEngine, ILoggerFactory loggerFactory)
     {
         _wrappedEngine = wrappedEngine;
         _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();
