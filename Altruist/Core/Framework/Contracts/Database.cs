@@ -168,6 +168,19 @@ public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
 
 }
 
+public interface IHistoricalVault<TVaultModel> where TVaultModel : class, IVaultModel
+{
+    // Fluent filters – same spirit as IVault, but scoped to history
+    IHistoricalVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
+    IHistoricalVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
+    IHistoricalVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
+    IHistoricalVault<TVaultModel> Take(int count);
+    IHistoricalVault<TVaultModel> Skip(int count);
+
+    // Historical range query (inclusive)
+    Task<List<TVaultModel>> ToListAsync(DateTime startTime, DateTime endTime);
+}
+
 public interface ICqlVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
 

@@ -163,5 +163,31 @@ public class Document
         {
             throw new InvalidOperationException($"The type {Type.FullName} must have a 'Type' property.");
         }
+
+        // De-duplicate unique keys and indexes (case-insensitive)
+        UniqueKeys = UniqueKeys
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Indexes = Indexes
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // A physical column should not be both UNIQUE and separately indexed.
+        // UNIQUE implies an index; we treat it as UNIQUE and drop the redundant index.
+        var overlap = Indexes
+            .Intersect(UniqueKeys, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var col in overlap)
+        {
+            Console.WriteLine(
+                $"[Altruist.Persistence] WARNING: In vault '{Name}', column '{col}' " +
+                "is marked with both VaultUniqueColumn and VaultColumnIndex. " +
+                "Unique implies index; dropping the redundant non-unique index.");
+
+            Indexes.RemoveAll(x => string.Equals(x, col, StringComparison.OrdinalIgnoreCase));
+        }
     }
+
 }

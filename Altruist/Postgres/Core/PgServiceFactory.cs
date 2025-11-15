@@ -5,12 +5,11 @@ Licensed under the Apache License, Version 2.0
 
 using System.Reflection;
 
-using Altruist.Persistence;
 using Altruist.UORM;
 
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Altruist.Postgres
+namespace Altruist.Persistence.Postgres
 {
     /// <summary>
     /// Postgres-specific IServiceFactory implementation.

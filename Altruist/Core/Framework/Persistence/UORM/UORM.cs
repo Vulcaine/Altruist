@@ -21,9 +21,9 @@ public class VaultAttribute : Attribute
 {
     public string Name { get; }
     public string Keyspace { get; } = "altruist";
-    public string DbToken { get; } = "ScyllaDB";
+    public string DbToken { get; } = "Postgres";
     public bool StoreHistory { get; }
-    public VaultAttribute(string Name, bool StoreHistory = false, string Keyspace = "altruist", string DbToken = "ScyllaDB") => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken) = (Name, StoreHistory, Keyspace, DbToken);
+    public VaultAttribute(string Name, bool StoreHistory = false, string Keyspace = "altruist", string DbToken = "Postgres") => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken) = (Name, StoreHistory, Keyspace, DbToken);
 }
 
 [AttributeUsage(AttributeTargets.Class)]

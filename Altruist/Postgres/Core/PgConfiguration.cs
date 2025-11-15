@@ -2,7 +2,6 @@ using System.Collections;
 using System.Reflection;
 
 using Altruist.Contracts;
-using Altruist.Persistence;
 using Altruist.UORM;
 using Altruist.Migrations; // for IVaultSchemaMigrator
 
@@ -12,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 using Npgsql;
 
-namespace Altruist.Postgres;
+namespace Altruist.Persistence.Postgres;
 
 public sealed class PostgresDBToken : IDatabaseServiceToken
 {

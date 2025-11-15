@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@ using System.Reflection;
 
 using Microsoft.EntityFrameworkCore.Query;
 
-namespace Altruist.Persistence;
+namespace Altruist.Persistence.Postgres;
 
 public enum QueryPosition
 {
@@ -133,27 +133,41 @@ internal sealed class QueryState
 public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ISqlDatabaseProvider _databaseProvider; // swap to IPostgresDbProvider if you have a specific one
-
-    // immutable per-chain state
+    private readonly ISqlDatabaseProvider _databaseProvider;
     private readonly QueryState _state;
 
-    public IKeyspace Keyspace { get; } // Your schema abstraction implements IKeyspace
-    protected Document _document { get; }
+    public IKeyspace Keyspace { get; }
+    public readonly Document VaultDocument;
 
-    private static readonly VaultMetadata _vaultMeta = VaultRegistry.GetByClr(typeof(TVaultModel));
+    // Expose provider for historical adapter (same assembly, so internal is fine)
+    internal ISqlDatabaseProvider DatabaseProvider => _databaseProvider;
+
+    private IHistoricalVault<TVaultModel> _history;
+
+    public IHistoricalVault<TVaultModel> History
+    {
+        get
+        {
+            if (!VaultDocument.StoreHistory)
+                throw new InvalidOperationException("History is not enabled for this document.");
+
+            return _history;
+        }
+    }
 
     private static readonly Action<object, DateTime>? _timestampSetter =
         TimestampSetterFactory.Create(typeof(TVaultModel));
 
     public PgVault(ISqlDatabaseProvider databaseProvider, IKeyspace schema, Document document, IServiceProvider serviceProvider)
-    : this(databaseProvider, schema, document, serviceProvider, new QueryState())
-    { }
+        : this(databaseProvider, schema, document, serviceProvider, new QueryState())
+    {
+        _history = new PgHistoricalVault<TVaultModel>(this);
+    }
 
     private PgVault(ISqlDatabaseProvider databaseProvider, IKeyspace schema, Document document, IServiceProvider serviceProvider, QueryState state)
     {
         _databaseProvider = databaseProvider;
-        _document = document;
+        VaultDocument = document;
         Keyspace = schema;
         _serviceProvider = serviceProvider;
         _state = state;
@@ -165,7 +179,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         string whereClause = ConvertWherePredicateToString(predicate);
         var next = _state.With(QueryPosition.WHERE, whereClause)
-                         .EnsureProjectionSelected(_document);
+                         .EnsureProjectionSelected(VaultDocument);
         return New(next);
     }
 
@@ -188,14 +202,14 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     public IVault<TVaultModel> Take(int count)
     {
         var next = _state.With(QueryPosition.LIMIT, $"LIMIT {count}")
-                         .EnsureProjectionSelected(_document);
+                         .EnsureProjectionSelected(VaultDocument);
         return New(next);
     }
 
     public IVault<TVaultModel> Skip(int count)
     {
         var next = _state.With(QueryPosition.OFFSET, $"OFFSET {count}")
-                         .EnsureProjectionSelected(_document);
+                         .EnsureProjectionSelected(VaultDocument);
         return New(next);
     }
 
@@ -203,14 +217,14 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     public async Task<List<TVaultModel>> ToListAsync()
     {
-        var st = _state.EnsureProjectionSelected(_document);
+        var st = _state.EnsureProjectionSelected(VaultDocument);
         string query = BuildSelectQuery(st);
         return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT])).ToList();
     }
 
     public async Task<TVaultModel?> FirstOrDefaultAsync()
     {
-        var st = _state.EnsureProjectionSelected(_document)
+        var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         string query = BuildSelectQuery(st);
         var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
@@ -219,7 +233,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     public async Task<TVaultModel?> FirstAsync()
     {
-        var st = _state.EnsureProjectionSelected(_document)
+        var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         string query = BuildSelectQuery(st);
         var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
@@ -295,8 +309,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         var next = (PgVault<TVaultModel>)Where(predicate);
         var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
         var query = string.IsNullOrEmpty(where)
-            ? $"SELECT COUNT(*) FROM {_document.Name}"
-            : $"SELECT COUNT(*) FROM {_document.Name} WHERE {where}";
+            ? $"SELECT COUNT(*) FROM {VaultDocument.Name}"
+            : $"SELECT COUNT(*) FROM {VaultDocument.Name} WHERE {where}";
 
         var count = await _databaseProvider.ExecuteCountAsync(query, next._state.Parameters[QueryPosition.WHERE]);
         return count > 0;
@@ -313,7 +327,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         SaveEntitiesAsync(entities, saveHistory);
 
     private PgVault<TVaultModel> New(QueryState st)
-        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, _document, _serviceProvider, st);
+        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, _serviceProvider, st);
 
     // ------------------------ Query building helpers ------------------------
 
@@ -321,7 +335,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         var select =
             st.Parts[QueryPosition.SELECT].Count == 0
-            ? string.Join(", ", _document.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
+            ? string.Join(", ", VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
             : string.Join(", ", st.Parts[QueryPosition.SELECT]);
 
         var sql = $"SELECT {select} FROM {QualifiedTableName()}";
@@ -365,7 +379,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             foreach (var m in ne.Members)
             {
                 var propName = m.Name;
-                var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+                var column = VaultDocument.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
                 yield return $"{QuoteIdent(column)} AS {QuoteIdent(propName)}";
             }
             yield break;
@@ -373,7 +387,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         throw new NotSupportedException("Unsupported expression type for SELECT. Use: x => new(...) with properties.");
     }
 
-    private string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
+    // *** made internal so PgHistoricalVault can reuse them ***
+    internal string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
     {
         var modelParam = predicate.Parameters[0];
         var sql = ToWhere(predicate.Body, modelParam);
@@ -463,7 +478,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         if (expression is MemberExpression me && IsRootedInParameter(me, modelParam))
         {
             var propName = me.Member.Name;
-            var col = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+            var col = VaultDocument.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
             column = QuoteIdent(col);
             return true;
         }
@@ -495,21 +510,21 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             _ => throw new NotSupportedException($"Unsupported operator: {expressionType}")
         };
 
-    private string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    internal string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         if (keySelector.Body is MemberExpression me)
         {
-            var col = _document.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
+            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
             return QuoteIdent(col);
         }
         throw new NotSupportedException("Unsupported expression type in ORDER BY clause.");
     }
 
-    private string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    internal string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         if (keySelector.Body is MemberExpression me)
         {
-            var col = _document.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
+            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
             return QuoteIdent(col);
         }
         throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
@@ -526,7 +541,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             {
                 var propName = binding.Member.Name;
                 var value = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
-                var column = _document.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+                var column = VaultDocument.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
                 updated[column] = value!;
             }
         }
@@ -535,7 +550,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     }
 
     private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
-    private string QualifiedTableName() => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(_document.Name)}";
+    private string QualifiedTableName() => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
 
     // ------------------------ Insert/History/save helpers ------------------------
 
@@ -545,17 +560,17 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             throw new ArgumentNullException(nameof(entity));
         entity.OnSave();
 
-        var fields = _document.Columns.Keys;
-        var insertQuery = BuildInsertQuery(_document.Name, _document.Columns.Values);
+        var fields = VaultDocument.Columns.Keys;
+        var insertQuery = BuildInsertQuery(VaultDocument.Name, VaultDocument.Columns.Values);
 
         var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
         var queries = new List<string> { insertQuery };
 
-        if (_document.StoreHistory == true)
+        if (VaultDocument.StoreHistory == true)
         {
             if (saveHistory == true)
             {
-                var historyQuery = BuildHistoryQuery(_document.Name, _document.Columns.Values);
+                var historyQuery = BuildHistoryQuery(VaultDocument.Name, VaultDocument.Columns.Values);
                 queries.Add(historyQuery);
 
                 var historyParams = GetParameterValues(entity, fields, includeTimestamp: true);
@@ -564,7 +579,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         }
         else if (saveHistory == true)
         {
-            throw new InvalidOperationException($"History is not enabled for the table {_document.Name}. Consider enabling StoreHistory=true.");
+            throw new InvalidOperationException($"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
         }
 
         var batchQuery = string.Join(";", queries) + ";";
@@ -590,9 +605,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         foreach (var e in list)
             e.OnSave();
 
-        var fields = _document.Columns.Keys;
-        var insertQuery = BuildInsertQuery(_document.Name, _document.Columns.Values);
-        var historyQuery = BuildHistoryQuery(_document.Name, _document.Columns.Values);
+        var fields = VaultDocument.Columns.Keys;
+        var insertQuery = BuildInsertQuery(VaultDocument.Name, VaultDocument.Columns.Values);
+        var historyQuery = BuildHistoryQuery(VaultDocument.Name, VaultDocument.Columns.Values);
 
         var queries = new List<string>();
         var allParams = new List<object?>();
@@ -608,7 +623,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             queries.Add(insertQuery);
             allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
 
-            if (_document.StoreHistory == true)
+            if (VaultDocument.StoreHistory == true)
             {
                 if (saveHistory == true)
                 {
@@ -618,7 +633,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             }
             else if (saveHistory == true)
             {
-                throw new InvalidOperationException($"History is not enabled for the table {_document.Name}. Consider enabling StoreHistory=true.");
+                throw new InvalidOperationException($"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
             }
         }
 
@@ -643,7 +658,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     private string BuildHistoryQuery(string tableNameIgnored, IEnumerable<string> columns)
     {
-        var histQualified = $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(_document.Name + "_history")}";
+        var histQualified = $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name + "_history")}";
         var cols = string.Join(", ", columns.Select(QuoteIdent));
         var vals = string.Join(", ", columns.Select(_ => "?"));
         return $"INSERT INTO {histQualified} ({cols}, {QuoteIdent("timestamp")}) VALUES ({vals}, ?)";
@@ -651,7 +666,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     private object?[] GetParameterValues(TVaultModel entity, IEnumerable<string> fields, bool includeTimestamp)
     {
-        var values = fields.Select(field => _document.PropertyAccessors[field](entity)).ToList();
+        var values = fields.Select(field => VaultDocument.PropertyAccessors[field](entity)).ToList();
 
         if (includeTimestamp && _timestampSetter is not null)
         {

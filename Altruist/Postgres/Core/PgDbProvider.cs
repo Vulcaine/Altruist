@@ -14,11 +14,10 @@ using System.Reflection;
 using System.Text;
 
 using Altruist.Contracts;
-using Altruist.Persistence;
 
 using Npgsql;
 
-namespace Altruist.Postgres;
+namespace Altruist.Persistence.Postgres;
 
 [Service(typeof(ISqlDatabaseProvider))]
 [Service(typeof(IGeneralDatabaseProvider))]
