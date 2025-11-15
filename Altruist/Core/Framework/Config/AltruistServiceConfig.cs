@@ -75,9 +75,6 @@ namespace Altruist
 
                 if (svcAttr.DependsOn is { Length: > 0 })
                 {
-                    using var tmpProvider = services.BuildServiceProvider();
-                    var depLogger = tmpProvider.GetRequiredService<ILoggerFactory>().CreateLogger<AltruistServiceConfig>();
-
                     foreach (var depType in svcAttr.DependsOn)
                     {
                         if (depType is null)
@@ -85,38 +82,25 @@ namespace Altruist
 
                         if (!typeof(IAltruistConfiguration).IsAssignableFrom(depType))
                         {
-                            depLogger.LogWarning(
+                            log.LogWarning(
                                 "Service {Service} declares DependsOn {Dep}, which does not implement IAltruistConfiguration. Ignoring.",
                                 DependencyResolver.GetCleanName(implType),
                                 depType.FullName);
                             continue;
                         }
 
-                        var depInstance = tmpProvider.GetService(depType) as IAltruistConfiguration;
-                        if (depInstance is null)
-                        {
-                            var msg =
-                                $"Service {DependencyResolver.GetCleanName(implType)} depends on configuration {depType.FullName}, " +
-                                "but it is not registered. Ensure the configuration class is annotated with [ServiceConfiguration] " +
-                                "and discovered by ConfigAttributeConfiguration.";
-                            depLogger.LogCritical(msg);
-                            throw new InvalidOperationException(msg);
-                        }
-
-                        if (!depInstance.IsConfigured)
-                        {
-                            var msg =
-                                $"Service {DependencyResolver.GetCleanName(implType)} depends on configuration {depType.FullName}, " +
-                                "but it has not finished Configure() yet (IsConfigured == false). " +
-                                "Check your [ServiceConfiguration(Order=...)] setup so that {depType.Name} runs before service registration.";
-                            depLogger.LogCritical(msg);
-                            throw new InvalidOperationException(msg);
-                        }
+                        ConfigAttributeConfiguration.EnsureConfigurationRegisteredAndConfigured(
+                            services,
+                            depType,
+                            cfg,
+                            log);
                     }
                 }
 
+                // Plan and pre-register transitive dependencies bottom-up
                 DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
 
+                // Register concrete implementation
                 services.Add(new ServiceDescriptor(
                     implType,
                     sp =>
@@ -137,6 +121,7 @@ namespace Altruist
 
                 reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
 
+                // Forward abstraction (if provided) to the same impl instance
                 if (serviceType != implType)
                 {
                     services.Add(new ServiceDescriptor(
@@ -148,6 +133,7 @@ namespace Altruist
                 }
             }
         }
+
 
         private void RegisterPortals(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg)
         {
