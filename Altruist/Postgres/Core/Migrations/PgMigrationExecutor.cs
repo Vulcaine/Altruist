@@ -17,8 +17,6 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
 {
     private readonly ISqlDatabaseProvider _provider;
 
-    // --- SQL templates (same style as in PostgresVaultSchemaMigrator) ---
-
     private const string CreateSchemaSqlTemplate =
         "CREATE SCHEMA IF NOT EXISTS {schema};";
 
