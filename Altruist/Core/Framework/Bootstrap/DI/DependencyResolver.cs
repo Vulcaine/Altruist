@@ -64,7 +64,7 @@ namespace Altruist
         }
 
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
-    => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
+            => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
 
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log, ServiceLifetime lifetime)
         {
@@ -221,12 +221,26 @@ namespace Altruist
 
         private static object? Arg(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
         {
+            var paramType = p.ParameterType;
+
+            // 0) Hard-stop for simple/BCL types (string, primitives, etc.).
+            // These must be bound via [AppConfigValue] or given a default.
+            if (IsSimple(paramType))
+            {
+                var owner = GetCleanName(p.Member.DeclaringType!);
+                var pn = p.Name ?? "param";
+                var tn = GetCleanName(paramType);
+                var errMsg =
+                    $"❌ Parameter '{pn}' of '{owner}' is a simple type '{tn}'. " +
+                    "Bind it from configuration with [AppConfigValue] or provide a default value.";
+                FailAndExit(log, errMsg);
+                throw new InvalidOperationException(errMsg);
+            }
+
             // 1) Config-bound parameter?
             var a = p.GetCustomAttribute<AppConfigValueAttribute>(false);
             if (a is not null)
                 return ResolveFromConfig(cfg, p.ParameterType, a, log);
-
-            var paramType = p.ParameterType;
 
             // 2) Handle all supported collection kinds (Spring-style)
             if (paramType.IsGenericType)

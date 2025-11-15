@@ -18,12 +18,16 @@ namespace Altruist;
 /// type, then ensures all dependencies are registered in DI **before** registering
 /// the requested type. Handles collections/arrays, conditional registrations, and
 /// framework-provided abstractions. Detects cycles and gives a readable error.
+///
+/// It can delegate some registrations to provider packages via IServiceFactory
+/// (e.g. IVault&lt;T&gt; construction in Postgres package).
 /// </summary>
 public static class DependencyPlanner
 {
     private sealed record Node(Type Impl, HashSet<Type> DirectDeps);
 
     private static readonly ConcurrentDictionary<Type, Node> _graphCache = new();
+
     private static readonly Assembly[] _assemblies = AppDomain.CurrentDomain
         .GetAssemblies()
         .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
@@ -85,7 +89,7 @@ public static class DependencyPlanner
                     if (IsNonServiceable(abs))
                         continue;      // e.g., string[], int[], IEnumerable<string>
                     if (IsSkippable(abs))
-                        continue;           // framework-provided, ILogger<T>
+                        continue;      // framework-provided, ILogger<T>
                     deps.Add(abs);
                 }
             }
@@ -134,6 +138,14 @@ public static class DependencyPlanner
                     continue;
                 if (IsAlreadyRegistered(services, abs))
                     continue;
+
+                // Special-case generic IVault<T> via provider IServiceFactory.
+                if (IsVaultAbstraction(abs))
+                {
+                    EnsureServiceFactoriesAreAvailable(services, cfg, log);
+                    RegisterServiceViaFactories(services, cfg, log, abs);
+                    continue;
+                }
 
                 var candidates = FindCandidateImplementations(abs, cfg, log);
 
@@ -191,7 +203,7 @@ public static class DependencyPlanner
 
     /// <summary>
     /// Non-serviceable = things we must not try to wire up via DI:
-    /// primitives, enums, string, pointers, byrefs, delegates, simple BCLs, Nullable<T> of simple, etc.
+    /// primitives, enums, string, pointers, byrefs, delegates, simple BCLs, Nullable&lt;T&gt; of simple, etc.
     /// </summary>
     private static bool IsNonServiceable(Type t)
     {
@@ -222,6 +234,84 @@ public static class DependencyPlanner
         type = Nullable.GetUnderlyingType(type) ?? type;
         return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) ||
                type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid);
+    }
+
+    // ---------------- vault-specific logic (using generic IServiceFactory) ----------------
+
+    private static bool IsVaultAbstraction(Type t)
+        => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IVault<>);
+
+    /// <summary>
+    /// Ensure IServiceFactory implementations are registered, so they can be used to create
+    /// provider-specific services (e.g. IVault&lt;T&gt;).
+    /// </summary>
+    private static void EnsureServiceFactoriesAreAvailable(IServiceCollection services, IConfiguration cfg, ILogger log)
+    {
+        // If any IServiceFactory is already registered, we're good.
+        if (services.Any(d => d.ServiceType == typeof(IServiceFactory)))
+            return;
+
+        // Discover implementations that opted-in via [Service]
+        var factories = _assemblies
+            .SelectMany(SafeGetTypes)
+            .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IServiceFactory).IsAssignableFrom(t))
+            .SelectMany(t =>
+                t.GetCustomAttributes<ServiceAttribute>()
+                 .Where(sa => (sa.ServiceType ?? t) == typeof(IServiceFactory))
+                 .Select(sa => (impl: t, lifetime: sa.Lifetime)))
+            .Where(x => DependencyResolver.ShouldRegister(x.impl, cfg, log))
+            .ToList();
+
+        // Fallback: allow implicit discovery if the impl has no [Service] but is present.
+        if (factories.Count == 0)
+        {
+            factories = _assemblies
+                .SelectMany(SafeGetTypes)
+                .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IServiceFactory).IsAssignableFrom(t))
+                .Where(t => DependencyResolver.ShouldRegister(t, cfg, log))
+                .Select(t => (impl: t, lifetime: ServiceLifetime.Singleton))
+                .ToList();
+        }
+
+        foreach (var f in factories)
+            RegisterOne(services, cfg, log, f.impl, typeof(IServiceFactory), f.lifetime);
+    }
+
+    /// <summary>
+    /// Register a service (currently used for IVault&lt;T&gt;) so that it is created via IServiceFactory.
+    /// </summary>
+    private static void RegisterServiceViaFactories(
+        IServiceCollection services,
+        IConfiguration cfg,
+        ILogger log,
+        Type serviceType)
+    {
+        if (IsAlreadyRegistered(services, serviceType))
+            return;
+
+        services.Add(new ServiceDescriptor(
+            serviceType,
+            sp =>
+            {
+                var factories = sp.GetServices<IServiceFactory>().ToList();
+                var factory = factories.FirstOrDefault(f => f.CanCreate(serviceType));
+                if (factory is null)
+                {
+                    var msg =
+                        $"❌ No IServiceFactory can create '{DependencyResolver.GetCleanName(serviceType)}'. " +
+                        "Did you reference the proper provider package (e.g., Altruist.Postgres) and enable it via config?";
+                    log.LogCritical(msg);
+                    Environment.Exit(1);
+                    throw new InvalidOperationException(msg);
+                }
+
+                return factory.Create(sp, serviceType);
+            },
+            ServiceLifetime.Singleton));
+
+        log.LogDebug("🔧 Planned registration via IServiceFactory: {Service} ({Lifetime})",
+            DependencyResolver.GetCleanName(serviceType),
+            ServiceLifetime.Singleton);
     }
 
     // ---------------- candidates ----------------

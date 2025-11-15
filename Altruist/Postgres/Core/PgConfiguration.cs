@@ -1,12 +1,3 @@
-/* 
-Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-http://www.apache.org/licenses/LICENSE-2.0
-*/
-
 using System.Collections;
 using System.Reflection;
 
@@ -46,22 +37,27 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         var cfg = AppConfigLoader.Load();
         var assemblies = DiscoverAssemblies();
 
-        // 1) Register schemas + vaults as before
-        var schemaTypes = FindSchemaTypes(assemblies).ToArray(); // optional; falls back to DefaultSchema
+        // 1) Discover schemas + vault models
+        var schemaTypes = FindSchemaTypes(assemblies).ToArray();      // optional; falls back to DefaultSchema
         var vaultModelTypes = FindVaultModelTypes(assemblies).ToArray();
 
+        // 2) Register schemas
         RegisterSchemas(services, cfg, schemaTypes);
-        RegisterVaultsAndPopulateRegistry(services, schemaTypes, vaultModelTypes);
 
-        // 2) Ensure NpgsqlDataSource is available (for transactional decorator)
+        // 3) Let IServiceFactory handle IVault<T> creation; we only declare the services + metadata.
+        RegisterVaultsViaServiceFactory(services, vaultModelTypes);
+
+        // 4) Ensure NpgsqlDataSource is available (for transactional decorator)
         RegisterNpgsqlDataSource(services, cfg);
 
-        // 3) Populate the TransactionalRegistry and wrap transactional services
+        // 5) Populate the TransactionalRegistry and wrap transactional services
         RegisterTransactionalServices(services, assemblies);
 
-        // 4) Bootstrap DB objects
+        // 6) Bootstrap DB objects
         await BootstrapAsync(services, schemaTypes, vaultModelTypes);
     }
+
+    // ----------------- schemas -----------------
 
     private static void RegisterSchemas(IServiceCollection services, IConfiguration cfg, Type[] schemaTypes)
     {
@@ -80,58 +76,40 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         }
     }
 
-    private static void RegisterVaultsAndPopulateRegistry(
+    // ----------------- vaults via IServiceFactory -----------------
+
+    private static void RegisterVaultsViaServiceFactory(
         IServiceCollection services,
-        Type[] schemaTypes,
         Type[] vaultModelTypes)
     {
         foreach (var modelType in vaultModelTypes)
         {
             var schemaName = GetSchemaName(modelType); // from [Vault(Keyspace=...)] or defaults
 
+            // metadata only – no instance creation here
             VaultRegistry.Register(modelType, schemaName);
 
             var vaultIface = typeof(IVault<>).MakeGenericType(modelType);
+
+            // The *actual* vault instance will be created by whatever IServiceFactory
+            // can handle this service type (e.g., PostgresServiceFactory).
             services.AddSingleton(vaultIface, sp =>
             {
-                var existing = TryGetRegisteredVault(sp, modelType, vaultIface);
-                if (existing is not null)
-                    return existing;
+                var factories = sp.GetServices<IServiceFactory>().ToList();
+                var factory = factories.FirstOrDefault(f => f.CanCreate(vaultIface));
+                if (factory is null)
+                {
+                    throw new InvalidOperationException(
+                        $"No IServiceFactory can create '{vaultIface}'. " +
+                        "Did you reference the correct provider package and enable it via config?");
+                }
 
-                // Resolve an IKeyspace with the requested name; if none registered, use a lightweight default
-                var schemaInstance = sp.GetServices<IKeyspace>()
-                    .FirstOrDefault(s => string.Equals(s.Name, schemaName, StringComparison.OrdinalIgnoreCase))
-                    ?? new DefaultSchema(schemaName);
-
-                var sqlProvider = sp.GetRequiredService<ISqlDatabaseProvider>();
-                var document = GetDocumentForModel(modelType);
-
-                var pgVaultType = typeof(PgVault<>).MakeGenericType(modelType);
-                var instance = Activator.CreateInstance(
-                    pgVaultType,
-                    sqlProvider,
-                    schemaInstance,
-                    document,
-                    sp
-                )!;
-
-                VaultRegistry.RegisterVaultInstance(modelType, instance);
-                return instance;
+                return factory.Create(sp, vaultIface);
             });
         }
     }
 
-    private static object? TryGetRegisteredVault(IServiceProvider sp, Type modelType, Type vaultIface)
-    {
-        try
-        {
-            var reg = VaultRegistry.GetVault(modelType);
-            if (reg is not null)
-                return reg;
-        }
-        catch { }
-        return null;
-    }
+    // ----------------- bootstrap -----------------
 
     private static async Task BootstrapAsync(IServiceCollection services, Type[] schemaTypes, Type[] vaultModelTypes)
     {
@@ -314,6 +292,8 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         }
     }
 
+    // ----------------- discovery helpers -----------------
+
     private static Document GetDocumentForModel(Type modelType) => Document.From(modelType);
 
     private static Assembly[] DiscoverAssemblies() =>
@@ -342,19 +322,6 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         // Reuse VaultAttribute.Keyspace (Cassandra "keyspace") as Postgres schema name
         var va = modelType.GetCustomAttribute<VaultAttribute>();
         return string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!;
-    }
-
-    private sealed class DefaultSchema : IKeyspace
-    {
-        public DefaultSchema(string? name = null)
-        {
-            Name = string.IsNullOrWhiteSpace(name) ? "public" : name!;
-        }
-
-        public string Name { get; }
-
-        // Required by IKeyspace
-        public IDatabaseServiceToken DatabaseToken => PostgresDBToken.Instance;
     }
 
     // -------------------------------
@@ -406,11 +373,6 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
                 Username = username,
                 Password = password,
                 Database = database,
-
-                // Optional: tune as needed
-                // Pooling = true,
-                // MaximumPoolSize = 100,
-                // SslMode = SslMode.Disable
             };
 
             connString = builder.ConnectionString;
@@ -496,4 +458,18 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             return proxy;
         };
     }
+}
+
+// This stays shared so both bootstrap and factories can use it.
+public sealed class DefaultSchema : IKeyspace
+{
+    public DefaultSchema(string? name = null)
+    {
+        Name = string.IsNullOrWhiteSpace(name) ? "public" : name!;
+    }
+
+    public string Name { get; }
+
+    // Required by IKeyspace
+    public IDatabaseServiceToken DatabaseToken => PostgresDBToken.Instance;
 }
