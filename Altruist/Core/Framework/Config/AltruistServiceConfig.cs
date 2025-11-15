@@ -165,7 +165,6 @@ namespace Altruist
             }
         }
 
-
         private static void RegisterGateMethodsFromInstance(object instance, ILogger log)
         {
             var type = instance.GetType();
@@ -182,16 +181,33 @@ namespace Altruist
                              rt.IsGenericType && rt.GetGenericTypeDefinition() == typeof(Task<>);
 
                 if (!isTask)
-                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} marked with [Gate] must return Task or Task<T>.");
+                    throw new InvalidOperationException(
+                        $"Method {type.Name}.{method.Name} marked with [Gate] must return Task or Task<T>.");
 
-                if (pars.Length is < 1 or > 2)
-                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} marked with [Gate] must have 1 or 2 parameters.");
+                // --- Parameters:
+                //  0 params           -> ok
+                //  1 param            -> must be string clientId
+                //  2 params           -> first IPacket, second string clientId
+                //  >2 params          -> invalid
+                if (pars.Length > 2)
+                    throw new InvalidOperationException(
+                        $"Method {type.Name}.{method.Name} marked with [Gate] must have 0, 1 or 2 parameters.");
 
-                if (!typeof(IPacket).IsAssignableFrom(pars[0].ParameterType))
-                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} first parameter must implement IPacket.");
-
-                if (pars.Length == 2 && pars[1].ParameterType != typeof(string))
-                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} second parameter must be string (clientId).");
+                if (pars.Length == 1)
+                {
+                    if (pars[0].ParameterType != typeof(string))
+                        throw new InvalidOperationException(
+                            $"Method {type.Name}.{method.Name} with a single parameter must have signature (string clientId).");
+                }
+                else if (pars.Length == 2)
+                {
+                    if (!typeof(IPacket).IsAssignableFrom(pars[0].ParameterType))
+                        throw new InvalidOperationException(
+                            $"Method {type.Name}.{method.Name} first parameter must implement IPacket.");
+                    if (pars[1].ParameterType != typeof(string))
+                        throw new InvalidOperationException(
+                            $"Method {type.Name}.{method.Name} second parameter must be string (clientId).");
+                }
 
                 var delegateType = Expression.GetDelegateType(
                     pars.Select(p => p.ParameterType)
