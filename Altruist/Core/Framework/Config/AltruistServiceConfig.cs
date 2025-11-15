@@ -48,7 +48,10 @@ namespace Altruist
             TypeDiscovery.FindTypesWithAttribute<TAttr>(GetAssemblies());
 
         private static void LogRegistered(ILogger logger, List<string> reg)
-        { if (reg.Count > 0) logger.LogDebug("✅ Registered services:\n{Services}", string.Join("\n", reg)); }
+        {
+            if (reg.Count > 0)
+                logger.LogDebug("✅ Registered services:\n{Services}", string.Join("\n", reg));
+        }
 
         // ---------- Service & Portal registration ----------
 
@@ -59,11 +62,11 @@ namespace Altruist
         }
 
         private static void RegisterServiceType(
-    IServiceCollection services,
-    IConfiguration cfg,
-    ILogger log,
-    List<string> reg,
-    Type implType)
+            IServiceCollection services,
+            IConfiguration cfg,
+            ILogger log,
+            List<string> reg,
+            Type implType)
         {
             if (!DependencyResolver.ShouldRegister(implType, cfg, log))
                 return;
@@ -101,20 +104,12 @@ namespace Altruist
                 DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
 
                 // Register concrete implementation
+                // IMPORTANT: do NOT call PostConstruct here.
                 services.Add(new ServiceDescriptor(
                     implType,
                     sp =>
                     {
                         var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
-                        try
-                        {
-                            _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
-                        }
-                        catch (Exception ex)
-                        {
-                            log.LogError(ex, "❌ PostConstruct failed on service {Type}.", implType.FullName);
-                            throw;
-                        }
                         return obj!;
                     },
                     lifetime));
@@ -134,10 +129,11 @@ namespace Altruist
             }
         }
 
-
         private void RegisterPortals(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg)
         {
-            var settings = services.BuildServiceProvider().GetRequiredService<IAltruistContext>();
+            // This IAltruistContext is only used to add endpoint metadata. Fine to use a temporary provider.
+            var ctxProvider = services.BuildServiceProvider();
+            var settings = ctxProvider.GetRequiredService<IAltruistContext>();
 
             var portals = PortalDiscovery.Discover().Distinct().ToArray();
             var toWarmUp = new List<Type>();
@@ -152,21 +148,15 @@ namespace Altruist
 
                 DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, portalType);
 
+                // Register portal as transient.
+                // IMPORTANT: still no PostConstruct here – that comes later in the global pass.
                 services.Add(new ServiceDescriptor(
                     portalType,
                     sp =>
                     {
                         var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, portalType, log);
-                        try
-                        {
-                            _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, log);
-                        }
-                        catch (Exception ex)
-                        {
-                            log.LogError(ex, "❌ PostConstruct failed on portal {Type}.", portalType.FullName);
-                            throw;
-                        }
 
+                        // Register gates right when we build an instance.
                         RegisterGateMethodsFromInstance(instance!, log);
 
                         if (instance is IPortal portalInstance)
@@ -181,6 +171,8 @@ namespace Altruist
                 toWarmUp.Add(portalType);
             }
 
+            // Keep warm-up so [Gate] methods are registered eagerly,
+            // but this still happens before the global PostConstruct pass.
             if (toWarmUp.Count > 0)
             {
                 using var warmupProvider = services.BuildServiceProvider();
@@ -199,6 +191,8 @@ namespace Altruist
                 }
             }
         }
+
+        // ---------- Gate registration ----------
 
         private static void RegisterGateMethodsFromInstance(object instance, ILogger log)
         {

@@ -69,7 +69,6 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             {
                 var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresDBConfiguration>();
                 var inst = DependencyResolver.CreateWithConfiguration(sp, cfg, schemaType, logger);
-                _ = DependencyResolver.InvokePostConstructAsync(inst, sp, cfg, logger);
                 return inst!;
             });
 

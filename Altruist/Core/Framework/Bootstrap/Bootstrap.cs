@@ -19,6 +19,9 @@ public static class AltruistBootstrap
         ConfigureLogging();
         await BootstrapModules();
         await BootstrapServices();
+
+        // 🔁 Global PostConstruct pass AFTER all services are registered
+        await RunPostConstructsAsync();
     }
 
     public static IServiceProvider GetServiceProvider() => Services.BuildServiceProvider();
@@ -56,4 +59,61 @@ public static class AltruistBootstrap
     {
         AssemblyLoader.EnsureAllReferencedAssembliesLoaded();
     }
+
+    /// <summary>
+    /// After all services/modules are registered, build a provider and run [PostConstruct]
+    /// for every service whose concrete type declares one.
+    /// This guarantees that PostConstruct runs when the DI graph is fully available.
+    /// </summary>
+    private static async Task RunPostConstructsAsync()
+    {
+        // Build a temporary provider for the initialization pass
+        using var provider = Services.BuildServiceProvider();
+
+        var cfg = AppConfigLoader.Load();
+        var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
+
+        // Avoid doing work twice for the same service type
+        var processedServiceTypes = new HashSet<Type>();
+
+        foreach (var descriptor in Services)
+        {
+            var serviceType = descriptor.ServiceType;
+            if (serviceType is null)
+                continue;
+
+            // Skip duplicates
+            if (!processedServiceTypes.Add(serviceType))
+                continue;
+
+            object? instance;
+            try
+            {
+                instance = provider.GetService(serviceType);
+            }
+            catch
+            {
+                // If resolution fails here, just skip; normal resolution errors
+                // will surface when the app actually requests the service.
+                continue;
+            }
+
+            if (instance is null)
+                continue;
+
+            var implType = instance.GetType();
+
+            // Check whether this type actually has a [PostConstruct] method
+            if (!HasPostConstruct(implType))
+                continue;
+
+            var log = loggerFactory.CreateLogger(implType);
+
+            await DependencyResolver.InvokePostConstructAsync(instance, provider, cfg, log);
+        }
+    }
+
+    private static bool HasPostConstruct(Type type) =>
+        type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Any(m => m.GetCustomAttribute<PostConstructAttribute>(inherit: true) is not null);
 }
