@@ -190,7 +190,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
 
             return await _mapper!.FetchAsync<TVaultModel>(cqlQuery, parameters);
         }
-        catch (NoHostAvailableException ex)
+        catch (NoHostAvailableException)
         {
             await ConnectAsync();
             return await ExecuteFetchAsync<TVaultModel>(cqlQuery, parameters);

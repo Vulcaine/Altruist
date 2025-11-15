@@ -53,9 +53,9 @@ public abstract class StoredModel : IStoredModel
     public virtual string GroupId { get; set; } = "";
     public abstract string Type { get; set; }
 
-    public virtual string Key { get; set; }
+    public virtual string Key { get; set; } = "";
 
-    public virtual string Group { get; set; }
+    public virtual string Group { get; set; } = "";
 
     // [JsonIgnore]
     // public string StoredId => $"{Group}:{Key}";

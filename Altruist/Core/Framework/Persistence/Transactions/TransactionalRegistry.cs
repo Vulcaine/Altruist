@@ -161,7 +161,7 @@ internal sealed class ReferenceEqualityComparer : IEqualityComparer<object>
 
     private ReferenceEqualityComparer() { }
 
-    public new bool Equals(object x, object y) => ReferenceEquals(x, y);
+    public new bool Equals(object? x, object? y) => ReferenceEquals(x, y);
 
     public int GetHashCode(object obj) => RuntimeHelpers.GetHashCode(obj);
 }
