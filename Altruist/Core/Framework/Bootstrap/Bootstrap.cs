@@ -90,9 +90,6 @@ public static class AltruistBootstrap
             if (serviceType is null)
                 continue;
 
-            if (!_constructionCache.Add(serviceType.FullName!))
-                continue;
-
             if (!processedServiceTypes.Add(serviceType))
                 continue;
 
@@ -111,6 +108,9 @@ public static class AltruistBootstrap
                 continue;
 
             var implType = instance.GetType();
+            if (!_constructionCache.Add(implType.FullName!))
+                continue;
+
             if (!HasPostConstruct(implType))
                 continue;
 
