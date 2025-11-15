@@ -1,3 +1,5 @@
+using Microsoft.IdentityModel.Tokens;
+
 namespace Altruist.Security
 {
     public interface IAuthPortal
@@ -47,41 +49,58 @@ namespace Altruist.Security
         [Gate("upgrade")]
         public async Task UpgradeAuth(SessionAuthContext context, string clientId)
         {
-            // 1) Let user customize / validate / enrich the context
-            context = OnUpgrade(context, clientId);
-
-            // 2) Ask service to perform the actual upgrade
-            var issue = await _authService.Upgrade(context, clientId);
-
             var connection = await _connectionManager.GetConnectionAsync(clientId);
 
-            if (issue != null)
+            try
             {
-                await OnUpgradeSuccess(context, clientId, issue);
+                context = OnUpgrade(context, clientId);
+                var issue = await _authService.Upgrade(context, clientId);
 
-                if (issue is IPacketBase packet)
+                if (issue != null)
                 {
-                    await _router.Client.SendAsync(clientId, packet);
+                    await OnUpgradeSuccess(context, clientId, issue);
+
+                    if (issue is IPacketBase packet)
+                    {
+                        await _router.Client.SendAsync(clientId, packet);
+                    }
                 }
-
-                if (connection != null)
+                else
                 {
-                    await connection.CloseOutputAsync();
-                    await connection.CloseAsync();
+                    await OnUpgradeFailed(context, clientId);
+
+                    var result = ResultPacket.Failed(
+                        code: TransportCode.Unauthorized,
+                        reason: "Invalid or expired token"
+                    );
+
+                    await _router.Client.SendAsync(clientId, result);
                 }
             }
-            else
+            catch (SecurityTokenExpiredException)
             {
                 await OnUpgradeFailed(context, clientId);
 
-                var textPayload = new TextPacket("Authentication upgrade failed.");
                 var result = ResultPacket.Failed(
                     code: TransportCode.Unauthorized,
                     reason: "Invalid or expired token"
                 );
 
                 await _router.Client.SendAsync(clientId, result);
+            }
+            catch (Exception)
+            {
+                await OnUpgradeFailed(context, clientId);
 
+                var result = ResultPacket.Failed(
+                    code: TransportCode.InternalServerError,
+                    reason: "Authentication upgrade failed due to an internal error."
+                );
+
+                await _router.Client.SendAsync(clientId, result);
+            }
+            finally
+            {
                 if (connection != null)
                 {
                     await connection.CloseOutputAsync();
