@@ -70,10 +70,17 @@ namespace Altruist
         {
             if (lifetime == ServiceLifetime.Singleton)
             {
-                // One instance per AppDomain per impl type
-                return _singletonCache.GetOrAdd(
-                    impl,
-                    _ => CreateInstanceInternal(sp, cfg, impl, log));
+                // 1) If already built, just return it.
+                if (_singletonCache.TryGetValue(impl, out var existing))
+                    return existing;
+
+                // 2) Build the instance (this is where circular detection happens).
+                var obj = CreateInstanceInternal(sp, cfg, impl, log);
+
+                // 3) Cache it for future calls.
+                _singletonCache[impl] = obj;
+
+                return obj;
             }
 
             // Transient / other lifetimes
