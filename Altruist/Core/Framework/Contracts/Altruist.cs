@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@ namespace Altruist;
 public interface IServerStatus
 {
     ReadyState Status { get; }
-    void SignalState(IAltruistEngine engine, ReadyState state);
+    void SignalState(IEngineCore engine, ReadyState state);
 }
 
 

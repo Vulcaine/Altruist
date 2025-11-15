@@ -64,7 +64,7 @@ public sealed class ServerStatus : IServerStatus
     /// Called automatically during startup via the [Configuration] mechanism.
     /// </summary>
     [PostConstruct]
-    public async Task Configure(IAltruistEngine engine)
+    public async Task Configure(IEngineCore engine)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -92,7 +92,7 @@ public sealed class ServerStatus : IServerStatus
         await CheckAllConnectedAsync(tcs, engine);
     }
 
-    public void SignalState(IAltruistEngine engine, ReadyState state)
+    public void SignalState(IEngineCore engine, ReadyState state)
     {
         if (state == ReadyState.Failed)
             engine.Stop();
@@ -102,7 +102,7 @@ public sealed class ServerStatus : IServerStatus
         Status = state;
     }
 
-    private void StartTimeoutTimer(IAltruistEngine engine)
+    private void StartTimeoutTimer(IEngineCore engine)
     {
         _logger.LogInformation("⌛ Starting server timeout timer...");
         _startupTimeoutTimer?.Dispose();
@@ -115,7 +115,7 @@ public sealed class ServerStatus : IServerStatus
         }, null, TimeSpan.FromMinutes(1), Timeout.InfiniteTimeSpan);
     }
 
-    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs, IAltruistEngine engine)
+    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs, IEngineCore engine)
     {
         service.OnConnected += () =>
         {
@@ -161,7 +161,7 @@ public sealed class ServerStatus : IServerStatus
         };
     }
 
-    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs, IAltruistEngine engine)
+    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs, IEngineCore engine)
     {
         lock (_connected)
         {
@@ -175,7 +175,7 @@ public sealed class ServerStatus : IServerStatus
         await tcs.Task;
     }
 
-    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs, IAltruistEngine engine)
+    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs, IEngineCore engine)
     {
         _startupTimeoutTimer?.Dispose();
 
@@ -186,7 +186,7 @@ public sealed class ServerStatus : IServerStatus
         await Task.CompletedTask;
     }
 
-    private void Shutdown(IAltruistEngine engine, string reason, Exception? ex = null)
+    private void Shutdown(IEngineCore engine, string reason, Exception? ex = null)
     {
         if (ex is not null)
             _logger.LogCritical(ex, "{Reason}", reason);

@@ -272,7 +272,7 @@ public interface IEngineCore
 
 
 [Service(typeof(IEngineCore))]
-public class AltruistEngine : IEngineCore, IAltruistEngine
+public class AltruistEngine : IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;
     private readonly IServiceProvider _serviceProvider;

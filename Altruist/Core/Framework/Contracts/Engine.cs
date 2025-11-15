@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,20 +52,19 @@ public class TaskIdentifier : IEquatable<TaskIdentifier>
 }
 
 
-public interface IAltruistEngine
+public interface IEngineCore
 {
-    public CycleRate Rate { get; }
-
-    public bool Enabled { get; }
-
+    CycleRate Rate { get; }
+    bool Enabled { get; }
     void Enable();
-
     void Disable();
-
+    void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
     void Start();
     void Stop();
-
-    void ScheduleTask(Delegate taskDelegate, CycleRate? frequencyHz = null);
+    void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
     void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
-    void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
+}
+
+public interface IAltruistEngine : IEngineCore
+{
 }
