@@ -148,6 +148,7 @@ public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
 public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
     IKeyspace Keyspace { get; }
+    IHistoricalVault<TVaultModel> History { get; }
     IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
     IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
