@@ -22,8 +22,8 @@ namespace Altruist
     /// </summary>
     public static class DependencyResolver
     {
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, Lazy<object>> _singletonCache
-            = new System.Collections.Concurrent.ConcurrentDictionary<Type, Lazy<object>>();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _singletonCache
+            = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
 
         private static readonly object _convLock = new();
         private static Dictionary<Type, IConfigConverter>? _converters;
@@ -70,16 +70,13 @@ namespace Altruist
         {
             if (lifetime == ServiceLifetime.Singleton)
             {
-                // Ensure exactly one instance per AppDomain for this impl type.
-                // (If you need per-provider semantics later, key by a composite that includes the provider.)
-                var lazy = _singletonCache.GetOrAdd(
+                // One instance per AppDomain per impl type
+                return _singletonCache.GetOrAdd(
                     impl,
-                    _ => new Lazy<object>(() => CreateInstanceInternal(sp, cfg, impl, log), System.Threading.LazyThreadSafetyMode.ExecutionAndPublication)
-                );
-                return lazy.Value;
+                    _ => CreateInstanceInternal(sp, cfg, impl, log));
             }
 
-            // Transient (and for now, anything else): always create a fresh instance
+            // Transient / other lifetimes
             return CreateInstanceInternal(sp, cfg, impl, log);
         }
 
