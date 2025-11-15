@@ -90,11 +90,23 @@ namespace Altruist
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
             var path = GetConstructionStack();
-            if (path.Contains(impl) && _singletonCache.TryGetValue(impl, out var cached))
-                return cached;
 
             if (path.Contains(impl))
             {
+                // 1) First, try to get an already-constructed instance from the provider.
+                //    This covers cases where the same implementation type was registered
+                //    under a different service type and is already built.
+                var fromProvider = sp.GetService(impl);
+                if (fromProvider is not null)
+                    return fromProvider;
+
+                // 2) Then, fall back to our own singleton cache.
+                //    If we've already finished constructing this impl, use it.
+                if (_singletonCache.TryGetValue(impl, out var cached))
+                    return cached;
+
+                // 3) At this point, we are genuinely in a construction cycle where
+                //    no concrete instance exists yet → fatal circular dependency.
                 var cycle = FormatCyclePath(path, impl);
                 var msg = $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}";
 
@@ -102,7 +114,6 @@ namespace Altruist
                 {
                     var lf = sp.GetService<ILoggerFactory>();
                     var providerLogger = lf?.CreateLogger(impl) ?? log;
-
                     FailAndExit(providerLogger, msg);
                 }
                 catch
@@ -127,7 +138,6 @@ namespace Altruist
                 _ = path.Pop();
             }
         }
-
 
         /// <summary>Return true if the type should be registered given ConditionalOnConfig attributes.</summary>
         public static bool ShouldRegister(Type t, IConfiguration cfg, ILogger log)
