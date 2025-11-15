@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -120,14 +120,7 @@ public class JwtTokenValidator : IJwtTokenValidator
 
     public ClaimsPrincipal? ValidateToken(string token)
     {
-        try
-        {
-            return _tokenHandler.ValidateToken(token, _validationParams, out _);
-        }
-        catch
-        {
-            return null;
-        }
+        return _tokenHandler.ValidateToken(token, _validationParams, out _);
     }
 }
 
