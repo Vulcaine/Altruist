@@ -90,15 +90,27 @@ namespace Altruist
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
             var path = GetConstructionStack();
-
             if (path.Contains(impl) && _singletonCache.TryGetValue(impl, out var cached))
                 return cached;
 
             if (path.Contains(impl))
             {
                 var cycle = FormatCyclePath(path, impl);
-                throw new InvalidOperationException(
-                    $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}");
+                var msg = $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}";
+
+                try
+                {
+                    var lf = sp.GetService<ILoggerFactory>();
+                    var providerLogger = lf?.CreateLogger(impl) ?? log;
+
+                    FailAndExit(providerLogger, msg);
+                }
+                catch
+                {
+                    FailAndExit(log, msg);
+                }
+
+                throw new InvalidOperationException(msg);
             }
 
             path.Push(impl);
@@ -115,6 +127,7 @@ namespace Altruist
                 _ = path.Pop();
             }
         }
+
 
         /// <summary>Return true if the type should be registered given ConditionalOnConfig attributes.</summary>
         public static bool ShouldRegister(Type t, IConfiguration cfg, ILogger log)
