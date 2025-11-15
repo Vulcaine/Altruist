@@ -136,8 +136,10 @@ namespace Altruist
                 _transport.RouteTraffic(app);
             }
 
-            // ServerInfo + pretty banner
-            var logger = _loggerFactory.CreateLogger<AltruistStartupConfiguration>();
+            // Use the web app's logger instead of the injected (root) LoggerFactory,
+            // which may already be disposed at this point.
+            var logger = app.Logger;
+
             if (!int.TryParse(_httpPort, out var portNum))
                 portNum = 8080;
 
