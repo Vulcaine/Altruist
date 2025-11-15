@@ -8,7 +8,6 @@ using System.Reflection;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist;
@@ -32,16 +31,6 @@ public static class DependencyPlanner
         .GetAssemblies()
         .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
         .ToArray();
-
-    // Known framework-provided abstractions we should not try to register
-    private static readonly HashSet<Type> _frameworkProvided = new()
-    {
-        typeof(ILoggerFactory),
-        typeof(IServiceProvider),
-        typeof(IServiceCollection),
-        typeof(IConfiguration),
-        typeof(IHostApplicationLifetime)
-    };
 
     /// <summary>
     /// Ensure that <paramref name="implType"/> and all of its transitive constructor
@@ -73,23 +62,19 @@ public static class DependencyPlanner
 
             foreach (var p in ctor.GetParameters())
             {
-                // Skip config-bound & optional params
                 if (p.GetCustomAttribute<AppConfigValueAttribute>(false) is not null)
                     continue;
                 if (p.HasDefaultValue)
                     continue;
 
-                // Ignore non-serviceable types (string, primitives, enums, pointers, delegates, etc.)
                 if (IsNonServiceable(p.ParameterType))
                     continue;
 
-                // Expand collection/array to its element abstraction
                 foreach (var abs in ExpandParameterToAbstractions(p.ParameterType))
                 {
                     if (IsNonServiceable(abs))
-                        continue;      // e.g., string[], int[], IEnumerable<string>
-                    if (IsSkippable(abs))
-                        continue;      // framework-provided, ILogger<T>
+                        continue;
+
                     deps.Add(abs);
                 }
             }
@@ -137,14 +122,13 @@ public static class DependencyPlanner
                     continue;
                 if (IsAlreadyRegistered(services, abs))
                     continue;
-                if (IsSkippable(abs))
-                    continue;
 
                 var candidates = FindCandidateImplementations(abs, cfg, log);
 
                 if (candidates.Count > 0)
                 {
                     var chosen = candidates[0];
+
 
                     RegisterBottomUp(chosen.impl, services, cfg, log, visiting, visited);
 
@@ -159,14 +143,11 @@ public static class DependencyPlanner
                     continue;
                 }
 
-                if (abs.IsGenericType)
-                {
-                    EnsureServiceFactoriesAreAvailable(services, cfg, log);
-                    RegisterServiceViaFactories(services, cfg, log, abs);
-                }
+                EnsureServiceFactoriesAreAvailable(services, cfg, log);
+                RegisterServiceViaFactories(services, cfg, log, abs);
             }
 
-            if (!IsAlreadyRegistered(services, implType) && !IsNonServiceable(implType) && !IsSkippable(implType))
+            if (!IsAlreadyRegistered(services, implType) && !IsNonServiceable(implType))
             {
                 RegisterOne(services, cfg, log, implType, implType, ServiceLifetime.Singleton);
             }
@@ -182,18 +163,6 @@ public static class DependencyPlanner
 
     private static bool IsAlreadyRegistered(IServiceCollection services, Type serviceType)
         => services.Any(d => d.ServiceType == serviceType);
-
-    private static bool IsSkippable(Type t)
-    {
-        if (_frameworkProvided.Contains(t))
-            return true;
-
-        // Skip generic ILogger<T>
-        if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(ILogger<>))
-            return true;
-
-        return false;
-    }
 
     /// <summary>
     /// Non-serviceable = things we must not try to wire up via DI:
@@ -266,6 +235,7 @@ public static class DependencyPlanner
     /// <summary>
     /// Register a service so that it is created via IServiceFactory.
     /// Any factory that returns true from CanCreate(serviceType) will be used at runtime.
+    /// If no such factory exists, this is a no-op (we do NOT throw).
     /// </summary>
     private static void RegisterServiceViaFactories(
         IServiceCollection services,
@@ -276,19 +246,42 @@ public static class DependencyPlanner
         if (IsAlreadyRegistered(services, serviceType))
             return;
 
+        using (var tmpProvider = services.BuildServiceProvider())
+        {
+            var factories = tmpProvider.GetServices<IServiceFactory>().ToList();
+
+            if (factories.Count == 0)
+            {
+                log.LogDebug(
+                    "No IServiceFactory implementations registered when trying to resolve {Service}. " +
+                    "Skipping factory-based registration.",
+                    DependencyResolver.GetCleanName(serviceType));
+                return;
+            }
+
+            if (!factories.Any(f => f.CanCreate(serviceType)))
+            {
+                log.LogDebug(
+                    "No IServiceFactory reports CanCreate({Service}). " +
+                    "Skipping factory-based registration.",
+                    DependencyResolver.GetCleanName(serviceType));
+                return;
+            }
+        }
+
         services.Add(new ServiceDescriptor(
             serviceType,
             sp =>
             {
                 var factories = sp.GetServices<IServiceFactory>().ToList();
                 var factory = factories.FirstOrDefault(f => f.CanCreate(serviceType));
+
                 if (factory is null)
                 {
                     var msg =
-                        $"❌ No IServiceFactory can create '{DependencyResolver.GetCleanName(serviceType)}'. " +
-                        "Did you reference the proper provider package and enable it via config?";
-                    log.LogCritical(msg);
-                    Environment.Exit(1);
+                        $"❌ No IServiceFactory can create '{DependencyResolver.GetCleanName(serviceType)}' " +
+                        "at runtime (it was available at planning time).";
+                    log.LogError(msg);
                     throw new InvalidOperationException(msg);
                 }
 
@@ -300,6 +293,7 @@ public static class DependencyPlanner
             DependencyResolver.GetCleanName(serviceType),
             ServiceLifetime.Singleton);
     }
+
 
     // ---------------- candidates ----------------
 
@@ -328,17 +322,17 @@ public static class DependencyPlanner
     }
 
     private static void RegisterOne(
-        IServiceCollection services,
-        IConfiguration cfg,
-        ILogger log,
-        Type implType,
-        Type serviceType,
-        ServiceLifetime lifetime)
+    IServiceCollection services,
+    IConfiguration cfg,
+    ILogger log,
+    Type implType,
+    Type serviceType,
+    ServiceLifetime lifetime)
     {
-        // Avoid duplicates; also avoid ever registering non-serviceable/framework types
+        // Avoid duplicates; also avoid ever registering non-serviceable types
         if (IsAlreadyRegistered(services, serviceType))
             return;
-        if (IsNonServiceable(serviceType) || IsSkippable(serviceType))
+        if (IsNonServiceable(serviceType))
             return;
 
         services.Add(new ServiceDescriptor(
