@@ -57,8 +57,6 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
         {
             await ApplyOperationAsync(schema, op);
         }
-
-        await _provider.ShutdownAsync();
     }
 
     private async Task ApplyOperationAsync(IKeyspace defaultSchema, MigrationOperation op)

@@ -158,8 +158,6 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
 
             // Run hooks (before/after/preload) on the models
             await CreateTablesAndRunHooksAsync(sp, logger, group.ToArray());
-
-            await provider.ShutdownAsync();
         }
 
         logger.LogInformation(

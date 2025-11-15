@@ -168,7 +168,6 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
             await provider.CreateKeySpaceAsync(ksInstance.Name, ksInstance.Options);
 
             await CreateTablesAndRunHooksAsync(provider, sp, logger, ksInstance, group.ToArray());
-            await provider.ShutdownAsync();
         }
 
         logger.LogInformation("⚡ ScyllaDB activated. {Count} vault model(s) registered and bootstrapped. 🌌", vaultModelTypes.Length);
