@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +31,8 @@ namespace Altruist.Gaming
     [ServiceConfiguration]
     public class PrefabConfig : IAltruistConfiguration
     {
+        public bool IsConfigured { get; set; }
+
         public Task Configure(IServiceCollection services)
         {
             var cfg = AppConfigLoader.Load();

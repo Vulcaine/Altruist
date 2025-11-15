@@ -13,6 +13,7 @@ namespace Altruist.Security;
 [ServiceConfiguration]
 public sealed class AuthConfiguration : IAltruistConfiguration
 {
+    public bool IsConfigured { get; set; }
     public string SecretKey { get; set; } = "";
     public string Mode { get; set; } = "";
 

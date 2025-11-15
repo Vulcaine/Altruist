@@ -30,6 +30,8 @@ public sealed class PostgresVaultRepository<TSchema> : VaultRepository<TSchema>
 [ServiceConfiguration]
 public sealed class PostgresDBConfiguration : IDatabaseConfiguration
 {
+    public bool IsConfigured { get; set; }
+
     public string DatabaseName => "PostgreSQL";
 
     public async Task Configure(IServiceCollection services)

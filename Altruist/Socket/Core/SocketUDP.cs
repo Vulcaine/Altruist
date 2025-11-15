@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,7 @@ using Altruist.Transport;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Altruist.Socket;
 
@@ -260,26 +261,21 @@ public sealed class UdpConnection : AltruistConnection
 public sealed class UdpTransportToken : ITransportServiceToken
 {
     public static UdpTransportToken Instance = new UdpTransportToken();
-    public ITransportConfiguration Configuration => new UdpSocketConfiguration();
 
     public string Description => "📡 Transport: Udp Socket";
 }
 
-
+[Service(typeof(ITransportConfiguration))]
+[ConditionalOnConfig("altruist:server:transport:mode", "udp")]
 public sealed class UdpSocketConfiguration : ITransportConfiguration
 {
+    public bool IsConfigured { get; set; }
+
     public Task Configure(IServiceCollection services)
     {
-        // ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
-        // ILogger logger = factory.CreateLogger("WebsocketSupport");
-        // logger.LogInformation("⚡ Udp Socket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
-        // services.AddSingleton<ITransport, UdpTransport>();
-
-        // services.AddSingleton<UdpConnectionSetup>();
-        // services.AddSingleton<ITransportConnectionSetupBase>(sp => sp.GetRequiredService<UdpConnectionSetup>());
-
-        // services.AddSingleton<ITransportConfiguration, UdpSocketConfiguration>();
-        // services.AddSingleton<ITransportServiceToken, UdpTransportToken>();
+        ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+        ILogger logger = factory.CreateLogger("WebsocketSupport");
+        logger.LogInformation("⚡ Tcp Socket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
 
         return Task.CompletedTask;
     }

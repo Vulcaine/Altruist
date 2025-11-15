@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -225,7 +225,6 @@ public sealed class TcpConnection : AltruistConnection
 public sealed class TcpTransportToken : ITransportServiceToken
 {
     public static TcpTransportToken Instance = new TcpTransportToken();
-    public ITransportConfiguration Configuration { get; } = new TcpSocketConfiguration();
 
     public string Description => "📡 Transport: Tcp Socket";
 }
@@ -234,6 +233,8 @@ public sealed class TcpTransportToken : ITransportServiceToken
 [ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
 public sealed class TcpSocketConfiguration : ITransportConfiguration
 {
+    public bool IsConfigured { get; set; }
+
     public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();

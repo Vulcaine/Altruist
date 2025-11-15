@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,8 @@ using GroupCache = ConcurrentDictionary<string, EfficientConcurrentCache<object>
 
 public sealed class InMemoryServiceConfiguration : ICacheConfiguration
 {
+    public bool IsConfigured { get; set; }
+
     public Task Configure(IServiceCollection services)
     {
         return Task.CompletedTask;

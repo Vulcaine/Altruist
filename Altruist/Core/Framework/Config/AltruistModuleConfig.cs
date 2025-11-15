@@ -11,6 +11,8 @@ namespace Altruist
 {
     public class AltruistModuleConfig : IAltruistConfiguration
     {
+        public bool IsConfigured { get; set; }
+
         public async Task Configure(IServiceCollection services)
         {
             var logger = services.BuildServiceProvider()

@@ -14,6 +14,7 @@ namespace Altruist
     [ServiceConfiguration(order: int.MaxValue)]
     public sealed class AltruistStartupConfiguration : IAltruistConfiguration
     {
+        public bool IsConfigured { get; set; }
         private readonly ApplicationArgs _args;
 
         // HTTP config (optional – if unset we don't host HTTP)

@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@ public sealed class ScyllaVaultRepository<TScyllaKeyspace> : VaultRepository<TSc
 [ServiceConfiguration]
 public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
 {
+    public bool IsConfigured { get; set; }
+
     public string DatabaseName => "ScyllaDB";
 
     public async Task Configure(IServiceCollection services)

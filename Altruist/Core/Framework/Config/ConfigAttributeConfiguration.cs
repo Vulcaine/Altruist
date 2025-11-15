@@ -1,5 +1,5 @@
 // Altruist/ConfigAttributeConfiguration.cs
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,8 @@ namespace Altruist
 {
     public sealed class ConfigAttributeConfiguration : IAltruistConfiguration
     {
+        public bool IsConfigured { get; set; }
+
         public async Task Configure(IServiceCollection services)
         {
             if (!services.Any(d => d.ServiceType == typeof(IServiceCollection)))
@@ -42,6 +44,7 @@ namespace Altruist
                 DependencyResolver.EnsureConverters(services, bootstrapLogger);
             }
 
+            // 1) Register all configuration classes in DI
             foreach (var item in candidates)
             {
                 var type = item.Type;
@@ -80,6 +83,7 @@ namespace Altruist
                 }
             }
 
+            // 2) Execute Configure() on each configuration instance (once)
             foreach (var item in candidates)
             {
                 using var sp = services.BuildServiceProvider();
@@ -107,7 +111,15 @@ namespace Altruist
                         continue;
                     }
 
+                    if (configInstance.IsConfigured)
+                    {
+                        logger.LogDebug("Skipping Configure for {Type} (already configured).", type.FullName);
+                        continue;
+                    }
+
                     await configInstance.Configure(services).ConfigureAwait(false);
+                    configInstance.IsConfigured = true;
+
                     logger.LogDebug("Ran Configure for {Type} (Order={Order}).", type.FullName, attr.Order);
                 }
                 catch (TargetInvocationException tie) when (tie.InnerException is not null)
@@ -121,6 +133,8 @@ namespace Altruist
                     throw;
                 }
             }
+
+            IsConfigured = true;
         }
     }
 }

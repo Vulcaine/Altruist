@@ -17,6 +17,8 @@ namespace Altruist
 {
     public class AltruistServiceConfig : IAltruistConfiguration
     {
+        public bool IsConfigured { get; set; }
+
         public Task Configure(IServiceCollection services)
         {
             var cfg = GetConfig();
@@ -56,7 +58,12 @@ namespace Altruist
                 RegisterServiceType(services, cfg, log, reg, implType);
         }
 
-        private static void RegisterServiceType(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg, Type implType)
+        private static void RegisterServiceType(
+    IServiceCollection services,
+    IConfiguration cfg,
+    ILogger log,
+    List<string> reg,
+    Type implType)
         {
             if (!DependencyResolver.ShouldRegister(implType, cfg, log))
                 return;
@@ -66,16 +73,59 @@ namespace Altruist
                 var lifetime = svcAttr.Lifetime;
                 var serviceType = svcAttr.ServiceType ?? implType;
 
+                if (svcAttr.DependsOn is { Length: > 0 })
+                {
+                    using var tmpProvider = services.BuildServiceProvider();
+                    var depLogger = tmpProvider.GetRequiredService<ILoggerFactory>().CreateLogger<AltruistServiceConfig>();
+
+                    foreach (var depType in svcAttr.DependsOn)
+                    {
+                        if (depType is null)
+                            continue;
+
+                        if (!typeof(IAltruistConfiguration).IsAssignableFrom(depType))
+                        {
+                            depLogger.LogWarning(
+                                "Service {Service} declares DependsOn {Dep}, which does not implement IAltruistConfiguration. Ignoring.",
+                                DependencyResolver.GetCleanName(implType),
+                                depType.FullName);
+                            continue;
+                        }
+
+                        var depInstance = tmpProvider.GetService(depType) as IAltruistConfiguration;
+                        if (depInstance is null)
+                        {
+                            var msg =
+                                $"Service {DependencyResolver.GetCleanName(implType)} depends on configuration {depType.FullName}, " +
+                                "but it is not registered. Ensure the configuration class is annotated with [ServiceConfiguration] " +
+                                "and discovered by ConfigAttributeConfiguration.";
+                            depLogger.LogCritical(msg);
+                            throw new InvalidOperationException(msg);
+                        }
+
+                        if (!depInstance.IsConfigured)
+                        {
+                            var msg =
+                                $"Service {DependencyResolver.GetCleanName(implType)} depends on configuration {depType.FullName}, " +
+                                "but it has not finished Configure() yet (IsConfigured == false). " +
+                                "Check your [ServiceConfiguration(Order=...)] setup so that {depType.Name} runs before service registration.";
+                            depLogger.LogCritical(msg);
+                            throw new InvalidOperationException(msg);
+                        }
+                    }
+                }
+
                 DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
 
-                // Register concrete implementation
                 services.Add(new ServiceDescriptor(
                     implType,
                     sp =>
                     {
                         var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
                         try
-                        { _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log); }
+                        {
+                            _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
+                        }
                         catch (Exception ex)
                         {
                             log.LogError(ex, "❌ PostConstruct failed on service {Type}.", implType.FullName);
@@ -87,7 +137,6 @@ namespace Altruist
 
                 reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
 
-                // Forward abstraction (if provided) to the same impl instance
                 if (serviceType != implType)
                 {
                     services.Add(new ServiceDescriptor(

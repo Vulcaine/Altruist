@@ -1,5 +1,5 @@
 
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,8 @@ namespace Altruist.Gaming.Engine;
 [ServiceConfiguration]
 public class EngineStartupConfiguration : IAltruistConfiguration
 {
+    public bool IsConfigured { get; set; }
+
     public async Task Configure(IServiceCollection services)
     {
         var serviceProvider = services.BuildServiceProvider();

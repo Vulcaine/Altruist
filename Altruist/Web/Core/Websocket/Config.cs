@@ -10,7 +10,6 @@ namespace Altruist.Web;
 public sealed class WebSocketTransportToken : ITransportServiceToken
 {
     public static WebSocketTransportToken Instance = new WebSocketTransportToken();
-    public ITransportConfiguration Configuration { get; } = new WebSocketConfiguration();
 
     public string Description => "📡 Transport: WebSocket";
 }
@@ -20,6 +19,8 @@ public sealed class WebSocketTransportToken : ITransportServiceToken
 [ConditionalOnConfig("altruist:server:transport:mode", havingValue: "websocket")]
 public sealed class WebSocketConfiguration : ITransportConfiguration
 {
+    public bool IsConfigured { get; set; }
+
     public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();

@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,16 @@ namespace Altruist.Contracts;
 
 public interface IAltruistConfiguration
 {
+    /// <summary>
+    /// True once Configure has successfully completed for this instance.
+    /// Used to prevent double-configuration and to satisfy [Service.DependsOn].
+    /// </summary>
+    bool IsConfigured { get; set; }
+
+    /// <summary>
+    /// Apply configuration to the given service collection.
+    /// Implementations should be idempotent.
+    /// </summary>
     Task Configure(IServiceCollection services);
 }
 
@@ -41,7 +51,6 @@ public interface IDatabaseConfiguration : IAltruistConfiguration
 public interface IServiceToken<TConfiguration> where TConfiguration : IAltruistConfiguration
 {
     public string Description { get; }
-    public TConfiguration Configuration { get; }
 }
 
 public interface ICacheServiceToken : IServiceToken<ICacheConfiguration>
