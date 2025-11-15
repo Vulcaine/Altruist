@@ -23,7 +23,7 @@ namespace Altruist.Physx.ThreeD
 
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
     [Service(typeof(IPhysxWorldEngine3D))]
-    internal sealed class BepuWorldEngine3D : IPhysxWorldEngine3D
+    public class BepuWorldEngine3D : IPhysxWorldEngine3D
     {
         public float FixedDeltaTime { get; }
         public IReadOnlyCollection<IPhysxBody3D> Bodies => _bodies.Values.Cast<IPhysxBody3D>().ToList();
@@ -89,7 +89,7 @@ namespace Altruist.Physx.ThreeD
             _pool.Clear();
         }
 
-        internal sealed class Body3DAdapter : IPhysxBody3D
+        public sealed class Body3DAdapter : IPhysxBody3D
         {
             public string Id { get; }
             public PhysxBodyType Type { get; set; }

@@ -2,11 +2,10 @@
 using System.Numerics;
 
 using Altruist.Physx.Contracts;
-using Altruist.Physx.TwoD;
 
 using Box2DSharp.Dynamics;
 
-namespace Altruist.Physx
+namespace Altruist.Physx.TwoD
 {
     public sealed class Box2DWorldEngineFactory2D : IPhysxWorldEngineFactory2D
     {
@@ -16,7 +15,7 @@ namespace Altruist.Physx
 
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
     [Service(typeof(IPhysxWorldEngine2D))]
-    internal sealed class Box2DWorldEngine2D : IPhysxWorldEngine2D
+    public sealed class Box2DWorldEngine2D : IPhysxWorldEngine2D
     {
         public float FixedDeltaTime { get; }
         public IReadOnlyCollection<IPhysxBody> Bodies => _bodies.Values.Cast<IPhysxBody>().ToList();

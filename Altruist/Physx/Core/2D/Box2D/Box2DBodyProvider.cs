@@ -3,16 +3,15 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 
 using Altruist.Physx.Contracts;
-using Altruist.Physx.TwoD;
 using Altruist.TwoD.Numerics;
 
 using Box2DSharp.Collision.Shapes;
 using Box2DSharp.Dynamics;
 
-namespace Altruist.Physx
+namespace Altruist.Physx.TwoD
 {
 
-    class Body2DAdapter : IPhysxBody2D
+    public class Body2DAdapter : IPhysxBody2D
     {
         public string Id { get; }
         public PhysxBodyType Type { get; set; }
