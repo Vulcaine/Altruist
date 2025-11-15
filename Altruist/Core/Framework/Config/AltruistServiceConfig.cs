@@ -116,11 +116,12 @@ namespace Altruist
                 if (!DependencyResolver.ShouldRegister(portalType, cfg, log))
                     continue;
 
+                DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, portalType);
+
                 services.Add(new ServiceDescriptor(
                     portalType,
                     sp =>
                     {
-                        // Create instance + post-construct
                         var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, portalType, log);
                         try
                         {
@@ -132,10 +133,8 @@ namespace Altruist
                             throw;
                         }
 
-                        // Register [Gate]-annotated methods from THIS instance
                         RegisterGateMethodsFromInstance(instance!, log);
 
-                        // Also register instance so ConnectionManager can call OnConnected/OnDisconnected
                         if (instance is IPortal portalInstance)
                             PortalGateRegistry<IPortal>.RegisterInstance(portalInstance);
 
@@ -148,7 +147,6 @@ namespace Altruist
                 toWarmUp.Add(portalType);
             }
 
-            // ── Warm-up: force-create one instance of each portal to trigger gate registration ──
             if (toWarmUp.Count > 0)
             {
                 using var warmupProvider = services.BuildServiceProvider();
@@ -167,6 +165,7 @@ namespace Altruist
                 }
             }
         }
+
 
         private static void RegisterGateMethodsFromInstance(object instance, ILogger log)
         {

@@ -107,12 +107,12 @@ public static class DependencyPlanner
     // ---------------- registration (bottom-up) ----------------
 
     private static void RegisterBottomUp(
-        Type implType,
-        IServiceCollection services,
-        IConfiguration cfg,
-        ILogger log,
-        Stack<Type> visiting,
-        HashSet<Type> visited)
+    Type implType,
+    IServiceCollection services,
+    IConfiguration cfg,
+    ILogger log,
+    Stack<Type> visiting,
+    HashSet<Type> visited)
     {
         if (visited.Contains(implType))
             return;
@@ -138,42 +138,43 @@ public static class DependencyPlanner
                     continue;
                 if (IsAlreadyRegistered(services, abs))
                     continue;
-
-                // Special-case generic IVault<T> via provider IServiceFactory.
-                if (IsVaultAbstraction(abs))
-                {
-                    EnsureServiceFactoriesAreAvailable(services, cfg, log);
-                    RegisterServiceViaFactories(services, cfg, log, abs);
+                if (IsSkippable(abs))
                     continue;
-                }
 
+                // 1) Prefer explicit [Service] implementations
                 var candidates = FindCandidateImplementations(abs, cfg, log);
 
-                if (candidates.Count == 0)
+                if (candidates.Count > 0)
                 {
-                    // If 'abs' is a concrete class and ShouldRegister says OK, we can register it as-is.
-                    if (abs.IsClass && !abs.IsAbstract && DependencyResolver.ShouldRegister(abs, cfg, log))
-                    {
-                        RegisterBottomUp(abs, services, cfg, log, visiting, visited);
-                        RegisterOne(services, cfg, log, abs, abs, ServiceLifetime.Singleton);
-                    }
+                    // Pick the first candidate (use [Service] to disambiguate in apps)
+                    var chosen = candidates[0];
 
-                    // otherwise, leave it unresolved; the runtime resolver will produce a helpful error.
+                    // Ensure dependencies of candidate are registered first
+                    RegisterBottomUp(chosen.impl, services, cfg, log, visiting, visited);
+
+                    // Finally register the chosen implementation for the abstraction
+                    RegisterOne(services, cfg, log, chosen.impl, abs, chosen.lifetime);
                     continue;
                 }
 
-                // Pick the first candidate (use [Service] to disambiguate in apps)
-                var chosen = candidates[0];
+                // 2) If 'abs' is a concrete class and ShouldRegister says OK, we can register it as-is.
+                if (abs.IsClass && !abs.IsAbstract && DependencyResolver.ShouldRegister(abs, cfg, log))
+                {
+                    RegisterBottomUp(abs, services, cfg, log, visiting, visited);
+                    RegisterOne(services, cfg, log, abs, abs, ServiceLifetime.Singleton);
+                    continue;
+                }
 
-                // Ensure dependencies of candidate are registered first
-                RegisterBottomUp(chosen.impl, services, cfg, log, visiting, visited);
+                // 3) Fallback: let IServiceFactory handle this abstraction (generic mechanism)
+                //    Any IServiceFactory that returns true from CanCreate(abs) will participate at runtime.
+                EnsureServiceFactoriesAreAvailable(services, cfg, log);
+                RegisterServiceViaFactories(services, cfg, log, abs);
 
-                // Finally register the chosen implementation for the abstraction
-                RegisterOne(services, cfg, log, chosen.impl, abs, chosen.lifetime);
+                // if no factory can create 'abs', resolution will fail later with a clear error
             }
 
             // Ensure 'implType' itself is registered (self mapping), if not present
-            if (!IsAlreadyRegistered(services, implType) && !IsNonServiceable(implType))
+            if (!IsAlreadyRegistered(services, implType) && !IsNonServiceable(implType) && !IsSkippable(implType))
             {
                 RegisterOne(services, cfg, log, implType, implType, ServiceLifetime.Singleton);
             }
@@ -236,22 +237,15 @@ public static class DependencyPlanner
                type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid);
     }
 
-    // ---------------- vault-specific logic (using generic IServiceFactory) ----------------
-
-    private static bool IsVaultAbstraction(Type t)
-        => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IVault<>);
-
     /// <summary>
     /// Ensure IServiceFactory implementations are registered, so they can be used to create
-    /// provider-specific services (e.g. IVault&lt;T&gt;).
+    /// provider-specific services.
     /// </summary>
     private static void EnsureServiceFactoriesAreAvailable(IServiceCollection services, IConfiguration cfg, ILogger log)
     {
-        // If any IServiceFactory is already registered, we're good.
         if (services.Any(d => d.ServiceType == typeof(IServiceFactory)))
             return;
 
-        // Discover implementations that opted-in via [Service]
         var factories = _assemblies
             .SelectMany(SafeGetTypes)
             .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IServiceFactory).IsAssignableFrom(t))
@@ -262,7 +256,6 @@ public static class DependencyPlanner
             .Where(x => DependencyResolver.ShouldRegister(x.impl, cfg, log))
             .ToList();
 
-        // Fallback: allow implicit discovery if the impl has no [Service] but is present.
         if (factories.Count == 0)
         {
             factories = _assemblies
@@ -278,7 +271,8 @@ public static class DependencyPlanner
     }
 
     /// <summary>
-    /// Register a service (currently used for IVault&lt;T&gt;) so that it is created via IServiceFactory.
+    /// Register a service so that it is created via IServiceFactory.
+    /// Any factory that returns true from CanCreate(serviceType) will be used at runtime.
     /// </summary>
     private static void RegisterServiceViaFactories(
         IServiceCollection services,
@@ -299,7 +293,7 @@ public static class DependencyPlanner
                 {
                     var msg =
                         $"❌ No IServiceFactory can create '{DependencyResolver.GetCleanName(serviceType)}'. " +
-                        "Did you reference the proper provider package (e.g., Altruist.Postgres) and enable it via config?";
+                        "Did you reference the proper provider package and enable it via config?";
                     log.LogCritical(msg);
                     Environment.Exit(1);
                     throw new InvalidOperationException(msg);

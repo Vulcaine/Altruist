@@ -23,13 +23,14 @@ namespace Altruist.Postgres
     {
         public bool CanCreate(Type serviceType)
         {
-            // We only handle IVault<T> here.
+            if (!serviceType.IsGenericType)
+                return false;
+
             if (serviceType.GetGenericTypeDefinition() != typeof(IVault<>))
                 return false;
 
             var modelType = serviceType.GetGenericArguments()[0];
 
-            // Require IVaultModel + [Vault] on the model
             if (!typeof(IVaultModel).IsAssignableFrom(modelType))
                 return false;
 
