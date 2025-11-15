@@ -10,11 +10,9 @@ You may obtain a copy of the License at
 
 using System.Text;
 
-using Altruist.Contracts;
 using Altruist.Engine;
 
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -27,8 +25,8 @@ public enum ReadyState
     Alive = 2
 }
 
-[ServiceConfiguration(typeof(IServerStatus))]
-public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
+[Service(typeof(IServerStatus))]
+public sealed class ServerStatus : IServerStatus
 {
     public ReadyState Status { get; private set; } = ReadyState.Starting;
 
@@ -65,10 +63,10 @@ public sealed class ServerStatus : IServerStatus, IAltruistConfiguration
     /// Kicks off the startup sequence (connect + wait + advertise readiness).
     /// Called automatically during startup via the [Configuration] mechanism.
     /// </summary>
-    public async Task Configure(IServiceCollection services)
+    [PostConstruct]
+    public async Task Configure(IAltruistEngine engine)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var engine = services.BuildServiceProvider().GetRequiredService<IAltruistEngine>();
 
         if (_connectables.Count > 0)
             StartTimeoutTimer(engine);
