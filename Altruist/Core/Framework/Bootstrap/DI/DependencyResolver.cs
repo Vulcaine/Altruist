@@ -25,14 +25,6 @@ namespace Altruist
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _singletonCache
             = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
 
-        /// <summary>
-        /// Cache of already constructed service instances keyed by service type.
-        /// Used to short-circuit resolution (especially during PostConstruct) and
-        /// avoid circular or duplicate construction.
-        /// </summary>
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _serviceInstanceCache
-            = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
-
         private static readonly object _convLock = new();
         private static Dictionary<Type, IConfigConverter>? _converters;
 
@@ -48,21 +40,6 @@ namespace Altruist
                 _constructionPath.Value = s;
             }
             return s;
-        }
-
-        /// <summary>
-        /// Explicitly register a constructed instance for a given service type.
-        /// This allows us to reuse the same object for different service interfaces
-        /// (e.g. impl + abstraction) and to make it visible during PostConstruct calls.
-        /// </summary>
-        public static void RegisterInstance(Type serviceType, object instance)
-        {
-            if (serviceType == null)
-                throw new ArgumentNullException(nameof(serviceType));
-            if (instance == null)
-                throw new ArgumentNullException(nameof(instance));
-
-            _serviceInstanceCache[serviceType] = instance;
         }
 
         private static string FormatCyclePath(IEnumerable<Type> path, Type repeat)
@@ -112,10 +89,6 @@ namespace Altruist
 
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
-            // If we already have an instance cached for this impl type, reuse it.
-            if (_serviceInstanceCache.TryGetValue(impl, out var instFromCache))
-                return instFromCache;
-
             var path = GetConstructionStack();
 
             if (path.Contains(impl))
@@ -316,9 +289,9 @@ namespace Altruist
 
         /// <summary>
         /// Central helper for planner and service registration:
-        /// registers a service so that its instances are created via DependencyResolver,
-        /// cached, and passed through PostConstruct, while also ensuring the instance
-        /// is visible in the internal cache before PostConstruct executes.
+        /// registers a service so that its instances are created via DependencyResolver
+        /// and cached appropriately. The planner is responsible for deciding *what*
+        /// gets registered; this method only does the actual DI registration.
         /// </summary>
         internal static void RegisterPlannedService(
             IServiceCollection services,
@@ -340,17 +313,6 @@ namespace Altruist
                 {
                     // Construct instance (honoring singleton cache)
                     var obj = CreateWithConfiguration(sp, cfg, implType, log, lifetime);
-
-                    // Make instance visible before PostConstruct:
-                    // - cache under the implementation type
-                    // - cache under the service abstraction (if different)
-                    RegisterInstance(implType, obj);
-                    if (serviceType != implType)
-                        RegisterInstance(serviceType, obj);
-
-                    // Fire PostConstruct (async, but we don't await here)
-                    _ = InvokePostConstructAsync(obj, sp, cfg, log);
-
                     return obj!;
                 },
                 lifetime));
@@ -419,10 +381,6 @@ namespace Altruist
 
                 return arr;
             }
-
-            // 3.5) Check internal instance cache first (for already-built services).
-            if (_serviceInstanceCache.TryGetValue(paramType, out var cached))
-                return cached;
 
             // 4) Try resolve the exact service from the provider
             var service = sp.GetService(paramType);

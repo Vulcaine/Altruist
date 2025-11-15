@@ -10,6 +10,8 @@ public static class AltruistBootstrap
 {
     public static readonly IServiceCollection Services = new ServiceCollection();
 
+    private static readonly HashSet<string> _constructionCache = new();
+
     /// <summary>
     /// Entry point called by your app. Add more steps after BootstrapServices as needed.
     /// </summary>
@@ -86,6 +88,9 @@ public static class AltruistBootstrap
         {
             var serviceType = descriptor.ServiceType;
             if (serviceType is null)
+                continue;
+
+            if (!_constructionCache.Add(serviceType.FullName!))
                 continue;
 
             if (!processedServiceTypes.Add(serviceType))

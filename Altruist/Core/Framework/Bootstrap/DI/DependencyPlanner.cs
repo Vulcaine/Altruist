@@ -6,6 +6,8 @@ Licensed under the Apache License, Version 2.0
 using System.Collections.Concurrent;
 using System.Reflection;
 
+using Altruist.UORM;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -31,6 +33,20 @@ public static class DependencyPlanner
         .GetAssemblies()
         .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
         .ToArray();
+
+    /// <summary>
+    /// Only types with these attributes are allowed to be automatically registered
+    /// as dependencies by the planner.
+    /// </summary>
+    private static readonly Type[] _serviceMarkerAttributes =
+    {
+        typeof(ServiceAttribute),
+        typeof(VaultAttribute)
+    };
+
+    private static bool HasServiceMarker(Type t) =>
+        t.GetCustomAttributes(inherit: true)
+         .Any(a => _serviceMarkerAttributes.Any(ma => ma.IsAssignableFrom(a.GetType())));
 
     /// <summary>
     /// Ensure that <paramref name="implType"/> and all of its transitive constructor
@@ -129,7 +145,10 @@ public static class DependencyPlanner
                     continue;
                 }
 
-                if (abs.IsClass && !abs.IsAbstract && DependencyResolver.ShouldRegister(abs, cfg, log))
+                // Only auto-register concrete types that are explicitly marked
+                // with an accepted service marker attribute.
+                if (abs.IsClass && !abs.IsAbstract && HasServiceMarker(abs) &&
+                    DependencyResolver.ShouldRegister(abs, cfg, log))
                 {
                     RegisterBottomUp(abs, services, cfg, log, visiting, visited);
                     DependencyResolver.RegisterPlannedService(services, cfg, log, abs, abs, ServiceLifetime.Singleton);
@@ -140,11 +159,10 @@ public static class DependencyPlanner
                 RegisterServiceViaFactories(services, cfg, log, abs);
             }
 
-            if (!IsAlreadyRegistered(services, implType) && !DependencyResolver.IsNonServiceable(implType))
-            {
-                DependencyResolver.RegisterPlannedService(services, cfg, log, implType, implType, ServiceLifetime.Singleton);
-            }
-
+            // Note: we no longer auto-register implType itself here.
+            // The caller (e.g. AltruistServiceConfig) is responsible for
+            // registering the root implementation; the planner only ensures
+            // its transitive dependencies are registered.
             visited.Add(implType);
         }
         finally

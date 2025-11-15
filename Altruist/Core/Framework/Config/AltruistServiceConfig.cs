@@ -61,6 +61,7 @@ namespace Altruist
                 RegisterServiceType(services, cfg, log, reg, implType);
         }
 
+
         private static void RegisterServiceType(
             IServiceCollection services,
             IConfiguration cfg,
@@ -148,15 +149,11 @@ namespace Altruist
 
                 DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, portalType);
 
-                // Register portal as transient.
-                // IMPORTANT: still no PostConstruct here – that comes later in the global pass.
                 services.Add(new ServiceDescriptor(
                     portalType,
                     sp =>
                     {
                         var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, portalType, log);
-
-                        // Register gates right when we build an instance.
                         RegisterGateMethodsFromInstance(instance!, log);
 
                         if (instance is IPortal portalInstance)
