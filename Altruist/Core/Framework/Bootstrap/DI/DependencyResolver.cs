@@ -223,6 +223,10 @@ namespace Altruist
         {
             var paramType = p.ParameterType;
 
+            var a = p.GetCustomAttribute<AppConfigValueAttribute>(false);
+            if (a is not null)
+                return ResolveFromConfig(cfg, p.ParameterType, a, log);
+
             // 0) Hard-stop for simple/BCL types (string, primitives, etc.).
             // These must be bound via [AppConfigValue] or given a default.
             if (IsSimple(paramType))
@@ -236,11 +240,6 @@ namespace Altruist
                 FailAndExit(log, errMsg);
                 throw new InvalidOperationException(errMsg);
             }
-
-            // 1) Config-bound parameter?
-            var a = p.GetCustomAttribute<AppConfigValueAttribute>(false);
-            if (a is not null)
-                return ResolveFromConfig(cfg, p.ParameterType, a, log);
 
             // 2) Handle all supported collection kinds (Spring-style)
             if (paramType.IsGenericType)
