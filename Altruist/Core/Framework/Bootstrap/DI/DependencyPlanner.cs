@@ -131,7 +131,6 @@ public static class DependencyPlanner
         {
             var node = BuildGraph(implType, cfg, log);
 
-            // For each abstraction dep, ensure at least one implementation is registered
             foreach (var abs in node.DirectDeps)
             {
                 if (IsNonServiceable(abs))
@@ -141,23 +140,18 @@ public static class DependencyPlanner
                 if (IsSkippable(abs))
                     continue;
 
-                // 1) Prefer explicit [Service] implementations
                 var candidates = FindCandidateImplementations(abs, cfg, log);
 
                 if (candidates.Count > 0)
                 {
-                    // Pick the first candidate (use [Service] to disambiguate in apps)
                     var chosen = candidates[0];
 
-                    // Ensure dependencies of candidate are registered first
                     RegisterBottomUp(chosen.impl, services, cfg, log, visiting, visited);
 
-                    // Finally register the chosen implementation for the abstraction
                     RegisterOne(services, cfg, log, chosen.impl, abs, chosen.lifetime);
                     continue;
                 }
 
-                // 2) If 'abs' is a concrete class and ShouldRegister says OK, we can register it as-is.
                 if (abs.IsClass && !abs.IsAbstract && DependencyResolver.ShouldRegister(abs, cfg, log))
                 {
                     RegisterBottomUp(abs, services, cfg, log, visiting, visited);
@@ -165,15 +159,13 @@ public static class DependencyPlanner
                     continue;
                 }
 
-                // 3) Fallback: let IServiceFactory handle this abstraction (generic mechanism)
-                //    Any IServiceFactory that returns true from CanCreate(abs) will participate at runtime.
-                EnsureServiceFactoriesAreAvailable(services, cfg, log);
-                RegisterServiceViaFactories(services, cfg, log, abs);
-
-                // if no factory can create 'abs', resolution will fail later with a clear error
+                if (abs.IsGenericType)
+                {
+                    EnsureServiceFactoriesAreAvailable(services, cfg, log);
+                    RegisterServiceViaFactories(services, cfg, log, abs);
+                }
             }
 
-            // Ensure 'implType' itself is registered (self mapping), if not present
             if (!IsAlreadyRegistered(services, implType) && !IsNonServiceable(implType) && !IsSkippable(implType))
             {
                 RegisterOne(services, cfg, log, implType, implType, ServiceLifetime.Singleton);
@@ -186,6 +178,7 @@ public static class DependencyPlanner
             visiting.Pop();
         }
     }
+
 
     private static bool IsAlreadyRegistered(IServiceCollection services, Type serviceType)
         => services.Any(d => d.ServiceType == serviceType);
