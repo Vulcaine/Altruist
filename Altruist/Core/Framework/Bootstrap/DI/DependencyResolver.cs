@@ -90,13 +90,12 @@ namespace Altruist
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
             var path = GetConstructionStack();
+
+            if (path.Contains(impl) && _singletonCache.TryGetValue(impl, out var cached))
+                return cached;
+
             if (path.Contains(impl))
             {
-                // try container first (may already have been created/registered)
-                var resolved = sp.GetService(impl);
-                if (resolved is not null)
-                    return resolved;
-
                 var cycle = FormatCyclePath(path, impl);
                 throw new InvalidOperationException(
                     $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}");
