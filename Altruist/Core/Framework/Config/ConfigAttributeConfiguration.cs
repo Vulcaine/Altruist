@@ -133,15 +133,6 @@ namespace Altruist
                 {
                     var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<ConfigAttributeConfiguration>();
                     var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, type, logger, lifetime);
-                    try
-                    {
-                        _ = DependencyResolver.InvokePostConstructAsync(instance, sp, cfg, logger);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "PostConstruct failed on configuration {Type}.", type.FullName);
-                        throw;
-                    }
                     return instance!;
                 },
                 lifetime));

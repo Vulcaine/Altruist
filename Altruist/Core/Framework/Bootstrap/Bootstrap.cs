@@ -19,8 +19,6 @@ public static class AltruistBootstrap
         ConfigureLogging();
         await BootstrapModules();
         await BootstrapServices();
-
-        // 🔁 Global PostConstruct pass AFTER all services are registered
         await RunPostConstructsAsync();
     }
 
