@@ -3,7 +3,7 @@ Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
 You may not use this file except in compliance with the License.
-You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Globalization;
@@ -22,7 +22,20 @@ namespace Altruist
     /// </summary>
     public static class DependencyResolver
     {
+        /// <summary>
+        /// Cache of singleton instances keyed by their implementation type.
+        /// This is used when we explicitly construct a given impl type.
+        /// </summary>
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _singletonCache
+            = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
+
+        /// <summary>
+        /// Cache of resolved service instances keyed by the *service type* (interface or concrete).
+        /// This is specifically to avoid re-entering the ServiceProvider for types we've already
+        /// created (or had the container create) once. It is what breaks the PostConstruct
+        /// re-entrancy you observed (e.g. ServerStatus.PostConstruct → IEngineCore).
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _serviceInstanceCache
             = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
 
         private static readonly object _convLock = new();
@@ -63,6 +76,26 @@ namespace Altruist
             }
         }
 
+        /// <summary>
+        /// Registers a fully constructed instance for the given service type in the
+        /// internal service cache. This allows PostConstruct and other resolution
+        /// paths to retrieve existing instances *without* re-entering IServiceProvider.
+        ///
+        /// Typical usage: DependencyPlanner.RegisterOne, right after constructing via
+        /// CreateWithConfiguration:
+        ///   var obj = DependencyResolver.CreateWithConfiguration(...);
+        ///   DependencyResolver.RegisterInstance(serviceType, obj);
+        /// </summary>
+        public static void RegisterInstance(Type serviceType, object instance)
+        {
+            if (serviceType is null)
+                throw new ArgumentNullException(nameof(serviceType));
+            if (instance is null)
+                throw new ArgumentNullException(nameof(instance));
+
+            _serviceInstanceCache[serviceType] = instance;
+        }
+
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
             => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
 
@@ -77,36 +110,42 @@ namespace Altruist
                 // 2) Build the instance (this is where circular detection happens).
                 var obj = CreateInstanceInternal(sp, cfg, impl, log);
 
-                // 3) Cache it for future calls.
+                // 3) Cache it for future calls (by impl type).
                 _singletonCache[impl] = obj;
+                _serviceInstanceCache[impl] = obj; // also expose by impl-type as "serviceType" fallback
 
                 return obj;
             }
 
             // Transient / other lifetimes
-            return CreateInstanceInternal(sp, cfg, impl, log);
+            var created = CreateInstanceInternal(sp, cfg, impl, log);
+
+            // For non-singletons we do NOT globally cache by impl (that would break lifetime semantics),
+            // but we *can* store it in the service cache keyed by its concrete type for this run.
+            _serviceInstanceCache[impl] = created;
+            return created;
         }
 
+        /// <summary>
+        /// Core object construction routine with circular-dependency tracking.
+        /// IMPORTANT: this method does *not* call back into IServiceProvider to
+        /// probe for existing instances; it only uses the construction-path stack
+        /// and our own caches. This avoids infinite recursion and weird re-entry.
+        /// </summary>
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
             var path = GetConstructionStack();
 
+            // If we are already constructing this impl and we *also* have a finished
+            // singleton instance, we can safely reuse that, rather than treating this
+            // as a fatal cycle. This covers the "already created and cached" case.
+            if (path.Contains(impl) && _singletonCache.TryGetValue(impl, out var cached))
+                return cached;
+
+            // Genuine circular construction: impl is already on the stack and we
+            // have no completed instance in the singleton cache.
             if (path.Contains(impl))
             {
-                // 1) First, try to get an already-constructed instance from the provider.
-                //    This covers cases where the same implementation type was registered
-                //    under a different service type and is already built.
-                var fromProvider = sp.GetService(impl);
-                if (fromProvider is not null)
-                    return fromProvider;
-
-                // 2) Then, fall back to our own singleton cache.
-                //    If we've already finished constructing this impl, use it.
-                if (_singletonCache.TryGetValue(impl, out var cached))
-                    return cached;
-
-                // 3) At this point, we are genuinely in a construction cycle where
-                //    no concrete instance exists yet → fatal circular dependency.
                 var cycle = FormatCyclePath(path, impl);
                 var msg = $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}";
 
@@ -267,6 +306,12 @@ namespace Altruist
                 throw new InvalidOperationException(errMsg);
             }
 
+            // 1) Our own service cache first (serviceType -> instance).
+            // This is key to avoiding re-entry during PostConstruct when the same
+            // interface (e.g. IEngineCore) is requested again.
+            if (_serviceInstanceCache.TryGetValue(paramType, out var cachedService))
+                return cachedService;
+
             // 2) Handle all supported collection kinds (Spring-style)
             if (paramType.IsGenericType)
             {
@@ -302,10 +347,15 @@ namespace Altruist
                 return arr;
             }
 
-            // 4) Try resolve the exact service
+            // 4) Try resolve the exact service from the container (once).
+            // If we succeed, remember it in our service cache so subsequent
+            // resolutions (including PostConstruct) don't re-enter IServiceProvider.
             var service = sp.GetService(paramType);
             if (service is not null)
+            {
+                _serviceInstanceCache[paramType] = service;
                 return service;
+            }
 
             // 5) Optional/default value?
             if (p.HasDefaultValue)
