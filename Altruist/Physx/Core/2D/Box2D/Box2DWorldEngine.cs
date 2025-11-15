@@ -25,9 +25,7 @@ namespace Altruist.Physx.TwoD
         private readonly Dictionary<Body, Body2DAdapter> _byNative = new();
 
         public Box2DWorldEngine2D(
-            [AppConfigValue("altruist:game:engine:gravity", "0, -9.81")]
             Vector2 gravity,
-            [AppConfigValue("altruist:game:engine:fixed-delta", "0.0166f")]
             float fixedDeltaTime = 1f / 60f
         )
         {
