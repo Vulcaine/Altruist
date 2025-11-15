@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
@@ -22,14 +22,10 @@ namespace Altruist.Gaming.ThreeD
         WorldPartitionManager3D? FindPartitionForPosition(int x, int y, int z);
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
-    [Service(typeof(IGameWorldManager))]
-    [Service(typeof(IGameWorldManager3D))]
     public sealed class GameWorldManager3D : IGameWorldManager3D
     {
         private readonly WorldIndex3D _index;
         private readonly IWorldPartitioner3D _worldPartitioner;
-        private readonly ICacheProvider _cache;
         private readonly IPrefabManager3D _prefabManager;
         private readonly Dictionary<PartitionIndex3D, WorldPartitionManager3D> _partitionMap = new();
 
@@ -40,13 +36,11 @@ namespace Altruist.Gaming.ThreeD
             WorldIndex3D world,
             IPhysxWorld3D physx3D,
             IWorldPartitioner3D worldPartitioner,
-            ICacheProvider cacheProvider,
             IPrefabManager3D prefabManager
         )
         {
             _index = world ?? throw new ArgumentNullException(nameof(world));
             _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));
-            _cache = cacheProvider ?? throw new ArgumentNullException(nameof(cacheProvider));
             _prefabManager = prefabManager ?? throw new ArgumentNullException(nameof(prefabManager));
 
             _physx3D = physx3D ?? throw new ArgumentNullException(nameof(physx3D));

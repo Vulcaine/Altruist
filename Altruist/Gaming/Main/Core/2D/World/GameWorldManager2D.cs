@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
@@ -23,8 +23,6 @@ namespace Altruist.Gaming.TwoD
         IWorldPartitionManager? FindPartitionForPosition(int x, int y);
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
-    [Service(typeof(IGameWorldManager))]
     public sealed class GameWorldManager2D : IGameWorldManager2D
     {
         private readonly WorldIndex2D _index;

@@ -38,7 +38,7 @@ namespace Altruist.Gaming.ThreeD
             if (_worlds.ContainsKey(index.Index))
                 throw new InvalidOperationException($"World {index.Index} already exists.");
 
-            var manager = new GameWorldManager3D(index, physx3D, _partitioner, _cache, _prefabManager);
+            var manager = new GameWorldManager3D(index, physx3D, _partitioner, _prefabManager);
             manager.Initialize();
             _worlds[index.Index] = manager;
         }
