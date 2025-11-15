@@ -257,20 +257,6 @@ public class EngineStaticTask
     }
 }
 
-public interface IEngineCore
-{
-    CycleRate Rate { get; }
-    bool Enabled { get; }
-    void Enable();
-    void Disable();
-    void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
-    void Start();
-    void Stop();
-    void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
-    void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
-}
-
-
 [Service(typeof(IEngineCore))]
 public class AltruistEngine : IAltruistEngine
 {
