@@ -1,10 +1,12 @@
-/* 
+// Altruist.Postgres/SqlDbProvider.cs
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
-You may not use this file except in compliance with the License.
+you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-http://www.apache.org/licenses/LICENSE-2.0
+
+    http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Data;
@@ -13,7 +15,6 @@ using System.Text;
 
 using Altruist.Contracts;
 using Altruist.Persistence;
-using Altruist.UORM;
 
 using Npgsql;
 
@@ -39,6 +40,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
     private readonly bool _trustServerCertificate;   // useful for local dev if SSL is enabled
 
     // ---------- helpers ----------
+
     private static string NormLower(string? s) => (s ?? string.Empty).Trim().ToLowerInvariant();
 
     private static Npgsql.SslMode ParseSslMode(string rawLower)
@@ -69,11 +71,10 @@ public class SqlDbProvider : ISqlDatabaseProvider
             SslMode = ParseSslMode(_sslModeRaw)
         };
 
-        if (_trustServerCertificate)
-            csb.TrustServerCertificate = true;
-
         return csb.ConnectionString;
     }
+
+    public string GetConnectionString() => BuildConnectionString();
 
     public bool IsConnected { get; private set; }
 
@@ -152,7 +153,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
         RaiseOnRetryExhaustedEvent(last!);
     }
 
-    // IConnectable overload: protocol/host/port-based connect with retries
+    // IConnectable-style overload: protocol/host/port-based connect with retries
     public async Task ConnectAsync(string protocol, string host, int port, int maxRetries, int delayMilliseconds)
     {
         Exception? last = null;
@@ -364,7 +365,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
     }
 
     /// <summary>
-    /// Translates '?' placeholders to PostgreSQL '$1..$n' and binds parameters.
+    /// Translates '?' placeholders to PostgreSQL '@p1..@pn' and binds parameters.
     /// Handles single-quoted string literals to avoid replacing '?' inside them.
     /// </summary>
     private static NpgsqlCommand PrepareCommand(NpgsqlConnection conn, string sql, List<object>? parameters)
@@ -438,9 +439,8 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     #endregion
 
-    #region Schema / Table creation
+    #region Schema creation (no table DDL here)
 
-    // IGeneralDatabaseProvider requires CreateKeySpaceAsync (Scylla naming); map to PG schema creation
     public Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
         => CreateSchemaAsync(keyspace, options);
 
@@ -450,220 +450,6 @@ public class SqlDbProvider : ISqlDatabaseProvider
         using var cmd = _conn!.CreateCommand();
         cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-    }
-
-    public async Task CreateTableAsync<TVaultModel>(IKeyspace? schema = null) where TVaultModel : class, IVaultModel
-        => await CreateTableAsync(typeof(TVaultModel), schema).ConfigureAwait(false);
-
-    public async Task CreateTableAsync(Type entityType, IKeyspace? schema = null)
-    {
-        await EnsureConnectedAsync();
-
-        var doc = Document.From(entityType);
-        var tableAttr = entityType.GetCustomAttribute<VaultAttribute>()
-                       ?? throw new InvalidOperationException($"Type '{entityType.Name}' is missing VaultAttribute.");
-
-        string schemaName = NormLower(schema?.Name ?? "public");
-        string tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(doc.Name)}";
-        bool storeHistory = tableAttr.StoreHistory;
-
-        // Build column list from Document.Columns (prop -> physical column)
-        // We need the CLR type to map to SQL type.
-        var colDefs = new List<string>(doc.Columns.Count);
-        foreach (var kv in doc.Columns)
-        {
-            var propName = kv.Key;     // logical property (e.g., GroupId)
-            var columnName = kv.Value;   // physical column (e.g., groupId)
-
-            var prop = entityType.GetProperty(propName, BindingFlags.Public | BindingFlags.Instance)
-                       ?? throw new InvalidOperationException(
-                           $"Property '{propName}' not found on '{entityType.Name}' while building table '{doc.Name}'.");
-
-            colDefs.Add($"{QuoteIdent(columnName)} {MapTypeToSql(prop.PropertyType)}");
-        }
-
-        // Primary key: attribute stores property names — translate to physical columns via Document.Columns
-        var pkCols = ResolvePrimaryKeyColumns(doc);
-        if (pkCols.Count == 0)
-            throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}' or its base types.");
-
-        // CREATE TABLE
-        var sb = new StringBuilder();
-        sb.Append($"CREATE TABLE IF NOT EXISTS {tableFqn} (");
-        sb.Append(string.Join(", ", colDefs));
-        sb.Append(", PRIMARY KEY (");
-        sb.Append(string.Join(", ", pkCols.Select(QuoteIdent)));
-        sb.Append("));");
-
-        await using (var cmd = _conn!.CreateCommand())
-        {
-            cmd.CommandText = sb.ToString();
-            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-
-        // Secondary indexes from Document.Indexes (already physical column names in Document.From)
-        if (doc.Indexes is not null && doc.Indexes.Count > 0)
-        {
-            var pkSet = new HashSet<string>(pkCols, StringComparer.OrdinalIgnoreCase);
-            foreach (var idxCol in doc.Indexes.Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                if (pkSet.Contains(idxCol))
-                    continue; // skip PK columns
-
-                var indexName = $"{doc.Name}_{idxCol}_idx";
-                await using var idxCmd = _conn!.CreateCommand();
-                idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(indexName)} ON {tableFqn} ({QuoteIdent(idxCol)});";
-                await idxCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-            }
-        }
-
-        // Optional: index for SortingBy (don’t change PK; just index it)
-        var sortCol = ResolveSortingColumn(doc);
-        if (sortCol is not null && !pkCols.Contains(sortCol, StringComparer.OrdinalIgnoreCase))
-        {
-            var idx = $"{doc.Name}_{sortCol}_idx";
-            await using var idxCmd = _conn!.CreateCommand();
-            idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(idx)} ON {tableFqn} ({QuoteIdent(sortCol)});";
-            await idxCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-
-        // History table (mirror Document columns)
-        if (storeHistory)
-        {
-            string historyFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(doc.Name + "_history")}";
-
-            var histCols = new List<string>(doc.Columns.Count);
-            foreach (var kv in doc.Columns)
-            {
-                var prop = entityType.GetProperty(kv.Key, BindingFlags.Public | BindingFlags.Instance)!;
-                histCols.Add($"{QuoteIdent(kv.Value)} {MapTypeToSql(prop.PropertyType)}");
-            }
-
-            var hist = new StringBuilder();
-            hist.Append($"CREATE TABLE IF NOT EXISTS {historyFqn} (");
-            hist.Append(string.Join(", ", histCols));
-            hist.Append(", \"timestamp\" timestamptz NOT NULL, ");
-            hist.Append("PRIMARY KEY (");
-            hist.Append(string.Join(", ", pkCols.Select(QuoteIdent)));
-            hist.Append(", \"timestamp\"));");
-
-            await using (var cmd = _conn!.CreateCommand())
-            {
-                cmd.CommandText = hist.ToString();
-                await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-            }
-
-            // Helpful indexes on history PK components (excluding timestamp which is already in PK)
-            foreach (var key in pkCols)
-            {
-                var idxName = $"{doc.Name}_history_{key}_idx";
-                await using var idxCmd = _conn!.CreateCommand();
-                idxCmd.CommandText = $"CREATE INDEX IF NOT EXISTS {QuoteIdent(idxName)} ON {historyFqn} ({QuoteIdent(key)});";
-                await idxCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-            }
-        }
-    }
-
-    private static List<string> ResolvePrimaryKeyColumns(Document doc)
-    {
-        var result = new List<string>();
-        var keys = doc.PrimaryKey?.Keys ?? Array.Empty<string>();
-        foreach (var keyProp in keys)
-        {
-            if (doc.Columns.TryGetValue(keyProp, out var col))
-                result.Add(col);
-            else
-                result.Add(Document.ToCamelCase(keyProp)); // safe fallback
-        }
-        return result;
-    }
-
-    private static string? ResolveSortingColumn(Document doc)
-    {
-        var sortProp = doc.SortingBy?.Name;
-        if (string.IsNullOrWhiteSpace(sortProp))
-            return null;
-
-        return doc.Columns.TryGetValue(sortProp, out var col)
-            ? col
-            : Document.ToCamelCase(sortProp);
-    }
-
-    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
-
-    private static string MapTypeToSql(Type type)
-    {
-        // Unwrap Nullable<T>
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
-            type = Nullable.GetUnderlyingType(type)!;
-
-        // Primitive / scalar mappings
-        if (type == typeof(string))
-            return "text";
-        if (type == typeof(bool))
-            return "boolean";
-        if (type == typeof(byte))
-            return "smallint";
-        if (type == typeof(short))
-            return "smallint";
-        if (type == typeof(int))
-            return "integer";
-        if (type == typeof(long))
-            return "bigint";
-        if (type == typeof(float))
-            return "real";
-        if (type == typeof(double))
-            return "double precision";
-        if (type == typeof(decimal))
-            return "numeric";
-        if (type == typeof(DateTime))
-            return "timestamp";
-        if (type == typeof(DateTimeOffset))
-            return "timestamptz";
-        if (type == typeof(Guid))
-            return "uuid";
-        if (type == typeof(byte[]))
-            return "bytea"; // binary blob
-        if (type == typeof(TimeSpan))
-            return "interval";
-
-        // Array mappings (except byte[], already handled above)
-        if (type.IsArray)
-        {
-            var elem = type.GetElementType()!;
-
-            if (elem == typeof(short))
-                return "smallint[]";
-            if (elem == typeof(int))
-                return "integer[]";
-            if (elem == typeof(long))
-                return "bigint[]";
-            if (elem == typeof(string))
-                return "text[]";
-            if (elem == typeof(float))
-                return "real[]";
-            if (elem == typeof(double))
-                return "double precision[]";
-            if (elem == typeof(Guid))
-                return "uuid[]";
-
-            // Fallback for other array element types
-            return "jsonb";
-        }
-
-        // Generic collections (List<>, etc.) – you can get fancy here if you want:
-        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type) && type != typeof(string))
-        {
-            // If you want, you could inspect generic type arguments and map List<int> → integer[], etc.
-            // But simple & safe default is jsonb.
-            return "jsonb";
-        }
-
-        if (type.IsEnum)
-            return "text";
-
-        // Fallback for complex / unknown types
-        return "jsonb";
     }
 
     #endregion
@@ -731,7 +517,6 @@ public class SqlDbProvider : ISqlDatabaseProvider
             _pingLock.Release();
         }
     }
-
 
     private void StopHealthChecks() => _healthCts.Cancel();
 

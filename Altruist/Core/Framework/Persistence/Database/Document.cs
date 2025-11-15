@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,12 +32,13 @@ public class Document
 
     public VaultPrimaryKeyAttribute? PrimaryKey { get; set; } = new();
 
+    // Physical column names that are UNIQUE
     public List<string> UniqueKeys { get; set; } = new();
 
     public VaultSortingByAttribute? SortingBy { get; set; }
 
-    public List<string> Fields { get; set; } = new();     // logical field names (camelCase)
-    public Dictionary<string, string> Columns { get; set; } = new();    // actual column names
+    public List<string> Fields { get; set; } = new();     // logical field names (PascalCase)
+    public Dictionary<string, string> Columns { get; set; } = new(); // logical -> physical
 
     public List<string> Indexes { get; set; } = new();
 
@@ -47,16 +48,17 @@ public class Document
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; set; } = new();
 
     public Document(
-
         VaultAttribute header,
         Type type,
         string name,
         List<string> fields,
         Dictionary<string, string> columns,
         List<string> indexes,
+        List<string> uniqueKeys,
         Dictionary<string, Func<object, object?>> propertyAccessors,
         VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
-        VaultSortingByAttribute? sortingByAttribute = null, bool storeHistory = false)
+        VaultSortingByAttribute? sortingByAttribute = null,
+        bool storeHistory = false)
     {
         PrimaryKey = primaryKeyAttribute;
         Header = header;
@@ -65,6 +67,7 @@ public class Document
         Fields = fields;
         Columns = columns;
         Indexes = indexes;
+        UniqueKeys = uniqueKeys;
         PropertyAccessors = propertyAccessors;
         TypePropertyName = "";
         SortingBy = sortingByAttribute;
@@ -84,6 +87,7 @@ public class Document
         var fields = new List<string>();
         var columns = new Dictionary<string, string>();
         var indexes = new List<string>();
+        var uniqueKeys = new List<string>();
         var accessors = new Dictionary<string, Func<object, object?>>();
         var primaryKey = type.GetCustomAttribute<VaultPrimaryKeyAttribute>();
         var sortingBy = type.GetCustomAttribute<VaultSortingByAttribute>();
@@ -101,16 +105,31 @@ public class Document
             // accessor cache
             accessors[fieldName] = CompileAccessor(prop);
 
+            // [VaultColumnIndex] -> non-unique index on physical column
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
             {
-                // store physical name for indexes too
                 indexes.Add(physical);
+            }
+
+            // [VaultUniqueColumn] -> UNIQUE constraint on physical column
+            if (prop.GetCustomAttribute<VaultUniqueColumnAttribute>() != null)
+            {
+                uniqueKeys.Add(physical);
             }
         }
 
         return new Document(
-            vaultAttribute!, type, name, fields, columns, indexes, accessors,
-            primaryKey, sortingBy, vaultAttribute != null && vaultAttribute.StoreHistory);
+            vaultAttribute!,
+            type,
+            name,
+            fields,
+            columns,
+            indexes,
+            uniqueKeys,
+            accessors,
+            primaryKey,
+            sortingBy,
+            vaultAttribute != null && vaultAttribute.StoreHistory);
     }
 
     private static Func<object, object?> CompileAccessor(PropertyInfo property)

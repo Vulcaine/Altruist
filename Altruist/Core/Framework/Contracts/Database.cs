@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -120,8 +120,7 @@ public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
 public interface IGeneralDatabaseProvider : IConnectable
 {
     IDatabaseServiceToken Token { get; }
-    Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel;
-    Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null);
+    string GetConnectionString();
     Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null);
     Task ChangeKeyspaceAsync(string keyspace);
 }

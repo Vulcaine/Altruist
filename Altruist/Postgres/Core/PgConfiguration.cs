@@ -4,6 +4,7 @@ using System.Reflection;
 using Altruist.Contracts;
 using Altruist.Persistence;
 using Altruist.UORM;
+using Altruist.Migrations; // for IVaultSchemaMigrator
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,7 +56,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         // 5) Populate the TransactionalRegistry and wrap transactional services
         RegisterTransactionalServices(services, assemblies);
 
-        // 6) Bootstrap DB objects
+        // 6) Bootstrap DB objects via migration system
         await BootstrapAsync(services, schemaTypes, vaultModelTypes);
     }
 
@@ -126,6 +127,13 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             return;
         }
 
+        var migrator = sp.GetService<IVaultSchemaMigrator>();
+        if (migrator is null)
+        {
+            logger.LogWarning("⚠️ No IVaultSchemaMigrator registered; skipping PostgreSQL schema migration.");
+            return;
+        }
+
         if (vaultModelTypes.Length == 0)
         {
             logger.LogInformation("ℹ️ No [Vault]/[Prefab]-annotated IVaultModel types found.");
@@ -142,10 +150,16 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
             var schemaInstance = ResolveSchemaInstance(sp, schemaTypes, allSchemaInstances, schemaName)
                                  ?? new DefaultSchema(schemaName);
 
+            // Ensure DB + schema exist at physical level
             await provider.ConnectAsync();
             await provider.CreateSchemaAsync(schemaInstance.Name, null);
 
-            await CreateTablesAndRunHooksAsync(provider, sp, logger, schemaInstance, group.ToArray());
+            // Run migration / auto-DDL for this schema & its models
+            await migrator.Migrate(schemaInstance, group.ToArray());
+
+            // Run hooks (before/after/preload) on the models
+            await CreateTablesAndRunHooksAsync(sp, logger, group.ToArray());
+
             await provider.ShutdownAsync();
         }
 
@@ -182,26 +196,31 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
         });
 
     private static async Task CreateTablesAndRunHooksAsync(
-        ISqlDatabaseProvider provider,
         IServiceProvider sp,
         ILogger<PostgresDBConfiguration> logger,
-        IKeyspace schemaInstance,
         Type[] modelTypes)
     {
         foreach (var modelType in modelTypes)
         {
+            IVaultModel? instance = null;
+
             try
             {
-                await provider.CreateTableAsync(modelType, schemaInstance);
+                instance = modelType.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, $"Failed to create table for {modelType.Name}. Reason: {ex.Message}");
+                logger.LogError(ex, $"Failed to construct instance for {modelType.Name}. Reason: {ex.Message}");
                 continue;
             }
 
-            var instance = modelType.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
+            if (instance is null)
+            {
+                logger.LogError("Instance for {ModelType} is null or does not implement IVaultModel.", modelType.Name);
+                continue;
+            }
 
+            // BEFORE hook
             try
             {
                 if (instance is IBeforeVaultCreate before)
@@ -212,9 +231,10 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
                 logger.LogError(ex, $"Failed to run before actions for {modelType.Name}. Reason: {ex.Message}");
             }
 
+            // OnCreate preload hook (IOnVaultCreate<T>)
             try
             {
-                var preloadInterface = instance!
+                var preloadInterface = instance
                     .GetType()
                     .GetInterfaces()
                     .FirstOrDefault(i =>
@@ -282,6 +302,7 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
                 logger.LogError(ex, $"Failed to run preload actions for {modelType.Name}. Reason: {ex.Message}");
             }
 
+            // AFTER hook
             try
             {
                 if (instance is IAfterVaultCreate after)
@@ -295,8 +316,6 @@ public sealed class PostgresDBConfiguration : IDatabaseConfiguration
     }
 
     // ----------------- discovery helpers -----------------
-
-    private static Document GetDocumentForModel(Type modelType) => Document.From(modelType);
 
     private static Assembly[] DiscoverAssemblies() =>
         AppDomain.CurrentDomain.GetAssemblies()

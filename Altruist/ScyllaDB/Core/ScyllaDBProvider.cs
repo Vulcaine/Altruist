@@ -1,16 +1,12 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
 You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 */
 
-using System.Reflection;
-using System.Text;
-
 using Altruist.Contracts;
 using Altruist.Persistence;
-using Altruist.UORM;
 
 using Cassandra;
 using Cassandra.Mapping;
@@ -274,9 +270,6 @@ public class ScyllaDbProvider : IScyllaDbProvider
         return 1;
     }
 
-    public async Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel
-        => await CreateTableAsync(typeof(TVaultModel), keyspace).ConfigureAwait(false);
-
     private static readonly Type OpenGeneric_List = typeof(List<>);
     private static readonly Type OpenGeneric_IList = typeof(IList<>);
     private static readonly Type OpenGeneric_IReadOnlyList = typeof(IReadOnlyList<>);
@@ -407,101 +400,6 @@ public class ScyllaDbProvider : IScyllaDbProvider
         _session!.CreateKeyspaceIfNotExists(keyspace, replicationConfig);
     }
 
-    public async Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null)
-    {
-        await ensureConnected();
-
-        var document = Document.From(entityType);
-        var tableAttr = entityType.GetCustomAttribute<VaultAttribute>()
-                       ?? throw new InvalidOperationException($"Type '{entityType.Name}' is  missing VaultAttribute.");
-
-        if (keyspace is not IScyllaKeyspace)
-            throw new InvalidOperationException("Keyspace must be of type IScyllaKeyspace.");
-
-        var ks = keyspace as IScyllaKeyspace ?? new DefaultScyllaKeyspace();
-        await CreateKeySpaceAsync(ks.Name, ks.Options).ConfigureAwait(false);
-
-        string tableName = document.Name;
-        bool storeHistory = tableAttr.StoreHistory;
-
-        // --- simplified PK resolution via ReflectionUtils ---
-        var keyColumns = ReflectionUtils.GetPrimaryKeyColumns(entityType);
-        if (keyColumns.Count == 0)
-            throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{entityType.Name}' or its base types.");
-
-        // Sorting key
-        var sortingAttr = document.SortingBy;
-        var sortingKey = ReflectionUtils.ResolveSortingColumnName(document, entityType);
-        bool sortAscending = sortingAttr?.Ascending ?? true;
-
-        // === Define Table Columns ===
-        var mappableProps = ReflectionUtils.GetMappableProperties(entityType);
-        var columns = mappableProps.Select(p =>
-        {
-            var colName = ReflectionUtils.GetColumnName(p);
-            var colType = MapTypeToCql(p.PropertyType);
-            return $"{colName} {colType}";
-        });
-
-        // === CREATE MAIN TABLE ===
-        var sb = new StringBuilder();
-        sb.Append($"CREATE TABLE IF NOT EXISTS {ks.Name}.{tableName} (");
-        sb.Append(string.Join(", ", columns));
-
-        if (sortingKey != null)
-        {
-            sb.Append($", PRIMARY KEY (({string.Join(", ", keyColumns)}), {sortingKey})");
-            sb.Append($") WITH CLUSTERING ORDER BY ({sortingKey} {(sortAscending ? "ASC" : "DESC")});");
-        }
-        else
-        {
-            sb.Append($", PRIMARY KEY ({string.Join(", ", keyColumns)}) );");
-        }
-
-        await _session!.ExecuteAsync(new SimpleStatement(sb.ToString())).ConfigureAwait(false);
-
-        // === CREATE SECONDARY INDEXES FROM [VaultColumnIndex] ===
-        if (document.Indexes is not null && document.Indexes.Count > 0)
-        {
-            var pkSet = new HashSet<string>(keyColumns, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var idxCol in document.Indexes.Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                // skip if it's part of the primary key (no index needed/allowed)
-                if (pkSet.Contains(idxCol))
-                    continue;
-
-                var indexName = $"{tableName}_{idxCol}_idx";
-                var indexCql = $"CREATE INDEX IF NOT EXISTS {indexName} ON {ks.Name}.{tableName} ({idxCol});";
-                await _session.ExecuteAsync(new SimpleStatement(indexCql)).ConfigureAwait(false);
-            }
-        }
-
-        // === CREATE HISTORY TABLE (if enabled) ===
-        if (storeHistory)
-        {
-            string historyTable = $"{tableName}_history";
-
-            if (!await TableExistsAsync(ks.Name, historyTable).ConfigureAwait(false))
-            {
-                sb.Clear();
-                sb.Append($"CREATE TABLE IF NOT EXISTS {ks.Name}.{historyTable} (");
-                sb.Append(string.Join(", ", columns));
-                sb.Append(", timestamp TIMESTAMP");
-                sb.Append($", PRIMARY KEY (({string.Join(", ", keyColumns)}), timestamp)");
-                sb.Append(") WITH CLUSTERING ORDER BY (timestamp DESC);");
-
-                await _session.ExecuteAsync(new SimpleStatement(sb.ToString())).ConfigureAwait(false);
-
-                foreach (var key in keyColumns)
-                {
-                    var indexQuery = $@"CREATE INDEX IF NOT EXISTS ON {ks.Name}.{historyTable} ({key});";
-                    await _session.ExecuteAsync(new SimpleStatement(indexQuery)).ConfigureAwait(false);
-                }
-            }
-        }
-    }
-
     private async Task<bool> TableExistsAsync(string keyspace, string tableName)
     {
         await ensureConnected();
@@ -574,6 +472,7 @@ public class ScyllaDbProvider : IScyllaDbProvider
     }
 
     private void StopHealthChecks() => _healthCheckCts.Cancel();
+    public string GetConnectionString() => throw new NotImplementedException();
 
     #endregion
 }

@@ -1,2 +1,3 @@
 NuGet.config
 nupkgs
+!**/Migrations

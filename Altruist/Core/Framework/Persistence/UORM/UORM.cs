@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,9 @@ public class VaultPrimaryKeyAttribute : Attribute
 
 [AttributeUsage(AttributeTargets.Property)]
 public class VaultColumnIndexAttribute : Attribute { }
+
+[AttributeUsage(AttributeTargets.Property)]
+public class VaultUniqueColumnAttribute : Attribute { }
 
 [AttributeUsage(AttributeTargets.Property)]
 public class VaultIgnoredAttribute : Attribute { }

@@ -211,7 +211,7 @@ public sealed class ScyllaDBConfiguration : IDatabaseConfiguration
         {
             try
             {
-                await provider.CreateTableAsync(modelType, ksInstance);
+                // await provider.CreateTableAsync(modelType, ksInstance);
             }
             catch (Exception ex)
             {
