@@ -561,7 +561,7 @@ namespace Altruist
 
                 var addMethod = setType.GetMethod("Add", new[] { elemType })!;
                 foreach (var s in elements)
-                    addMethod.Invoke(set, new[] { s });
+                    addMethod.Invoke(set, new[] { elemType.IsInstanceOfType(s) ? s : Convert.ChangeType(s, elemType) });
 
                 return set;
             }
@@ -572,7 +572,7 @@ namespace Altruist
 
             var addMethod2 = listType.GetMethod("Add", new[] { elemType })!;
             foreach (var s in elements)
-                addMethod2.Invoke(list, new[] { s });
+                addMethod2.Invoke(list, new[] { elemType.IsInstanceOfType(s) ? s : Convert.ChangeType(s, elemType) });
 
             return list;
         }
