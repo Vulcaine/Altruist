@@ -40,7 +40,7 @@ namespace Altruist.Gaming.Movement.ThreeD
 
         private readonly Dictionary<string, Entry> _players = new(StringComparer.Ordinal);
 
-        public MovementManager3D(IPhysxMovementEngine3D physxMovement, IMovementPipeline3D defaultPipeline)
+        public MovementManager3D(IPhysxMovementEngine3D physxMovement)
         {
             _physxMovement = physxMovement;
         }

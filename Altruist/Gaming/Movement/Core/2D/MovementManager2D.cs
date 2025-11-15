@@ -48,7 +48,7 @@ namespace Altruist.Gaming.Movement.TwoD
 
         private readonly Dictionary<string, Entry> _players = new(StringComparer.Ordinal);
 
-        public MovementManager2D(IPhysxMovementEngine2D physxMovement, IMovementPipeline2D defaultPipeline)
+        public MovementManager2D(IPhysxMovementEngine2D physxMovement)
         {
             _physxMovement = physxMovement;
         }
