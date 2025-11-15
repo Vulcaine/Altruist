@@ -317,9 +317,8 @@ public static class DependencyPlanner
     // ---------------- candidates ----------------
 
     private static List<(Type impl, ServiceLifetime lifetime)> FindCandidateImplementations(
-        Type abstraction, IConfiguration cfg, ILogger log)
+    Type abstraction, IConfiguration cfg, ILogger log)
     {
-        // 1) Prefer explicit [Service] mappings whose ServiceType == abstraction
         var explicitImpls = _assemblies
             .SelectMany(SafeGetTypes)
             .Where(t => t is { IsClass: true, IsAbstract: false } && abstraction.IsAssignableFrom(t))
@@ -331,19 +330,7 @@ public static class DependencyPlanner
             .Distinct()
             .ToList();
 
-        if (explicitImpls.Count > 0)
-            return explicitImpls;
-
-        // 2) Otherwise: implicit candidates (any concrete type that implements abstraction)
-        var implicitImpls = _assemblies
-            .SelectMany(SafeGetTypes)
-            .Where(t => t is { IsClass: true, IsAbstract: false } && abstraction.IsAssignableFrom(t))
-            .Where(t => DependencyResolver.ShouldRegister(t, cfg, log))
-            .Select(t => (impl: t, lifetime: ServiceLifetime.Singleton))
-            .Distinct()
-            .ToList();
-
-        return implicitImpls;
+        return explicitImpls;
     }
 
     private static IEnumerable<Type> SafeGetTypes(Assembly a)
