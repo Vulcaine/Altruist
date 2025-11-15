@@ -9,14 +9,14 @@ public sealed class TransactionalDecorator<T> : DispatchProxy
     public T Inner = default!;
     public NpgsqlDataSource DataSource = default!;
 
-    protected override object? Invoke(MethodInfo targetMethod, object?[]? args)
+    protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
     {
         // Fast O(1) lookup instead of GetCustomAttribute on every call
-        if (!TransactionalRegistry.TryGet(targetMethod, out var meta))
-            return targetMethod.Invoke(Inner, args);
+        if (!TransactionalRegistry.TryGet(targetMethod!, out var meta))
+            return targetMethod!.Invoke(Inner, args);
 
         // Decide sync/async
-        var returnType = targetMethod.ReturnType;
+        var returnType = targetMethod!.ReturnType;
         if (typeof(Task).IsAssignableFrom(returnType))
         {
             return InvokeAsync(targetMethod, args, meta.Attribute, returnType);

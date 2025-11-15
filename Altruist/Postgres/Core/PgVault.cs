@@ -171,6 +171,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         Keyspace = schema;
         _serviceProvider = serviceProvider;
         _state = state;
+        _history = new PgHistoricalVault<TVaultModel>(this);
     }
 
     // ------------------------ Fluent query ops (return NEW instance) ------------------------
@@ -219,7 +220,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         var st = _state.EnsureProjectionSelected(VaultDocument);
         string query = BuildSelectQuery(st);
-        return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT])).ToList();
+        return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!)).ToList();
     }
 
     public async Task<TVaultModel?> FirstOrDefaultAsync()
@@ -227,7 +228,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         string query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!);
         return result.FirstOrDefault();
     }
 
@@ -236,7 +237,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         string query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!);
         return result.First();
     }
 
@@ -254,7 +255,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             ? $"SELECT COUNT(*) FROM {from}"
             : $"SELECT COUNT(*) FROM {from} WHERE {whereClause}";
 
-        return await _databaseProvider.ExecuteCountAsync(sql, _state.Parameters[QueryPosition.WHERE]);
+        return await _databaseProvider.ExecuteCountAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
     }
 
     public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
@@ -272,7 +273,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         var concatenated = st.Parameters[QueryPosition.WHERE]
             .Concat(st.Parameters[QueryPosition.SET]).ToList();
 
-        return await _databaseProvider.ExecuteAsync(sql, concatenated);
+        return await _databaseProvider.ExecuteAsync(sql, concatenated!);
     }
 
     public async Task<bool> DeleteAsync()
@@ -283,7 +284,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             ? $"DELETE FROM {from}"
             : $"DELETE FROM {from} WHERE {whereClause}";
 
-        var affected = await _databaseProvider.ExecuteAsync(sql, _state.Parameters[QueryPosition.WHERE]);
+        var affected = await _databaseProvider.ExecuteAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
         return affected > 0;
     }
 
@@ -301,7 +302,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             st = st.With(QueryPosition.SELECT, column);
 
         var query = BuildSelectQuery(st);
-        return await _databaseProvider.QueryAsync<TResult>(query, st.Parameters[QueryPosition.SELECT]);
+        return await _databaseProvider.QueryAsync<TResult>(query, st.Parameters[QueryPosition.SELECT]!);
     }
 
     public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
@@ -312,7 +313,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             ? $"SELECT COUNT(*) FROM {VaultDocument.Name}"
             : $"SELECT COUNT(*) FROM {VaultDocument.Name} WHERE {where}";
 
-        var count = await _databaseProvider.ExecuteCountAsync(query, next._state.Parameters[QueryPosition.WHERE]);
+        var count = await _databaseProvider.ExecuteCountAsync(query, next._state.Parameters[QueryPosition.WHERE]!);
         return count > 0;
     }
 
