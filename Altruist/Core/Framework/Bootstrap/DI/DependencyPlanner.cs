@@ -57,7 +57,7 @@ public static class DependencyPlanner
     {
         return _graphCache.GetOrAdd(impl, t =>
         {
-            var ctor = SelectCtor(t);
+            var ctor = DependencyResolver.SelectCtor(t);
             var deps = new HashSet<Type>();
 
             foreach (var p in ctor.GetParameters())
@@ -67,12 +67,12 @@ public static class DependencyPlanner
                 if (p.HasDefaultValue)
                     continue;
 
-                if (IsNonServiceable(p.ParameterType))
+                if (DependencyResolver.IsNonServiceable(p.ParameterType))
                     continue;
 
                 foreach (var abs in ExpandParameterToAbstractions(p.ParameterType))
                 {
-                    if (IsNonServiceable(abs))
+                    if (DependencyResolver.IsNonServiceable(abs))
                         continue;
 
                     deps.Add(abs);
@@ -83,21 +83,15 @@ public static class DependencyPlanner
         });
     }
 
-    private static ConstructorInfo SelectCtor(Type t) =>
-        t.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-         .OrderByDescending(c => c.GetCustomAttribute<ActivatorUtilitiesConstructorAttribute>() is not null)
-         .ThenByDescending(c => c.GetParameters().Length)
-         .First();
-
     // ---------------- registration (bottom-up) ----------------
 
     private static void RegisterBottomUp(
-    Type implType,
-    IServiceCollection services,
-    IConfiguration cfg,
-    ILogger log,
-    Stack<Type> visiting,
-    HashSet<Type> visited)
+        Type implType,
+        IServiceCollection services,
+        IConfiguration cfg,
+        ILogger log,
+        Stack<Type> visiting,
+        HashSet<Type> visited)
     {
         if (visited.Contains(implType))
             return;
@@ -118,7 +112,7 @@ public static class DependencyPlanner
 
             foreach (var abs in node.DirectDeps)
             {
-                if (IsNonServiceable(abs))
+                if (DependencyResolver.IsNonServiceable(abs))
                     continue;
                 if (IsAlreadyRegistered(services, abs))
                     continue;
@@ -129,17 +123,16 @@ public static class DependencyPlanner
                 {
                     var chosen = candidates[0];
 
-
                     RegisterBottomUp(chosen.impl, services, cfg, log, visiting, visited);
 
-                    RegisterOne(services, cfg, log, chosen.impl, abs, chosen.lifetime);
+                    DependencyResolver.RegisterPlannedService(services, cfg, log, chosen.impl, abs, chosen.lifetime);
                     continue;
                 }
 
                 if (abs.IsClass && !abs.IsAbstract && DependencyResolver.ShouldRegister(abs, cfg, log))
                 {
                     RegisterBottomUp(abs, services, cfg, log, visiting, visited);
-                    RegisterOne(services, cfg, log, abs, abs, ServiceLifetime.Singleton);
+                    DependencyResolver.RegisterPlannedService(services, cfg, log, abs, abs, ServiceLifetime.Singleton);
                     continue;
                 }
 
@@ -147,9 +140,9 @@ public static class DependencyPlanner
                 RegisterServiceViaFactories(services, cfg, log, abs);
             }
 
-            if (!IsAlreadyRegistered(services, implType) && !IsNonServiceable(implType))
+            if (!IsAlreadyRegistered(services, implType) && !DependencyResolver.IsNonServiceable(implType))
             {
-                RegisterOne(services, cfg, log, implType, implType, ServiceLifetime.Singleton);
+                DependencyResolver.RegisterPlannedService(services, cfg, log, implType, implType, ServiceLifetime.Singleton);
             }
 
             visited.Add(implType);
@@ -160,44 +153,8 @@ public static class DependencyPlanner
         }
     }
 
-
     private static bool IsAlreadyRegistered(IServiceCollection services, Type serviceType)
         => services.Any(d => d.ServiceType == serviceType);
-
-    /// <summary>
-    /// Non-serviceable = things we must not try to wire up via DI:
-    /// primitives, enums, string, pointers, byrefs, delegates, simple BCLs, Nullable&lt;T&gt; of simple, etc.
-    /// </summary>
-    private static bool IsNonServiceable(Type t)
-    {
-        // unwrap Nullable<T>
-        var nn = Nullable.GetUnderlyingType(t) ?? t;
-
-        if (nn.IsPointer || nn.IsByRef)
-            return true;
-
-        // Simple primitives/enums/string/DateTime/etc.
-        if (IsSimple(nn))
-            return true;
-
-        // Delegates (Func<>, Action<>, custom delegates)
-        if (typeof(Delegate).IsAssignableFrom(nn))
-            return true;
-
-        // Open generics are not serviceable here
-        if (nn.ContainsGenericParameters)
-            return true;
-
-        return false;
-    }
-
-    // A local copy; keep in sync with DependencyResolver's notion of "simple"
-    private static bool IsSimple(Type type)
-    {
-        type = Nullable.GetUnderlyingType(type) ?? type;
-        return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) ||
-               type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid);
-    }
 
     /// <summary>
     /// Ensure IServiceFactory implementations are registered, so they can be used to create
@@ -229,7 +186,7 @@ public static class DependencyPlanner
         }
 
         foreach (var f in factories)
-            RegisterOne(services, cfg, log, f.impl, typeof(IServiceFactory), f.lifetime);
+            DependencyResolver.RegisterPlannedService(services, cfg, log, f.impl, typeof(IServiceFactory), f.lifetime);
     }
 
     /// <summary>
@@ -294,11 +251,10 @@ public static class DependencyPlanner
             ServiceLifetime.Singleton);
     }
 
-
     // ---------------- candidates ----------------
 
     private static List<(Type impl, ServiceLifetime lifetime)> FindCandidateImplementations(
-    Type abstraction, IConfiguration cfg, ILogger log)
+        Type abstraction, IConfiguration cfg, ILogger log)
     {
         var explicitImpls = _assemblies
             .SelectMany(SafeGetTypes)
@@ -321,36 +277,6 @@ public static class DependencyPlanner
         catch (ReflectionTypeLoadException e) { return e.Types.Where(t => t is not null)!; }
     }
 
-    private static void RegisterOne(
-    IServiceCollection services,
-    IConfiguration cfg,
-    ILogger log,
-    Type implType,
-    Type serviceType,
-    ServiceLifetime lifetime)
-    {
-        // Avoid duplicates; also avoid ever registering non-serviceable types
-        if (IsAlreadyRegistered(services, serviceType))
-            return;
-        if (IsNonServiceable(serviceType))
-            return;
-
-        services.Add(new ServiceDescriptor(
-            serviceType,
-            sp =>
-            {
-                var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
-                _ = DependencyResolver.InvokePostConstructAsync(obj, sp, cfg, log);
-                return obj!;
-            },
-            lifetime));
-
-        log.LogDebug("🔧 Planned registration: {Service} → {Impl} ({Lifetime})",
-            DependencyResolver.GetCleanName(serviceType),
-            DependencyResolver.GetCleanName(implType),
-            lifetime);
-    }
-
     // ---------------- parameter → abstractions (expansion) ----------------
 
     private static IEnumerable<Type> ExpandParameterToAbstractions(Type t)
@@ -359,7 +285,7 @@ public static class DependencyPlanner
         if (t.IsArray)
         {
             var e = t.GetElementType()!;
-            if (!IsNonServiceable(e))
+            if (!DependencyResolver.IsNonServiceable(e))
                 yield return e;
             yield break;
         }
@@ -377,7 +303,7 @@ public static class DependencyPlanner
                 def == typeof(HashSet<>))
             {
                 var e = t.GetGenericArguments()[0];
-                if (!IsNonServiceable(e))
+                if (!DependencyResolver.IsNonServiceable(e))
                     yield return e;
                 yield break;
             }

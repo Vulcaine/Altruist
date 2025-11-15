@@ -3,7 +3,7 @@ Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
 You may not use this file except in compliance with the License.
-You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Globalization;
@@ -22,18 +22,13 @@ namespace Altruist
     /// </summary>
     public static class DependencyResolver
     {
-        /// <summary>
-        /// Cache of singleton instances keyed by their implementation type.
-        /// This is used when we explicitly construct a given impl type.
-        /// </summary>
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _singletonCache
             = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
 
         /// <summary>
-        /// Cache of resolved service instances keyed by the *service type* (interface or concrete).
-        /// This is specifically to avoid re-entering the ServiceProvider for types we've already
-        /// created (or had the container create) once. It is what breaks the PostConstruct
-        /// re-entrancy you observed (e.g. ServerStatus.PostConstruct → IEngineCore).
+        /// Cache of already constructed service instances keyed by service type.
+        /// Used to short-circuit resolution (especially during PostConstruct) and
+        /// avoid circular or duplicate construction.
         /// </summary>
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _serviceInstanceCache
             = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
@@ -53,6 +48,21 @@ namespace Altruist
                 _constructionPath.Value = s;
             }
             return s;
+        }
+
+        /// <summary>
+        /// Explicitly register a constructed instance for a given service type.
+        /// This allows us to reuse the same object for different service interfaces
+        /// (e.g. impl + abstraction) and to make it visible during PostConstruct calls.
+        /// </summary>
+        public static void RegisterInstance(Type serviceType, object instance)
+        {
+            if (serviceType == null)
+                throw new ArgumentNullException(nameof(serviceType));
+            if (instance == null)
+                throw new ArgumentNullException(nameof(instance));
+
+            _serviceInstanceCache[serviceType] = instance;
         }
 
         private static string FormatCyclePath(IEnumerable<Type> path, Type repeat)
@@ -76,26 +86,6 @@ namespace Altruist
             }
         }
 
-        /// <summary>
-        /// Registers a fully constructed instance for the given service type in the
-        /// internal service cache. This allows PostConstruct and other resolution
-        /// paths to retrieve existing instances *without* re-entering IServiceProvider.
-        ///
-        /// Typical usage: DependencyPlanner.RegisterOne, right after constructing via
-        /// CreateWithConfiguration:
-        ///   var obj = DependencyResolver.CreateWithConfiguration(...);
-        ///   DependencyResolver.RegisterInstance(serviceType, obj);
-        /// </summary>
-        public static void RegisterInstance(Type serviceType, object instance)
-        {
-            if (serviceType is null)
-                throw new ArgumentNullException(nameof(serviceType));
-            if (instance is null)
-                throw new ArgumentNullException(nameof(instance));
-
-            _serviceInstanceCache[serviceType] = instance;
-        }
-
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
             => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
 
@@ -110,42 +100,40 @@ namespace Altruist
                 // 2) Build the instance (this is where circular detection happens).
                 var obj = CreateInstanceInternal(sp, cfg, impl, log);
 
-                // 3) Cache it for future calls (by impl type).
+                // 3) Cache it for future calls.
                 _singletonCache[impl] = obj;
-                _serviceInstanceCache[impl] = obj; // also expose by impl-type as "serviceType" fallback
 
                 return obj;
             }
 
             // Transient / other lifetimes
-            var created = CreateInstanceInternal(sp, cfg, impl, log);
-
-            // For non-singletons we do NOT globally cache by impl (that would break lifetime semantics),
-            // but we *can* store it in the service cache keyed by its concrete type for this run.
-            _serviceInstanceCache[impl] = created;
-            return created;
+            return CreateInstanceInternal(sp, cfg, impl, log);
         }
 
-        /// <summary>
-        /// Core object construction routine with circular-dependency tracking.
-        /// IMPORTANT: this method does *not* call back into IServiceProvider to
-        /// probe for existing instances; it only uses the construction-path stack
-        /// and our own caches. This avoids infinite recursion and weird re-entry.
-        /// </summary>
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
+            // If we already have an instance cached for this impl type, reuse it.
+            if (_serviceInstanceCache.TryGetValue(impl, out var instFromCache))
+                return instFromCache;
+
             var path = GetConstructionStack();
 
-            // If we are already constructing this impl and we *also* have a finished
-            // singleton instance, we can safely reuse that, rather than treating this
-            // as a fatal cycle. This covers the "already created and cached" case.
-            if (path.Contains(impl) && _singletonCache.TryGetValue(impl, out var cached))
-                return cached;
-
-            // Genuine circular construction: impl is already on the stack and we
-            // have no completed instance in the singleton cache.
             if (path.Contains(impl))
             {
+                // 1) First, try to get an already-constructed instance from the provider.
+                //    This covers cases where the same implementation type was registered
+                //    under a different service type and is already built.
+                var fromProvider = sp.GetService(impl);
+                if (fromProvider is not null)
+                    return fromProvider;
+
+                // 2) Then, fall back to our own singleton cache.
+                //    If we've already finished constructing this impl, use it.
+                if (_singletonCache.TryGetValue(impl, out var cached))
+                    return cached;
+
+                // 3) At this point, we are genuinely in a construction cycle where
+                //    no concrete instance exists yet → fatal circular dependency.
                 var cycle = FormatCyclePath(path, impl);
                 var msg = $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}";
 
@@ -216,7 +204,7 @@ namespace Altruist
         /// Rules enforced:
         ///  - at most ONE [PostConstruct] method per type,
         ///  - it MUST be a public instance method,
-        ///  - it MUST return void,
+        ///  - it MUST return void, Task, or ValueTask,
         ///  - arguments are resolved via DI and/or [ConfigValue] just like constructor parameters.
         /// If no such method exists, this is a no-op.
         /// </summary>
@@ -274,15 +262,106 @@ namespace Altruist
             return instance;
         }
 
-        // ---------------------- Internal helpers -------------------------
+        // ---------------------- Shared helpers (for Planner etc.) -------------------------
 
-        private static ConstructorInfo SelectCtor(Type t) =>
+        /// <summary>
+        /// Select the preferred constructor for a type:
+        ///  - prefer the one marked with [ActivatorUtilitiesConstructor] if present,
+        ///  - otherwise the widest (most parameters) public ctor.
+        /// </summary>
+        internal static ConstructorInfo SelectCtor(Type t) =>
             t.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-             // prefer the one marked with [ActivatorUtilitiesConstructor] if present
              .OrderByDescending(c => c.GetCustomAttribute<ActivatorUtilitiesConstructorAttribute>() is not null)
-             // otherwise prefer the "widest" public ctor
              .ThenByDescending(c => c.GetParameters().Length)
              .First();
+
+        /// <summary>
+        /// "Simple" types that must be provided by config or default values, not by DI.
+        /// Mirrors the logic used for config conversion and non-serviceability.
+        /// </summary>
+        internal static bool IsSimple(Type type)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+            return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) ||
+                   type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid);
+        }
+
+        /// <summary>
+        /// Non-serviceable = things we must not try to wire up via DI:
+        /// primitives, enums, string, pointers, byrefs, delegates, simple BCLs, Nullable&lt;T&gt; of simple, etc.
+        /// Used by planner and resolver.
+        /// </summary>
+        internal static bool IsNonServiceable(Type t)
+        {
+            // unwrap Nullable<T>
+            var nn = Nullable.GetUnderlyingType(t) ?? t;
+
+            if (nn.IsPointer || nn.IsByRef)
+                return true;
+
+            // Simple primitives/enums/string/DateTime/etc.
+            if (IsSimple(nn))
+                return true;
+
+            // Delegates (Func<>, Action<>, custom delegates)
+            if (typeof(Delegate).IsAssignableFrom(nn))
+                return true;
+
+            // Open generics are not serviceable here
+            if (nn.ContainsGenericParameters)
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Central helper for planner and service registration:
+        /// registers a service so that its instances are created via DependencyResolver,
+        /// cached, and passed through PostConstruct, while also ensuring the instance
+        /// is visible in the internal cache before PostConstruct executes.
+        /// </summary>
+        internal static void RegisterPlannedService(
+            IServiceCollection services,
+            IConfiguration cfg,
+            ILogger log,
+            Type implType,
+            Type serviceType,
+            ServiceLifetime lifetime)
+        {
+            // Avoid duplicates; also avoid ever registering non-serviceable types
+            if (services.Any(d => d.ServiceType == serviceType))
+                return;
+            if (IsNonServiceable(serviceType))
+                return;
+
+            services.Add(new ServiceDescriptor(
+                serviceType,
+                sp =>
+                {
+                    // Construct instance (honoring singleton cache)
+                    var obj = CreateWithConfiguration(sp, cfg, implType, log, lifetime);
+
+                    // Make instance visible before PostConstruct:
+                    // - cache under the implementation type
+                    // - cache under the service abstraction (if different)
+                    RegisterInstance(implType, obj);
+                    if (serviceType != implType)
+                        RegisterInstance(serviceType, obj);
+
+                    // Fire PostConstruct (async, but we don't await here)
+                    _ = InvokePostConstructAsync(obj, sp, cfg, log);
+
+                    return obj!;
+                },
+                lifetime));
+
+            log.LogDebug("🔧 Planned registration: {Service} → {Impl} ({Lifetime})",
+                GetCleanName(serviceType),
+                GetCleanName(implType),
+                lifetime);
+        }
+
+        // ---------------------- Internal helpers -------------------------
 
         private static object? Arg(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
         {
@@ -305,12 +384,6 @@ namespace Altruist
                 FailAndExit(log, errMsg);
                 throw new InvalidOperationException(errMsg);
             }
-
-            // 1) Our own service cache first (serviceType -> instance).
-            // This is key to avoiding re-entry during PostConstruct when the same
-            // interface (e.g. IEngineCore) is requested again.
-            if (_serviceInstanceCache.TryGetValue(paramType, out var cachedService))
-                return cachedService;
 
             // 2) Handle all supported collection kinds (Spring-style)
             if (paramType.IsGenericType)
@@ -347,15 +420,14 @@ namespace Altruist
                 return arr;
             }
 
-            // 4) Try resolve the exact service from the container (once).
-            // If we succeed, remember it in our service cache so subsequent
-            // resolutions (including PostConstruct) don't re-enter IServiceProvider.
+            // 3.5) Check internal instance cache first (for already-built services).
+            if (_serviceInstanceCache.TryGetValue(paramType, out var cached))
+                return cached;
+
+            // 4) Try resolve the exact service from the provider
             var service = sp.GetService(paramType);
             if (service is not null)
-            {
-                _serviceInstanceCache[paramType] = service;
                 return service;
-            }
 
             // 5) Optional/default value?
             if (p.HasDefaultValue)
@@ -636,13 +708,6 @@ namespace Altruist
                 }
             }
             return ConvertTo(raw, target);
-        }
-
-        private static bool IsSimple(Type type)
-        {
-            type = Nullable.GetUnderlyingType(type) ?? type;
-            return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) ||
-                   type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid);
         }
 
         private static object? ConvertTo(string raw, Type target)
