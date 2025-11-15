@@ -35,6 +35,8 @@ public class VaultAdapter<TVaultModel> : IVault<TVaultModel> where TVaultModel :
 
     public IKeyspace Keyspace { get; }
 
+    public IHistoricalVault<TVaultModel> History => _underlying.History;
+
     public Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
     {
         return _underlying.AnyAsync(predicate);

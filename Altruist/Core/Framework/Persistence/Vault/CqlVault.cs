@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -132,6 +132,8 @@ public class CqlVault<TVaultModel> : ICqlVault<TVaultModel> where TVaultModel : 
 
     public IKeyspace Keyspace { get; }
     protected Document _document { get; }
+
+    public IHistoricalVault<TVaultModel> History => throw new NotImplementedException();
 
     private static readonly VaultMetadata _vaultMeta = VaultRegistry.GetByClr(typeof(TVaultModel));
 

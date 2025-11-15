@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,8 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
     private IQueryable<TVaultModel> _query;
 
     public IKeyspace Keyspace { get; }
+
+    public IHistoricalVault<TVaultModel> History => throw new NotImplementedException();
 
     protected Document _document;
 
