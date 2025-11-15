@@ -177,8 +177,12 @@ namespace Altruist
                 var attr = method.GetCustomAttribute<GateAttribute>()!;
                 var pars = method.GetParameters();
 
-                if (method.ReturnType != typeof(Task))
-                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} marked with [Gate] must return Task.");
+                var rt = method.ReturnType;
+                var isTask = rt == typeof(Task) ||
+                             rt.IsGenericType && rt.GetGenericTypeDefinition() == typeof(Task<>);
+
+                if (!isTask)
+                    throw new InvalidOperationException($"Method {type.Name}.{method.Name} marked with [Gate] must return Task or Task<T>.");
 
                 if (pars.Length is < 1 or > 2)
                     throw new InvalidOperationException($"Method {type.Name}.{method.Name} marked with [Gate] must have 1 or 2 parameters.");
@@ -197,30 +201,8 @@ namespace Altruist
                 var del = method.CreateDelegate(delegateType, instance);
                 PortalGateRegistry<IPortal>.Register(attr.Event, del);
 
-                log.LogDebug("🔒 Registered gate for event '{Event}' -> {Method} on {Type}.", attr.Event, method.Name, type.FullName);
-            }
-        }
-
-        private static void ValidateGateMethodSignature(MethodInfo method)
-        {
-            if (method.ReturnType != typeof(Task))
-                throw new InvalidOperationException($"[Gate] method {method.DeclaringType!.Name}.{method.Name} must return Task.");
-
-            var p = method.GetParameters();
-
-            if (p.Length == 1)
-            {
-                if (!typeof(IPacket).IsAssignableFrom(p[0].ParameterType))
-                    throw new InvalidOperationException($"[Gate] {method.Name} must have signature (IPacket) or (IPacket, string).");
-            }
-            else if (p.Length == 2)
-            {
-                if (!typeof(IPacket).IsAssignableFrom(p[0].ParameterType) || p[1].ParameterType != typeof(string))
-                    throw new InvalidOperationException($"[Gate] {method.Name} must have signature (IPacket) or (IPacket, string).");
-            }
-            else
-            {
-                throw new InvalidOperationException($"[Gate] {method.Name} must have exactly 1 or 2 parameters.");
+                log.LogDebug("🔒 Registered gate for event '{Event}' -> {Method} on {Type}.",
+                    attr.Event, method.Name, type.FullName);
             }
         }
     }
