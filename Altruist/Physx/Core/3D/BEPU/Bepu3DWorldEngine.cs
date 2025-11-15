@@ -21,8 +21,6 @@ namespace Altruist.Physx.ThreeD
             => new BepuWorldEngine3D(gravity, fixedDeltaTime);
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
-    [Service(typeof(IPhysxWorldEngine3D))]
     public class BepuWorldEngine3D : IPhysxWorldEngine3D
     {
         public float FixedDeltaTime { get; }
@@ -34,7 +32,7 @@ namespace Altruist.Physx.ThreeD
         private readonly BufferPool _pool = new();
         private readonly Dictionary<string, Body3DAdapter> _bodies = new();
 
-        public BepuWorldEngine3D(Vector3 gravity, float fixedDeltaTime)
+        public BepuWorldEngine3D(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
             FixedDeltaTime = fixedDeltaTime;
 
