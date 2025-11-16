@@ -88,3 +88,15 @@ public struct SessionAuthContext : ISessionAuthContext
         Type = nameof(SessionAuthContext);
     }
 }
+
+public struct UpgradeAuthRequest
+{
+    [JsonPropertyName("token")]
+    [Key(2)]
+    public string Token { get; set; } = string.Empty;
+
+    public UpgradeAuthRequest()
+    {
+
+    }
+}

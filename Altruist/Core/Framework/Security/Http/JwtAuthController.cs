@@ -42,21 +42,21 @@ public abstract class JwtAuthController : AuthController
     /// Hook called before upgrade, allows modifying the context.
     /// Default: returns the context unchanged.
     /// </summary>
-    protected virtual SessionAuthContext OnUpgrade(SessionAuthContext context, string clientId)
+    protected virtual UpgradeAuthRequest OnUpgrade(UpgradeAuthRequest context, string clientId)
         => context;
 
     /// <summary>
     /// Hook called after a successful upgrade (token issued).
     /// Default: no-op.
     /// </summary>
-    protected virtual Task OnUpgradeSuccess(SessionAuthContext context, string clientId, IIssue issue)
+    protected virtual Task OnUpgradeSuccess(UpgradeAuthRequest context, string clientId, IIssue issue)
         => Task.CompletedTask;
 
     /// <summary>
     /// Hook called after a failed upgrade attempt.
     /// Default: no-op.
     /// </summary>
-    protected virtual Task OnUpgradeFailed(SessionAuthContext context, string clientId)
+    protected virtual Task OnUpgradeFailed(UpgradeAuthRequest context, string clientId)
         => Task.CompletedTask;
 
     /// <summary>
@@ -64,7 +64,7 @@ public abstract class JwtAuthController : AuthController
     /// and returns the issued token/packet as JSON. On failure, returns 401/500.
     /// </summary>
     [HttpPost("upgrade")]
-    public async Task<IActionResult> Upgrade([FromBody] SessionAuthContext context)
+    public async Task<IActionResult> Upgrade([FromBody] UpgradeAuthRequest context)
     {
         var clientId = HttpContext.Connection.Id ?? Guid.NewGuid().ToString("N");
 
