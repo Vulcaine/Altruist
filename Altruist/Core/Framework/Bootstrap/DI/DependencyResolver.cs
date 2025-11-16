@@ -666,7 +666,7 @@ namespace Altruist
             var path = a.Path ?? string.Empty;
             IConfigurationSection section;
 
-            // We want to know if there's a wildcard and what "relative" path we resolved.
+            // Track wildcard usage for better error messages
             var starIndex = path.IndexOf('*');
             string? afterStar = null;
 
@@ -698,13 +698,21 @@ namespace Altruist
                 section = cfg.GetSection(path);
             }
 
+            // Found the section -> bind/convert
             if (section.Exists())
                 return BindOrConvert(section, target);
 
+            // Attribute-level default (string) wins if provided
             if (a.Default is not null)
                 return DefaultTo(target, a.Default);
 
-            // ----- Missing config: build a detailed, user-friendly error -----
+            // ---- Missing config but the target is OPTIONAL (nullable or reference type) ----
+            // In this case we *do not* treat it as fatal; we just return null and let the
+            // constructor parameter default / nullable semantics handle it.
+            if (Nullable.GetUnderlyingType(target) is not null || !target.IsValueType)
+                return null;
+
+            // ---- Missing REQUIRED config for a non-nullable value type ----
 
             var rootPath = (cfg as IConfigurationSection)?.Path ?? "<root>";
             string hint;
