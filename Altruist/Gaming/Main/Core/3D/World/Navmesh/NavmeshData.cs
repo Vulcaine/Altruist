@@ -34,7 +34,7 @@ public sealed class NavAgent
 {
     public Guid Id { get; } = Guid.NewGuid();
 
-    public IPhysxBody3D Body { get; }   // <-- physics body
+    public IPhysxBody3D Body { get; }
     public float Speed { get; internal set; }
 
     public NavPath? CurrentPath { get; internal set; }
