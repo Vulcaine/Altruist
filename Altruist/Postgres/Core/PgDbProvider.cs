@@ -258,9 +258,8 @@ public class SqlDbProvider : ISqlDatabaseProvider
                 return (long)d;
             return obj is null ? 0 : Convert.ToInt64(obj);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            RaiseFailedEvent(ex);
             throw;
         }
     }
@@ -277,9 +276,8 @@ public class SqlDbProvider : ISqlDatabaseProvider
                 RaiseConnectedEvent();
             return affected;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            RaiseFailedEvent(ex);
             throw;
         }
     }
@@ -337,11 +335,6 @@ public class SqlDbProvider : ISqlDatabaseProvider
                 list.Add(inst);
             }
             return list;
-        }
-        catch (Exception ex)
-        {
-            RaiseFailedEvent(ex);
-            throw;
         }
         finally
         {
