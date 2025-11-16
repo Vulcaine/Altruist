@@ -139,11 +139,11 @@ namespace Altruist
         {
             if (_engine != null)
             {
-                _engine.SendTask(new TaskIdentifier("Disconnect_" + clientId), () => CloseConnection(clientId));
+                _engine.SendTask(new TaskIdentifier("Disconnect_" + clientId), () => DisconnectAsync(clientId));
             }
             else
             {
-                await CloseConnection(clientId);
+                await DisconnectAsync(clientId);
             }
         }
 
