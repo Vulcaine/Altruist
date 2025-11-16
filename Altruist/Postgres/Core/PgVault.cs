@@ -565,10 +565,15 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             .Select(f => VaultDocument.Columns[f])
             .ToArray();
 
+        var pkKeys = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
+        var primaryKeyColumns = pkKeys
+            .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
+            .ToArray();
+
         var upsertQuery = BuildUpsertQuery(
             VaultDocument.Name,
             columns,
-            VaultDocument.PrimaryKey?.Keys ?? []
+            primaryKeyColumns
         );
 
         var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
@@ -658,25 +663,22 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         foreach (var e in list)
             e.OnSave();
 
-        // Logical field names in stable order
         var fields = VaultDocument.Fields.ToArray();
-
-        // Physical column names in the SAME order as fields
         var columns = fields
             .Select(f => VaultDocument.Columns[f])
             .ToArray();
 
-        // PK physical columns (can be composite)
-        var primaryKeyColumns = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
+        var pkKeys = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
+        var primaryKeyColumns = pkKeys
+            .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
+            .ToArray();
 
-        // Build UPSERT statement
         var upsertQuery = BuildUpsertQuery(
             VaultDocument.Name,
             columns,
             primaryKeyColumns
         );
 
-        // Optional history query (still plain INSERT)
         string? historyQuery = null;
         if (VaultDocument.StoreHistory == true)
         {
@@ -701,6 +703,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
                 canSave = await b.BeforeSaveAsync(_serviceProvider);
             if (!canSave)
                 continue;
+
             queries.Add(upsertQuery);
             allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
 
