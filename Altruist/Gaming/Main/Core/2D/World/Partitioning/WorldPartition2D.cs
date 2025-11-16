@@ -48,7 +48,7 @@ namespace Altruist.Gaming.TwoD
 
     public interface IWorldPartitioner2D : IWorldPartitioner
     {
-        List<WorldPartition2D> CalculatePartitions(WorldIndex2D world);
+        List<WorldPartition2D> CalculatePartitions(IWorldIndex2D world);
     }
 
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
@@ -70,28 +70,28 @@ namespace Altruist.Gaming.TwoD
             PartitionHeight = partitionHeight;
         }
 
-        public List<WorldPartition2D> CalculatePartitions(WorldIndex2D world)
+        public List<WorldPartition2D> CalculatePartitions(IWorldIndex2D world)
         {
             var partitions = new List<WorldPartition2D>();
 
-            int columns = (int)Math.Ceiling((double)world.Width / PartitionWidth);
-            int rows = (int)Math.Ceiling((double)world.Height / PartitionHeight);
+            int columns = (int)Math.Ceiling((double)world.Size.X / PartitionWidth);
+            int rows = (int)Math.Ceiling((double)world.Size.Y / PartitionHeight);
 
             for (int row = 0; row < rows; row++)
             {
                 for (int col = 0; col < columns; col++)
                 {
-                    int x = col * PartitionWidth;
-                    int y = row * PartitionHeight;
+                    float x = col * PartitionWidth;
+                    float y = row * PartitionHeight;
 
-                    int width = Math.Min(PartitionWidth, world.Width - x);
-                    int height = Math.Min(PartitionHeight, world.Height - y);
+                    float width = Math.Min(PartitionWidth, world.Size.X - x);
+                    float height = Math.Min(PartitionHeight, world.Size.Y - y);
 
                     var partition = new WorldPartition2D(
                         id: Guid.NewGuid().ToString(),
                         index: new IntVector2(col, row),
-                        position: new IntVector2(x, y),
-                        size: new IntVector2(width, height)
+                        position: new IntVector2((int)x, (int)y),
+                        size: new IntVector2((int)width, (int)height)
                     );
 
                     partitions.Add(partition);

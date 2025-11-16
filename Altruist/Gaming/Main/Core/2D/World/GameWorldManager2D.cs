@@ -10,7 +10,7 @@ namespace Altruist.Gaming.TwoD
 {
     public interface IGameWorldManager2D : IGameWorldManager
     {
-        IWorldIndex Index { get; }
+        IWorldIndex2D Index { get; }
         IPhysxWorld PhysxWorld { get; }
         void Initialize();
         Task SaveAsync();
@@ -27,7 +27,7 @@ namespace Altruist.Gaming.TwoD
 
     public sealed class GameWorldManager2D : IGameWorldManager2D
     {
-        private readonly WorldIndex2D _index;
+        private readonly IWorldIndex2D _index;
         private readonly IWorldPartitioner2D _worldPartitioner;
         private readonly ICacheProvider _cache;
         private readonly IPrefabManager2D _prefabManager;
@@ -37,7 +37,7 @@ namespace Altruist.Gaming.TwoD
         private readonly IPhysxWorld2D _physx2D;
 
         public GameWorldManager2D(
-            WorldIndex2D world,
+            IWorldIndex2D world,
             IPhysxWorld2D physx2D,
             IWorldPartitioner2D worldPartitioner,
             ICacheProvider cacheProvider,
@@ -54,7 +54,7 @@ namespace Altruist.Gaming.TwoD
         }
 
         public IPhysxWorld PhysxWorld => _physx2D;
-        public IWorldIndex Index => _index;
+        public IWorldIndex2D Index => _index;
 
         public void Initialize()
         {
