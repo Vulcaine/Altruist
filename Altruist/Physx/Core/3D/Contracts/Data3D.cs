@@ -1,5 +1,0 @@
-namespace Altruist.Physx.ThreeD
-{
-
-
-}
