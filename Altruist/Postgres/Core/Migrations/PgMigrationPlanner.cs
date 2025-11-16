@@ -367,6 +367,8 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
                 ops.Add(new DropIndexOperation(schemaName, tableName, ix.Name));
             }
         }
+
+        PlanForeignKeyDiff(ops, schemaName, doc, existing, allDocs);
     }
 
     // ---------- HISTORY TABLE DIFF ----------
