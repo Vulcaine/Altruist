@@ -334,12 +334,9 @@ namespace Altruist
                 lifetime);
         }
 
-        // ---------------------- Internal helpers -------------------------
-
         private static object? Arg(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
         {
             var paramType = p.ParameterType;
-
             var a = p.GetCustomAttribute<AppConfigValueAttribute>(false);
             if (a is not null)
                 return ResolveFromConfig(cfg, p.ParameterType, a, log);
@@ -347,8 +344,6 @@ namespace Altruist
             var keyedAttr = p.GetCustomAttribute<ServiceKeyAttribute>(false);
             if (keyedAttr is not null)
             {
-                // We expect that the service was registered as a keyed service
-                // using the same key (e.g. from ConditionalOnConfig KeyField).
                 var keyed = TryResolveKeyedService(sp, paramType, keyedAttr.Key, log);
                 if (keyed is not null)
                     return keyed;
@@ -360,21 +355,26 @@ namespace Altruist
                 throw new InvalidOperationException(errMsg);
             }
 
-            // 0) Hard-stop for simple/BCL types (string, primitives, etc.).
-            // These must be bound via [AppConfigValue] or given a default.
             if (IsSimple(paramType))
             {
+                if (p.HasDefaultValue)
+                    return p.DefaultValue;
+
+                if (Nullable.GetUnderlyingType(paramType) is not null)
+                    return null;
+
                 var owner = GetCleanName(p.Member.DeclaringType!);
                 var pn = p.Name ?? "param";
                 var tn = GetCleanName(paramType);
                 var errMsg =
-                    $"❌ Parameter '{pn}' of '{owner}' is a simple type '{tn}'. " +
-                    "Bind it from configuration with [AppConfigValue] or provide a default value.";
+                    $"❌ Parameter '{pn}' of '{owner}' is a simple type '{tn}' " +
+                    "and has no [AppConfigValue] or default value. " +
+                    "Bind it from configuration with [AppConfigValue] or give it a default in the constructor.";
                 FailAndExit(log, errMsg);
                 throw new InvalidOperationException(errMsg);
             }
 
-            // 2) Handle all supported collection kinds (Spring-style)
+            // 4) Handle all supported collection kinds (Spring-style)
             if (paramType.IsGenericType)
             {
                 var genDef = paramType.GetGenericTypeDefinition();
@@ -393,7 +393,7 @@ namespace Altruist
                 }
             }
 
-            // 3) Arrays: T[]
+            // 5) Arrays: T[]
             if (paramType.IsArray)
             {
                 var elemType = paramType.GetElementType()!;
@@ -409,24 +409,24 @@ namespace Altruist
                 return arr;
             }
 
-            // 4) Try resolve the exact service from the provider
+            // 6) Try resolve the exact service from the provider
             var service = sp.GetService(paramType);
             if (service is not null)
                 return service;
 
-            // 5) Optional/default value?
+            // 7) Optional/default value for non-simple complex types
             if (p.HasDefaultValue)
                 return p.DefaultValue;
 
-            // 6) Nullable value types (T?) → default(T?)
+            // 8) Nullable value types (T?) → default(T?) == null
             if (Nullable.GetUnderlyingType(paramType) is not null)
                 return null;
 
-            // 7) Fallback default(T) for structs
+            // 9) Fallback default(T) for structs
             if (paramType.IsValueType)
                 return Activator.CreateInstance(paramType);
 
-            // 8) Truly unresolved reference type → analyze & throw smart error
+            // 10) Truly unresolved reference type → analyze & throw smart error
             var implName = GetCleanName(paramType);
             var ctorOwner = GetCleanName(p.Member.DeclaringType!);
 

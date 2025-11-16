@@ -650,6 +650,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         if (entities is null)
             throw new ArgumentNullException(nameof(entities));
+
         var list = entities as IList<TVaultModel> ?? entities.ToList();
         if (list.Count == 0)
             throw new ArgumentException("Entities cannot be empty.", nameof(entities));
@@ -657,9 +658,38 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         foreach (var e in list)
             e.OnSave();
 
-        var fields = VaultDocument.Columns.Keys;
-        var insertQuery = BuildInsertQuery(VaultDocument.Name, VaultDocument.Columns.Values);
-        var historyQuery = BuildHistoryQuery(VaultDocument.Name, VaultDocument.Columns.Values);
+        // Logical field names in stable order
+        var fields = VaultDocument.Fields.ToArray();
+
+        // Physical column names in the SAME order as fields
+        var columns = fields
+            .Select(f => VaultDocument.Columns[f])
+            .ToArray();
+
+        // PK physical columns (can be composite)
+        var primaryKeyColumns = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
+
+        // Build UPSERT statement
+        var upsertQuery = BuildUpsertQuery(
+            VaultDocument.Name,
+            columns,
+            primaryKeyColumns
+        );
+
+        // Optional history query (still plain INSERT)
+        string? historyQuery = null;
+        if (VaultDocument.StoreHistory == true)
+        {
+            if (saveHistory == true)
+            {
+                historyQuery = BuildHistoryQuery(VaultDocument.Name, columns);
+            }
+        }
+        else if (saveHistory == true)
+        {
+            throw new InvalidOperationException(
+                $"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
+        }
 
         var queries = new List<string>();
         var allParams = new List<object?>();
@@ -671,21 +701,14 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
                 canSave = await b.BeforeSaveAsync(_serviceProvider);
             if (!canSave)
                 continue;
-
-            queries.Add(insertQuery);
+            queries.Add(upsertQuery);
             allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
 
-            if (VaultDocument.StoreHistory == true)
+            if (historyQuery is not null)
             {
-                if (saveHistory == true)
-                {
-                    queries.Add(historyQuery);
-                    allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: true).Skip(fields.Count()));
-                }
-            }
-            else if (saveHistory == true)
-            {
-                throw new InvalidOperationException($"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
+                queries.Add(historyQuery);
+                var historyParams = GetParameterValues(e, fields, includeTimestamp: true);
+                allParams.AddRange(historyParams.Skip(fields.Length));
             }
         }
 
@@ -696,8 +719,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
 
         foreach (var e in list)
+        {
             if (e is IAfterVaultSave a)
                 await a.AfterSaveAsync(_serviceProvider);
+        }
     }
 
     private string BuildInsertQuery(string tableNameIgnored, IEnumerable<string> columns)
