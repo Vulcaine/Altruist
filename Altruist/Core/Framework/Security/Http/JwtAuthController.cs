@@ -201,8 +201,8 @@ public abstract class JwtAuthController : AuthController
             var issue = IssueToken(claims);
             var groupKey = SessionGroupKeyStrategy(account.StorageId);
 
-            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.StorageId, request.Fingerprint))
-                return Unauthorized($"[login-uname][${request.Username}] Only clients with IP address are allowed to connect.");
+            // if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.StorageId, request.Fingerprint))
+            //     return Unauthorized($"[login-uname][${request.Username}] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-uname][{groupKey}] ✅ Login succeeded (username: {request.Username})");
             return OkOrUnauthorized(issue);
