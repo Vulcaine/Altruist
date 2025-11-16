@@ -124,29 +124,40 @@ namespace Altruist
             }
             finally
             {
-                // Notify all portals about disconnection
-                foreach (var portal in portals)
+                try
                 {
-                    try
+                    if (_engine != null)
                     {
-                        if (_engine != null)
-                        {
-                            _engine.SendTask(new TaskIdentifier("Disconnect_" + clientId + "_" + portal.GetType().FullName), () => portal.OnDisconnectedAsync(clientId, failureException));
-                        }
-                        else
-                        {
-                            await portal.OnDisconnectedAsync(clientId, failureException);
-                        }
+                        _engine.SendTask(new TaskIdentifier("Disconnect_" + clientId), () => DisconnectAsync(clientId, portals, failureException));
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        _logger.LogError(ex, "OnDisconnectedAsync handler threw for client {ClientId}.", clientId);
+                        await DisconnectAsync(clientId, portals, failureException);
                     }
                 }
-
-                await _socketManager.RemoveConnectionAsync(clientId).ConfigureAwait(false);
-                await _socketManager.Cleanup().ConfigureAwait(false);
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "OnDisconnectedAsync handler threw for client {ClientId}.", clientId);
+                }
             }
+        }
+
+        private async Task DisconnectAsync(string clientId, IReadOnlyList<IPortal> portals, Exception? failureException)
+        {
+            foreach (var portal in portals)
+            {
+                try
+                {
+                    await portal.OnDisconnectedAsync(clientId, failureException);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "OnDisconnectedAsync handler threw for client {ClientId}.", clientId);
+                }
+            }
+
+            await _socketManager.RemoveConnectionAsync(clientId);
+            await _socketManager.Cleanup();
         }
 
         public Task RemoveConnectionAsync(string connectionId)
