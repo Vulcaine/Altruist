@@ -1,29 +1,46 @@
-using Altruist.Physx.Contracts;
+using Altruist.Physx;
 using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.TwoD
 {
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
-    [Service(typeof(IGameWorldCoordinator))]
-    public class GameWorldCoordinator2D : IGameWorldCoordinator
+    public interface IGameWorldCoordinator2D : IGameWorldCoordinator
     {
-        private readonly Dictionary<int, GameWorldManager2D> _worlds = new();
+        IGameWorldManager2D AddWorld(IWorldIndex2D index, IPhysxWorld2D physx2D);
+    }
+
+    [Service(typeof(IGameWorldCoordinator2D))]
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    public class GameWorldCoordinator2D : IGameWorldCoordinator2D
+    {
+        private readonly Dictionary<int, IGameWorldManager2D> _worlds = new();
         private readonly IWorldPartitioner2D _partitioner;
         private readonly ICacheProvider _cache;
 
         private readonly IPrefabManager2D _prefabManager;
 
-        public GameWorldCoordinator2D(IWorldPartitioner2D partitioner, ICacheProvider cache, IPrefabManager2D prefabManager)
+        private readonly IPhysxWorldEngineFactory2D _physxWorldEngineFactory;
+
+        public GameWorldCoordinator2D(IWorldPartitioner2D partitioner, ICacheProvider cache, IPrefabManager2D prefabManager,
+        IPhysxWorldEngineFactory2D physxWorldEngineFactory, IEnumerable<IWorldIndex2D> gameWorlds)
         {
             _partitioner = partitioner;
             _cache = cache;
             _prefabManager = prefabManager;
+            _physxWorldEngineFactory = physxWorldEngineFactory;
+            _worlds = gameWorlds
+                .Select(index2d =>
+                {
+                    return AddWorld(index2d, _physxWorldEngineFactory.Create(index2d.Gravity, index2d.FixedDeltaTime));
+                })
+                .ToDictionary(x => x.Index.Index);
         }
+
+        public IGameWorldManager2D AddWorld(IWorldIndex2D index, IPhysxWorldEngine2D engine) => AddWorld(index, new PhysxWorld2D(engine));
 
         /// <summary>
         /// Adds a new game world and initializes it.
         /// </summary>
-        public virtual void AddWorld(WorldIndex2D index, IPhysxWorld2D physx2D)
+        public virtual IGameWorldManager2D AddWorld(WorldIndex2D index, IPhysxWorld2D physx2D)
         {
             if (_worlds.ContainsKey(index.Index))
                 throw new InvalidOperationException($"World {index.Index} already exists.");
@@ -31,6 +48,7 @@ namespace Altruist.Gaming.TwoD
             var manager = new GameWorldManager2D(index, physx2D, _partitioner, _cache, _prefabManager);
             manager.Initialize();
             _worlds[index.Index] = manager;
+            return manager;
         }
 
         /// <summary>
@@ -71,13 +89,9 @@ namespace Altruist.Gaming.TwoD
 
         public bool Empty() => _worlds.Count == 0;
 
-        public void AddWorld(IWorldIndex index, IPhysxWorld physx2D)
+        public IGameWorldManager2D AddWorld(IWorldIndex2D index, IPhysxWorld2D physx2D)
         {
-            if (index is not WorldIndex2D)
-                throw new ArgumentException("World index must be of type WorldIndex2D", nameof(index));
-            if (physx2D is not IPhysxWorld2D)
-                throw new ArgumentException("Physx world must be of type IPhysxWorld2D", nameof(physx2D));
-            AddWorld((WorldIndex2D)index, (IPhysxWorld2D)physx2D);
+            return AddWorld((WorldIndex2D)index, physx2D);
         }
     }
 

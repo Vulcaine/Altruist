@@ -25,6 +25,14 @@ namespace Altruist
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _singletonCache
             = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
 
+        private static readonly MethodInfo? _genericGetKeyedService =
+            typeof(ServiceProviderServiceExtensions)
+                .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .FirstOrDefault(m =>
+                    m.Name == "GetKeyedService" &&
+                    m.IsGenericMethodDefinition &&
+                    m.GetParameters().Length == 2);
+
         private static readonly object _convLock = new();
         private static Dictionary<Type, IConfigConverter>? _converters;
 
@@ -143,7 +151,10 @@ namespace Altruist
         public static bool ShouldRegister(Type t, IConfiguration cfg, ILogger log)
         {
             var conds = t.GetCustomAttributes<ConditionalOnConfigAttribute>(false).ToArray();
-            return conds.Length == 0 || conds.All(c => ConditionOk(c, cfg, log));
+
+            var gatingConds = conds.Where(c => string.IsNullOrEmpty(c.KeyField)).ToArray();
+
+            return gatingConds.Length == 0 || gatingConds.All(c => ConditionOk(c, cfg, log));
         }
 
         /// <summary>
@@ -333,6 +344,22 @@ namespace Altruist
             if (a is not null)
                 return ResolveFromConfig(cfg, p.ParameterType, a, log);
 
+            var keyedAttr = p.GetCustomAttribute<ServiceKeyAttribute>(false);
+            if (keyedAttr is not null)
+            {
+                // We expect that the service was registered as a keyed service
+                // using the same key (e.g. from ConditionalOnConfig KeyField).
+                var keyed = TryResolveKeyedService(sp, paramType, keyedAttr.Key, log);
+                if (keyed is not null)
+                    return keyed;
+
+                var errMsg =
+                    $"❌ No keyed service registered for '{GetCleanName(paramType)}' " +
+                    $"with key '{keyedAttr.Key}' (parameter '{p.Name}' in '{GetCleanName(p.Member.DeclaringType!)}').";
+                FailAndExit(log, errMsg);
+                throw new InvalidOperationException(errMsg);
+            }
+
             // 0) Hard-stop for simple/BCL types (string, primitives, etc.).
             // These must be bound via [AppConfigValue] or given a default.
             if (IsSimple(paramType))
@@ -414,6 +441,22 @@ namespace Altruist
             throw new InvalidOperationException(msg);
         }
 
+        internal static object? TryResolveKeyedService(IServiceProvider sp, Type serviceType, string key, ILogger log)
+        {
+            if (_genericGetKeyedService is null)
+            {
+                var msg =
+                    "Keyed DI is not available: IServiceProvider.GetKeyedService<T>(object) " +
+                    "extension method could not be found.";
+                FailAndExit(log, msg);
+                throw new InvalidOperationException(msg);
+            }
+
+            var gm = _genericGetKeyedService.MakeGenericMethod(serviceType);
+            var result = gm.Invoke(null, new object[] { sp, key });
+            return result;
+        }
+
         /// <summary>
         /// If the requested dependency type matches (or could match) a service
         /// that was filtered out by [ConditionalOnConfig], suggest the config keys.
@@ -457,7 +500,7 @@ namespace Altruist
         /// <summary>
         /// Logs a critical dependency resolution failure and terminates the process.
         /// </summary>
-        private static void FailAndExit(ILogger log, string message, Exception? ex = null)
+        internal static void FailAndExit(ILogger log, string message, Exception? ex = null)
         {
             try
             {
@@ -617,16 +660,51 @@ namespace Altruist
 
         public static object? ResolveFromConfig(IConfiguration cfg, Type target, AppConfigValueAttribute a, ILogger _)
         {
-            var s = cfg.GetSection(a.Path);
-            if (s.Exists())
-                return BindOrConvert(s, target);
+            if (a is null)
+                throw new ArgumentNullException(nameof(a));
+
+            var path = a.Path ?? string.Empty;
+            IConfigurationSection section;
+
+            // Support wildcard: everything before '*' is ignored, everything after '*'
+            // is treated as a path relative to the *current* cfg.
+            var starIndex = path.IndexOf('*');
+            if (starIndex >= 0)
+            {
+                // Slice everything after the star (and optional ':')
+                var afterStar =
+                    starIndex + 1 < path.Length
+                        ? path[(starIndex + 1)..].TrimStart(':')
+                        : string.Empty;
+
+                if (string.IsNullOrEmpty(afterStar))
+                {
+                    // '*' by itself means "this section"
+                    // If cfg is already a section, just treat it as such.
+                    section = cfg as IConfigurationSection ?? cfg.GetSection(string.Empty);
+                }
+                else
+                {
+                    // Relative to current cfg root
+                    section = cfg.GetSection(afterStar);
+                }
+            }
+            else
+            {
+                // No wildcard – legacy behavior
+                section = cfg.GetSection(path);
+            }
+
+            if (section.Exists())
+                return BindOrConvert(section, target);
 
             if (a.Default is not null)
                 return DefaultTo(target, a.Default);
 
             return Nullable.GetUnderlyingType(target) is not null || !target.IsValueType
                 ? null
-                : throw new InvalidOperationException($"Missing configuration for '{a.Path}' (type {target.Name}).");
+                : throw new InvalidOperationException(
+                    $"Missing configuration for '{a.Path}' (type {target.Name}).");
         }
 
         private static object? BindOrConvert(IConfigurationSection s, Type target)

@@ -53,8 +53,6 @@ namespace Altruist
                 logger.LogDebug("✅ Registered services:\n{Services}", string.Join("\n", reg));
         }
 
-        // ---------- Service & Portal registration ----------
-
         private static void RegisterServiceAttributes(IServiceCollection services, IConfiguration cfg, ILogger log, List<string> reg)
         {
             foreach (var implType in Find<ServiceAttribute>())
@@ -63,14 +61,28 @@ namespace Altruist
 
 
         private static void RegisterServiceType(
-            IServiceCollection services,
-            IConfiguration cfg,
-            ILogger log,
-            List<string> reg,
-            Type implType)
+     IServiceCollection services,
+     IConfiguration cfg,
+     ILogger log,
+     List<string> reg,
+     Type implType)
         {
             if (!DependencyResolver.ShouldRegister(implType, cfg, log))
                 return;
+
+            var conds = implType.GetCustomAttributes<ConditionalOnConfigAttribute>(false).ToArray();
+            var listConds = conds.Where(c => !string.IsNullOrEmpty(c.KeyField)).ToArray();
+
+            if (listConds.Length > 1)
+            {
+                log.LogError(
+                    "Type {Type} declares multiple ConditionalOnConfig attributes with KeyField. " +
+                    "Only one list-style condition is supported.",
+                    implType.FullName);
+                return;
+            }
+
+            var listCond = listConds.FirstOrDefault();
 
             foreach (var svcAttr in implType.GetCustomAttributes<ServiceAttribute>())
             {
@@ -101,31 +113,104 @@ namespace Altruist
                     }
                 }
 
-                // Plan and pre-register transitive dependencies bottom-up
-                DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
-
-                // Register concrete implementation
-                // IMPORTANT: do NOT call PostConstruct here.
-                services.Add(new ServiceDescriptor(
-                    implType,
-                    sp =>
-                    {
-                        var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
-                        return obj!;
-                    },
-                    lifetime));
-
-                reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
-
-                // Forward abstraction (if provided) to the same impl instance
-                if (serviceType != implType)
+                // ---------- Single-instance (no list condition) ----------
+                if (listCond is null)
                 {
+                    DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
+
                     services.Add(new ServiceDescriptor(
-                        serviceType,
-                        sp => sp.GetRequiredService(implType),
+                        implType,
+                        sp =>
+                        {
+                            var obj = DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime);
+                            return obj!;
+                        },
                         lifetime));
 
-                    reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
+                    reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
+
+                    if (serviceType != implType)
+                    {
+                        services.Add(new ServiceDescriptor(
+                            serviceType,
+                            sp => sp.GetRequiredService(implType),
+                            lifetime));
+
+                        reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
+                    }
+
+                    continue;
+                }
+
+                // ---------- Multi-instance (list condition with KeyField) ----------
+
+                if (string.IsNullOrWhiteSpace(listCond.KeyField))
+                {
+                    var msg =
+                        $"❌ Type '{implType.FullName}' uses ConditionalOnConfig(Path='{listCond.Path}') " +
+                        "for list-style registration, but KeyField is null or empty. " +
+                        "When using a list condition you must specify KeyField.";
+                    DependencyResolver.FailAndExit(log, msg);
+                    throw new InvalidOperationException(msg);
+                }
+
+                var listSection = cfg.GetSection(listCond.Path);
+                var items = listSection.GetChildren().ToArray();
+                if (items.Length == 0)
+                {
+                    log.LogWarning(
+                        "ConditionalOnConfig list path {Path} for {Type} exists but has no children. No instances will be registered.",
+                        listCond.Path,
+                        implType.FullName);
+                    continue;
+                }
+
+                // Plan dependencies once using the *root* config
+                DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
+
+                foreach (var itemSection in items)
+                {
+                    var itemCfg = itemSection;
+
+                    // KeyField is required for multi-instance keyed registration.
+                    var key = itemCfg[listCond.KeyField!];
+
+                    if (string.IsNullOrWhiteSpace(key))
+                    {
+                        var msg =
+                            $"❌ ConditionalOnConfig(Path='{listCond.Path}', KeyField='{listCond.KeyField}') " +
+                            $"for type '{implType.FullName}' expects each item to have a non-empty '{listCond.KeyField}' field. " +
+                            $"Item at path '{itemCfg.Path}' is missing or empty.";
+                        DependencyResolver.FailAndExit(log, msg);
+                        throw new InvalidOperationException(msg);
+                    }
+
+                    switch (lifetime)
+                    {
+                        case ServiceLifetime.Singleton:
+                            services.AddKeyedSingleton(
+                                serviceType,
+                                key,
+                                (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemCfg, implType, log, lifetime));
+                            break;
+
+                        case ServiceLifetime.Scoped:
+                            services.AddKeyedScoped(
+                                serviceType,
+                                key,
+                                (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemCfg, implType, log, lifetime));
+                            break;
+
+                        case ServiceLifetime.Transient:
+                        default:
+                            services.AddKeyedTransient(
+                                serviceType,
+                                key,
+                                (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemCfg, implType, log, lifetime));
+                            break;
+                    }
+
+                    reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)}[{key}] → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
                 }
             }
         }

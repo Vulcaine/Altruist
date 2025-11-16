@@ -10,6 +10,8 @@ namespace Altruist.Gaming.TwoD
 {
     public interface IGameWorldManager2D : IGameWorldManager
     {
+        IWorldIndex Index { get; }
+        IPhysxWorld PhysxWorld { get; }
         void Initialize();
         Task SaveAsync();
 
@@ -32,7 +34,7 @@ namespace Altruist.Gaming.TwoD
         private readonly Dictionary<PartitionIndex2D, IWorldPartitionManager> _partitionMap = new();
 
         private readonly List<WorldPartition2D> _partitions;
-        private readonly IPhysxWorld _physx2D;
+        private readonly IPhysxWorld2D _physx2D;
 
         public GameWorldManager2D(
             WorldIndex2D world,
@@ -52,6 +54,7 @@ namespace Altruist.Gaming.TwoD
         }
 
         public IPhysxWorld PhysxWorld => _physx2D;
+        public IWorldIndex Index => _index;
 
         public void Initialize()
         {

@@ -1,4 +1,3 @@
-// BepuWorldEngine3D.cs  (BEPU engine; implements AddBody/RemoveBody; NO creation API)
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -15,6 +14,8 @@ using BepuUtilities.Memory;
 
 namespace Altruist.Physx.ThreeD
 {
+
+    [Service(typeof(IPhysxWorldEngineFactory3D))]
     public sealed class BepuWorldEngineFactory3D : IPhysxWorldEngineFactory3D
     {
         public IPhysxWorldEngine3D Create(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
@@ -32,7 +33,8 @@ namespace Altruist.Physx.ThreeD
         private readonly BufferPool _pool = new();
         private readonly Dictionary<string, Body3DAdapter> _bodies = new();
 
-        public BepuWorldEngine3D(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
+        public BepuWorldEngine3D(
+            Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
             FixedDeltaTime = fixedDeltaTime;
 

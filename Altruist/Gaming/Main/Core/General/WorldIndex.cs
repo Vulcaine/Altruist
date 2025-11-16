@@ -2,6 +2,7 @@ namespace Altruist.Gaming
 {
     public interface IWorldIndex
     {
-        public int Index();
+        float FixedDeltaTime { get; set; }
+        public int Index { get; set; }
     }
 }

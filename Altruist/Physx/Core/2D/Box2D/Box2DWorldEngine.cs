@@ -1,4 +1,3 @@
-// Box2DWorldEngine2D.cs
 using System.Numerics;
 
 using Altruist.Physx.Contracts;
@@ -7,7 +6,9 @@ using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx.TwoD
 {
-    public sealed class Box2DWorldEngineFactory2D : IPhysxWorldEngineFactory2D
+    [Service(typeof(IPhysxWorldEngineFactory2D))]
+    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    public sealed class WorldEngineFactory2D : IPhysxWorldEngineFactory2D
     {
         public IPhysxWorldEngine2D Create(Vector2 gravity, float fixedDeltaTime = 1f / 60f)
             => new Box2DWorldEngine2D(gravity, fixedDeltaTime);
@@ -20,9 +21,11 @@ namespace Altruist.Physx.TwoD
 
         internal World World => _world;
 
+        public int Index { get; }
         private readonly World _world;
         private readonly Dictionary<string, Body2DAdapter> _bodies = new();
         private readonly Dictionary<Body, Body2DAdapter> _byNative = new();
+
 
         public Box2DWorldEngine2D(
             Vector2 gravity,

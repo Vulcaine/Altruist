@@ -1,11 +1,10 @@
-using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
     public interface IGameWorldCoordinator3D : IGameWorldCoordinator
     {
-        void AddWorld(WorldIndex3D index, IPhysxWorld3D physx3D);
+        IGameWorldManager3D AddWorld(WorldIndex3D index, IPhysxWorld3D physx3D);
         void RemoveWorld(int index);
         IGameWorldManager3D? GetWorld(int index);
         IEnumerable<int> GetAllWorldIndices();
@@ -15,25 +14,35 @@ namespace Altruist.Gaming.ThreeD
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
     [Service(typeof(IGameWorldCoordinator))]
     [Service(typeof(IGameWorldCoordinator3D))]
-    public class GameWorldCoordinator3D : IGameWorldCoordinator, IGameWorldCoordinator3D
+    public class GameWorldCoordinator3D : IGameWorldCoordinator3D
     {
-        private readonly Dictionary<int, GameWorldManager3D> _worlds = new();
+        private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldPartitioner3D _partitioner;
-        private readonly ICacheProvider _cache;
         private readonly IPrefabManager3D _prefabManager;
+
+        private readonly IPhysxWorldEngineFactory3D _physxWorldEngineFactory;
 
         public GameWorldCoordinator3D(
             IWorldPartitioner3D partitioner,
-            ICacheProvider cache,
-            IPrefabManager3D prefabManager)
+            IPrefabManager3D prefabManager,
+            IPhysxWorldEngineFactory3D physxWorldEngineFactory,
+            IEnumerable<IWorldIndex3D> gameWorlds)
         {
-            _partitioner = partitioner ?? throw new ArgumentNullException(nameof(partitioner));
-            _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _prefabManager = prefabManager ?? throw new ArgumentNullException(nameof(prefabManager));
+            _partitioner = partitioner;
+            _prefabManager = prefabManager;
+            _physxWorldEngineFactory = physxWorldEngineFactory;
+            _worlds = gameWorlds
+                .Select(index3d =>
+                {
+                    return AddWorld(index3d, _physxWorldEngineFactory.Create(index3d.Gravity, index3d.FixedDeltaTime));
+                })
+                .ToDictionary(x => x.Index.Index);
         }
 
+        public IGameWorldManager3D AddWorld(IWorldIndex3D index, IPhysxWorldEngine3D engine) => AddWorld(index, new PhysxWorld3D(engine));
+
         /// <summary>Adds a new 3D game world and initializes it.</summary>
-        public virtual void AddWorld(WorldIndex3D index, IPhysxWorld3D physx3D)
+        public virtual IGameWorldManager3D AddWorld(WorldIndex3D index, IPhysxWorld3D physx3D)
         {
             if (_worlds.ContainsKey(index.Index))
                 throw new InvalidOperationException($"World {index.Index} already exists.");
@@ -41,6 +50,7 @@ namespace Altruist.Gaming.ThreeD
             var manager = new GameWorldManager3D(index, physx3D, _partitioner, _prefabManager);
             manager.Initialize();
             _worlds[index.Index] = manager;
+            return manager;
         }
 
         /// <summary>
@@ -81,13 +91,9 @@ namespace Altruist.Gaming.ThreeD
 
         public bool Empty() => _worlds.Count == 0;
 
-        public void AddWorld(IWorldIndex index, IPhysxWorld physx2D)
+        public IGameWorldManager3D AddWorld(IWorldIndex3D index, IPhysxWorld3D physx3D)
         {
-            if (index is not WorldIndex3D)
-                throw new ArgumentException("World index must be of type WorldIndex3D", nameof(index));
-            if (physx2D is not IPhysxWorld3D)
-                throw new ArgumentException("Physx world must be of type IPhysxWorld3D", nameof(physx2D));
-            AddWorld((WorldIndex3D)index, (IPhysxWorld3D)physx2D);
+            return AddWorld(index, physx3D);
         }
     }
 }

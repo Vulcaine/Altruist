@@ -10,6 +10,8 @@ namespace Altruist.Gaming.ThreeD
 {
     public interface IGameWorldManager3D : IGameWorldManager
     {
+        IWorldIndex Index { get; }
+        IPhysxWorld PhysxWorld { get; }
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IPrefab3D prefab);
         Task AddDynamicObject(IPrefab3D prefab);
         WorldPartitionManager3D? AddStaticObject(IPrefab3D prefab);
@@ -48,6 +50,7 @@ namespace Altruist.Gaming.ThreeD
         }
 
         public IPhysxWorld PhysxWorld => _physx3D;
+        public IWorldIndex Index => _index;
 
         public void Initialize()
         {
