@@ -1,9 +1,9 @@
-using System.Net.WebSockets;
 
 using Altruist.Security;
 using Altruist.Transport;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http; 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -88,27 +88,40 @@ public sealed class WebSocketTransport : ITransport
     }
 
     /// <summary>
-    /// Adds the middleware that accepts WebSocket connections on registered routes,
-    /// applies per-route shield (if any), and forwards the connection to the single
-    /// IConnectionManager.HandleConnection(connection, @event, clientId).
+    /// Adds the middleware that:
+    ///  - for ANY request with a registered route, runs the per-route shield (if any)
+    ///  - for WebSocket requests, accepts and forwards to IConnectionManager
+    ///  - for normal HTTP requests, just lets the pipeline continue after shield
     /// </summary>
     public void RouteTraffic(IApplicationBuilder app)
     {
         app.Use(async (context, next) =>
         {
-            if (!context.WebSockets.IsWebSocketRequest ||
-                !_routes.TryGetValue(context.Request.Path, out var route))
+            // Try to find a RouteInfo for this path
+            if (!_routes.TryGetValue(context.Request.Path, out var route))
             {
-                await next();
-                return;
+                // Not registered yet: try to infer Shield from endpoint metadata (e.g. [JwtShield] on controller)
+                var endpoint = context.GetEndpoint();
+                var shieldAttr = endpoint?.Metadata.GetMetadata<ShieldAttribute>();
+
+                if (shieldAttr is not null)
+                {
+                    // Register this path with the ShieldAttribute's type
+                    route = new RouteInfo(context.Request.Path, shieldAttr.GetType());
+                    _routes[route.Path] = route;
+                }
+                else
+                {
+                    // No route info and no shield metadata: just continue as normal
+                    await next();
+                    return;
+                }
             }
 
-            // Resolve the single manager
             var sp = context.RequestServices;
-            var manager = sp.GetRequiredService<IConnectionManager>();
             AuthDetails? authDetails = null;
 
-            // Enforce route shield (if any)
+            // Enforce route shield (if any) FOR BOTH HTTP + WEBSOCKET
             if (route.ShieldType is not null)
             {
                 // Create a shield instance (attributes may depend on DI)
@@ -133,7 +146,15 @@ public sealed class WebSocketTransport : ITransport
                 }
             }
 
-            // Accept and hand off
+            // If this is NOT a WebSocket request: shield ran, user is authenticated, continue to MVC
+            if (!context.WebSockets.IsWebSocketRequest)
+            {
+                await next();
+                return;
+            }
+
+            // WebSocket path: accept and hand off
+            var manager = sp.GetRequiredService<IConnectionManager>();
             var clientId = Guid.NewGuid().ToString("N");
             var socket = await context.WebSockets.AcceptWebSocketAsync();
 
@@ -145,67 +166,4 @@ public sealed class WebSocketTransport : ITransport
     // shared MVC bits for shield evaluation
     private static readonly ActionDescriptor SharedActionDescriptor = new();
     private static readonly List<IFilterMetadata> SharedFilters = new();
-}
-
-
-// ───────────────────────────────────────────────────────────────────────────
-// Client (utility)
-// ───────────────────────────────────────────────────────────────────────────
-
-public interface ITransportClient
-{
-    Task ConnectAsync(string gatewayUrl);
-    Task DisconnectAsync();
-    Task SendAsync(byte[] data);
-    Task<byte[]> ReceiveAsync(CancellationToken cancellationToken);
-    bool IsConnected { get; }
-}
-
-public sealed class WebSocketTransportClient : ITransportClient
-{
-    private readonly ClientWebSocket _webSocket = new();
-
-    public bool IsConnected => _webSocket.State == WebSocketState.Open;
-
-    public async Task ConnectAsync(string gatewayUrl)
-    {
-        try
-        {
-            await _webSocket.ConnectAsync(new Uri(gatewayUrl), CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Error while connecting to WebSocket", ex);
-        }
-    }
-
-    public async Task DisconnectAsync()
-    {
-        if (_webSocket.State == WebSocketState.Open)
-        {
-            await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Normal Closure", CancellationToken.None);
-        }
-        _webSocket.Dispose();
-    }
-
-    public async Task SendAsync(byte[] data)
-    {
-        if (!IsConnected)
-            throw new InvalidOperationException("WebSocket is not connected.");
-        await _webSocket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary, true, CancellationToken.None);
-    }
-
-    public async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
-    {
-        var buffer = new byte[4096];
-        var result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-
-        if (result.MessageType == WebSocketMessageType.Close)
-        {
-            await DisconnectAsync();
-            return Array.Empty<byte>();
-        }
-
-        return buffer.Take(result.Count).ToArray();
-    }
 }
