@@ -155,14 +155,28 @@ namespace Altruist
                 }
 
                 var listSection = cfg.GetSection(listCond.Path);
+
+                if (!listSection.Exists())
+                {
+                    var msg =
+                        $"❌ ConditionalOnConfig list path '{listCond.Path}' for type '{implType.FullName}' " +
+                        "does not exist in configuration.\n" +
+                        $"   → Check your config file and make sure the path is correct.\n" +
+                        $"   → Example: if your YAML has 'altruist:game:worlds:items', " +
+                        $"      then the attribute should use \"altruist:game:worlds:items\", not \"altruist:worlds:items\".";
+                    DependencyResolver.FailAndExit(log, msg);
+                    throw new InvalidOperationException(msg);
+                }
+
                 var items = listSection.GetChildren().ToArray();
                 if (items.Length == 0)
                 {
-                    log.LogWarning(
-                        "ConditionalOnConfig list path {Path} for {Type} exists but has no children. No instances will be registered.",
-                        listCond.Path,
-                        implType.FullName);
-                    continue;
+                    var msg =
+                        $"❌ ConditionalOnConfig list path '{listCond.Path}' for type '{implType.FullName}' " +
+                        "exists but has no children. No instances will be registered.\n" +
+                        "   → Add at least one item under this path in your configuration.";
+                    DependencyResolver.FailAndExit(log, msg);
+                    throw new InvalidOperationException(msg);
                 }
 
                 // Plan dependencies once using the *root* config
