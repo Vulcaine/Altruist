@@ -45,9 +45,13 @@ public class JwtToken : TokenIssue
     public override string Type { get; set; } = "JwtToken";
 }
 
-[Service(typeof(IIssuer))]
-[ConditionalOnConfig("altruist:security:mode", havingValue: "session")]
-public class SessionTokenIssuer : IIssuer
+public interface ISessionTokenIssuer : IIssuer
+{
+
+}
+
+[Service(typeof(ISessionTokenIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
+public class SessionTokenIssuer : ISessionTokenIssuer
 {
     private readonly TimeSpan _accessTokenExpiration;
     private readonly TimeSpan _refreshTokenExpiration;
@@ -69,9 +73,13 @@ public class SessionTokenIssuer : IIssuer
     }
 }
 
-[Service(typeof(IIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
-[ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
-public class JwtTokenIssuer : IIssuer
+public interface IJwtTokenIssuer : IIssuer
+{
+
+}
+
+[Service(typeof(IJwtTokenIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
+public class JwtTokenIssuer : IJwtTokenIssuer
 {
     public JwtBearerOptions JwtOptions { get; }
     private IEnumerable<Claim>? _customClaims;

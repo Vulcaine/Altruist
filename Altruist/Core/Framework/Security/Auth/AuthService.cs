@@ -25,16 +25,16 @@ public interface IAuthService
 [Service(typeof(IAuthService))]
 public class AuthService : IAuthService
 {
-    protected readonly IIssuer _issuer;
+    protected readonly ISessionTokenIssuer _sessionTokenIssuer;
     private readonly TokenSessionSyncService? _syncService;
     private readonly ITokenValidator _tokenValidator;
 
     public AuthService(
-        IIssuer issuer,
+        ISessionTokenIssuer issuer,
         TokenSessionSyncService? syncService,
         ITokenValidator tokenValidator)
     {
-        _issuer = issuer;
+        _sessionTokenIssuer = issuer;
         _syncService = syncService;
         _tokenValidator = tokenValidator;
     }
@@ -79,7 +79,7 @@ public class AuthService : IAuthService
             }
         }
 
-        var newToken = _issuer.Issue();
+        var newToken = _sessionTokenIssuer.Issue();
 
         if (_syncService != null && newToken is TokenIssue tokenIssue)
         {
