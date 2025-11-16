@@ -26,15 +26,15 @@ namespace Altruist.Gaming
         public override string Type { get; set; } = "WorldIndex2D";
 
         public WorldIndex2D(
-            [AppConfigValue("altruist:game:worlds:items:*:index")]
+            [AppConfigValue(":*:index")]
             int index,
-            [AppConfigValue("altruist:game:worlds:items:*:fixedDeltaTime", "0.01666f")]
+            [AppConfigValue("*:fixedDeltaTime", "0.01666f")]
             float fixedDeltaTime,
-            [AppConfigValue("altruist:game:worlds:items:*:size")]
+            [AppConfigValue("*:size")]
             Vector2 size,
-            [AppConfigValue("altruist:game:worlds:items:*:gravity")]
+            [AppConfigValue("*:gravity")]
             Vector2? gravity = null,
-            [AppConfigValue("altruist:game:worlds:items:*:position")]
+            [AppConfigValue("*:position")]
             Vector2? position = null,
             string? groupId = null)
         {

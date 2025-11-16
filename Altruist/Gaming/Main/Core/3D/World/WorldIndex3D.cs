@@ -27,15 +27,15 @@ namespace Altruist.Gaming
 
 
         public WorldIndex3D(
-            [AppConfigValue("altruist:game:worlds:items:*:index")]
+            [AppConfigValue("*:index")]
             int index,
-            [AppConfigValue("altruist:game:worlds:items:*:fixedDeltaTime", "0.01666f")]
+            [AppConfigValue("*:fixedDeltaTime", "0.01666f")]
             float fixedDeltaTime,
-            [AppConfigValue("altruist:game:worlds:items:*:size")]
+            [AppConfigValue("*:size")]
             Vector3 size,
- [AppConfigValue("altruist:game:worlds:items:*:gravity")]
+            [AppConfigValue("*:gravity")]
             Vector3? gravity = null,
-[AppConfigValue("altruist:game:worlds:items:*:position")]
+            [AppConfigValue("*:position")]
             Vector3? position = null,
             string? groupId = null)
         {
