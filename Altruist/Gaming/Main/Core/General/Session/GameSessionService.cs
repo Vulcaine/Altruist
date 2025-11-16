@@ -37,7 +37,7 @@ public interface IGameSessionService
     /// Handshake:
     ///   - returns ResultPacket(HandshakePacket) or other dedicated packet.
     /// </summary>
-    Task<IResultPacket> HandshakeAsync(HandshakePacket message, string clientId);
+    Task<IResultPacket> HandshakeAsync(HandshakeRequestPacket message, string clientId);
 
     // ---- Minimal Session Context API (type-only) ----
     Task SetContext<T>(string clientId, T value);
@@ -67,14 +67,12 @@ public class GameSessionService : IGameSessionService
     // -------------------------
 
     public virtual async Task<IResultPacket> HandshakeAsync(
-        HandshakePacket message,
+        HandshakeRequestPacket message,
         string clientId)
     {
         var rooms = await _socketManager.GetAllRoomsAsync();
 
-        var responsePacket = new HandshakePacket(
-            rooms: rooms.Values.ToArray()
-        );
+        var responsePacket = new HandshakeResponsePacket(rooms.Values.ToArray());
 
         return ResultPacket.Success(TransportCode.Accepted, responsePacket);
     }

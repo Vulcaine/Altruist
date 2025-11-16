@@ -29,7 +29,7 @@ public abstract class AltruistGameSessionPortal : Portal
 
     [Gate(IngressEP.Handshake)]
     public async Task HandshakeAsync(
-        HandshakePacket message,
+        HandshakeRequestPacket message,
         string clientId)
     {
         // 1) Core logic from service
@@ -83,7 +83,7 @@ public abstract class AltruistGameSessionPortal : Portal
     // -----------------------------------
 
     protected virtual Task<IResultPacket> OnHandshakeReceived(
-        HandshakePacket message,
+        HandshakeRequestPacket message,
         string clientId,
         IResultPacket result)
         => Task.FromResult(result);

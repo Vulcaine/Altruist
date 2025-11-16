@@ -402,24 +402,42 @@ namespace Altruist
     }
 
     [MessagePackObject]
-    public struct HandshakePacket : IPacketBase
+    public struct HandshakeRequestPacket : IPacketBase
+    {
+        [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
+        [JsonPropertyName("type")][Key(1)] public string Type { get; set; }
+
+        public HandshakeRequestPacket()
+        {
+            Header = default;
+            Type = "HandshakePacket";
+        }
+
+        public HandshakeRequestPacket(string? sessionToken)
+        {
+            Header = default;
+            Type = "HandshakePacket";
+        }
+    }
+
+    [MessagePackObject]
+    public struct HandshakeResponsePacket : IPacketBase
     {
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("rooms")][Key(1)] public RoomPacket[] Rooms { get; set; }
-
         [JsonPropertyName("type")][Key(2)] public string Type { get; set; }
 
-        public HandshakePacket()
+        public HandshakeResponsePacket()
         {
             Header = default;
             Rooms = Array.Empty<RoomPacket>();
             Type = "HandshakePacket";
         }
 
-        public HandshakePacket(RoomPacket[] rooms)
+        public HandshakeResponsePacket(RoomPacket[] rooms)
         {
             Header = default;
-            Rooms = rooms ?? Array.Empty<RoomPacket>();
+            Rooms = rooms;
             Type = "HandshakePacket";
         }
     }

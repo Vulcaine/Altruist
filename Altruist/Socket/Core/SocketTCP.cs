@@ -81,7 +81,7 @@ public sealed class TcpTransport : ITransport
         var shieldAttribute = connectionManager.GetType().GetCustomAttribute<ShieldAttribute>();
         AuthDetails? authDetails = null;
 
-        var handshakeMessage = _codec.Decoder.Decode<HandshakePacket>(buffer);
+        var handshakeMessage = _codec.Decoder.Decode<HandshakeRequestPacket>(buffer);
         var clientIp = client.Client.RemoteEndPoint as IPEndPoint;
 
         var authContext = new SocketAuthContext

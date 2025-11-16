@@ -3,6 +3,7 @@ using System.Text;
 using Altruist.Contracts;
 using Altruist.Transport;
 using Altruist.Web.Features;
+using Altruist.Security;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -99,6 +100,7 @@ namespace Altruist
             builder.Services.AddControllers();
 
             var app = builder.Build();
+            var logger = app.Logger; // ⬅️ moved up so we can use it in WS validation
 
             // Base path for controllers (e.g., /api or /)
             if (_httpContextPath != "/" && !string.IsNullOrWhiteSpace(_httpContextPath))
@@ -125,6 +127,65 @@ namespace Altruist
             if (useWebSocket && _transport is not null)
             {
                 var portals = PortalDiscovery.Discover().Distinct().ToArray();
+
+                // ─────────────────────────────────────────────────────────────
+                // 1) VALIDATE SHIELDS PER WS ROUTE BEFORE REGISTERING
+                //    - If multiple portals map to the same WS path and:
+                //      • some are shielded, some are not  → ERROR
+                //      • or shield types differ           → ERROR
+                // ─────────────────────────────────────────────────────────────
+
+                // Group portals by final WS path (transport base path + portal path)
+                var groupedByPath = portals
+                    .Select(p => new
+                    {
+                        PortalType = p.PortalType,
+                        WsPath = CombinePaths(_wsContextPath, p.Path)
+                    })
+                    .GroupBy(x => x.WsPath, StringComparer.Ordinal);
+
+                foreach (var group in groupedByPath)
+                {
+                    Type? expectedShieldType = null;
+                    Type? firstPortalType = null;
+
+                    foreach (var item in group)
+                    {
+                        var shieldAttr = item.PortalType
+                            .GetCustomAttributes(inherit: true)
+                            .OfType<ShieldAttribute>()
+                            .FirstOrDefault();
+
+                        var currentShieldType = shieldAttr?.GetType();
+
+                        if (expectedShieldType is null)
+                        {
+                            expectedShieldType = currentShieldType;
+                            firstPortalType = item.PortalType;
+                            continue;
+                        }
+
+                        if (!Equals(expectedShieldType, currentShieldType))
+                        {
+                            var msg =
+                                $"❌ Conflicting Shield configuration for WebSocket route '{group.Key}'.\n" +
+                                $"   • First portal: {DependencyResolver.GetCleanName(firstPortalType!)} " +
+                                $"      → shield: {expectedShieldType?.Name ?? "<none>"}\n" +
+                                $"   • Portal: {DependencyResolver.GetCleanName(item.PortalType)} " +
+                                $"      → shield: {currentShieldType?.Name ?? "<none>"}\n\n" +
+                                "All portals mapped to the same WebSocket path must either:\n" +
+                                "  - all be unshielded, OR\n" +
+                                "  - all use the same ShieldAttribute type.\n";
+
+                            DependencyResolver.FailAndExit(logger, msg);
+                            throw new InvalidOperationException(msg);
+                        }
+                    }
+                }
+
+                // ─────────────────────────────────────────────────────────────
+                // 2) AFTER VALIDATION, REGISTER ROUTES ON THE TRANSPORT
+                // ─────────────────────────────────────────────────────────────
                 foreach (var (type, path) in portals)
                 {
                     // Prefix each discovered path with transport path
@@ -136,14 +197,10 @@ namespace Altruist
                 _transport.RouteTraffic(app);
             }
 
-            // Use the web app's logger instead of the injected (root) LoggerFactory,
-            // which may already be disposed at this point.
-            var logger = app.Logger;
-
+            // Prefer “ws” scheme if WS enabled, otherwise “http”
             if (!int.TryParse(_httpPort, out var portNum))
                 portNum = 8080;
 
-            // Prefer “ws” scheme if WS enabled, otherwise “http”
             var scheme = useWebSocket ? "ws" : "http";
             _settings.ServerInfo = new ServerInfo("Altruist Server", scheme, _httpHost!, portNum);
 

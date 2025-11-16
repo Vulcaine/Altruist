@@ -97,7 +97,7 @@ public sealed class UdpTransport : ITransport
             var errorMessage = Encoding.UTF8.GetBytes("Authentication failed.");
             var shieldAttribute = connectionManager.GetType().GetCustomAttribute<ShieldAttribute>();
 
-            var handshakeMessage = _codec.Decoder.Decode<HandshakePacket>(buffer);
+            var handshakeMessage = _codec.Decoder.Decode<HandshakeRequestPacket>(buffer);
 
             // TODO: get token from handshakeMessage
             var authContext = new SocketAuthContext

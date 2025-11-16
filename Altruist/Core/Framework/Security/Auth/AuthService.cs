@@ -9,7 +9,7 @@ public interface IAuthService
     /// Attempts to upgrade the session auth.
     /// Returns a newly issued token (IIssue) on success, or null on failure.
     /// </summary>
-    Task<IIssue?> Upgrade(SessionAuthContext context, string clientId);
+    Task<IIssue?> Upgrade(SessionAuthContext context);
 
     /// <summary>
     /// Validates a raw JWT token and returns a ClaimsPrincipal if valid, otherwise null.
@@ -39,7 +39,7 @@ public class AuthService : IAuthService
         _tokenValidator = tokenValidator;
     }
 
-    public virtual Task<IIssue?> Upgrade(SessionAuthContext context, string clientId)
+    public virtual Task<IIssue?> Upgrade(SessionAuthContext context)
     {
         return UpgradeAuth(context);
     }
