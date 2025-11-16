@@ -14,10 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using Altruist.Engine;
+
 using Microsoft.Extensions.Logging;
 
 namespace Altruist
 {
+
+    struct DisconnectToken
+    {
+
+    }
 
     [Service(typeof(IConnectionManager))]
     public class ConnectionManager : IConnectionManager
@@ -25,12 +32,15 @@ namespace Altruist
         private readonly ICodec _codec;
         private readonly List<IInterceptor> _interceptors = new();
         private readonly ISocketManager _socketManager;
+        private readonly IEngineCore? _engine;
         private readonly ILogger _logger;
 
-        public ConnectionManager(ISocketManager socketManager, ICodec codec, ILoggerFactory loggerFactory)
+        public ConnectionManager(ISocketManager socketManager, ICodec codec,
+         ILoggerFactory loggerFactory, IEngineCore? engineCore = null)
         {
             _socketManager = socketManager;
             _codec = codec;
+            _engine = engineCore;
             _logger = loggerFactory.CreateLogger(GetType());
         }
 
@@ -77,7 +87,6 @@ namespace Altruist
         {
             await _socketManager.AddConnectionAsync(clientId, connection).ConfigureAwait(false);
 
-            // Notify all portals about new connection
             var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
             {
@@ -120,7 +129,14 @@ namespace Altruist
                 {
                     try
                     {
-                        await portal.OnDisconnectedAsync(clientId, failureException).ConfigureAwait(false);
+                        if (_engine != null)
+                        {
+                            _engine.SendTask(new TaskIdentifier("Disconnect_" + clientId + "_" + portal.GetType().FullName), () => portal.OnDisconnectedAsync(clientId, failureException));
+                        }
+                        else
+                        {
+                            await portal.OnDisconnectedAsync(clientId, failureException);
+                        }
                     }
                     catch (Exception ex)
                     {
