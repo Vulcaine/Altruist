@@ -26,7 +26,7 @@ namespace Altruist.Gaming
         public override string Type { get; set; } = "WorldIndex2D";
 
         public WorldIndex2D(
-            [AppConfigValue(":*:index")]
+            [AppConfigValue("*:index")]
             int index,
             [AppConfigValue("*:fixedDeltaTime", "0.01666f")]
             float fixedDeltaTime,

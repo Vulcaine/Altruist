@@ -658,7 +658,7 @@ namespace Altruist
 
         // ------------------- Config conversion pipeline ------------------
 
-        public static object? ResolveFromConfig(IConfiguration cfg, Type target, AppConfigValueAttribute a, ILogger _)
+        public static object? ResolveFromConfig(IConfiguration cfg, Type target, AppConfigValueAttribute a, ILogger log)
         {
             if (a is null)
                 throw new ArgumentNullException(nameof(a));
@@ -666,13 +666,16 @@ namespace Altruist
             var path = a.Path ?? string.Empty;
             IConfigurationSection section;
 
+            // We want to know if there's a wildcard and what "relative" path we resolved.
+            var starIndex = path.IndexOf('*');
+            string? afterStar = null;
+
             // Support wildcard: everything before '*' is ignored, everything after '*'
             // is treated as a path relative to the *current* cfg.
-            var starIndex = path.IndexOf('*');
             if (starIndex >= 0)
             {
                 // Slice everything after the star (and optional ':')
-                var afterStar =
+                afterStar =
                     starIndex + 1 < path.Length
                         ? path[(starIndex + 1)..].TrimStart(':')
                         : string.Empty;
@@ -701,10 +704,38 @@ namespace Altruist
             if (a.Default is not null)
                 return DefaultTo(target, a.Default);
 
-            return Nullable.GetUnderlyingType(target) is not null || !target.IsValueType
-                ? null
-                : throw new InvalidOperationException(
-                    $"Missing configuration for '{a.Path}' (type {target.Name}).");
+            // ----- Missing config: build a detailed, user-friendly error -----
+
+            var rootPath = (cfg as IConfigurationSection)?.Path ?? "<root>";
+            string hint;
+
+            if (starIndex >= 0)
+            {
+                var rel = string.IsNullOrEmpty(afterStar) ? "<this section>" : afterStar;
+
+                hint =
+                    $"Wildcard path '{path}' was resolved relative to configuration root '{rootPath}', " +
+                    $"looking for '{rel}', but that section does not exist.\n" +
+                    "This usually means one of the following:\n" +
+                    "  • The type is being constructed with the WRONG configuration root\n" +
+                    "    (for example the global config instead of a per-item section).\n" +
+                    "  • The corresponding list-style ConditionalOnConfig(Path=..., KeyField=...)\n" +
+                    "    is pointing at the wrong path, so instances are not registered per item.\n" +
+                    "  • Or the expected key is missing from the item in your YAML.\n\n" +
+                    "If you expected this to bind from a list item (e.g. 'altruist:game:worlds:items:0:index'),\n" +
+                    "make sure this type is constructed with that item section as its configuration root\n" +
+                    "(for example via [ConditionalOnConfig(\"altruist:game:worlds:items\", KeyField = \"id\")]).";
+            }
+            else
+            {
+                hint =
+                    $"Configuration section '{path}' does not exist under root '{rootPath}'.\n" +
+                    "Check your configuration file and the path used in [AppConfigValue].";
+            }
+
+            var msg = $"Missing configuration for '{a.Path}' (type {target.Name}).\n{hint}";
+            FailAndExit(log, msg);
+            throw new InvalidOperationException(msg);
         }
 
         private static object? BindOrConvert(IConfigurationSection s, Type target)
