@@ -73,10 +73,10 @@ public class AuthService : IAuthService
         if (_syncService != null)
         {
             var old = await _syncService.DeleteAsync(context.Token, groupKey);
-            if (old == null)
-                return null;
-
-            originalFingerprint = old.Fingerprint;
+            if (old != null)
+            {
+                originalFingerprint = old.Fingerprint;
+            }
         }
 
         var newToken = _issuer.Issue();
