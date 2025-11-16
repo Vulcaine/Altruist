@@ -272,7 +272,7 @@ public static class DependencyPlanner
     // ---------------- candidates ----------------
 
     private static List<(Type impl, ServiceLifetime lifetime)> FindCandidateImplementations(
-        Type abstraction, IConfiguration cfg, ILogger log)
+    Type abstraction, IConfiguration cfg, ILogger log)
     {
         var explicitImpls = _assemblies
             .SelectMany(SafeGetTypes)
@@ -282,6 +282,11 @@ public static class DependencyPlanner
                  .Where(sa => (sa.ServiceType ?? t) == abstraction)
                  .Select(sa => (impl: t, lifetime: sa.Lifetime)))
             .Where(x => DependencyResolver.ShouldRegister(x.impl, cfg, log))
+            .Where(x =>
+            {
+                var conds = x.impl.GetCustomAttributes<ConditionalOnConfigAttribute>(false);
+                return !conds.Any(c => !string.IsNullOrEmpty(c.KeyField));
+            })
             .Distinct()
             .ToList();
 
