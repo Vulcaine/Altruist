@@ -26,7 +26,7 @@ public class VaultAttribute : Attribute
     public VaultAttribute(string Name, bool StoreHistory = false, string Keyspace = "altruist", string DbToken = "Postgres") => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken) = (Name, StoreHistory, Keyspace, DbToken);
 }
 
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Class, Inherited = true)]
 public class VaultPrimaryKeyAttribute : Attribute
 {
     public string[] Keys { get; }

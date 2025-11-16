@@ -230,7 +230,6 @@ public class Document
 
         foreach (var fk in ForeignKeys)
         {
-            // 1) Validate OnDelete value
             if (!IsValidOnDelete(fk.OnDelete))
             {
                 FailAndExit(
@@ -241,7 +240,6 @@ public class Document
 
             var principalType = fk.PrincipalType;
 
-            // 2) Principal type must be a stored model with [Vault]
             if (!typeof(IStoredModel).IsAssignableFrom(principalType))
             {
                 FailAndExit(
@@ -257,7 +255,6 @@ public class Document
                     "which is missing [Vault] attribute.");
             }
 
-            // 3) Principal property must exist
             var principalProp = principalType.GetProperty(
                 fk.PrincipalPropertyName,
                 BindingFlags.Public | BindingFlags.Instance);
@@ -270,10 +267,40 @@ public class Document
                     "but that property does not exist.");
             }
 
-            // 4) Principal property must be PK or UNIQUE
             var principalPkAttr = principalType.GetCustomAttribute<VaultPrimaryKeyAttribute>();
-            bool isPk = principalPkAttr?.Keys
-                .Any(k => string.Equals(k, fk.PrincipalPropertyName, StringComparison.OrdinalIgnoreCase)) == true;
+            bool isPk = false;
+
+            if (principalPkAttr is not null && principalPkAttr.Keys is { Length: > 0 })
+            {
+                var pkPropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var principalProps = principalType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+                foreach (var key in principalPkAttr.Keys)
+                {
+                    var byName = principalProps.FirstOrDefault(p =>
+                        string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
+
+                    if (byName is not null)
+                    {
+                        pkPropertyNames.Add(byName.Name);
+                        continue;
+                    }
+
+                    var byColumn = principalProps.FirstOrDefault(p =>
+                    {
+                        var colAttr = p.GetCustomAttribute<VaultColumnAttribute>();
+                        var physicalName = colAttr?.Name ?? p.Name.ToLowerInvariant();
+                        return string.Equals(physicalName, key, StringComparison.OrdinalIgnoreCase);
+                    });
+
+                    if (byColumn is not null)
+                    {
+                        pkPropertyNames.Add(byColumn.Name);
+                    }
+                }
+
+                isPk = pkPropertyNames.Contains(fk.PrincipalPropertyName);
+            }
 
             bool isUnique = principalProp?.GetCustomAttribute<VaultUniqueColumnAttribute>() is not null;
 
