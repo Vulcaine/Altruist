@@ -12,7 +12,7 @@ namespace Altruist.Gaming
 
     [Service(typeof(IWorldIndex2D))]
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
-    [ConditionalOnConfig("altruist:worlds:items", KeyField = "id")]
+    [ConditionalOnConfig("altruist:game:worlds:items", KeyField = "id")]
     public sealed class WorldIndex2D : VaultModel, IWorldIndex2D
     {
         public override string StorageId { get; set; }
