@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,19 +21,6 @@ using Altruist.Security;
 
 namespace Altruist.Web
 {
-    // ───────────────────────────────────────────────────────────────────────────
-    // Transport
-    // ───────────────────────────────────────────────────────────────────────────
-
-    // [Service(typeof(ITransportConnectionSetupBase))]
-    // [ConditionalOnConfig("altruist:transport:mode", havingValue: "websocket")]
-    // public sealed class WebSocketConnectionSetup : TransportConnectionSetup<WebSocketConnectionSetup>
-    // {
-    //     public WebSocketConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
-    //     {
-    //     }
-    // }
-
     public sealed class WebSocketConnection : AltruistConnection
     {
         [JsonIgnore] private readonly WebSocket? _webSocket;

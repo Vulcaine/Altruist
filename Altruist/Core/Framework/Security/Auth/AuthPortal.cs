@@ -49,8 +49,6 @@ namespace Altruist.Security
         [Gate("upgrade")]
         public async Task UpgradeAuth(SessionAuthContext context, string clientId)
         {
-            var connection = await _connectionManager.GetConnectionAsync(clientId);
-
             try
             {
                 context = OnUpgrade(context, clientId);
@@ -101,11 +99,7 @@ namespace Altruist.Security
             }
             finally
             {
-                if (connection != null)
-                {
-                    await connection.CloseOutputAsync();
-                    await connection.CloseAsync();
-                }
+                await _connectionManager.DisconnectEngineAwareAsync(clientId);
             }
         }
     }

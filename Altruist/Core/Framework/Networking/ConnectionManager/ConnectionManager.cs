@@ -70,10 +70,10 @@ namespace Altruist
 
                 if (handlerTask != null)
                 {
-                    await handlerTask.ConfigureAwait(false);
+                    await handlerTask;
                 }
 
-                await interceptorExecution.ConfigureAwait(false);
+                await interceptorExecution;
             }
             else
             {
@@ -85,14 +85,14 @@ namespace Altruist
 
         public async Task HandleConnection(AltruistConnection connection, string @event, string clientId)
         {
-            await _socketManager.AddConnectionAsync(clientId, connection).ConfigureAwait(false);
+            await _socketManager.AddConnectionAsync(clientId, connection);
 
             var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
             {
                 try
                 {
-                    await portal.OnConnectedAsync(clientId).ConfigureAwait(false);
+                    await portal.OnConnectedAsync(clientId);
                 }
                 catch (Exception ex)
                 {
@@ -106,14 +106,14 @@ namespace Altruist
             {
                 while (true)
                 {
-                    var packetData = await connection.ReceiveAsync(CancellationToken.None).ConfigureAwait(false);
+                    var packetData = await connection.ReceiveAsync(CancellationToken.None);
                     if (packetData.Length == 0)
                     {
                         break;
                     }
 
                     var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
-                    if (!await ProcessPacket(packet, packetData, @event, clientId).ConfigureAwait(false))
+                    if (!await ProcessPacket(packet, packetData, @event, clientId))
                         break;
                 }
             }
@@ -142,8 +142,35 @@ namespace Altruist
             }
         }
 
+        public async Task DisconnectEngineAwareAsync(string clientId)
+        {
+            if (_engine != null)
+            {
+                _engine.SendTask(new TaskIdentifier("Disconnect_" + clientId), () => CloseConnection(clientId));
+            }
+            else
+            {
+                await CloseConnection(clientId);
+            }
+        }
+
+        private async Task CloseConnection(string clientId)
+        {
+            var connection = await GetConnectionAsync(clientId);
+
+            if (connection != null)
+            {
+                await connection.CloseOutputAsync();
+                await connection.CloseAsync();
+            }
+        }
+
+        public async Task DisconnectAsync(string clientId) => await DisconnectAsync(clientId, PortalGateRegistry<IPortal>.GetAllHandlers(), null);
+
         private async Task DisconnectAsync(string clientId, IReadOnlyList<IPortal> portals, Exception? failureException)
         {
+            await CloseConnection(clientId);
+
             foreach (var portal in portals)
             {
                 try
@@ -182,7 +209,7 @@ namespace Altruist
 
         public virtual async Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync()
         {
-            return await _socketManager.GetAllConnectionsDictAsync().ConfigureAwait(false);
+            return await _socketManager.GetAllConnectionsDictAsync();
         }
 
         public Task<ICursor<AltruistConnection>> GetAllConnectionsAsync()
@@ -192,11 +219,11 @@ namespace Altruist
 
         private async Task<TPacketBase> ReceiveAsync<TPacketBase>(string clientId) where TPacketBase : IPacketBase
         {
-            var connections = await GetAllConnectionsDictAsync().ConfigureAwait(false);
+            var connections = await GetAllConnectionsDictAsync();
 
             if (connections.TryGetValue(clientId, out var connection))
             {
-                var data = await connection.ReceiveAsync(CancellationToken.None).ConfigureAwait(false);
+                var data = await connection.ReceiveAsync(CancellationToken.None);
                 return _codec.Decoder.Decode<TPacketBase>(data);
             }
 
@@ -205,22 +232,22 @@ namespace Altruist
 
         public async Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId)
         {
-            return await _socketManager.GetConnectionsInRoomAsync(roomId).ConfigureAwait(false);
+            return await _socketManager.GetConnectionsInRoomAsync(roomId);
         }
 
         public async Task<RoomPacket> FindAvailableRoomAsync()
         {
-            return await _socketManager.FindAvailableRoomAsync().ConfigureAwait(false);
+            return await _socketManager.FindAvailableRoomAsync();
         }
 
         public async Task<RoomPacket?> FindRoomForClientAsync(string clientId)
         {
-            return await _socketManager.FindRoomForClientAsync(clientId).ConfigureAwait(false);
+            return await _socketManager.FindRoomForClientAsync(clientId);
         }
 
         public async Task<RoomPacket> CreateRoomAsync()
         {
-            return await _socketManager.CreateRoomAsync().ConfigureAwait(false);
+            return await _socketManager.CreateRoomAsync();
         }
 
         public Task DeleteRoomAsync(string roomName)
@@ -245,7 +272,7 @@ namespace Altruist
 
         public async Task SaveRoomAsync(RoomPacket room)
         {
-            await _socketManager.SaveRoomAsync(room).ConfigureAwait(false);
+            await _socketManager.SaveRoomAsync(room);
         }
 
         public virtual Task Cleanup()

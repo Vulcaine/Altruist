@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,6 +94,8 @@ public interface IConnectionManager
     Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null);
     Task<AltruistConnection?> GetConnectionAsync(string connectionId);
     Task<IEnumerable<string>> GetAllConnectionIdsAsync();
+    Task DisconnectEngineAwareAsync(string clientId);
+    Task DisconnectAsync(string clientId);
     Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync();
     Task<ICursor<AltruistConnection>> GetAllConnectionsAsync();
     Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
