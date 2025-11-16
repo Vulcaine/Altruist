@@ -17,17 +17,19 @@ namespace Altruist.Migrations.Postgres;
 public sealed class PostgresMigrationPlanner : IMigrationPlanner
 {
     public IReadOnlyList<MigrationOperation> Plan(
-        DatabaseModel current,
-        IReadOnlyList<Document> desiredDocuments,
-        string schemaName)
+    DatabaseModel current,
+    IReadOnlyList<Document> desiredDocuments,
+    string schemaName)
     {
         var ops = new List<MigrationOperation>();
         var schemaLower = (schemaName ?? "public").Trim().ToLowerInvariant();
 
+        // ─────────────────────────────────────────────
+        // 1st pass: tables, columns, uniques, indexes, history
+        // ─────────────────────────────────────────────
         foreach (var doc in desiredDocuments)
         {
             var tableName = doc.Name;
-
             current.TryGetTable(tableName, out var existingTable);
 
             if (existingTable is null)
@@ -42,14 +44,32 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
             }
         }
 
+        // ─────────────────────────────────────────────
+        // 2nd pass: foreign keys (after all tables exist)
+        // ─────────────────────────────────────────────
+        foreach (var doc in desiredDocuments)
+        {
+            var tableName = doc.Name;
+            current.TryGetTable(tableName, out var existingTable);
+
+            if (existingTable is null)
+            {
+                PlanForeignKeysForNewTable(ops, schemaLower, doc, desiredDocuments);
+            }
+            else
+            {
+                PlanForeignKeyDiff(ops, schemaLower, doc, existingTable, desiredDocuments);
+            }
+        }
+
         return ops;
     }
 
     private static void PlanNewTable(
-        List<MigrationOperation> ops,
-        string schema,
-        Document doc,
-        IReadOnlyList<Document> allDocs)
+    List<MigrationOperation> ops,
+    string schema,
+    Document doc,
+    IReadOnlyList<Document> allDocs)
     {
         var pkCols = ResolvePrimaryKeyColumns(doc);
         if (pkCols.Count == 0)
@@ -87,8 +107,6 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
             Table: doc.Name,
             Columns: columns,
             PrimaryKeyColumns: pkCols));
-
-        PlanForeignKeysForNewTable(ops, schema, doc, allDocs);
 
         // indexes (non-unique + non-pk)
         var indexColumns = new HashSet<string>(doc.Indexes ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
@@ -256,11 +274,11 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
     }
 
     private static void PlanExistingTableDiff(
-        List<MigrationOperation> ops,
-        string schema,
-        Document doc,
-        TableModel existing,
-        IReadOnlyList<Document> allDocs)
+    List<MigrationOperation> ops,
+    string schema,
+    Document doc,
+    TableModel existing,
+    IReadOnlyList<Document> allDocs)
     {
         var tableName = doc.Name;
         var schemaName = schema;
@@ -370,9 +388,8 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
                 ops.Add(new DropIndexOperation(schemaName, tableName, ix.Name));
             }
         }
-
-        PlanForeignKeyDiff(ops, schemaName, doc, existing, allDocs);
     }
+
 
     // ---------- HISTORY TABLE DIFF ----------
 
