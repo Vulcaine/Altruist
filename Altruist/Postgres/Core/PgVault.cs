@@ -553,34 +553,42 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
     private string QualifiedTableName() => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
 
-    // ------------------------ Insert/History/save helpers ------------------------
-
     private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
     {
         if (entity is null)
             throw new ArgumentNullException(nameof(entity));
+
         entity.OnSave();
 
-        var fields = VaultDocument.Columns.Keys;
-        var insertQuery = BuildInsertQuery(VaultDocument.Name, VaultDocument.Columns.Values);
+        var fields = VaultDocument.Fields.ToArray();
+        var columns = fields
+            .Select(f => VaultDocument.Columns[f])
+            .ToArray();
+
+        var upsertQuery = BuildUpsertQuery(
+            VaultDocument.Name,
+            columns,
+            VaultDocument.PrimaryKey?.Keys ?? []
+        );
 
         var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
-        var queries = new List<string> { insertQuery };
+        var queries = new List<string> { upsertQuery };
 
         if (VaultDocument.StoreHistory == true)
         {
             if (saveHistory == true)
             {
-                var historyQuery = BuildHistoryQuery(VaultDocument.Name, VaultDocument.Columns.Values);
+                var historyQuery = BuildHistoryQuery(VaultDocument.Name, columns);
                 queries.Add(historyQuery);
 
                 var historyParams = GetParameterValues(entity, fields, includeTimestamp: true);
-                parameters.AddRange(historyParams.Skip(fields.Count()));
+                parameters.AddRange(historyParams.Skip(fields.Length));
             }
         }
         else if (saveHistory == true)
         {
-            throw new InvalidOperationException($"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
+            throw new InvalidOperationException(
+                $"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
         }
 
         var batchQuery = string.Join(";", queries) + ";";
@@ -588,12 +596,55 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         var canSave = true;
         if (entity is IBeforeVaultSave before)
             canSave = await before.BeforeSaveAsync(_serviceProvider);
+
         if (canSave)
             await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
+
         if (entity is IAfterVaultSave after)
             await after.AfterSaveAsync(_serviceProvider);
     }
 
+    /// <summary>
+    /// Builds an INSERT ... ON CONFLICT (pk1, pk2, ...) DO UPDATE SET ... upsert statement.
+    /// columns = physical column names (e.g. "id", "principalid", ...).
+    /// primaryKeyNames = physical PK column names (one or many).
+    /// </summary>
+    private static string BuildUpsertQuery(
+        string tableName,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<string> primaryKeyNames)
+    {
+        if (primaryKeyNames is null || primaryKeyNames.Count == 0)
+            throw new ArgumentException("At least one primary key column must be specified.", nameof(primaryKeyNames));
+
+        var columnNames = columns
+            .Select(c => $"\"{c}\"")
+            .ToArray();
+
+        var paramNames = columns
+            .Select((_, i) => $"@p{i + 1}")
+            .ToArray();
+
+        var insert =
+            $"INSERT INTO \"{tableName}\" ({string.Join(", ", columnNames)}) " +
+            $"VALUES ({string.Join(", ", paramNames)})";
+
+        var pkList = string.Join(
+            ", ",
+            primaryKeyNames.Select(pk => $"\"{pk}\""));
+
+        var pkSet = new HashSet<string>(primaryKeyNames, StringComparer.OrdinalIgnoreCase);
+
+        var setClauses = columns
+            .Where(c => !pkSet.Contains(c))
+            .Select(c => $"\"{c}\" = EXCLUDED.\"{c}\"");
+
+        var upsert =
+            $"{insert} " +
+            $"ON CONFLICT ({pkList}) DO UPDATE SET {string.Join(", ", setClauses)}";
+
+        return upsert;
+    }
 
     private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
