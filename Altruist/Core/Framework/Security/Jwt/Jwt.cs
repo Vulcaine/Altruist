@@ -43,16 +43,14 @@ public class JwtAuth : IShieldAuth
         var token = GetTokenFromRequest(context);
         var authDetails = ExtractAuthDetails(token);
 
-        if (_syncService != null)
-        {
-            var cached = await _syncService.FindCachedByIdAsync(authDetails.Token);
-            if (cached == null)
-            {
-                return new AuthResult(AuthorizationResult.Failed(), null!);
-            }
-
-            token = cached.AccessToken;
-        }
+        // if (_syncService != null)
+        // {
+        //     var cached = await _syncService.FindCachedByIdAsync(authDetails.Token);
+        //     if (cached != null)
+        //     {
+        //          token = cached.AccessToken;
+        //     }
+        // }
 
         if (string.IsNullOrWhiteSpace(token))
         {
