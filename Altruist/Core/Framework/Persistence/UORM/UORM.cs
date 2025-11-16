@@ -71,11 +71,11 @@ public sealed class VaultForeignKeyAttribute : Attribute
     /// </summary>
     public string OnDelete { get; }
 
-    public VaultForeignKeyAttribute(Type principalType, string principalPropertyName, string onDelete = VaultForeignKeyDeleteBehavior.NoAction)
+    public VaultForeignKeyAttribute(Type principalType, string principalPropertyName, string onDelete = VaultForeignKeyDeleteBehavior.Cascade)
     {
         PrincipalType = principalType ?? throw new ArgumentNullException(nameof(principalType));
         PrincipalPropertyName = principalPropertyName ?? throw new ArgumentNullException(nameof(principalPropertyName));
-        OnDelete = string.IsNullOrWhiteSpace(onDelete) ? VaultForeignKeyDeleteBehavior.NoAction : onDelete;
+        OnDelete = string.IsNullOrWhiteSpace(onDelete) ? VaultForeignKeyDeleteBehavior.Cascade : onDelete;
     }
 }
 

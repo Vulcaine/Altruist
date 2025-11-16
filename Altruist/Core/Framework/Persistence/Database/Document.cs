@@ -179,13 +179,13 @@ public class Document
     {
         if (!typeof(IStoredModel).IsAssignableFrom(Type))
         {
-            throw new InvalidOperationException($"The type {Type.FullName} must implement IModel.");
+            FailAndExit($"The type {Type.FullName} must implement IModel.");
         }
 
         var typeProperty = Type.GetProperty("Type");
         if (typeProperty == null)
         {
-            throw new InvalidOperationException($"The type {Type.FullName} must have a 'Type' property.");
+            FailAndExit($"The type {Type.FullName} must have a 'Type' property.");
         }
 
         // De-duplicate unique keys and indexes (case-insensitive)
@@ -205,7 +205,6 @@ public class Document
 
         foreach (var col in overlap)
         {
-
             _logger?.LogWarning(
                 $"In vault '{Name}', column '{col}' " +
                 "is marked with both VaultUniqueColumn and VaultColumnIndex. " +
@@ -214,6 +213,85 @@ public class Document
 
             Indexes.RemoveAll(x => string.Equals(x, col, StringComparison.OrdinalIgnoreCase));
         }
+
+        // -----------------------------
+        // Foreign key validation
+        // -----------------------------
+        if (ForeignKeys is null || ForeignKeys.Count == 0)
+            return;
+
+        // allowed ON DELETE behaviors
+        static bool IsValidOnDelete(string value) =>
+            value.Equals("CASCADE", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("NO ACTION", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("RESTRICT", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("SET NULL", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("SET DEFAULT", StringComparison.OrdinalIgnoreCase);
+
+        foreach (var fk in ForeignKeys)
+        {
+            // 1) Validate OnDelete value
+            if (!IsValidOnDelete(fk.OnDelete))
+            {
+                FailAndExit(
+                    $"Invalid OnDelete value '{fk.OnDelete}' on foreign key " +
+                    $"'{Type.FullName}.{fk.PropertyName}'. " +
+                    "Allowed values are: CASCADE, NO ACTION, RESTRICT, SET NULL, SET DEFAULT.");
+            }
+
+            var principalType = fk.PrincipalType;
+
+            // 2) Principal type must be a stored model with [Vault]
+            if (!typeof(IStoredModel).IsAssignableFrom(principalType))
+            {
+                FailAndExit(
+                    $"Foreign key '{Type.FullName}.{fk.PropertyName}' points to type '{principalType.FullName}' " +
+                    "which does not implement IStoredModel.");
+            }
+
+            var principalVaultAttr = principalType.GetCustomAttribute<VaultAttribute>();
+            if (principalVaultAttr is null)
+            {
+                FailAndExit(
+                    $"Foreign key '{Type.FullName}.{fk.PropertyName}' points to type '{principalType.FullName}' " +
+                    "which is missing [Vault] attribute.");
+            }
+
+            // 3) Principal property must exist
+            var principalProp = principalType.GetProperty(
+                fk.PrincipalPropertyName,
+                BindingFlags.Public | BindingFlags.Instance);
+
+            if (principalProp is null)
+            {
+                FailAndExit(
+                    $"Foreign key '{Type.FullName}.{fk.PropertyName}' points to " +
+                    $"'{principalType.FullName}.{fk.PrincipalPropertyName}', " +
+                    "but that property does not exist.");
+            }
+
+            // 4) Principal property must be PK or UNIQUE
+            var principalPkAttr = principalType.GetCustomAttribute<VaultPrimaryKeyAttribute>();
+            bool isPk = principalPkAttr?.Keys
+                .Any(k => string.Equals(k, fk.PrincipalPropertyName, StringComparison.OrdinalIgnoreCase)) == true;
+
+            bool isUnique = principalProp?.GetCustomAttribute<VaultUniqueColumnAttribute>() is not null;
+
+            if (!isPk && !isUnique)
+            {
+                FailAndExit(
+                    $"Foreign key '{Type.FullName}.{fk.PropertyName}' points to " +
+                    $"'{principalType.FullName}.{fk.PrincipalPropertyName}', " +
+                    "but that property is neither part of [VaultPrimaryKey] nor marked [VaultUniqueColumn]. " +
+                    "PostgreSQL requires referenced columns to be PRIMARY KEY or UNIQUE.");
+            }
+        }
+    }
+
+    private void FailAndExit(string message)
+    {
+        _logger?.LogError(message);
+        Environment.Exit(-1);
     }
 
     public sealed class VaultForeignKeyDefinition
