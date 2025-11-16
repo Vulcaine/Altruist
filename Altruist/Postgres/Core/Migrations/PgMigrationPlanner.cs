@@ -124,7 +124,9 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
                 ConstraintName: constraintName,
                 Column: fk.ColumnName,
                 PrincipalTable: principalTable,
-                PrincipalColumn: principalColumn));
+                PrincipalColumn: principalColumn,
+                OnDelete: fk.OnDelete
+            ));
         }
     }
 
@@ -136,14 +138,14 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
     IReadOnlyList<Document> allDocs)
     {
         // desired FKs from Document
-        var desired = new List<(string Column, string PrincipalTable, string PrincipalColumn, string ConstraintName)>();
+        var desired = new List<(string Column, string PrincipalTable, string PrincipalColumn, string ConstraintName, string OnDelete)>();
 
         foreach (var fk in doc.ForeignKeys)
         {
             var (principalTable, principalColumn) = ResolveForeignKeyTarget(doc, fk, allDocs);
             var constraintName = $"fk_{doc.Name}_{fk.ColumnName}_{principalTable}_{principalColumn}";
 
-            desired.Add((fk.ColumnName, principalTable, principalColumn, constraintName));
+            desired.Add((fk.ColumnName, principalTable, principalColumn, constraintName, fk.OnDelete));
         }
 
         var existingFks = existing.ForeignKeys ?? Array.Empty<ForeignKeyModel>();
@@ -164,7 +166,8 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
                     ConstraintName: dfk.ConstraintName,
                     Column: dfk.Column,
                     PrincipalTable: dfk.PrincipalTable,
-                    PrincipalColumn: dfk.PrincipalColumn));
+                    PrincipalColumn: dfk.PrincipalColumn,
+                    OnDelete: dfk.OnDelete));
             }
         }
 

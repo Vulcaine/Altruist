@@ -65,10 +65,50 @@ public sealed class VaultForeignKeyAttribute : Attribute
     public Type PrincipalType { get; }
     public string PrincipalPropertyName { get; }
 
-    public VaultForeignKeyAttribute(Type principalType, string principalPropertyName)
+    /// <summary>
+    /// ON DELETE behavior: e.g. "CASCADE", "NO ACTION", "SET NULL", "SET DEFAULT", "RESTRICT".
+    /// Defaults to "CASCADE".
+    /// </summary>
+    public string OnDelete { get; }
+
+    public VaultForeignKeyAttribute(Type principalType, string principalPropertyName, string onDelete = VaultForeignKeyDeleteBehavior.NoAction)
     {
         PrincipalType = principalType ?? throw new ArgumentNullException(nameof(principalType));
         PrincipalPropertyName = principalPropertyName ?? throw new ArgumentNullException(nameof(principalPropertyName));
+        OnDelete = string.IsNullOrWhiteSpace(onDelete) ? VaultForeignKeyDeleteBehavior.NoAction : onDelete;
     }
 }
 
+
+public static class VaultForeignKeyDeleteBehavior
+{
+    /// <summary>
+    /// Delete child rows when the parent is deleted.
+    /// Generates: ON DELETE CASCADE
+    /// </summary>
+    public const string Cascade = "CASCADE";
+
+    /// <summary>
+    /// Prevent deleting the parent if child rows exist (Postgres default).
+    /// Generates: ON DELETE NO ACTION
+    /// </summary>
+    public const string NoAction = "NO ACTION";
+
+    /// <summary>
+    /// Prevent deleting the parent if child rows exist (checked immediately).
+    /// Generates: ON DELETE RESTRICT
+    /// </summary>
+    public const string Restrict = "RESTRICT";
+
+    /// <summary>
+    /// Set the FK column to NULL when the parent is deleted.
+    /// Generates: ON DELETE SET NULL
+    /// </summary>
+    public const string SetNull = "SET NULL";
+
+    /// <summary>
+    /// Set the FK column to its DEFAULT when the parent is deleted.
+    /// Generates: ON DELETE SET DEFAULT
+    /// </summary>
+    public const string SetDefault = "SET DEFAULT";
+}

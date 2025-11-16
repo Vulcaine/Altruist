@@ -60,7 +60,8 @@ public sealed record AddForeignKeyOperation(
     string ConstraintName,
     string Column,
     string PrincipalTable,
-    string PrincipalColumn
+    string PrincipalColumn,
+    string OnDelete
 ) : MigrationOperation;
 
 public sealed record DropForeignKeyOperation(

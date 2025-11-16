@@ -123,7 +123,8 @@ public class Document
                     propertyName: fieldName,
                     columnName: physical,
                     principalType: fkAttr.PrincipalType,
-                    principalPropertyName: fkAttr.PrincipalPropertyName));
+                    principalPropertyName: fkAttr.PrincipalPropertyName,
+                    onDelete: fkAttr.OnDelete));
             }
 
             // [VaultColumnIndex] -> non-unique index on physical column
@@ -221,17 +222,20 @@ public class Document
         public string ColumnName { get; }
         public Type PrincipalType { get; }
         public string PrincipalPropertyName { get; }
+        public string OnDelete { get; }
 
         public VaultForeignKeyDefinition(
             string propertyName,
             string columnName,
             Type principalType,
-            string principalPropertyName)
+            string principalPropertyName,
+            string? onDelete = null)
         {
             PropertyName = propertyName ?? throw new ArgumentNullException(nameof(propertyName));
             ColumnName = columnName ?? throw new ArgumentNullException(nameof(columnName));
             PrincipalType = principalType ?? throw new ArgumentNullException(nameof(principalType));
             PrincipalPropertyName = principalPropertyName ?? throw new ArgumentNullException(nameof(principalPropertyName));
+            OnDelete = string.IsNullOrWhiteSpace(onDelete) ? "CASCADE" : onDelete;
         }
     }
 

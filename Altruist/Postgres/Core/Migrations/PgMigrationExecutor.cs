@@ -45,7 +45,8 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
         "DROP INDEX IF EXISTS {index_name};";
 
     private const string AddForeignKeyTemplate =
-    "ALTER TABLE {table_fqn} ADD CONSTRAINT {constraint_name} FOREIGN KEY ({column_ident}) REFERENCES {principal_table_fqn} ({principal_column_ident});";
+        "ALTER TABLE {table_fqn} ADD CONSTRAINT {constraint_name} " +
+        "FOREIGN KEY ({column_ident}) REFERENCES {principal_table_fqn} ({principal_column_ident}) ON DELETE {on_delete};";
 
     private const string DropForeignKeyTemplate =
         "ALTER TABLE {table_fqn} DROP CONSTRAINT IF EXISTS {constraint_name};";
@@ -214,7 +215,8 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
                         .Replace("{constraint_name}", QuoteIdent(addFk.ConstraintName))
                         .Replace("{column_ident}", QuoteIdent(addFk.Column))
                         .Replace("{principal_table_fqn}", principalTableFqn)
-                        .Replace("{principal_column_ident}", QuoteIdent(addFk.PrincipalColumn));
+                        .Replace("{principal_column_ident}", QuoteIdent(addFk.PrincipalColumn))
+                        .Replace("{on_delete}", addFk.OnDelete);
 
                     await _provider.ExecuteAsync(sql);
                     break;
