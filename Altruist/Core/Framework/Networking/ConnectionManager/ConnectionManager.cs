@@ -126,14 +126,7 @@ namespace Altruist
             {
                 try
                 {
-                    if (_engine != null)
-                    {
-                        _engine.SendTask(new TaskIdentifier("Disconnect_" + clientId), () => DisconnectAsync(clientId, portals, failureException));
-                    }
-                    else
-                    {
-                        await DisconnectAsync(clientId, portals, failureException);
-                    }
+                    await DisconnectEngineAwareAsync(clientId);
                 }
                 catch (Exception ex)
                 {
