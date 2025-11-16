@@ -25,7 +25,7 @@ public abstract class JwtAuthController : AuthController
         IJwtTokenValidator jwtTokenValidator,
         ILoginService loginService,
         TokenSessionSyncService tokenSessionSyncService,
-        IIssuer issuer,
+        IJwtTokenIssuer issuer,
         IAuthService authService,
         ILoggerFactory loggerFactory)
         : base(issuer, loginService, tokenSessionSyncService, loggerFactory)

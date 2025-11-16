@@ -20,7 +20,7 @@ using MessagePack;
 
 namespace Altruist.Security;
 
-public interface IIssue : IPacketBase
+public interface IIssue
 {
 
 }
@@ -28,31 +28,27 @@ public interface IIssue : IPacketBase
 public abstract class TokenIssue : IIssue
 {
     [Key(0)]
-    [JsonPropertyName("header")]
-    public PacketHeader Header { get; set; }
-
-    [Key(1)]
     [JsonPropertyName("type")]
     public virtual string Type { get; set; } = "TokenIssue";
 
-    [Key(2)]
+    [Key(1)]
     [JsonPropertyName("accessToken")]
     public string AccessToken { get; set; } = "";
 
-    [Key(3)]
+    [Key(2)]
     [JsonPropertyName("refreshToken")]
     public string RefreshToken { get; set; } = "";
 
     // used to identify accounts/users
-    [Key(4)]
+    [Key(3)]
     [JsonPropertyName("principalId")]
     public string PrincipalId { get; set; } = "";
 
-    [Key(5)]
+    [Key(4)]
     [JsonPropertyName("accessExpiration")]
     public DateTime AccessExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
 
-    [Key(6)]
+    [Key(5)]
     [JsonPropertyName("refreshExpiration")]
     public DateTime RefreshExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromDays(7);
 

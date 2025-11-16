@@ -46,7 +46,6 @@ public class JwtAuth : IShieldAuth
         if (_syncService != null)
         {
             var cached = await _syncService.FindCachedByIdAsync(authDetails.Token);
-
             if (cached == null)
             {
                 return new AuthResult(AuthorizationResult.Failed(), null!);
@@ -55,11 +54,31 @@ public class JwtAuth : IShieldAuth
             token = cached.AccessToken;
         }
 
-        if (string.IsNullOrEmpty(token) || _tokenValidator.ValidateToken(token) == null)
+        if (string.IsNullOrWhiteSpace(token))
         {
             return new AuthResult(AuthorizationResult.Failed(), null!);
         }
 
+        // Get the ClaimsPrincipal from the validator
+        ClaimsPrincipal? principal;
+        try
+        {
+            principal = _tokenValidator.ValidateToken(token);
+        }
+        catch (SecurityTokenException)
+        {
+            return new AuthResult(AuthorizationResult.Failed(), null!);
+        }
+
+        if (principal == null)
+        {
+            return new AuthResult(AuthorizationResult.Failed(), null!);
+        }
+
+        if (context is HttpAuthContext httpAuthContext)
+        {
+            httpAuthContext.HttpContext.User = principal;
+        }
 
         return new AuthResult(AuthorizationResult.Success(), authDetails);
     }
