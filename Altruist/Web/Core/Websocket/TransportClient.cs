@@ -42,28 +42,49 @@ public sealed class WebSocketTransport : ITransport
     /// Non-generic helper to register a public (unshielded) route.
     /// </summary>
     public void UseTransportEndpoints(IApplicationBuilder app, string path)
-        => UseTransportEndpoints(app, path, shieldType: null);
+        => UseTransportEndpoints(app, path, serviceType: null);
 
     /// <summary>
     /// Non-generic helper to register a route with an explicit ShieldAttribute type.
     /// Pass null for unshielded routes.
     /// </summary>
-    public void UseTransportEndpoints(IApplicationBuilder app, Type? shieldType, string path)
-        => UseTransportEndpoints(app, path, shieldType);
+    public void UseTransportEndpoints(IApplicationBuilder app, Type? serviceType, string path)
+        => UseTransportEndpoints(app, path, serviceType);
 
-    private void UseTransportEndpoints(IApplicationBuilder app, string path, Type? shieldType)
+    private void UseTransportEndpoints(IApplicationBuilder app, string path, Type? serviceType)
     {
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("Route path cannot be null or whitespace.", nameof(path));
 
-        // If a non-shield type is passed, treat it as "no shield" instead of throwing.
+        Type? shieldType = null;
+
+        if (serviceType is not null)
+        {
+            var shieldAttr = serviceType
+                .GetCustomAttributes(inherit: true)
+                .OfType<ShieldAttribute>()
+                .FirstOrDefault();
+
+            if (shieldAttr is not null)
+            {
+                shieldType = shieldAttr.GetType();
+            }
+        }
+
         if (shieldType is not null && !typeof(ShieldAttribute).IsAssignableFrom(shieldType))
         {
-            // Optional: log a warning here if you have a logger available.
             shieldType = null;
         }
 
-        _routes[path] = new RouteInfo(path, shieldType);
+        if (_routes.TryGetValue(path, out var existing))
+        {
+            var effectiveShield = existing.ShieldType ?? shieldType;
+            _routes[path] = existing with { ShieldType = effectiveShield };
+        }
+        else
+        {
+            _routes[path] = new RouteInfo(path, shieldType);
+        }
     }
 
     /// <summary>
