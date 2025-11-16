@@ -34,6 +34,7 @@ public sealed class PostgresSchemaInspector : ISchemaInspector
         var pkByTable = await LoadPrimaryKeysAsync(conn, schemaName, ct).ConfigureAwait(false);
         var uniqueByTable = await LoadUniqueConstraintsAsync(conn, schemaName, ct).ConfigureAwait(false);
         var indexesByTable = await LoadIndexesAsync(conn, schemaName, ct).ConfigureAwait(false);
+        var foreignKeysByTable = await LoadForeignKeysAsync(conn, schemaName, ct).ConfigureAwait(false);
 
         var tables = new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase);
 
@@ -42,18 +43,73 @@ public sealed class PostgresSchemaInspector : ISchemaInspector
             pkByTable.TryGetValue(tableName, out var pkCols);
             uniqueByTable.TryGetValue(tableName, out var uqByColumn);
             indexesByTable.TryGetValue(tableName, out var ixDict);
+            foreignKeysByTable.TryGetValue(tableName, out var fkList);
 
             var tableModel = new TableModel(
                 name: tableName,
                 columns: columnDict,
                 primaryKeyColumns: pkCols ?? [],
                 uniqueConstraints: uqByColumn ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                indexes: ixDict ?? new Dictionary<string, IndexModel>(StringComparer.OrdinalIgnoreCase));
+                indexes: ixDict ?? new Dictionary<string, IndexModel>(StringComparer.OrdinalIgnoreCase),
+                foreignKeys: fkList ?? new List<ForeignKeyModel>());
 
             tables[tableName] = tableModel;
         }
 
         return new DatabaseModel(schemaName, tables);
+    }
+
+    private static async Task<Dictionary<string, List<ForeignKeyModel>>> LoadForeignKeysAsync(
+    NpgsqlConnection conn,
+    string schemaName,
+    CancellationToken ct)
+    {
+        // table -> list of FK models
+        var result = new Dictionary<string, List<ForeignKeyModel>>(StringComparer.OrdinalIgnoreCase);
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+        SELECT
+            tc.table_name,
+            tc.constraint_name,
+            kcu.column_name,
+            ccu.table_name AS foreign_table_name,
+            ccu.column_name AS foreign_column_name
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+          ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage AS ccu
+          ON ccu.constraint_name = tc.constraint_name
+         AND ccu.table_schema = tc.table_schema
+        WHERE tc.table_schema = @schema
+          AND tc.constraint_type = 'FOREIGN KEY';";
+
+        cmd.Parameters.AddWithValue("schema", schemaName);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var tableName = reader.GetString(0);
+            var constraintName = reader.GetString(1);
+            var columnName = reader.GetString(2);
+            var foreignTable = reader.GetString(3);
+            var foreignColumn = reader.GetString(4);
+
+            if (!result.TryGetValue(tableName, out var list))
+            {
+                list = new List<ForeignKeyModel>();
+                result[tableName] = list;
+            }
+
+            list.Add(new ForeignKeyModel(
+                name: constraintName,
+                column: columnName,
+                principalTable: foreignTable,
+                principalColumn: foreignColumn));
+        }
+
+        return result;
     }
 
     private static async Task<Dictionary<string, Dictionary<string, ColumnModel>>> LoadColumnsAsync(

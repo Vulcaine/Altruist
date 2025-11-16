@@ -44,6 +44,12 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
     private const string DropIndexTemplate =
         "DROP INDEX IF EXISTS {index_name};";
 
+    private const string AddForeignKeyTemplate =
+    "ALTER TABLE {table_fqn} ADD CONSTRAINT {constraint_name} FOREIGN KEY ({column_ident}) REFERENCES {principal_table_fqn} ({principal_column_ident});";
+
+    private const string DropForeignKeyTemplate =
+        "ALTER TABLE {table_fqn} DROP CONSTRAINT IF EXISTS {constraint_name};";
+
     public PostgresMigrationExecutor(ISqlDatabaseProvider provider)
     {
         _provider = provider;
@@ -111,9 +117,6 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
                     await _provider.ExecuteAsync(sql);
                     break;
                 }
-
-            // (You don't currently have DropTableOperation in your model set;
-            //  DropTableSqlTemplate is kept for possible future use.)
 
             // --------------------------------
             // COLUMN OPERATIONS
@@ -195,6 +198,44 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
                     break;
                 }
 
+            // ---------- NEW: FOREIGN KEY OPERATIONS ----------
+
+            case AddForeignKeyOperation addFk:
+                {
+                    var schemaName = string.IsNullOrWhiteSpace(addFk.Schema)
+                        ? defaultSchema.Name
+                        : addFk.Schema;
+
+                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.Table)}";
+                    var principalTableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.PrincipalTable)}";
+
+                    var sql = AddForeignKeyTemplate
+                        .Replace("{table_fqn}", tableFqn)
+                        .Replace("{constraint_name}", QuoteIdent(addFk.ConstraintName))
+                        .Replace("{column_ident}", QuoteIdent(addFk.Column))
+                        .Replace("{principal_table_fqn}", principalTableFqn)
+                        .Replace("{principal_column_ident}", QuoteIdent(addFk.PrincipalColumn));
+
+                    await _provider.ExecuteAsync(sql);
+                    break;
+                }
+
+            case DropForeignKeyOperation dropFk:
+                {
+                    var schemaName = string.IsNullOrWhiteSpace(dropFk.Schema)
+                        ? defaultSchema.Name
+                        : dropFk.Schema;
+
+                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropFk.Table)}";
+
+                    var sql = DropForeignKeyTemplate
+                        .Replace("{table_fqn}", tableFqn)
+                        .Replace("{constraint_name}", QuoteIdent(dropFk.ConstraintName));
+
+                    await _provider.ExecuteAsync(sql);
+                    break;
+                }
+
             // --------------------------------
             // INDEX OPERATIONS
             // --------------------------------
@@ -232,8 +273,6 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
                     $"Migration operation '{op.GetType().Name}' is not supported by PostgresMigrationExecutor.");
         }
     }
-
-    // --------------- helpers ---------------
 
     private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
 }

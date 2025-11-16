@@ -34,15 +34,17 @@ public class Document
 
     public VaultPrimaryKeyAttribute? PrimaryKey { get; set; } = new();
 
-    // Physical column names that are UNIQUE
     public List<string> UniqueKeys { get; set; } = new();
 
     public VaultSortingByAttribute? SortingBy { get; set; }
 
-    public List<string> Fields { get; set; } = new();     // logical field names (PascalCase)
-    public Dictionary<string, string> Columns { get; set; } = new(); // logical -> physical
+    public List<string> Fields { get; set; } = new();
+    public Dictionary<string, string> Columns { get; set; } = new();
 
     public List<string> Indexes { get; set; } = new();
+
+    public List<VaultForeignKeyDefinition> ForeignKeys { get; set; } = new();
+
 
     public string TypePropertyName;
 
@@ -52,19 +54,20 @@ public class Document
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; set; } = new();
 
     public Document(
-        VaultAttribute header,
-        Type type,
-        string name,
-        List<string> fields,
-        Dictionary<string, string> columns,
-        List<string> indexes,
-        List<string> uniqueKeys,
-        Dictionary<string, Func<object, object?>> propertyAccessors,
-        VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
-        VaultSortingByAttribute? sortingByAttribute = null,
-        bool storeHistory = false,
-        ILoggerFactory? loggerFactory = null
-        )
+    VaultAttribute header,
+    Type type,
+    string name,
+    List<string> fields,
+    Dictionary<string, string> columns,
+    List<string> indexes,
+    List<string> uniqueKeys,
+    Dictionary<string, Func<object, object?>> propertyAccessors,
+    VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
+    VaultSortingByAttribute? sortingByAttribute = null,
+    bool storeHistory = false,
+    ILoggerFactory? loggerFactory = null,
+    List<VaultForeignKeyDefinition>? foreignKeys = null
+    )
     {
         PrimaryKey = primaryKeyAttribute;
         Header = header;
@@ -78,6 +81,7 @@ public class Document
         TypePropertyName = "";
         SortingBy = sortingByAttribute;
         StoreHistory = storeHistory;
+        ForeignKeys = foreignKeys ?? new List<VaultForeignKeyDefinition>();
 
         _logger = loggerFactory?.CreateLogger<Document>();
         Validate();
@@ -98,11 +102,12 @@ public class Document
         var accessors = new Dictionary<string, Func<object, object?>>();
         var primaryKey = type.GetCustomAttribute<VaultPrimaryKeyAttribute>();
         var sortingBy = type.GetCustomAttribute<VaultSortingByAttribute>();
+        var foreignKeys = new List<VaultForeignKeyDefinition>();
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
-            // DEFAULT: field name lowercased (NOT camelCase)
+            var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>();
             var physical = columnAttr?.Name ?? prop.Name.ToLowerInvariant();
             var fieldName = prop.Name;
 
@@ -111,6 +116,15 @@ public class Document
 
             // accessor cache
             accessors[fieldName] = CompileAccessor(prop);
+
+            if (fkAttr is not null)
+            {
+                foreignKeys.Add(new VaultForeignKeyDefinition(
+                    propertyName: fieldName,
+                    columnName: physical,
+                    principalType: fkAttr.PrincipalType,
+                    principalPropertyName: fkAttr.PrincipalPropertyName));
+            }
 
             // [VaultColumnIndex] -> non-unique index on physical column
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
@@ -137,7 +151,8 @@ public class Document
             primaryKey,
             sortingBy,
             vaultAttribute != null && vaultAttribute.StoreHistory,
-            loggerFactory);
+            loggerFactory,
+            foreignKeys);
     }
 
     private static Func<object, object?> CompileAccessor(PropertyInfo property)
@@ -197,6 +212,26 @@ public class Document
             );
 
             Indexes.RemoveAll(x => string.Equals(x, col, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    public sealed class VaultForeignKeyDefinition
+    {
+        public string PropertyName { get; }
+        public string ColumnName { get; }
+        public Type PrincipalType { get; }
+        public string PrincipalPropertyName { get; }
+
+        public VaultForeignKeyDefinition(
+            string propertyName,
+            string columnName,
+            Type principalType,
+            string principalPropertyName)
+        {
+            PropertyName = propertyName ?? throw new ArgumentNullException(nameof(propertyName));
+            ColumnName = columnName ?? throw new ArgumentNullException(nameof(columnName));
+            PrincipalType = principalType ?? throw new ArgumentNullException(nameof(principalType));
+            PrincipalPropertyName = principalPropertyName ?? throw new ArgumentNullException(nameof(principalPropertyName));
         }
     }
 

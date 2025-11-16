@@ -8,6 +8,8 @@ using System.Reflection;
 
 using Altruist.Persistence;
 
+using static Altruist.Persistence.Document;
+
 namespace Altruist.Migrations.Postgres;
 
 [Service(typeof(IMigrationPlanner))]
@@ -24,18 +26,18 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
 
         foreach (var doc in desiredDocuments)
         {
-            var tableName = doc.Name; // physical table name from VaultAttribute or type name
+            var tableName = doc.Name;
 
             current.TryGetTable(tableName, out var existingTable);
 
             if (existingTable is null)
             {
-                PlanNewTable(ops, schemaLower, doc);
+                PlanNewTable(ops, schemaLower, doc, desiredDocuments);
                 PlanHistoryTableForNew(ops, schemaLower, doc);
             }
             else
             {
-                PlanExistingTableDiff(ops, schemaLower, doc, existingTable);
+                PlanExistingTableDiff(ops, schemaLower, doc, existingTable, desiredDocuments);
                 PlanHistoryTableDiff(ops, schemaLower, doc, current);
             }
         }
@@ -43,9 +45,11 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
         return ops;
     }
 
-    // ---------- NEW TABLE ----------
-
-    private static void PlanNewTable(List<MigrationOperation> ops, string schema, Document doc)
+    private static void PlanNewTable(
+        List<MigrationOperation> ops,
+        string schema,
+        Document doc,
+        IReadOnlyList<Document> allDocs)
     {
         var pkCols = ResolvePrimaryKeyColumns(doc);
         if (pkCols.Count == 0)
@@ -84,6 +88,8 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
             Columns: columns,
             PrimaryKeyColumns: pkCols));
 
+        PlanForeignKeysForNewTable(ops, schema, doc, allDocs);
+
         // indexes (non-unique + non-pk)
         var indexColumns = new HashSet<string>(doc.Indexes ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
         var sortCol = ResolveSortingColumn(doc);
@@ -97,6 +103,104 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
             var indexName = $"{doc.Name}_{col}_idx";
             ops.Add(new CreateIndexOperation(schema, doc.Name, indexName, col));
         }
+    }
+
+    private static void PlanForeignKeysForNewTable(
+    List<MigrationOperation> ops,
+    string schema,
+    Document doc,
+    IReadOnlyList<Document> allDocs)
+    {
+        foreach (var fk in doc.ForeignKeys)
+        {
+            var (principalTable, principalColumn) =
+                ResolveForeignKeyTarget(doc, fk, allDocs);
+
+            var constraintName = $"fk_{doc.Name}_{fk.ColumnName}_{principalTable}_{principalColumn}";
+
+            ops.Add(new AddForeignKeyOperation(
+                Schema: schema,
+                Table: doc.Name,
+                ConstraintName: constraintName,
+                Column: fk.ColumnName,
+                PrincipalTable: principalTable,
+                PrincipalColumn: principalColumn));
+        }
+    }
+
+    private static void PlanForeignKeyDiff(
+    List<MigrationOperation> ops,
+    string schema,
+    Document doc,
+    TableModel existing,
+    IReadOnlyList<Document> allDocs)
+    {
+        // desired FKs from Document
+        var desired = new List<(string Column, string PrincipalTable, string PrincipalColumn, string ConstraintName)>();
+
+        foreach (var fk in doc.ForeignKeys)
+        {
+            var (principalTable, principalColumn) = ResolveForeignKeyTarget(doc, fk, allDocs);
+            var constraintName = $"fk_{doc.Name}_{fk.ColumnName}_{principalTable}_{principalColumn}";
+
+            desired.Add((fk.ColumnName, principalTable, principalColumn, constraintName));
+        }
+
+        var existingFks = existing.ForeignKeys ?? Array.Empty<ForeignKeyModel>();
+
+        // add missing
+        foreach (var dfk in desired)
+        {
+            bool already = existingFks.Any(efk =>
+                string.Equals(efk.Column, dfk.Column, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(efk.PrincipalTable, dfk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(efk.PrincipalColumn, dfk.PrincipalColumn, StringComparison.OrdinalIgnoreCase));
+
+            if (!already)
+            {
+                ops.Add(new AddForeignKeyOperation(
+                    Schema: schema,
+                    Table: doc.Name,
+                    ConstraintName: dfk.ConstraintName,
+                    Column: dfk.Column,
+                    PrincipalTable: dfk.PrincipalTable,
+                    PrincipalColumn: dfk.PrincipalColumn));
+            }
+        }
+
+        // drop extra
+        foreach (var efk in existingFks)
+        {
+            bool stillDesired = desired.Any(dfk =>
+                string.Equals(dfk.Column, efk.Column, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(dfk.PrincipalTable, efk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(dfk.PrincipalColumn, efk.PrincipalColumn, StringComparison.OrdinalIgnoreCase));
+
+            if (!stillDesired)
+            {
+                ops.Add(new DropForeignKeyOperation(
+                    Schema: schema,
+                    Table: doc.Name,
+                    ConstraintName: efk.Name));
+            }
+        }
+    }
+
+    private static (string PrincipalTable, string PrincipalColumn) ResolveForeignKeyTarget(
+    Document doc,
+    VaultForeignKeyDefinition fk,
+    IReadOnlyList<Document> allDocs)
+    {
+        var principalDoc = allDocs.FirstOrDefault(d => d.Type == fk.PrincipalType)
+            ?? throw new InvalidOperationException(
+                $"Referenced vault type '{fk.PrincipalType.Name}' for '{doc.Type.Name}.{fk.PropertyName}' not found among desired documents.");
+
+        if (!principalDoc.Columns.TryGetValue(fk.PrincipalPropertyName, out var principalColumn))
+        {
+            principalColumn = Document.ToCamelCase(fk.PrincipalPropertyName);
+        }
+
+        return (principalDoc.Name, principalColumn);
     }
 
     private static void PlanHistoryTableForNew(List<MigrationOperation> ops, string schema, Document doc)
@@ -148,13 +252,12 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
         }
     }
 
-    // ---------- EXISTING TABLE DIFF ----------
-
     private static void PlanExistingTableDiff(
         List<MigrationOperation> ops,
         string schema,
         Document doc,
-        TableModel existing)
+        TableModel existing,
+        IReadOnlyList<Document> allDocs)
     {
         var tableName = doc.Name;
         var schemaName = schema;

@@ -30,27 +30,26 @@ public sealed class TableModel
     public string Name { get; }
     public IReadOnlyDictionary<string, ColumnModel> Columns { get; }
     public IReadOnlyList<string> PrimaryKeyColumns { get; }
-    /// <summary>
-    /// ColumnName -> constraintName
-    /// </summary>
     public IReadOnlyDictionary<string, string> UniqueConstraints { get; }
-    /// <summary>
-    /// IndexName -> IndexModel
-    /// </summary>
     public IReadOnlyDictionary<string, IndexModel> Indexes { get; }
+
+    // NEW:
+    public IReadOnlyList<ForeignKeyModel> ForeignKeys { get; }
 
     public TableModel(
         string name,
         IReadOnlyDictionary<string, ColumnModel> columns,
         IReadOnlyList<string> primaryKeyColumns,
         IReadOnlyDictionary<string, string> uniqueConstraints,
-        IReadOnlyDictionary<string, IndexModel> indexes)
+        IReadOnlyDictionary<string, IndexModel> indexes,
+        IReadOnlyList<ForeignKeyModel> foreignKeys)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         Columns = columns ?? throw new ArgumentNullException(nameof(columns));
         PrimaryKeyColumns = primaryKeyColumns ?? Array.Empty<string>();
         UniqueConstraints = uniqueConstraints ?? new Dictionary<string, string>();
         Indexes = indexes ?? new Dictionary<string, IndexModel>();
+        ForeignKeys = foreignKeys ?? Array.Empty<ForeignKeyModel>();
     }
 }
 
@@ -77,6 +76,22 @@ public sealed class IndexModel
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         Column = column ?? throw new ArgumentNullException(nameof(column));
+    }
+}
+
+public sealed class ForeignKeyModel
+{
+    public string Name { get; }
+    public string Column { get; }
+    public string PrincipalTable { get; }
+    public string PrincipalColumn { get; }
+
+    public ForeignKeyModel(string name, string column, string principalTable, string principalColumn)
+    {
+        Name = name ?? throw new ArgumentNullException(nameof(name));
+        Column = column ?? throw new ArgumentNullException(nameof(column));
+        PrincipalTable = principalTable ?? throw new ArgumentNullException(nameof(principalTable));
+        PrincipalColumn = principalColumn ?? throw new ArgumentNullException(nameof(principalColumn));
     }
 }
 

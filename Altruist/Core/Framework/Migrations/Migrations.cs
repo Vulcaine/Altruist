@@ -49,7 +49,22 @@ public sealed record DropIndexOperation(
 
 public sealed record ColumnDefinition(
     string Name,
-    string StoreType,    // for Postgres we’ll set this to “text”, “integer”, etc.
+    string StoreType,
     bool IsNullable,
     bool IsUnique
 );
+
+public sealed record AddForeignKeyOperation(
+    string Schema,
+    string Table,
+    string ConstraintName,
+    string Column,
+    string PrincipalTable,
+    string PrincipalColumn
+) : MigrationOperation;
+
+public sealed record DropForeignKeyOperation(
+    string Schema,
+    string Table,
+    string ConstraintName
+) : MigrationOperation;
