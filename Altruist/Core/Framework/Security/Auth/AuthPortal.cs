@@ -85,6 +85,7 @@ namespace Altruist.Security
                 );
 
                 await _router.Client.SendAsync(clientId, result);
+                await _connectionManager.DisconnectEngineAwareAsync(clientId);
             }
             catch (Exception)
             {
@@ -96,9 +97,6 @@ namespace Altruist.Security
                 );
 
                 await _router.Client.SendAsync(clientId, result);
-            }
-            finally
-            {
                 await _connectionManager.DisconnectEngineAwareAsync(clientId);
             }
         }
