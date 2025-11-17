@@ -19,10 +19,10 @@ public interface INavMeshService
 [Service(typeof(INavMeshService))]
 public sealed class NavMeshService : INavMeshService
 {
-    private readonly NavMeshData _data;
+    private readonly NavMeshSchema _data;
 
     // You inject NavMeshData from your WorldLoader/NavMeshLoader
-    public NavMeshService(NavMeshData data)
+    public NavMeshService(NavMeshSchema data)
     {
         _data = data ?? throw new ArgumentNullException(nameof(data));
 

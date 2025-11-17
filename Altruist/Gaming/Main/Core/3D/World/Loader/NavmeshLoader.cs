@@ -6,7 +6,7 @@ public sealed class NavMeshLoader
 {
     public WorldNavMesh Load(string json)
     {
-        var dto = JsonSerializer.Deserialize<NavMeshData>(json)
+        var dto = JsonSerializer.Deserialize<NavMeshSchema>(json)
                   ?? throw new InvalidOperationException("Invalid navmesh JSON.");
 
         return new WorldNavMesh
