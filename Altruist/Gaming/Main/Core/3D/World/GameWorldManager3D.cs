@@ -3,23 +3,30 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
+    using Altruist.Physx.Contracts;
+    using Altruist.Gaming.World.ThreeD;
+
     public interface IGameWorldManager3D : IGameWorldManager
     {
         IWorldIndex3D Index { get; }
         IPhysxWorld PhysxWorld { get; }
-        Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IPrefab3D prefab);
-        Task AddDynamicObject(IPrefab3D prefab);
-        WorldPartitionManager3D? AddStaticObject(IPrefab3D prefab);
-        IPrefab3D? DestroyObject(string instanceId);
-        IPrefab3D? DestroyObject(IPrefab3D prefab);
 
-        // Queries still accept a radius explicitly
-        IEnumerable<IPrefab3D> GetNearbyObjectsInRoom(string prefabId, int x, int y, int z, float radius, string roomId);
+        Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
+        Task AddDynamicObject(IWorldObject3D obj);
+        WorldPartitionManager3D? AddStaticObject(IWorldObject3D obj);
+        IWorldObject3D? DestroyObject(string instanceId);
+        IWorldObject3D? DestroyObject(IWorldObject3D obj);
+
+        IEnumerable<IWorldObject3D> GetNearbyObjectsInRoom(
+            string archetype,
+            int x, int y, int z,
+            float radius,
+            string roomId);
+
         IEnumerable<WorldPartitionManager3D> FindPartitionsForPosition(int x, int y, int z, float radius);
         WorldPartitionManager3D? FindPartitionForPosition(int x, int y, int z);
     }
@@ -28,7 +35,6 @@ namespace Altruist.Gaming.ThreeD
     {
         private readonly WorldIndex3D _index;
         private readonly IWorldPartitioner3D _worldPartitioner;
-        private readonly IPrefabManager3D _prefabManager;
         private readonly Dictionary<PartitionIndex3D, WorldPartitionManager3D> _partitionMap = new();
 
         private readonly List<WorldPartitionManager3D> _partitions;
@@ -37,13 +43,11 @@ namespace Altruist.Gaming.ThreeD
         public GameWorldManager3D(
             WorldIndex3D world,
             IPhysxWorld3D physx3D,
-            IWorldPartitioner3D worldPartitioner,
-            IPrefabManager3D prefabManager
+            IWorldPartitioner3D worldPartitioner
         )
         {
             _index = world ?? throw new ArgumentNullException(nameof(world));
             _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));
-            _prefabManager = prefabManager ?? throw new ArgumentNullException(nameof(prefabManager));
 
             _physx3D = physx3D ?? throw new ArgumentNullException(nameof(physx3D));
             _partitions = new List<WorldPartitionManager3D>();
@@ -62,65 +66,70 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
-        public async Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IPrefab3D prefab)
+        public async Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj)
         {
-            if (prefab is null)
+            if (obj is null)
                 return Enumerable.Empty<WorldPartitionManager3D>();
 
-            DestroyObject(prefab);
+            DestroyObject(obj);
 
-            var radius = await ComputePartitionRadiusAsync(prefab);
+            var radius = ComputePartitionRadius(obj);
             var partitions = FindPartitionsForPosition(
-                prefab.Transform.Position.X,
-                prefab.Transform.Position.Y,
-                prefab.Transform.Position.Z,
+                obj.Transform.Position.X,
+                obj.Transform.Position.Y,
+                obj.Transform.Position.Z,
                 radius);
 
-            AddObjectToPartitions(prefab, partitions);
-            return partitions.ToList();
+            AddObjectToPartitions(obj, partitions);
+            return await Task.FromResult(partitions.ToList());
         }
 
-        public async Task AddDynamicObject(IPrefab3D prefab)
+        public async Task AddDynamicObject(IWorldObject3D obj)
         {
-            if (prefab is null)
+            if (obj is null)
                 return;
 
-            var radius = await ComputePartitionRadiusAsync(prefab);
+            var radius = ComputePartitionRadius(obj);
             var partitions = FindPartitionsForPosition(
-                prefab.Transform.Position.X,
-                prefab.Transform.Position.Y,
-                prefab.Transform.Position.Z,
+                obj.Transform.Position.X,
+                obj.Transform.Position.Y,
+                obj.Transform.Position.Z,
                 radius);
 
-            AddObjectToPartitions(prefab, partitions);
+            AddObjectToPartitions(obj, partitions);
+            await Task.CompletedTask;
         }
 
-        public WorldPartitionManager3D? AddStaticObject(IPrefab3D prefab)
+        public WorldPartitionManager3D? AddStaticObject(IWorldObject3D obj)
         {
-            if (prefab is null)
+            if (obj is null)
                 return null;
 
             var partition = FindPartitionForPosition(
-                prefab.Transform.Position.X,
-                prefab.Transform.Position.Y,
-                prefab.Transform.Position.Z);
+                obj.Transform.Position.X,
+                obj.Transform.Position.Y,
+                obj.Transform.Position.Z);
 
-            partition?.AddObject(prefab);
+            partition?.AddObject(obj);
             return partition;
         }
 
-        public IPrefab3D? DestroyObject(string instanceId)
+        public IWorldObject3D? DestroyObject(string instanceId)
             => _partitions.Select(p => p.DestroyObject(instanceId)).FirstOrDefault(m => m != null);
 
-        public IPrefab3D? DestroyObject(IPrefab3D prefab)
-            => DestroyObject(prefab.InstanceId);
+        public IWorldObject3D? DestroyObject(IWorldObject3D obj)
+            => DestroyObject(obj.InstanceId);
 
-        public IEnumerable<IPrefab3D> GetNearbyObjectsInRoom(string prefabId, int x, int y, int z, float radius, string roomId)
+        public IEnumerable<IWorldObject3D> GetNearbyObjectsInRoom(
+            string archetype,
+            int x, int y, int z,
+            float radius,
+            string roomId)
         {
-            var result = new List<IPrefab3D>();
+            var result = new List<IWorldObject3D>();
             var partitions = FindPartitionsForPosition(x, y, z, radius);
             foreach (var partition in partitions)
-                result.AddRange(partition.GetObjectsByTypeInRadius(prefabId, x, y, z, radius, roomId));
+                result.AddRange(partition.GetObjectsByTypeInRadius(archetype, x, y, z, radius, roomId));
 
             return result.Distinct();
         }
@@ -154,24 +163,23 @@ namespace Altruist.Gaming.ThreeD
         }
 
         private IEnumerable<WorldPartitionManager3D> AddObjectToPartitions(
-            IPrefab3D prefab,
+            IWorldObject3D obj,
             IEnumerable<WorldPartitionManager3D> partitions
         )
         {
             foreach (var partition in partitions)
-                partition.AddObject(prefab);
+                partition.AddObject(obj);
             return partitions;
         }
 
         /// <summary>
-        /// Compute a partition search radius from collider AABB via PrefabManager3D.
-        /// Uses half of the largest AABB dimension; minimal floor if degenerate.
+        /// Compute a partition search radius from the object's transform size.
+        /// Uses half of the largest dimension; minimal floor if degenerate.
         /// </summary>
-        private async Task<float> ComputePartitionRadiusAsync(IPrefab3D prefab)
+        private static float ComputePartitionRadius(IWorldObject3D obj)
         {
-            var bounds = await _prefabManager.ComputeBoundsAsync(prefab);
-            var size = bounds.Size;
-            var r = MathF.Max(size.X, MathF.Max(size.Y, size.Z)) * 0.5f;
+            var sz = obj.Transform.Size;
+            var r = MathF.Max(sz.X, MathF.Max(sz.Y, sz.Z)) * 0.5f;
 
             if (r <= 0f || float.IsNaN(r) || float.IsInfinity(r))
                 r = 0.5f; // minimal sensible radius

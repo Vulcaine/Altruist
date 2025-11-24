@@ -1,4 +1,3 @@
-// ColliderApi3D.cs
 using System.Numerics;
 
 using Altruist.ThreeD.Numerics;
@@ -10,6 +9,7 @@ namespace Altruist.Physx.ThreeD
         public PhysxColliderShape3D Shape { get; }
         public Transform3D Transform { get; }
         public bool IsTrigger { get; }
+
         public PhysxCollider3DParams(PhysxColliderShape3D shape, Transform3D transform, bool isTrigger)
         {
             Shape = shape;
@@ -20,34 +20,52 @@ namespace Altruist.Physx.ThreeD
 
     public interface IPhysxColliderApiProvider3D
     {
+        /// <summary>
+        /// Creates an engine-agnostic collider descriptor for 3D physics.
+        /// The body/engine later interpret Shape + Transform + IsTrigger as needed.
+        /// </summary>
         IPhysxCollider3D CreateCollider(in PhysxCollider3DParams p);
     }
 
-
+    /// <summary>
+    /// Static façade for creating colliders via the configured provider.
+    /// </summary>
     public static class PhysxCollider3D
     {
         public static IPhysxColliderApiProvider3D Provider { get; set; } = default!;
 
-        public static IPhysxCollider3D Create(PhysxColliderShape3D shape, Transform3D transform, bool isTrigger = false)
+        public static IPhysxCollider3D Create(
+            PhysxColliderShape3D shape,
+            Transform3D transform,
+            bool isTrigger = false)
             => Provider.CreateCollider(new PhysxCollider3DParams(shape, transform, isTrigger));
 
-        public static IPhysxCollider3D CreateSphere(float radius, Transform3D? transform = null, bool isTrigger = false)
+        public static IPhysxCollider3D CreateSphere(
+            float radius,
+            Transform3D? transform = null,
+            bool isTrigger = false)
         {
             var t = (transform ?? Transform3D.Zero).WithSize(Size3D.Of(radius, 0f, 0f));
             return Provider.CreateCollider(new PhysxCollider3DParams(PhysxColliderShape3D.Sphere3D, t, isTrigger));
         }
 
-        public static IPhysxCollider3D CreateBox(Vector3 halfExtents, Transform3D? transform = null, bool isTrigger = false)
+        public static IPhysxCollider3D CreateBox(
+            Vector3 halfExtents,
+            Transform3D? transform = null,
+            bool isTrigger = false)
         {
             var t = (transform ?? Transform3D.Zero).WithSize(Size3D.From(halfExtents));
             return Provider.CreateCollider(new PhysxCollider3DParams(PhysxColliderShape3D.Box3D, t, isTrigger));
         }
 
-        public static IPhysxCollider3D CreateCapsule(float radius, float halfLength, Transform3D? transform = null, bool isTrigger = false)
+        public static IPhysxCollider3D CreateCapsule(
+            float radius,
+            float halfLength,
+            Transform3D? transform = null,
+            bool isTrigger = false)
         {
             var t = (transform ?? Transform3D.Zero).WithSize(Size3D.Of(radius, halfLength, 0f));
             return Provider.CreateCollider(new PhysxCollider3DParams(PhysxColliderShape3D.Capsule3D, t, isTrigger));
         }
-
     }
 }

@@ -1,15 +1,38 @@
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
+
 using Altruist.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
+    using Altruist.Gaming.World.ThreeD;
+
     public interface IWorldPartitionManager3D : IWorldPartitionManager
     {
-        void AddObject(IPrefab3D objectMetadata);
-        IPrefab3D? DestroyObject(string instanceId);
-        HashSet<IPrefab3D> GetObjectsByType(string prefabId);
-        HashSet<IPrefab3D> GetObjectsByTypeInRoom(string prefabId, string roomId);
+        void AddObject(IWorldObject3D obj);
+        IWorldObject3D? DestroyObject(string instanceId);
+
+        /// <summary>Return all objects with the given archetype.</summary>
+        HashSet<IWorldObject3D> GetObjectsByType(string archetype);
+
+        /// <summary>Return all objects with the given archetype within a given room.</summary>
+        HashSet<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId);
+
+        /// <summary>
+        /// Query by archetype within a radius in a room. Coordinates are world-space.
+        /// </summary>
+        IEnumerable<IWorldObject3D> GetObjectsByTypeInRadius(
+            string archetype,
+            int x, int y, int z,
+            float radius,
+            string roomId);
     }
 
+    /// <summary>
+    /// Manages a spatial partition of the 3D world using a grid index.
+    /// </summary>
     public class WorldPartitionManager3D : IWorldPartitionManager3D
     {
         private readonly SpatialGridIndex3D _spatialIndex = new(cellSize: 16);
@@ -28,30 +51,34 @@ namespace Altruist.Gaming.ThreeD
             Epicenter = position + size / 2;
         }
 
-        public virtual void AddObject(IPrefab3D prefab)
+        public virtual void AddObject(IWorldObject3D obj)
         {
-            _spatialIndex.Add(prefab);
+            if (obj is null)
+                return;
+            _spatialIndex.Add(obj);
         }
 
-        public virtual IPrefab3D? DestroyObject(string instanceId)
+        public virtual IWorldObject3D? DestroyObject(string instanceId)
         {
             return _spatialIndex.Remove(instanceId);
         }
 
-        public virtual IEnumerable<IPrefab3D> GetObjectsByTypeInRadius(
-            string prefabId,
+        public virtual IEnumerable<IWorldObject3D> GetObjectsByTypeInRadius(
+            string archetype,
             int x, int y, int z,
             float radius,
             string roomId)
         {
-            return _spatialIndex.Query(prefabId, x, y, z, radius, roomId);
+            return _spatialIndex.Query(archetype, x, y, z, radius, roomId);
         }
 
-        public virtual HashSet<IPrefab3D> GetObjectsByType(string prefabId) =>
-            _spatialIndex.GetAllByType(prefabId);
+        public virtual HashSet<IWorldObject3D> GetObjectsByType(string archetype) =>
+            _spatialIndex.GetAllByType(archetype);
 
-        public virtual HashSet<IPrefab3D> GetObjectsByTypeInRoom(string prefabId, string roomId) =>
-            _spatialIndex.GetAllByType(prefabId).Where(x => x.RoomId == roomId).ToHashSet();
+        public virtual HashSet<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId) =>
+            _spatialIndex.GetAllByType(archetype)
+                         .Where(x => string.Equals(x.RoomId, roomId, StringComparison.Ordinal))
+                         .ToHashSet();
     }
 
     public interface IWorldPartitioner3D : IWorldPartitioner

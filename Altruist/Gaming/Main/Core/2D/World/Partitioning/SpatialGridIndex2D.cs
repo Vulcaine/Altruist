@@ -1,18 +1,22 @@
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
+
 namespace Altruist.Gaming.TwoD
 {
-
     public class SpatialGridIndex2D
     {
         public int CellSize { get; set; }
 
         // Use stringified keys like "x:y" to allow JSON serialization
-        // Optional, flatten all objects by ID if needed
-        public Dictionary<string, IPrefab2D> InstanceMap { get; set; } = new();
+        // Flatten all objects by instance id
+        public Dictionary<string, IWorldObject2D> InstanceMap { get; set; } = new();
 
-        // grid key => metadata id string
+        // grid key => set of instance ids
         public Dictionary<string, HashSet<string>> Grid { get; set; } = new();
 
-        // Optional, used for type filtering, type string => metadata id string
+        // Optional, used for type filtering, archetype string => set of instance ids
         public Dictionary<string, HashSet<string>> TypeMap { get; set; } = new();
 
         public SpatialGridIndex2D() { }
@@ -24,45 +28,53 @@ namespace Altruist.Gaming.TwoD
 
         private static string GetKey(int x, int y) => $"{x}:{y}";
 
-        public virtual void Add(IPrefab2D prefab)
+        public virtual void Add(IWorldObject2D obj)
         {
-            string key = GetKey(prefab.Transform.Position.X / CellSize, prefab.Transform.Position.Y / CellSize);
+            string key = GetKey(
+                obj.Transform.Position.X / CellSize,
+                obj.Transform.Position.Y / CellSize);
 
             if (!Grid.TryGetValue(key, out var list))
                 Grid[key] = list = new HashSet<string>();
 
-            list.Add(prefab.InstanceId);
-            InstanceMap[prefab.InstanceId] = prefab;
+            list.Add(obj.InstanceId);
+            InstanceMap[obj.InstanceId] = obj;
 
-            var typeKey = prefab.PrefabId;
-            if (!TypeMap.TryGetValue(typeKey, out var typeDict))
-                TypeMap[typeKey] = typeDict = new HashSet<string>();
+            var typeKey = obj.Archetype;
+            if (!TypeMap.TryGetValue(typeKey, out var typeSet))
+                TypeMap[typeKey] = typeSet = new HashSet<string>();
 
-            typeDict.Add(prefab.InstanceId);
+            typeSet.Add(obj.InstanceId);
         }
 
-        public virtual IPrefab2D? Remove(string instanceId)
+        public virtual IWorldObject2D? Remove(string instanceId)
         {
             if (!InstanceMap.TryGetValue(instanceId, out var obj))
                 return null;
 
-            string key = GetKey(obj.Transform.Position.X / CellSize, obj.Transform.Position.Y / CellSize);
+            string key = GetKey(
+                obj.Transform.Position.X / CellSize,
+                obj.Transform.Position.Y / CellSize);
+
             if (Grid.TryGetValue(key, out var list))
             {
                 list.Remove(instanceId);
             }
 
-            if (TypeMap.TryGetValue(obj.PrefabId, out var map))
+            if (TypeMap.TryGetValue(obj.Archetype, out var map))
             {
                 map.Remove(instanceId);
             }
 
             InstanceMap.Remove(instanceId);
-
             return obj;
         }
 
-        public virtual IEnumerable<IPrefab2D> Query(string prefabId, int x, int y, float radius, string roomId)
+        public virtual IEnumerable<IWorldObject2D> Query(
+            string archetype,
+            int x, int y,
+            float radius,
+            string roomId)
         {
             int minX = (int)((x - radius) / CellSize);
             int maxX = (int)((x + radius) / CellSize);
@@ -70,7 +82,7 @@ namespace Altruist.Gaming.TwoD
             int maxY = (int)((y + radius) / CellSize);
 
             float sqrRadius = radius * radius;
-            var result = new HashSet<IPrefab2D>();
+            var result = new HashSet<IWorldObject2D>();
 
             for (int cx = minX; cx <= maxX; cx++)
             {
@@ -80,18 +92,21 @@ namespace Altruist.Gaming.TwoD
                     if (!Grid.TryGetValue(key, out var list))
                         continue;
 
-                    var instanceList = list.Select(e => InstanceMap[e]).Where(e => e.RoomId == roomId).ToList();
+                    var instanceList = list
+                        .Select(id => InstanceMap[id])
+                        .Where(e => e.RoomId == roomId)
+                        .ToList();
 
-                    foreach (var prefab2D in instanceList)
+                    foreach (var obj in instanceList)
                     {
-                        if (prefab2D.PrefabId != prefabId)
+                        if (obj.Archetype != archetype)
                             continue;
 
-                        float dx = prefab2D.Transform.Position.X - x;
-                        float dy = prefab2D.Transform.Position.Y - y;
+                        float dx = obj.Transform.Position.X - x;
+                        float dy = obj.Transform.Position.Y - y;
 
                         if ((dx * dx + dy * dy) <= sqrRadius)
-                            result.Add(prefab2D);
+                            result.Add(obj);
                     }
                 }
             }
@@ -99,15 +114,15 @@ namespace Altruist.Gaming.TwoD
             return result;
         }
 
-        public virtual Dictionary<string, IPrefab2D> GetByType(string prefabId)
+        public virtual Dictionary<string, IWorldObject2D> GetByType(string archetype)
         {
-            return (TypeMap.TryGetValue(prefabId, out var map) ? map : new()).ToDictionary(x => x, x => InstanceMap[x]);
+            return (TypeMap.TryGetValue(archetype, out var map) ? map : new())
+                .ToDictionary(id => id, id => InstanceMap[id]);
         }
 
-        public virtual HashSet<IPrefab2D> GetAllByType(string prefabId)
+        public virtual HashSet<IWorldObject2D> GetAllByType(string archetype)
         {
-            return GetByType(prefabId).Values.ToHashSet();
+            return GetByType(archetype).Values.ToHashSet();
         }
     }
-
 }

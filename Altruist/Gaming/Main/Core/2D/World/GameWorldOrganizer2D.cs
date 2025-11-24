@@ -45,7 +45,7 @@ namespace Altruist.Gaming.TwoD
             if (_worlds.ContainsKey(index.Index))
                 throw new InvalidOperationException($"World {index.Index} already exists.");
 
-            var manager = new GameWorldManager2D(index, physx2D, _partitioner, _cache, _prefabManager);
+            var manager = new GameWorldManager2D(index, physx2D, _partitioner, _cache);
             manager.Initialize();
             _worlds[index.Index] = manager;
             return manager;

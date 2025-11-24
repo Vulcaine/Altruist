@@ -1,62 +1,56 @@
-using Altruist.Gaming.World.ThreeD;
-using Altruist.Physx.ThreeD;
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
 
 namespace Altruist.Gaming.ThreeD
 {
-    public interface IGameWorldOrganizer3D : IGameWorldOrganizer
-    {
-        IGameWorldManager3D AddWorld(WorldIndex3D index, IPhysxWorld3D physx3D);
-        void RemoveWorld(int index);
-        IGameWorldManager3D? GetWorld(int index);
-        IEnumerable<int> GetAllWorldIndices();
+    using Altruist.Gaming.World.ThreeD;
 
+    public interface IGameWorldCoordinator3D : IGameWorldOrganizer
+    {
+        /// <summary>
+        /// Directly registers an already constructed game world manager.
+        /// </summary>
+        IGameWorldManager3D AddWorld(IGameWorldManager3D manager);
     }
 
+    [Service(typeof(IGameWorldCoordinator3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
-    [Service(typeof(IGameWorldOrganizer))]
-    [Service(typeof(IGameWorldOrganizer3D))]
-    public class GameWorldOrganizer3D : IGameWorldOrganizer3D
+    public class GameWorldOrganizer3D : IGameWorldCoordinator3D
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
-        private readonly IWorldPartitioner3D _partitioner;
-        private readonly IPrefabManager3D _prefabManager;
-
-        private readonly IPhysxWorldEngineFactory3D _physxWorldEngineFactory;
+        private readonly IWorldLoader3D _worldLoader;
 
         public GameWorldOrganizer3D(
-            IWorldPartitioner3D partitioner,
-            IPrefabManager3D prefabManager,
-            IPhysxWorldEngineFactory3D physxWorldEngineFactory,
-            IWorldLoader3D worldLoader3D,
-            IEnumerable<IWorldIndex3D> gameWorlds)
+            IWorldLoader3D worldLoader,
+            IEnumerable<WorldIndex3D> gameWorlds)
         {
-            _partitioner = partitioner;
-            _prefabManager = prefabManager;
-            _physxWorldEngineFactory = physxWorldEngineFactory;
-            _worlds = gameWorlds
-                .Select(index3d =>
-                {
-                    if (index3d.DataPath != null)
-                    {
-                        return AddWorld(index3d, worldLoader3D.LoadFromPath(index3d.DataPath, index3d.Gravity, index3d.FixedDeltaTime));
-                    }
+            _worldLoader = worldLoader ?? throw new ArgumentNullException(nameof(worldLoader));
 
-                    return AddWorld(index3d, _physxWorldEngineFactory.Create(index3d.Gravity, index3d.FixedDeltaTime));
-                })
-                .ToDictionary(x => x.Index.Index);
+            if (gameWorlds is null)
+                throw new ArgumentNullException(nameof(gameWorlds));
+
+            foreach (var index in gameWorlds)
+            {
+                var manager = _worldLoader.LoadFromIndex(index);
+                AddWorld(manager);
+            }
         }
 
-        public IGameWorldManager3D AddWorld(IWorldIndex3D index, IPhysxWorldEngine3D engine) => AddWorld(index, new PhysxWorld3D(engine));
-
-        /// <summary>Adds a new 3D game world and initializes it.</summary>
-        public virtual IGameWorldManager3D AddWorld(WorldIndex3D index, IPhysxWorld3D physx3D)
+        /// <summary>
+        /// Registers an existing GameWorldManager3D.
+        /// </summary>
+        public IGameWorldManager3D AddWorld(IGameWorldManager3D manager)
         {
-            if (_worlds.ContainsKey(index.Index))
-                throw new InvalidOperationException($"World {index.Index} already exists.");
+            if (manager is null)
+                throw new ArgumentNullException(nameof(manager));
 
-            var manager = new GameWorldManager3D(index, physx3D, _partitioner, _prefabManager);
-            manager.Initialize();
-            _worlds[index.Index] = manager;
+            var idx = manager.Index.Index;
+            if (_worlds.ContainsKey(idx))
+                throw new InvalidOperationException($"World {idx} already exists.");
+
+            _worlds[idx] = manager;
             return manager;
         }
 
@@ -71,7 +65,7 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>
         /// Gets the GameWorldManager for a given world index.
         /// </summary>
-        public virtual IGameWorldManager3D? GetWorld(int index)
+        public virtual IGameWorldManager? GetWorld(int index)
         {
             return _worlds.TryGetValue(index, out var manager) ? manager : null;
         }
@@ -91,16 +85,11 @@ namespace Altruist.Gaming.ThreeD
                 }
                 catch
                 {
-                    // swallow per-world step exceptions to keep other worlds ticking
+                    // Intentionally swallow step exceptions per-world
                 }
             }
         }
 
         public bool Empty() => _worlds.Count == 0;
-
-        public IGameWorldManager3D AddWorld(IWorldIndex3D index, IPhysxWorld3D physx3D)
-        {
-            return AddWorld(index, physx3D);
-        }
     }
 }

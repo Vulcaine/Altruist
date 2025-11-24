@@ -24,25 +24,25 @@ namespace Altruist.Gaming.TwoD
             Epicenter = position + size / 2;
         }
 
-        public virtual void AddObject(IPrefab2D prefab)
+        public virtual void AddObject(IWorldObject2D prefab)
         {
             _spatialIndex.Add(prefab);
         }
 
-        public virtual IPrefab2D? DestroyObject(string id)
+        public virtual IWorldObject2D? DestroyObject(string id)
         {
             return _spatialIndex.Remove(id);
         }
 
-        public virtual IEnumerable<IPrefab2D> GetObjectsByTypeInRadius(string prefabId, int x, int y, float radius, string roomId)
+        public virtual IEnumerable<IWorldObject2D> GetObjectsByTypeInRadius(string prefabId, int x, int y, float radius, string roomId)
         {
             return _spatialIndex.Query(prefabId, x, y, radius, roomId);
         }
 
-        public virtual HashSet<IPrefab2D> GetObjectsByType(string prefabId) =>
+        public virtual HashSet<IWorldObject2D> GetObjectsByType(string prefabId) =>
             _spatialIndex.GetAllByType(prefabId);
 
-        public virtual HashSet<IPrefab2D> GetObjectsByTypeInRoom(string prefabId, string roomId) =>
+        public virtual HashSet<IWorldObject2D> GetObjectsByTypeInRoom(string prefabId, string roomId) =>
             _spatialIndex.GetAllByType(prefabId).Where(x => x.RoomId == roomId).ToHashSet();
     }
 

@@ -1,3 +1,9 @@
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
+
+using Altruist.Gaming.World.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
@@ -6,12 +12,12 @@ namespace Altruist.Gaming.ThreeD
         public int CellSize { get; set; }
 
         // All objects by instance id
-        public Dictionary<string, IPrefab3D> InstanceMap { get; set; } = new();
+        public Dictionary<string, IWorldObject3D> InstanceMap { get; set; } = new();
 
         // Grid cell key => set of instance ids
         public Dictionary<string, HashSet<string>> Grid { get; set; } = new();
 
-        // Optional: type filter map; type key => set of instance ids
+        // Optional: type/archetype filter map; archetype key => set of instance ids
         public Dictionary<string, HashSet<string>> TypeMap { get; set; } = new();
 
         public SpatialGridIndex3D() { }
@@ -23,7 +29,7 @@ namespace Altruist.Gaming.ThreeD
 
         private static string GetKey(int x, int y, int z) => $"{x}:{y}:{z}";
 
-        public virtual void Add(IPrefab3D obj)
+        public virtual void Add(IWorldObject3D obj)
         {
             string key = GetKey(
                 (int)obj.Transform.Position.X / CellSize,
@@ -38,35 +44,35 @@ namespace Altruist.Gaming.ThreeD
             list.Add(obj.InstanceId);
             InstanceMap[obj.InstanceId] = obj;
 
-            var typeKey = obj.PrefabId;
-            if (!TypeMap.TryGetValue(typeKey, out var typeSet))
-                TypeMap[typeKey] = typeSet = new HashSet<string>();
+            var archetypeKey = obj.Archetype;
+            if (!TypeMap.TryGetValue(archetypeKey, out var typeSet))
+                TypeMap[archetypeKey] = typeSet = new HashSet<string>();
 
             typeSet.Add(obj.InstanceId);
         }
 
-        public virtual IPrefab3D? Remove(string instanceId)
+        public virtual IWorldObject3D? Remove(string instanceId)
         {
-            if (!InstanceMap.TryGetValue(instanceId, out var prefab3D))
+            if (!InstanceMap.TryGetValue(instanceId, out var obj))
                 return null;
 
             string key = GetKey(
-                (int)prefab3D.Transform.Position.X / CellSize,
-                (int)prefab3D.Transform.Position.Y / CellSize,
-                (int)prefab3D.Transform.Position.Z / CellSize);
+                (int)obj.Transform.Position.X / CellSize,
+                (int)obj.Transform.Position.Y / CellSize,
+                (int)obj.Transform.Position.Z / CellSize);
 
             if (Grid.TryGetValue(key, out var cellSet))
                 cellSet.Remove(instanceId);
 
-            if (TypeMap.TryGetValue(prefab3D.PrefabId, out var typeSet))
+            if (TypeMap.TryGetValue(obj.Archetype, out var typeSet))
                 typeSet.Remove(instanceId);
 
             InstanceMap.Remove(instanceId);
-            return prefab3D;
+            return obj;
         }
 
-        public virtual IEnumerable<IPrefab3D> Query(
-            string prefabId,
+        public virtual IEnumerable<IWorldObject3D> Query(
+            string archetype,
             int x, int y, int z,
             float radius,
             string roomId)
@@ -79,7 +85,7 @@ namespace Altruist.Gaming.ThreeD
             int maxZ = (int)((z + radius) / CellSize);
 
             float sqrRadius = radius * radius;
-            var result = new HashSet<IPrefab3D>();
+            var result = new HashSet<IWorldObject3D>();
 
             for (int cx = minX; cx <= maxX; cx++)
             {
@@ -96,17 +102,17 @@ namespace Altruist.Gaming.ThreeD
                             .Where(e => e.RoomId == roomId)
                             .ToList();
 
-                        foreach (var prefab3D in instanceList)
+                        foreach (var obj in instanceList)
                         {
-                            if (prefab3D.PrefabId != prefabId)
+                            if (obj.Archetype != archetype)
                                 continue;
 
-                            float dx = prefab3D.Transform.Position.X - x;
-                            float dy = prefab3D.Transform.Position.Y - y;
-                            float dz = prefab3D.Transform.Position.Z - z;
+                            float dx = obj.Transform.Position.X - x;
+                            float dy = obj.Transform.Position.Y - y;
+                            float dz = obj.Transform.Position.Z - z;
 
                             if ((dx * dx + dy * dy + dz * dz) <= sqrRadius)
-                                result.Add(prefab3D);
+                                result.Add(obj);
                         }
                     }
                 }
@@ -115,15 +121,15 @@ namespace Altruist.Gaming.ThreeD
             return result;
         }
 
-        public virtual Dictionary<string, IPrefab3D> GetByType(string prefabId)
+        public virtual Dictionary<string, IWorldObject3D> GetByType(string archetype)
         {
-            return (TypeMap.TryGetValue(prefabId, out var set) ? set : new())
+            return (TypeMap.TryGetValue(archetype, out var set) ? set : new())
                 .ToDictionary(id => id, id => InstanceMap[id]);
         }
 
-        public virtual HashSet<IPrefab3D> GetAllByType(string prefabId)
+        public virtual HashSet<IWorldObject3D> GetAllByType(string archetype)
         {
-            return GetByType(prefabId).Values.ToHashSet();
+            return GetByType(archetype).Values.ToHashSet();
         }
     }
 }
