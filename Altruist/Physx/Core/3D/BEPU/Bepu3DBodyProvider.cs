@@ -14,6 +14,8 @@ namespace Altruist.Physx.ThreeD
     /// BEPU-backed body API provider (3D).
     /// Creates BEPU bodies and attaches/detaches a single collider shape by swapping the body's shape.
     /// </summary>
+    [Service(typeof(IPhysxBodyApiProvider3D))]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue:"3D")]
     public sealed class BepuPhysxBodyApiProvider3D : IPhysxBodyApiProvider3D
     {
         private readonly BepuWorldEngine3D _engine;

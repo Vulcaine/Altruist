@@ -12,7 +12,7 @@ namespace Altruist.Gaming.ThreeD
 
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [Service(typeof(IGameWorldOrganizer))]
     [Service(typeof(IGameWorldOrganizer3D))]
     public class GameWorldOrganizer3D : IGameWorldOrganizer3D

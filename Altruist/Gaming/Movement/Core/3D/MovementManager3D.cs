@@ -17,7 +17,7 @@ namespace Altruist.Gaming.Movement.ThreeD
         bool TryGetPlayerState(string playerId, out MovementState3D state);
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [Service(typeof(IMovementManager3D))]
     public sealed class MovementManager3D : IMovementManager3D
     {

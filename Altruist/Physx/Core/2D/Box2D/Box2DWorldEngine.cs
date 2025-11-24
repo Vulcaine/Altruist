@@ -7,7 +7,7 @@ using Box2DSharp.Dynamics;
 namespace Altruist.Physx.TwoD
 {
     [Service(typeof(IPhysxWorldEngineFactory2D))]
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public sealed class WorldEngineFactory2D : IPhysxWorldEngineFactory2D
     {
         public IPhysxWorldEngine2D Create(Vector2 gravity, float fixedDeltaTime = 1f / 60f)

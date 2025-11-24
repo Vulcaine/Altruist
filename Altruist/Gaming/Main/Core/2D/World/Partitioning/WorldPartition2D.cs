@@ -51,7 +51,7 @@ namespace Altruist.Gaming.TwoD
         List<WorldPartition2D> CalculatePartitions(IWorldIndex2D world);
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     [Service(typeof(IWorldPartitioner))]
     [Service(typeof(IWorldPartitioner2D))]
     public class WorldPartitioner2D : IWorldPartitioner2D

@@ -25,7 +25,7 @@ namespace Altruist.Gaming.Movement.TwoD
         bool TryGetPlayerState(string playerId, out MovementState2D state);
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     [Service(typeof(IMovementManager2D))]
     public sealed class MovementManager2D : IMovementManager2D
     {

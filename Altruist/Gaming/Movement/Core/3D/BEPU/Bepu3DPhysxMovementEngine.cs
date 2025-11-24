@@ -13,7 +13,7 @@ namespace Altruist.Gaming.Movement.ThreeD
     /// - Applies orientation delta as an immediate quaternion rotation.
     /// - Optionally uses the Force vector as an impulse-like tweak.
     /// </summary>
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [Service(typeof(IPhysxMovementEngine3D))]
     internal sealed class Bepu3DPhysxMovementEngine : IPhysxMovementEngine3D
     {

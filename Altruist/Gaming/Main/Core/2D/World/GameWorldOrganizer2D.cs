@@ -9,7 +9,7 @@ namespace Altruist.Gaming.TwoD
     }
 
     [Service(typeof(IGameWorldCoordinator2D))]
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public class GameWorldOrganizer2D : IGameWorldCoordinator2D
     {
         private readonly Dictionary<int, IGameWorldManager2D> _worlds = new();

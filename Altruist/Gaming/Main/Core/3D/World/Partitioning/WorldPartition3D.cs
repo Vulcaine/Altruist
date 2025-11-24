@@ -60,7 +60,7 @@ namespace Altruist.Gaming.ThreeD
         List<WorldPartitionManager3D> CalculatePartitions(WorldIndex3D world);
     }
 
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [Service(typeof(IWorldPartitioner))]
     [Service(typeof(IWorldPartitioner3D))]
     public class WorldPartitioner3D : IWorldPartitioner3D

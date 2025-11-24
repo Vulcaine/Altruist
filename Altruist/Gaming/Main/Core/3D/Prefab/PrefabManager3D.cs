@@ -24,7 +24,7 @@ namespace Altruist.Gaming.ThreeD
     }
 
     [Service(typeof(IPrefabManager3D))]
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     public sealed class PrefabManager3D : PrefabManagerBase, IPrefabManager3D
     {
         private readonly IColliderService3D _colliders;

@@ -13,7 +13,7 @@ namespace Altruist.Gaming.Movement.TwoD
     /// - Uses AngularDeltaRad to drive angular velocity.
     /// - Optionally uses Force as an impulse-like velocity tweak.
     /// </summary>
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     [Service(typeof(IPhysxMovementEngine2D))]
     internal sealed class Box2DPhysxMovementEngine2D : IPhysxMovementEngine2D
     {

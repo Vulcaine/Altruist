@@ -12,7 +12,7 @@ public interface IPrefabFactory2D
 }
 
 [Service(typeof(IPrefabFactory2D))]
-[ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+[ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
 public sealed class PrefabFactory2D : IPrefabFactory2D
 {
     private readonly IServiceProvider _sp;

@@ -24,7 +24,7 @@ namespace Altruist.Gaming.TwoD
     }
 
     [Service(typeof(IPrefabManager2D))]
-    [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "2D")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public sealed class PrefabManager2D : PrefabManagerBase, IPrefabManager2D
     {
         private readonly IColliderService2D _colliders;

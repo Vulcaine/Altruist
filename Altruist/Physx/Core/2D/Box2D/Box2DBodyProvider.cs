@@ -138,6 +138,8 @@ namespace Altruist.Physx.TwoD
     /// Caller must then register with the world via IPhysxWorld2D.AddBody(adapter).
     /// Also provides collider attach/detach helpers for Box2D-backed bodies.
     /// </summary>
+    [Service(typeof(IPhysxBodyApiProvider2D))]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public sealed class Box2DPhysxBodyApiProvider2D : IPhysxBodyApiProvider2D
     {
         private readonly Box2DWorldEngine2D _engine;
