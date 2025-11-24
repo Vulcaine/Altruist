@@ -281,12 +281,12 @@ public class AltruistEngine : IAltruistEngine
 
     private IServerStatus _appStatus;
 
-    private readonly IGameWorldCoordinator _worldCoordinator;
+    private readonly IGameWorldOrganizer _worldCoordinator;
 
     public AltruistEngine(
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
-        IGameWorldCoordinator worldCoordinator,
+        IGameWorldOrganizer worldCoordinator,
         [AppConfigValue("altruist:game:engine:frequency")]
         int engineFrequencyHz = 30,
         [AppConfigValue("altruist:game:engine:unit")]

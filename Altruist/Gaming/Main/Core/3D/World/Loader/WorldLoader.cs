@@ -7,11 +7,18 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.World.ThreeD;
 
+public interface IWorldLoader3D
+{
+    IPhysxWorld3D LoadFromJson(string json, Vector3 gravity, float fixedDeltaTime);
+    IPhysxWorld3D LoadFromPath(string path, Vector3 gravity, float fixedDeltaTime);
+}
+
 /// <summary>
 /// Loads a hierarchical WorldSchema (exported from Unity) into a 3D physics world,
 /// using only Physx abstractions (no BEPU types).
 /// </summary>
-public sealed class WorldLoader3D
+[Service(typeof(IWorldLoader3D))]
+public sealed class WorldLoader3D : IWorldLoader3D
 {
     private readonly IPhysxWorldEngineFactory3D _engineFactory;
     private readonly IPhysxBodyApiProvider3D _bodyApi;

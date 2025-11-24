@@ -1,6 +1,6 @@
 namespace Altruist.Gaming
 {
-    public interface IGameWorldCoordinator
+    public interface IGameWorldOrganizer
     {
         void Step(float deltaTime);
     }

@@ -1,12 +1,13 @@
 using System.Numerics;
 
+using Altruist.Numerics;
+
 namespace Altruist.Gaming
 {
-
     public interface IWorldIndex2D : IWorldIndex
     {
         Vector2 Position { get; set; }
-        Vector2 Size { get; set; }
+        IntVector2 Size { get; set; }
         Vector2 Gravity { get; set; }
     }
 
@@ -17,8 +18,10 @@ namespace Altruist.Gaming
     {
         public override string StorageId { get; set; }
         public override string GroupId { get; set; }
+
+        public string? DataPath { get; set; }
         public Vector2 Position { get; set; }
-        public Vector2 Size { get; set; }
+        public IntVector2 Size { get; set; }
         public Vector2 Gravity { get; set; }
         public float FixedDeltaTime { get; set; }
         public int Index { get; set; }
@@ -31,11 +34,13 @@ namespace Altruist.Gaming
             [AppConfigValue("*:fixedDeltaTime", "0.01666f")]
             float fixedDeltaTime,
             [AppConfigValue("*:size")]
-            Vector2 size,
+            IntVector2 size,
             [AppConfigValue("*:gravity")]
             Vector2? gravity = null,
             [AppConfigValue("*:position")]
             Vector2? position = null,
+            [AppConfigValue("*:data")]
+            string? data = null,
             string? groupId = null)
         {
             StorageId = Guid.NewGuid().ToString();
@@ -45,9 +50,10 @@ namespace Altruist.Gaming
             FixedDeltaTime = fixedDeltaTime;
             Gravity = gravity ?? new Vector2(0f, 9.81f);
             Position = position ?? Vector2.Zero;
+            DataPath = data;
         }
 
-        public int Width => (int)Size.X;
-        public int Height => (int)Size.Y;
+        public int Width => Size.X;
+        public int Height => Size.Y;
     }
 }

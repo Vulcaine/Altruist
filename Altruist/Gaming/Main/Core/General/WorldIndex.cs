@@ -4,5 +4,6 @@ namespace Altruist.Gaming
     {
         float FixedDeltaTime { get; set; }
         public int Index { get; set; }
+        public string? DataPath { get; set; }
     }
 }

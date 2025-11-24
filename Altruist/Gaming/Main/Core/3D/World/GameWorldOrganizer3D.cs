@@ -1,8 +1,9 @@
+using Altruist.Gaming.World.ThreeD;
 using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
-    public interface IGameWorldCoordinator3D : IGameWorldCoordinator
+    public interface IGameWorldOrganizer3D : IGameWorldOrganizer
     {
         IGameWorldManager3D AddWorld(WorldIndex3D index, IPhysxWorld3D physx3D);
         void RemoveWorld(int index);
@@ -12,9 +13,9 @@ namespace Altruist.Gaming.ThreeD
     }
 
     [ConditionalOnConfig("altruist:game:engine:dimension", havingValue: "3D")]
-    [Service(typeof(IGameWorldCoordinator))]
-    [Service(typeof(IGameWorldCoordinator3D))]
-    public class GameWorldCoordinator3D : IGameWorldCoordinator3D
+    [Service(typeof(IGameWorldOrganizer))]
+    [Service(typeof(IGameWorldOrganizer3D))]
+    public class GameWorldOrganizer3D : IGameWorldOrganizer3D
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldPartitioner3D _partitioner;
@@ -22,10 +23,11 @@ namespace Altruist.Gaming.ThreeD
 
         private readonly IPhysxWorldEngineFactory3D _physxWorldEngineFactory;
 
-        public GameWorldCoordinator3D(
+        public GameWorldOrganizer3D(
             IWorldPartitioner3D partitioner,
             IPrefabManager3D prefabManager,
             IPhysxWorldEngineFactory3D physxWorldEngineFactory,
+            IWorldLoader3D worldLoader3D,
             IEnumerable<IWorldIndex3D> gameWorlds)
         {
             _partitioner = partitioner;
@@ -34,6 +36,11 @@ namespace Altruist.Gaming.ThreeD
             _worlds = gameWorlds
                 .Select(index3d =>
                 {
+                    if (index3d.DataPath != null)
+                    {
+                        return AddWorld(index3d, worldLoader3D.LoadFromPath(index3d.DataPath, index3d.Gravity, index3d.FixedDeltaTime));
+                    }
+
                     return AddWorld(index3d, _physxWorldEngineFactory.Create(index3d.Gravity, index3d.FixedDeltaTime));
                 })
                 .ToDictionary(x => x.Index.Index);

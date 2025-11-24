@@ -1,12 +1,14 @@
 using System.Numerics;
 
+using Altruist.Numerics;
+
 namespace Altruist.Gaming
 {
 
     public interface IWorldIndex3D : IWorldIndex
     {
         Vector3 Position { get; set; }
-        Vector3 Size { get; set; }
+        IntVector3 Size { get; set; }
         Vector3 Gravity { get; set; }
     }
 
@@ -17,14 +19,14 @@ namespace Altruist.Gaming
     {
         public override string StorageId { get; set; }
         public override string GroupId { get; set; }
+        public string? DataPath { get; set; }
         public Vector3 Position { get; set; }
-        public Vector3 Size { get; set; }
+        public IntVector3 Size { get; set; }
         public Vector3 Gravity { get; set; }
         public float FixedDeltaTime { get; set; }
         public int Index { get; set; }
         public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
         public override string Type { get; set; } = "WorldIndex3D";
-
 
         public WorldIndex3D(
             [AppConfigValue("*:index")]
@@ -32,11 +34,13 @@ namespace Altruist.Gaming
             [AppConfigValue("*:fixedDeltaTime", "0.01666f")]
             float fixedDeltaTime,
             [AppConfigValue("*:size")]
-            Vector3 size,
+            IntVector3 size,
             [AppConfigValue("*:gravity")]
             Vector3? gravity = null,
             [AppConfigValue("*:position")]
-            Vector3? position = null,
+             Vector3? position = null,
+            [AppConfigValue("*:data")]
+            string? data = null,
             string? groupId = null)
         {
             StorageId = Guid.NewGuid().ToString();
@@ -46,10 +50,11 @@ namespace Altruist.Gaming
             FixedDeltaTime = fixedDeltaTime;
             Gravity = gravity ?? new Vector3(0f, 9.81f, 0f);
             Position = position ?? Vector3.Zero;
+            DataPath = data;
         }
 
-        public int Width => (int)Size.X;
-        public int Height => (int)Size.Y;
-        public int Depth => (int)Size.Z;
+        public int Width => Size.X;
+        public int Height => Size.Y;
+        public int Depth => Size.Z;
     }
 }
