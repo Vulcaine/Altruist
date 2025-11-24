@@ -99,7 +99,7 @@ public sealed class WorldLoader3D : IWorldLoader3D
         // 3) Recursively build bodies from all root objects
         foreach (var rootObj in worldSchema.Objects)
         {
-            BuildBodiesRecursive(rootObj, worldRoot, world);
+            BuildBodiesRecursive(engine, rootObj, worldRoot, world);
         }
 
         return world;
@@ -124,6 +124,7 @@ public sealed class WorldLoader3D : IWorldLoader3D
     }
 
     private void BuildBodiesRecursive(
+        IPhysxWorldEngine3D engine,
         WorldObjectSchema node,
         AccumulatedTransform parent,
         IPhysxWorld3D world)
@@ -164,14 +165,14 @@ public sealed class WorldLoader3D : IWorldLoader3D
                 if (collider == null)
                     continue;
 
-                var body = _bodyApi.CreateBody(
+                var body = _bodyApi.CreateBody(engine,
                     PhysxBodyType.Static,
                     mass: 0f,
                     transform: colliderTransform
                 );
 
                 body.UserData = node.Id;
-                _bodyApi.AddCollider(body, collider);
+                _bodyApi.AddCollider(engine, body, collider);
                 world.AddBody(body);
 
                 colliderIndex++;
@@ -182,7 +183,7 @@ public sealed class WorldLoader3D : IWorldLoader3D
         {
             foreach (var child in node.Children)
             {
-                BuildBodiesRecursive(child, worldTransform, world);
+                BuildBodiesRecursive(engine, child, worldTransform, world);
             }
         }
     }
