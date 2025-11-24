@@ -1,22 +1,37 @@
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
+
+using System.Collections.Concurrent;
+
 namespace Altruist.Gaming.ThreeD
 {
     internal static class WorldObjectArchetypeHelper
     {
+        private static readonly ConcurrentDictionary<Type, string> _cache = new();
+
         public static string ResolveArchetype(Type type)
         {
-            var attr = (WorldObjectAttribute?)Attribute.GetCustomAttribute(
-                type,
-                typeof(WorldObjectAttribute),
-                inherit: false);
+            if (type is null)
+                throw new ArgumentNullException(nameof(type));
 
-            if (attr == null || string.IsNullOrWhiteSpace(attr.Archetype))
+            return _cache.GetOrAdd(type, t =>
             {
-                throw new InvalidOperationException(
-                    $"Type {type.FullName} must be annotated with [WorldObject(\"ArchetypeName\")] " +
-                    "or override the Archetype property.");
-            }
+                var attr = (WorldObjectAttribute?)Attribute.GetCustomAttribute(
+                    t,
+                    typeof(WorldObjectAttribute),
+                    inherit: false);
 
-            return attr.Archetype;
+                if (attr == null || string.IsNullOrWhiteSpace(attr.Archetype))
+                {
+                    throw new InvalidOperationException(
+                        $"Type {t.FullName} must be annotated with [WorldObject(\"ArchetypeName\")] " +
+                        "or override the Archetype property.");
+                }
+
+                return attr.Archetype;
+            });
         }
     }
 }
