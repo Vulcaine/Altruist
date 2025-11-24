@@ -5,8 +5,6 @@ Licensed under the Apache License, Version 2.0
 
 namespace Altruist.Gaming.ThreeD
 {
-    using Altruist.Gaming.World.ThreeD;
-
     public interface IGameWorldCoordinator3D : IGameWorldOrganizer
     {
         /// <summary>

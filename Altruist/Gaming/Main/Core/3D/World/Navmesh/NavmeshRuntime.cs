@@ -2,7 +2,7 @@
 
 // using Altruist.Physx.ThreeD;
 
-// namespace Altruist.Gaming.World.ThreeD;
+// namespace Altruist.Gaming.ThreeD;
 
 // public interface INavMeshRuntime
 // {

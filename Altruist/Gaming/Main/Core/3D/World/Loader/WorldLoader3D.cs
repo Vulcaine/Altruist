@@ -11,10 +11,8 @@ using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
 
-namespace Altruist.Gaming.World.ThreeD
+namespace Altruist.Gaming.ThreeD
 {
-    using Altruist.Gaming.ThreeD;
-
     public interface IWorldLoader3D
     {
         /// <summary>

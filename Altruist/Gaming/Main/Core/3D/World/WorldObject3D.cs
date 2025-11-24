@@ -6,10 +6,8 @@ Licensed under the Apache License, Version 2.0
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
 
-namespace Altruist.Gaming.World.ThreeD
+namespace Altruist.Gaming.ThreeD
 {
-    using Altruist.Gaming.World;
-
     /// <summary>
     /// Contract for a 3D world entity that can live in partitions
     /// and be associated with a physics body descriptor.

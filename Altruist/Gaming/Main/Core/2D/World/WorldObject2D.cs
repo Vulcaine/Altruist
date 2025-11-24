@@ -8,7 +8,7 @@ using Altruist.TwoD.Numerics;
 
 namespace Altruist.Gaming.TwoD
 {
-    using Altruist.Gaming.World;
+    using Altruist.Gaming;
 
     /// <summary>
     /// Contract for a 2D world entity that can live in partitions

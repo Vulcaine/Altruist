@@ -1,4 +1,4 @@
-namespace Altruist.Gaming.World.ThreeD;
+namespace Altruist.Gaming.ThreeD;
 
 using System;
 using System.Collections.Generic;

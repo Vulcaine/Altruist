@@ -3,8 +3,6 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using Altruist.Gaming.World.ThreeD;
-
 namespace Altruist.Gaming.ThreeD
 {
     public class SpatialGridIndex3D

@@ -1,6 +1,6 @@
 // using System.Numerics;
 
-// namespace Altruist.Gaming.World.ThreeD;
+// namespace Altruist.Gaming.ThreeD;
 
 // public interface INavMeshService
 // {

@@ -3,7 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-namespace Altruist.Gaming.World
+namespace Altruist.Gaming
 {
     /// <summary>
     /// Dimension-agnostic world object contract.

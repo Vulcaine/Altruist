@@ -7,8 +7,6 @@ using Altruist.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
-    using Altruist.Gaming.World.ThreeD;
-
     public interface IWorldPartitionManager3D : IWorldPartitionManager
     {
         void AddObject(IWorldObject3D obj);

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Altruist.Gaming.World.ThreeD;
+namespace Altruist.Gaming.ThreeD;
 
 public sealed class NavMeshLoader
 {
