@@ -74,7 +74,7 @@ namespace Altruist.Gaming.TwoD
             string archetype,
             int x, int y,
             float radius,
-            string roomId)
+            string zoneId)
         {
             int minX = (int)((x - radius) / CellSize);
             int maxX = (int)((x + radius) / CellSize);
@@ -94,7 +94,7 @@ namespace Altruist.Gaming.TwoD
 
                     var instanceList = list
                         .Select(id => InstanceMap[id])
-                        .Where(e => e.RoomId == roomId)
+                        .Where(e => e.ZoneId == zoneId)
                         .ToList();
 
                     foreach (var obj in instanceList)

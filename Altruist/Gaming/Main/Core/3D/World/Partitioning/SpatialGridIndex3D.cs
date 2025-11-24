@@ -99,7 +99,7 @@ namespace Altruist.Gaming.ThreeD
 
                         var instanceList = list
                             .Select(id => InstanceMap[id])
-                            .Where(e => e.RoomId == roomId)
+                            .Where(e => e.ZoneId == roomId)
                             .ToList();
 
                         foreach (var obj in instanceList)

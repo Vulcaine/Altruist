@@ -43,7 +43,7 @@ namespace Altruist.Gaming.TwoD
             _spatialIndex.GetAllByType(prefabId);
 
         public virtual HashSet<IWorldObject2D> GetObjectsByTypeInRoom(string prefabId, string roomId) =>
-            _spatialIndex.GetAllByType(prefabId).Where(x => x.RoomId == roomId).ToHashSet();
+            _spatialIndex.GetAllByType(prefabId).Where(x => x.ZoneId == roomId).ToHashSet();
     }
 
     public interface IWorldPartitioner2D : IWorldPartitioner

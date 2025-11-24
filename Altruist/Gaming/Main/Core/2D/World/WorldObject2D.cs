@@ -59,33 +59,14 @@ namespace Altruist.Gaming.TwoD
         }
 
         public Transform2D Transform { get; protected set; }
-        public string RoomId { get; protected set; } = string.Empty;
+        public string ZoneId { get; protected set; } = string.Empty;
 
         public IPhysxBody2D? Body { get; set; }
 
-        protected WorldObject2D(Transform2D transform, string roomId = "")
+        protected WorldObject2D(Transform2D transform, string zoneId = "")
         {
             Transform = transform;
-            RoomId = roomId ?? string.Empty;
-        }
-
-        /// <summary>
-        /// Helper to update transform when physics has moved the body.
-        /// Concrete types can expose richer APIs on top.
-        /// </summary>
-        public virtual void SyncFromBody()
-        {
-            if (Body == null)
-                return;
-
-            // var pos = Body.Position;
-            // var rot = Body.Rotation;
-
-            // Transform = Transform.WithPosition(
-            //     new Position2D(pos.X, pos.Y)
-            // ).WithRotation(
-            //     Rotation2D.FromRadians(rot)
-            // );
+            ZoneId = zoneId ?? string.Empty;
         }
     }
 }

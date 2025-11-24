@@ -11,6 +11,8 @@ public sealed class PhysxWorld3D : IPhysxWorld3D, IDisposable
 
     private readonly IPhysxWorldEngine3D _engine;
 
+    public IPhysxWorldEngine3D Engine => _engine;
+
     public PhysxWorld3D(IPhysxWorldEngine3D engine)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));

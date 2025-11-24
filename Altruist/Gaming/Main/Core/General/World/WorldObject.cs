@@ -18,6 +18,6 @@ namespace Altruist.Gaming.World
         string Archetype { get; }
 
         /// <summary>Optional room/zone id for sharding.</summary>
-        string RoomId { get; }
+        string ZoneId { get; }
     }
 }

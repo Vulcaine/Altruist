@@ -299,7 +299,7 @@ namespace Altruist.Gaming.World.ThreeD
             setter.Invoke(worldObj, [transform]);
 
             var roomIdProp = type.GetProperty(
-                nameof(IWorldObject.RoomId),
+                nameof(IWorldObject.ZoneId),
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
             var roomSetter = roomIdProp?.GetSetMethod(nonPublic: true);

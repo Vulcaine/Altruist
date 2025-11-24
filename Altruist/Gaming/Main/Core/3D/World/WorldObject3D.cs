@@ -60,7 +60,7 @@ namespace Altruist.Gaming.World.ThreeD
         }
 
         public Transform3D Transform { get; protected set; }
-        public string RoomId { get; protected set; } = string.Empty;
+        public string ZoneId { get; protected set; } = string.Empty;
 
         /// <summary>
         /// Engine-agnostic body descriptor associated with this world object, if any.
@@ -70,7 +70,7 @@ namespace Altruist.Gaming.World.ThreeD
         protected WorldObject3D(Transform3D transform, string roomId = "")
         {
             Transform = transform;
-            RoomId = roomId ?? string.Empty;
+            ZoneId = roomId ?? string.Empty;
         }
     }
 }

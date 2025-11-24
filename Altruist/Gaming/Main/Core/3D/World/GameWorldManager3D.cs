@@ -3,17 +3,15 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Gaming.World.ThreeD;
 using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
 {
-    using Altruist.Physx.Contracts;
-    using Altruist.Gaming.World.ThreeD;
-
     public interface IGameWorldManager3D : IGameWorldManager
     {
         IWorldIndex3D Index { get; }
-        IPhysxWorld PhysxWorld { get; }
+        IPhysxWorld3D PhysxWorld { get; }
 
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
         Task AddDynamicObject(IWorldObject3D obj);
@@ -53,7 +51,7 @@ namespace Altruist.Gaming.ThreeD
             _partitions = new List<WorldPartitionManager3D>();
         }
 
-        public IPhysxWorld PhysxWorld => _physx3D;
+        public IPhysxWorld3D PhysxWorld => _physx3D;
         public IWorldIndex3D Index => _index;
 
         public void Initialize()

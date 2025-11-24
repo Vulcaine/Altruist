@@ -77,7 +77,7 @@ namespace Altruist.Gaming.ThreeD
 
         public virtual HashSet<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId) =>
             _spatialIndex.GetAllByType(archetype)
-                         .Where(x => string.Equals(x.RoomId, roomId, StringComparison.Ordinal))
+                         .Where(x => string.Equals(x.ZoneId, roomId, StringComparison.Ordinal))
                          .ToHashSet();
     }
 

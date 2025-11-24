@@ -25,6 +25,7 @@ namespace Altruist.Physx.ThreeD
 
     public interface IPhysxWorld3D : IPhysxWorld
     {
+        IPhysxWorldEngine3D Engine { get; }
         void AddBody(IPhysxBody3D body);
         IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1);
     }
