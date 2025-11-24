@@ -109,7 +109,7 @@ namespace Altruist.Gaming.World.ThreeD
                 throw new ArgumentNullException(nameof(index));
 
             if (string.IsNullOrWhiteSpace(index.DataPath))
-                throw new ArgumentException("WorldIndex3D.Path cannot be null or empty when loading from path.", nameof(index));
+                throw new ArgumentException("WorldIndex3D.DataPath cannot be null or empty when loading from path.", nameof(index));
 
             if (!File.Exists(index.DataPath))
                 throw new FileNotFoundException("World JSON file not found.", index.DataPath);
@@ -219,26 +219,29 @@ namespace Altruist.Gaming.World.ThreeD
 
                     var colliderTransform = BuildColliderTransform(worldTransform, colliderSchema);
 
+                    // Build engine-agnostic collider descriptor
+                    var colliderDesc = PhysxCollider3D.Create(shape, colliderTransform, isTrigger: false);
                     // Create collider via collider API provider
-                    var collider = _colliderApi.CreateCollider(
-                        new PhysxCollider3DParams(shape, colliderTransform, isTrigger: false));
+                    var collider = _colliderApi.CreateCollider(colliderDesc);
 
-                    // Create static body for this collider
-                    var body = _bodyApi.CreateBody(
-                        engine,
-                        PhysxBodyType.Static,
-                        mass: 0f,
-                        transform: colliderTransform
-                    );
+                    // Build engine-agnostic body descriptor (static, mass 0)
+                    var bodyDesc = PhysxBody3D.Create(
+    PhysxBodyType.Static,
+    mass: 0f,
+    transform: colliderTransform
+);
 
-                    // associate collider with body
+                    // Create engine-specific body from descriptor
+                    var body = _bodyApi.CreateBody(engine, bodyDesc);
+
+                    // Associate collider with body
                     _bodyApi.AddCollider(engine, body, collider);
                     world.AddBody(body);
 
                     // If this node has an archetype and we know a CLR type for it,
-                    // instantiate a world object and attach the body.
+                    // instantiate a world object and attach the *descriptor*.
                     if (!string.IsNullOrWhiteSpace(node.Archetype) &&
-                        TryCreateWorldObject(node, colliderTransform, body, out var obj))
+                        TryCreateWorldObject(node, colliderTransform, bodyDesc, out var obj))
                     {
                         _spawnedWorldObjects.Add(obj);
                     }
@@ -258,7 +261,7 @@ namespace Altruist.Gaming.World.ThreeD
         private bool TryCreateWorldObject(
             WorldObjectSchema node,
             Transform3D transform,
-            IPhysxBody3D body,
+            PhysxBody3DDesc bodyDesc,
             out IWorldObject3D obj)
         {
             obj = default!;
@@ -269,36 +272,44 @@ namespace Altruist.Gaming.World.ThreeD
             if (!_archetypeMap.TryGetValue(node.Archetype.Trim(), out var type))
                 return false;
 
-            // Try to create via (Transform3D) ctor first, fall back to parameterless + manual property set if needed.
-            object? instance = null;
+            var defaultCtor = type.GetConstructor(Type.EmptyTypes);
+            if (defaultCtor == null)
+            {
+                throw new InvalidOperationException(
+                    $"World object type '{type.FullName}' must have a parameterless constructor.");
+            }
 
-            // ctor(Transform3D, string roomId) -> preferred
-            var ctorWithRoom = type.GetConstructor(new[] { typeof(Transform3D), typeof(string) });
-            if (ctorWithRoom != null)
-            {
-                instance = ctorWithRoom.Invoke(new object[] { transform, "" });
-            }
-            else
-            {
-                var ctorWithTransform = type.GetConstructor(new[] { typeof(Transform3D) });
-                if (ctorWithTransform != null)
-                {
-                    instance = ctorWithTransform.Invoke(new object[] { transform });
-                }
-                else
-                {
-                    var defaultCtor = type.GetConstructor(Type.EmptyTypes);
-                    if (defaultCtor != null)
-                    {
-                        instance = defaultCtor.Invoke(null);
-                    }
-                }
-            }
+            var instance = defaultCtor.Invoke(null);
 
             if (instance is not IWorldObject3D worldObj)
-                return false;
+                throw new InvalidOperationException(
+                    $"World object type '{type.FullName}' must implement IWorldObject3D.");
 
-            worldObj.Body = body;
+            var transformProp = type.GetProperty(
+                nameof(IWorldObject3D.Transform),
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            var setter = transformProp?.GetSetMethod(nonPublic: true);
+            if (setter == null)
+            {
+                throw new InvalidOperationException(
+                    $"World object type '{type.FullName}' must expose a settable Transform property (at least protected).");
+            }
+
+            setter.Invoke(worldObj, [transform]);
+
+            var roomIdProp = type.GetProperty(
+                nameof(IWorldObject.RoomId),
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            var roomSetter = roomIdProp?.GetSetMethod(nonPublic: true);
+            if (roomSetter != null)
+            {
+                roomSetter.Invoke(worldObj, [string.Empty]);
+            }
+
+            worldObj.BodyDescriptor = bodyDesc;
+
             obj = worldObj;
             return true;
         }

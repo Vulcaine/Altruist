@@ -1,9 +1,9 @@
-// BepuPhysxBodyApiProvider3D.cs
-// CreateBody has NO world parameter; returns a BEPU-backed IPhysxBody3D.
-// Caller must then call world.AddBody(body) to register it with the world/engine.
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
 
 using Altruist.Physx.Contracts;
-using Altruist.ThreeD.Numerics;
 
 using BepuPhysics;
 using BepuPhysics.Collidables;
@@ -12,14 +12,18 @@ namespace Altruist.Physx.ThreeD
 {
     /// <summary>
     /// BEPU-backed body API provider (3D).
-    /// Creates BEPU bodies and attaches/detaches a single collider shape by swapping the body's shape.
+    ///
+    /// Uses engine-agnostic descriptors:
+    ///   - PhysxBody3DDesc for bodies
+    ///   - PhysxCollider3DDesc for colliders
+    ///
+    /// and interprets them to create BEPU bodies/collidables for a specific engine.
     /// </summary>
     [Service(typeof(IPhysxBodyApiProvider3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     public sealed class BepuPhysxBodyApiProvider3D : IPhysxBodyApiProvider3D
     {
         // Store the original body shape so we can restore it after removing an attached collider.
-        // One entry per body handle.
         private readonly Dictionary<BodyHandle, TypedIndex> _originalShapeByBody = new();
 
         // Track which collider is attached to which body and what shape it installed.
@@ -27,6 +31,64 @@ namespace Altruist.Physx.ThreeD
 
         public BepuPhysxBodyApiProvider3D()
         {
+        }
+
+        /// <summary>
+        /// Create a BEPU-backed IPhysxBody3D for the given engine from a body descriptor.
+        /// </summary>
+        public IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, in PhysxBody3DDesc desc)
+        {
+            if (engine is not BepuWorldEngine3D engine3D)
+                throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
+
+            var transform = desc.Transform;
+            var pos = transform.Position.ToVector3();
+            var ori = transform.Rotation.ToQuaternion();
+            var halfExtents = transform.Size.ToVector3();
+
+            // Default box using transform size as half extents (so full size is doubled)
+            var box = new Box(halfExtents.X * 2f, halfExtents.Y * 2f, halfExtents.Z * 2f);
+            var shapeIndex = engine3D.Simulation.Shapes.Add(box);
+
+            var pose = new RigidPose(
+                new System.Numerics.Vector3(pos.X, pos.Y, pos.Z),
+                ori
+            );
+
+            BodyInertia inertia = default;
+            if (desc.Type == PhysxBodyType.Dynamic)
+            {
+                var useMass = desc.Mass > 0f ? desc.Mass : 1f;
+                inertia = box.ComputeInertia(useMass);
+            }
+
+            var collidable = new CollidableDescription(shapeIndex, 0.1f);
+            var activity = new BodyActivityDescription(0.01f);
+
+            BodyDescription bodyDesc = desc.Type switch
+            {
+                PhysxBodyType.Dynamic => BodyDescription.CreateDynamic(pose, inertia, collidable, activity),
+                PhysxBodyType.Kinematic => BodyDescription.CreateKinematic(pose, collidable, activity),
+                _ => BodyDescription.CreateKinematic(pose, collidable, activity)
+            };
+
+            if (desc.Type != PhysxBodyType.Dynamic)
+            {
+                bodyDesc.LocalInertia = default;
+            }
+
+            var handle = engine3D.Simulation.Bodies.Add(bodyDesc);
+
+            // Adapter needs an id and knowledge about its engine/handle.
+            var adapter = new BepuWorldEngine3D.Body3DAdapter(
+                desc.Id,
+                engine3D,
+                handle,
+                desc.Type,
+                desc.Mass > 0f ? desc.Mass : 0f
+            );
+
+            return adapter;
         }
 
         /// <summary>
@@ -41,7 +103,7 @@ namespace Altruist.Physx.ThreeD
             if (_attachments.ContainsKey(collider))
                 throw new InvalidOperationException("This collider is already attached.");
 
-            if (!(engine is BepuWorldEngine3D engine3D))
+            if (engine is not BepuWorldEngine3D engine3D)
                 throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
 
             var bodies = engine3D.Simulation.Bodies;
@@ -56,12 +118,7 @@ namespace Altruist.Physx.ThreeD
             // Build a BEPU shape from collider data and add it to the shape registry
             var shapeIndex = CreateBepuShapeIndexFromCollider(engine3D, collider);
 
-            // Sensor/trigger in BEPU is usually handled at the collision filtering layer;
-            // if you have a trigger pipeline, mark/filter there. We just set shape here.
-
             bodyRef.Collidable.Shape = shapeIndex;
-
-            // Basic damping/continuous detection etc. can be configured elsewhere as needed.
 
             _attachments[collider] = (owner.Handle, shapeIndex);
         }
@@ -71,7 +128,7 @@ namespace Altruist.Physx.ThreeD
         /// </summary>
         public void RemoveCollider(IPhysxWorldEngine3D engine, IPhysxCollider3D collider)
         {
-            if (!(engine is BepuWorldEngine3D engine3D))
+            if (engine is not BepuWorldEngine3D engine3D)
                 throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
 
             if (!_attachments.TryGetValue(collider, out var rec))
@@ -87,63 +144,13 @@ namespace Altruist.Physx.ThreeD
             }
 
             _attachments.Remove(collider);
-            // Keep the original shape remembered for potential future attach/detach cycles.
-            // If you want to fully forget after last detach, uncomment the following:
-            // _originalShapeByBody.Remove(handle);
-        }
-
-        public IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, PhysxBodyType type, float mass, Transform3D transform)
-        {
-            if (!(engine is BepuWorldEngine3D engine3D))
-                throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
-
-
-            var pos = transform.Position.ToVector3();
-            var ori = transform.Rotation.ToQuaternion();
-            var halfExtents = transform.Size.ToVector3();
-
-            // Default box using transform size as half extents (so full size is doubled)
-            var box = new Box(halfExtents.X * 2f, halfExtents.Y * 2f, halfExtents.Z * 2f);
-            var shapeIndex = engine3D.Simulation.Shapes.Add(box);
-
-            var pose = new RigidPose(new System.Numerics.Vector3(pos.X, pos.Y, pos.Z), ori);
-
-            BodyInertia inertia = default;
-            if (type == PhysxBodyType.Dynamic)
-            {
-                var useMass = mass > 0f ? mass : 1f;
-                inertia = box.ComputeInertia(useMass);
-            }
-
-            var collidable = new CollidableDescription(shapeIndex, 0.1f);
-            var activity = new BodyActivityDescription(0.01f);
-
-            BodyDescription desc = type switch
-            {
-                PhysxBodyType.Dynamic => BodyDescription.CreateDynamic(pose, inertia, collidable, activity),
-                PhysxBodyType.Kinematic => BodyDescription.CreateKinematic(pose, collidable, activity),
-                _ => BodyDescription.CreateKinematic(pose, collidable, activity)
-            };
-
-            if (type != PhysxBodyType.Dynamic)
-            {
-                desc.LocalInertia = default;
-            }
-
-            var handle = engine3D.Simulation.Bodies.Add(desc);
-            var id = Guid.NewGuid().ToString("N");
-            var adapter = new BepuWorldEngine3D.Body3DAdapter(id, engine3D, handle, type, mass > 0f ? mass : 0f);
-
-            return adapter;
+            // Optionally: _originalShapeByBody.Remove(handle);
         }
 
         // -------------------- helpers --------------------
 
         private TypedIndex CreateBepuShapeIndexFromCollider(BepuWorldEngine3D engine, IPhysxCollider3D c)
         {
-            // The collider's Transform is *local* to the body. BEPU does not support per-shape local offsets
-            // on a single-collider body without a compound. In this simple swap/restore model, we use only size info.
-            // Local offsets/rotations would require building a Compound (can be added later).
             var t = c.Transform;
 
             switch (c.Shape)

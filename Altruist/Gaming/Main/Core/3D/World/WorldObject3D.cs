@@ -12,7 +12,7 @@ namespace Altruist.Gaming.World.ThreeD
 
     /// <summary>
     /// Contract for a 3D world entity that can live in partitions
-    /// and be associated with a physics body.
+    /// and be associated with a physics body descriptor.
     /// </summary>
     public interface IWorldObject3D : IWorldObject
     {
@@ -20,17 +20,18 @@ namespace Altruist.Gaming.World.ThreeD
         Transform3D Transform { get; }
 
         /// <summary>
-        /// Optional physics body backing this object.
+        /// Optional physics body descriptor backing this object.
         /// Static world geometry might be static bodies; dynamic objects might swap bodies.
+        /// The descriptor is engine/provider agnostic.
         /// </summary>
-        IPhysxBody3D? Body { get; set; }
+        PhysxBody3DDesc? BodyDescriptor { get; set; }
     }
 
     /// <summary>
     /// Convenience base implementation wired for typical usage:
     /// - auto InstanceId
     /// - Archetype resolved from [WorldObject] attribute by default
-    /// - Transform + Body stored as properties
+    /// - Transform + BodyDescriptor stored as properties
     /// </summary>
     public abstract class WorldObject3D : IWorldObject3D
     {
@@ -61,31 +62,15 @@ namespace Altruist.Gaming.World.ThreeD
         public Transform3D Transform { get; protected set; }
         public string RoomId { get; protected set; } = string.Empty;
 
-        public IPhysxBody3D? Body { get; set; }
+        /// <summary>
+        /// Engine-agnostic body descriptor associated with this world object, if any.
+        /// </summary>
+        public PhysxBody3DDesc? BodyDescriptor { get; set; }
 
         protected WorldObject3D(Transform3D transform, string roomId = "")
         {
             Transform = transform;
             RoomId = roomId ?? string.Empty;
-        }
-
-        /// <summary>
-        /// Helper to update transform when physics has moved the body.
-        /// Concrete types can expose richer APIs on top.
-        /// </summary>
-        public virtual void SyncFromBody()
-        {
-            if (Body == null)
-                return;
-
-            var pos = Body.Position;
-            var rot = Body.Rotation;
-
-            Transform = Transform.WithPosition(
-                new Position3D(pos.X, pos.Y, pos.Z)
-            ).WithRotation(
-                Rotation3D.FromQuaternion(rot)
-            );
         }
     }
 }

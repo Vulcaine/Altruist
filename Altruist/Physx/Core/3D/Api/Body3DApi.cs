@@ -1,42 +1,86 @@
-
-using System.Numerics;
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
 
 using Altruist.Physx.Contracts;
 using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Physx.ThreeD
 {
-    public interface IPhysxBody3D : IPhysxBody
+    /// <summary>
+    /// Engine-agnostic descriptor for a 3D body.
+    /// Providers/engines interpret this to create their own body objects.
+    /// </summary>
+    public readonly struct PhysxBody3DDesc
     {
-        Vector3 Position { get; set; }
-        Quaternion Rotation { get; set; }
-        Vector3 LinearVelocity { get; set; }
-        Vector3 AngularVelocity { get; set; }
+        /// <summary>Logical id for this body descriptor.</summary>
+        public string Id { get; }
+
+        public PhysxBodyType Type { get; }
+        public float Mass { get; }
+        public Transform3D Transform { get; }
+
+        public PhysxBody3DDesc(string id, PhysxBodyType type, float mass, Transform3D transform)
+        {
+            Id = id;
+            Type = type;
+            Mass = mass;
+            Transform = transform;
+        }
     }
 
+    /// <summary>
+    /// Static factory for engine-agnostic body descriptors.
+    /// No providers, no engines here.
+    /// </summary>
+    public static class PhysxBody3D
+    {
+        public static PhysxBody3DDesc Create(float mass, Size3D size, Position3D position)
+        {
+            var type = mass > 0 ? PhysxBodyType.Dynamic : PhysxBodyType.Static;
+            var transform = new Transform3D(position, size, Scale3D.One, Rotation3D.Identity);
+            return Create(type, mass, transform);
+        }
+
+        public static PhysxBody3DDesc Create(PhysxBodyType type, float mass, Transform3D transform)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            return new PhysxBody3DDesc(id, type, mass, transform);
+        }
+    }
+
+    public interface IPhysxBody3D : IPhysxBody
+    {
+        System.Numerics.Vector3 Position { get; set; }
+        System.Numerics.Quaternion Rotation { get; set; }
+        System.Numerics.Vector3 LinearVelocity { get; set; }
+        System.Numerics.Vector3 AngularVelocity { get; set; }
+    }
+
+    /// <summary>
+    /// Provider API for creating engine-specific bodies from engine-agnostic descriptors.
+    /// </summary>
     public interface IPhysxBodyApiProvider3D
     {
-        IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, PhysxBodyType type, float mass, Transform3D transform);
+        /// <summary>
+        /// Create an engine-specific body from a descriptor for the given world/engine.
+        /// </summary>
+        IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, in PhysxBody3DDesc desc);
 
-        /// <summary>Attach a collider to a body (creates a fixture under the hood).</summary>
+        /// <summary>Attach a collider to a body (creates a fixture / swaps shape under the hood).</summary>
         void AddCollider(IPhysxWorldEngine3D engine, IPhysxBody3D body, IPhysxCollider3D collider);
 
-        /// <summary>Detach and destroy the collider’s fixture if attached.</summary>
+        /// <summary>Detach and restore the body's original state if the collider was attached.</summary>
         void RemoveCollider(IPhysxWorldEngine3D engine, IPhysxCollider3D collider);
     }
 
-    public static class PhysxBody3D
+    /// <summary>
+    /// Provider API for creating engine-specific colliders from engine-agnostic descriptors.
+    /// Note: colliders themselves are engine-agnostic; engines interpret them via AddCollider.
+    /// </summary>
+    public interface IPhysxColliderApiProvider3D
     {
-        public static IPhysxBodyApiProvider3D Provider { get; set; } = default!;
-
-        public static IPhysxBody3D Create(IPhysxWorldEngine3D engine, float mass, Size3D size, Position3D position)
-            => Provider.CreateBody(
-                engine,
-                mass > 0 ? PhysxBodyType.Dynamic : PhysxBodyType.Static,
-                mass,
-                new Transform3D(position, size, Scale3D.One, Rotation3D.Identity));
-
-        public static IPhysxBody3D Create(IPhysxWorldEngine3D engine, PhysxBodyType type, float mass, Transform3D transform)
-            => Provider.CreateBody(engine, type, mass, transform);
+        IPhysxCollider3D CreateCollider(in PhysxCollider3DDesc desc);
     }
 }

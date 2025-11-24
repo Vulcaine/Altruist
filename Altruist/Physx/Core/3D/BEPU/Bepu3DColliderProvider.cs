@@ -1,3 +1,8 @@
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
+
 using Altruist.Physx.Contracts;
 using Altruist.ThreeD.Numerics;
 
@@ -6,10 +11,12 @@ namespace Altruist.Physx.ThreeD
     /// <summary>
     /// BEPU-backed collider API provider (3D).
     ///
-    /// Note: This does NOT touch the BEPU Simulation directly.
-    /// It only creates an adapter implementing IPhysxCollider3D
-    /// with Shape + Transform + IsTrigger. The BEPU world/body
-    /// APIs later read those values to build actual shapes.
+    /// NOTE: This remains engine-agnostic:
+    /// - It does NOT touch the BEPU Simulation directly.
+    /// - It only creates an adapter implementing IPhysxCollider3D
+    ///   from an engine-agnostic PhysxCollider3DDesc.
+    /// The BEPU body API later interprets Shape + Transform + IsTrigger
+    /// when attaching this collider to a specific body/engine.
     /// </summary>
     [Service(typeof(IPhysxColliderApiProvider3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
@@ -19,13 +26,16 @@ namespace Altruist.Physx.ThreeD
         {
         }
 
-        public IPhysxCollider3D CreateCollider(in PhysxCollider3DParams p)
+        /// <summary>
+        /// Create an engine-agnostic collider adapter from a collider descriptor.
+        /// </summary>
+        public IPhysxCollider3D CreateCollider(in PhysxCollider3DDesc desc)
         {
             return new Collider3DAdapter(
-                id: Guid.NewGuid().ToString("N"),
-                shape: p.Shape,
-                transform: p.Transform,
-                isTrigger: p.IsTrigger);
+                id: desc.Id,
+                shape: desc.Shape,
+                transform: desc.Transform,
+                isTrigger: desc.IsTrigger);
         }
 
         /// <summary>
