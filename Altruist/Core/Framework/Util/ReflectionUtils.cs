@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -111,7 +111,7 @@ public static class ReflectionUtils
     }
 
     /// <summary>
-    /// Returns all public instance properties that are not marked with <see cref="VaultIgnoredAttribute"/>.
+    /// Returns all public instance properties that are not marked with <see cref="VaultIgnoreAttribute"/>.
     /// In case of name collisions across the hierarchy, prefers the most derived declaration.
     /// Indexers are excluded.
     /// </summary>
@@ -126,7 +126,7 @@ public static class ReflectionUtils
             {
                 if (p.GetIndexParameters().Length != 0)
                     continue; // skip indexers
-                if (p.GetCustomAttribute<VaultIgnoredAttribute>() != null)
+                if (p.GetCustomAttribute<VaultIgnoreAttribute>() != null)
                     continue;
 
                 map[p.Name] = p; // most derived wins

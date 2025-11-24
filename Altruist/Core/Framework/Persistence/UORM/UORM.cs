@@ -40,7 +40,7 @@ public class VaultColumnIndexAttribute : Attribute { }
 public class VaultUniqueColumnAttribute : Attribute { }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class VaultIgnoredAttribute : Attribute { }
+public class VaultIgnoreAttribute : Attribute { }
 
 [AttributeUsage(AttributeTargets.Class)]
 public class VaultSortingByAttribute : Attribute

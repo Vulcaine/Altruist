@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -136,7 +136,7 @@ namespace Altruist.Gaming
 
         [JsonIgnore]
         [IgnoreMember]
-        [VaultIgnored]
+        [VaultIgnore]
         public Body? PhysxBody { get; private set; }
 
         protected virtual void InitDefaults()

@@ -12,12 +12,12 @@ namespace Altruist.Gaming
     public interface IWorldObject
     {
         /// <summary>Logical unique instance id in the world.</summary>
-        string InstanceId { get; }
+        string InstanceId { get; set; }
 
         /// <summary>High-level gameplay category (e.g. "Tree", "Rock", "House").</summary>
-        string Archetype { get; }
+        string Archetype { get; set; }
 
         /// <summary>Optional room/zone id for sharding.</summary>
-        string ZoneId { get; }
+        string ZoneId { get; set; }
     }
 }

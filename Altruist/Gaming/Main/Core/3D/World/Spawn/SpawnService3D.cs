@@ -19,6 +19,11 @@ namespace Altruist.Gaming.ThreeD
         /// physics world, based on its BodyDescriptor and Transform.
         /// </summary>
         IWorldObject3D Spawn(IGameWorldManager3D world, IWorldObject3D obj);
+
+        /// <summary>
+        /// Same as Spawn(world, obj) but assigns a zone/room id before spawning.
+        /// </summary>
+        IWorldObject3D Spawn(IGameWorldManager3D world, IWorldObject3D obj, string zoneId);
     }
 
     [Service(typeof(ISpawnService3D))]
@@ -43,12 +48,12 @@ namespace Altruist.Gaming.ThreeD
             if (obj is null)
                 throw new ArgumentNullException(nameof(obj));
 
-            // Resolve the 3D physics world + engine.
+            obj.Archetype = WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
+
             if (world.PhysxWorld is not IPhysxWorld3D physxWorld3D)
                 throw new InvalidOperationException("Game world must expose an IPhysxWorld3D physics world.");
 
-            var engine3D = world.PhysxWorld.Engine;
-
+            var engine3D = physxWorld3D.Engine;
             var bodyDesc = obj.BodyDescriptor ?? PhysxBody3D.Create(
                 PhysxBodyType.Dynamic,
                 mass: 1f,
@@ -65,7 +70,22 @@ namespace Altruist.Gaming.ThreeD
             _bodyApi.AddCollider(engine3D, body, collider);
             physxWorld3D.AddBody(body);
             obj.BodyDescriptor = bodyDesc;
+
             return obj;
+        }
+
+        public IWorldObject3D Spawn(IGameWorldManager3D world, IWorldObject3D obj, string zoneId)
+        {
+            if (obj is null)
+                throw new ArgumentNullException(nameof(obj));
+
+            SetZoneOrRoomId(obj, zoneId ?? string.Empty);
+            return Spawn(world, obj);
+        }
+
+        private static void SetZoneOrRoomId(IWorldObject3D obj, string zoneId)
+        {
+            obj.ZoneId = zoneId;
         }
     }
 }

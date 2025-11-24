@@ -17,7 +17,7 @@ namespace Altruist.Gaming.TwoD
     public interface IWorldObject2D : IWorldObject
     {
         /// <summary>Transform in world space.</summary>
-        Transform2D Transform { get; }
+        Transform2D Transform { get; set; }
 
         /// <summary>
         /// Optional physics body backing this object.
@@ -34,7 +34,7 @@ namespace Altruist.Gaming.TwoD
     /// </summary>
     public abstract class WorldObject2D : IWorldObject2D
     {
-        public string InstanceId { get; protected set; } = Guid.NewGuid().ToString("N");
+        public string InstanceId { get; set; } = Guid.NewGuid().ToString("N");
 
         /// <summary>
         /// By default resolves the archetype from [WorldObject] on the concrete type.
@@ -42,31 +42,20 @@ namespace Altruist.Gaming.TwoD
         /// </summary>
         public virtual string Archetype
         {
-            get
-            {
-                var attr = (WorldObjectAttribute?)Attribute.GetCustomAttribute(
-                    GetType(),
-                    typeof(WorldObjectAttribute),
-                    inherit: false);
-
-                if (attr == null)
-                    throw new InvalidOperationException(
-                        $"Type {GetType().FullName} must be annotated with [WorldObject(\"ArchetypeName\")] " +
-                        "or override the Archetype property.");
-
-                return attr.Archetype;
-            }
+            get;
+            set;
         }
 
-        public Transform2D Transform { get; protected set; }
-        public string ZoneId { get; protected set; } = string.Empty;
+        public Transform2D Transform { get; set; }
+        public string ZoneId { get; set; } = string.Empty;
 
         public IPhysxBody2D? Body { get; set; }
 
-        protected WorldObject2D(Transform2D transform, string zoneId = "")
+        protected WorldObject2D(Transform2D transform, string zoneId = "", string archetype = "")
         {
             Transform = transform;
             ZoneId = zoneId ?? string.Empty;
+            Archetype = archetype;
         }
     }
 }
