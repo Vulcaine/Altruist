@@ -39,7 +39,7 @@ namespace Altruist.Gaming
             Vector3? gravity = null,
             [AppConfigValue("*:position")]
              Vector3? position = null,
-            [AppConfigValue("*:data")]
+            [AppConfigValue("*:data-path")]
             string? data = null,
             string? groupId = null)
         {
