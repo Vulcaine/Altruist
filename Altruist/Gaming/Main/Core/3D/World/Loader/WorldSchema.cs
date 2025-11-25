@@ -13,26 +13,26 @@ public sealed class WorldSchema
 {
     // Overall world / landscape transform
     [JsonPropertyName("transform")]
-    public WorldTransformSchema Transform { get; set; } = new();
+    public required WorldTransformSchema Transform { get; set; }
 
     // Root-level objects; each has children to mirror Unity hierarchy
     [JsonPropertyName("objects")]
-    public List<WorldObjectSchema> Objects { get; set; } = new();
+    public required List<WorldObjectSchema> Objects { get; set; }
 }
 
 public sealed class WorldTransformSchema
 {
     [JsonPropertyName("position")]
-    public Vector3Schema Position { get; set; }
+    public required Vector3Schema Position { get; set; }
 
     [JsonPropertyName("rotation")]
-    public Vector3Schema RotationEuler { get; set; }
+    public required Vector3Schema RotationEuler { get; set; }
 
     [JsonPropertyName("scale")]
-    public Vector3Schema Scale { get; set; }
+    public required Vector3Schema Scale { get; set; }
 
     [JsonPropertyName("size")]
-    public Vector3Schema Size { get; set; }
+    public required Vector3Schema Size { get; set; }
 }
 
 public sealed class WorldObjectSchema
@@ -47,17 +47,17 @@ public sealed class WorldObjectSchema
     public string? Archetype { get; set; }
 
     [JsonPropertyName("position")]
-    public Vector3Schema Position { get; set; }
+    public required Vector3Schema Position { get; set; }
 
     [JsonPropertyName("rotation")]
-    public Vector3Schema RotationEuler { get; set; }
+    public required Vector3Schema RotationEuler { get; set; }
 
     [JsonPropertyName("scale")]
-    public Vector3Schema Scale { get; set; }
+    public required Vector3Schema Scale { get; set; }
 
     // Exact world-space size (AABB) of this subtree
     [JsonPropertyName("size")]
-    public Vector3Schema Size { get; set; }
+    public required Vector3Schema Size { get; set; }
 
     // All colliders belonging to THIS transform
     [JsonPropertyName("colliders")]

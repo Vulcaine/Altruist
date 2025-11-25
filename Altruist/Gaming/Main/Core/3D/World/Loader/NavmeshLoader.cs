@@ -11,7 +11,7 @@ public sealed class NavMeshLoader
 
         return new WorldNavMesh
         {
-            Vertices = dto.Vertices,
+            Vertices = dto.Vertices.Select(v => v.ToNumerics()).ToArray(),
             Indices = dto.Indices
         };
     }

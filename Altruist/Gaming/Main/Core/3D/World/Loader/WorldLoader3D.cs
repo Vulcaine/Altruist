@@ -196,7 +196,7 @@ namespace Altruist.Gaming.ThreeD
         IPhysxWorld3D world)
         {
             // Compose parent + local -> world
-            var localRot = EulerToQuaternion(node.RotationEuler);
+            var localRot = EulerToQuaternion(node.RotationEuler.ToNumerics());
             var localPos = node.Position;
             var localScale = node.Scale;
 
@@ -284,7 +284,7 @@ namespace Altruist.Gaming.ThreeD
             Size3D size3D;
             if (node.Size is { } s) // works for both nullable and non-nullable Vector3
             {
-                size3D = Size3D.From(s);
+                size3D = Size3D.From(s.ToNumerics());
             }
             else
             {
@@ -392,7 +392,7 @@ namespace Altruist.Gaming.ThreeD
             var worldPos = objectWorld.Position;
 
             // Local center -> world offset
-            var centerLocal = collider.Center ?? Vector3.Zero;
+            var centerLocal = collider.Center?.ToNumerics() ?? Vector3.Zero;
             var centerScaled = new Vector3(
                 centerLocal.X * worldScale.X,
                 centerLocal.Y * worldScale.Y,
@@ -408,7 +408,7 @@ namespace Altruist.Gaming.ThreeD
                 case "mesh": // approximate mesh by a box using its bounds
                     {
                         // Unity BoxCollider.size is FULL size in local space => convert to half extents
-                        var sizeLocal = collider.Size ?? new Vector3(1f, 1f, 1f);
+                        var sizeLocal = collider.Size?.ToNumerics() ?? Vector3.One;
                         var fullWorld = new Vector3(
                             sizeLocal.X * worldScale.X,
                             sizeLocal.Y * worldScale.Y,

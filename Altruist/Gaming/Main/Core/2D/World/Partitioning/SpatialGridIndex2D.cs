@@ -41,8 +41,8 @@ namespace Altruist.Gaming.TwoD
             InstanceMap[obj.InstanceId] = obj;
 
             var typeKey = obj.Archetype;
-            if (!TypeMap.TryGetValue(typeKey, out var typeSet))
-                TypeMap[typeKey] = typeSet = new HashSet<string>();
+            if (!TypeMap.TryGetValue(typeKey ?? "", out var typeSet))
+                TypeMap[typeKey ?? ""] = typeSet = new HashSet<string>();
 
             typeSet.Add(obj.InstanceId);
         }
@@ -61,7 +61,7 @@ namespace Altruist.Gaming.TwoD
                 list.Remove(instanceId);
             }
 
-            if (TypeMap.TryGetValue(obj.Archetype, out var map))
+            if (TypeMap.TryGetValue(obj.Archetype ?? "", out var map))
             {
                 map.Remove(instanceId);
             }
