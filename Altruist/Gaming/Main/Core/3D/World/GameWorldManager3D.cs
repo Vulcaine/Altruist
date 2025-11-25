@@ -48,6 +48,7 @@ namespace Altruist.Gaming.ThreeD
 
             _physx3D = physx3D ?? throw new ArgumentNullException(nameof(physx3D));
             _partitions = new List<WorldPartitionManager3D>();
+            Initialize();
         }
 
         public IPhysxWorld3D PhysxWorld => _physx3D;

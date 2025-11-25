@@ -47,7 +47,6 @@ namespace Altruist.Gaming.TwoD
                 throw new InvalidOperationException($"World {index.Index} already exists.");
 
             var manager = new GameWorldManager2D(index, physx2D, _partitioner, _cache);
-            manager.Initialize();
             _worlds[index.Index] = manager;
             return manager;
         }

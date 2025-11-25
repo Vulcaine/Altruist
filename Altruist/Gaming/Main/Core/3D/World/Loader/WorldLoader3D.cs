@@ -114,8 +114,6 @@ namespace Altruist.Gaming.ThreeD
                 var physxWorld = new PhysxWorld3D(engine);
 
                 var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner);
-                manager.Initialize();
-
                 return manager;
             }
 
@@ -156,7 +154,6 @@ namespace Altruist.Gaming.ThreeD
 
             // 4) Create and initialize the GameWorldManager3D
             var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner);
-            manager.Initialize();
 
             // 5) Add all spawned world objects as static objects into the manager
             foreach (var obj in _spawnedWorldObjects)
