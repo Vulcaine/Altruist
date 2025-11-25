@@ -19,12 +19,12 @@ namespace Altruist.Gaming.ThreeD
         /// Materializes the given world object into the specified game world's
         /// physics world, based on its BodyDescriptor and Transform.
         /// </summary>
-        IWorldObject3D Spawn(IGameWorldManager3D world, IWorldObject3D obj);
+        PrefabWorldObject3D Spawn(IGameWorldManager3D world, PrefabWorldObject3D obj);
 
         /// <summary>
         /// Same as Spawn(world, obj) but assigns a zone/room id before spawning.
         /// </summary>
-        IWorldObject3D Spawn(IGameWorldManager3D world, IWorldObject3D obj, string zoneId);
+        PrefabWorldObject3D Spawn(IGameWorldManager3D world, PrefabWorldObject3D obj, string zoneId);
 
         /// <summary>
         /// Constructs a prefab of the given type using the prefab factory and spawns
@@ -117,7 +117,7 @@ namespace Altruist.Gaming.ThreeD
         }
 
         /// <inheritdoc />
-        public IWorldObject3D Spawn(IGameWorldManager3D world, IWorldObject3D obj)
+        public PrefabWorldObject3D Spawn(IGameWorldManager3D world, PrefabWorldObject3D obj)
         {
             if (world is null)
                 throw new ArgumentNullException(nameof(world));
@@ -157,7 +157,7 @@ namespace Altruist.Gaming.ThreeD
         }
 
         /// <inheritdoc />
-        public IWorldObject3D Spawn(IGameWorldManager3D world, IWorldObject3D obj, string zoneId)
+        public PrefabWorldObject3D Spawn(IGameWorldManager3D world, PrefabWorldObject3D obj, string zoneId)
         {
             if (obj is null)
                 throw new ArgumentNullException(nameof(obj));
@@ -166,7 +166,7 @@ namespace Altruist.Gaming.ThreeD
             return Spawn(world, obj);
         }
 
-        private static void SetZone(IWorldObject3D obj, string zoneId)
+        private static void SetZone(PrefabWorldObject3D obj, string zoneId)
         {
             obj.ZoneId = zoneId;
         }
