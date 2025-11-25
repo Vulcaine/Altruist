@@ -77,6 +77,15 @@ namespace Altruist.Gaming.ThreeD
             _spatialIndex.GetAllByType(archetype)
                          .Where(x => string.Equals(x.ZoneId, roomId, StringComparison.Ordinal))
                          .ToHashSet();
+
+
+        public override string ToString()
+        {
+            var objectCount = _spatialIndex.InstanceMap.Count;
+            var min = Position;
+            var max = Position + Size;
+            return $"Partition {Index} [{min}..{max}] epicenter={Epicenter} objects={objectCount}";
+        }
     }
 
     public interface IWorldPartitioner3D : IWorldPartitioner
