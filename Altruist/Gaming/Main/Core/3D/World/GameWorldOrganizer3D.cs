@@ -11,6 +11,9 @@ namespace Altruist.Gaming.ThreeD
         /// Directly registers an already constructed game world manager.
         /// </summary>
         IGameWorldManager3D AddWorld(IGameWorldManager3D manager);
+        void RemoveWorld(int index);
+        IGameWorldManager3D? GetWorld(int index);
+        IGameWorldManager3D? GetWorld(string name);
     }
 
     [Service(typeof(IGameWorldOrganizer))]
@@ -64,9 +67,14 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>
         /// Gets the GameWorldManager for a given world index.
         /// </summary>
-        public virtual IGameWorldManager? GetWorld(int index)
+        public virtual IGameWorldManager3D? GetWorld(int index)
         {
             return _worlds.TryGetValue(index, out var manager) ? manager : null;
+        }
+
+        public virtual IGameWorldManager3D? GetWorld(string name)
+        {
+            return _worlds.Where(x => x.Value.Index.Name == name).Select(x => x.Value).FirstOrDefault();
         }
 
         /// <summary>
