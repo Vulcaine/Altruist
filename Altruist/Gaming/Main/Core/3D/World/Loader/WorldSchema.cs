@@ -47,17 +47,17 @@ public sealed class WorldObjectSchema
     public string? Archetype { get; set; }
 
     [JsonPropertyName("position")]
-    public Vector3 Position { get; set; }
+    public Vector3Schema Position { get; set; }
 
     [JsonPropertyName("rotation")]
-    public Vector3 RotationEuler { get; set; }
+    public Vector3Schema RotationEuler { get; set; }
 
     [JsonPropertyName("scale")]
-    public Vector3 Scale { get; set; }
+    public Vector3Schema Scale { get; set; }
 
     // Exact world-space size (AABB) of this subtree
     [JsonPropertyName("size")]
-    public Vector3? Size { get; set; }
+    public Vector3Schema Size { get; set; }
 
     // All colliders belonging to THIS transform
     [JsonPropertyName("colliders")]
@@ -75,10 +75,10 @@ public sealed class WorldColliderSchema
     public string Shape { get; set; } = "";
 
     [JsonPropertyName("size")]
-    public Vector3? Size { get; set; }
+    public Vector3Schema? Size { get; set; }
 
     [JsonPropertyName("center")]
-    public Vector3? Center { get; set; }
+    public Vector3Schema? Center { get; set; }
 
     [JsonPropertyName("radius")]
     public float? Radius { get; set; }
@@ -94,7 +94,7 @@ public sealed class WorldColliderSchema
 public sealed class NavMeshSchema
 {
     [JsonPropertyName("vertices")]
-    public Vector3[] Vertices { get; set; } = [];
+    public Vector3Schema[] Vertices { get; set; } = [];
 
     [JsonPropertyName("indices")]
     public int[] Indices { get; set; } = [];
