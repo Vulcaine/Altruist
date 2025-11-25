@@ -101,7 +101,7 @@ namespace Altruist.Gaming.ThreeD
 
             index.Size = new IntVector3(
                 (int)worldSchema.Transform.Size.X, (int)worldSchema.Transform.Size.Y, (int)worldSchema.Transform.Size.Z);
-            index.Position = worldSchema.Transform.Position;
+            index.Position = worldSchema.Transform.Position.ToNumerics();
             return BuildGameWorld(index, worldSchema);
         }
 
@@ -144,10 +144,13 @@ namespace Altruist.Gaming.ThreeD
             var physxWorld = new PhysxWorld3D(engine);
 
             // 2) Root "world" transform from exported landscape
+            var position = worldSchema.Transform.Position.ToNumerics();
+            var rotation = EulerToQuaternion(worldSchema.Transform.RotationEuler.ToNumerics());
+            var scale = worldSchema.Transform.Scale.ToNumerics();
             var worldRoot = new AccumulatedTransform(
-                worldSchema.Transform.Position,
-                EulerToQuaternion(worldSchema.Transform.RotationEuler),
-                worldSchema.Transform.Scale
+                position,
+               rotation,
+                scale
             );
 
             // 3) Recursively build bodies from all root objects

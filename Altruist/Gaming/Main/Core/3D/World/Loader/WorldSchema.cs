@@ -23,16 +23,16 @@ public sealed class WorldSchema
 public sealed class WorldTransformSchema
 {
     [JsonPropertyName("position")]
-    public Vector3 Position { get; set; }
+    public Vector3Schema Position { get; set; }
 
     [JsonPropertyName("rotation")]
-    public Vector3 RotationEuler { get; set; }
+    public Vector3Schema RotationEuler { get; set; }
 
     [JsonPropertyName("scale")]
-    public Vector3 Scale { get; set; } = new(1, 1, 1);
+    public Vector3Schema Scale { get; set; }
 
     [JsonPropertyName("size")]
-    public Vector3 Size { get; set; }
+    public Vector3Schema Size { get; set; }
 }
 
 public sealed class WorldObjectSchema
@@ -98,4 +98,13 @@ public sealed class NavMeshSchema
 
     [JsonPropertyName("indices")]
     public int[] Indices { get; set; } = [];
+}
+
+public sealed class Vector3Schema
+{
+    public float X { get; set; }
+    public float Y { get; set; }
+    public float Z { get; set; }
+
+    public Vector3 ToNumerics() => new Vector3(X, Y, Z);
 }
