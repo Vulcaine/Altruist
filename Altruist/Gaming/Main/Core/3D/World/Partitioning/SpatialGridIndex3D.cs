@@ -43,8 +43,8 @@ namespace Altruist.Gaming.ThreeD
             InstanceMap[obj.InstanceId] = obj;
 
             var archetypeKey = obj.Archetype;
-            if (!TypeMap.TryGetValue(archetypeKey, out var typeSet))
-                TypeMap[archetypeKey] = typeSet = new HashSet<string>();
+            if (!TypeMap.TryGetValue(archetypeKey ?? "", out var typeSet))
+                TypeMap[archetypeKey ?? ""] = typeSet = new HashSet<string>();
 
             typeSet.Add(obj.InstanceId);
         }
@@ -62,7 +62,7 @@ namespace Altruist.Gaming.ThreeD
             if (Grid.TryGetValue(key, out var cellSet))
                 cellSet.Remove(instanceId);
 
-            if (TypeMap.TryGetValue(obj.Archetype, out var typeSet))
+            if (TypeMap.TryGetValue(obj.Archetype ?? "", out var typeSet))
                 typeSet.Remove(instanceId);
 
             InstanceMap.Remove(instanceId);
