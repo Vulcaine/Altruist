@@ -23,7 +23,7 @@ namespace Altruist.Gaming.ThreeD
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
-            IEnumerable<WorldIndex3D> gameWorlds)
+            IEnumerable<IWorldIndex3D> gameWorlds)
         {
             _worldLoader = worldLoader ?? throw new ArgumentNullException(nameof(worldLoader));
 

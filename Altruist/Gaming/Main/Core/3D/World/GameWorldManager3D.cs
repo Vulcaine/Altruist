@@ -30,7 +30,7 @@ namespace Altruist.Gaming.ThreeD
 
     public sealed class GameWorldManager3D : IGameWorldManager3D
     {
-        private readonly WorldIndex3D _index;
+        private readonly IWorldIndex3D _index;
         private readonly IWorldPartitioner3D _worldPartitioner;
         private readonly Dictionary<PartitionIndex3D, WorldPartitionManager3D> _partitionMap = new();
 
@@ -38,12 +38,12 @@ namespace Altruist.Gaming.ThreeD
         private readonly IPhysxWorld3D _physx3D;
 
         public GameWorldManager3D(
-            WorldIndex3D world,
+            IWorldIndex3D world,
             IPhysxWorld3D physx3D,
             IWorldPartitioner3D worldPartitioner
         )
         {
-            _index = world ?? throw new ArgumentNullException(nameof(world));
+            _index = world;
             _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));
 
             _physx3D = physx3D ?? throw new ArgumentNullException(nameof(physx3D));

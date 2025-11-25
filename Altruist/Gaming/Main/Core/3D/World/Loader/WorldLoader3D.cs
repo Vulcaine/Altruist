@@ -24,13 +24,13 @@ namespace Altruist.Gaming.ThreeD
         ///  - create & initialize a GameWorldManager3D
         ///  - add all spawned world objects as static objects to the manager
         /// </summary>
-        IGameWorldManager3D LoadFromJson(WorldIndex3D index, string json);
+        IGameWorldManager3D LoadFromJson(IWorldIndex3D index, string json);
 
         /// <summary>
         /// Load a game world manager from the JSON file path defined in the WorldIndex3D descriptor.
         /// Same behavior as LoadFromJson, but reads the JSON from disk.
         /// </summary>
-        IGameWorldManager3D LoadFromIndex(WorldIndex3D index);
+        IGameWorldManager3D LoadFromIndex(IWorldIndex3D index);
 
         /// <summary>
         /// Optional: world entities instantiated during load (only those with matching archetypes).
@@ -82,7 +82,7 @@ namespace Altruist.Gaming.ThreeD
         // JSON entrypoints -> GameWorldManager3D
         // --------------------------------------------------------------------
 
-        public IGameWorldManager3D LoadFromJson(WorldIndex3D index, string json)
+        public IGameWorldManager3D LoadFromJson(IWorldIndex3D index, string json)
         {
             if (index is null)
                 throw new ArgumentNullException(nameof(index));
@@ -101,7 +101,7 @@ namespace Altruist.Gaming.ThreeD
             return BuildGameWorld(index, worldSchema);
         }
 
-        public IGameWorldManager3D LoadFromIndex(WorldIndex3D index)
+        public IGameWorldManager3D LoadFromIndex(IWorldIndex3D index)
         {
             if (index is null)
                 throw new ArgumentNullException(nameof(index));
@@ -120,7 +120,7 @@ namespace Altruist.Gaming.ThreeD
         // Core: build physics world + manager + populate static objects
         // --------------------------------------------------------------------
 
-        private IGameWorldManager3D BuildGameWorld(WorldIndex3D index, WorldSchema worldSchema)
+        private IGameWorldManager3D BuildGameWorld(IWorldIndex3D index, WorldSchema worldSchema)
         {
             if (worldSchema is null)
                 throw new ArgumentNullException(nameof(worldSchema));

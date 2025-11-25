@@ -82,7 +82,7 @@ namespace Altruist.Gaming.ThreeD
     public interface IWorldPartitioner3D : IWorldPartitioner
     {
         int PartitionDepth { get; }
-        List<WorldPartitionManager3D> CalculatePartitions(WorldIndex3D world);
+        List<WorldPartitionManager3D> CalculatePartitions(IWorldIndex3D world);
     }
 
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
@@ -107,13 +107,13 @@ namespace Altruist.Gaming.ThreeD
             PartitionDepth = partitionDepth;
         }
 
-        public List<WorldPartitionManager3D> CalculatePartitions(WorldIndex3D world)
+        public List<WorldPartitionManager3D> CalculatePartitions(IWorldIndex3D world)
         {
             var partitions = new List<WorldPartitionManager3D>();
 
-            int columns = (int)Math.Ceiling((double)world.Width / PartitionWidth);
-            int rows = (int)Math.Ceiling((double)world.Height / PartitionHeight);
-            int slices = (int)Math.Ceiling((double)world.Depth / PartitionDepth);
+            int columns = (int)Math.Ceiling((double)world.Size.X / PartitionWidth);
+            int rows = (int)Math.Ceiling((double)world.Size.Y / PartitionHeight);
+            int slices = (int)Math.Ceiling((double)world.Size.Z / PartitionDepth);
 
             for (int slice = 0; slice < slices; slice++)
             {
@@ -125,9 +125,9 @@ namespace Altruist.Gaming.ThreeD
                         int y = row * PartitionHeight;
                         int z = slice * PartitionDepth;
 
-                        int width = Math.Min(PartitionWidth, world.Width - x);
-                        int height = Math.Min(PartitionHeight, world.Height - y);
-                        int depth = Math.Min(PartitionDepth, world.Depth - z);
+                        int width = Math.Min(PartitionWidth, world.Size.X - x);
+                        int height = Math.Min(PartitionHeight, world.Size.Y - y);
+                        int depth = Math.Min(PartitionDepth, world.Size.Z - z);
 
                         var partition = new WorldPartitionManager3D(
                             index: new IntVector3(col, row, slice),

@@ -61,11 +61,11 @@ namespace Altruist
 
 
         private static void RegisterServiceType(
-     IServiceCollection services,
-     IConfiguration cfg,
-     ILogger log,
-     List<string> reg,
-     Type implType)
+            IServiceCollection services,
+            IConfiguration cfg,
+            ILogger log,
+            List<string> reg,
+            Type implType)
         {
             if (!DependencyResolver.ShouldRegister(implType, cfg, log))
                 return;
@@ -186,9 +186,7 @@ namespace Altruist
                 {
                     var itemCfg = itemSection;
 
-                    // KeyField is required for multi-instance keyed registration.
                     var key = itemCfg[listCond.KeyField!];
-
                     if (string.IsNullOrWhiteSpace(key))
                     {
                         var msg =
@@ -199,19 +197,23 @@ namespace Altruist
                         throw new InvalidOperationException(msg);
                     }
 
+                    // Capture per-item key for closures
+                    var itemKey = key;
+
+                    // 1) Keyed registration for the service type (e.g. IWorldIndex3D["world1"])
                     switch (lifetime)
                     {
                         case ServiceLifetime.Singleton:
                             services.AddKeyedSingleton(
                                 serviceType,
-                                key,
+                                itemKey,
                                 (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemCfg, implType, log, lifetime));
                             break;
 
                         case ServiceLifetime.Scoped:
                             services.AddKeyedScoped(
                                 serviceType,
-                                key,
+                                itemKey,
                                 (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemCfg, implType, log, lifetime));
                             break;
 
@@ -219,12 +221,29 @@ namespace Altruist
                         default:
                             services.AddKeyedTransient(
                                 serviceType,
-                                key,
+                                itemKey,
                                 (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemCfg, implType, log, lifetime));
                             break;
                     }
 
-                    reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)}[{key}] → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
+                    // 2) Unkeyed alias for IWorldIndex3D so IEnumerable<IWorldIndex3D> returns ALL worlds.
+                    services.Add(new ServiceDescriptor(
+                        serviceType,
+                        sp => sp.GetRequiredKeyedService(serviceType, itemKey),
+                        lifetime));
+
+                    // 3) Optionally, unkeyed alias for WorldIndex3D so IEnumerable<WorldIndex3D> also returns ALL worlds.
+                    //    NOTE: injecting a single WorldIndex3D (GetRequiredService<WorldIndex3D>) will still just give *one*,
+                    //    the last registration, so prefer IEnumerable or keyed resolution for this type.
+                    if (serviceType != implType)
+                    {
+                        services.Add(new ServiceDescriptor(
+                            implType,
+                            sp => sp.GetRequiredKeyedService(serviceType, itemKey),
+                            lifetime));
+                    }
+
+                    reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)}[{itemKey}] → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
                 }
             }
         }
