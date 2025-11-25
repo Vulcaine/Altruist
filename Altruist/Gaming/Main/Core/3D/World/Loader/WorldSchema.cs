@@ -46,10 +46,10 @@ public sealed class WorldObjectSchema
     [JsonPropertyName("archetype")]
     public string? Archetype { get; set; }
 
-    [JsonPropertyName("pos")]
+    [JsonPropertyName("position")]
     public Vector3 Position { get; set; }
 
-    [JsonPropertyName("rot")]
+    [JsonPropertyName("rotation")]
     public Vector3 RotationEuler { get; set; }
 
     [JsonPropertyName("scale")]

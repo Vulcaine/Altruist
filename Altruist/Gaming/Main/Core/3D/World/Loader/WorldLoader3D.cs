@@ -187,10 +187,10 @@ namespace Altruist.Gaming.ThreeD
         }
 
         private void BuildBodiesRecursive(
-    IPhysxWorldEngine3D engine,
-    WorldObjectSchema node,
-    AccumulatedTransform parent,
-    IPhysxWorld3D world)
+        IPhysxWorldEngine3D engine,
+        WorldObjectSchema node,
+        AccumulatedTransform parent,
+        IPhysxWorld3D world)
         {
             // Compose parent + local -> world
             var localRot = EulerToQuaternion(node.RotationEuler);
