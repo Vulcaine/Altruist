@@ -43,7 +43,6 @@ public sealed class WorldObjectSchema
     [JsonPropertyName("archetype")]
     public string? Archetype { get; set; }
 
-    // LOCAL transform (relative to parent), same as client export
     [JsonPropertyName("pos")]
     public Vector3 Position { get; set; }
 

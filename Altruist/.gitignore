@@ -1,3 +1,6 @@
 NuGet.config
 nupkgs
 !**/Migrations
+.env
+.sonarqube/
+.config/
