@@ -133,6 +133,16 @@ public static class DependencyPlanner
                 if (IsAlreadyRegistered(services, abs))
                     continue;
 
+                // If a dependency uses list-style ConditionalOnConfig (KeyField), do not auto-register it
+                // as an unkeyed service. Its instances must be created per config item in AltruistServiceConfig.
+                if (HasListConditional(abs))
+                {
+                    RegisterBottomUp(abs, services, cfg, log, visiting, visited);
+                    log.LogDebug("Skipping auto-registration of {Type} because it uses list ConditionalOnConfig.",
+                        DependencyResolver.GetCleanName(abs));
+                    continue;
+                }
+
                 var candidates = FindCandidateImplementations(abs, cfg, log);
 
                 if (candidates.Count > 0)
@@ -335,4 +345,8 @@ public static class DependencyPlanner
         // regular single dependency
         yield return t;
     }
+
+    private static bool HasListConditional(Type t) =>
+        t.GetCustomAttributes<ConditionalOnConfigAttribute>(false)
+         .Any(c => !string.IsNullOrEmpty(c.KeyField));
 }
