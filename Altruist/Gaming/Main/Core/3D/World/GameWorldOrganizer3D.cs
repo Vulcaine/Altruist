@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 namespace Altruist.Gaming.ThreeD
 {
-    public interface IGameWorldCoordinator3D : IGameWorldOrganizer
+    public interface IGameWorldOrganizer3D : IGameWorldOrganizer
     {
         /// <summary>
         /// Directly registers an already constructed game world manager.
@@ -13,9 +13,10 @@ namespace Altruist.Gaming.ThreeD
         IGameWorldManager3D AddWorld(IGameWorldManager3D manager);
     }
 
-    [Service(typeof(IGameWorldCoordinator3D))]
+    [Service(typeof(IGameWorldOrganizer))]
+    [Service(typeof(IGameWorldOrganizer3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
-    public class GameWorldOrganizer3D : IGameWorldCoordinator3D
+    public class GameWorldOrganizer3D : IGameWorldOrganizer3D
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;

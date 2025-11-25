@@ -3,14 +3,15 @@ using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.TwoD
 {
-    public interface IGameWorldCoordinator2D : IGameWorldOrganizer
+    public interface IGameWorldOrganizer2D : IGameWorldOrganizer
     {
         IGameWorldManager2D AddWorld(IWorldIndex2D index, IPhysxWorld2D physx2D);
     }
 
-    [Service(typeof(IGameWorldCoordinator2D))]
+    [Service(typeof(IGameWorldOrganizer))]
+    [Service(typeof(IGameWorldOrganizer2D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
-    public class GameWorldOrganizer2D : IGameWorldCoordinator2D
+    public class GameWorldOrganizer2D : IGameWorldOrganizer2D
     {
         private readonly Dictionary<int, IGameWorldManager2D> _worlds = new();
         private readonly IWorldPartitioner2D _partitioner;
