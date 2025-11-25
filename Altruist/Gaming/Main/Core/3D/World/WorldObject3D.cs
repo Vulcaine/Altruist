@@ -103,6 +103,22 @@ namespace Altruist.Gaming.ThreeD
             ZoneId = zoneId;
             Archetype = archetype;
         }
+
+        public override string ToString()
+        {
+            var p = Transform.Position;
+            var sz = Transform.Size;
+            var sc = Transform.Scale;
+
+            return
+                $"{GetType().Name}(" +
+                $"Id={InstanceId}, " +
+                $"Archetype={Archetype ?? "<none>"}, " +
+                $"ZoneId={ZoneId}, " +
+                $"Pos=({p.X},{p.Y},{p.Z}), " +
+                $"Size=({sz.X:0.##},{sz.Y:0.##},{sz.Z:0.##}), " +
+                $"Scale=({sc.X:0.##},{sc.Y:0.##},{sc.Z:0.##}))";
+        }
     }
 
     public class AnonymousWorldObject3D : WorldObject3D
