@@ -107,7 +107,17 @@ namespace Altruist.Gaming.ThreeD
                 throw new ArgumentNullException(nameof(index));
 
             if (string.IsNullOrWhiteSpace(index.DataPath))
-                throw new ArgumentException("WorldIndex3D.DataPath cannot be null or empty when loading from path.", nameof(index));
+            {
+                _spawnedWorldObjects.Clear();
+
+                var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
+                var physxWorld = new PhysxWorld3D(engine);
+
+                var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner);
+                manager.Initialize();
+
+                return manager;
+            }
 
             if (!File.Exists(index.DataPath))
                 throw new FileNotFoundException("World JSON file not found.", index.DataPath);
