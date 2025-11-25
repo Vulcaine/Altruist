@@ -28,7 +28,7 @@ namespace Altruist.Gaming.ThreeD
         /// Archetype is resolved from [WorldObject] attribute by default.
         /// Override only if you need something special.
         /// </summary>
-        public string Archetype { get; set; } = "";
+        public string? Archetype { get; set; } = null;
 
         /// <summary>
         /// Transform in world space. Prefab3D already has this property.
@@ -83,7 +83,7 @@ namespace Altruist.Gaming.ThreeD
         /// By default resolves the archetype from [WorldObject] on the concrete type.
         /// Override if you need something custom.
         /// </summary>
-        public virtual string Archetype
+        public virtual string? Archetype
         {
             get;
             set;
@@ -97,11 +97,20 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         public PhysxBody3DDesc? BodyDescriptor { get; set; }
 
-        protected WorldObject3D(Transform3D transform, string zoneId = "", string archetype = "")
+        protected WorldObject3D(Transform3D transform, string zoneId = "", string? archetype = null)
         {
             Transform = transform;
             ZoneId = zoneId;
             Archetype = archetype;
         }
     }
+
+    public class AnonymousWorldObject3D : WorldObject3D
+    {
+        public AnonymousWorldObject3D(Transform3D transform)
+            : base(transform, zoneId: string.Empty, archetype: string.Empty)
+        {
+        }
+    }
 }
+

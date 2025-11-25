@@ -231,22 +231,17 @@ namespace Altruist.Gaming.ThreeD
 
                     // Build engine-agnostic body descriptor (static, mass 0)
                     var bodyDesc = PhysxBody3D.Create(
-    PhysxBodyType.Static,
-    mass: 0f,
-    transform: colliderTransform
-);
+                        PhysxBodyType.Static,
+                        mass: 0f,
+                        transform: colliderTransform
+                    );
 
-                    // Create engine-specific body from descriptor
                     var body = _bodyApi.CreateBody(engine, bodyDesc);
 
-                    // Associate collider with body
                     _bodyApi.AddCollider(engine, body, collider);
                     world.AddBody(body);
 
-                    // If this node has an archetype and we know a CLR type for it,
-                    // instantiate a world object and attach the *descriptor*.
-                    if (!string.IsNullOrWhiteSpace(node.Archetype) &&
-                        TryCreateWorldObject(node, colliderTransform, bodyDesc, out var obj))
+                    if (TryCreateWorldObject(node, colliderTransform, bodyDesc, out var obj))
                     {
                         _spawnedWorldObjects.Add(obj);
                     }
@@ -264,15 +259,21 @@ namespace Altruist.Gaming.ThreeD
         }
 
         private bool TryCreateWorldObject(
-            WorldObjectSchema node,
-            Transform3D transform,
-            PhysxBody3DDesc bodyDesc,
-            out IWorldObject3D obj)
+    WorldObjectSchema node,
+    Transform3D transform,
+    PhysxBody3DDesc bodyDesc,
+    out IWorldObject3D obj)
         {
-            obj = default!;
-
             if (string.IsNullOrWhiteSpace(node.Archetype))
-                return false;
+            {
+                obj = new AnonymousWorldObject3D(transform)
+                {
+                    BodyDescriptor = bodyDesc
+                };
+                return true;
+            }
+
+            obj = default!;
 
             if (!_archetypeMap.TryGetValue(node.Archetype.Trim(), out var type))
                 return false;
@@ -287,30 +288,18 @@ namespace Altruist.Gaming.ThreeD
             var instance = defaultCtor.Invoke(null);
 
             if (instance is not IWorldObject3D worldObj)
+            {
                 throw new InvalidOperationException(
                     $"World object type '{type.FullName}' must implement IWorldObject3D.");
-
-            var transformProp = type.GetProperty(
-                nameof(IWorldObject3D.Transform),
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-            var setter = transformProp?.GetSetMethod(nonPublic: true);
-            if (setter == null)
-            {
-                throw new InvalidOperationException(
-                    $"World object type '{type.FullName}' must expose a settable Transform property (at least protected).");
             }
 
-            setter.Invoke(worldObj, [transform]);
+            // We can now set via the interface directly because Transform has a public setter.
+            worldObj.Transform = transform;
 
-            var roomIdProp = type.GetProperty(
-                nameof(IWorldObject.ZoneId),
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-            var roomSetter = roomIdProp?.GetSetMethod(nonPublic: true);
-            if (roomSetter != null)
+            // Best-effort: ensure ZoneId is initialized (if the object also implements IWorldObject).
+            if (worldObj is IWorldObject wo)
             {
-                roomSetter.Invoke(worldObj, [string.Empty]);
+                wo.ZoneId = string.Empty;
             }
 
             worldObj.BodyDescriptor = bodyDesc;
