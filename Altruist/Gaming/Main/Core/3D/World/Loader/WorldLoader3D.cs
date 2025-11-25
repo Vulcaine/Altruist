@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Text.Json;
 
+using Altruist.Numerics;
 using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
@@ -98,6 +99,9 @@ namespace Altruist.Gaming.ThreeD
             var worldSchema = JsonSerializer.Deserialize<WorldSchema>(json, options)
                               ?? throw new InvalidOperationException("Failed to deserialize world JSON into WorldSchema.");
 
+            index.Size = new IntVector3(
+                (int)worldSchema.Transform.Size.X, (int)worldSchema.Transform.Size.Y, (int)worldSchema.Transform.Size.Z);
+            index.Position = worldSchema.Transform.Position;
             return BuildGameWorld(index, worldSchema);
         }
 
@@ -259,10 +263,10 @@ namespace Altruist.Gaming.ThreeD
         }
 
         private bool TryCreateWorldObject(
-    WorldObjectSchema node,
-    Transform3D transform,
-    PhysxBody3DDesc bodyDesc,
-    out IWorldObject3D obj)
+            WorldObjectSchema node,
+            Transform3D transform,
+            PhysxBody3DDesc bodyDesc,
+            out IWorldObject3D obj)
         {
             if (string.IsNullOrWhiteSpace(node.Archetype))
             {

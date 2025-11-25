@@ -22,14 +22,17 @@ public sealed class WorldSchema
 
 public sealed class WorldTransformSchema
 {
-    [JsonPropertyName("pos")]
+    [JsonPropertyName("position")]
     public Vector3 Position { get; set; }
 
-    [JsonPropertyName("rot")]
+    [JsonPropertyName("rotation")]
     public Vector3 RotationEuler { get; set; }
 
     [JsonPropertyName("scale")]
     public Vector3 Scale { get; set; } = new(1, 1, 1);
+
+    [JsonPropertyName("size")]
+    public Vector3 Size { get; set; }
 }
 
 public sealed class WorldObjectSchema
