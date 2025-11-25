@@ -187,10 +187,10 @@ namespace Altruist.Gaming.ThreeD
         }
 
         private void BuildBodiesRecursive(
-            IPhysxWorldEngine3D engine,
-            WorldObjectSchema node,
-            AccumulatedTransform parent,
-            IPhysxWorld3D world)
+    IPhysxWorldEngine3D engine,
+    WorldObjectSchema node,
+    AccumulatedTransform parent,
+    IPhysxWorld3D world)
         {
             // Compose parent + local -> world
             var localRot = EulerToQuaternion(node.RotationEuler);
@@ -218,6 +218,9 @@ namespace Altruist.Gaming.ThreeD
 
             var worldTransform = new AccumulatedTransform(worldPos, worldRot, worldScale);
 
+            // Build the *world object* transform (position + rotation + scale + size) from the node.
+            var worldObjectTransform = BuildWorldObjectTransform(worldTransform, node);
+
             // Create static bodies for all colliders on this node
             if (node.Colliders is { Count: > 0 })
             {
@@ -226,6 +229,7 @@ namespace Altruist.Gaming.ThreeD
                     if (!TryMapShape(colliderSchema.Shape, out var shape))
                         continue; // unknown or unsupported
 
+                    // Collider-specific transform
                     var colliderTransform = BuildColliderTransform(worldTransform, colliderSchema);
 
                     // Build engine-agnostic collider descriptor
@@ -233,7 +237,7 @@ namespace Altruist.Gaming.ThreeD
                     // Create collider via collider API provider
                     var collider = _colliderApi.CreateCollider(colliderDesc);
 
-                    // Build engine-agnostic body descriptor (static, mass 0)
+                    // Build engine-agnostic body descriptor (static, mass 0) using collider transform
                     var bodyDesc = PhysxBody3D.Create(
                         PhysxBodyType.Static,
                         mass: 0f,
@@ -245,7 +249,8 @@ namespace Altruist.Gaming.ThreeD
                     _bodyApi.AddCollider(engine, body, collider);
                     world.AddBody(body);
 
-                    if (TryCreateWorldObject(node, colliderTransform, bodyDesc, out var obj))
+                    // Create a world object (archetyped or anonymous) using the *world object* transform
+                    if (TryCreateWorldObject(node, worldObjectTransform, bodyDesc, out var obj))
                     {
                         _spawnedWorldObjects.Add(obj);
                     }
@@ -262,12 +267,44 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
-        private bool TryCreateWorldObject(
-            WorldObjectSchema node,
-            Transform3D transform,
-            PhysxBody3DDesc bodyDesc,
-            out IWorldObject3D obj)
+        private static Transform3D BuildWorldObjectTransform(
+    AccumulatedTransform worldTransform,
+    WorldObjectSchema node)
         {
+            // World-space position of the object root
+            var position3D = new Position3D(
+                worldTransform.Position.X,
+                worldTransform.Position.Y,
+                worldTransform.Position.Z);
+
+            // World-space size from exporter (AABB of hierarchy), if available
+            Size3D size3D;
+            if (node.Size is { } s) // works for both nullable and non-nullable Vector3
+            {
+                size3D = Size3D.From(s);
+            }
+            else
+            {
+                size3D = Size3D.Zero;
+            }
+
+            // World-space scale from accumulated transform
+            var scale3D = Scale3D.From(worldTransform.Scale);
+
+            // World-space rotation
+            var rotation3D = Rotation3D.FromQuaternion(worldTransform.Rotation);
+
+            return new Transform3D(position3D, size3D, scale3D, rotation3D);
+        }
+
+
+        private bool TryCreateWorldObject(
+    WorldObjectSchema node,
+    Transform3D transform,
+    PhysxBody3DDesc bodyDesc,
+    out IWorldObject3D obj)
+        {
+            // No archetype → anonymous world object with the correct world transform
             if (string.IsNullOrWhiteSpace(node.Archetype))
             {
                 obj = new AnonymousWorldObject3D(transform)
@@ -297,7 +334,7 @@ namespace Altruist.Gaming.ThreeD
                     $"World object type '{type.FullName}' must implement IWorldObject3D.");
             }
 
-            // We can now set via the interface directly because Transform has a public setter.
+            // Set the full world transform (position + rotation + size + scale) directly
             worldObj.Transform = transform;
 
             // Best-effort: ensure ZoneId is initialized (if the object also implements IWorldObject).
