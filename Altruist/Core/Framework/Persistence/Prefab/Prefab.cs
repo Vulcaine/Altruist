@@ -15,8 +15,8 @@ public abstract class PrefabModel : VaultModel, IPrefabModel
 public interface IPrefabVault<TPrefab> : IVault<TPrefab>
     where TPrefab : PrefabModel
 {
+    public TPrefab Construct();
 }
-
 
 public sealed class PrefabComponentBucket
 {

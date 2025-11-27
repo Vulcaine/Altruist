@@ -8,7 +8,7 @@ namespace Altruist.Gaming.Prefabs;
 
 
 public sealed class PgPrefabVault<TPrefab> : PgVault<TPrefab>, IPrefabVault<TPrefab>
-    where TPrefab : PrefabModel
+    where TPrefab : PrefabModel, new()
 {
     public PgPrefabVault(
         ISqlDatabaseProvider provider,
@@ -18,6 +18,16 @@ public sealed class PgPrefabVault<TPrefab> : PgVault<TPrefab>, IPrefabVault<TPre
         : base(provider, keyspace, doc, services)
     {
     }
+
+
+    public TPrefab Construct()
+    {
+        var prefab = new TPrefab();
+        PrefabHandleInitializer.InitializeHandles(prefab, Services);
+
+        return prefab;
+    }
+
 
     protected override PgVault<TPrefab> Create(QueryState state)
     => new PgPrefabVault<TPrefab>(_databaseProvider, Keyspace, VaultDocument, Services, state);
