@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Security.Claims;
+
 using Altruist.Persistence;
 namespace Altruist.Security;
 
@@ -29,5 +31,47 @@ public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSe
 public class SessionShieldAttribute : ShieldAttribute
 {
     public SessionShieldAttribute() : base(typeof(SessionTokenAuth)) { }
+}
+
+public interface ISessionTokenValidator : ITokenValidator
+{
+
+}
+
+[Service(typeof(ISessionTokenValidator))]
+public class SessionTokenValidator : ITokenValidator
+{
+    private readonly TokenSessionSyncService _syncService;
+    public SessionTokenValidator(TokenSessionSyncService syncService)
+    {
+        _syncService = syncService;
+    }
+    public async Task<ClaimsPrincipal?> ValidateToken(string token)
+    {
+        var cachedToken = await _syncService.FindCachedByIdAsync(token);
+        if (cachedToken is null)
+            return null;
+
+        return ClaimsPrincipalFactory.Create(cachedToken);
+    }
+}
+
+public static class ClaimsPrincipalFactory
+{
+    public static ClaimsPrincipal Create(AuthTokenSessionModel cachedToken)
+    {
+        if (cachedToken is null)
+            throw new ArgumentNullException(nameof(cachedToken));
+
+        var principalId = cachedToken.PrincipalId.ToString();
+
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, principalId),
+        };
+
+        var identity = new ClaimsIdentity(claims, authenticationType: "SessionToken");
+        return new ClaimsPrincipal(identity);
+    }
 }
 

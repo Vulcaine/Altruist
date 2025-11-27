@@ -237,7 +237,7 @@ public abstract class JwtAuthController : AuthController
 
         try
         {
-            var claims = _tokenValidator.GetClaimsPrincipal(accessToken);
+            var claims = await _tokenValidator.ValidateToken(accessToken);
             if (claims == null)
             {
                 _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");

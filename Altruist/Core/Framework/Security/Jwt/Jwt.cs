@@ -61,7 +61,7 @@ public class JwtAuth : IShieldAuth
         ClaimsPrincipal? principal;
         try
         {
-            principal = _tokenValidator.ValidateToken(token);
+            principal = await _tokenValidator.ValidateToken(token);
         }
         catch (SecurityTokenException)
         {
@@ -116,7 +116,7 @@ public class JwtAuth : IShieldAuth
 
 public interface IJwtTokenValidator : ITokenValidator
 {
-    ClaimsPrincipal GetClaimsPrincipal(string token);
+
 }
 
 [Service(typeof(ITokenValidator))]
@@ -133,11 +133,9 @@ public class JwtTokenValidator : IJwtTokenValidator
         _validationParams = parameters;
     }
 
-    public ClaimsPrincipal GetClaimsPrincipal(string token) => _tokenHandler.ValidateToken(token, _validationParams, out _);
-
-    public ClaimsPrincipal? ValidateToken(string token)
+    public Task<ClaimsPrincipal?> ValidateToken(string token)
     {
-        return _tokenHandler.ValidateToken(token, _validationParams, out _);
+        return Task.FromResult(_tokenHandler.ValidateToken(token, _validationParams, out _))!;
     }
 }
 

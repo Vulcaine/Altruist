@@ -21,6 +21,7 @@ public class SessionTokenAuth : IShieldAuth
         _logger = logger;
     }
 
+
     public async Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
         var token = context.Token;

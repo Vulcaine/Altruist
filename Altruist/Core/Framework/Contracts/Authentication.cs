@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +38,7 @@ public class AuthResult
 
 public interface ITokenValidator
 {
-    ClaimsPrincipal? ValidateToken(string token);
+    Task<ClaimsPrincipal?> ValidateToken(string token);
 }
 
 

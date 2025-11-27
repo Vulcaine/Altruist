@@ -14,12 +14,12 @@ public interface IAuthService
     /// <summary>
     /// Validates a raw JWT token and returns a ClaimsPrincipal if valid, otherwise null.
     /// </summary>
-    ClaimsPrincipal? ValidateToken(string token);
+    Task<ClaimsPrincipal?> ValidateToken(string token);
 
     /// <summary>
     /// Validates the token carried in the SessionAuthContext and returns a ClaimsPrincipal if valid, otherwise null.
     /// </summary>
-    ClaimsPrincipal? ValidateToken(UpgradeAuthRequest context);
+    Task<ClaimsPrincipal?> ValidateToken(UpgradeAuthRequest context);
 }
 
 [Service(typeof(IAuthService))]
@@ -44,24 +44,24 @@ public class AuthService : IAuthService
         return UpgradeAuth(context);
     }
 
-    public ClaimsPrincipal? ValidateToken(string token)
+    public async Task<ClaimsPrincipal?> ValidateToken(string token)
     {
-        return _tokenValidator.ValidateToken(token);
+        return await _tokenValidator.ValidateToken(token);
     }
 
-    public ClaimsPrincipal? ValidateToken(UpgradeAuthRequest context)
+    public async Task<ClaimsPrincipal?> ValidateToken(UpgradeAuthRequest context)
     {
         var raw = context.Token?.Split(';')[0] ?? string.Empty;
         if (string.IsNullOrWhiteSpace(raw))
             return null;
 
-        return _tokenValidator.ValidateToken(raw);
+        return await _tokenValidator.ValidateToken(raw);
     }
 
     private async Task<IIssue?> UpgradeAuth(UpgradeAuthRequest context)
     {
         // Use the new ValidateToken(context) helper
-        var claims = ValidateToken(context);
+        var claims = await ValidateToken(context);
         if (claims == null)
             return null;
 
