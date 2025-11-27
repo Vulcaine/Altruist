@@ -100,9 +100,9 @@ public class Document
                 $"The type {type.FullName} must have either [Vault] or [Prefab].");
 
         var baseName =
-        vaultAttribute?.Name ??
-        prefabAttribute?.Name ??
-        type.Name;
+            vaultAttribute?.Name ??
+            prefabAttribute?.Name ??
+            type.Name;
 
         var tableName = prefabAttribute is not null
             ? $"{baseName}_prefab"
@@ -119,20 +119,32 @@ public class Document
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
+            // 1) never persist prefab component properties
             if (prop.GetCustomAttribute<PrefabComponentAttribute>() is not null)
                 continue;
 
+            // 2) respect [VaultIgnore]: not part of the schema at all
+            if (prop.GetCustomAttribute<VaultIgnoreAttribute>() is not null)
+                continue;
+
+            // (optional) if you ALSO want JsonIgnore to imply "not in DB", add:
+            // if (prop.GetCustomAttribute<System.Text.Json.Serialization.JsonIgnoreAttribute>() is not null)
+            //     continue;
+
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
             var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>();
+
             var physical = columnAttr?.Name ?? prop.Name.ToLowerInvariant();
             var fieldName = prop.Name;
 
+            // basic mapping
             fields.Add(fieldName);
             columns[fieldName] = physical;
 
             // accessor cache
             accessors[fieldName] = CompileAccessor(prop);
 
+            // foreign key definition (only for persisted columns)
             if (fkAttr is not null)
             {
                 foreignKeys.Add(new VaultForeignKeyDefinition(
@@ -143,7 +155,7 @@ public class Document
                     onDelete: fkAttr.OnDelete));
             }
 
-            // [VaultColumnIndex] -> non-unique index on physical column
+            // [VaultColumnIndex] -> index on physical column
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
             {
                 indexes.Add(physical);
