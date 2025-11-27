@@ -105,7 +105,7 @@ public class Document
         type.Name;
 
         var tableName = vaultAttribute is not null
-            ? $"{baseName}_vault"
+            ? $"{baseName}"
             : $"{baseName}_prefab";
 
         var fields = new List<string>();
