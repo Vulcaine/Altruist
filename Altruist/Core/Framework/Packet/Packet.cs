@@ -407,16 +407,20 @@ namespace Altruist
         [JsonPropertyName("header")][Key(0)] public PacketHeader Header { get; set; }
         [JsonPropertyName("type")][Key(1)] public string Type { get; set; }
 
+        [JsonPropertyName("type")][Key(2)] public string Token { get; set; }
+
         public HandshakeRequestPacket()
         {
             Header = default;
             Type = "HandshakePacket";
+            Token = "";
         }
 
-        public HandshakeRequestPacket(string? sessionToken)
+        public HandshakeRequestPacket(string? token)
         {
             Header = default;
             Type = "HandshakePacket";
+            Token = token ?? "";
         }
     }
 
