@@ -40,7 +40,7 @@ namespace Altruist.Gaming.TwoD
         /// By default resolves the archetype from [WorldObject] on the concrete type.
         /// Override if you need something custom.
         /// </summary>
-        public virtual string Archetype
+        public virtual string? Archetype
         {
             get;
             set;

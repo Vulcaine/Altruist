@@ -5,6 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 using System.Text.Json.Serialization;
 
+using Altruist.Persistence;
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
 using Altruist.UORM;
@@ -17,12 +18,14 @@ namespace Altruist.Gaming.ThreeD
     /// - Implements IWorldObject3D for runtime/world indexing
     /// - Holds a non-persisted BodyDescriptor used by SpawnService3D
     /// </summary>
-    public abstract class PrefabWorldObject3D : Prefab3D, IWorldObject3D
+    public abstract class WorldObjectPrefab3D : PrefabModel, IWorldObject3D
     {
         // IWorldObject: InstanceId, RoomId come from Prefab3D already.
         // Prefab3D has:
         //   public virtual string InstanceId { get; set; }
         //   public virtual string RoomId { get; set; }
+
+        public string InstanceId { get; set; } = Guid.NewGuid().ToString();
 
         /// <summary>
         /// Archetype is resolved from [WorldObject] attribute by default.
@@ -33,11 +36,7 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>
         /// Transform in world space. Prefab3D already has this property.
         /// </summary>
-        public override Transform3D Transform
-        {
-            get => base.Transform;
-            set => base.Transform = value;
-        }
+        public Transform3D Transform { get; set; }
 
         /// <summary>
         /// Engine-agnostic body descriptor (not persisted).

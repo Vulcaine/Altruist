@@ -515,10 +515,3 @@ public class SqlDbProvider : ISqlDatabaseProvider
     #endregion
 }
 
-[Service(typeof(IDatabaseVaultFactory))]
-[Service(typeof(DatabaseVaultFactory))]
-public class SqlVaultFactory : DatabaseVaultFactory
-{
-    public SqlVaultFactory(ISqlDatabaseProvider databaseProvider, IServiceProvider serviceProvider)
-        : base(databaseProvider, serviceProvider) { }
-}

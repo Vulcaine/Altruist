@@ -1,75 +1,72 @@
-/*
-Copyright 2025 Aron Gere
-Licensed under the Apache License, Version 2.0
-*/
-
 using System.Reflection;
 
+using Altruist.Gaming.Prefabs;
 using Altruist.UORM;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Persistence.Postgres
+namespace Altruist.Persistence.Postgres;
+
+[Service(typeof(IServiceFactory), ServiceLifetime.Singleton)]
+public sealed class PostgresServiceFactory : IServiceFactory
 {
-    /// <summary>
-    /// Postgres-specific IServiceFactory implementation.
-    ///
-    /// Currently it knows how to create IVault&lt;T&gt; backed by PgVault&lt;T&gt;,
-    /// but the contract is generic and can be extended later.
-    /// </summary>
-    [Service(typeof(IServiceFactory), ServiceLifetime.Singleton)]
-    public sealed class PostgresServiceFactory : IServiceFactory
+    public bool CanCreate(Type serviceType)
     {
-        public bool CanCreate(Type serviceType)
+        if (!serviceType.IsGenericType)
+            return false;
+
+        var genDef = serviceType.GetGenericTypeDefinition();
+
+        if (genDef != typeof(IVault<>))
+            return false;
+
+        var modelType = serviceType.GetGenericArguments()[0];
+
+        if (!typeof(IVaultModel).IsAssignableFrom(modelType))
+            return false;
+
+        // Only models with [Vault] or [Prefab] are supported
+        var hasVaultAttr = modelType.GetCustomAttribute<VaultAttribute>() != null;
+        var hasPrefabAttr = modelType.GetCustomAttribute<PrefabAttribute>() != null;
+
+        return hasVaultAttr || hasPrefabAttr;
+    }
+
+    public object Create(IServiceProvider sp, Type serviceType)
+    {
+        if (!CanCreate(serviceType))
+            throw new InvalidOperationException($"PostgresServiceFactory cannot create {serviceType}.");
+
+        var modelType = serviceType.GetGenericArguments()[0];
+
+        var sqlProvider = sp.GetRequiredService<ISqlDatabaseProvider>();
+        var loggerFactory = sp.GetService<ILoggerFactory>();
+
+        var schemaName = GetSchemaName(modelType);
+        var keyspace = sp.GetServices<IKeyspace>()
+                         .FirstOrDefault(k => k.Name == schemaName)
+                  ?? new DefaultSchema(schemaName);
+
+        var doc = Document.From(modelType, loggerFactory);
+
+        var isPrefab = typeof(IPrefabModel).IsAssignableFrom(modelType);
+
+        if (isPrefab)
         {
-            if (!serviceType.IsGenericType)
-                return false;
-
-            if (serviceType.GetGenericTypeDefinition() != typeof(IVault<>))
-                return false;
-
-            var modelType = serviceType.GetGenericArguments()[0];
-
-            if (!typeof(IVaultModel).IsAssignableFrom(modelType))
-                return false;
-
-            var va = modelType.GetCustomAttribute<VaultAttribute>();
-            return va != null;
+            var prefabVaultType = typeof(PgPrefabVault<>).MakeGenericType(modelType);
+            return Activator.CreateInstance(prefabVaultType, sqlProvider, keyspace, doc, sp)!;
         }
-
-        public object Create(IServiceProvider sp, Type serviceType)
+        else
         {
-            if (!CanCreate(serviceType))
-                throw new InvalidOperationException($"PostgresServiceFactory cannot create service type {serviceType}.");
-
-            var modelType = serviceType.GetGenericArguments()[0];
-
-            var sqlProvider = sp.GetService<ISqlDatabaseProvider>();
-            if (sqlProvider is null)
-                throw new InvalidOperationException(
-                    "ISqlDatabaseProvider is not registered. " +
-                    "The Postgres provider package must register it before vaults are used.");
-
-            var schemaName = GetSchemaName(modelType);
-
-            // Try to resolve a registered IKeyspace with that name; if none, use a lightweight default
-            var loggerFactory = sp.GetService<ILoggerFactory>();
-            var schema = sp.GetServices<IKeyspace>()
-                           .FirstOrDefault(s => string.Equals(s.Name, schemaName, StringComparison.OrdinalIgnoreCase))
-                        ?? new DefaultSchema(schemaName);
-
-            var document = Document.From(modelType, loggerFactory);
             var vaultType = typeof(PgVault<>).MakeGenericType(modelType);
-
-            // PgVault<T>(ISqlDatabaseProvider provider, IKeyspace keyspace, Document document, IServiceProvider services)
-            return Activator.CreateInstance(vaultType, sqlProvider, schema, document, sp)!;
+            return Activator.CreateInstance(vaultType, sqlProvider, keyspace, doc, sp)!;
         }
+    }
 
-        private static string GetSchemaName(Type modelType)
-        {
-            var va = modelType.GetCustomAttribute<VaultAttribute>();
-            return string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!;
-        }
+    private static string GetSchemaName(Type modelType)
+    {
+        var va = modelType.GetCustomAttribute<VaultAttribute>();
+        return string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!;
     }
 }

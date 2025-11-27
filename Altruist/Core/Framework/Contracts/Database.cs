@@ -66,14 +66,10 @@ public interface IVaultFactory<TToken, TConfig> where TConfig : IAltruistConfigu
     public TToken Token { get; }
 }
 
-public interface IDatabaseVaultFactory : IVaultFactory<IDatabaseServiceToken, IDatabaseConfiguration>
+public interface IPrefabModel : IVaultModel
 {
-    IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel;
-}
-
-public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheConfiguration>
-{
-    IVault<TVaultModel> Make<TVaultModel>() where TVaultModel : class, IVaultModel;
+    // JSONB mapping: component name → StorageId
+    Dictionary<string, string?> ComponentRefs { get; set; }
 }
 
 public interface IVaultModel : IStoredModel, IVaultOnSave

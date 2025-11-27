@@ -1,12 +1,11 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-namespace Altruist;
+namespace Altruist.Persistence;
 
 using System;
-
 using Altruist.UORM;
 
 /// <summary>
@@ -37,3 +36,6 @@ public sealed class PrefabAttribute : VaultAttribute
     {
     }
 }
+
+[AttributeUsage(AttributeTargets.Property)]
+public sealed class PrefabComponentAttribute : Attribute { }

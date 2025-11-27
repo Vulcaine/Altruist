@@ -38,7 +38,7 @@ public enum QueryPosition
 /// Immutable per-chain query state.
 /// Each fluent call creates a new state with one extra piece added.
 /// </summary>
-internal sealed class QueryState
+public sealed class QueryState
 {
     public readonly Dictionary<QueryPosition, HashSet<string>> Parts;
     public readonly Dictionary<QueryPosition, List<object?>> Parameters;
@@ -132,9 +132,10 @@ internal sealed class QueryState
 /// </summary>
 public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ISqlDatabaseProvider _databaseProvider;
-    private readonly QueryState _state;
+    protected readonly IServiceProvider _serviceProvider;
+    protected readonly ISqlDatabaseProvider _databaseProvider;
+    protected readonly QueryState _state;
+    protected readonly IServiceProvider Services;
 
     public IKeyspace Keyspace { get; }
     public readonly Document VaultDocument;
@@ -158,21 +159,33 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     private static readonly Action<object, DateTime>? _timestampSetter =
         TimestampSetterFactory.Create(typeof(TVaultModel));
 
-    public PgVault(ISqlDatabaseProvider databaseProvider, IKeyspace schema, Document document, IServiceProvider serviceProvider)
-        : this(databaseProvider, schema, document, serviceProvider, new QueryState())
+    public PgVault(
+        ISqlDatabaseProvider databaseProvider,
+        IKeyspace schema,
+        Document document,
+        IServiceProvider services)
+        : this(databaseProvider, schema, document, services, new QueryState())
     {
-        _history = new PgHistoricalVault<TVaultModel>(this);
     }
 
-    private PgVault(ISqlDatabaseProvider databaseProvider, IKeyspace schema, Document document, IServiceProvider serviceProvider, QueryState state)
+    protected PgVault(
+        ISqlDatabaseProvider databaseProvider,
+        IKeyspace schema,
+        Document document,
+        IServiceProvider services,
+        QueryState state)
     {
         _databaseProvider = databaseProvider;
+        _serviceProvider = services;
         VaultDocument = document;
         Keyspace = schema;
-        _serviceProvider = serviceProvider;
+        Services = services;
         _state = state;
         _history = new PgHistoricalVault<TVaultModel>(this);
     }
+
+    protected virtual PgVault<TVaultModel> Create(QueryState state)
+        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, Services, state);
 
     // ------------------------ Fluent query ops (return NEW instance) ------------------------
 
@@ -216,14 +229,14 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     // ------------------------ Terminal ops (use current state) ------------------------
 
-    public async Task<List<TVaultModel>> ToListAsync()
+    public virtual async Task<List<TVaultModel>> ToListAsync()
     {
         var st = _state.EnsureProjectionSelected(VaultDocument);
         string query = BuildSelectQuery(st);
         return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!)).ToList();
     }
 
-    public async Task<TVaultModel?> FirstOrDefaultAsync()
+    public virtual async Task<TVaultModel?> FirstOrDefaultAsync()
     {
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
@@ -232,7 +245,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return result.FirstOrDefault();
     }
 
-    public async Task<TVaultModel?> FirstAsync()
+    public virtual async Task<TVaultModel?> FirstAsync()
     {
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
@@ -241,13 +254,13 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return result.First();
     }
 
-    public async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
+    public virtual async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
     {
         var next = (PgVault<TVaultModel>)Where(predicate);
         return await next.ToListAsync();
     }
 
-    public async Task<long> CountAsync()
+    public virtual async Task<long> CountAsync()
     {
         var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
         var from = QualifiedTableName();
@@ -258,7 +271,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return await _databaseProvider.ExecuteCountAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
     }
 
-    public async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    public virtual async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
         var updatedProperties = ExtractSetProperties(setPropertyCalls);
         // quote column identifiers here
@@ -276,7 +289,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return await _databaseProvider.ExecuteAsync(sql, concatenated!);
     }
 
-    public async Task<bool> DeleteAsync()
+    public virtual async Task<bool> DeleteAsync()
     {
         var from = QualifiedTableName();
         var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
@@ -288,10 +301,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return affected > 0;
     }
 
-    public Task<ICursor<TVaultModel>> ToCursorAsync()
+    public virtual Task<ICursor<TVaultModel>> ToCursorAsync()
         => throw new NotImplementedException();
 
-    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(
+    public virtual async Task<IEnumerable<TResult>> SelectAsync<TResult>(
         Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
     {
         if (_state.Parts[QueryPosition.SELECT].Contains("*"))
@@ -305,7 +318,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return await _databaseProvider.QueryAsync<TResult>(query, st.Parameters[QueryPosition.SELECT]!);
     }
 
-    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    public virtual async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
     {
         var next = (PgVault<TVaultModel>)Where(predicate);
         var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
@@ -319,12 +332,12 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     // ------------------------ Non-query ops (unchanged behavior) ------------------------
 
-    public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
+    public virtual async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
         await SaveEntityAsync(entity, saveHistory);
     }
 
-    public Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
+    public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
         SaveEntitiesAsync(entities, saveHistory);
 
     private PgVault<TVaultModel> New(QueryState st)
@@ -389,7 +402,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     }
 
     // *** made internal so PgHistoricalVault can reuse them ***
-    internal string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
+    public virtual string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
     {
         var modelParam = predicate.Parameters[0];
         var sql = ToWhere(predicate.Body, modelParam);

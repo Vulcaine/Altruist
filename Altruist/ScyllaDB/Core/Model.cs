@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Altruist.Contracts;
+// using Altruist.Contracts;
 using Altruist.Persistence;
 
 namespace Altruist.ScyllaDB;
@@ -34,15 +34,15 @@ public class ScyllaReplicationOptions : ReplicationOptions
 
 
 
-public abstract class ScyllaKeyspace : IScyllaKeyspace
-{
-    public string Name { get; set; } = "altruist";
-    public ScyllaReplicationOptions? Options { get; set; } = new ScyllaReplicationOptions();
+// public abstract class ScyllaKeyspace : IScyllaKeyspace
+// {
+//     public string Name { get; set; } = "altruist";
+//     public ScyllaReplicationOptions? Options { get; set; } = new ScyllaReplicationOptions();
 
-    public IDatabaseServiceToken DatabaseToken => ScyllaDBToken.Instance;
-}
+//     public IDatabaseServiceToken DatabaseToken => ScyllaDBToken.Instance;
+// }
 
-[Keyspace("altruist")]
-public class DefaultScyllaKeyspace : ScyllaKeyspace
-{
-}
+// [Keyspace("altruist")]
+// public class DefaultScyllaKeyspace : ScyllaKeyspace
+// {
+// }

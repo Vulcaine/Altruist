@@ -17,16 +17,13 @@ namespace Altruist.Gaming.TwoD
         private readonly IWorldPartitioner2D _partitioner;
         private readonly ICacheProvider _cache;
 
-        private readonly IPrefabManager2D _prefabManager;
-
         private readonly IPhysxWorldEngineFactory2D _physxWorldEngineFactory;
 
-        public GameWorldOrganizer2D(IWorldPartitioner2D partitioner, ICacheProvider cache, IPrefabManager2D prefabManager,
+        public GameWorldOrganizer2D(IWorldPartitioner2D partitioner, ICacheProvider cache,
         IPhysxWorldEngineFactory2D physxWorldEngineFactory, IEnumerable<IWorldIndex2D> gameWorlds)
         {
             _partitioner = partitioner;
             _cache = cache;
-            _prefabManager = prefabManager;
             _physxWorldEngineFactory = physxWorldEngineFactory;
             _worlds = gameWorlds
                 .Select(index2d =>
