@@ -119,17 +119,11 @@ public class Document
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            // 1) never persist prefab component properties
             if (prop.GetCustomAttribute<PrefabComponentAttribute>() is not null)
                 continue;
 
-            // 2) respect [VaultIgnore]: not part of the schema at all
             if (prop.GetCustomAttribute<VaultIgnoreAttribute>() is not null)
                 continue;
-
-            // (optional) if you ALSO want JsonIgnore to imply "not in DB", add:
-            // if (prop.GetCustomAttribute<System.Text.Json.Serialization.JsonIgnoreAttribute>() is not null)
-            //     continue;
 
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
             var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>();

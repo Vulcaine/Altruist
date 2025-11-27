@@ -156,14 +156,14 @@ internal sealed class PrefabExpressionVisitor
         if (TryResolveComponentAccess(b.Left, out var compKey))
         {
             var val = ExpressionUtils.Evaluate(b.Right);
-            return $"(component_refs->>'{compKey}') {Op(b.NodeType)} {ToSqlLiteral(val)}";
+            return $"(component-refs->>'{compKey}') {Op(b.NodeType)} {ToSqlLiteral(val)}";
         }
 
         if (TryResolveComponentAccess(b.Right, out var compKey2))
         {
             var val = ExpressionUtils.Evaluate(b.Left);
             // flip operator when swapping sides if you ever support >/< etc.
-            return $"(component_refs->>'{compKey2}') {Op(Flip(b.NodeType))} {ToSqlLiteral(val)}";
+            return $"(component-refs->>'{compKey2}') {Op(Flip(b.NodeType))} {ToSqlLiteral(val)}";
         }
 
         throw new NotSupportedException(

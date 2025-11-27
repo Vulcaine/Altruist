@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@ namespace Altruist.Security;
 [Vault("security")]
 public class AuthTokenSessionModel : VaultModel, IIdGenerator
 {
+    [VaultColumn("principal-id")]
     public string PrincipalId { get; set; } = string.Empty;
 
     /// <summary>
@@ -31,12 +32,21 @@ public class AuthTokenSessionModel : VaultModel, IIdGenerator
     /// </summary>
     public string? Fingerprint { get; set; }
 
+    [VaultColumn("access-token")]
     public string AccessToken { get; set; } = string.Empty;
+
+    [VaultColumn("refresh-token")]
     public string RefreshToken { get; set; } = string.Empty;
+
+    [VaultColumn("access-expiration")]
     public DateTime AccessExpiration { get; set; }
+
+    [VaultColumn("refresh-expiration")]
     public DateTime RefreshExpiration { get; set; }
     public string Ip { get; set; } = string.Empty;
     public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [VaultColumn("cache-invalidation-interval")]
     public TimeSpan CacheValidationInterval { get; set; } = TimeSpan.FromSeconds(10);
 
     public AuthTokenSessionModel()

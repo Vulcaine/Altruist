@@ -7,7 +7,7 @@ namespace Altruist.Persistence;
 
 public abstract class PrefabModel : VaultModel, IPrefabModel
 {
-    [VaultColumn("component_refs")]
+    [VaultColumn("component-refs")]
     public Dictionary<string, string?> ComponentRefs { get; set; }
         = new(StringComparer.Ordinal);
 }

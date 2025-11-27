@@ -83,7 +83,7 @@ public interface IVaultOnSave
 [VaultPrimaryKey(nameof(StorageId))]
 public abstract class VaultModel : StoredModel, IVaultModel
 {
-    [VaultColumn("createdAt")]
+    [VaultColumn("created-at")]
     public virtual DateTime Timestamp { get; set; } = default!;
 
     [VaultColumn("id")]
