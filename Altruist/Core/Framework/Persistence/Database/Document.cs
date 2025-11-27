@@ -93,7 +93,20 @@ public class Document
             throw new InvalidOperationException($"The type {type.FullName} must implement IModel.");
 
         var vaultAttribute = type.GetCustomAttribute<VaultAttribute>();
-        var name = vaultAttribute?.Name ?? type.Name;
+        var prefabAttribute = type.GetCustomAttribute<PrefabAttribute>();
+
+        if (vaultAttribute is null && prefabAttribute is null)
+            throw new InvalidOperationException(
+                $"The type {type.FullName} must have either [Vault] or [Prefab].");
+
+        var baseName =
+        vaultAttribute?.Name ??
+        prefabAttribute?.Name ??
+        type.Name;
+
+        var tableName = vaultAttribute is not null
+            ? $"{baseName}_vault"
+            : $"{baseName}_prefab";
 
         var fields = new List<string>();
         var columns = new Dictionary<string, string>();
@@ -106,6 +119,9 @@ public class Document
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
+            if (prop.GetCustomAttribute<PrefabComponentAttribute>() is not null)
+                continue;
+
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
             var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>();
             var physical = columnAttr?.Name ?? prop.Name.ToLowerInvariant();
@@ -141,9 +157,9 @@ public class Document
         }
 
         return new Document(
-            vaultAttribute!,
+            vaultAttribute ?? new VaultAttribute(tableName),
             type,
-            name,
+            tableName,
             fields,
             columns,
             indexes,
@@ -151,7 +167,7 @@ public class Document
             accessors,
             primaryKey,
             sortingBy,
-            vaultAttribute != null && vaultAttribute.StoreHistory,
+            vaultAttribute?.StoreHistory ?? false,
             loggerFactory,
             foreignKeys);
     }

@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
+using Altruist.UORM;
+
 namespace Altruist.Persistence;
 
 public abstract class PrefabModel : VaultModel, IPrefabModel
 {
-    // Stored as JSONB in Postgres
+    [VaultColumn("component_refs")]
     public Dictionary<string, string?> ComponentRefs { get; set; }
         = new(StringComparer.Ordinal);
 }
