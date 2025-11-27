@@ -53,7 +53,7 @@ public class UsernamePasswordAccountModel : AccountModel
     [VaultColumn("username")]
     public required string Username { get; set; }
 
-    [VaultColumn("passwordHash")]
+    [VaultColumn("password-hash")]
     public required string PasswordHash { get; set; }
 
     [VaultColumn("type")]
@@ -65,7 +65,7 @@ public class EmailPasswordAccountModel : AccountModel
     [VaultColumn("email")]
     public required string Email { get; set; }
 
-    [VaultColumn("passwordHash")]
+    [VaultColumn("password-hash")]
     public required string PasswordHash { get; set; }
 
     [VaultColumn("type")]
@@ -82,7 +82,7 @@ public class HybridAccountModel : AccountModel
     [VaultColumn("email")]
     public required string Email { get; set; }
 
-    [VaultColumn("passwordHash")]
+    [VaultColumn("password-hash")]
     public required string PasswordHash { get; set; }
 
     [VaultColumn("type")]

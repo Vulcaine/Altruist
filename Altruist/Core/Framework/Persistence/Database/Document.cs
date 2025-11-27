@@ -16,6 +16,7 @@ limitations under the License.
 
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text;
 
 using Altruist.UORM;
 
@@ -102,7 +103,7 @@ public class Document
         var baseName =
             vaultAttribute?.Name ??
             prefabAttribute?.Name ??
-            type.Name;
+            ToSnakeCase(type.Name);
 
         var tableName = prefabAttribute is not null
             ? $"{baseName}_prefab"
@@ -128,7 +129,7 @@ public class Document
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
             var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>();
 
-            var physical = columnAttr?.Name ?? prop.Name.ToLowerInvariant();
+            var physical = columnAttr?.Name ?? ToSnakeCase(prop.Name);
             var fieldName = prop.Name;
 
             // basic mapping
@@ -176,6 +177,38 @@ public class Document
             vaultAttribute?.StoreHistory ?? false,
             loggerFactory,
             foreignKeys);
+    }
+
+    private static string ToSnakeCase(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        var sb = new StringBuilder(value.Length + 4);
+        var prevLower = false;
+
+        for (int i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+
+            if (char.IsUpper(c))
+            {
+                if (i > 0 && (prevLower || (i + 1 < value.Length && char.IsLower(value[i + 1]))))
+                {
+                    sb.Append('_');
+                }
+
+                sb.Append(char.ToLowerInvariant(c));
+                prevLower = false;
+            }
+            else
+            {
+                sb.Append(c);
+                prevLower = char.IsLetter(c) && char.IsLower(c);
+            }
+        }
+
+        return sb.ToString();
     }
 
     private static Func<object, object?> CompileAccessor(PropertyInfo property)
