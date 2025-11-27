@@ -60,6 +60,7 @@ namespace Altruist.Gaming.ThreeD
     public interface IWorldObject3D : IWorldObject
     {
         /// <summary>Transform in world space.</summary>
+        [VaultColumn("transform")]
         Transform3D Transform { get; set; }
 
         /// <summary>
@@ -85,18 +86,23 @@ namespace Altruist.Gaming.ThreeD
         /// By default resolves the archetype from [WorldObject] on the concrete type.
         /// Override if you need something custom.
         /// </summary>
+        [VaultColumn("archetype")]
         public virtual string? Archetype
         {
             get;
             set;
         }
 
+        [VaultIgnore]
         public Transform3D Transform { get; set; }
+
+        [VaultIgnore]
         public string ZoneId { get; set; } = string.Empty;
 
         /// <summary>
         /// Engine-agnostic body descriptor associated with this world object, if any.
         /// </summary>
+        [VaultIgnore]
         public PhysxBody3DDesc? BodyDescriptor { get; set; }
 
         protected WorldObject3D(Transform3D transform, string zoneId = "", string? archetype = null)
