@@ -6,6 +6,7 @@ Licensed under the Apache License, Version 2.0
 namespace Altruist.Persistence;
 
 using System;
+
 using Altruist.UORM;
 
 /// <summary>
@@ -13,7 +14,7 @@ using Altruist.UORM;
 /// Registers prefabs in the same pipeline as vault models: same keyspace, same table bootstrap.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-public sealed class PrefabAttribute : VaultAttribute
+public class PrefabAttribute : VaultAttribute
 {
     /// <summary>
     /// Logical prefab id (kept for ergonomics). Mirrors <see cref="VaultAttribute.Name"/>.
@@ -38,4 +39,4 @@ public sealed class PrefabAttribute : VaultAttribute
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public sealed class PrefabComponentAttribute : Attribute { }
+public class PrefabComponentAttribute : Attribute { }
