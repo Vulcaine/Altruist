@@ -1,12 +1,3 @@
-/*
-Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-*/
 
 namespace Altruist.Gaming;
 
@@ -107,20 +98,13 @@ public abstract class AltruistGameSessionPortal : Portal
     // For handshake / join (ResultPacket → client)
     protected virtual async Task PublishResultAsync(string clientId, IResultPacket result)
     {
-        if (result is IResultPacketWithPayload payloadPacket)
-        {
-            var packet = payloadPacket.Payload;
-            var receiver = packet.Header.Receiver;
+        if (result is not IResultPacketWithPayload payloadPacket)
+            return;
 
-            if (string.IsNullOrEmpty(receiver))
-            {
-                receiver = clientId;
-                packet.Header.SetReceiver(receiver);
-            }
+        if (payloadPacket.Payload is null)
+            return;
 
-            await _router.Client.SendAsync(receiver, packet);
-        }
-
+        await _router.Client.SendAsync(clientId, payloadPacket.Payload);
     }
 
     // For exit game (RoomBroadcast → room)

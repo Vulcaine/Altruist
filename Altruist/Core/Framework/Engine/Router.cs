@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,8 +47,8 @@ public class EngineClientSender : ClientSender
 
     public override Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
     {
-        // Efficient string allocation using string.Create (avoids clientId + message.Type allocation)
-        var id = string.Create(clientId.Length + 1 + message.Type.Length, (clientId, message.Type), (span, state) =>
+        var type = message.GetType().Name;
+        var id = string.Create(clientId.Length + 1 + type.Length, (clientId, type), (span, state) =>
         {
             state.clientId.AsSpan().CopyTo(span);
             span[state.clientId.Length] = ':';

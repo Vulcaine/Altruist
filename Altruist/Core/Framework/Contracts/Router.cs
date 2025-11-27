@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -100,8 +100,9 @@ public class ClientSender : IAltruistRouterSender
 
     public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
     {
-        message.Stamp("server", clientId, DateTime.UtcNow);
-        var encodedMessage = _codec.Encoder.Encode(message);
+        var envelope = new MessageEnvelope(message, clientId);
+        envelope.Stamp("server", clientId, DateTime.UtcNow);
+        var encodedMessage = _codec.Encoder.Encode(envelope);
         await SendAsync(clientId, encodedMessage);
     }
 }
@@ -156,7 +157,6 @@ public class BroadcastSender
             if (clientId == excludeClientId)
                 continue;
 
-            message.Header.SetReceiver(clientId);
             if (socket != null && socket.IsConnected)
             {
                 await _client.SendAsync(clientId, message);

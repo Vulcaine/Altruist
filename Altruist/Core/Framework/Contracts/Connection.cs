@@ -52,9 +52,6 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
     public override string StorageId { get; set; } = Guid.NewGuid().ToString();
 
-    [JsonIgnore]
-    string ITypedModel.Type { get => Type; set { /* Allow deserialization but ignore */ } }
-
     public virtual Task CloseOutputAsync()
     {
         throw new NotImplementedException();

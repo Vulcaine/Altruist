@@ -38,7 +38,7 @@ public interface IIdGenerator
 
 public interface ITypedModel
 {
-    public string Type { get; set; }
+
 }
 
 public interface IStoredModel : ITypedModel
