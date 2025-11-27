@@ -14,8 +14,10 @@ namespace Altruist.Gaming.ThreeD
         IPhysxWorld3D PhysxWorld { get; }
 
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
-        Task SpawnDynamicObject(IWorldObject3D obj);
-        Task SpawnStaticObject(IWorldObject3D obj);
+
+        IWorldObject3D? FindObject(string id);
+        Task SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
+        Task SpawnStaticObject(IWorldObject3D obj, string? withId = null);
         IWorldObject3D? DestroyObject(string instanceId);
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
 
@@ -40,6 +42,8 @@ namespace Altruist.Gaming.ThreeD
 
         private readonly IPhysxBodyApiProvider3D _bodyApi;
         private readonly IPhysxColliderApiProvider3D _colliderApi;
+
+        private readonly Dictionary<string, IWorldObject3D> _flatInstanceCache = new();
 
         public GameWorldManager3D(
             IWorldIndex3D world,
@@ -90,20 +94,22 @@ namespace Altruist.Gaming.ThreeD
             return await Task.FromResult(partitions.ToList());
         }
 
-        public async Task SpawnDynamicObject(IWorldObject3D obj)
+        public async Task SpawnDynamicObject(IWorldObject3D obj, string? withId = null)
         {
             await SpawnObjectInternal(
                 obj,
                 bodyType: PhysxBodyType.Dynamic,
-                isStatic: false);
+                isStatic: false,
+                withId: withId);
         }
 
-        public async Task SpawnStaticObject(IWorldObject3D obj)
+        public async Task SpawnStaticObject(IWorldObject3D obj, string? withId = null)
         {
             await SpawnObjectInternal(
                 obj,
                 bodyType: PhysxBodyType.Static,
-                isStatic: true);
+                isStatic: true,
+                withId: withId);
         }
 
         /// <summary>
@@ -112,7 +118,7 @@ namespace Altruist.Gaming.ThreeD
         private async Task SpawnObjectInternal(
             IWorldObject3D obj,
             PhysxBodyType bodyType,
-            bool isStatic)
+            bool isStatic, string? withId = null)
         {
             if (obj is null)
                 return;
@@ -163,6 +169,15 @@ namespace Altruist.Gaming.ThreeD
 
             foreach (var p in partitions)
                 p.AddObject(obj);
+
+            if (withId != null)
+            {
+                _flatInstanceCache[withId] = obj;
+            }
+            else
+            {
+                _flatInstanceCache[obj.InstanceId] = obj;
+            }
 
             PhysxWorld.AddBody(body);
             await Task.CompletedTask;
@@ -223,6 +238,7 @@ namespace Altruist.Gaming.ThreeD
         {
             foreach (var partition in partitions)
                 partition.AddObject(obj);
+
             return partitions;
         }
 
@@ -239,5 +255,7 @@ namespace Altruist.Gaming.ThreeD
                 r = 0.5f; // minimal sensible radius
             return r;
         }
+
+        public IWorldObject3D? FindObject(string id) => _flatInstanceCache[id];
     }
 }
