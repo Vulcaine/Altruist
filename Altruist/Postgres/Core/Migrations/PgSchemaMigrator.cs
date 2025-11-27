@@ -40,7 +40,7 @@ public sealed class PostgresVaultSchemaMigrator : IVaultSchemaMigrator
         var current = await _inspector.GetCurrentModelAsync(schema, ct).ConfigureAwait(false);
 
         // 2) desired model from vault models
-        var desiredDocs = modelTypes.Select(e => Document.From(e, _logger)).ToArray();
+        var desiredDocs = modelTypes.Select(e => Document.From(e)).ToArray();
 
         // 3) diff -> operations
         var operations = _planner.Plan(current, desiredDocs, schema.Name);
