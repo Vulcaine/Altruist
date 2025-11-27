@@ -33,9 +33,14 @@ namespace Altruist.Gaming.ThreeD
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
 
-            foreach (var index in gameWorlds)
+            InitializeWorlds(gameWorlds).GetAwaiter();
+        }
+
+        private async Task InitializeWorlds(IEnumerable<IWorldIndex3D> worlds)
+        {
+            foreach (var index in worlds)
             {
-                var manager = _worldLoader.LoadFromIndex(index);
+                var manager = await _worldLoader.LoadFromIndex(index);
                 AddWorld(manager);
             }
         }

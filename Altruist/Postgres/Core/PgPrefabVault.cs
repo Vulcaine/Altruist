@@ -19,7 +19,6 @@ public sealed class PgPrefabVault<TPrefab> : PgVault<TPrefab>, IPrefabVault<TPre
     {
     }
 
-
     public TPrefab Construct()
     {
         var prefab = new TPrefab();

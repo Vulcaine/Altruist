@@ -8,7 +8,6 @@ using System.Reflection;
 using System.Text.Json;
 
 using Altruist.Numerics;
-using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
 
@@ -25,13 +24,13 @@ namespace Altruist.Gaming.ThreeD
         ///  - create & initialize a GameWorldManager3D
         ///  - add all spawned world objects as static objects to the manager
         /// </summary>
-        IGameWorldManager3D LoadFromJson(IWorldIndex3D index, string json);
+        Task<IGameWorldManager3D> LoadFromJson(IWorldIndex3D index, string json);
 
         /// <summary>
         /// Load a game world manager from the JSON file path defined in the WorldIndex3D descriptor.
         /// Same behavior as LoadFromJson, but reads the JSON from disk.
         /// </summary>
-        IGameWorldManager3D LoadFromIndex(IWorldIndex3D index);
+        Task<IGameWorldManager3D> LoadFromIndex(IWorldIndex3D index);
 
         /// <summary>
         /// Optional: world entities instantiated during load (only those with matching archetypes).
@@ -83,7 +82,7 @@ namespace Altruist.Gaming.ThreeD
         // JSON entrypoints -> GameWorldManager3D
         // --------------------------------------------------------------------
 
-        public IGameWorldManager3D LoadFromJson(IWorldIndex3D index, string json)
+        public async Task<IGameWorldManager3D> LoadFromJson(IWorldIndex3D index, string json)
         {
             if (index is null)
                 throw new ArgumentNullException(nameof(index));
@@ -102,10 +101,10 @@ namespace Altruist.Gaming.ThreeD
             index.Size = new IntVector3(
                 (int)worldSchema.Transform.Size.X, (int)worldSchema.Transform.Size.Y, (int)worldSchema.Transform.Size.Z);
             index.Position = worldSchema.Transform.Position.ToNumerics();
-            return BuildGameWorld(index, worldSchema);
+            return await BuildGameWorld(index, worldSchema);
         }
 
-        public IGameWorldManager3D LoadFromIndex(IWorldIndex3D index)
+        public async Task<IGameWorldManager3D> LoadFromIndex(IWorldIndex3D index)
         {
             if (index is null)
                 throw new ArgumentNullException(nameof(index));
@@ -117,7 +116,7 @@ namespace Altruist.Gaming.ThreeD
                 var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
                 var physxWorld = new PhysxWorld3D(engine);
 
-                var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner);
+                var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _bodyApi, _colliderApi);
                 return manager;
             }
 
@@ -125,47 +124,43 @@ namespace Altruist.Gaming.ThreeD
                 throw new FileNotFoundException("World JSON file not found.", index.DataPath);
 
             var json = File.ReadAllText(index.DataPath);
-            return LoadFromJson(index, json);
+            return await LoadFromJson(index, json);
         }
 
         // --------------------------------------------------------------------
         // Core: build physics world + manager + populate static objects
         // --------------------------------------------------------------------
 
-        private IGameWorldManager3D BuildGameWorld(IWorldIndex3D index, WorldSchema worldSchema)
+        private async Task<IGameWorldManager3D> BuildGameWorld(IWorldIndex3D index, WorldSchema worldSchema)
         {
             if (worldSchema is null)
                 throw new ArgumentNullException(nameof(worldSchema));
 
             _spawnedWorldObjects.Clear();
 
-            // 1) Create engine and wrap in PhysxWorld3D
+            // 1) Create engine + PhysX world
             var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
             var physxWorld = new PhysxWorld3D(engine);
 
-            // 2) Root "world" transform from exported landscape
+            // 2) Create the game world manager (this will own the PhysX world & partitioning)
+            var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _bodyApi, _colliderApi);
+
+            // 3) Root "world" transform from exported landscape
             var position = worldSchema.Transform.Position.ToNumerics();
             var rotation = EulerToQuaternion(worldSchema.Transform.RotationEuler.ToNumerics());
             var scale = worldSchema.Transform.Scale.ToNumerics();
-            var worldRoot = new AccumulatedTransform(
-                position,
-               rotation,
-                scale
-            );
+            var worldRoot = new AccumulatedTransform(position, rotation, scale);
 
-            // 3) Recursively build bodies from all root objects
+            // 4) Walk the exported scene & collect logical world objects
             foreach (var rootObj in worldSchema.Objects)
             {
-                BuildBodiesRecursive(engine, rootObj, worldRoot, physxWorld);
+                BuildBodiesRecursive(rootObj, worldRoot);
             }
 
-            // 4) Create and initialize the GameWorldManager3D
-            var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner);
-
-            // 5) Add all spawned world objects as static objects into the manager
+            // 5) Let the manager spawn them as static objects (manager will create bodies/colliders)
             foreach (var obj in _spawnedWorldObjects)
             {
-                manager.AddStaticObject(obj);
+                await manager.SpawnStaticObject(obj);
             }
 
             return manager;
@@ -190,10 +185,8 @@ namespace Altruist.Gaming.ThreeD
         }
 
         private void BuildBodiesRecursive(
-        IPhysxWorldEngine3D engine,
-        WorldObjectSchema node,
-        AccumulatedTransform parent,
-        IPhysxWorld3D world)
+    WorldObjectSchema node,
+    AccumulatedTransform parent)
         {
             // Compose parent + local -> world
             var localRot = EulerToQuaternion(node.RotationEuler.ToNumerics());
@@ -221,43 +214,17 @@ namespace Altruist.Gaming.ThreeD
 
             var worldTransform = new AccumulatedTransform(worldPos, worldRot, worldScale);
 
-            // Build the *world object* transform (position + rotation + scale + size) from the node.
+            // Build the *world object* transform (position + rotation + size + scale) from the node.
             var worldObjectTransform = BuildWorldObjectTransform(worldTransform, node);
 
-            // Create static bodies for all colliders on this node
-            if (node.Colliders is { Count: > 0 })
+            // If this node has at least one supported collider, materialize it as a world object.
+            var hasSupportedCollider =
+                node.Colliders is { Count: > 0 } &&
+                node.Colliders.Any(c => TryMapShape(c.Shape, out _));
+
+            if (hasSupportedCollider && TryCreateWorldObject(node, worldObjectTransform, out var obj))
             {
-                foreach (var colliderSchema in node.Colliders)
-                {
-                    if (!TryMapShape(colliderSchema.Shape, out var shape))
-                        continue; // unknown or unsupported
-
-                    // Collider-specific transform
-                    var colliderTransform = BuildColliderTransform(worldTransform, colliderSchema);
-
-                    // Build engine-agnostic collider descriptor
-                    var colliderDesc = PhysxCollider3D.Create(shape, colliderTransform, isTrigger: false);
-                    // Create collider via collider API provider
-                    var collider = _colliderApi.CreateCollider(colliderDesc);
-
-                    // Build engine-agnostic body descriptor (static, mass 0) using collider transform
-                    var bodyDesc = PhysxBody3D.Create(
-                        PhysxBodyType.Static,
-                        mass: 0f,
-                        transform: colliderTransform
-                    );
-
-                    var body = _bodyApi.CreateBody(engine, bodyDesc);
-
-                    _bodyApi.AddCollider(engine, body, collider);
-                    world.AddBody(body);
-
-                    // Create a world object (archetyped or anonymous) using the *world object* transform
-                    if (TryCreateWorldObject(node, worldObjectTransform, bodyDesc, out var obj))
-                    {
-                        _spawnedWorldObjects.Add(obj);
-                    }
-                }
+                _spawnedWorldObjects.Add(obj);
             }
 
             // Recurse into children
@@ -265,7 +232,7 @@ namespace Altruist.Gaming.ThreeD
             {
                 foreach (var child in node.Children)
                 {
-                    BuildBodiesRecursive(engine, child, worldTransform, world);
+                    BuildBodiesRecursive(child, worldTransform);
                 }
             }
         }
@@ -304,7 +271,6 @@ namespace Altruist.Gaming.ThreeD
         private bool TryCreateWorldObject(
     WorldObjectSchema node,
     Transform3D transform,
-    PhysxBody3DDesc bodyDesc,
     out IWorldObject3D obj)
         {
             // No archetype → anonymous world object with the correct world transform
@@ -312,7 +278,8 @@ namespace Altruist.Gaming.ThreeD
             {
                 obj = new AnonymousWorldObject3D(transform)
                 {
-                    BodyDescriptor = bodyDesc
+                    // BodyDescriptor is left null; GameWorldManager3D will create it on spawn.
+                    BodyDescriptor = null
                 };
                 return true;
             }
@@ -346,7 +313,8 @@ namespace Altruist.Gaming.ThreeD
                 wo.ZoneId = string.Empty;
             }
 
-            worldObj.BodyDescriptor = bodyDesc;
+            // Let GameWorldManager3D create the body descriptor if needed.
+            worldObj.BodyDescriptor = worldObj.BodyDescriptor;
 
             obj = worldObj;
             return true;

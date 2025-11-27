@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD
@@ -13,8 +14,8 @@ namespace Altruist.Gaming.ThreeD
         IPhysxWorld3D PhysxWorld { get; }
 
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
-        Task AddDynamicObject(IWorldObject3D obj);
-        WorldPartitionManager3D? AddStaticObject(IWorldObject3D obj);
+        Task SpawnDynamicObject(IWorldObject3D obj);
+        Task SpawnStaticObject(IWorldObject3D obj);
         IWorldObject3D? DestroyObject(string instanceId);
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
 
@@ -37,16 +38,23 @@ namespace Altruist.Gaming.ThreeD
         private readonly List<WorldPartitionManager3D> _partitions;
         private readonly IPhysxWorld3D _physx3D;
 
+        private readonly IPhysxBodyApiProvider3D _bodyApi;
+        private readonly IPhysxColliderApiProvider3D _colliderApi;
+
         public GameWorldManager3D(
             IWorldIndex3D world,
             IPhysxWorld3D physx3D,
-            IWorldPartitioner3D worldPartitioner
+            IWorldPartitioner3D worldPartitioner,
+            IPhysxBodyApiProvider3D bodyApi,
+            IPhysxColliderApiProvider3D colliderApi
         )
         {
             _index = world;
-            _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));
+            _bodyApi = bodyApi;
+            _colliderApi = colliderApi;
+            _worldPartitioner = worldPartitioner;
 
-            _physx3D = physx3D ?? throw new ArgumentNullException(nameof(physx3D));
+            _physx3D = physx3D;
             _partitions = new List<WorldPartitionManager3D>();
             Initialize();
         }
@@ -82,34 +90,82 @@ namespace Altruist.Gaming.ThreeD
             return await Task.FromResult(partitions.ToList());
         }
 
-        public async Task AddDynamicObject(IWorldObject3D obj)
+        public async Task SpawnDynamicObject(IWorldObject3D obj)
+        {
+            await SpawnObjectInternal(
+                obj,
+                bodyType: PhysxBodyType.Dynamic,
+                isStatic: false);
+        }
+
+        public async Task SpawnStaticObject(IWorldObject3D obj)
+        {
+            await SpawnObjectInternal(
+                obj,
+                bodyType: PhysxBodyType.Static,
+                isStatic: true);
+        }
+
+        /// <summary>
+        /// Core spawn logic shared by dynamic & static world objects.
+        /// </summary>
+        private async Task SpawnObjectInternal(
+            IWorldObject3D obj,
+            PhysxBodyType bodyType,
+            bool isStatic)
         {
             if (obj is null)
                 return;
 
-            var radius = ComputePartitionRadius(obj);
-            var partitions = FindPartitionsForPosition(
-                obj.Transform.Position.X,
-                obj.Transform.Position.Y,
-                obj.Transform.Position.Z,
-                radius);
+            obj.Archetype = WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
 
-            AddObjectToPartitions(obj, partitions);
+            var engine3D = PhysxWorld.Engine;
+            var mass = isStatic ? 0f : 1f;
+
+            var bodyDesc = obj.BodyDescriptor ?? PhysxBody3D.Create(
+                bodyType,
+                mass: mass,
+                transform: obj.Transform);
+
+            var colliderDesc = PhysxCollider3D.Create(
+                PhysxColliderShape3D.Box3D,
+                bodyDesc.Transform,
+                isTrigger: false);
+
+            var body = _bodyApi.CreateBody(engine3D, bodyDesc);
+            var collider = _colliderApi.CreateCollider(colliderDesc);
+
+            _bodyApi.AddCollider(engine3D, body, collider);
+            obj.BodyDescriptor = bodyDesc;
+
+            IEnumerable<WorldPartitionManager3D> partitions;
+
+            if (isStatic)
+            {
+                var p = FindPartitionForPosition(
+                    obj.Transform.Position.X,
+                    obj.Transform.Position.Y,
+                    obj.Transform.Position.Z);
+
+                partitions = p is null
+                    ? Enumerable.Empty<WorldPartitionManager3D>()
+                    : [p];
+            }
+            else
+            {
+                var radius = ComputePartitionRadius(obj);
+                partitions = FindPartitionsForPosition(
+                    obj.Transform.Position.X,
+                    obj.Transform.Position.Y,
+                    obj.Transform.Position.Z,
+                    radius);
+            }
+
+            foreach (var p in partitions)
+                p.AddObject(obj);
+
+            PhysxWorld.AddBody(body);
             await Task.CompletedTask;
-        }
-
-        public WorldPartitionManager3D? AddStaticObject(IWorldObject3D obj)
-        {
-            if (obj is null)
-                return null;
-
-            var partition = FindPartitionForPosition(
-                obj.Transform.Position.X,
-                obj.Transform.Position.Y,
-                obj.Transform.Position.Z);
-
-            partition?.AddObject(obj);
-            return partition;
         }
 
         public IWorldObject3D? DestroyObject(string instanceId)
