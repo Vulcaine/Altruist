@@ -18,7 +18,6 @@ namespace Altruist.Gaming
     public sealed class WorldIndex3D : VaultModel, IWorldIndex3D
     {
         public override string StorageId { get; set; }
-        public override string GroupId { get; set; }
         public string? DataPath { get; set; }
         public Vector3 Position { get; set; }
         public IntVector3 Size { get; set; }
@@ -43,11 +42,9 @@ namespace Altruist.Gaming
             [AppConfigValue("*:position")]
              Vector3? position = null,
             [AppConfigValue("*:data-path")]
-            string? data = null,
-            string? groupId = null)
+            string? data = null)
         {
             StorageId = Guid.NewGuid().ToString();
-            GroupId = groupId ?? string.Empty;
             Index = index;
             Size = size;
             FixedDeltaTime = fixedDeltaTime;

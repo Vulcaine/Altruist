@@ -24,18 +24,20 @@ namespace Altruist.Gaming.ThreeD
         // Prefab3D has:
         //   public virtual string InstanceId { get; set; }
         //   public virtual string RoomId { get; set; }
-
+        [VaultIgnore]
         public string InstanceId { get; set; } = Guid.NewGuid().ToString();
 
         /// <summary>
         /// Archetype is resolved from [WorldObject] attribute by default.
         /// Override only if you need something special.
         /// </summary>
+        [VaultColumn("archetype")]
         public string? Archetype { get; set; } = null;
 
         /// <summary>
         /// Transform in world space. Prefab3D already has this property.
         /// </summary>
+        [VaultColumn("transform")]
         public Transform3D Transform { get; set; }
 
         /// <summary>
@@ -65,6 +67,7 @@ namespace Altruist.Gaming.ThreeD
         /// Static world geometry might be static bodies; dynamic objects might swap bodies.
         /// The descriptor is engine/provider agnostic.
         /// </summary>
+        [VaultIgnore]
         PhysxBody3DDesc? BodyDescriptor { get; set; }
     }
 
