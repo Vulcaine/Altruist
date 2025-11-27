@@ -48,7 +48,7 @@ public sealed class PostgresServiceFactory : IServiceFactory
                          .FirstOrDefault(k => k.Name == schemaName)
                   ?? new DefaultSchema(schemaName);
 
-        var doc = Document.From(modelType, loggerFactory);
+        var doc = Document.From(modelType);
 
         var isPrefab = typeof(IPrefabModel).IsAssignableFrom(modelType);
 
