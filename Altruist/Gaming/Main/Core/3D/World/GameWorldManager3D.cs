@@ -184,7 +184,33 @@ namespace Altruist.Gaming.ThreeD
         }
 
         public IWorldObject3D? DestroyObject(string instanceId)
-            => _partitions.Select(p => p.DestroyObject(instanceId)).FirstOrDefault(m => m != null);
+        {
+            if (string.IsNullOrWhiteSpace(instanceId))
+                return null;
+
+            // First let all partitions try to destroy the object.
+            // Keep the first non-null result if they return it.
+            var removedFromPartitions = _partitions
+                .Select(p => p.DestroyObject(instanceId))
+                .FirstOrDefault(o => o != null);
+
+            if (_flatInstanceCache.TryGetValue(instanceId, out var cachedByKey))
+            {
+                _flatInstanceCache.Remove(instanceId);
+                return removedFromPartitions ?? cachedByKey;
+            }
+
+            var kvp = _flatInstanceCache
+                .FirstOrDefault(x => x.Value.InstanceId == instanceId);
+
+            if (!string.IsNullOrEmpty(kvp.Key))
+            {
+                _flatInstanceCache.Remove(kvp.Key);
+                return removedFromPartitions ?? kvp.Value;
+            }
+
+            return removedFromPartitions;
+        }
 
         public IWorldObject3D? DestroyObject(IWorldObject3D obj)
             => DestroyObject(obj.InstanceId);
