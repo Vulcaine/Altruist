@@ -104,9 +104,9 @@ public class Document
         prefabAttribute?.Name ??
         type.Name;
 
-        var tableName = vaultAttribute is not null
-            ? $"{baseName}"
-            : $"{baseName}_prefab";
+        var tableName = prefabAttribute is not null
+            ? $"{baseName}_prefab"
+            : $"{baseName}";
 
         var fields = new List<string>();
         var columns = new Dictionary<string, string>();
