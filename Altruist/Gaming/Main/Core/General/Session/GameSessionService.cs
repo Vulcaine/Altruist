@@ -20,6 +20,21 @@ public interface IGameSession
     string Id { get; }
 
     /// <summary>
+    /// When this session expires (UTC).
+    /// </summary>
+    DateTime ExpiresAtUtc { get; }
+
+    /// <summary>
+    /// Extend / change the expiry time of this session.
+    /// </summary>
+    void Renew(DateTime newExpiresAtUtc);
+
+    /// <summary>
+    /// Whether this session is expired at the time of the call.
+    /// </summary>
+    bool Expired();
+
+    /// <summary>
     /// Store a context object inside this session, bound to a context id and type.
     /// Only one instance per (context id, type) is kept (last write wins).
     /// </summary>
@@ -48,14 +63,18 @@ public interface IGameSessionService
     // -------------------------
 
     /// <summary>
-    /// Get or create a session for the given global session id (e.g. accountId).
-    ///   var session = _gameSessionService.SetSession(globalSessionId);
+    /// Create or get a session for the given global session id (e.g. accountId),
+    /// with a specific expiry time (UTC).
+    ///   var session = _gameSessionService.CreateSession(globalSessionId, expiresAtUtc);
     ///   await session.SetContext(innerId, value);
+    /// If a non-expired session already exists, its expiry is renewed to the given time.
+    /// If an expired session exists, it is cleared and replaced with a new one.
     /// </summary>
-    IGameSession SetSession(string sessionId);
+    IGameSession CreateSession(string sessionId, DateTime expiresAtUtc);
 
     /// <summary>
-    /// Get an existing session if it exists; returns null otherwise.
+    /// Get an existing session if it exists and is not expired; returns null otherwise.
+    /// If the session exists but is expired, it is cleaned up and removed.
     /// </summary>
     IGameSession? GetSession(string sessionId);
 
@@ -65,10 +84,21 @@ public interface IGameSessionService
     /// </summary>
     void ClearSession(string sessionId);
 
+    /// <summary>
+    /// Migrate all contexts from one session id to another.
+    /// Creates or renews the target session with the given expiry,
+    /// moves all contexts, and removes the source session.
+    /// </summary>
+    void MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc);
+
     // -------------------------
     // Core session lifecycle
     // -------------------------
 
+    /// <summary>
+    /// Remove expired sessions and cleanup socket state.
+    /// Does NOT remove non-expired sessions.
+    /// </summary>
     Task Cleanup();
 
     /// <summary>
@@ -98,11 +128,48 @@ internal sealed class GameSession : IGameSession
     private readonly Dictionary<string, List<object>> _contexts = new();
     private readonly object _lock = new();
 
+    private DateTime _expiresAtUtc;
+
     public string Id { get; }
 
-    public GameSession(string id)
+    public DateTime ExpiresAtUtc
     {
-        Id = id ?? throw new ArgumentNullException(nameof(id));
+        get
+        {
+            lock (_lock)
+            {
+                return _expiresAtUtc;
+            }
+        }
+    }
+
+    public GameSession(string id, DateTime expiresAtUtc)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Session id must be non-empty.", nameof(id));
+
+        Id = id;
+        _expiresAtUtc = expiresAtUtc;
+    }
+
+    public void Renew(DateTime newExpiresAtUtc)
+    {
+        var now = DateTime.UtcNow;
+        if (newExpiresAtUtc <= now)
+            throw new ArgumentException("New expiry must be in the future (UTC).", nameof(newExpiresAtUtc));
+
+        lock (_lock)
+        {
+            _expiresAtUtc = newExpiresAtUtc;
+        }
+    }
+
+    public bool Expired()
+    {
+        lock (_lock)
+        {
+            return DateTime.UtcNow >= _expiresAtUtc;
+        }
     }
 
     public Task SetContext<T>(string id, T value)
@@ -191,6 +258,56 @@ internal sealed class GameSession : IGameSession
             _contexts.Clear();
         }
     }
+
+    /// <summary>
+    /// Move all contexts from this session into the target session.
+    /// After this call, this session's contexts are cleared.
+    /// For any (innerId, type) that exists on target, the values from this session win (last write wins).
+    /// </summary>
+    internal void MoveAllContextsTo(GameSession target)
+    {
+        if (target is null || ReferenceEquals(this, target))
+            return;
+
+        // simple nested locking; if you ever migrate both ways concurrently,
+        // you might want a more sophisticated lock ordering
+        lock (_lock)
+        {
+            lock (target._lock)
+            {
+                foreach (var kv in _contexts)
+                {
+                    var innerId = kv.Key;
+                    var sourceList = kv.Value;
+
+                    if (!target._contexts.TryGetValue(innerId, out var targetList))
+                    {
+                        targetList = new List<object>();
+                        target._contexts[innerId] = targetList;
+                    }
+
+                    foreach (var obj in sourceList)
+                    {
+                        var objType = obj.GetType();
+
+                        // remove existing of same type in target for this innerId
+                        for (int i = targetList.Count - 1; i >= 0; --i)
+                        {
+                            if (targetList[i].GetType() == objType)
+                            {
+                                targetList.RemoveAt(i);
+                                break;
+                            }
+                        }
+
+                        targetList.Add(obj);
+                    }
+                }
+
+                _contexts.Clear();
+            }
+        }
+    }
 }
 
 [Service(typeof(IGameSessionService))]
@@ -215,12 +332,37 @@ public class GameSessionService : IGameSessionService
     // Session object API
     // -------------------------
 
-    public IGameSession SetSession(string sessionId)
+    public IGameSession CreateSession(string sessionId, DateTime expiresAtUtc)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
             throw new ArgumentException("Session id must be non-empty.", nameof(sessionId));
 
-        return _sessions.GetOrAdd(sessionId, id => new GameSession(id));
+        var now = DateTime.UtcNow;
+        if (expiresAtUtc <= now)
+            throw new ArgumentException("Expiry must be in the future (UTC).", nameof(expiresAtUtc));
+
+        while (true)
+        {
+            if (_sessions.TryGetValue(sessionId, out var existing))
+            {
+                if (existing.Expired())
+                {
+                    // Remove stale session and loop to add fresh
+                    if (_sessions.TryRemove(sessionId, out _))
+                        continue;
+                }
+
+                // Non-expired: just renew expiry and reuse contexts
+                existing.Renew(expiresAtUtc);
+                return existing;
+            }
+
+            var created = new GameSession(sessionId, expiresAtUtc);
+            if (_sessions.TryAdd(sessionId, created))
+                return created;
+
+            // some concurrent writer won the race, loop and inspect
+        }
     }
 
     public IGameSession? GetSession(string sessionId)
@@ -228,9 +370,17 @@ public class GameSessionService : IGameSessionService
         if (string.IsNullOrWhiteSpace(sessionId))
             return null;
 
-        return _sessions.TryGetValue(sessionId, out var session)
-            ? session
-            : null;
+        if (!_sessions.TryGetValue(sessionId, out var session))
+            return null;
+
+        if (session.Expired())
+        {
+            // auto-clean expired session on access
+            ClearSession(sessionId);
+            return null;
+        }
+
+        return session;
     }
 
     public void ClearSession(string sessionId)
@@ -242,6 +392,63 @@ public class GameSessionService : IGameSessionService
         {
             // Disregard internal structure; just nuke all contexts in this session.
             session.ClearAllContexts();
+        }
+    }
+
+    public void MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc)
+    {
+        if (string.IsNullOrWhiteSpace(fromSessionId))
+            throw new ArgumentException("Source session id must be non-empty.", nameof(fromSessionId));
+        if (string.IsNullOrWhiteSpace(toSessionId))
+            throw new ArgumentException("Target session id must be non-empty.", nameof(toSessionId));
+
+        // Same id: just renew expiry
+        if (string.Equals(fromSessionId, toSessionId, StringComparison.Ordinal))
+        {
+            var same = GetSession(fromSessionId) as GameSession;
+            if (same != null)
+            {
+                same.Renew(newExpiresAtUtc);
+            }
+            else
+            {
+                CreateSession(fromSessionId, newExpiresAtUtc);
+            }
+            return;
+        }
+
+        // Determine source (only if non-expired)
+        GameSession? fromSession = null;
+        if (_sessions.TryGetValue(fromSessionId, out var src))
+        {
+            if (src.Expired())
+            {
+                ClearSession(fromSessionId);
+            }
+            else
+            {
+                fromSession = src;
+            }
+        }
+
+        // Ensure / get target session (non-expired, with new expiry)
+        GameSession toSession;
+        var existingTarget = GetSession(toSessionId) as GameSession;
+        if (existingTarget == null)
+        {
+            toSession = (GameSession)CreateSession(toSessionId, newExpiresAtUtc);
+        }
+        else
+        {
+            existingTarget.Renew(newExpiresAtUtc);
+            toSession = existingTarget;
+        }
+
+        // Move contexts if we have a valid source
+        if (fromSession != null)
+        {
+            fromSession.MoveAllContextsTo(toSession);
+            _sessions.TryRemove(fromSessionId, out _);
         }
     }
 
@@ -348,7 +555,21 @@ public class GameSessionService : IGameSessionService
     {
         try
         {
-            _sessions.Clear();
+            // Auto-remove expired sessions, keep live ones.
+            foreach (var kvp in _sessions)
+            {
+                var id = kvp.Key;
+                var session = kvp.Value;
+
+                if (session.Expired())
+                {
+                    if (_sessions.TryRemove(id, out var removed))
+                    {
+                        removed.ClearAllContexts();
+                    }
+                }
+            }
+
             await _socketManager.Cleanup();
         }
         catch (Exception ex)
