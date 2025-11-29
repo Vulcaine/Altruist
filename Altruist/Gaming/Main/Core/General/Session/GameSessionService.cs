@@ -20,23 +20,23 @@ public interface IGameSession
     string Id { get; }
 
     /// <summary>
-    /// Store a context object for this session, keyed by type.
-    /// Only one instance per type is kept (last write wins).
+    /// Store a context object inside this session, bound to a context id and type.
+    /// Only one instance per (context id, type) is kept (last write wins).
     /// </summary>
-    Task SetContext<T>(T value);
+    Task SetContext<T>(string id, T value);
 
     /// <summary>
-    /// Get the most recently stored context of type T (if any).
+    /// Get the most recently stored context of type T for the given context id (if any).
     /// </summary>
-    Task<T?> GetContext<T>();
+    Task<T?> GetContext<T>(string id);
 
     /// <summary>
-    /// Remove a context of type T for this session (if any).
+    /// Remove a context of type T for the given context id (if any).
     /// </summary>
-    Task RemoveContext<T>();
+    Task RemoveContext<T>(string id);
 
     /// <summary>
-    /// Remove all contexts for this session.
+    /// Remove all contexts for this session (for all inner ids).
     /// </summary>
     void ClearAllContexts();
 }
@@ -48,10 +48,9 @@ public interface IGameSessionService
     // -------------------------
 
     /// <summary>
-    /// Get or create a session for the given id (e.g. accountId).
-    /// This is the main entry point:
-    ///   var session = _gameSessionService.SetSession(accountId);
-    ///   await session.SetContext(...);
+    /// Get or create a session for the given global session id (e.g. accountId).
+    ///   var session = _gameSessionService.SetSession(globalSessionId);
+    ///   await session.SetContext(innerId, value);
     /// </summary>
     IGameSession SetSession(string sessionId);
 
@@ -62,6 +61,7 @@ public interface IGameSessionService
 
     /// <summary>
     /// Clear all contexts for a given session id and remove the session.
+    /// This disregards what contexts are inside; everything is cleared.
     /// </summary>
     void ClearSession(string sessionId);
 
@@ -90,22 +90,12 @@ public interface IGameSessionService
     ///   - returns ResultPacket(HandshakePacket) or other dedicated packet.
     /// </summary>
     Task<IResultPacket> HandshakeAsync(HandshakeRequestPacket message, string clientId);
-
-    // -------------------------
-    // Legacy minimal context API (string key)
-    // These are convenience wrappers around sessions, so you can still use:
-    //   await _gameSessionService.SetContext(accountId, value);
-    // while internally using GameSession.
-    // -------------------------
-
-    Task SetContext<T>(string clientId, T value);
-    Task<T?> GetContext<T>(string clientId);
-    Task RemoveContext<T>(string clientId);
 }
 
 internal sealed class GameSession : IGameSession
 {
-    private readonly List<object> _contexts = new();
+    // contexts[innerId] = list of objects (type-based, last write wins per type)
+    private readonly Dictionary<string, List<object>> _contexts = new();
     private readonly object _lock = new();
 
     public string Id { get; }
@@ -115,35 +105,50 @@ internal sealed class GameSession : IGameSession
         Id = id ?? throw new ArgumentNullException(nameof(id));
     }
 
-    public Task SetContext<T>(T value)
+    public Task SetContext<T>(string id, T value)
     {
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Context id must be non-empty.", nameof(id));
+
         lock (_lock)
         {
-            // ensure only one instance per type (last write wins)
-            for (int i = _contexts.Count - 1; i >= 0; --i)
+            if (!_contexts.TryGetValue(id, out var list))
             {
-                if (_contexts[i] is T)
+                list = new List<object>();
+                _contexts[id] = list;
+            }
+
+            // ensure only one instance per type (last write wins) for this context id
+            for (int i = list.Count - 1; i >= 0; --i)
+            {
+                if (list[i] is T)
                 {
-                    _contexts.RemoveAt(i);
+                    list.RemoveAt(i);
                     break;
                 }
             }
 
-            _contexts.Add(value!);
+            list.Add(value!);
         }
 
         return Task.CompletedTask;
     }
 
-    public Task<T?> GetContext<T>()
+    public Task<T?> GetContext<T>(string id)
     {
+        if (string.IsNullOrWhiteSpace(id))
+            return Task.FromResult<T?>(default);
+
         lock (_lock)
         {
-            for (int i = _contexts.Count - 1; i >= 0; --i)
+            if (_contexts.TryGetValue(id, out var list))
             {
-                if (_contexts[i] is T t)
+                for (int i = list.Count - 1; i >= 0; --i)
                 {
-                    return Task.FromResult<T?>(t);
+                    if (list[i] is T t)
+                    {
+                        return Task.FromResult<T?>(t);
+                    }
                 }
             }
         }
@@ -151,16 +156,27 @@ internal sealed class GameSession : IGameSession
         return Task.FromResult<T?>(default);
     }
 
-    public Task RemoveContext<T>()
+    public Task RemoveContext<T>(string id)
     {
+        if (string.IsNullOrWhiteSpace(id))
+            return Task.CompletedTask;
+
         lock (_lock)
         {
-            for (int i = _contexts.Count - 1; i >= 0; --i)
+            if (_contexts.TryGetValue(id, out var list))
             {
-                if (_contexts[i] is T)
+                for (int i = list.Count - 1; i >= 0; --i)
                 {
-                    _contexts.RemoveAt(i);
-                    break;
+                    if (list[i] is T)
+                    {
+                        list.RemoveAt(i);
+                        break;
+                    }
+                }
+
+                if (list.Count == 0)
+                {
+                    _contexts.Remove(id);
                 }
             }
         }
@@ -183,7 +199,7 @@ public class GameSessionService : IGameSessionService
     private readonly ISocketManager _socketManager;
     private readonly ILogger _logger;
 
-    // All sessions are keyed by a common id (e.g. accountId, userId, etc.)
+    // All sessions are keyed by a global session id (e.g. accountId, userId, etc.)
     private readonly ConcurrentDictionary<string, GameSession> _sessions =
         new(StringComparer.Ordinal);
 
@@ -224,6 +240,7 @@ public class GameSessionService : IGameSessionService
 
         if (_sessions.TryRemove(sessionId, out var session))
         {
+            // Disregard internal structure; just nuke all contexts in this session.
             session.ClearAllContexts();
         }
     }
@@ -338,32 +355,5 @@ public class GameSessionService : IGameSessionService
         {
             _logger.LogError(ex, "Error cleaning up connections and contexts.");
         }
-    }
-
-    // -------------------------
-    // Legacy minimal type-only context API
-    // -------------------------
-
-    public Task SetContext<T>(string clientId, T value)
-    {
-        var session = SetSession(clientId);
-        return session.SetContext(value);
-    }
-
-    public Task<T?> GetContext<T>(string clientId)
-    {
-        var session = GetSession(clientId);
-        return session != null
-            ? session.GetContext<T>()
-            : Task.FromResult<T?>(default);
-    }
-
-    public Task RemoveContext<T>(string clientId)
-    {
-        var session = GetSession(clientId);
-        if (session == null)
-            return Task.CompletedTask;
-
-        return session.RemoveContext<T>();
     }
 }
