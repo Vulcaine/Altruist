@@ -60,7 +60,7 @@ public abstract class AltruistGameSessionPortal : Portal
 
     public override Task OnDisconnectedAsync(string clientId, Exception? exception)
     {
-        _gameSessionService.ClearAllContexts(clientId);
+        _gameSessionService.ClearSession(clientId);
         return Task.CompletedTask;
     }
 
