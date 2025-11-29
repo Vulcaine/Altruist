@@ -16,8 +16,8 @@ namespace Altruist.Gaming.ThreeD
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
 
         IWorldObject3D? FindObject(string id);
-        Task SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
-        Task SpawnStaticObject(IWorldObject3D obj, string? withId = null);
+        Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
+        Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
         IWorldObject3D? DestroyObject(string instanceId);
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
 
@@ -94,18 +94,18 @@ namespace Altruist.Gaming.ThreeD
             return await Task.FromResult(partitions.ToList());
         }
 
-        public async Task SpawnDynamicObject(IWorldObject3D obj, string? withId = null)
+        public async Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null)
         {
-            await SpawnObjectInternal(
+            return await SpawnObjectInternal(
                 obj,
                 bodyType: PhysxBodyType.Dynamic,
                 isStatic: false,
                 withId: withId);
         }
 
-        public async Task SpawnStaticObject(IWorldObject3D obj, string? withId = null)
+        public async Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null)
         {
-            await SpawnObjectInternal(
+            return await SpawnObjectInternal(
                 obj,
                 bodyType: PhysxBodyType.Static,
                 isStatic: true,
@@ -115,13 +115,13 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>
         /// Core spawn logic shared by dynamic & static world objects.
         /// </summary>
-        private async Task SpawnObjectInternal(
+        private async Task<IPhysxBody3D?> SpawnObjectInternal(
             IWorldObject3D obj,
             PhysxBodyType bodyType,
             bool isStatic, string? withId = null)
         {
             if (obj is null)
-                return;
+                return null;
 
             obj.Archetype = WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
 
@@ -181,6 +181,7 @@ namespace Altruist.Gaming.ThreeD
 
             PhysxWorld.AddBody(body);
             await Task.CompletedTask;
+            return body;
         }
 
         public IWorldObject3D? DestroyObject(string instanceId)
