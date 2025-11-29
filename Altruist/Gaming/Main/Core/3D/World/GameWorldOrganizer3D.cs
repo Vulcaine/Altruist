@@ -14,6 +14,8 @@ namespace Altruist.Gaming.ThreeD
         void RemoveWorld(int index);
         IGameWorldManager3D? GetWorld(int index);
         IGameWorldManager3D? GetWorld(string name);
+
+        IEnumerable<IGameWorldManager3D> GetAllWorlds();
     }
 
     [Service(typeof(IGameWorldOrganizer))]
@@ -103,5 +105,9 @@ namespace Altruist.Gaming.ThreeD
         }
 
         public bool Empty() => _worlds.Count == 0;
+        public IEnumerable<IGameWorldManager3D> GetAllWorlds()
+        {
+            return _worlds.Values;
+        }
     }
 }

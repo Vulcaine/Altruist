@@ -16,6 +16,7 @@ namespace Altruist.Gaming.ThreeD
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
 
         IWorldObject3D? FindObject(string id);
+        IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D;
         Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
         IWorldObject3D? DestroyObject(string instanceId);
@@ -284,5 +285,10 @@ namespace Altruist.Gaming.ThreeD
         }
 
         public IWorldObject3D? FindObject(string id) => _flatInstanceCache[id];
+        public IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D
+        {
+            return _flatInstanceCache.Values
+                .OfType<T>();
+        }
     }
 }

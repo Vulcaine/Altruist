@@ -76,11 +76,11 @@ namespace Altruist.Gaming.Movement.ThreeD
 
     public sealed class MoveContext3D
     {
-        public Vector3 Desired;         // desired direction (world)
-        public Vector3 Velocity;        // working velocity
-        public Quaternion Target;       // desired orientation
-        public Vector3 AngularDelta;    // (pitch, yaw, roll) deltas
-        public Vector3 Force;           // cumulative force
+        public Vector3 Desired;
+        public Vector3 Velocity;
+        public Quaternion Target;
+        public Vector3 AngularDelta;
+        public Vector3 Force;
     }
 
     public interface IMoveModule3D
