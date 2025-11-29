@@ -13,7 +13,9 @@ namespace Altruist.Gaming.ThreeD
         IWorldObject3D? DestroyObject(string instanceId);
 
         /// <summary>Return all objects with the given archetype.</summary>
-        HashSet<IWorldObject3D> GetObjectsByType(string archetype);
+        HashSet<IWorldObject3D> GetObjectsByArchetype(string archetype);
+
+        HashSet<T> GetAllObjects<T>() where T : IWorldObject3D;
 
         /// <summary>Return all objects with the given archetype within a given room.</summary>
         HashSet<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId);
@@ -70,7 +72,7 @@ namespace Altruist.Gaming.ThreeD
             return _spatialIndex.Query(archetype, x, y, z, radius, roomId);
         }
 
-        public virtual HashSet<IWorldObject3D> GetObjectsByType(string archetype) =>
+        public virtual HashSet<IWorldObject3D> GetObjectsByArchetype(string archetype) =>
             _spatialIndex.GetAllByType(archetype);
 
         public virtual HashSet<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId) =>
@@ -85,6 +87,13 @@ namespace Altruist.Gaming.ThreeD
             var min = Position;
             var max = Position + Size;
             return $"Partition {Index} [{min}..{max}] epicenter={Epicenter} objects={objectCount}";
+        }
+
+        public HashSet<T> GetAllObjects<T>() where T : IWorldObject3D
+        {
+            return _spatialIndex.InstanceMap.Values
+                .OfType<T>()
+                .ToHashSet();
         }
     }
 
