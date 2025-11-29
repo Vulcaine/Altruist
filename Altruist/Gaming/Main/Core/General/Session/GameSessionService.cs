@@ -89,7 +89,7 @@ public interface IGameSessionService
     /// Creates or renews the target session with the given expiry,
     /// moves all contexts, and removes the source session.
     /// </summary>
-    void MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc);
+    IGameSession? MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc);
 
     // -------------------------
     // Core session lifecycle
@@ -395,26 +395,28 @@ public class GameSessionService : IGameSessionService
         }
     }
 
-    public void MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc)
+    public IGameSession? MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc)
     {
         if (string.IsNullOrWhiteSpace(fromSessionId))
             throw new ArgumentException("Source session id must be non-empty.", nameof(fromSessionId));
         if (string.IsNullOrWhiteSpace(toSessionId))
             throw new ArgumentException("Target session id must be non-empty.", nameof(toSessionId));
 
-        // Same id: just renew expiry
+        // Expiry must be strictly in the future (UTC); otherwise do nothing.
+        if (newExpiresAtUtc <= DateTime.UtcNow)
+            return null;
+
+        // Same id: just renew / create and return that session.
         if (string.Equals(fromSessionId, toSessionId, StringComparison.Ordinal))
         {
             var same = GetSession(fromSessionId) as GameSession;
             if (same != null)
             {
                 same.Renew(newExpiresAtUtc);
+                return same;
             }
-            else
-            {
-                CreateSession(fromSessionId, newExpiresAtUtc);
-            }
-            return;
+
+            return CreateSession(fromSessionId, newExpiresAtUtc);
         }
 
         // Determine source (only if non-expired)
@@ -450,6 +452,8 @@ public class GameSessionService : IGameSessionService
             fromSession.MoveAllContextsTo(toSession);
             _sessions.TryRemove(fromSessionId, out _);
         }
+
+        return toSession;
     }
 
     // -------------------------
