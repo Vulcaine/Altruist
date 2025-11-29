@@ -32,11 +32,40 @@ public class PrefabAttribute : VaultAttribute
         string id,
         bool StoreHistory = false,
         string Keyspace = "altruist",
-        string DbToken = "ScyllaDB")
+        string DbToken = "Postgres")
         : base(Name: id, StoreHistory: StoreHistory, Keyspace: Keyspace, DbToken: DbToken)
     {
     }
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class PrefabComponentAttribute : Attribute { }
+public sealed class PrefabComponentAttribute : Attribute
+{
+    /// <summary>
+    /// Name of the prefab component this component should auto-load after.
+    /// For example: AutoLoadOn = nameof(Character).
+    /// </summary>
+    public string? AutoLoadOn { get; set; }
+
+    /// <summary>
+    /// Name of the relation key used to tie this component to the AutoLoadOn component.
+    /// Required when AutoLoadOn is specified (enforced at metadata registration time).
+    /// For now this is validated but not deeply used; it’s reserved for richer relations.
+    /// </summary>
+    public string? RelationKey { get; set; }
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+public sealed class OnPrefabComponentLoadAttribute : Attribute
+{
+    /// <summary>
+    /// Name of the prefab component property this method reacts to.
+    /// For example: [OnPrefabComponentLoad(nameof(Character))]
+    /// </summary>
+    public string ComponentName { get; }
+
+    public OnPrefabComponentLoadAttribute(string componentName)
+    {
+        ComponentName = componentName ?? throw new ArgumentNullException(nameof(componentName));
+    }
+}

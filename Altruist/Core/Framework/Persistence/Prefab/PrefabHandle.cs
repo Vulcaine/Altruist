@@ -49,7 +49,6 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
         _cached = entity;
         _loaded = true;
 
-        // ensure StorageId exists
         if (string.IsNullOrEmpty(entity.StorageId))
             throw new InvalidOperationException(
                 $"Cannot Apply component of type {typeof(T).Name} with empty StorageId. " +
@@ -57,11 +56,10 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
 
         _id = entity.StorageId;
 
-        // keep prefab manifest in sync
         _owner.ComponentRefs[_meta.Name] = _id;
 
-        // track for cascade SaveAsync(prefab)
         PrefabComponentTracker.Track(_owner, _meta, entity);
+        PrefabComponentLifecycle.OnComponentLoadedSync(_owner, _meta, entity, _services);
     }
 
     public async ValueTask<T?> LoadAsync(CancellationToken ct = default)
@@ -75,7 +73,6 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
             return _cached = null;
         }
 
-        // IVault<T> will be PgVault<T> or PgPrefabVault<T>, resolved via DI.
         var vault = _services.GetRequiredService<IVault<T>>();
 
         var entity = await vault
@@ -87,9 +84,66 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
         _loaded = true;
 
         if (entity is not null)
+        {
             PrefabComponentTracker.Track(_owner, _meta, entity);
+            await PrefabComponentLifecycle
+                .OnComponentLoadedAsync(_owner, _meta, entity, _services)
+                .ConfigureAwait(false);
+        }
 
         return entity;
+    }
+}
+
+public static class PrefabComponentLifecycle
+{
+    public static void OnComponentLoadedSync(
+        PrefabModel owner,
+        PrefabComponentMetadata meta,
+        IVaultModel component,
+        IServiceProvider services)
+    {
+        OnComponentLoadedAsync(owner, meta, component, services)
+            .GetAwaiter()
+            .GetResult();
+    }
+
+    public static async Task OnComponentLoadedAsync(
+        PrefabModel owner,
+        PrefabComponentMetadata meta,
+        IVaultModel? component,
+        IServiceProvider services)
+    {
+        if (meta.OnLoadedCallbacks is { Length: > 0 })
+        {
+            foreach (var cb in meta.OnLoadedCallbacks)
+            {
+                await cb(owner, component, services).ConfigureAwait(false);
+            }
+        }
+
+        var allComponents = PrefabMetadataRegistry.GetComponents(owner.GetType());
+        foreach (var dep in allComponents)
+        {
+            if (!string.Equals(dep.AutoLoadOn, meta.Name, StringComparison.Ordinal))
+                continue;
+
+            var handleObj = dep.Getter(owner);
+            if (handleObj is null)
+                continue;
+
+            var handleIface = typeof(IPrefabHandle<>).MakeGenericType(dep.ComponentType);
+            var loadMethod = handleIface.GetMethod(
+                nameof(IPrefabHandle<IVaultModel>.LoadAsync),
+                [typeof(CancellationToken)]);
+
+            if (loadMethod is null)
+                continue;
+
+            var taskObj = loadMethod.Invoke(handleObj, [CancellationToken.None]);
+            if (taskObj is Task task)
+                await task.ConfigureAwait(false);
+        }
     }
 }
 

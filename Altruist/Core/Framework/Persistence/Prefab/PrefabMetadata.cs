@@ -19,31 +19,41 @@ public static class PrefabMetadataRegistry
 
         var list = new List<PrefabComponentMetadata>();
 
+        // ---------- scan properties for [PrefabComponent] ----------
         foreach (var prop in prefabType.GetProperties(
                      BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
-            if (prop.GetCustomAttribute<PrefabComponentAttribute>() is null)
+            var attr = prop.GetCustomAttribute<PrefabComponentAttribute>();
+            if (attr is null)
                 continue;
 
             if (!prop.CanWrite)
                 throw new InvalidOperationException(
                     $"Property {prefabType.FullName}.{prop.Name} marked [PrefabComponent] must be settable.");
 
-            var propType = prop.PropertyType;
-
-            // Require IPrefabHandle<TComponent>
-            if (!propType.IsGenericType || propType.GetGenericTypeDefinition() != typeof(IPrefabHandle<>))
+            if (!prop.PropertyType.IsGenericType ||
+                prop.PropertyType.GetGenericTypeDefinition() != typeof(IPrefabHandle<>))
             {
                 throw new InvalidOperationException(
                     $"Property {prefabType.FullName}.{prop.Name} marked [PrefabComponent] " +
                     $"must be of type IPrefabHandle<TComponent>.");
             }
 
-            var componentType = propType.GetGenericArguments()[0];
+            // If AutoLoadOn is present, RelationKey must be provided (design requirement)
+            if (!string.IsNullOrWhiteSpace(attr.AutoLoadOn) &&
+                string.IsNullOrWhiteSpace(attr.RelationKey))
+            {
+                throw new InvalidOperationException(
+                    $"Property {prefabType.FullName}.{prop.Name} marked [PrefabComponent] " +
+                    $"has AutoLoadOn='{attr.AutoLoadOn}' but no RelationKey was specified.");
+            }
+
+            var componentType = prop.PropertyType.GetGenericArguments()[0];
 
             var setter = CompileSetter(prefabType, prop);
             var getter = CompileGetter(prefabType, prop);
             var handleFactory = CompileHandleFactory(componentType);
+            var saver = CompileSaveBatchDelegate(componentType);
 
             list.Add(new PrefabComponentMetadata
             {
@@ -52,11 +62,129 @@ public static class PrefabMetadataRegistry
                 ComponentType = componentType,
                 Setter = setter,
                 Getter = getter,
-                HandleFactory = handleFactory
+                HandleFactory = handleFactory,
+                SaveBatchAsync = saver,
+                AutoLoadOn = attr.AutoLoadOn,
+                RelationKey = attr.RelationKey,
+                OnLoadedCallbacks = Array.Empty<Func<object, object?, IServiceProvider, Task>>()
             });
         }
 
-        _byPrefab[prefabType] = list.ToArray();
+        var metas = list.ToArray();
+
+        // ---------- scan methods for [OnPrefabComponentLoad] ----------
+        var callbacksByComponent = new Dictionary<string, List<Func<object, object?, IServiceProvider, Task>>>(
+            StringComparer.Ordinal);
+
+        foreach (var method in prefabType.GetMethods(
+                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            var attrs = method.GetCustomAttributes<OnPrefabComponentLoadAttribute>(inherit: false);
+            foreach (var loadAttr in attrs)
+            {
+                var targetMeta = metas.FirstOrDefault(m =>
+                    string.Equals(m.Name, loadAttr.ComponentName, StringComparison.Ordinal));
+
+                if (targetMeta is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Method {prefabType.FullName}.{method.Name} is marked [OnPrefabComponentLoad(\"{loadAttr.ComponentName}\")] " +
+                        $"but no [PrefabComponent] named '{loadAttr.ComponentName}' exists.");
+                }
+
+                var cb = CompileOnComponentLoadCallback(prefabType, method, targetMeta.ComponentType);
+                if (!callbacksByComponent.TryGetValue(targetMeta.Name, out var listForComponent))
+                {
+                    listForComponent = new List<Func<object, object?, IServiceProvider, Task>>();
+                    callbacksByComponent[targetMeta.Name] = listForComponent;
+                }
+                listForComponent.Add(cb);
+            }
+        }
+
+        // ---------- attach callbacks to metadata ----------
+        var finalList = new List<PrefabComponentMetadata>(metas.Length);
+        foreach (var meta in metas)
+        {
+            callbacksByComponent.TryGetValue(meta.Name, out var cbList);
+
+            finalList.Add(new PrefabComponentMetadata
+            {
+                Name = meta.Name,
+                PrefabType = meta.PrefabType,
+                ComponentType = meta.ComponentType,
+                Setter = meta.Setter,
+                Getter = meta.Getter,
+                HandleFactory = meta.HandleFactory,
+                SaveBatchAsync = meta.SaveBatchAsync,
+                AutoLoadOn = meta.AutoLoadOn,
+                RelationKey = meta.RelationKey,
+                OnLoadedCallbacks = cbList?.ToArray()
+                    ?? Array.Empty<Func<object, object?, IServiceProvider, Task>>()
+            });
+        }
+
+        _byPrefab[prefabType] = finalList.ToArray();
+    }
+
+    private static Func<object, object?, IServiceProvider, Task> CompileOnComponentLoadCallback(
+        Type prefabType,
+        MethodInfo method,
+        Type componentType)
+    {
+        var parameters = method.GetParameters();
+
+        if (parameters.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"Method {prefabType.FullName}.{method.Name} marked [OnPrefabComponentLoad] " +
+                $"must have at least one parameter for the component being loaded.");
+        }
+
+        var firstParamType = parameters[0].ParameterType;
+        if (!firstParamType.IsAssignableFrom(componentType))
+        {
+            throw new InvalidOperationException(
+                $"Method {prefabType.FullName}.{method.Name} marked [OnPrefabComponentLoad] " +
+                $"expects first parameter of type {firstParamType.Name}, but component type is {componentType.Name}.");
+        }
+
+        var returnsTask = typeof(Task).IsAssignableFrom(method.ReturnType);
+        if (method.ReturnType != typeof(void) && !returnsTask)
+        {
+            throw new InvalidOperationException(
+                $"Method {prefabType.FullName}.{method.Name} marked [OnPrefabComponentLoad] " +
+                $"must return void or Task.");
+        }
+
+        // We build a delegate:
+        // (prefabObj, componentObj, services) => { resolve extra parameters from DI; invoke method; await if Task; }
+        return async (prefabObj, componentObj, services) =>
+        {
+            if (componentObj is null)
+                return;
+
+            var args = new object?[parameters.Length];
+
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (i == 0)
+                {
+                    args[0] = componentObj; // already the component instance
+                }
+                else
+                {
+                    var serviceType = parameters[i].ParameterType;
+                    args[i] = services.GetRequiredService(serviceType);
+                }
+            }
+
+            var result = method.Invoke(prefabObj, args);
+            if (result is Task t)
+            {
+                await t.ConfigureAwait(false);
+            }
+        };
     }
 
     private static Action<object, object?> CompileSetter(Type prefabType, PropertyInfo prop)
@@ -186,19 +314,27 @@ public sealed class PrefabComponentMetadata
     public Type PrefabType { get; init; } = default!;
     public Type ComponentType { get; init; } = default!;  // Spaceship, AnotherPrefab, etc.
 
-    /// <summary>Compiled setter: (prefab, handle) => prefab.Component = handle.</summary>
     public Action<object, object?> Setter { get; init; } = default!;
-
-    /// <summary>Compiled getter: prefab => prefab.Component (boxed).</summary>
     public Func<object, object?> Getter { get; init; } = default!;
 
-    /// <summary>Factory: (ownerPrefab, services, thisMeta, id) => IPrefabHandle&lt;TComponent&gt; (boxed).</summary>
     public Func<PrefabModel, IServiceProvider, PrefabComponentMetadata, string?, object> HandleFactory { get; init; } = default!;
 
-    /// <summary>
-    /// Precompiled saver: (sp, components) => await vault.SaveBatchAsync(typedComponents, null)
-    /// components is IReadOnlyCollection&lt;IVaultModel&gt; of the correct ComponentType.
-    /// </summary>
     public Func<IServiceProvider, IReadOnlyCollection<IVaultModel>, Task> SaveBatchAsync { get; init; } = default!;
-}
 
+    /// <summary>
+    /// If set, this component will be auto-loaded when the component with this name is loaded.
+    /// </summary>
+    public string? AutoLoadOn { get; init; }
+
+    /// <summary>
+    /// Relation key metadata (currently validated when AutoLoadOn is present).
+    /// </summary>
+    public string? RelationKey { get; init; }
+
+    /// <summary>
+    /// Compiled callbacks to invoke when this component is loaded.
+    /// Signature: (prefabInstance, componentInstance, services) => Task
+    /// </summary>
+    public Func<object, object?, IServiceProvider, Task>[] OnLoadedCallbacks { get; init; }
+        = Array.Empty<Func<object, object?, IServiceProvider, Task>>();
+}
