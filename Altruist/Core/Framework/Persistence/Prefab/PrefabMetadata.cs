@@ -210,7 +210,7 @@ public static class PrefabMetadataRegistry
         return Expression.Lambda<Func<object, object?>>(boxed, target).Compile();
     }
 
-    private static Func<PrefabModel, IServiceProvider, PrefabComponentMetadata, string?, object>
+    private static Func<PrefabModel, PrefabComponentMetadata, string?, object>
         CompileHandleFactory(Type componentType)
     {
         var handleClr = typeof(PrefabHandle<>).MakeGenericType(componentType);
@@ -224,19 +224,18 @@ public static class PrefabMetadataRegistry
 
         if (ctor is null)
             throw new InvalidOperationException(
-                $"PrefabHandle<{componentType.Name}> must have ctor(PrefabModel, IServiceProvider, PrefabComponentMetadata, string).");
+                $"PrefabHandle<{componentType.Name}> must have ctor(PrefabModel, PrefabComponentMetadata, string).");
 
         var ownerParam = Expression.Parameter(typeof(PrefabModel), "owner");
-        var spParam = Expression.Parameter(typeof(IServiceProvider), "sp");
         var metaParam = Expression.Parameter(typeof(PrefabComponentMetadata), "meta");
         var idParam = Expression.Parameter(typeof(string), "id");
 
-        var newExpr = Expression.New(ctor, ownerParam, spParam, metaParam, idParam);
+        var newExpr = Expression.New(ctor, ownerParam, metaParam, idParam);
 
         // (owner, sp, meta, id) => (object)new PrefabHandle<T>(owner, sp, meta, id)
         return Expression
-            .Lambda<Func<PrefabModel, IServiceProvider, PrefabComponentMetadata, string?, object>>(
-                newExpr, ownerParam, spParam, metaParam, idParam)
+            .Lambda<Func<PrefabModel, PrefabComponentMetadata, string?, object>>(
+                newExpr, ownerParam, metaParam, idParam)
             .Compile();
     }
 
@@ -250,7 +249,6 @@ public static class PrefabMetadataRegistry
         //   await vault.SaveBatchAsync(typed, null);
         // }
 
-        var spParam = Expression.Parameter(typeof(IServiceProvider), "sp");
         var itemsParam = Expression.Parameter(typeof(IReadOnlyCollection<IVaultModel>), "items");
 
         var vaultType = typeof(IVault<>).MakeGenericType(componentType);
@@ -278,7 +276,7 @@ public static class PrefabMetadataRegistry
             throw new InvalidOperationException($"IVault<{componentType.Name}> must have SaveBatchAsync.");
 
         // vault = sp.GetRequiredService<IVault<TComponent>>()
-        var vaultExpr = Expression.Call(getReqGeneric, spParam);
+        var vaultExpr = Expression.Call(getReqGeneric);
 
         // (IReadOnlyCollection<IVaultModel>) -> IEnumerable<IVaultModel> for Cast<T>
         var itemsAsEnumerable = Expression.Convert(itemsParam, typeof(IEnumerable<IVaultModel>));
@@ -292,7 +290,7 @@ public static class PrefabMetadataRegistry
             : Expression.Call(vaultExpr, saveBatch, list);
 
         var lambda = Expression.Lambda<Func<IServiceProvider, IReadOnlyCollection<IVaultModel>, Task>>(
-            saveCall, spParam, itemsParam);
+            saveCall, itemsParam);
 
         return lambda.Compile();
     }
@@ -316,7 +314,7 @@ public sealed class PrefabComponentMetadata
     public Action<object, object?> Setter { get; init; } = default!;
     public Func<object, object?> Getter { get; init; } = default!;
 
-    public Func<PrefabModel, IServiceProvider, PrefabComponentMetadata, string?, object> HandleFactory { get; init; } = default!;
+    public Func<PrefabModel, PrefabComponentMetadata, string?, object> HandleFactory { get; init; } = default!;
 
     public Func<IServiceProvider, IReadOnlyCollection<IVaultModel>, Task> SaveBatchAsync { get; init; } = default!;
 
