@@ -319,6 +319,7 @@ internal sealed class GameSession : IGameSession
         lock (_lock)
         {
             return _contexts.Values
+                .SelectMany(list => list)
                 .OfType<T>();
         }
     }
