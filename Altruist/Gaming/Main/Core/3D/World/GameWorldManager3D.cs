@@ -201,7 +201,7 @@ namespace Altruist.Gaming.ThreeD
             {
                 _flatInstanceCache.Remove(instanceId);
                 return removedFromPartitions ?? cachedByKey;
-        }
+            }
 
             var kvp = _flatInstanceCache
                 .FirstOrDefault(x => x.Value.InstanceId == instanceId);
@@ -285,7 +285,7 @@ namespace Altruist.Gaming.ThreeD
             return r;
         }
 
-        public IWorldObject3D? FindObject(string id) => _flatInstanceCache[id];
+        public IWorldObject3D? FindObject(string id) => _flatInstanceCache.TryGetValue(id, out var obj) ? obj : null;
         public IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D
         {
             return _flatInstanceCache.Values
