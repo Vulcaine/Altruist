@@ -107,7 +107,14 @@ namespace Altruist.Gaming.ThreeD
                             continue;
                         }
 
-                        obj.Step(deltaTime, _worldPhysx);
+                        try
+                        {
+                            obj.Step(deltaTime, _worldPhysx);
+                        }
+                        catch
+                        {
+                            // Intentionally swallow step exceptions per-object
+                        }
                     }
 
                     world.PhysxWorld.Step(deltaTime);
