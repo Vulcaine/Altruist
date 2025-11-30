@@ -39,7 +39,7 @@ public interface ISessionTokenValidator : ITokenValidator
 }
 
 [Service(typeof(ISessionTokenValidator))]
-public class SessionTokenValidator : ITokenValidator
+public class SessionTokenValidator : ISessionTokenValidator
 {
     private readonly TokenSessionSyncService _syncService;
     public SessionTokenValidator(TokenSessionSyncService syncService)
