@@ -63,6 +63,12 @@ public interface IEngineCore
     void Stop();
     void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
     void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
+    TaskIdentifier ScheduleEffect(
+         CycleRate cycleRate,
+         DateTime expiresAtUtc,
+         Action<float> step);
+
+    bool CancelEffect(TaskIdentifier id);
 }
 
 public interface IAltruistEngine : IEngineCore

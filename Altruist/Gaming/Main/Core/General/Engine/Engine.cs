@@ -262,11 +262,13 @@ public class AltruistEngine : IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;
     private readonly IServiceProvider _serviceProvider;
-    // that are scheduled to the engine
     private readonly LinkedList<EngineStaticTask> _staticTasks;
     private readonly ConcurrentDictionary<TaskIdentifier, Task> _scheduledDynamicTasks = new();
-    private readonly ConcurrentDictionary<TaskIdentifier, Delegate> _dynamicTasks; // that are sent to the engine dynamically
-    private readonly Dictionary<string, Action> _precompiledDelegatesCache = new(); // precompiled delegates with dependencies
+    private readonly ConcurrentDictionary<TaskIdentifier, Delegate> _dynamicTasks;
+    private readonly Dictionary<string, Action> _precompiledDelegatesCache = new();
+
+    private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effectTasks =
+        new ConcurrentDictionary<TaskIdentifier, DynamicEffectTask>();
 
     private CancellationTokenSource _cancellationTokenSource;
     private readonly CycleRate _engineRate;
@@ -334,6 +336,31 @@ public class AltruistEngine : IAltruistEngine
         }
 
         ScheduleNextRun();
+    }
+
+    public TaskIdentifier ScheduleEffect(
+        CycleRate cycleRate,
+        DateTime expiresAtUtc,
+        Action<float> step)
+    {
+        var id = new TaskIdentifier("Effect_" + Guid.NewGuid());
+        long now = FrameTime.NowTicks;
+
+        var task = new DynamicEffectTask(
+            id: id,
+            rate: cycleRate,
+            expiresAtUtc: expiresAtUtc,
+            step: step,
+            startTime: now
+        );
+
+        _effectTasks[id] = task;
+        return id;
+    }
+
+    public bool CancelEffect(TaskIdentifier id)
+    {
+        return _effectTasks.TryRemove(id, out _);
     }
 
     public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
@@ -497,6 +524,36 @@ public class AltruistEngine : IAltruistEngine
                         }
                     }
                 }
+
+                if (_effectTasks.Count > 0)
+                {
+                    long nowTicks = FrameTime.NowTicks;
+                    float dt = FrameTime.TicksToDeltaSeconds(nowTicks - lastTick);
+
+                    foreach (var (id, effect) in _effectTasks)
+                    {
+                        if (DateTime.UtcNow >= effect.ExpiresAtUtc)
+                        {
+                            _effectTasks.TryRemove(id, out _);
+                            continue;
+                        }
+
+                        if (nowTicks < effect.NextExecuteTimeTicks)
+                            continue;
+
+                        try
+                        {
+                            effect.Step(dt);
+                        }
+                        catch
+                        {
+                            _effectTasks.TryRemove(id, out _);
+                            continue;
+                        }
+
+                        effect.NextExecuteTimeTicks = nowTicks + effect.Rate.Value;
+                    }
+                }
             }
         }
     }
@@ -605,6 +662,14 @@ public class EngineWithoutDiagnostics : IAltruistEngine
 
     public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
         => _core.SendTask(taskId, taskDelegate);
+    public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
+    {
+        return _core.ScheduleEffect(cycleRate, expiresAtUtc, step);
+    }
+    public bool CancelEffect(TaskIdentifier id)
+    {
+        return _core.CancelEffect(id);
+    }
 }
 
 
@@ -772,6 +837,15 @@ public class EngineWithDiagnostics : IAltruistEngine
             };
             _wrappedEngine.SendTask(taskId, wrappedDelegate);
         }
+    }
+
+    public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
+    {
+        return _wrappedEngine.ScheduleEffect(cycleRate, expiresAtUtc, step);
+    }
+    public bool CancelEffect(TaskIdentifier id)
+    {
+        return _wrappedEngine.CancelEffect(id);
     }
 }
 
