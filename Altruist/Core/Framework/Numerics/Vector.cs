@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace Altruist.Numerics;
 
 public struct IntVector3
@@ -11,6 +13,11 @@ public struct IntVector3
         X = x;
         Y = y;
         Z = z;
+    }
+
+    public Vector3 ToFloatVector3()
+    {
+        return new Vector3((float)X, (float)Y, (float)Z);
     }
 
     // Operators
