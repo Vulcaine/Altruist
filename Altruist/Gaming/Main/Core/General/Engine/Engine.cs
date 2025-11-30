@@ -267,6 +267,8 @@ public class AltruistEngine : IAltruistEngine
     private readonly ConcurrentDictionary<TaskIdentifier, Delegate> _dynamicTasks;
     private readonly Dictionary<string, Action> _precompiledDelegatesCache = new();
 
+    private readonly ConcurrentQueue<Delegate> _nextTickTasks = new();
+
     private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effectTasks =
         new ConcurrentDictionary<TaskIdentifier, DynamicEffectTask>();
 
@@ -314,6 +316,13 @@ public class AltruistEngine : IAltruistEngine
     public void Disable()
     {
         Enabled = false;
+    }
+
+    public void WaitForNextTick(Delegate task)
+    {
+        if (task == null)
+            throw new ArgumentNullException(nameof(task));
+        _nextTickTasks.Enqueue(task);
     }
 
     public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
@@ -467,6 +476,14 @@ public class AltruistEngine : IAltruistEngine
             if (elapsedTicks >= engineFrequencyTicks)
             {
                 lastTick = currentTick;
+
+                if (_nextTickTasks.Count > 0)
+                {
+                    while (_nextTickTasks.TryDequeue(out var nextTickDelegate))
+                    {
+                        await ExecuteTaskAsync(nextTickDelegate);
+                    }
+                }
 
                 foreach (var task in _staticTasks)
                 {
@@ -629,6 +646,22 @@ public class AltruistEngine : IAltruistEngine
         Disable();
         _cancellationTokenSource?.Cancel();
     }
+
+    public void WaitForNextTick(Action task)
+    {
+        WaitForNextTick(() =>
+        {
+            task();
+            return Task.CompletedTask;
+        });
+    }
+    public void WaitForNextTick(Func<Task> task)
+    {
+        WaitForNextTick(async () =>
+        {
+            await task();
+        });
+    }
 }
 
 [Service(typeof(IAltruistEngine))]
@@ -670,182 +703,210 @@ public class EngineWithoutDiagnostics : IAltruistEngine
     {
         return _core.CancelEffect(id);
     }
+
+    public void WaitForNextTick(Delegate task)
+    {
+        _core.WaitForNextTick(task);
+    }
+
+    public void WaitForNextTick(Action task)
+    {
+        _core.WaitForNextTick(task);
+    }
+
+    public void WaitForNextTick(Func<Task> task)
+    {
+        _core.WaitForNextTick(task);
+    }
+
+    [Service(typeof(IAltruistEngine))]
+    [ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
+    public class EngineWithDiagnostics : IAltruistEngine
+    {
+        private readonly IEngineCore _wrappedEngine;
+        private readonly ILogger _logger;
+
+        private readonly double _engineFrequencyHz;
+
+        private readonly int _taskTrackCount = 100;
+
+
+        public EngineWithDiagnostics(IEngineCore wrappedEngine, ILoggerFactory loggerFactory)
+        {
+            _wrappedEngine = wrappedEngine;
+            _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();
+            var unit = _wrappedEngine.Rate.Unit;
+
+            if (unit == CycleUnit.Seconds)
+            {
+                // Value = ticks per cycle => Hz = ticks per second / ticks per cycle
+                _engineFrequencyHz = (double)TimeSpan.TicksPerSecond / _wrappedEngine.Rate.Value;
+            }
+            else if (unit == CycleUnit.Milliseconds)
+            {
+                // Value = ticks per cycle => Hz = ticks per millisecond / ticks per cycle
+                _taskTrackCount = 1_000;
+                _engineFrequencyHz = (double)(TimeSpan.TicksPerSecond / 1000) / _wrappedEngine.Rate.Value;
+            }
+            else if (unit == CycleUnit.Ticks)
+            {
+                // Value = frequency in Hz directly (per TICK-based scheduling, i.e., "X times per tick")
+                // In this case, the higher the number, the **slower** it is.
+                // So to get Hz as "X times per second", we need Stopwatch.Frequency / Value
+                _taskTrackCount = 1_000_000;
+                _engineFrequencyHz = (double)Stopwatch.Frequency / _wrappedEngine.Rate.Value;
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unsupported CycleUnit: {unit}");
+            }
+        }
+
+        public CycleRate Rate => _wrappedEngine.Rate;
+
+        public bool Enabled { get; private set; }
+
+        public void Enable()
+        {
+            Enabled = true;
+        }
+
+        public void Disable()
+        {
+            Enabled = false;
+        }
+
+        public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
+        {
+            _wrappedEngine.RegisterCronJob(jobDelegate, cronExpression, serviceInstance);
+        }
+
+        public void Start()
+        {
+            _wrappedEngine.Start();
+        }
+
+        public void Stop()
+        {
+            _wrappedEngine.Stop();
+        }
+
+
+        private long _accumulatedTicks = 0;
+        private int _taskCount;
+
+        private async Task ExecuteWithDiagnostics(Func<Task> task)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            await task();
+            stopwatch.Stop();
+            RecordDiagnostics(stopwatch.ElapsedTicks);
+        }
+
+        private void ExecuteWithDiagnostics(Action task)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            task();
+            stopwatch.Stop();
+            RecordDiagnostics(stopwatch.ElapsedTicks);
+        }
+
+        private void RecordDiagnostics(long elapsedTicks)
+        {
+            _accumulatedTicks += elapsedTicks;
+            _taskCount++;
+
+            if (_taskCount >= _taskTrackCount)
+            {
+                double elapsedTimeInNanoseconds = _accumulatedTicks * 1_000_000_000.0 / Stopwatch.Frequency;
+                double elapsedTimePerTask = elapsedTimeInNanoseconds / _taskCount;
+                double elapsedTimePerTaskInSeconds = elapsedTimePerTask / 1_000_000_000.0;
+                double tasksPerSecond = 1 / elapsedTimePerTaskInSeconds;
+
+                _logger.LogInformation(
+                    $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
+                    $"Just processed {_taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
+                    $"Match that! (⎚-⎚)\n\n" +
+
+                    $"📊 Theoretical Throughput:\n" +
+                    $"   - Estimated max capacity: {tasksPerSecond:n0} tasks/sec\n" +
+                    $"   - Configured frequency: {_engineFrequencyHz:n2} Hz\n\n" +
+
+                    $"🚀 Engine Efficiency:\n" +
+                    $"   - Running at {tasksPerSecond / _engineFrequencyHz * 100:n2}% of its configured frequency.\n" +
+                    $"   - {tasksPerSecond / _engineFrequencyHz:n2}x faster than expected.\n"
+                );
+
+                // Reset counters
+                _taskCount = 0;
+                _accumulatedTicks = 0;
+            }
+        }
+
+        public void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null)
+        {
+            var actualHz = cycleRate ?? _wrappedEngine.Rate;
+
+            if (taskDelegate is Func<Task> asyncDelegate)
+            {
+                var wrappedDelegate = async () =>
+                {
+                    await ExecuteWithDiagnostics(asyncDelegate);
+                };
+                _wrappedEngine.ScheduleTask(wrappedDelegate, actualHz);
+            }
+            else if (taskDelegate is Action syncDelegate)
+            {
+                var wrappedDelegate = () =>
+                {
+                    ExecuteWithDiagnostics(syncDelegate);
+                };
+                _wrappedEngine.ScheduleTask(wrappedDelegate, actualHz);
+            }
+        }
+
+        public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
+        {
+            if (taskDelegate is Func<Task> asyncDelegate)
+            {
+                var wrappedDelegate = async () =>
+                {
+                    await ExecuteWithDiagnostics(asyncDelegate);
+                };
+                _wrappedEngine.SendTask(taskId, wrappedDelegate);
+            }
+            else if (taskDelegate is Action syncDelegate)
+            {
+                var wrappedDelegate = () =>
+                {
+                    ExecuteWithDiagnostics(syncDelegate);
+                };
+                _wrappedEngine.SendTask(taskId, wrappedDelegate);
+            }
+        }
+
+        public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
+        {
+            return _wrappedEngine.ScheduleEffect(cycleRate, expiresAtUtc, step);
+        }
+        public bool CancelEffect(TaskIdentifier id)
+        {
+            return _wrappedEngine.CancelEffect(id);
+        }
+
+        public void WaitForNextTick(Delegate task)
+        {
+            _wrappedEngine.WaitForNextTick(task);
+        }
+
+        public void WaitForNextTick(Action task)
+        {
+            _wrappedEngine.WaitForNextTick(task);
+        }
+        public void WaitForNextTick(Func<Task> task)
+        {
+            _wrappedEngine.WaitForNextTick(task);
+        }
+    }
+
 }
-
-
-[Service(typeof(IAltruistEngine))]
-[ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
-public class EngineWithDiagnostics : IAltruistEngine
-{
-    private readonly IEngineCore _wrappedEngine;
-    private readonly ILogger _logger;
-
-    private readonly double _engineFrequencyHz;
-
-    private readonly int _taskTrackCount = 100;
-
-
-    public EngineWithDiagnostics(IEngineCore wrappedEngine, ILoggerFactory loggerFactory)
-    {
-        _wrappedEngine = wrappedEngine;
-        _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();
-        var unit = _wrappedEngine.Rate.Unit;
-
-        if (unit == CycleUnit.Seconds)
-        {
-            // Value = ticks per cycle => Hz = ticks per second / ticks per cycle
-            _engineFrequencyHz = (double)TimeSpan.TicksPerSecond / _wrappedEngine.Rate.Value;
-        }
-        else if (unit == CycleUnit.Milliseconds)
-        {
-            // Value = ticks per cycle => Hz = ticks per millisecond / ticks per cycle
-            _taskTrackCount = 1_000;
-            _engineFrequencyHz = (double)(TimeSpan.TicksPerSecond / 1000) / _wrappedEngine.Rate.Value;
-        }
-        else if (unit == CycleUnit.Ticks)
-        {
-            // Value = frequency in Hz directly (per TICK-based scheduling, i.e., "X times per tick")
-            // In this case, the higher the number, the **slower** it is.
-            // So to get Hz as "X times per second", we need Stopwatch.Frequency / Value
-            _taskTrackCount = 1_000_000;
-            _engineFrequencyHz = (double)Stopwatch.Frequency / _wrappedEngine.Rate.Value;
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unsupported CycleUnit: {unit}");
-        }
-    }
-
-    public CycleRate Rate => _wrappedEngine.Rate;
-
-    public bool Enabled { get; private set; }
-
-    public void Enable()
-    {
-        Enabled = true;
-    }
-
-    public void Disable()
-    {
-        Enabled = false;
-    }
-
-    public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
-    {
-        _wrappedEngine.RegisterCronJob(jobDelegate, cronExpression, serviceInstance);
-    }
-
-    public void Start()
-    {
-        _wrappedEngine.Start();
-    }
-
-    public void Stop()
-    {
-        _wrappedEngine.Stop();
-    }
-
-
-    private long _accumulatedTicks = 0;
-    private int _taskCount;
-
-    private async Task ExecuteWithDiagnostics(Func<Task> task)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        await task();
-        stopwatch.Stop();
-        RecordDiagnostics(stopwatch.ElapsedTicks);
-    }
-
-    private void ExecuteWithDiagnostics(Action task)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        task();
-        stopwatch.Stop();
-        RecordDiagnostics(stopwatch.ElapsedTicks);
-    }
-
-    private void RecordDiagnostics(long elapsedTicks)
-    {
-        _accumulatedTicks += elapsedTicks;
-        _taskCount++;
-
-        if (_taskCount >= _taskTrackCount)
-        {
-            double elapsedTimeInNanoseconds = _accumulatedTicks * 1_000_000_000.0 / Stopwatch.Frequency;
-            double elapsedTimePerTask = elapsedTimeInNanoseconds / _taskCount;
-            double elapsedTimePerTaskInSeconds = elapsedTimePerTask / 1_000_000_000.0;
-            double tasksPerSecond = 1 / elapsedTimePerTaskInSeconds;
-
-            _logger.LogInformation(
-                $"⚡ Uh, ah I am fast ⎚-⎚ uh ah! " +
-                $"Just processed {_taskTrackCount} tasks in {elapsedTimeInNanoseconds:n0}ns. " +
-                $"Match that! (⎚-⎚)\n\n" +
-
-                $"📊 Theoretical Throughput:\n" +
-                $"   - Estimated max capacity: {tasksPerSecond:n0} tasks/sec\n" +
-                $"   - Configured frequency: {_engineFrequencyHz:n2} Hz\n\n" +
-
-                $"🚀 Engine Efficiency:\n" +
-                $"   - Running at {tasksPerSecond / _engineFrequencyHz * 100:n2}% of its configured frequency.\n" +
-                $"   - {tasksPerSecond / _engineFrequencyHz:n2}x faster than expected.\n"
-            );
-
-            // Reset counters
-            _taskCount = 0;
-            _accumulatedTicks = 0;
-        }
-    }
-
-    public void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null)
-    {
-        var actualHz = cycleRate ?? _wrappedEngine.Rate;
-
-        if (taskDelegate is Func<Task> asyncDelegate)
-        {
-            var wrappedDelegate = async () =>
-            {
-                await ExecuteWithDiagnostics(asyncDelegate);
-            };
-            _wrappedEngine.ScheduleTask(wrappedDelegate, actualHz);
-        }
-        else if (taskDelegate is Action syncDelegate)
-        {
-            var wrappedDelegate = () =>
-            {
-                ExecuteWithDiagnostics(syncDelegate);
-            };
-            _wrappedEngine.ScheduleTask(wrappedDelegate, actualHz);
-        }
-    }
-
-    public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
-    {
-        if (taskDelegate is Func<Task> asyncDelegate)
-        {
-            var wrappedDelegate = async () =>
-            {
-                await ExecuteWithDiagnostics(asyncDelegate);
-            };
-            _wrappedEngine.SendTask(taskId, wrappedDelegate);
-        }
-        else if (taskDelegate is Action syncDelegate)
-        {
-            var wrappedDelegate = () =>
-            {
-                ExecuteWithDiagnostics(syncDelegate);
-            };
-            _wrappedEngine.SendTask(taskId, wrappedDelegate);
-        }
-    }
-
-    public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
-    {
-        return _wrappedEngine.ScheduleEffect(cycleRate, expiresAtUtc, step);
-    }
-    public bool CancelEffect(TaskIdentifier id)
-    {
-        return _wrappedEngine.CancelEffect(id);
-    }
-}
-

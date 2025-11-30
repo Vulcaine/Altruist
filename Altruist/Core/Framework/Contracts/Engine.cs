@@ -63,10 +63,14 @@ public interface IEngineCore
     void Stop();
     void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
     void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
+    void WaitForNextTick(Delegate task);
+    void WaitForNextTick(Action task);
+    void WaitForNextTick(Func<Task> task);
     TaskIdentifier ScheduleEffect(
          CycleRate cycleRate,
          DateTime expiresAtUtc,
          Action<float> step);
+
 
     bool CancelEffect(TaskIdentifier id);
 }
