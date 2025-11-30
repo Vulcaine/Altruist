@@ -10,6 +10,7 @@ namespace Altruist.Gaming.TwoD
 {
     using Altruist.Gaming;
     using Altruist.Gaming.ThreeD;
+    using Altruist.UORM;
 
     /// <summary>
     /// Contract for a 2D world entity that can live in partitions
@@ -51,6 +52,9 @@ namespace Altruist.Gaming.TwoD
         public string ZoneId { get; set; } = string.Empty;
 
         public IPhysxBody2D? Body { get; set; }
+
+        [VaultIgnore]
+        public bool Expired { get; set; }
 
         protected WorldObject2D(Transform2D transform, string zoneId = "", string archetype = "")
         {
