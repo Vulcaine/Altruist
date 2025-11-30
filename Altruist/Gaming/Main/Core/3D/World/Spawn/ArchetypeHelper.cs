@@ -25,9 +25,7 @@ namespace Altruist.Gaming.ThreeD
 
                 if (attr == null || string.IsNullOrWhiteSpace(attr.Archetype))
                 {
-                    throw new InvalidOperationException(
-                        $"Type {t.FullName} must be annotated with [WorldObject(\"ArchetypeName\")] " +
-                        "or override the Archetype property.");
+                    return "";
                 }
 
                 return attr.Archetype;
