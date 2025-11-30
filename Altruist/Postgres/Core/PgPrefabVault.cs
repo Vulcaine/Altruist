@@ -114,7 +114,6 @@ public sealed class PgPrefabVault<TPrefab> : PgVault<TPrefab>, IPrefabVault<TPre
             var component = kv.Value;
 
             await meta.SaveBatchAsync(
-                _serviceProvider,
                 [component]
             ).ConfigureAwait(false);
 
