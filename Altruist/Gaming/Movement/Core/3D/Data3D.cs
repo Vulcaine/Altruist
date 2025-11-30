@@ -54,6 +54,8 @@ namespace Altruist.Gaming.Movement.ThreeD
             );
         }
 
+        public static MovementIntent3D Zero => new MovementIntent3D(Vector3.Zero, 0f);
+
         /// <summary>
         /// Create intent from analog axes: x=right, z=forward, y=up (for flight); turnYaw in [-1..+1].
         /// </summary>
