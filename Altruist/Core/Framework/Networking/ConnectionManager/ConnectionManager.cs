@@ -99,7 +99,7 @@ namespace Altruist
             {
                 try
                 {
-                    await portal.OnConnectedAsync(clientId);
+                    await portal.OnConnectedAsync(clientId, this);
                 }
                 catch (Exception ex)
                 {

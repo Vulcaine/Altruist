@@ -43,21 +43,11 @@ public class JwtAuth : IShieldAuth
         var token = GetTokenFromRequest(context);
         var authDetails = ExtractAuthDetails(token);
 
-        // if (_syncService != null)
-        // {
-        //     var cached = await _syncService.FindCachedByIdAsync(authDetails.Token);
-        //     if (cached != null)
-        //     {
-        //          token = cached.AccessToken;
-        //     }
-        // }
-
         if (string.IsNullOrWhiteSpace(token))
         {
             return new AuthResult(AuthorizationResult.Failed(), null!);
         }
 
-        // Get the ClaimsPrincipal from the validator
         ClaimsPrincipal? principal;
         try
         {
