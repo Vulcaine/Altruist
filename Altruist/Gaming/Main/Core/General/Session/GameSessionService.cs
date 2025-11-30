@@ -111,7 +111,7 @@ public interface IGameSessionService
 
     IEnumerable<object> FindAllContexsts(string sessionId);
 
-    IEnumerable<object> FindContexts(params Type[] types);
+    IEnumerable<object> FindContexts(string id, params Type[] types);
 
     /// <summary>
     /// Exit the game:
@@ -652,10 +652,10 @@ public class GameSessionService : IGameSessionService
         return session?.FindAllContexts() ?? Enumerable.Empty<object>();
     }
 
-    public IEnumerable<object> FindContexts(params Type[] types)
+    public IEnumerable<object> FindContexts(string id, params Type[] types)
     {
-        var allSessions = _sessions.Values;
-        return allSessions.SelectMany(s => s.FindContexts(types));
+        var session = GetSession(id);
+        return session?.FindContexts(types) ?? Enumerable.Empty<object>();
     }
 
 }
