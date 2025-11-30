@@ -9,6 +9,7 @@ using Altruist.TwoD.Numerics;
 namespace Altruist.Gaming.TwoD
 {
     using Altruist.Gaming;
+    using Altruist.Gaming.ThreeD;
 
     /// <summary>
     /// Contract for a 2D world entity that can live in partitions
@@ -57,5 +58,7 @@ namespace Altruist.Gaming.TwoD
             ZoneId = zoneId ?? string.Empty;
             Archetype = archetype;
         }
+
+        public void Step(float dt, IWorldPhysics3D worldPhysics) { }
     }
 }

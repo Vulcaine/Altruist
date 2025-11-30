@@ -10,6 +10,7 @@ namespace Altruist.Gaming.Prefabs;
 public sealed class PgPrefabVault<TPrefab> : PgVault<TPrefab>, IPrefabVault<TPrefab>
     where TPrefab : PrefabModel, new()
 {
+
     public PgPrefabVault(
         ISqlDatabaseProvider provider,
         IKeyspace keyspace,

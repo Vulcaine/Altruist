@@ -144,6 +144,7 @@ namespace Altruist.Gaming.ThreeD
 
             _bodyApi.AddCollider(engine3D, body, collider);
             obj.BodyDescriptor = bodyDesc;
+            obj.Body = body;
 
             IEnumerable<WorldPartitionManager3D> partitions;
 
@@ -200,7 +201,7 @@ namespace Altruist.Gaming.ThreeD
             {
                 _flatInstanceCache.Remove(instanceId);
                 return removedFromPartitions ?? cachedByKey;
-            }
+        }
 
             var kvp = _flatInstanceCache
                 .FirstOrDefault(x => x.Value.InstanceId == instanceId);

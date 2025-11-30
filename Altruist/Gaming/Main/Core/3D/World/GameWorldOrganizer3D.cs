@@ -25,12 +25,16 @@ namespace Altruist.Gaming.ThreeD
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
+        private readonly IWorldPhysics3D _worldPhysx;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
-            IEnumerable<IWorldIndex3D> gameWorlds)
+            IWorldPhysics3D worldPhysics3D,
+            IEnumerable<IWorldIndex3D> gameWorlds
+            )
         {
-            _worldLoader = worldLoader ?? throw new ArgumentNullException(nameof(worldLoader));
+            _worldLoader = worldLoader;
+            _worldPhysx = worldPhysics3D;
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
@@ -95,6 +99,11 @@ namespace Altruist.Gaming.ThreeD
             {
                 try
                 {
+                    foreach (var obj in world.FindAllObjects<IWorldObject3D>())
+                    {
+                        obj.Step(deltaTime, _worldPhysx);
+                    }
+
                     world.PhysxWorld.Step(deltaTime);
                 }
                 catch

@@ -3,8 +3,6 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using System.Text.Json.Serialization;
-
 using Altruist.Persistence;
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
@@ -44,13 +42,16 @@ namespace Altruist.Gaming.ThreeD
         /// Engine-agnostic body descriptor (not persisted).
         /// This is used by SpawnService3D to create the runtime body.
         /// </summary>
-        [JsonIgnore]
         [VaultIgnore]
         public PhysxBody3DDesc? BodyDescriptor { get; set; }
 
-        [JsonIgnore]
+        [VaultIgnore]
+        public IPhysxBody3D? Body { get; set; }
+
         [VaultIgnore]
         public string ZoneId { get; set; } = "";
+
+        public void Step(float dt, IWorldPhysics3D worldPhysics) { }
     }
 
     /// <summary>
@@ -70,6 +71,9 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         [VaultIgnore]
         PhysxBody3DDesc? BodyDescriptor { get; set; }
+
+        [VaultIgnore]
+        public IPhysxBody3D? Body { get; set; }
     }
 
     /// <summary>
@@ -105,6 +109,9 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public PhysxBody3DDesc? BodyDescriptor { get; set; }
 
+        [VaultIgnore]
+        public IPhysxBody3D? Body { get; set; }
+
         protected WorldObject3D(Transform3D transform, string zoneId = "", string? archetype = null)
         {
             Transform = transform;
@@ -127,6 +134,8 @@ namespace Altruist.Gaming.ThreeD
                 $"Size=({sz.X:0.##},{sz.Y:0.##},{sz.Z:0.##}), " +
                 $"Scale=({sc.X:0.##},{sc.Y:0.##},{sc.Z:0.##}))";
         }
+
+        public virtual void Step(float dt, IWorldPhysics3D worldPhysics) { }
     }
 
     public class AnonymousWorldObject3D : WorldObject3D
