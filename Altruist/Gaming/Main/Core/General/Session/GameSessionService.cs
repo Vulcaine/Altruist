@@ -104,6 +104,8 @@ public interface IGameSessionService
     /// </summary>
     Task Cleanup();
 
+    IEnumerable<T> FindAllContexts<T>();
+
     /// <summary>
     /// Exit the game:
     ///   - returns a RoomBroadcast (if the player was in a room)
@@ -592,5 +594,11 @@ public class GameSessionService : IGameSessionService
         {
             _logger.LogError(ex, "Error cleaning up connections and contexts.");
         }
+    }
+
+    public IEnumerable<T> FindAllContexts<T>()
+    {
+        var allSessions = _sessions.Values;
+        return allSessions.SelectMany(s => s.FindAllContexts<T>());
     }
 }
