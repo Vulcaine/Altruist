@@ -66,14 +66,14 @@ public static class PrefabMetadataRegistry
                 SaveBatchAsync = saver,
                 AutoLoadOn = attr.AutoLoadOn,
                 RelationKey = attr.RelationKey,
-                OnLoadedCallbacks = Array.Empty<Func<object, object?, IServiceProvider, Task>>()
+                OnLoadedCallbacks = Array.Empty<Func<object, object?, Task>>()
             });
         }
 
         var metas = list.ToArray();
 
         // ---------- scan methods for [OnPrefabComponentLoad] ----------
-        var callbacksByComponent = new Dictionary<string, List<Func<object, object?, IServiceProvider, Task>>>(
+        var callbacksByComponent = new Dictionary<string, List<Func<object, object?, Task>>>(
             StringComparer.Ordinal);
 
         foreach (var method in prefabType.GetMethods(
@@ -95,7 +95,7 @@ public static class PrefabMetadataRegistry
                 var cb = CompileOnComponentLoadCallback(prefabType, method, targetMeta.ComponentType);
                 if (!callbacksByComponent.TryGetValue(targetMeta.Name, out var listForComponent))
                 {
-                    listForComponent = new List<Func<object, object?, IServiceProvider, Task>>();
+                    listForComponent = new List<Func<object, object?, Task>>();
                     callbacksByComponent[targetMeta.Name] = listForComponent;
                 }
                 listForComponent.Add(cb);
@@ -120,14 +120,14 @@ public static class PrefabMetadataRegistry
                 AutoLoadOn = meta.AutoLoadOn,
                 RelationKey = meta.RelationKey,
                 OnLoadedCallbacks = cbList?.ToArray()
-                    ?? Array.Empty<Func<object, object?, IServiceProvider, Task>>()
+                    ?? Array.Empty<Func<object, object?, Task>>()
             });
         }
 
         _byPrefab[prefabType] = finalList.ToArray();
     }
 
-    private static Func<object, object?, IServiceProvider, Task> CompileOnComponentLoadCallback(
+    private static Func<object, object?, Task> CompileOnComponentLoadCallback(
         Type prefabType,
         MethodInfo method,
         Type componentType)
@@ -159,7 +159,7 @@ public static class PrefabMetadataRegistry
 
         // We build a delegate:
         // (prefabObj, componentObj, services) => { resolve extra parameters from DI; invoke method; await if Task; }
-        return async (prefabObj, componentObj, services) =>
+        return async (prefabObj, componentObj) =>
         {
             if (componentObj is null)
                 return;
@@ -175,7 +175,7 @@ public static class PrefabMetadataRegistry
                 else
                 {
                     var serviceType = parameters[i].ParameterType;
-                    args[i] = services.GetRequiredService(serviceType);
+                    args[i] = Dependencies.Inject(serviceType);
                 }
             }
 
@@ -335,6 +335,6 @@ public sealed class PrefabComponentMetadata
     /// Compiled callbacks to invoke when this component is loaded.
     /// Signature: (prefabInstance, componentInstance, services) => Task
     /// </summary>
-    public Func<object, object?, IServiceProvider, Task>[] OnLoadedCallbacks { get; init; }
-        = Array.Empty<Func<object, object?, IServiceProvider, Task>>();
+    public Func<object, object?, Task>[] OnLoadedCallbacks { get; init; }
+        = Array.Empty<Func<object, object?, Task>>();
 }
