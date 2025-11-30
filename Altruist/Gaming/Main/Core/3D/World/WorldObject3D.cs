@@ -54,7 +54,7 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public bool Expired { get; set; }
 
-        public void Step(float dt, IWorldPhysics3D worldPhysics) { }
+        public virtual void Step(float dt, IWorldPhysics3D worldPhysics) { }
     }
 
     /// <summary>
