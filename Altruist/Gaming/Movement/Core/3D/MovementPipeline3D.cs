@@ -15,16 +15,16 @@ namespace Altruist.Gaming.Movement.ThreeD
 
     public sealed class MovementBuilder3D
     {
-        private Planar3D _kin = Planar3D.GroundPlane;
-        private Rotation3D _rot = Rotation3D.YawPitchRollRate;
-        private Dynamics3D _dyn = Dynamics3D.LinearAccel | Dynamics3D.ExponentialDrag;
-        private Forces3D _forces = Forces3D.None;
+        private Planar3DFlags _kin = Planar3DFlags.GroundPlane;
+        private Rotation3DFlags _rot = Rotation3DFlags.YawPitchRollRate;
+        private Dynamics3DFlags _dyn = Dynamics3DFlags.LinearAccel | Dynamics3DFlags.ExponentialDrag;
+        private Forces3DFlags _forces = Forces3DFlags.None;
         private readonly List<Action<MovementProfile3D>> _constraintTweaks = new();
 
-        public MovementBuilder3D WithKinematics(Planar3D flags) { _kin = flags; return this; }
-        public MovementBuilder3D WithRotation(Rotation3D flags) { _rot = flags; return this; }
-        public MovementBuilder3D WithDynamics(Dynamics3D flags) { _dyn = flags; return this; }
-        public MovementBuilder3D WithForces(Forces3D flags) { _forces = flags; return this; }
+        public MovementBuilder3D WithKinematics(Planar3DFlags flags) { _kin = flags; return this; }
+        public MovementBuilder3D WithRotation(Rotation3DFlags flags) { _rot = flags; return this; }
+        public MovementBuilder3D WithDynamics(Dynamics3DFlags flags) { _dyn = flags; return this; }
+        public MovementBuilder3D WithForces(Forces3DFlags flags) { _forces = flags; return this; }
         public MovementBuilder3D WithConstraints(params Action<MovementProfile3D>[] cfg) { _constraintTweaks.AddRange(cfg); return this; }
 
         public IMovementPipeline3D Build()
@@ -36,33 +36,33 @@ namespace Altruist.Gaming.Movement.ThreeD
             };
 
             // Kinematics
-            if (_kin.HasFlag(Planar3D.GroundPlane))
+            if (_kin.HasFlag(Planar3DFlags.GroundPlane))
                 modules.Add(new KinematicsGround3D());
-            if (_kin.HasFlag(Planar3D.FreeFlight))
+            if (_kin.HasFlag(Planar3DFlags.FreeFlight))
                 modules.Add(new KinematicsFreeFlight3D());
 
             // Rotation
-            if (_rot.HasFlag(Rotation3D.FaceAim))
+            if (_rot.HasFlag(Rotation3DFlags.FaceAim))
                 modules.Add(new RotationFaceAim3D());
-            if (_rot.HasFlag(Rotation3D.FaceVelocity))
+            if (_rot.HasFlag(Rotation3DFlags.FaceVelocity))
                 modules.Add(new RotationFaceVelocity3D());
-            if (_rot.HasFlag(Rotation3D.YawPitchRollRate))
+            if (_rot.HasFlag(Rotation3DFlags.YawPitchRollRate))
                 modules.Add(new RotationYPRRate3D());
 
             // Dynamics
-            if (_dyn.HasFlag(Dynamics3D.LinearAccel))
+            if (_dyn.HasFlag(Dynamics3DFlags.LinearAccel))
                 modules.Add(new DynamicsLinearAccel3D());
-            if (_dyn.HasFlag(Dynamics3D.ExponentialDrag))
+            if (_dyn.HasFlag(Dynamics3DFlags.ExponentialDrag))
                 modules.Add(new DynamicsDrag3D());
-            if (_dyn.HasFlag(Dynamics3D.TractionCurve))
+            if (_dyn.HasFlag(Dynamics3DFlags.TractionCurve))
                 modules.Add(new DynamicsTraction3D());
 
             // Forces
-            if (_forces.HasFlag(Forces3D.Boost))
+            if (_forces.HasFlag(Forces3DFlags.Boost))
                 modules.Add(new ForceBoost3D());
-            if (_forces.HasFlag(Forces3D.Dash))
+            if (_forces.HasFlag(Forces3DFlags.Dash))
                 modules.Add(new ForceDash3D());
-            if (_forces.HasFlag(Forces3D.Knockback))
+            if (_forces.HasFlag(Forces3DFlags.Knockback))
                 modules.Add(new ForceKnockback3D());
 
             var tweaks = _constraintTweaks.ToArray();

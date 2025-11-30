@@ -2,10 +2,10 @@ using System.Numerics;
 
 namespace Altruist.Gaming.Movement.ThreeD
 {
-    [Flags] public enum Planar3D { None = 0, GroundPlane = 1 << 0, FreeFlight = 1 << 1 }
-    [Flags] public enum Rotation3D { None = 0, FaceAim = 1 << 0, FaceVelocity = 1 << 1, YawPitchRollRate = 1 << 2 }
-    [Flags] public enum Dynamics3D { None = 0, LinearAccel = 1 << 0, ExponentialDrag = 1 << 1, TractionCurve = 1 << 2 }
-    [Flags] public enum Forces3D { None = 0, Boost = 1 << 0, Dash = 1 << 1, Knockback = 1 << 2, Jump = 1 << 3 }
+    [Flags] public enum Planar3DFlags { None = 0, GroundPlane = 1 << 0, FreeFlight = 1 << 1 }
+    [Flags] public enum Rotation3DFlags { None = 0, FaceAim = 1 << 0, FaceVelocity = 1 << 1, YawPitchRollRate = 1 << 2 }
+    [Flags] public enum Dynamics3DFlags { None = 0, LinearAccel = 1 << 0, ExponentialDrag = 1 << 1, TractionCurve = 1 << 2 }
+    [Flags] public enum Forces3DFlags { None = 0, Boost = 1 << 0, Dash = 1 << 1, Knockback = 1 << 2, Jump = 1 << 3 }
 
     /// <summary>
     /// Server-friendly intent: world move vec, signed yaw turn, optional aim direction, and jump.
