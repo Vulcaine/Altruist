@@ -121,15 +121,12 @@ public class Document
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            // Prefab-only component props are not persisted
             if (prop.GetCustomAttribute<PrefabComponentAttribute>() is not null)
                 continue;
 
-            // Explicitly ignored props are not persisted
             if (prop.GetCustomAttribute<VaultIgnoreAttribute>() is not null)
                 continue;
 
-            // ✅ Only properties explicitly marked with [VaultColumn] are mapped
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
             if (columnAttr is null)
                 continue;

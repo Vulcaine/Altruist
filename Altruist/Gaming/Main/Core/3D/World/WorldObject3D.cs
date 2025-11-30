@@ -35,7 +35,7 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>
         /// Transform in world space. Prefab3D already has this property.
         /// </summary>
-        [VaultColumn("transform")]
+        [VaultIgnore]
         public Transform3D Transform { get; set; }
 
         /// <summary>
