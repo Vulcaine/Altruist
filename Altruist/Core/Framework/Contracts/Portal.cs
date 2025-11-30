@@ -17,7 +17,7 @@ public interface IPortal
 
 public abstract class Portal : IPortal
 {
-    public virtual Task OnConnectedAsync(string clientId) => Task.CompletedTask;
+    public virtual Task OnConnectedAsync(string clientId, ConnectionManager connection) => Task.CompletedTask;
 
     public virtual Task OnDisconnectedAsync(string clientId, Exception? exception) => Task.CompletedTask;
 }
