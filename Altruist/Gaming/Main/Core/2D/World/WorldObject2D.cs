@@ -63,6 +63,9 @@ namespace Altruist.Gaming.TwoD
             Archetype = archetype;
         }
 
-        public virtual void Step(float dt, IWorldPhysics3D worldPhysics) { }
+        public virtual Task Step(float dt, IWorldPhysics3D worldPhysics)
+        {
+            return Task.CompletedTask;
+        }
     }
 }
