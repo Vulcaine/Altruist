@@ -47,6 +47,7 @@ public interface IGameSession
 
     IEnumerable<T> FindAllContexts<T>() where T : class;
 
+    IEnumerable<object> FindAllContexts();
 
     /// <summary>
     /// Remove a context of type T for the given context id (if any).
@@ -105,6 +106,8 @@ public interface IGameSessionService
     Task Cleanup();
 
     IEnumerable<T> FindAllContexts<T>() where T : class;
+
+    IEnumerable<object> FindAllContexsts(string sessionId);
 
     /// <summary>
     /// Exit the game:
@@ -321,6 +324,15 @@ internal sealed class GameSession : IGameSession
             return _contexts.Values
                 .SelectMany(list => list)
                 .OfType<T>();
+        }
+    }
+
+    public IEnumerable<object> FindAllContexts()
+    {
+        lock (_lock)
+        {
+            return _contexts.Values
+                .SelectMany(list => list);
         }
     }
 }
@@ -601,5 +613,11 @@ public class GameSessionService : IGameSessionService
     {
         var allSessions = _sessions.Values;
         return allSessions.SelectMany(s => s.FindAllContexts<T>());
+    }
+
+    public IEnumerable<object> FindAllContexsts(string sessionId)
+    {
+        var session = GetSession(sessionId);
+        return session?.FindAllContexts() ?? Enumerable.Empty<object>();
     }
 }
