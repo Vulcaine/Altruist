@@ -325,6 +325,25 @@ public class AltruistEngine : IAltruistEngine
         _nextTickTasks.Enqueue(task);
     }
 
+    public void WaitForNextTick(Action task)
+    {
+        if (task == null)
+            throw new ArgumentNullException(nameof(task));
+        EnqueueNextTick(task);
+    }
+
+    private void EnqueueNextTick(Delegate task)
+    {
+        _nextTickTasks.Enqueue(task);
+    }
+
+    public void WaitForNextTick(Func<Task> task)
+    {
+        if (task == null)
+            throw new ArgumentNullException(nameof(task));
+        EnqueueNextTick(task);
+    }
+
     public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
     {
         var cron = CronExpression.Parse(cronExpression);
@@ -647,21 +666,6 @@ public class AltruistEngine : IAltruistEngine
         _cancellationTokenSource?.Cancel();
     }
 
-    public void WaitForNextTick(Action task)
-    {
-        WaitForNextTick(() =>
-        {
-            task();
-            return Task.CompletedTask;
-        });
-    }
-    public void WaitForNextTick(Func<Task> task)
-    {
-        WaitForNextTick(async () =>
-        {
-            await task();
-        });
-    }
 }
 
 [Service(typeof(IAltruistEngine))]
