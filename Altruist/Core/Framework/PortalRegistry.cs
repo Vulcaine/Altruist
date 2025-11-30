@@ -10,7 +10,7 @@ public static class PortalGateRegistry<TMarker>
     private static readonly ConcurrentDictionary<string, List<Delegate>> _handlers =
         new(StringComparer.Ordinal);
 
-    private static readonly ConcurrentBag<TMarker> _instances = new();
+    private static readonly ConcurrentDictionary<TMarker, byte> _instances = new();
 
     /// <summary>Register a handler delegate for an event name.</summary>
     public static void Register(string eventName, Delegate handler)
@@ -30,7 +30,9 @@ public static class PortalGateRegistry<TMarker>
     {
         if (instance is null)
             throw new ArgumentNullException(nameof(instance));
-        _instances.Add(instance);
+
+
+        _instances.TryAdd(instance, 0);
     }
 
     /// <summary>Get all handlers for an event. Returns empty if none.</summary>
@@ -62,5 +64,5 @@ public static class PortalGateRegistry<TMarker>
     /// Back-compat: Return all registered marker instances (e.g., IPortal implementations).
     /// </summary>
     public static IReadOnlyList<TMarker> GetAllHandlers()
-        => _instances.ToArray();
+        => _instances.Keys.ToArray();
 }

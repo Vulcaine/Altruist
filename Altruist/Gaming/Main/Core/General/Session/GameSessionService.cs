@@ -109,6 +109,8 @@ public interface IGameSessionService
 
     IEnumerable<T> FindAllContexts<T>() where T : class;
 
+    IEnumerable<T> FindAllContexts<T>(string id) where T : class;
+
     IEnumerable<object> FindAllContexsts(string sessionId);
 
     IEnumerable<object> FindContexts(string id, params Type[] types);
@@ -658,4 +660,9 @@ public class GameSessionService : IGameSessionService
         return session?.FindContexts(types) ?? Enumerable.Empty<object>();
     }
 
+    public IEnumerable<T> FindAllContexts<T>(string id) where T : class
+    {
+        var session = GetSession(id);
+        return session?.FindAllContexts<T>() ?? Enumerable.Empty<T>();
+    }
 }
