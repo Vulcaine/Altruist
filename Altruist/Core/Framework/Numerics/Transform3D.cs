@@ -88,6 +88,42 @@ namespace Altruist.ThreeD.Numerics
             Rotation = rotation;
         }
 
+        public static Transform3D From(Vector3 origin, Quaternion rotation, Vector3 size, Vector3 scale)
+        {
+            return new Transform3D(
+                Position3D.From(new IntVector3((int)origin.X, (int)origin.Y, (int)origin.Z)),
+                Size3D.From(size),
+                Scale3D.From(scale),
+                Rotation3D.FromQuaternion(rotation));
+        }
+
+        public static Transform3D From(Vector3 origin, Quaternion rotation, Vector3 size)
+        {
+            return new Transform3D(
+                Position3D.From(new IntVector3((int)origin.X, (int)origin.Y, (int)origin.Z)),
+                Size3D.From(size),
+                Scale3D.One,
+                Rotation3D.FromQuaternion(rotation));
+        }
+
+        public static Transform3D From(IntVector3 origin, Quaternion rotation, Vector3 size)
+        {
+            return new Transform3D(
+                Position3D.From(origin),
+                Size3D.From(size),
+                Scale3D.One,
+                Rotation3D.FromQuaternion(rotation));
+        }
+
+        public static Transform3D From(IntVector3 origin, Quaternion rotation, Vector3 size, Vector3 scale)
+        {
+            return new Transform3D(
+                Position3D.From(new IntVector3((int)origin.X, (int)origin.Y, (int)origin.Z)),
+                Size3D.From(size),
+                Scale3D.From(scale),
+                Rotation3D.FromQuaternion(rotation));
+        }
+
         public static Transform3D Zero => new(Position3D.Zero, Size3D.Zero, Scale3D.One, Rotation3D.Identity);
 
         public Transform3D WithPosition(Position3D p) => new(p, Size, Scale, Rotation);
