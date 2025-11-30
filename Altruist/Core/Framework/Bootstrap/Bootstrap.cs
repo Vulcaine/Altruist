@@ -24,6 +24,7 @@ public static class AltruistBootstrap
 
         // Build a single root provider
         using var provider = Services.BuildServiceProvider();
+        Dependencies.UseRootProvider(provider);
 
         // 1) Run global [PostConstruct] for all services
         await RunPostConstructsAsync(provider);
