@@ -121,27 +121,38 @@ public class Document
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
+            // Prefab-only component props are not persisted
             if (prop.GetCustomAttribute<PrefabComponentAttribute>() is not null)
                 continue;
 
+            // Explicitly ignored props are not persisted
             if (prop.GetCustomAttribute<VaultIgnoreAttribute>() is not null)
                 continue;
 
+            // ✅ Only properties explicitly marked with [VaultColumn] are mapped
             var columnAttr = prop.GetCustomAttribute<VaultColumnAttribute>();
+            if (columnAttr is null)
+                continue;
+
             var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>();
 
-            var physical = columnAttr?.Name ?? ToSnakeCase(prop.Name);
+            var physical = columnAttr.Name ?? ToSnakeCase(prop.Name);
             var fieldName = prop.Name;
 
+            // basic mapping
             fields.Add(fieldName);
             columns[fieldName] = physical;
 
+            // accessor cache
             accessors[fieldName] = CompileAccessor(prop);
-            if (columnAttr?.Nullable == true)
+
+            // track nullable columns (by physical name)
+            if (columnAttr.Nullable)
             {
                 nullableColumns.Add(physical);
             }
 
+            // foreign key definition (only for persisted columns)
             if (fkAttr is not null)
             {
                 foreignKeys.Add(new VaultForeignKeyDefinition(
@@ -152,11 +163,13 @@ public class Document
                     onDelete: fkAttr.OnDelete));
             }
 
+            // [VaultColumnIndex] -> index on physical column
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
             {
                 indexes.Add(physical);
             }
 
+            // [VaultUniqueColumn] -> UNIQUE constraint on physical column
             if (prop.GetCustomAttribute<VaultUniqueColumnAttribute>() != null)
             {
                 uniqueKeys.Add(physical);
@@ -182,6 +195,7 @@ public class Document
 
         return doc;
     }
+
     private static string ToSnakeCase(string value)
     {
         if (string.IsNullOrEmpty(value))
