@@ -13,16 +13,19 @@ public sealed class PostgresServiceFactory : IServiceFactory
 {
     public bool CanCreate(Type serviceType)
     {
-        if (serviceType is null)
+        var genDef = serviceType.GetGenericTypeDefinition();
+
+        if (genDef != typeof(IVault<>) && genDef != typeof(IPrefabVault<>))
             return false;
 
-        // Case 1: serviceType itself is a vault model (non-generic)
-        if (typeof(IVaultModel).IsAssignableFrom(serviceType))
-            return true;
+        var modelType = serviceType.GetGenericArguments()[0];
+
+        if (!typeof(IVaultModel).IsAssignableFrom(modelType) && !typeof(IPrefabModel).IsAssignableFrom(modelType))
+            return false;
 
         // Only models with [Vault] or [Prefab] are supported
-        var hasVaultAttr = serviceType.GetCustomAttribute<VaultAttribute>() != null;
-        var hasPrefabAttr = serviceType.GetCustomAttribute<PrefabAttribute>() != null;
+        var hasVaultAttr = modelType.GetCustomAttribute<VaultAttribute>() != null;
+        var hasPrefabAttr = modelType.GetCustomAttribute<PrefabAttribute>() != null;
 
         return hasVaultAttr || hasPrefabAttr;
     }
