@@ -19,6 +19,7 @@ namespace Altruist.ThreeD.Numerics
         public static Position3D One => new(new IntVector3(1, 1, 1));
         public static Position3D Of(int x, int y, int z) => new(x, y, z);
         public static Position3D From(IntVector3 v) => new(v);
+        public static Position3D From(Vector3 v) => new((int)v.X, (int)v.Y, (int)v.Z);
         public IntVector3 ToVector3() => _v;
     }
 
@@ -73,12 +74,12 @@ namespace Altruist.ThreeD.Numerics
         public Quaternion ToQuaternion() => _q;
     }
 
-    public readonly struct Transform3D
+    public struct Transform3D
     {
-        public Position3D Position { get; }
-        public Size3D Size { get; }
-        public Scale3D Scale { get; }
-        public Rotation3D Rotation { get; }
+        public Position3D Position { get; set; }
+        public Size3D Size { get; set; }
+        public Scale3D Scale { get; set; }
+        public Rotation3D Rotation { get; set; }
 
         public Transform3D(Position3D position, Size3D size, Scale3D scale, Rotation3D rotation)
         {

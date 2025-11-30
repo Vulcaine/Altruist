@@ -17,7 +17,7 @@ public struct IntVector3
 
     public Vector3 ToFloatVector3()
     {
-        return new Vector3((float)X, (float)Y, (float)Z);
+        return new Vector3(X, Y, Z);
     }
 
     // Operators
