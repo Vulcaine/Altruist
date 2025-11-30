@@ -4,6 +4,7 @@ Licensed under the Apache License, Version 2.0
 */
 
 using Altruist.Gaming.ThreeD;
+using Altruist.UORM;
 
 namespace Altruist.Gaming
 {
@@ -22,6 +23,7 @@ namespace Altruist.Gaming
         /// <summary>
         ///  Indicates whether the object has expired and should be removed from the world.
         /// </summary>
+        [VaultIgnore]
         bool Expired { get; set; }
 
         /// <summary>Logical unique instance id in the world.</summary>

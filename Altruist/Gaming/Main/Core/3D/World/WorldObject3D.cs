@@ -51,6 +51,9 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public string ZoneId { get; set; } = "";
 
+        [VaultIgnore]
+        public bool Expired { get; set; }
+
         public void Step(float dt, IWorldPhysics3D worldPhysics) { }
     }
 
@@ -111,6 +114,9 @@ namespace Altruist.Gaming.ThreeD
 
         [VaultIgnore]
         public IPhysxBody3D? Body { get; set; }
+
+        [VaultIgnore]
+        public bool Expired { get; set; }
 
         protected WorldObject3D(Transform3D transform, string zoneId = "", string? archetype = null)
         {
