@@ -125,7 +125,8 @@ public class JwtTokenValidator : IJwtTokenValidator
 
     public Task<ClaimsPrincipal?> ValidateToken(string token)
     {
-        return Task.FromResult(_tokenHandler.ValidateToken(token, _validationParams, out _))!;
+        string actualToken = token.Replace(";jwt", "");
+        return Task.FromResult(_tokenHandler.ValidateToken(actualToken, _validationParams, out _))!;
     }
 }
 
