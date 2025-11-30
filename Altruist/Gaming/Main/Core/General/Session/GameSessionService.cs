@@ -47,6 +47,8 @@ public interface IGameSession
 
     IEnumerable<T> FindAllContexts<T>() where T : class;
 
+    IEnumerable<object> FindContexts(params Type[] types);
+
     IEnumerable<object> FindAllContexts();
 
     /// <summary>
@@ -108,6 +110,8 @@ public interface IGameSessionService
     IEnumerable<T> FindAllContexts<T>() where T : class;
 
     IEnumerable<object> FindAllContexsts(string sessionId);
+
+    IEnumerable<object> FindContexts(params Type[] types);
 
     /// <summary>
     /// Exit the game:
@@ -335,6 +339,33 @@ internal sealed class GameSession : IGameSession
                 .SelectMany(list => list);
         }
     }
+
+    public IEnumerable<object> FindContexts(params Type[] types)
+    {
+        // If no types specified, behave like "all"
+        if (types == null || types.Length == 0)
+        {
+            lock (_lock)
+            {
+                return _contexts.Values
+                    .SelectMany(list => list)
+                    .ToList();
+            }
+        }
+
+        lock (_lock)
+        {
+            var typeSet = new HashSet<Type>(types);
+
+            return _contexts.Values
+                .SelectMany(list => list)
+                .Where(obj =>
+                    obj != null &&
+                    typeSet.Any(t => t.IsInstanceOfType(obj)))
+                .ToList();
+        }
+    }
+
 }
 
 [Service(typeof(IGameSessionService))]
@@ -620,4 +651,11 @@ public class GameSessionService : IGameSessionService
         var session = GetSession(sessionId);
         return session?.FindAllContexts() ?? Enumerable.Empty<object>();
     }
+
+    public IEnumerable<object> FindContexts(params Type[] types)
+    {
+        var allSessions = _sessions.Values;
+        return allSessions.SelectMany(s => s.FindContexts(types));
+    }
+
 }
