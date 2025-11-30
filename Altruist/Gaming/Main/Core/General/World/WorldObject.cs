@@ -19,6 +19,11 @@ namespace Altruist.Gaming
     /// </summary>
     public interface IWorldObject : ISteppable3D
     {
+        /// <summary>
+        ///  Indicates whether the object has expired and should be removed from the world.
+        /// </summary>
+        bool Expired { get; set; }
+
         /// <summary>Logical unique instance id in the world.</summary>
         string InstanceId { get; set; }
 

@@ -101,6 +101,12 @@ namespace Altruist.Gaming.ThreeD
                 {
                     foreach (var obj in world.FindAllObjects<IWorldObject3D>())
                     {
+                        if (obj.Expired)
+                        {
+                            world.DestroyObject(obj);
+                            continue;
+                        }
+
                         obj.Step(deltaTime, _worldPhysx);
                     }
 
