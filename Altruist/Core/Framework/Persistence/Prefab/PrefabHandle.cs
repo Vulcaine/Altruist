@@ -158,7 +158,7 @@ public static class PrefabHandleInitializer
             prefabModel.ComponentRefs.TryGetValue(comp.Name, out var id);
 
             // IPrefabHandle<TComponent> boxed as object
-            var handleObj = comp.HandleFactory(prefabModel, services, comp, id);
+            var handleObj = comp.HandleFactory(prefabModel, comp, id);
 
             comp.Setter(prefab, handleObj);
         }
