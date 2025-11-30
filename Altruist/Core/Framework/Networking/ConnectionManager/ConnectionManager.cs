@@ -35,13 +35,20 @@ namespace Altruist
         private readonly IEngineCore? _engine;
         private readonly ILogger _logger;
 
-        public ConnectionManager(ISocketManager socketManager, ICodec codec,
-         ILoggerFactory loggerFactory, IEngineCore? engineCore = null)
+        private readonly int _idleTimeout;
+
+        public ConnectionManager(
+            ISocketManager socketManager,
+            ICodec codec,
+            ILoggerFactory loggerFactory, IEngineCore? engineCore = null,
+            [AppConfigValue("altruist:server:transport:timeout", "10")] int timeout = 10
+         )
         {
             _socketManager = socketManager;
             _codec = codec;
             _engine = engineCore;
             _logger = loggerFactory.CreateLogger(GetType());
+            _idleTimeout = timeout;
         }
 
         public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
@@ -101,12 +108,30 @@ namespace Altruist
             }
 
             Exception? failureException = null;
+            var idleTimeout = TimeSpan.FromSeconds(_idleTimeout);
 
             try
             {
                 while (true)
                 {
-                    var packetData = await connection.ReceiveAsync(CancellationToken.None);
+                    byte[] packetData;
+
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(idleTimeout);
+                        packetData = await connection.ReceiveAsync(cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogInformation(
+                            "Closing idle connection for client {ClientId} after {Timeout} inactivity.",
+                            clientId, idleTimeout);
+
+                        failureException = new TimeoutException(
+                            $"Connection idle for {idleTimeout.TotalSeconds} seconds.");
+                        break;
+                    }
+
                     if (packetData.Length == 0)
                     {
                         break;
@@ -126,7 +151,7 @@ namespace Altruist
             {
                 try
                 {
-                    await DisconnectEngineAwareAsync(clientId);
+                    await DisconnectAsync(clientId, portals, failureException);
                 }
                 catch (Exception ex)
                 {
