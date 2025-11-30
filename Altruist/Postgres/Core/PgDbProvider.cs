@@ -12,10 +12,13 @@ You may obtain a copy of the License at
 using System.Data;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 
 using Altruist.Contracts;
 
 using Npgsql;
+
+using NpgsqlTypes;
 
 namespace Altruist.Persistence.Postgres;
 
@@ -371,11 +374,41 @@ public class SqlDbProvider : ISqlDatabaseProvider
         }
 
         cmd.CommandText = ReplaceQuestionMarks(sql, parameters.Count);
+
         for (int i = 0; i < parameters.Count; i++)
         {
+            var value = parameters[i];
             var p = cmd.CreateParameter();
             p.ParameterName = $"@p{i + 1}";
-            p.Value = parameters[i] ?? DBNull.Value;
+
+            if (value is null)
+            {
+                p.Value = DBNull.Value;
+            }
+            else
+            {
+                var type = value.GetType();
+
+                if (type.IsGenericType &&
+                    type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+                {
+                    var args = type.GetGenericArguments();
+                    if (args[0] == typeof(string) && args[1] == typeof(string))
+                    {
+                        p.NpgsqlDbType = NpgsqlDbType.Jsonb;
+                        p.Value = JsonSerializer.Serialize(value);
+                    }
+                    else
+                    {
+                        p.Value = value;
+                    }
+                }
+                else
+                {
+                    p.Value = value;
+                }
+            }
+
             cmd.Parameters.Add(p);
         }
 
