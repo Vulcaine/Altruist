@@ -45,6 +45,9 @@ public interface IGameSession
     /// </summary>
     Task<T?> GetContext<T>(string id);
 
+    IEnumerable<T> FindAllContexts<T>();
+
+
     /// <summary>
     /// Remove a context of type T for the given context id (if any).
     /// </summary>
@@ -306,6 +309,15 @@ internal sealed class GameSession : IGameSession
 
                 _contexts.Clear();
             }
+        }
+    }
+
+    public IEnumerable<T> FindAllContexts<T>()
+    {
+        lock (_lock)
+        {
+            return _contexts.Values
+                .OfType<T>();
         }
     }
 }
