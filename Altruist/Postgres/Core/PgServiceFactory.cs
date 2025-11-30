@@ -13,6 +13,9 @@ public sealed class PostgresServiceFactory : IServiceFactory
 {
     public bool CanCreate(Type serviceType)
     {
+        if (!serviceType.IsGenericType)
+            return false;
+
         var genDef = serviceType.GetGenericTypeDefinition();
 
         if (genDef != typeof(IVault<>) && genDef != typeof(IPrefabVault<>))
