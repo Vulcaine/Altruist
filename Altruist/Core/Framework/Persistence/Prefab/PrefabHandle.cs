@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Altruist.Persistence;
 
 
@@ -20,7 +18,6 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
     where T : class, IVaultModel
 {
     private readonly PrefabModel _owner;
-    private readonly IServiceProvider _services;
     private readonly PrefabComponentMetadata _meta;
 
     private string? _id;
@@ -31,12 +28,10 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
 
     public PrefabHandle(
         PrefabModel owner,
-        IServiceProvider services,
         PrefabComponentMetadata meta,
         string? id)
     {
         _owner = owner ?? throw new ArgumentNullException(nameof(owner));
-        _services = services ?? throw new ArgumentNullException(nameof(services));
         _meta = meta ?? throw new ArgumentNullException(nameof(meta));
         _id = id;
     }
@@ -59,7 +54,7 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
         _owner.ComponentRefs[_meta.Name] = _id;
 
         PrefabComponentTracker.Track(_owner, _meta, entity);
-        PrefabComponentLifecycle.OnComponentLoadedSync(_owner, _meta, entity, _services);
+        PrefabComponentLifecycle.OnComponentLoadedSync(_owner, _meta, entity);
     }
 
     public async ValueTask<T?> LoadAsync(CancellationToken ct = default)
@@ -73,7 +68,7 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
             return _cached = null;
         }
 
-        var vault = _services.GetRequiredService<IVault<T>>();
+        var vault = Dependencies.Inject<IVault<T>>();
 
         var entity = await vault
             .Where(x => x.StorageId == _id)
@@ -87,7 +82,7 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
         {
             PrefabComponentTracker.Track(_owner, _meta, entity);
             await PrefabComponentLifecycle
-                .OnComponentLoadedAsync(_owner, _meta, entity, _services)
+                .OnComponentLoadedAsync(_owner, _meta, entity)
                 .ConfigureAwait(false);
         }
 
@@ -100,10 +95,9 @@ public static class PrefabComponentLifecycle
     public static void OnComponentLoadedSync(
         PrefabModel owner,
         PrefabComponentMetadata meta,
-        IVaultModel component,
-        IServiceProvider services)
+        IVaultModel component)
     {
-        OnComponentLoadedAsync(owner, meta, component, services)
+        OnComponentLoadedAsync(owner, meta, component)
             .GetAwaiter()
             .GetResult();
     }
@@ -111,14 +105,13 @@ public static class PrefabComponentLifecycle
     public static async Task OnComponentLoadedAsync(
         PrefabModel owner,
         PrefabComponentMetadata meta,
-        IVaultModel? component,
-        IServiceProvider services)
+        IVaultModel? component)
     {
         if (meta.OnLoadedCallbacks is { Length: > 0 })
         {
             foreach (var cb in meta.OnLoadedCallbacks)
             {
-                await cb(owner, component, services).ConfigureAwait(false);
+                await cb(owner, component).ConfigureAwait(false);
             }
         }
 
