@@ -215,13 +215,12 @@ public static class PrefabMetadataRegistry
     {
         var handleClr = typeof(PrefabHandle<>).MakeGenericType(componentType);
 
-        var ctor = handleClr.GetConstructor(new[]
-        {
+        var ctor = handleClr.GetConstructor(
+        [
             typeof(PrefabModel),
-            typeof(IServiceProvider),
             typeof(PrefabComponentMetadata),
             typeof(string)
-        });
+        ]);
 
         if (ctor is null)
             throw new InvalidOperationException(
@@ -271,9 +270,9 @@ public static class PrefabMetadataRegistry
             .MakeGenericMethod(componentType);
 
         var saveBatch = vaultType.GetMethod(nameof(IVault<IVaultModel>.SaveBatchAsync),
-            new[] { typeof(IEnumerable<>).MakeGenericType(componentType), typeof(bool?) })
+            [typeof(IEnumerable<>).MakeGenericType(componentType), typeof(bool?)])
                             ?? vaultType.GetMethod(nameof(IVault<IVaultModel>.SaveBatchAsync),
-                                new[] { typeof(IEnumerable<>).MakeGenericType(componentType) });
+                                [typeof(IEnumerable<>).MakeGenericType(componentType)]);
 
         if (saveBatch is null)
             throw new InvalidOperationException($"IVault<{componentType.Name}> must have SaveBatchAsync.");
