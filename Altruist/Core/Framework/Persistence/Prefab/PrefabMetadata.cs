@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Linq.Expressions;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence;
 
@@ -239,60 +238,71 @@ public static class PrefabMetadataRegistry
             .Compile();
     }
 
-    private static Func<IServiceProvider, IReadOnlyCollection<IVaultModel>, Task>
-        CompileSaveBatchDelegate(Type componentType)
+    private static Func<IReadOnlyCollection<IVaultModel>, Task>
+     CompileSaveBatchDelegate(Type componentType)
     {
-        // We’re building:
-        // async (sp, items) => {
-        //   var vault = sp.GetRequiredService<IVault<TComponent>>();
-        //   var typed = items.Cast<TComponent>().ToList();
-        //   await vault.SaveBatchAsync(typed, null);
-        // }
-
-        var itemsParam = Expression.Parameter(typeof(IReadOnlyCollection<IVaultModel>), "items");
-
+        // IVault<TComponent>
         var vaultType = typeof(IVault<>).MakeGenericType(componentType);
-        var getReqGeneric = typeof(ServiceProviderServiceExtensions)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Single(m => m.Name == nameof(ServiceProviderServiceExtensions.GetRequiredService)
-                      && m.IsGenericMethodDefinition
-                      && m.GetParameters().Length == 1)
-            .MakeGenericMethod(vaultType);
 
+        // Enumerable.Cast<TComponent>(...)
         var castMethod = typeof(Enumerable)
             .GetMethod(nameof(Enumerable.Cast), BindingFlags.Public | BindingFlags.Static)!
             .MakeGenericMethod(componentType);
 
+        // Enumerable.ToList<TComponent>(...)
         var toListMethod = typeof(Enumerable)
             .GetMethod(nameof(Enumerable.ToList), BindingFlags.Public | BindingFlags.Static)!
             .MakeGenericMethod(componentType);
 
-        var saveBatch = vaultType.GetMethod(nameof(IVault<IVaultModel>.SaveBatchAsync),
-            [typeof(IEnumerable<>).MakeGenericType(componentType), typeof(bool?)])
-                            ?? vaultType.GetMethod(nameof(IVault<IVaultModel>.SaveBatchAsync),
-                                [typeof(IEnumerable<>).MakeGenericType(componentType)]);
+        // Find SaveBatchAsync on IVault<TComponent>
+        var enumerableOfComponent = typeof(IEnumerable<>).MakeGenericType(componentType);
 
-        if (saveBatch is null)
-            throw new InvalidOperationException($"IVault<{componentType.Name}> must have SaveBatchAsync.");
+        var saveBatch = vaultType.GetMethod(
+                            nameof(IVault<IVaultModel>.SaveBatchAsync),
+                            new[] { enumerableOfComponent, typeof(bool?) })
+                      ?? vaultType.GetMethod(
+                            nameof(IVault<IVaultModel>.SaveBatchAsync),
+                            new[] { enumerableOfComponent })
+                      ?? throw new InvalidOperationException(
+                            $"IVault<{componentType.Name}> must have SaveBatchAsync.");
 
-        // vault = sp.GetRequiredService<IVault<TComponent>>()
-        var vaultExpr = Expression.Call(getReqGeneric);
+        // Build the delegate:
+        // async items => {
+        //   var vault = (IVault<TComponent>)Dependencies.Inject(vaultType);
+        //   var typed = items.Cast<TComponent>().ToList();
+        //   await vault.SaveBatchAsync(typed, null_or_default);
+        // }
+        return async items =>
+        {
+            if (items is null || items.Count == 0)
+                return;
 
-        // (IReadOnlyCollection<IVaultModel>) -> IEnumerable<IVaultModel> for Cast<T>
-        var itemsAsEnumerable = Expression.Convert(itemsParam, typeof(IEnumerable<IVaultModel>));
+            // Resolve the vault via your global DI helper
+            var vault = Dependencies.Inject(vaultType);
 
-        var casted = Expression.Call(castMethod, itemsAsEnumerable);
-        var list = Expression.Call(toListMethod, casted);
+            // items : IReadOnlyCollection<IVaultModel> -> IEnumerable<IVaultModel> for Cast<T>
+            var casted = castMethod.Invoke(null, new object[] { items })!;
+            var list = toListMethod.Invoke(null, new object[] { casted })!;
 
-        // vault.SaveBatchAsync(list, null)
-        var saveCall = saveBatch.GetParameters().Length == 2
-            ? Expression.Call(vaultExpr, saveBatch, list, Expression.Constant(null, typeof(bool?)))
-            : Expression.Call(vaultExpr, saveBatch, list);
+            object? result;
+            var parameters = saveBatch.GetParameters();
 
-        var lambda = Expression.Lambda<Func<IServiceProvider, IReadOnlyCollection<IVaultModel>, Task>>(
-            saveCall, itemsParam);
+            if (parameters.Length == 2)
+            {
+                // SaveBatchAsync(IEnumerable<T>, bool?)
+                result = saveBatch.Invoke(vault, new object[] { list, null });
+            }
+            else
+            {
+                // SaveBatchAsync(IEnumerable<T>)
+                result = saveBatch.Invoke(vault, new object[] { list });
+            }
 
-        return lambda.Compile();
+            if (result is Task t)
+            {
+                await t.ConfigureAwait(false);
+            }
+        };
     }
 }
 
@@ -316,7 +326,7 @@ public sealed class PrefabComponentMetadata
 
     public Func<PrefabModel, PrefabComponentMetadata, string?, object> HandleFactory { get; init; } = default!;
 
-    public Func<IServiceProvider, IReadOnlyCollection<IVaultModel>, Task> SaveBatchAsync { get; init; } = default!;
+    public Func<IReadOnlyCollection<IVaultModel>, Task> SaveBatchAsync { get; init; } = default!;
 
     /// <summary>
     /// If set, this component will be auto-loaded when the component with this name is loaded.
