@@ -56,7 +56,12 @@ public class VaultSortingByAttribute : Attribute
 public class VaultColumnAttribute : Attribute
 {
     public string? Name { get; }
-    public VaultColumnAttribute(string? name = null) => Name = name;
+    public bool Nullable { get; }
+    public VaultColumnAttribute(string? name = null, bool nullable = false)
+    {
+        Name = name;
+        Nullable = nullable;
+    }
 }
 
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = true, Inherited = true)]

@@ -46,29 +46,29 @@ public class Document
 
     public List<VaultForeignKeyDefinition> ForeignKeys { get; set; } = new();
 
+    public HashSet<string> NullableColumns { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string TypePropertyName;
 
     private readonly ILogger<Document>? _logger;
 
-    // Precompiled property accessors: PropertyName -> (object instance) => value
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; set; } = new();
 
     public Document(
-    VaultAttribute header,
-    Type type,
-    string name,
-    List<string> fields,
-    Dictionary<string, string> columns,
-    List<string> indexes,
-    List<string> uniqueKeys,
-    Dictionary<string, Func<object, object?>> propertyAccessors,
-    VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
-    VaultSortingByAttribute? sortingByAttribute = null,
-    bool storeHistory = false,
-    ILoggerFactory? loggerFactory = null,
-    List<VaultForeignKeyDefinition>? foreignKeys = null
-    )
+         VaultAttribute header,
+         Type type,
+         string name,
+         List<string> fields,
+         Dictionary<string, string> columns,
+         List<string> indexes,
+         List<string> uniqueKeys,
+         Dictionary<string, Func<object, object?>> propertyAccessors,
+         VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
+         VaultSortingByAttribute? sortingByAttribute = null,
+         bool storeHistory = false,
+         ILoggerFactory? loggerFactory = null,
+         List<VaultForeignKeyDefinition>? foreignKeys = null
+     )
     {
         PrimaryKey = primaryKeyAttribute;
         Header = header;
@@ -117,6 +117,7 @@ public class Document
         var primaryKey = type.GetCustomAttribute<VaultPrimaryKeyAttribute>();
         var sortingBy = type.GetCustomAttribute<VaultSortingByAttribute>();
         var foreignKeys = new List<VaultForeignKeyDefinition>();
+        var nullableColumns = new List<string>();
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -132,14 +133,15 @@ public class Document
             var physical = columnAttr?.Name ?? ToSnakeCase(prop.Name);
             var fieldName = prop.Name;
 
-            // basic mapping
             fields.Add(fieldName);
             columns[fieldName] = physical;
 
-            // accessor cache
             accessors[fieldName] = CompileAccessor(prop);
+            if (columnAttr?.Nullable == true)
+            {
+                nullableColumns.Add(physical);
+            }
 
-            // foreign key definition (only for persisted columns)
             if (fkAttr is not null)
             {
                 foreignKeys.Add(new VaultForeignKeyDefinition(
@@ -150,20 +152,18 @@ public class Document
                     onDelete: fkAttr.OnDelete));
             }
 
-            // [VaultColumnIndex] -> index on physical column
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>() != null)
             {
                 indexes.Add(physical);
             }
 
-            // [VaultUniqueColumn] -> UNIQUE constraint on physical column
             if (prop.GetCustomAttribute<VaultUniqueColumnAttribute>() != null)
             {
                 uniqueKeys.Add(physical);
             }
         }
 
-        return new Document(
+        var doc = new Document(
             vaultAttribute ?? new VaultAttribute(tableName),
             type,
             tableName,
@@ -177,8 +177,11 @@ public class Document
             vaultAttribute?.StoreHistory ?? false,
             loggerFactory,
             foreignKeys);
-    }
 
+        doc.NullableColumns = new HashSet<string>(nullableColumns, StringComparer.OrdinalIgnoreCase);
+
+        return doc;
+    }
     private static string ToSnakeCase(string value)
     {
         if (string.IsNullOrEmpty(value))

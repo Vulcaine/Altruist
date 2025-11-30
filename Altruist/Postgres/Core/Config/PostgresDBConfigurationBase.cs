@@ -204,7 +204,7 @@ public abstract class PostgresConfigurationBase
                 if (preloadInterface is not null)
                 {
                     var onCreateAsync = preloadInterface.GetMethod("OnCreateAsync")!;
-                    var taskObj = (Task)onCreateAsync.Invoke(instance, new object[] { sp })!;
+                    var taskObj = (Task)onCreateAsync.Invoke(instance, [sp])!;
                     await taskObj.ConfigureAwait(false);
 
                     var resultProp = taskObj.GetType().GetProperty("Result")!;
@@ -232,21 +232,20 @@ public abstract class PostgresConfigurationBase
                                 var toListMethod = typeof(Enumerable).GetMethod("ToList", BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(modelType);
                                 var typedList = toListMethod.Invoke(
                                     null,
-                                    new object[] { castMethod.Invoke(null, new object[] { resultObj })! })!;
+                                    [castMethod.Invoke(null, [resultObj])!])!;
 
-                                var saveBatch = vaultIface.GetMethod("SaveBatchAsync", new[]
-                                    {
+                                var saveBatch = vaultIface.GetMethod("SaveBatchAsync",
+                                    [
                                         typeof(IEnumerable<>).MakeGenericType(modelType),
                                         typeof(bool?)
-                                    })
-                                               ?? vaultIface.GetMethod("SaveBatchAsync", new[]
-                                                   { typeof(IEnumerable<>).MakeGenericType(modelType) });
+                                    ])
+                                               ?? vaultIface.GetMethod("SaveBatchAsync", [typeof(IEnumerable<>).MakeGenericType(modelType)]);
 
                                 object? saveTaskObj;
                                 if (saveBatch!.GetParameters().Length == 2)
-                                    saveTaskObj = saveBatch.Invoke(vault, new object?[] { typedList, null });
+                                    saveTaskObj = saveBatch.Invoke(vault, [typedList, null]);
                                 else
-                                    saveTaskObj = saveBatch.Invoke(vault, new object?[] { typedList });
+                                    saveTaskObj = saveBatch.Invoke(vault, [typedList]);
 
                                 await ((Task)saveTaskObj!).ConfigureAwait(false);
                                 logger.LogInformation("Streamed {Count} items into {ModelType}.",

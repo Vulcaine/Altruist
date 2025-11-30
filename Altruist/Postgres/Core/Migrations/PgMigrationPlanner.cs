@@ -66,10 +66,10 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
     }
 
     private static void PlanNewTable(
-    List<MigrationOperation> ops,
-    string schema,
-    Document doc,
-    IReadOnlyList<Document> allDocs)
+     List<MigrationOperation> ops,
+     string schema,
+     Document doc,
+     IReadOnlyList<Document> allDocs)
     {
         var pkCols = ResolvePrimaryKeyColumns(doc);
         if (pkCols.Count == 0)
@@ -93,7 +93,7 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
 
             bool isPk = pkSet.Contains(columnName);
             bool isUnique = uniqueSet.Contains(columnName) || isPk;
-            bool isNullable = !isPk;
+            bool isNullable = !isPk && doc.NullableColumns.Contains(columnName);
 
             columns.Add(new ColumnDefinition(
                 Name: columnName,
@@ -108,7 +108,6 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
             Columns: columns,
             PrimaryKeyColumns: pkCols));
 
-        // indexes (non-unique + non-pk)
         var indexColumns = new HashSet<string>(doc.Indexes ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
         var sortCol = ResolveSortingColumn(doc);
         if (sortCol is not null)
@@ -274,11 +273,11 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
     }
 
     private static void PlanExistingTableDiff(
-    List<MigrationOperation> ops,
-    string schema,
-    Document doc,
-    TableModel existing,
-    IReadOnlyList<Document> allDocs)
+        List<MigrationOperation> ops,
+        string schema,
+        Document doc,
+        TableModel existing,
+        IReadOnlyList<Document> allDocs)
     {
         var tableName = doc.Name;
         var schemaName = schema;
@@ -304,7 +303,9 @@ public sealed class PostgresMigrationPlanner : IMigrationPlanner
 
             bool isPk = pkSet.Contains(col);
             bool isUnique = uniqueSet.Contains(col) || isPk;
-            bool isNullable = !isPk;
+
+            // NEW: use Document.NullableColumns for new columns as well
+            bool isNullable = !isPk && doc.NullableColumns.Contains(col);
 
             var def = new ColumnDefinition(
                 Name: col,
