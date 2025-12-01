@@ -106,7 +106,6 @@ public abstract class PostgresConfigurationBase
             await migrator.Migrate(schemaInstance, typesInSchema);
         }
 
-        // Run initializers: EXACT ORDER
         await RunInitializersAsync(sp, initializerTypes, logger);
 
         logger.LogInformation(
@@ -126,38 +125,41 @@ public abstract class PostgresConfigurationBase
         if (initializerTypes.Length == 0)
             return;
 
-        // NO DEPENDENCY ORDERING — order = AS DISCOVERED
+        // respect C# initializer Order
+        var ordered = initializerTypes
+            .Select(t => ActivatorUtilities.CreateInstance(sp, t))
+            .Cast<IDatabaseInitializer>()
+            .OrderBy(i => i.Order)
+            .ToList();
+
         var allResults = new List<IVaultModel>();
 
-        foreach (var initType in initializerTypes)
+        foreach (var init in ordered)
         {
             try
             {
-                var initializer = (IDatabaseInitializer)ActivatorUtilities.CreateInstance(sp, initType);
-                var result = await initializer.InitializeAsync(sp);
+                var result = await init.InitializeAsync(sp);
 
                 if (result != null && result.Any())
                 {
                     allResults.AddRange(result);
                     logger.LogInformation("✔ Initializer {Init} executed. Inserted {Count} items.",
-                        initType.Name, result.Count());
+                        init.GetType().Name, result.Count());
                 }
             }
             catch (Exception ex)
             {
                 logger.LogError(ex,
                     "❌ Initializer {Init} failed: {Message}",
-                    initType.Name, ex.Message);
+                    init.GetType().Name, ex.Message);
             }
         }
 
         if (allResults.Count == 0)
             return;
 
-        // Group by vault type and save
-        var groups = allResults.GroupBy(m => m.GetType());
-
-        foreach (var group in groups)
+        // Group by vault type & save
+        foreach (var group in allResults.GroupBy(m => m.GetType()))
         {
             var modelType = group.Key;
             var list = group.ToList();
@@ -167,21 +169,32 @@ public abstract class PostgresConfigurationBase
                 var vaultType = typeof(IVault<>).MakeGenericType(modelType);
                 var vault = sp.GetRequiredService(vaultType);
 
-                var saveBatch =
-                    vaultType.GetMethod("SaveBatchAsync", new[] { typeof(IEnumerable<>).MakeGenericType(modelType) })
-                    ?? vaultType.GetMethod("SaveBatchAsync");
+                // find SaveBatchAsync(IEnumerable<T>, bool?)
+                var saveBatch = vaultType
+                    .GetMethods()
+                    .First(m =>
+                        m.Name == "SaveBatchAsync" &&
+                        m.GetParameters().Length >= 1 &&
+                        m.GetParameters()[0].ParameterType.IsGenericType &&
+                        m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
+                    );
 
-                var castedList = typeof(Enumerable)
+                var casted = typeof(Enumerable)
                     .GetMethod("Cast")!
                     .MakeGenericMethod(modelType)
-                    .Invoke(null, new object[] { list })!;
+                    .Invoke(null, [list])!;
 
                 var toList = typeof(Enumerable)
                     .GetMethod("ToList")!
                     .MakeGenericMethod(modelType)
-                    .Invoke(null, new[] { castedList })!;
+                    .Invoke(null, [casted])!;
 
-                var task = (Task)saveBatch!.Invoke(vault, new[] { toList })!;
+                object?[] args =
+                    saveBatch.GetParameters().Length == 2
+                    ? [toList, null]
+                    : [toList];
+
+                var task = (Task)saveBatch.Invoke(vault, args)!;
                 await task.ConfigureAwait(false);
 
                 logger.LogInformation("📦 Inserted {Count} items into vault {Model}.",
