@@ -62,7 +62,6 @@ public abstract class PostgresConfigurationBase
 
     protected static async Task BootstrapModelsAsync(
         IServiceCollection services,
-        Type[] schemaTypes,
         Type[] modelTypes,
         Type[] initializerTypes,
         string logPrefix)
@@ -76,19 +75,19 @@ public abstract class PostgresConfigurationBase
 
         if (provider is null)
         {
-            logger.LogWarning("⚠️ No ISqlDatabaseProvider registered; skipping bootstrap for {Prefix}.", logPrefix);
+            logger.LogWarning("⚠️ No ISqlDatabaseProvider registered; skipping bootstrap.");
             return;
         }
 
         if (migrator is null)
         {
-            logger.LogWarning("⚠️ No IVaultSchemaMigrator registered; skipping schema migration for {Prefix}.", logPrefix);
+            logger.LogWarning("⚠️ No IVaultSchemaMigrator registered; skipping schema migration.");
             return;
         }
 
         if (modelTypes.Length == 0)
         {
-            logger.LogInformation("ℹ️ No model types found for {Prefix}.", logPrefix);
+            logger.LogInformation("ℹ️ No model types found.");
             return;
         }
 
@@ -107,7 +106,7 @@ public abstract class PostgresConfigurationBase
             await migrator.Migrate(schemaInstance, typesInSchema);
         }
 
-        // ----------------- RUN INITIALIZERS -----------------
+        // Run initializers: EXACT ORDER
         await RunInitializersAsync(sp, initializerTypes, logger);
 
         logger.LogInformation(
@@ -127,29 +126,36 @@ public abstract class PostgresConfigurationBase
         if (initializerTypes.Length == 0)
             return;
 
-        var results = new List<IVaultModel>();
+        // NO DEPENDENCY ORDERING — order = AS DISCOVERED
+        var allResults = new List<IVaultModel>();
 
         foreach (var initType in initializerTypes)
         {
             try
             {
                 var initializer = (IDatabaseInitializer)ActivatorUtilities.CreateInstance(sp, initType);
-                var list = await initializer.InitializeAsync(sp);
+                var result = await initializer.InitializeAsync(sp);
 
-                if (list is { Count: > 0 })
-                    results.AddRange(list);
+                if (result != null && result.Any())
+                {
+                    allResults.AddRange(result);
+                    logger.LogInformation("✔ Initializer {Init} executed. Inserted {Count} items.",
+                        initType.Name, result.Count());
+                }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Initializer {Init} failed: {Message}", initType.Name, ex.Message);
+                logger.LogError(ex,
+                    "❌ Initializer {Init} failed: {Message}",
+                    initType.Name, ex.Message);
             }
         }
 
-        if (results.Count == 0)
+        if (allResults.Count == 0)
             return;
 
-        // Group by concrete model type
-        var groups = results.GroupBy(m => m.GetType());
+        // Group by vault type and save
+        var groups = allResults.GroupBy(m => m.GetType());
 
         foreach (var group in groups)
         {
@@ -158,7 +164,6 @@ public abstract class PostgresConfigurationBase
 
             try
             {
-                // Build the vault type: IVault<T>
                 var vaultType = typeof(IVault<>).MakeGenericType(modelType);
                 var vault = sp.GetRequiredService(vaultType);
 
@@ -184,7 +189,8 @@ public abstract class PostgresConfigurationBase
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to insert initializer data for {Model}. Reason: {Message}",
+                logger.LogError(ex,
+                    "❌ Failed inserting initializer data for {Model}: {Message}",
                     modelType.Name, ex.Message);
             }
         }

@@ -159,14 +159,8 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
 
     private async Task SaveEntityAsync(TVaultModel entity)
     {
-        if (entity is IBeforeVaultSave beforeHook && !await beforeHook.BeforeSaveAsync(_serviceProvider))
-            return;
-
         _databaseProvider.Context.Add(entity);
         await _databaseProvider.Context.SaveChangesAsync();
-
-        if (entity is IAfterVaultSave afterHook)
-            await afterHook.AfterSaveAsync(_serviceProvider);
     }
 
     private async Task SaveEntityBatchAsync(IEnumerable<TVaultModel> entities)
@@ -175,24 +169,11 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
 
         foreach (var entity in entities)
         {
-            if (entity is IBeforeVaultSave beforeHook)
-            {
-                var proceed = await beforeHook.BeforeSaveAsync(_serviceProvider);
-                if (!proceed)
-                    continue;
-            }
-
             filteredEntities.Add(entity);
         }
 
         await _databaseProvider.Context.AddRangeAsync(filteredEntities);
         await _databaseProvider.Context.SaveChangesAsync();
-
-        foreach (var entity in filteredEntities)
-        {
-            if (entity is IAfterVaultSave afterHook)
-                await afterHook.AfterSaveAsync(_serviceProvider);
-        }
     }
 
     public Task<ICursor<TVaultModel>> ToCursorAsync()

@@ -32,19 +32,26 @@ public sealed class PostgresVaultConfiguration : PostgresConfigurationBase, IDat
 
         // 1) Discover schemas + vault models (ONLY [Vault]-annotated IVaultModel types)
         var schemaTypes = FindSchemaTypes(assemblies).ToArray();
-        var vaultModelTypes = FindVaultModelTypes(assemblies).ToArray();
+        var vaultModelTypes = FindModelTypes(assemblies).ToArray();      // note: FindModelTypes, not FindVaultModelTypes
+        var initializerTypes = FindInitializers(assemblies).ToArray();
 
         // 2) Register schemas (idempotent)
         using (var tmp = services.BuildServiceProvider())
         {
-            var logger = tmp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresVaultConfiguration>();
+            var logger = tmp.GetRequiredService<ILoggerFactory>()
+                            .CreateLogger<PostgresVaultConfiguration>();
             RegisterSchemas(services, cfg, schemaTypes, logger);
         }
 
         RegisterVaultsViaServiceFactory(services, vaultModelTypes);
         RegisterNpgsqlDataSource(services, cfg);
         RegisterTransactionalServices(services, assemblies);
-        await BootstrapModelsAsync(services, schemaTypes, vaultModelTypes, "Vaults");
+
+        await BootstrapModelsAsync(
+            services,
+            vaultModelTypes,
+            initializerTypes,
+            "Vaults");
 
         IsConfigured = true;
     }

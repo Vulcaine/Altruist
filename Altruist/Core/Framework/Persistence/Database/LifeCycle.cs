@@ -19,9 +19,13 @@ namespace Altruist.Persistence;
 public interface IDatabaseInitializer
 {
     /// <summary>
-    /// Called once, after schemas and tables are created.
-    /// Return any vault model instances that should be saved.
-    /// You may return different model types in the same list.
+    /// Lower numbers run first. Higher numbers run later.
     /// </summary>
-    Task<List<IVaultModel>> InitializeAsync(IServiceProvider sp);
+    int Order { get; }
+
+    /// <summary>
+    /// Return vault models to seed.
+    /// </summary>
+    Task<IEnumerable<IVaultModel>> InitializeAsync(IServiceProvider services);
 }
+

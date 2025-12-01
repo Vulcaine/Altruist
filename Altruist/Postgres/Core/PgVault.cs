@@ -611,15 +611,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
         var batchQuery = string.Join(";", queries) + ";";
 
-        var canSave = true;
-        if (entity is IBeforeVaultSave before)
-            canSave = await before.BeforeSaveAsync(_serviceProvider);
-
-        if (canSave)
-            await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
-
-        if (entity is IAfterVaultSave after)
-            await after.AfterSaveAsync(_serviceProvider);
+        await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
     }
 
     /// <summary>
@@ -712,8 +704,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         foreach (var e in list)
         {
             var canSave = true;
-            if (e is IBeforeVaultSave b)
-                canSave = await b.BeforeSaveAsync(_serviceProvider);
             if (!canSave)
                 continue;
 
@@ -733,12 +723,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
         var batchQuery = string.Join(";", queries) + ";";
         await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
-
-        foreach (var e in list)
-        {
-            if (e is IAfterVaultSave a)
-                await a.AfterSaveAsync(_serviceProvider);
-        }
     }
 
     private string BuildInsertQuery(string tableNameIgnored, IEnumerable<string> columns)
