@@ -33,8 +33,13 @@ namespace Altruist
         public List<IDatabaseServiceToken> DatabaseTokens { get; set; }
         public ICacheServiceToken? CacheToken { get; set; }
 
-        public AltruistServerContext(ITransportServiceToken token, List<IDatabaseServiceToken> databaseServiceTokens, ICacheServiceToken? cacheToken)
+        public AltruistServerContext(
+            ITransportServiceToken token,
+            List<IDatabaseServiceToken> databaseServiceTokens,
+            ICacheServiceToken? cacheToken,
+            EngineConfigOptions? configOptions = null)
         {
+            EngineEnabled = configOptions != null;
             TransportToken = token;
             DatabaseTokens = databaseServiceTokens ?? new();
             CacheToken = cacheToken;
