@@ -422,9 +422,8 @@ public class AltruistEngine : IAltruistEngine
 
                 while (!_cancellationTokenSource.IsCancellationRequested)
                 {
-                    if (_appStatus.Status == ReadyState.Alive && !Enabled)
+                    if (_appStatus.Status == ReadyState.Alive)
                     {
-                        Enable();
                         _ = RunEngineLoop();
                         return;
                     }
@@ -449,7 +448,7 @@ public class AltruistEngine : IAltruistEngine
             };
 
             _physxThread.Start();
-
+            Enable();
         }
     }
 
