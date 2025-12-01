@@ -38,14 +38,14 @@ public interface IGameSession
     /// Store a context object inside this session, bound to a context id and type.
     /// Only one instance per (context id, type) is kept (last write wins).
     /// </summary>
-    Task SetContext<T>(string id, T value) where T : class;
+    void SetContext<T>(string id, T value);
 
     /// <summary>
     /// Get the most recently stored context of type T for the given context id (if any).
     /// </summary>
-    Task<T?> GetContext<T>(string id) where T : class;
+    T? GetContext<T>(string id);
 
-    IEnumerable<T> FindAllContexts<T>() where T : class;
+    IEnumerable<T> FindAllContexts<T>();
 
     IEnumerable<object> FindContexts(params Type[] types);
 
@@ -54,7 +54,7 @@ public interface IGameSession
     /// <summary>
     /// Remove a context of type T for the given context id (if any).
     /// </summary>
-    Task RemoveContext<T>(string id) where T : class;
+    void RemoveContext<T>(string id);
 
     /// <summary>
     /// Remove all contexts for this session (for all inner ids).
@@ -107,9 +107,9 @@ public interface IGameSessionService
     /// </summary>
     Task Cleanup();
 
-    IEnumerable<T> FindAllContexts<T>() where T : class;
+    IEnumerable<T> FindAllContexts<T>();
 
-    IEnumerable<T> FindAllContexts<T>(string id) where T : class;
+    IEnumerable<T> FindAllContexts<T>(string id);
 
     IEnumerable<object> FindAllContexsts(string sessionId);
 
@@ -186,7 +186,7 @@ internal sealed class GameSession : IGameSession
         }
     }
 
-    public Task SetContext<T>(string id, T value) where T : class
+    public void SetContext<T>(string id, T value)
     {
         if (string.IsNullOrWhiteSpace(id))
             throw new ArgumentException("Context id must be non-empty.", nameof(id));
@@ -212,13 +212,13 @@ internal sealed class GameSession : IGameSession
             list.Add(value!);
         }
 
-        return Task.CompletedTask;
+        return;
     }
 
-    public Task<T?> GetContext<T>(string id) where T : class
+    public T? GetContext<T>(string id)
     {
         if (string.IsNullOrWhiteSpace(id))
-            return Task.FromResult<T?>(default);
+            return default;
 
         lock (_lock)
         {
@@ -228,19 +228,19 @@ internal sealed class GameSession : IGameSession
                 {
                     if (list[i] is T t)
                     {
-                        return Task.FromResult<T?>(t);
+                        return t;
                     }
                 }
             }
         }
 
-        return Task.FromResult<T?>(null);
+        return default;
     }
 
-    public Task RemoveContext<T>(string id) where T : class
+    public void RemoveContext<T>(string id)
     {
         if (string.IsNullOrWhiteSpace(id))
-            return Task.CompletedTask;
+            return;
 
         lock (_lock)
         {
@@ -262,7 +262,7 @@ internal sealed class GameSession : IGameSession
             }
         }
 
-        return Task.CompletedTask;
+        return;
     }
 
     public void ClearAllContexts()
@@ -323,7 +323,7 @@ internal sealed class GameSession : IGameSession
         }
     }
 
-    public IEnumerable<T> FindAllContexts<T>() where T : class
+    public IEnumerable<T> FindAllContexts<T>()
     {
         lock (_lock)
         {
@@ -642,7 +642,7 @@ public class GameSessionService : IGameSessionService
         }
     }
 
-    public IEnumerable<T> FindAllContexts<T>() where T : class
+    public IEnumerable<T> FindAllContexts<T>()
     {
         var allSessions = _sessions.Values;
         return allSessions.SelectMany(s => s.FindAllContexts<T>());
@@ -660,7 +660,7 @@ public class GameSessionService : IGameSessionService
         return session?.FindContexts(types) ?? Enumerable.Empty<object>();
     }
 
-    public IEnumerable<T> FindAllContexts<T>(string id) where T : class
+    public IEnumerable<T> FindAllContexts<T>(string id)
     {
         var session = GetSession(id);
         return session?.FindAllContexts<T>() ?? Enumerable.Empty<T>();
