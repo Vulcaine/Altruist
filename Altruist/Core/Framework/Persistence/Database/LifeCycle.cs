@@ -16,29 +16,12 @@ limitations under the License.
 
 namespace Altruist.Persistence;
 
-
-public interface IBeforeVaultCreate
+public interface IDatabaseInitializer
 {
-    Task<bool> BeforeCreateAsync(IServiceProvider serviceProvider);
-}
-
-
-public interface IOnVaultCreate<T> where T : class, IVaultModel
-{
-    Task<List<T>> OnCreateAsync(IServiceProvider serviceProvider);
-}
-
-public interface IAfterVaultCreate
-{
-    Task AfterCreateAsync(IServiceProvider serviceProvider);
-}
-
-public interface IAfterVaultSave
-{
-    Task AfterSaveAsync(IServiceProvider serviceProvider);
-}
-
-public interface IBeforeVaultSave
-{
-    Task<bool> BeforeSaveAsync(IServiceProvider serviceProvider);
+    /// <summary>
+    /// Called once, after schemas and tables are created.
+    /// Return any vault model instances that should be saved.
+    /// You may return different model types in the same list.
+    /// </summary>
+    Task<List<IVaultModel>> InitializeAsync(IServiceProvider sp);
 }

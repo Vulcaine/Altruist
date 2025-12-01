@@ -456,8 +456,8 @@ public class AltruistEngine : IAltruistEngine
     {
         long previousTicks = FrameTime.NowTicks;
         // 15 FPS = ~66.6ms
-        // TODO: This should be configurable
-        long tickLength = (long)(Stopwatch.Frequency / 15.0);
+        // TODO: it will have a big buggy bug if engine rate is not Hz!!
+        long tickLength = (long)(Stopwatch.Frequency / _engineRate.Value);
 
         while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {

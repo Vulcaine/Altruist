@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Reflection;
 
 using Altruist.Migrations;
@@ -10,10 +9,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Persistence.Postgres;
 
-/// <summary>
-/// Common helper logic shared by vault + prefab Postgres configurations.
-/// Does NOT implement IDatabaseConfiguration itself.
-/// </summary>
 public abstract class PostgresConfigurationBase
 {
     // ----------------- discovery helpers -----------------
@@ -25,25 +20,23 @@ public abstract class PostgresConfigurationBase
 
     protected static IEnumerable<Type> FindSchemaTypes(Assembly[] assemblies) =>
         TypeDiscovery.FindTypesWithAttribute<KeyspaceAttribute>(assemblies)
-            .Where(t =>
-                t is not null &&
-                t.IsClass &&
-                !t.IsAbstract &&
-                typeof(IKeyspace).IsAssignableFrom(t))!;
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(IKeyspace).IsAssignableFrom(t));
+
+    protected static IEnumerable<Type> FindModelTypes(Assembly[] assemblies) =>
+        TypeDiscovery.FindTypesWithAttribute<VaultAttribute>(assemblies)
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(IVaultModel).IsAssignableFrom(t));
+
+    protected static IEnumerable<Type> FindInitializers(Assembly[] assemblies) =>
+        TypeDiscovery.FindTypesImplementing<IDatabaseInitializer>(assemblies);
 
     protected static string GetSchemaName(Type modelType)
     {
-        // Reuse VaultAttribute.Keyspace as Postgres schema name
         var va = modelType.GetCustomAttribute<VaultAttribute>();
         return string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!;
     }
 
-    // ----------------- schemas -----------------
+    // ----------------- schema registration -----------------
 
-    /// <summary>
-    /// Idempotent schema registration – if a given schemaType was already registered
-    /// as a ServiceType, we skip adding it again.
-    /// </summary>
     protected static void RegisterSchemas(
         IServiceCollection services,
         IConfiguration cfg,
@@ -65,39 +58,13 @@ public abstract class PostgresConfigurationBase
         }
     }
 
-    protected static IKeyspace? ResolveSchemaInstance(
-        IServiceProvider sp,
-        Type[] schemaTypes,
-        List<IKeyspace> allSchemaInstances,
-        string schemaName)
-    {
-        var schemaInstance = allSchemaInstances.FirstOrDefault(s =>
-            string.Equals(s.Name, schemaName, StringComparison.OrdinalIgnoreCase));
+    // ----------------- bootstrap logic -----------------
 
-        if (schemaInstance is null)
-        {
-            var schemaType = ResolveSchemaTypeByName(schemaTypes, schemaName);
-            if (schemaType is not null)
-                schemaInstance = (IKeyspace)sp.GetRequiredService(schemaType);
-        }
-
-        return schemaInstance;
-    }
-
-    protected static Type? ResolveSchemaTypeByName(Type[] schemaTypes, string schemaName) =>
-        schemaTypes.FirstOrDefault(t =>
-        {
-            var attr = t.GetCustomAttribute<KeyspaceAttribute>();
-            return attr != null && string.Equals(attr.Name, schemaName, StringComparison.OrdinalIgnoreCase);
-        });
-
-    /// <summary>
-    /// Shared bootstrap logic for a set of IVaultModel types (vaults or prefabs).
-    /// </summary>
     protected static async Task BootstrapModelsAsync(
         IServiceCollection services,
         Type[] schemaTypes,
         Type[] modelTypes,
+        Type[] initializerTypes,
         string logPrefix)
     {
         using var sp = services.BuildServiceProvider();
@@ -130,8 +97,7 @@ public abstract class PostgresConfigurationBase
         foreach (var group in groups)
         {
             var schemaName = group.Key;
-
-            var schemaInstance = ResolveSchemaInstance(sp, schemaTypes, keyspaces, schemaName)
+            var schemaInstance = keyspaces.FirstOrDefault(s => s.Name == schemaName)
                                  ?? new DefaultSchema(schemaName);
 
             await provider.ConnectAsync();
@@ -139,136 +105,86 @@ public abstract class PostgresConfigurationBase
 
             var typesInSchema = group.ToArray();
             await migrator.Migrate(schemaInstance, typesInSchema);
-
-            await CreateTablesAndRunHooksAsync(sp, logger, typesInSchema);
         }
 
+        // ----------------- RUN INITIALIZERS -----------------
+        await RunInitializersAsync(sp, initializerTypes, logger);
+
         logger.LogInformation(
-            "🐘 PostgreSQL {Prefix} bootstrap complete. {Count} model(s) processed.",
+            "🐘 PostgreSQL {Prefix} bootstrap complete. {Count} vault model(s), {Init} initializer(s).",
             logPrefix,
-            modelTypes.Length);
+            modelTypes.Length,
+            initializerTypes.Length);
     }
 
-    /// <summary>
-    /// Shared BEFORE / IOnVaultCreate / AFTER hook runner used for any IVaultModel types.
-    /// </summary>
-    protected static async Task CreateTablesAndRunHooksAsync(
+    // ----------------- initializer system -----------------
+
+    private static async Task RunInitializersAsync(
         IServiceProvider sp,
-        ILogger logger,
-        Type[] modelTypes)
+        Type[] initializerTypes,
+        ILogger logger)
     {
-        foreach (var modelType in modelTypes)
+        if (initializerTypes.Length == 0)
+            return;
+
+        var results = new List<IVaultModel>();
+
+        foreach (var initType in initializerTypes)
         {
-            IVaultModel? instance = null;
-
             try
             {
-                instance = modelType.GetConstructor(Type.EmptyTypes)!.Invoke(null) as IVaultModel;
+                var initializer = (IDatabaseInitializer)ActivatorUtilities.CreateInstance(sp, initType);
+                var list = await initializer.InitializeAsync(sp);
+
+                if (list is { Count: > 0 })
+                    results.AddRange(list);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to construct instance for {ModelType}. Reason: {Message}",
-                    modelType.Name, ex.Message);
-                continue;
+                logger.LogError(ex, "Initializer {Init} failed: {Message}", initType.Name, ex.Message);
             }
+        }
 
-            if (instance is null)
-            {
-                logger.LogError("Instance for {ModelType} is null or does not implement IVaultModel.",
-                    modelType.Name);
-                continue;
-            }
+        if (results.Count == 0)
+            return;
 
-            // BEFORE hook
-            try
-            {
-                if (instance is IBeforeVaultCreate before)
-                    await before.BeforeCreateAsync(sp);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to run BEFORE actions for {ModelType}. Reason: {Message}",
-                    modelType.Name, ex.Message);
-            }
+        // Group by concrete model type
+        var groups = results.GroupBy(m => m.GetType());
 
-            // PRELOAD hook (IOnVaultCreate<T>)
-            try
-            {
-                var preloadInterface = instance
-                    .GetType()
-                    .GetInterfaces()
-                    .FirstOrDefault(i =>
-                        i.IsGenericType &&
-                        i.GetGenericTypeDefinition() == typeof(IOnVaultCreate<>));
-
-                if (preloadInterface is not null)
-                {
-                    var onCreateAsync = preloadInterface.GetMethod("OnCreateAsync")!;
-                    var taskObj = (Task)onCreateAsync.Invoke(instance, [sp])!;
-                    await taskObj.ConfigureAwait(false);
-
-                    var resultProp = taskObj.GetType().GetProperty("Result")!;
-                    var resultObj = resultProp.GetValue(taskObj);
-
-                    if (resultObj is IEnumerable enumerable)
-                    {
-                        int loadedCount = 0;
-                        foreach (var _ in enumerable)
-                            loadedCount++;
-
-                        if (loadedCount > 0)
-                        {
-                            var vaultIface = typeof(IVault<>).MakeGenericType(modelType);
-                            var vault = sp.GetRequiredService(vaultIface);
-
-                            var countMethod = vaultIface.GetMethod("CountAsync")!;
-                            var countTask = (Task)countMethod.Invoke(vault, Array.Empty<object>())!;
-                            await countTask.ConfigureAwait(false);
-                            var count = (long)countTask.GetType().GetProperty("Result")!.GetValue(countTask)!;
-
-                            if (count == 0)
-                            {
-                                var castMethod = typeof(Enumerable).GetMethod("Cast", BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(modelType);
-                                var toListMethod = typeof(Enumerable).GetMethod("ToList", BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(modelType);
-                                var typedList = toListMethod.Invoke(
-                                    null,
-                                    [castMethod.Invoke(null, [resultObj])!])!;
-
-                                var saveBatch = vaultIface.GetMethod("SaveBatchAsync",
-                                    [
-                                        typeof(IEnumerable<>).MakeGenericType(modelType),
-                                        typeof(bool?)
-                                    ])
-                                               ?? vaultIface.GetMethod("SaveBatchAsync", [typeof(IEnumerable<>).MakeGenericType(modelType)]);
-
-                                object? saveTaskObj;
-                                if (saveBatch!.GetParameters().Length == 2)
-                                    saveTaskObj = saveBatch.Invoke(vault, [typedList, null]);
-                                else
-                                    saveTaskObj = saveBatch.Invoke(vault, [typedList]);
-
-                                await ((Task)saveTaskObj!).ConfigureAwait(false);
-                                logger.LogInformation("Streamed {Count} items into {ModelType}.",
-                                    loadedCount, modelType.Name);
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to run PRELOAD actions for {ModelType}. Reason: {Message}",
-                    modelType.Name, ex.Message);
-            }
+        foreach (var group in groups)
+        {
+            var modelType = group.Key;
+            var list = group.ToList();
 
             try
             {
-                if (instance is IAfterVaultCreate after)
-                    await after.AfterCreateAsync(sp);
+                // Build the vault type: IVault<T>
+                var vaultType = typeof(IVault<>).MakeGenericType(modelType);
+                var vault = sp.GetRequiredService(vaultType);
+
+                var saveBatch =
+                    vaultType.GetMethod("SaveBatchAsync", new[] { typeof(IEnumerable<>).MakeGenericType(modelType) })
+                    ?? vaultType.GetMethod("SaveBatchAsync");
+
+                var castedList = typeof(Enumerable)
+                    .GetMethod("Cast")!
+                    .MakeGenericMethod(modelType)
+                    .Invoke(null, new object[] { list })!;
+
+                var toList = typeof(Enumerable)
+                    .GetMethod("ToList")!
+                    .MakeGenericMethod(modelType)
+                    .Invoke(null, new[] { castedList })!;
+
+                var task = (Task)saveBatch!.Invoke(vault, new[] { toList })!;
+                await task.ConfigureAwait(false);
+
+                logger.LogInformation("📦 Inserted {Count} items into vault {Model}.",
+                    list.Count, modelType.Name);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to run AFTER actions for {ModelType}. Reason: {Message}",
+                logger.LogError(ex, "Failed to insert initializer data for {Model}. Reason: {Message}",
                     modelType.Name, ex.Message);
             }
         }

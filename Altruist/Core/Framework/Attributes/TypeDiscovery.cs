@@ -16,8 +16,33 @@ namespace Altruist
         public static IEnumerable<Type> SafeGetTypes(Assembly asm)
         {
             try
-            { return asm.GetTypes(); }
-            catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t is not null)!; }
+            {
+                return asm.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                return ex.Types.Where(t => t is not null)!;
+            }
+        }
+
+        /// <summary>
+        /// Finds all non-abstract classes that implement TInterface.
+        /// </summary>
+        public static IEnumerable<Type> FindTypesImplementing<TInterface>(IEnumerable<Assembly> assemblies)
+        {
+            var interfaceType = typeof(TInterface);
+
+            if (!interfaceType.IsInterface)
+                throw new InvalidOperationException($"{interfaceType.FullName} is not an interface.");
+
+            return assemblies
+                .SelectMany(SafeGetTypes)
+                .Where(t =>
+                    t is not null &&
+                    t.IsClass &&
+                    !t.IsAbstract &&
+                    interfaceType.IsAssignableFrom(t)
+                );
         }
 
         /// <summary>
