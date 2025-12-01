@@ -18,6 +18,9 @@ namespace Altruist.Gaming.ThreeD
     /// </summary>
     public abstract class WorldObjectPrefab3D : PrefabModel, IWorldObject3D
     {
+        [VaultIgnore]
+        public string ClientId { get; set; } = "";
+
         // IWorldObject: InstanceId, RoomId come from Prefab3D already.
         // Prefab3D has:
         //   public virtual string InstanceId { get; set; }
@@ -63,8 +66,10 @@ namespace Altruist.Gaming.ThreeD
     /// </summary>
     public interface IWorldObject3D : IWorldObject
     {
+        [VaultIgnore]
+        public string ClientId { get; set; }
         /// <summary>Transform in world space.</summary>
-        [VaultColumn("transform")]
+        [VaultIgnore]
         Transform3D Transform { get; set; }
 
         /// <summary>
@@ -87,6 +92,7 @@ namespace Altruist.Gaming.ThreeD
     /// </summary>
     public abstract class WorldObject3D : IWorldObject3D
     {
+        [VaultIgnore]
         public string InstanceId { get; set; } = Guid.NewGuid().ToString("N");
 
         /// <summary>
@@ -117,6 +123,9 @@ namespace Altruist.Gaming.ThreeD
 
         [VaultIgnore]
         public bool Expired { get; set; }
+
+        [VaultIgnore]
+        public string ClientId { get; set; } = "";
 
         protected WorldObject3D(Transform3D transform, string zoneId = "", string? archetype = null)
         {

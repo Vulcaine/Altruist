@@ -57,7 +57,7 @@ public class SpatialBroadcastService3D : ISpatialBroadcastService3D
                 var clients = partition.GetAllObjects<T>();
                 foreach (var client in clients)
                 {
-                    await _router.Client.SendAsync(client.InstanceId, packet);
+                    await _router.Client.SendAsync(client.ClientId, packet);
                 }
             }
         }
