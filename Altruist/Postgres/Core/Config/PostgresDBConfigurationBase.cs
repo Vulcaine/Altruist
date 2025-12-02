@@ -103,8 +103,6 @@ public abstract class PostgresConfigurationBase
 
             await provider.ConnectAsync();
             await provider.CreateSchemaAsync(schemaInstance.Name, null);
-
-            // ⬇️ KEY CHANGE: do NOT filter types by schema; let the planner filter
             await migrator.Migrate(schemaInstance, allModelTypes);
         }
 

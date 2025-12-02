@@ -106,16 +106,16 @@ public interface IMigrationPlanner
 public abstract class AbstractMigrationPlanner : IMigrationPlanner
 {
     public IReadOnlyList<MigrationOperation> Plan(
-        DatabaseModel current,
-        IReadOnlyList<Document> desiredDocuments,
-        string schemaName)
+    DatabaseModel current,
+    IReadOnlyList<Document> desiredDocuments,
+    string schemaName)
     {
         var ops = new List<MigrationOperation>();
         var schemaNormalized = NormalizeSchemaName(schemaName);
 
         // Only operate on docs whose Vault keyspace matches this schema.
         // We still keep the full desiredDocuments list for FK resolution (cross-schema).
-        var docsForSchema = desiredDocuments
+        var docsForSchemaRaw = desiredDocuments
             .Where(d =>
             {
                 var keyspace = d.Header.Keyspace ?? GetDefaultSchemaName();
@@ -123,6 +123,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 return string.Equals(docSchema, schemaNormalized, StringComparison.OrdinalIgnoreCase);
             })
             .ToList();
+
+        // 🔽 NEW: sort by foreign-key dependencies so principals come before dependents
+        var docsForSchema = SortDocumentsByDependencies(docsForSchemaRaw, desiredDocuments, schemaNormalized);
 
         // ─────────────────────────────────────────────
         // 1st pass: tables, columns, uniques, indexes, history
@@ -163,6 +166,101 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
 
         return ops;
+    }
+
+    /// <summary>
+    /// Returns docs for this schema sorted so that any document A that is the principal
+    /// of a foreign key from document B will appear before B (within the same schema).
+    /// Detects and throws on circular dependencies.
+    /// </summary>
+    protected IReadOnlyList<Document> SortDocumentsByDependencies(
+        IReadOnlyList<Document> docsForSchema,
+        IReadOnlyList<Document> allDocs,
+        string schemaNormalized)
+    {
+        if (docsForSchema.Count <= 1)
+            return docsForSchema;
+
+        // Map Type -> Document for quick lookup
+        var docsByType = allDocs
+            .GroupBy(d => d.Type)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var docsSet = new HashSet<Document>(docsForSchema);
+        var adjacency = new Dictionary<Document, HashSet<Document>>(); // principal -> dependents
+        var inDegree = new Dictionary<Document, int>();
+
+        foreach (var doc in docsForSchema)
+        {
+            adjacency[doc] = new HashSet<Document>();
+            inDegree[doc] = 0;
+        }
+
+        // Build dependency graph:
+        // For each FK: principalDoc -> doc
+        foreach (var doc in docsForSchema)
+        {
+            foreach (var fk in doc.ForeignKeys)
+            {
+                if (!docsByType.TryGetValue(fk.PrincipalType, out var principalDoc))
+                {
+                    // Principal type not in the known documents; the planner will
+                    // complain separately if it's truly missing. Ignore for ordering.
+                    continue;
+                }
+
+                // Only consider dependencies within the same schema; cross-schema
+                // references will be handled by separate schema migrations.
+                var keyspace = principalDoc.Header.Keyspace ?? GetDefaultSchemaName();
+                var principalSchema = NormalizeSchemaName(keyspace);
+
+                if (!string.Equals(principalSchema, schemaNormalized, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!docsSet.Contains(principalDoc))
+                    continue;
+
+                // Edge: principalDoc -> doc
+                if (adjacency[principalDoc].Add(doc))
+                {
+                    inDegree[doc] = inDegree[doc] + 1;
+                }
+            }
+        }
+
+        // Kahn's algorithm for topological sort
+        var queue = new Queue<Document>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
+        var sorted = new List<Document>(docsForSchema.Count);
+
+        while (queue.Count > 0)
+        {
+            var node = queue.Dequeue();
+            sorted.Add(node);
+
+            foreach (var dependent in adjacency[node])
+            {
+                inDegree[dependent] = inDegree[dependent] - 1;
+                if (inDegree[dependent] == 0)
+                    queue.Enqueue(dependent);
+            }
+        }
+
+        if (sorted.Count != docsForSchema.Count)
+        {
+            // Circular dependency detected among the remaining nodes
+            var cyclicDocs = inDegree
+                .Where(kv => kv.Value > 0)
+                .Select(kv => kv.Key.Type.Name)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToArray();
+
+            throw new InvalidOperationException(
+                "Detected circular foreign-key dependency among vaults in schema '" + schemaNormalized + "': " +
+                string.Join(", ", cyclicDocs));
+        }
+
+        return sorted;
     }
 
     // ---------- provider hooks ----------
