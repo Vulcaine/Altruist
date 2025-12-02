@@ -39,10 +39,10 @@ public static class DependencyPlanner
     /// as dependencies by the planner.
     /// </summary>
     private static readonly Type[] _serviceMarkerAttributes =
-    {
+    [
         typeof(ServiceAttribute),
         typeof(VaultAttribute)
-    };
+    ];
 
     private static bool HasServiceMarker(Type t) =>
         t.GetCustomAttributes(inherit: true)

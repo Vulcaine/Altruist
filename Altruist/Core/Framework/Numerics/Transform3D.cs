@@ -119,7 +119,7 @@ namespace Altruist.ThreeD.Numerics
         public static Transform3D From(IntVector3 origin, Quaternion rotation, Vector3 size, Vector3 scale)
         {
             return new Transform3D(
-                Position3D.From(new IntVector3((int)origin.X, (int)origin.Y, (int)origin.Z)),
+                Position3D.From(new IntVector3(origin.X, origin.Y, origin.Z)),
                 Size3D.From(size),
                 Scale3D.From(scale),
                 Rotation3D.FromQuaternion(rotation));

@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using System.Reflection;
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace Altruist.Persistence;
 
@@ -259,10 +259,10 @@ public static class PrefabMetadataRegistry
 
         var saveBatch = vaultType.GetMethod(
                             nameof(IVault<IVaultModel>.SaveBatchAsync),
-                            new[] { enumerableOfComponent, typeof(bool?) })
+                            [enumerableOfComponent, typeof(bool?)])
                       ?? vaultType.GetMethod(
                             nameof(IVault<IVaultModel>.SaveBatchAsync),
-                            new[] { enumerableOfComponent })
+                            [enumerableOfComponent])
                       ?? throw new InvalidOperationException(
                             $"IVault<{componentType.Name}> must have SaveBatchAsync.");
 
@@ -281,8 +281,8 @@ public static class PrefabMetadataRegistry
             var vault = Dependencies.Inject(vaultType);
 
             // items : IReadOnlyCollection<IVaultModel> -> IEnumerable<IVaultModel> for Cast<T>
-            var casted = castMethod.Invoke(null, new object[] { items })!;
-            var list = toListMethod.Invoke(null, new object[] { casted })!;
+            var casted = castMethod.Invoke(null, [items])!;
+            var list = toListMethod.Invoke(null, [casted])!;
 
             object? result;
             var parameters = saveBatch.GetParameters();
@@ -290,12 +290,12 @@ public static class PrefabMetadataRegistry
             if (parameters.Length == 2)
             {
                 // SaveBatchAsync(IEnumerable<T>, bool?)
-                result = saveBatch.Invoke(vault, new object[] { list, null });
+                result = saveBatch.Invoke(vault, [list, null]);
             }
             else
             {
                 // SaveBatchAsync(IEnumerable<T>)
-                result = saveBatch.Invoke(vault, new object[] { list });
+                result = saveBatch.Invoke(vault, [list]);
             }
 
             if (result is Task t)

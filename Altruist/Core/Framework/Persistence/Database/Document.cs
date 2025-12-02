@@ -20,8 +20,6 @@ using System.Text;
 
 using Altruist.UORM;
 
-using Microsoft.Extensions.Logging;
-
 namespace Altruist.Persistence;
 
 public class Document
@@ -52,8 +50,6 @@ public class Document
 
     public string TypePropertyName;
 
-    private readonly ILogger<Document>? _logger;
-
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; set; } = new();
 
     public Document(
@@ -68,7 +64,6 @@ public class Document
         VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
         VaultSortingByAttribute? sortingByAttribute = null,
         bool storeHistory = false,
-        ILoggerFactory? loggerFactory = null,
         List<VaultForeignKeyDefinition>? foreignKeys = null
     )
     {
@@ -85,12 +80,10 @@ public class Document
         SortingBy = sortingByAttribute;
         StoreHistory = storeHistory;
         ForeignKeys = foreignKeys ?? new List<VaultForeignKeyDefinition>();
-
-        _logger = loggerFactory?.CreateLogger<Document>();
         Validate();
     }
 
-    public static Document From(Type type, ILoggerFactory? loggerFactory = null)
+    public static Document From(Type type)
     {
         if (!typeof(IStoredModel).IsAssignableFrom(type))
             throw new InvalidOperationException($"The type {type.FullName} must implement IModel.");
@@ -193,7 +186,6 @@ public class Document
             primaryKey,
             sortingBy,
             vaultAttribute?.StoreHistory ?? false,
-            loggerFactory,
             foreignKeys);
 
         // wire nullable columns & field types
@@ -284,12 +276,6 @@ public class Document
 
         foreach (var col in overlap)
         {
-            _logger?.LogWarning(
-                $"In vault '{Name}', column '{col}' " +
-                "is marked with both VaultUniqueColumn and VaultColumnIndex. " +
-                "Unique implies index; dropping the redundant non-unique index."
-            );
-
             Indexes.RemoveAll(x => string.Equals(x, col, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -396,7 +382,6 @@ public class Document
 
     private void FailAndExit(string message)
     {
-        _logger?.LogError(message);
         Environment.Exit(-1);
     }
 

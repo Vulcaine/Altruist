@@ -30,9 +30,9 @@ namespace Altruist.Gaming.ThreeD
         public virtual void Add(IWorldObject3D obj)
         {
             string key = GetKey(
-                (int)obj.Transform.Position.X / CellSize,
-                (int)obj.Transform.Position.Y / CellSize,
-                (int)obj.Transform.Position.Z / CellSize);
+                obj.Transform.Position.X / CellSize,
+                obj.Transform.Position.Y / CellSize,
+                obj.Transform.Position.Z / CellSize);
 
             if (!Grid.TryGetValue(key, out var list))
             {
@@ -55,9 +55,9 @@ namespace Altruist.Gaming.ThreeD
                 return null;
 
             string key = GetKey(
-                (int)obj.Transform.Position.X / CellSize,
-                (int)obj.Transform.Position.Y / CellSize,
-                (int)obj.Transform.Position.Z / CellSize);
+                obj.Transform.Position.X / CellSize,
+                obj.Transform.Position.Y / CellSize,
+                obj.Transform.Position.Z / CellSize);
 
             if (Grid.TryGetValue(key, out var cellSet))
                 cellSet.Remove(instanceId);

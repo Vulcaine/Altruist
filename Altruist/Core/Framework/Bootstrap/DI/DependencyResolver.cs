@@ -453,7 +453,7 @@ namespace Altruist
             }
 
             var gm = _genericGetKeyedService.MakeGenericMethod(serviceType);
-            var result = gm.Invoke(null, new object[] { sp, key });
+            var result = gm.Invoke(null, [sp, key]);
             return result;
         }
 
@@ -560,9 +560,9 @@ namespace Altruist
                 var setType = typeof(HashSet<>).MakeGenericType(elemType);
                 var set = Activator.CreateInstance(setType)!;
 
-                var addMethod = setType.GetMethod("Add", new[] { elemType })!;
+                var addMethod = setType.GetMethod("Add", [elemType])!;
                 foreach (var s in elements)
-                    addMethod.Invoke(set, new[] { elemType.IsInstanceOfType(s) ? s : Convert.ChangeType(s, elemType) });
+                    addMethod.Invoke(set, [elemType.IsInstanceOfType(s) ? s : Convert.ChangeType(s, elemType)]);
 
                 return set;
             }
@@ -571,9 +571,9 @@ namespace Altruist
             var listType = typeof(List<>).MakeGenericType(elemType);
             var list = Activator.CreateInstance(listType)!;
 
-            var addMethod2 = listType.GetMethod("Add", new[] { elemType })!;
+            var addMethod2 = listType.GetMethod("Add", [elemType])!;
             foreach (var s in elements)
-                addMethod2.Invoke(list, new[] { elemType.IsInstanceOfType(s) ? s : Convert.ChangeType(s, elemType) });
+                addMethod2.Invoke(list, [elemType.IsInstanceOfType(s) ? s : Convert.ChangeType(s, elemType)]);
 
             return list;
         }

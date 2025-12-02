@@ -85,7 +85,7 @@ public sealed class DictionaryStringStringConfigConverter : IConfigConverter<Dic
 
         // Semicolon- or comma-separated key=value pairs: "k1=v1,k2=v2" or "k1=v1;k2=v2"
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var pairs = s.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
+        var pairs = s.Split([';', ','], StringSplitOptions.RemoveEmptyEntries);
         foreach (var pair in pairs)
         {
             var idx = pair.IndexOf('=');

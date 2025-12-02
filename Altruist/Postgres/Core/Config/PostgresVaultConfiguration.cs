@@ -207,7 +207,7 @@ public sealed class PostgresVaultConfiguration : PostgresConfigurationBase, IDat
                 .Single(m => m.Name == nameof(DispatchProxy.Create) && m.GetGenericArguments().Length == 2)
                 .MakeGenericMethod(proxyServiceType, typeof(TransactionalDecorator<>).MakeGenericType(proxyServiceType));
 
-            var proxy = (object)createMethod.Invoke(null, null)!;
+            var proxy = createMethod.Invoke(null, null)!;
 
             var decorator = (dynamic)proxy;
             decorator.Inner = inner;

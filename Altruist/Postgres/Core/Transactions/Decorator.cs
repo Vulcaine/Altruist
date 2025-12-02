@@ -54,7 +54,7 @@ public sealed class TransactionalDecorator<T> : DispatchProxy
             .GetMethod(nameof(InvokeAsyncGeneric), BindingFlags.Instance | BindingFlags.NonPublic)!
             .MakeGenericMethod(taskResultType);
 
-        return invoker.Invoke(this, new object?[] { method, args, attr })!;
+        return invoker.Invoke(this, [method, args, attr])!;
     }
 
     private async Task InvokeAsyncNonGeneric(MethodInfo method, object?[]? args, TransactionalAttribute attr)

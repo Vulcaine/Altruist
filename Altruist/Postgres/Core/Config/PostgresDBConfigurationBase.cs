@@ -1,3 +1,19 @@
+/*
+Copyright 2025 Aron Gere
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 using System.Reflection;
 
 using Altruist.Migrations;
@@ -61,17 +77,16 @@ public abstract class PostgresConfigurationBase
     // ----------------- bootstrap logic -----------------
 
     protected static async Task BootstrapModelsAsync(
-    IServiceCollection services,
-    Type[] modelTypes,
-    Type[] initializerTypes,
-    string logPrefix)
+        IServiceCollection services,
+        Type[] modelTypes,
+        Type[] initializerTypes,
+        string logPrefix)
     {
         using var sp = services.BuildServiceProvider();
         var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(logPrefix);
 
         var provider = sp.GetService<ISqlDatabaseProvider>();
         var migrator = sp.GetService<IVaultSchemaMigrator>();
-        var keyspaces = sp.GetServices<IKeyspace>().ToList();
 
         if (provider is null)
         {
@@ -91,21 +106,27 @@ public abstract class PostgresConfigurationBase
             return;
         }
 
-        // group only to know which schemas exist
-        var groups = modelTypes.GroupBy(GetSchemaName).ToList();
-        var allModelTypes = modelTypes; // pass this to migrator every time
+        // Discover which schemas/keyspaces we need from the models
+        var schemaNames = modelTypes
+            .Select(GetSchemaName)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        foreach (var group in groups)
+        // 1) Connect once
+        await provider.ConnectAsync();
+
+        // 2) Create all schemas before running any migrations
+        foreach (var schemaName in schemaNames)
         {
-            var schemaName = group.Key;
-            var schemaInstance = keyspaces.FirstOrDefault(s => s.Name == schemaName)
-                                 ?? new DefaultSchema(schemaName);
-
-            await provider.ConnectAsync();
-            await provider.CreateSchemaAsync(schemaInstance.Name, null);
-            await migrator.Migrate(schemaInstance, allModelTypes);
+            await provider.CreateSchemaAsync(schemaName, null);
         }
 
+        // 3) Let the migrator handle keyspaces, dependency ordering, and per-schema planning
+        await migrator.Migrate(modelTypes);
+
+        // 4) Run initializers (data seeds)
         await RunInitializersAsync(sp, initializerTypes, logger);
 
         logger.LogInformation(
@@ -191,8 +212,8 @@ public abstract class PostgresConfigurationBase
 
                 object?[] args =
                     saveBatch.GetParameters().Length == 2
-                    ? [toList, null]
-                    : [toList];
+                        ? [toList, null]
+                        : [toList];
 
                 var task = (Task)saveBatch.Invoke(vault, args)!;
                 await task.ConfigureAwait(false);

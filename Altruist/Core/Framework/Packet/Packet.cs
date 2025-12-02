@@ -424,7 +424,7 @@ namespace Altruist
         {
             Name = string.Empty;
             RoomId = string.Empty;
-            Position = new[] { 0f, 0f };
+            Position = [0f, 0f];
             WorldIndex = 0;
         }
 
@@ -432,7 +432,7 @@ namespace Altruist
         {
             Name = name;
             RoomId = roomId;
-            Position = position ?? new[] { 0f, 0f };
+            Position = position ?? [0f, 0f];
             WorldIndex = worldIndex;
         }
     }

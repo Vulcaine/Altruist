@@ -88,8 +88,8 @@ namespace Altruist.Gaming.TwoD
             var radius = ComputePartitionRadius(obj);
 
             var partitions = FindPartitionsForPosition(
-                (int)obj.Transform.Position.X,
-                (int)obj.Transform.Position.Y,
+                obj.Transform.Position.X,
+                obj.Transform.Position.Y,
                 radius);
 
             AddObjectToPartitions(obj, partitions);
@@ -104,8 +104,8 @@ namespace Altruist.Gaming.TwoD
             var radius = ComputePartitionRadius(obj);
 
             var partitions = FindPartitionsForPosition(
-                (int)obj.Transform.Position.X,
-                (int)obj.Transform.Position.Y,
+                obj.Transform.Position.X,
+                obj.Transform.Position.Y,
                 radius);
 
             AddObjectToPartitions(obj, partitions);
@@ -118,8 +118,8 @@ namespace Altruist.Gaming.TwoD
                 return null;
 
             var partition = FindPartitionForPosition(
-                (int)obj.Transform.Position.X,
-                (int)obj.Transform.Position.Y);
+                obj.Transform.Position.X,
+                obj.Transform.Position.Y);
 
             if (partition is WorldPartition2D p2d)
             {

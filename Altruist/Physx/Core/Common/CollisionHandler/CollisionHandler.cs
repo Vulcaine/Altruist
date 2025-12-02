@@ -66,7 +66,7 @@ namespace Altruist.Physx
 
             var key = new HandlerKey(aType, bType);
             return _handlers.TryGetValue(key, out var list)
-                ? (IReadOnlyList<HandlerDescriptor>)list
+                ? list
                 : Array.Empty<HandlerDescriptor>();
         }
     }
