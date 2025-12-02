@@ -22,7 +22,7 @@ namespace Altruist.Migrations;
 
 public interface IMigrationExecutor
 {
-    Task ApplyAsync(IKeyspace schema, IReadOnlyList<MigrationOperation> operations);
+    Task ApplyAsync(string schema, IReadOnlyList<MigrationOperation> operations);
 }
 
 public abstract class AbstractMigrationExecutor : IMigrationExecutor
@@ -34,7 +34,7 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
     }
 
-    public async Task ApplyAsync(IKeyspace schema, IReadOnlyList<MigrationOperation> operations)
+    public async Task ApplyAsync(string schema, IReadOnlyList<MigrationOperation> operations)
     {
         if (schema is null)
             throw new ArgumentNullException(nameof(schema));
@@ -53,7 +53,7 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     /// Core dispatcher for migration operations. Provider-agnostic; delegates to
     /// provider-specific methods for actual SQL generation + execution.
     /// </summary>
-    protected virtual Task ApplyOperationAsync(IKeyspace defaultSchema, MigrationOperation op)
+    protected virtual Task ApplyOperationAsync(string defaultSchema, MigrationOperation op)
     {
         switch (op)
         {
@@ -114,21 +114,21 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
 
     // ---------- provider-specific implementations ----------
 
-    protected abstract Task ApplyCreateTableAsync(IKeyspace defaultSchema, CreateTableOperation op);
+    protected abstract Task ApplyCreateTableAsync(string defaultSchema, CreateTableOperation op);
 
-    protected abstract Task ApplyAddColumnAsync(IKeyspace defaultSchema, AddColumnOperation op);
+    protected abstract Task ApplyAddColumnAsync(string defaultSchema, AddColumnOperation op);
 
-    protected abstract Task ApplyDropColumnAsync(IKeyspace defaultSchema, DropColumnOperation op);
+    protected abstract Task ApplyDropColumnAsync(string defaultSchema, DropColumnOperation op);
 
-    protected abstract Task ApplyAddUniqueConstraintAsync(IKeyspace defaultSchema, AddUniqueConstraintOperation op);
+    protected abstract Task ApplyAddUniqueConstraintAsync(string defaultSchema, AddUniqueConstraintOperation op);
 
-    protected abstract Task ApplyDropConstraintAsync(IKeyspace defaultSchema, DropConstraintOperation op);
+    protected abstract Task ApplyDropConstraintAsync(string defaultSchema, DropConstraintOperation op);
 
-    protected abstract Task ApplyAddForeignKeyAsync(IKeyspace defaultSchema, AddForeignKeyOperation op);
+    protected abstract Task ApplyAddForeignKeyAsync(string defaultSchema, AddForeignKeyOperation op);
 
-    protected abstract Task ApplyDropForeignKeyAsync(IKeyspace defaultSchema, DropForeignKeyOperation op);
+    protected abstract Task ApplyDropForeignKeyAsync(string defaultSchema, DropForeignKeyOperation op);
 
-    protected abstract Task ApplyCreateIndexAsync(IKeyspace defaultSchema, CreateIndexOperation op);
+    protected abstract Task ApplyCreateIndexAsync(string defaultSchema, CreateIndexOperation op);
 
-    protected abstract Task ApplyDropIndexAsync(IKeyspace defaultSchema, DropIndexOperation op);
+    protected abstract Task ApplyDropIndexAsync(string defaultSchema, DropIndexOperation op);
 }

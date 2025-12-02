@@ -21,7 +21,7 @@ namespace Altruist.Migrations;
 
 public interface ISchemaInspector
 {
-    Task<DatabaseModel> GetCurrentModelAsync(IKeyspace schema, CancellationToken ct = default);
+    Task<DatabaseModel> GetCurrentModelAsync(string schema, CancellationToken ct = default);
 }
 
 public abstract class AbstractSchemaInspector : ISchemaInspector
@@ -56,12 +56,12 @@ public abstract class AbstractSchemaInspector : ISchemaInspector
         }
     }
 
-    public async Task<DatabaseModel> GetCurrentModelAsync(IKeyspace schema, CancellationToken ct = default)
+    public async Task<DatabaseModel> GetCurrentModelAsync(string schema, CancellationToken ct = default)
     {
         if (schema is null)
             throw new ArgumentNullException(nameof(schema));
 
-        var schemaName = NormalizeSchemaName(schema.Name);
+        var schemaName = NormalizeSchemaName(schema);
 
         var snapshot = await LoadSchemaAsync(schemaName, ct).ConfigureAwait(false);
 

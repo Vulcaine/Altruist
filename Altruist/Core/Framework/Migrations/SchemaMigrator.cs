@@ -74,35 +74,30 @@ namespace Altruist.Migrations
             foreach (var group in docsBySchema)
             {
                 var schemaName = group.Key;
-                var schema = ResolveSchema(schemaName);
 
-                if (schema == null)
-                {
-                    continue;
-                }
 
-                _logger.LogInformation("🔧 Migrating schema '{Schema}'...", schema?.Name);
+                _logger.LogInformation("🔧 Migrating schema '{Schema}'...", schemaName);
 
                 // 4.1) current model from DB (for this schema only)
                 var current = await _inspector
-                    .GetCurrentModelAsync(schema!, ct)
+                    .GetCurrentModelAsync(schemaName, ct)
                     .ConfigureAwait(false);
 
                 // 4.2) diff -> operations (planner filters docs for this schema internally)
-                var operations = _planner.Plan(current, orderedDocs, schema!.Name);
+                var operations = _planner.Plan(current, orderedDocs, schemaName);
 
                 if (operations.Count == 0)
                 {
-                    _logger.LogInformation("ℹ️ No migration operations for schema '{Schema}'.", schema.Name);
+                    _logger.LogInformation("ℹ️ No migration operations for schema '{Schema}'.", schemaName);
                     continue;
                 }
 
                 // 4.3) execute operations for this schema
-                await _executor.ApplyAsync(schema, operations).ConfigureAwait(false);
+                await _executor.ApplyAsync(schemaName, operations).ConfigureAwait(false);
 
                 _logger.LogInformation(
                     "✅ Schema '{Schema}' migration complete. {Count} operation(s) applied.",
-                    schema.Name,
+                    schemaName,
                     operations.Count);
             }
         }

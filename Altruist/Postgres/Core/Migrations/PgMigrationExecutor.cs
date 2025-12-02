@@ -78,11 +78,11 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
     // TABLE OPERATIONS
     // --------------------------------
 
-    protected override async Task ApplyCreateTableAsync(IKeyspace defaultSchema, CreateTableOperation createTable)
+    protected override async Task ApplyCreateTableAsync(string defaultSchema, CreateTableOperation createTable)
     {
         // Use operation.Schema if set, otherwise fall back to keyspace name
         var schemaName = string.IsNullOrWhiteSpace(createTable.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : createTable.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createTable.Table)}";
@@ -125,10 +125,10 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
     // COLUMN OPERATIONS
     // --------------------------------
 
-    protected override async Task ApplyAddColumnAsync(IKeyspace defaultSchema, AddColumnOperation addCol)
+    protected override async Task ApplyAddColumnAsync(string defaultSchema, AddColumnOperation addCol)
     {
         var schemaName = string.IsNullOrWhiteSpace(addCol.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : addCol.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addCol.Table)}";
@@ -147,10 +147,10 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
         await _provider.ExecuteAsync(sql);
     }
 
-    protected override async Task ApplyDropColumnAsync(IKeyspace defaultSchema, DropColumnOperation dropCol)
+    protected override async Task ApplyDropColumnAsync(string defaultSchema, DropColumnOperation dropCol)
     {
         var schemaName = string.IsNullOrWhiteSpace(dropCol.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : dropCol.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropCol.Table)}";
@@ -166,10 +166,10 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
     // CONSTRAINT OPERATIONS
     // --------------------------------
 
-    protected override async Task ApplyAddUniqueConstraintAsync(IKeyspace defaultSchema, AddUniqueConstraintOperation addUnique)
+    protected override async Task ApplyAddUniqueConstraintAsync(string defaultSchema, AddUniqueConstraintOperation addUnique)
     {
         var schemaName = string.IsNullOrWhiteSpace(addUnique.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : addUnique.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addUnique.Table)}";
@@ -182,10 +182,10 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
         await _provider.ExecuteAsync(sql);
     }
 
-    protected override async Task ApplyDropConstraintAsync(IKeyspace defaultSchema, DropConstraintOperation dropConstraint)
+    protected override async Task ApplyDropConstraintAsync(string defaultSchema, DropConstraintOperation dropConstraint)
     {
         var schemaName = string.IsNullOrWhiteSpace(dropConstraint.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : dropConstraint.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropConstraint.Table)}";
@@ -201,10 +201,10 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
     // FOREIGN KEY OPERATIONS
     // --------------------------------
 
-    protected override async Task ApplyAddForeignKeyAsync(IKeyspace defaultSchema, AddForeignKeyOperation addFk)
+    protected override async Task ApplyAddForeignKeyAsync(string defaultSchema, AddForeignKeyOperation addFk)
     {
         var schemaName = string.IsNullOrWhiteSpace(addFk.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : addFk.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.Table)}";
@@ -225,10 +225,10 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
         await _provider.ExecuteAsync(sql);
     }
 
-    protected override async Task ApplyDropForeignKeyAsync(IKeyspace defaultSchema, DropForeignKeyOperation dropFk)
+    protected override async Task ApplyDropForeignKeyAsync(string defaultSchema, DropForeignKeyOperation dropFk)
     {
         var schemaName = string.IsNullOrWhiteSpace(dropFk.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : dropFk.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropFk.Table)}";
@@ -244,10 +244,10 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
     // INDEX OPERATIONS
     // --------------------------------
 
-    protected override async Task ApplyCreateIndexAsync(IKeyspace defaultSchema, CreateIndexOperation createIndex)
+    protected override async Task ApplyCreateIndexAsync(string defaultSchema, CreateIndexOperation createIndex)
     {
         var schemaName = string.IsNullOrWhiteSpace(createIndex.Schema)
-            ? defaultSchema.Name
+            ? defaultSchema
             : createIndex.Schema;
 
         var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createIndex.Table)}";
@@ -260,7 +260,7 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
         await _provider.ExecuteAsync(sql);
     }
 
-    protected override async Task ApplyDropIndexAsync(IKeyspace defaultSchema, DropIndexOperation dropIndex)
+    protected override async Task ApplyDropIndexAsync(string defaultSchema, DropIndexOperation dropIndex)
     {
         // PostgreSQL index names are global per schema;
         // DROP INDEX does not require table name.
