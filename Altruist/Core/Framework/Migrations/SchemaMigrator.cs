@@ -28,6 +28,7 @@ namespace Altruist.Migrations
         Task Migrate(Type[] modelTypes, CancellationToken cancellationToken = default);
     }
 
+    [Service(typeof(IVaultSchemaMigrator))]
     public sealed class VaultSchemaMigrator : IVaultSchemaMigrator
     {
         private readonly ISchemaInspector _inspector;
@@ -75,15 +76,20 @@ namespace Altruist.Migrations
                 var schemaName = group.Key;
                 var schema = ResolveSchema(schemaName);
 
-                _logger.LogInformation("🔧 Migrating schema '{Schema}'...", schema.Name);
+                if (schema == null)
+                {
+                    continue;
+                }
+
+                _logger.LogInformation("🔧 Migrating schema '{Schema}'...", schema?.Name);
 
                 // 4.1) current model from DB (for this schema only)
                 var current = await _inspector
-                    .GetCurrentModelAsync(schema, ct)
+                    .GetCurrentModelAsync(schema!, ct)
                     .ConfigureAwait(false);
 
                 // 4.2) diff -> operations (planner filters docs for this schema internally)
-                var operations = _planner.Plan(current, orderedDocs, schema.Name);
+                var operations = _planner.Plan(current, orderedDocs, schema!.Name);
 
                 if (operations.Count == 0)
                 {
