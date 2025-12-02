@@ -24,7 +24,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Persistence;
 
-
 public class Document
 {
     public Type Type { get; set; }
@@ -46,6 +45,9 @@ public class Document
 
     public List<VaultForeignKeyDefinition> ForeignKeys { get; set; } = new();
 
+    // logical field name -> CLR type
+    public Dictionary<string, Type> FieldTypes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     public HashSet<string> NullableColumns { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string TypePropertyName;
@@ -55,20 +57,20 @@ public class Document
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; set; } = new();
 
     public Document(
-         VaultAttribute header,
-         Type type,
-         string name,
-         List<string> fields,
-         Dictionary<string, string> columns,
-         List<string> indexes,
-         List<string> uniqueKeys,
-         Dictionary<string, Func<object, object?>> propertyAccessors,
-         VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
-         VaultSortingByAttribute? sortingByAttribute = null,
-         bool storeHistory = false,
-         ILoggerFactory? loggerFactory = null,
-         List<VaultForeignKeyDefinition>? foreignKeys = null
-     )
+        VaultAttribute header,
+        Type type,
+        string name,
+        List<string> fields,
+        Dictionary<string, string> columns,
+        List<string> indexes,
+        List<string> uniqueKeys,
+        Dictionary<string, Func<object, object?>> propertyAccessors,
+        VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
+        VaultSortingByAttribute? sortingByAttribute = null,
+        bool storeHistory = false,
+        ILoggerFactory? loggerFactory = null,
+        List<VaultForeignKeyDefinition>? foreignKeys = null
+    )
     {
         PrimaryKey = primaryKeyAttribute;
         Header = header;
@@ -119,6 +121,9 @@ public class Document
         var foreignKeys = new List<VaultForeignKeyDefinition>();
         var nullableColumns = new List<string>();
 
+        // NEW: local map to populate FieldTypes
+        var fieldTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (prop.GetCustomAttribute<PrefabComponentAttribute>() is not null)
@@ -139,6 +144,9 @@ public class Document
             // basic mapping
             fields.Add(fieldName);
             columns[fieldName] = physical;
+
+            // NEW: track CLR type for this logical field
+            fieldTypes[fieldName] = prop.PropertyType;
 
             // accessor cache
             accessors[fieldName] = CompileAccessor(prop);
@@ -188,7 +196,9 @@ public class Document
             loggerFactory,
             foreignKeys);
 
+        // wire nullable columns & field types
         doc.NullableColumns = new HashSet<string>(nullableColumns, StringComparer.OrdinalIgnoreCase);
+        doc.FieldTypes = fieldTypes;
 
         return doc;
     }
@@ -412,5 +422,4 @@ public class Document
             OnDelete = string.IsNullOrWhiteSpace(onDelete) ? "CASCADE" : onDelete;
         }
     }
-
 }

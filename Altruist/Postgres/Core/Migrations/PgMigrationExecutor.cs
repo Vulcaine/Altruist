@@ -5,18 +5,36 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0 (the "License");
 */
 
-using System.Text;
-
 using Altruist.Persistence;
 
 namespace Altruist.Migrations.Postgres;
+// Altruist.Migrations.Postgres/PostgresMigrationExecutor.cs
+/*
+Copyright 2025 Aron Gere
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
 [Service(typeof(IMigrationExecutor))]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
-public sealed class PostgresMigrationExecutor : IMigrationExecutor
+public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
 {
-    private readonly ISqlDatabaseProvider _provider;
-
     private const string CreateSchemaSqlTemplate =
         "CREATE SCHEMA IF NOT EXISTS {schema};";
 
@@ -52,229 +70,209 @@ public sealed class PostgresMigrationExecutor : IMigrationExecutor
         "ALTER TABLE {table_fqn} DROP CONSTRAINT IF EXISTS {constraint_name};";
 
     public PostgresMigrationExecutor(ISqlDatabaseProvider provider)
+        : base(provider)
     {
-        _provider = provider;
     }
 
-    public async Task ApplyAsync(IKeyspace schema, IReadOnlyList<MigrationOperation> operations)
-    {
-        await _provider.ConnectAsync();
+    // --------------------------------
+    // TABLE OPERATIONS
+    // --------------------------------
 
-        foreach (var op in operations)
+    protected override async Task ApplyCreateTableAsync(IKeyspace defaultSchema, CreateTableOperation createTable)
+    {
+        // Use operation.Schema if set, otherwise fall back to keyspace name
+        var schemaName = string.IsNullOrWhiteSpace(createTable.Schema)
+            ? defaultSchema.Name
+            : createTable.Schema;
+
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createTable.Table)}";
+
+        // Build column definitions
+        var colDefs = new List<string>(createTable.Columns.Count);
+        foreach (var col in createTable.Columns)
         {
-            await ApplyOperationAsync(schema, op);
+            // ColumnDefinition.StoreType is already provider-specific for Postgres
+            var sb = new StringBuilder();
+            sb.Append(QuoteIdent(col.Name))
+              .Append(' ')
+              .Append(col.StoreType);
+
+            if (!col.IsNullable)
+                sb.Append(" NOT NULL");
+
+            if (col.IsUnique)
+                sb.Append(" UNIQUE");
+
+            colDefs.Add(sb.ToString());
         }
+
+        if (createTable.PrimaryKeyColumns is null || createTable.PrimaryKeyColumns.Count == 0)
+            throw new InvalidOperationException(
+                $"CreateTableOperation for '{createTable.Table}' is missing primary key columns.");
+
+        var columnsSql = string.Join(", ", colDefs);
+        var pkSql = string.Join(", ", createTable.PrimaryKeyColumns.Select(QuoteIdent));
+
+        var sql = CreateTableSqlTemplate
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{columns}", columnsSql)
+            .Replace("{pk_columns}", pkSql);
+
+        await _provider.ExecuteAsync(sql);
     }
 
-    private async Task ApplyOperationAsync(IKeyspace defaultSchema, MigrationOperation op)
+    // --------------------------------
+    // COLUMN OPERATIONS
+    // --------------------------------
+
+    protected override async Task ApplyAddColumnAsync(IKeyspace defaultSchema, AddColumnOperation addCol)
     {
-        switch (op)
-        {
-            // --------------------------------
-            // TABLE OPERATIONS
-            // --------------------------------
+        var schemaName = string.IsNullOrWhiteSpace(addCol.Schema)
+            ? defaultSchema.Name
+            : addCol.Schema;
 
-            case CreateTableOperation createTable:
-                {
-                    // Use operation.Schema if set, otherwise fall back to keyspace name
-                    var schemaName = string.IsNullOrWhiteSpace(createTable.Schema)
-                        ? defaultSchema.Name
-                        : createTable.Schema;
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addCol.Table)}";
+        var column = addCol.Column;
 
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createTable.Table)}";
+        var typeSegment =
+            column.StoreType +
+            (column.IsNullable ? "" : " NOT NULL") +
+            (column.IsUnique ? " UNIQUE" : "");
 
-                    // Build column definitions
-                    var colDefs = new List<string>(createTable.Columns.Count);
-                    foreach (var col in createTable.Columns)
-                    {
-                        // NOTE: We assume ColumnDefinition.StoreType is already provider-specific
-                        // for Postgres (e.g. "text", "integer", "jsonb", etc.).
-                        var sb = new StringBuilder();
-                        sb.Append(QuoteIdent(col.Name))
-                          .Append(' ')
-                          .Append(col.StoreType);
+        var sql = AlterTableAddColumnTemplate
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{column_ident}", QuoteIdent(column.Name))
+            .Replace("{column_type}", typeSegment);
 
-                        if (!col.IsNullable)
-                            sb.Append(" NOT NULL");
-
-                        if (col.IsUnique)
-                            sb.Append(" UNIQUE");
-
-                        colDefs.Add(sb.ToString());
-                    }
-
-                    if (createTable.PrimaryKeyColumns is null || createTable.PrimaryKeyColumns.Count == 0)
-                        throw new InvalidOperationException(
-                            $"CreateTableOperation for '{createTable.Table}' is missing primary key columns.");
-
-                    var columnsSql = string.Join(", ", colDefs);
-                    var pkSql = string.Join(", ", createTable.PrimaryKeyColumns.Select(QuoteIdent));
-
-                    var sql = CreateTableSqlTemplate
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{columns}", columnsSql)
-                        .Replace("{pk_columns}", pkSql);
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            // --------------------------------
-            // COLUMN OPERATIONS
-            // --------------------------------
-
-            case AddColumnOperation addCol:
-                {
-                    var schemaName = string.IsNullOrWhiteSpace(addCol.Schema)
-                        ? defaultSchema.Name
-                        : addCol.Schema;
-
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addCol.Table)}";
-                    var column = addCol.Column;
-
-                    var typeSegment =
-                        column.StoreType +
-                        (column.IsNullable ? "" : " NOT NULL") +
-                        (column.IsUnique ? " UNIQUE" : "");
-
-                    var sql = AlterTableAddColumnTemplate
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{column_ident}", QuoteIdent(column.Name))
-                        .Replace("{column_type}", typeSegment);
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            case DropColumnOperation dropCol:
-                {
-                    var schemaName = string.IsNullOrWhiteSpace(dropCol.Schema)
-                        ? defaultSchema.Name
-                        : dropCol.Schema;
-
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropCol.Table)}";
-
-                    var sql = AlterTableDropColumnTemplate
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{column_ident}", QuoteIdent(dropCol.ColumnName));
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            // --------------------------------
-            // CONSTRAINT OPERATIONS
-            // --------------------------------
-
-            case AddUniqueConstraintOperation addUnique:
-                {
-                    var schemaName = string.IsNullOrWhiteSpace(addUnique.Schema)
-                        ? defaultSchema.Name
-                        : addUnique.Schema;
-
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addUnique.Table)}";
-
-                    var sql = AddUniqueConstraintTemplate
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{constraint_name}", QuoteIdent(addUnique.ConstraintName))
-                        .Replace("{column_ident}", QuoteIdent(addUnique.Column));
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            case DropConstraintOperation dropConstraint:
-                {
-                    var schemaName = string.IsNullOrWhiteSpace(dropConstraint.Schema)
-                        ? defaultSchema.Name
-                        : dropConstraint.Schema;
-
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropConstraint.Table)}";
-
-                    var sql = DropConstraintTemplate
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{constraint_name}", QuoteIdent(dropConstraint.ConstraintName));
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            // ---------- NEW: FOREIGN KEY OPERATIONS ----------
-
-            case AddForeignKeyOperation addFk:
-                {
-                    var schemaName = string.IsNullOrWhiteSpace(addFk.Schema)
-                        ? defaultSchema.Name
-                        : addFk.Schema;
-
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.Table)}";
-                    var principalTableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.PrincipalTable)}";
-
-                    var sql = AddForeignKeyTemplate
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{constraint_name}", QuoteIdent(addFk.ConstraintName))
-                        .Replace("{column_ident}", QuoteIdent(addFk.Column))
-                        .Replace("{principal_table_fqn}", principalTableFqn)
-                        .Replace("{principal_column_ident}", QuoteIdent(addFk.PrincipalColumn))
-                        .Replace("{on_delete}", addFk.OnDelete);
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            case DropForeignKeyOperation dropFk:
-                {
-                    var schemaName = string.IsNullOrWhiteSpace(dropFk.Schema)
-                        ? defaultSchema.Name
-                        : dropFk.Schema;
-
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropFk.Table)}";
-
-                    var sql = DropForeignKeyTemplate
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{constraint_name}", QuoteIdent(dropFk.ConstraintName));
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            // --------------------------------
-            // INDEX OPERATIONS
-            // --------------------------------
-
-            case CreateIndexOperation createIndex:
-                {
-                    var schemaName = string.IsNullOrWhiteSpace(createIndex.Schema)
-                        ? defaultSchema.Name
-                        : createIndex.Schema;
-
-                    var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createIndex.Table)}";
-
-                    var sql = CreateIndexTemplate
-                        .Replace("{index_name}", QuoteIdent(createIndex.IndexName))
-                        .Replace("{table_fqn}", tableFqn)
-                        .Replace("{column_ident}", QuoteIdent(createIndex.Column));
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            case DropIndexOperation dropIndex:
-                {
-                    // PostgreSQL index names are global per schema;
-                    // DROP INDEX does not require table name.
-                    var sql = DropIndexTemplate
-                        .Replace("{index_name}", QuoteIdent(dropIndex.IndexName));
-
-                    await _provider.ExecuteAsync(sql);
-                    break;
-                }
-
-            default:
-                throw new NotSupportedException(
-                    $"Migration operation '{op.GetType().Name}' is not supported by PostgresMigrationExecutor.");
-        }
+        await _provider.ExecuteAsync(sql);
     }
+
+    protected override async Task ApplyDropColumnAsync(IKeyspace defaultSchema, DropColumnOperation dropCol)
+    {
+        var schemaName = string.IsNullOrWhiteSpace(dropCol.Schema)
+            ? defaultSchema.Name
+            : dropCol.Schema;
+
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropCol.Table)}";
+
+        var sql = AlterTableDropColumnTemplate
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{column_ident}", QuoteIdent(dropCol.ColumnName));
+
+        await _provider.ExecuteAsync(sql);
+    }
+
+    // --------------------------------
+    // CONSTRAINT OPERATIONS
+    // --------------------------------
+
+    protected override async Task ApplyAddUniqueConstraintAsync(IKeyspace defaultSchema, AddUniqueConstraintOperation addUnique)
+    {
+        var schemaName = string.IsNullOrWhiteSpace(addUnique.Schema)
+            ? defaultSchema.Name
+            : addUnique.Schema;
+
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addUnique.Table)}";
+
+        var sql = AddUniqueConstraintTemplate
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{constraint_name}", QuoteIdent(addUnique.ConstraintName))
+            .Replace("{column_ident}", QuoteIdent(addUnique.Column));
+
+        await _provider.ExecuteAsync(sql);
+    }
+
+    protected override async Task ApplyDropConstraintAsync(IKeyspace defaultSchema, DropConstraintOperation dropConstraint)
+    {
+        var schemaName = string.IsNullOrWhiteSpace(dropConstraint.Schema)
+            ? defaultSchema.Name
+            : dropConstraint.Schema;
+
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropConstraint.Table)}";
+
+        var sql = DropConstraintTemplate
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{constraint_name}", QuoteIdent(dropConstraint.ConstraintName));
+
+        await _provider.ExecuteAsync(sql);
+    }
+
+    // --------------------------------
+    // FOREIGN KEY OPERATIONS
+    // --------------------------------
+
+    protected override async Task ApplyAddForeignKeyAsync(IKeyspace defaultSchema, AddForeignKeyOperation addFk)
+    {
+        var schemaName = string.IsNullOrWhiteSpace(addFk.Schema)
+            ? defaultSchema.Name
+            : addFk.Schema;
+
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.Table)}";
+
+        // For now we assume principal table is in the same schema.
+        // If you later extend AddForeignKeyOperation with a PrincipalSchema,
+        // wire it in here.
+        var principalTableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.PrincipalTable)}";
+
+        var sql = AddForeignKeyTemplate
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{constraint_name}", QuoteIdent(addFk.ConstraintName))
+            .Replace("{column_ident}", QuoteIdent(addFk.Column))
+            .Replace("{principal_table_fqn}", principalTableFqn)
+            .Replace("{principal_column_ident}", QuoteIdent(addFk.PrincipalColumn))
+            .Replace("{on_delete}", addFk.OnDelete);
+
+        await _provider.ExecuteAsync(sql);
+    }
+
+    protected override async Task ApplyDropForeignKeyAsync(IKeyspace defaultSchema, DropForeignKeyOperation dropFk)
+    {
+        var schemaName = string.IsNullOrWhiteSpace(dropFk.Schema)
+            ? defaultSchema.Name
+            : dropFk.Schema;
+
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(dropFk.Table)}";
+
+        var sql = DropForeignKeyTemplate
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{constraint_name}", QuoteIdent(dropFk.ConstraintName));
+
+        await _provider.ExecuteAsync(sql);
+    }
+
+    // --------------------------------
+    // INDEX OPERATIONS
+    // --------------------------------
+
+    protected override async Task ApplyCreateIndexAsync(IKeyspace defaultSchema, CreateIndexOperation createIndex)
+    {
+        var schemaName = string.IsNullOrWhiteSpace(createIndex.Schema)
+            ? defaultSchema.Name
+            : createIndex.Schema;
+
+        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createIndex.Table)}";
+
+        var sql = CreateIndexTemplate
+            .Replace("{index_name}", QuoteIdent(createIndex.IndexName))
+            .Replace("{table_fqn}", tableFqn)
+            .Replace("{column_ident}", QuoteIdent(createIndex.Column));
+
+        await _provider.ExecuteAsync(sql);
+    }
+
+    protected override async Task ApplyDropIndexAsync(IKeyspace defaultSchema, DropIndexOperation dropIndex)
+    {
+        // PostgreSQL index names are global per schema;
+        // DROP INDEX does not require table name.
+        var sql = DropIndexTemplate
+            .Replace("{index_name}", QuoteIdent(dropIndex.IndexName));
+
+        await _provider.ExecuteAsync(sql);
+    }
+
+    // --------------------------------
+    // helpers
+    // --------------------------------
 
     private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
 }

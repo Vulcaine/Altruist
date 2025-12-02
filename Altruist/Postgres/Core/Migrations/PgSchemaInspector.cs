@@ -9,60 +9,55 @@ using Altruist.Persistence;
 using Npgsql;
 
 namespace Altruist.Migrations.Postgres;
+/*
+Copyright 2025 Aron Gere
+
+Licensed under the Apache License, Version 2.0 (the "License");
+*/
+
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 [Service(typeof(ISchemaInspector))]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
-public sealed class PostgresSchemaInspector : ISchemaInspector
+public sealed class PostgresSchemaInspector : AbstractSchemaInspector
 {
-    private readonly ISqlDatabaseProvider _provider;
-
     public PostgresSchemaInspector(ISqlDatabaseProvider provider)
+        : base(provider)
     {
-        _provider = provider;
     }
 
-    public async Task<DatabaseModel> GetCurrentModelAsync(IKeyspace schema, CancellationToken ct = default)
+    protected override async Task<SchemaSnapshot> LoadSchemaAsync(string schemaName, CancellationToken ct)
     {
-        var schemaName = (schema.Name ?? "public").Trim().ToLowerInvariant();
         var connString = _provider.GetConnectionString();
 
         await using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
-        // table -> columnName -> ColumnModel
         var columnsByTable = await LoadColumnsAsync(conn, schemaName, ct).ConfigureAwait(false);
         var pkByTable = await LoadPrimaryKeysAsync(conn, schemaName, ct).ConfigureAwait(false);
         var uniqueByTable = await LoadUniqueConstraintsAsync(conn, schemaName, ct).ConfigureAwait(false);
         var indexesByTable = await LoadIndexesAsync(conn, schemaName, ct).ConfigureAwait(false);
         var foreignKeysByTable = await LoadForeignKeysAsync(conn, schemaName, ct).ConfigureAwait(false);
 
-        var tables = new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var (tableName, columnDict) in columnsByTable)
-        {
-            pkByTable.TryGetValue(tableName, out var pkCols);
-            uniqueByTable.TryGetValue(tableName, out var uqByColumn);
-            indexesByTable.TryGetValue(tableName, out var ixDict);
-            foreignKeysByTable.TryGetValue(tableName, out var fkList);
-
-            var tableModel = new TableModel(
-                name: tableName,
-                columns: columnDict,
-                primaryKeyColumns: pkCols ?? [],
-                uniqueConstraints: uqByColumn ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                indexes: ixDict ?? new Dictionary<string, IndexModel>(StringComparer.OrdinalIgnoreCase),
-                foreignKeys: fkList ?? new List<ForeignKeyModel>());
-
-            tables[tableName] = tableModel;
-        }
-
-        return new DatabaseModel(schemaName, tables);
+        return new SchemaSnapshot(
+            columnsByTable,
+            pkByTable,
+            uniqueByTable,
+            indexesByTable,
+            foreignKeysByTable);
     }
 
+    protected override string GetDefaultSchemaName() => "public";
+
+    // ---------- Postgres-specific loaders ----------
+
     private static async Task<Dictionary<string, List<ForeignKeyModel>>> LoadForeignKeysAsync(
-    NpgsqlConnection conn,
-    string schemaName,
-    CancellationToken ct)
+        NpgsqlConnection conn,
+        string schemaName,
+        CancellationToken ct)
     {
         // table -> list of FK models
         var result = new Dictionary<string, List<ForeignKeyModel>>(StringComparer.OrdinalIgnoreCase);
