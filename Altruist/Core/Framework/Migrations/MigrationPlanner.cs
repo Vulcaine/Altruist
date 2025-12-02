@@ -24,7 +24,6 @@ public sealed class SchemaModel
         new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase);
 }
 
-
 public sealed class TableModel
 {
     public string Name { get; }
@@ -106,25 +105,22 @@ public interface IMigrationPlanner
 public abstract class AbstractMigrationPlanner : IMigrationPlanner
 {
     public IReadOnlyList<MigrationOperation> Plan(
-    DatabaseModel current,
-    IReadOnlyList<Document> desiredDocuments,
-    string schemaName)
+        DatabaseModel current,
+        IReadOnlyList<Document> desiredDocuments,
+        string schemaName)
     {
         var ops = new List<MigrationOperation>();
         var schemaNormalized = NormalizeSchemaName(schemaName);
 
         // Only operate on docs whose Vault keyspace matches this schema.
         // We still keep the full desiredDocuments list for FK resolution (cross-schema).
-        var docsForSchemaRaw = desiredDocuments
+        var docsForSchema = desiredDocuments
             .Where(d =>
             {
-                var keyspace = d.Header.Keyspace ?? GetDefaultSchemaName();
-                var docSchema = NormalizeSchemaName(keyspace);
+                var docSchema = GetSchemaForDocument(d);
                 return string.Equals(docSchema, schemaNormalized, StringComparison.OrdinalIgnoreCase);
             })
             .ToList();
-
-        var docsForSchema = docsForSchemaRaw;
 
         // ─────────────────────────────────────────────
         // 1st pass: tables, columns, uniques, indexes, history
@@ -195,6 +191,18 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     /// Store type for the history table's "timestamp" column.
     /// </summary>
     protected virtual string HistoryTimestampStoreType => "timestamp";
+
+    /// <summary>
+    /// Computes the schema name for a Document from its [Vault(Keyspace = ...)] header.
+    /// </summary>
+    protected string GetSchemaForDocument(Document d)
+    {
+        var keyspace = d.Header.Keyspace;
+        if (string.IsNullOrWhiteSpace(keyspace))
+            return NormalizeSchemaName(GetDefaultSchemaName());
+
+        return NormalizeSchemaName(keyspace);
+    }
 
     // ---------- core planning logic (provider-agnostic, uses hooks above) ----------
 
@@ -269,17 +277,18 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     {
         foreach (var fk in doc.ForeignKeys)
         {
-            var (principalTable, principalColumn) =
+            var (principalSchema, principalTable, principalColumn) =
                 ResolveForeignKeyTarget(doc, fk, allDocs);
 
             var constraintName =
                 $"fk_{doc.Name}_{fk.ColumnName}_{principalTable}_{principalColumn}";
 
             ops.Add(new AddForeignKeyOperation(
-                Schema: schema,
-                Table: doc.Name,
+                Schema: schema,               // dependent schema
+                Table: doc.Name,              // dependent table
                 ConstraintName: constraintName,
                 Column: fk.ColumnName,
+                PrincipalSchema: principalSchema,
                 PrincipalTable: principalTable,
                 PrincipalColumn: principalColumn,
                 OnDelete: fk.OnDelete
@@ -294,14 +303,16 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         TableModel existing,
         IReadOnlyList<Document> allDocs)
     {
-        var desired = new List<(string Column, string PrincipalTable, string PrincipalColumn, string ConstraintName, string OnDelete)>();
+        var desired = new List<(string Column, string PrincipalSchema, string PrincipalTable, string PrincipalColumn, string ConstraintName, string OnDelete)>();
 
         foreach (var fk in doc.ForeignKeys)
         {
-            var (principalTable, principalColumn) = ResolveForeignKeyTarget(doc, fk, allDocs);
+            var (principalSchema, principalTable, principalColumn) =
+                ResolveForeignKeyTarget(doc, fk, allDocs);
+
             var constraintName = $"fk_{doc.Name}_{fk.ColumnName}_{principalTable}_{principalColumn}";
 
-            desired.Add((fk.ColumnName, principalTable, principalColumn, constraintName, fk.OnDelete));
+            desired.Add((fk.ColumnName, principalSchema, principalTable, principalColumn, constraintName, fk.OnDelete));
         }
 
         var existingFks = existing.ForeignKeys ?? Array.Empty<ForeignKeyModel>();
@@ -313,6 +324,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 string.Equals(efk.Column, dfk.Column, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(efk.PrincipalTable, dfk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(efk.PrincipalColumn, dfk.PrincipalColumn, StringComparison.OrdinalIgnoreCase));
+            // NOTE: existing metadata doesn't track principal schema, so we ignore it for equality.
 
             if (!already)
             {
@@ -321,6 +333,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                     Table: doc.Name,
                     ConstraintName: dfk.ConstraintName,
                     Column: dfk.Column,
+                    PrincipalSchema: dfk.PrincipalSchema,
                     PrincipalTable: dfk.PrincipalTable,
                     PrincipalColumn: dfk.PrincipalColumn,
                     OnDelete: dfk.OnDelete));
@@ -345,7 +358,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
     }
 
-    protected (string PrincipalTable, string PrincipalColumn) ResolveForeignKeyTarget(
+    /// <summary>
+    /// Resolve the principal schema, table, and column for a FK.
+    /// Important: schema comes from the **principal vault's keyspace**, not the dependent.
+    /// </summary>
+    protected (string PrincipalSchema, string PrincipalTable, string PrincipalColumn) ResolveForeignKeyTarget(
         Document doc,
         Document.VaultForeignKeyDefinition fk,
         IReadOnlyList<Document> allDocs)
@@ -356,6 +373,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 $"Referenced vault type '{fk.PrincipalType.Name}' for '{doc.Type.Name}.{fk.PropertyName}' " +
                 "not found among desired documents.");
 
+        // principal schema MUST come from principal vault, not the dependent.
+        var principalSchema = GetSchemaForDocument(principalDoc);
+
         // Map principal property name -> physical column.
         if (!principalDoc.Columns.TryGetValue(fk.PrincipalPropertyName, out var principalColumn))
         {
@@ -363,8 +383,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             principalColumn = Document.ToCamelCase(fk.PrincipalPropertyName);
         }
 
-        // principalDoc.Name is the physical table name; schema is handled by the caller.
-        return (principalDoc.Name, principalColumn);
+        // principalDoc.Name is the physical table name; principalSchema is its schema.
+        return (principalSchema, principalDoc.Name, principalColumn);
     }
 
     protected void PlanHistoryTableForNew(

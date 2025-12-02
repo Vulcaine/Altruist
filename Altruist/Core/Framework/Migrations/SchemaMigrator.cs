@@ -34,20 +34,17 @@ namespace Altruist.Migrations
         private readonly ISchemaInspector _inspector;
         private readonly IMigrationPlanner _planner;
         private readonly IMigrationExecutor _executor;
-        private readonly IEnumerable<IKeyspace> _keyspaces;
         private readonly ILogger<VaultSchemaMigrator> _logger;
 
         public VaultSchemaMigrator(
             ISchemaInspector inspector,
             IMigrationPlanner planner,
             IMigrationExecutor executor,
-            IEnumerable<IKeyspace> keyspaces,
             ILoggerFactory loggerFactory)
         {
             _inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
             _planner = planner ?? throw new ArgumentNullException(nameof(planner));
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
-            _keyspaces = keyspaces ?? throw new ArgumentNullException(nameof(keyspaces));
             _logger = loggerFactory.CreateLogger<VaultSchemaMigrator>();
         }
 
@@ -64,18 +61,16 @@ namespace Altruist.Migrations
             // 2) global dependency-aware ordering across ALL keyspaces
             var orderedDocs = OrderDocumentsByDependencies(allDocs);
 
-            // 3) group docs by schema/keyspace (normalized)
-            var docsBySchema = orderedDocs
-                .GroupBy(d => NormalizeSchemaName(d.Header.Keyspace))
+            // 3) determine which schemas exist (from the ordered docs)
+            var schemaNames = orderedDocs
+                .Select(d => NormalizeSchemaName(d.Header.Keyspace))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            // 4) per-schema migration, but always using the full ordered doc set for planning,
-            //    so cross-schema FK resolution still sees every document.
-            foreach (var group in docsBySchema)
+            // 4) per-schema migration, but always using the FULL ordered doc set
+            //    for planning so cross-schema FKs can be resolved.
+            foreach (var schemaName in schemaNames)
             {
-                var schemaName = group.Key;
-
-
                 _logger.LogInformation("🔧 Migrating schema '{Schema}'...", schemaName);
 
                 // 4.1) current model from DB (for this schema only)
@@ -103,15 +98,6 @@ namespace Altruist.Migrations
         }
 
         // ----------------- helpers -----------------
-
-        private IKeyspace? ResolveSchema(string schemaName)
-        {
-            // Try to resolve a user-defined IKeyspace, fall back to DefaultSchema.
-            var ks = _keyspaces.FirstOrDefault(s =>
-                string.Equals(s.Name, schemaName, StringComparison.OrdinalIgnoreCase));
-
-            return ks;
-        }
 
         private static string NormalizeSchemaName(string? keyspace)
         {

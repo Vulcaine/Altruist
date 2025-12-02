@@ -59,6 +59,7 @@ public sealed record AddForeignKeyOperation(
     string Table,
     string ConstraintName,
     string Column,
+    string PrincipalSchema,
     string PrincipalTable,
     string PrincipalColumn,
     string OnDelete

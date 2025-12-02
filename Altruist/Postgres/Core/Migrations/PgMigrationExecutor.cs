@@ -203,16 +203,19 @@ public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
 
     protected override async Task ApplyAddForeignKeyAsync(string defaultSchema, AddForeignKeyOperation addFk)
     {
-        var schemaName = string.IsNullOrWhiteSpace(addFk.Schema)
+        // Dependent (child) schema
+        var dependentSchema = string.IsNullOrWhiteSpace(addFk.Schema)
             ? defaultSchema
             : addFk.Schema;
 
-        var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.Table)}";
+        // Principal (parent) schema – comes from the principal vault's keyspace.
+        // Fallback to dependent schema if not set, just in case.
+        var principalSchema = string.IsNullOrWhiteSpace(addFk.PrincipalSchema)
+            ? dependentSchema
+            : addFk.PrincipalSchema;
 
-        // For now we assume principal table is in the same schema.
-        // If you later extend AddForeignKeyOperation with a PrincipalSchema,
-        // wire it in here.
-        var principalTableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addFk.PrincipalTable)}";
+        var tableFqn = $"{QuoteIdent(dependentSchema)}.{QuoteIdent(addFk.Table)}";
+        var principalTableFqn = $"{QuoteIdent(principalSchema)}.{QuoteIdent(addFk.PrincipalTable)}";
 
         var sql = AddForeignKeyTemplate
             .Replace("{table_fqn}", tableFqn)
