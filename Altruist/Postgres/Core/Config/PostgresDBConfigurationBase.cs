@@ -61,10 +61,10 @@ public abstract class PostgresConfigurationBase
     // ----------------- bootstrap logic -----------------
 
     protected static async Task BootstrapModelsAsync(
-        IServiceCollection services,
-        Type[] modelTypes,
-        Type[] initializerTypes,
-        string logPrefix)
+    IServiceCollection services,
+    Type[] modelTypes,
+    Type[] initializerTypes,
+    string logPrefix)
     {
         using var sp = services.BuildServiceProvider();
         var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(logPrefix);
@@ -91,7 +91,9 @@ public abstract class PostgresConfigurationBase
             return;
         }
 
-        var groups = modelTypes.GroupBy(GetSchemaName);
+        // group only to know which schemas exist
+        var groups = modelTypes.GroupBy(GetSchemaName).ToList();
+        var allModelTypes = modelTypes; // pass this to migrator every time
 
         foreach (var group in groups)
         {
@@ -102,8 +104,8 @@ public abstract class PostgresConfigurationBase
             await provider.ConnectAsync();
             await provider.CreateSchemaAsync(schemaInstance.Name, null);
 
-            var typesInSchema = group.ToArray();
-            await migrator.Migrate(schemaInstance, typesInSchema);
+            // ⬇️ KEY CHANGE: do NOT filter types by schema; let the planner filter
+            await migrator.Migrate(schemaInstance, allModelTypes);
         }
 
         await RunInitializersAsync(sp, initializerTypes, logger);
