@@ -124,7 +124,6 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             })
             .ToList();
 
-        // 🔽 NEW: sort by foreign-key dependencies so principals come before dependents
         var docsForSchema = SortDocumentsByDependencies(docsForSchemaRaw, desiredDocuments, schemaNormalized);
 
         // ─────────────────────────────────────────────
