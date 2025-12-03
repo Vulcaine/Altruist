@@ -33,7 +33,7 @@ public class VaultPrimaryKeyAttribute : Attribute
     public VaultPrimaryKeyAttribute(params string[] keys) => Keys = keys;
 }
 
-[AttributeUsage(AttributeTargets.Class, Inherited = true)]
+[AttributeUsage(AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
 public class VaultUniqueKeyAttribute : Attribute
 {
     public string[] Keys { get; }
