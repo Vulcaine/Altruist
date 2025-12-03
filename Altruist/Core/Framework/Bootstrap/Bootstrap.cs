@@ -19,7 +19,6 @@ public static class AltruistBootstrap
     {
         EnsureAltruistAssembliesLoaded();
         ConfigureLogging();
-        await BootstrapModules();
         await BootstrapServices();
 
         // Build a single root provider
@@ -28,6 +27,7 @@ public static class AltruistBootstrap
 
         // 1) Run global [PostConstruct] for all services
         await RunPostConstructsAsync(provider);
+        await AltruistModuleConfig.RunModulesAsync(provider);
 
         // 2) Start the HTTP server (if AltruistStartupConfiguration is registered)
         var startup = provider.GetService<AltruistStartupConfiguration>();
@@ -48,11 +48,6 @@ public static class AltruistBootstrap
     {
         await new AltruistServiceConfig().Configure(Services);
         await new ConfigAttributeConfiguration().Configure(Services);
-    }
-
-    public static async Task BootstrapModules()
-    {
-        await new AltruistModuleConfig().Configure(Services);
     }
 
     /// <summary>
