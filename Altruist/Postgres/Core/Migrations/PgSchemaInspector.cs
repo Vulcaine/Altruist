@@ -181,28 +181,28 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
     }
 
     private static async Task<Dictionary<string, Dictionary<string, UniqueConstraintModel>>> LoadUniqueConstraintsAsync(
-        NpgsqlConnection conn,
-        string schemaName,
-        CancellationToken ct)
+    NpgsqlConnection conn,
+    string schemaName,
+    CancellationToken ct)
     {
         // table -> constraintName -> UniqueConstraintModel
         var result = new Dictionary<string, Dictionary<string, UniqueConstraintModel>>(StringComparer.OrdinalIgnoreCase);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT
-                tc.table_name,
-                tc.constraint_name,
-                kcu.column_name,
-                kcu.ordinal_position
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-              ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema    = kcu.table_schema
-             AND tc.table_name      = kcu.table_name
-            WHERE tc.table_schema   = @schema
-              AND tc.constraint_type = 'UNIQUE'
-            ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position;";
+        SELECT
+            tc.table_name,
+            tc.constraint_name,
+            kcu.column_name,
+            kcu.ordinal_position
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema    = kcu.table_schema
+         AND tc.table_name      = kcu.table_name
+        WHERE tc.table_schema   = @schema
+          AND tc.constraint_type = 'UNIQUE'
+        ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position;";
         cmd.Parameters.AddWithValue("schema", schemaName);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -220,11 +220,15 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
 
             if (!tableConstraints.TryGetValue(constraintName, out var constraint))
             {
-                constraint = new UniqueConstraintModel(constraintName, Enumerable.Empty<string>());
+                // Initialize with the first column – satisfies the constructor invariant.
+                constraint = new UniqueConstraintModel(constraintName, [columnName]);
                 tableConstraints[constraintName] = constraint;
             }
-
-            constraint.Columns.Add(columnName);
+            else
+            {
+                // Subsequent rows for the same constraint add extra columns.
+                constraint.Columns.Add(columnName);
+            }
         }
 
         return result;
