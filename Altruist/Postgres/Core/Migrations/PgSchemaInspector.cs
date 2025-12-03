@@ -2,6 +2,10 @@
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using Altruist.Persistence;
@@ -9,16 +13,6 @@ using Altruist.Persistence;
 using Npgsql;
 
 namespace Altruist.Migrations.Postgres;
-/*
-Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-*/
-
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 
 [Service(typeof(ISchemaInspector))]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
@@ -54,6 +48,11 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
 
     // ---------- Postgres-specific loaders ----------
 
+    /// <summary>
+    /// Load foreign keys for all tables whose constraints live in <paramref name="schemaName"/>.
+    /// Handles cross-schema references correctly by joining via constraint_schema
+    /// and letting ccu.table_schema be the principal table's schema (which we don't need here).
+    /// </summary>
     private static async Task<Dictionary<string, List<ForeignKeyModel>>> LoadForeignKeysAsync(
         NpgsqlConnection conn,
         string schemaName,
@@ -68,28 +67,28 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
             tc.table_name,
             tc.constraint_name,
             kcu.column_name,
-            ccu.table_name AS foreign_table_name,
+            ccu.table_name  AS foreign_table_name,
             ccu.column_name AS foreign_column_name
         FROM information_schema.table_constraints AS tc
         JOIN information_schema.key_column_usage AS kcu
-          ON tc.constraint_name = kcu.constraint_name
-         AND tc.table_schema = kcu.table_schema
+          ON tc.constraint_name   = kcu.constraint_name
+         AND tc.constraint_schema = kcu.constraint_schema
         JOIN information_schema.constraint_column_usage AS ccu
-          ON ccu.constraint_name = tc.constraint_name
-         AND ccu.table_schema = tc.table_schema
-        WHERE tc.table_schema = @schema
-          AND tc.constraint_type = 'FOREIGN KEY';";
+          ON ccu.constraint_name   = tc.constraint_name
+         AND ccu.constraint_schema = tc.constraint_schema
+        WHERE tc.constraint_schema = @schema
+          AND tc.constraint_type   = 'FOREIGN KEY';";
 
         cmd.Parameters.AddWithValue("schema", schemaName);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
         {
-            var tableName = reader.GetString(0);
+            var tableName = reader.GetString(0); // dependent table (in schemaName)
             var constraintName = reader.GetString(1);
-            var columnName = reader.GetString(2);
-            var foreignTable = reader.GetString(3);
-            var foreignColumn = reader.GetString(4);
+            var columnName = reader.GetString(2); // dependent column
+            var foreignTable = reader.GetString(3); // principal table name (schema may differ)
+            var foreignColumn = reader.GetString(4); // principal column
 
             if (!result.TryGetValue(tableName, out var list))
             {
@@ -156,9 +155,9 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu
               ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema = kcu.table_schema
-             AND tc.table_name = kcu.table_name
-            WHERE tc.table_schema = @schema
+             AND tc.table_schema    = kcu.table_schema
+             AND tc.table_name      = kcu.table_name
+            WHERE tc.table_schema   = @schema
               AND tc.constraint_type = 'PRIMARY KEY';";
         cmd.Parameters.AddWithValue("schema", schemaName);
 
@@ -197,9 +196,9 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu
               ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema = kcu.table_schema
-             AND tc.table_name = kcu.table_name
-            WHERE tc.table_schema = @schema
+             AND tc.table_schema    = kcu.table_schema
+             AND tc.table_name      = kcu.table_name
+            WHERE tc.table_schema   = @schema
               AND tc.constraint_type = 'UNIQUE';";
         cmd.Parameters.AddWithValue("schema", schemaName);
 
