@@ -131,4 +131,8 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     protected abstract Task ApplyCreateIndexAsync(string defaultSchema, CreateIndexOperation op);
 
     protected abstract Task ApplyDropIndexAsync(string defaultSchema, DropIndexOperation op);
+
+    protected abstract Task ApplyCreateSchemaAsync(string defaultSchema, CreateSchemaOperation createSchema);
+
+    protected abstract Task ApplyDropTableAsync(string defaultSchema, DropTableOperation dropTable);
 }

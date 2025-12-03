@@ -2,12 +2,29 @@ namespace Altruist.Migrations;
 
 public abstract record MigrationOperation;
 
+// ----------------- schema-level -----------------
+
+public sealed record CreateSchemaOperation(
+    string Schema
+) : MigrationOperation;
+
+// (If you ever want DropSchema, you can add it similarly.)
+
+// ----------------- table-level -----------------
+
 public sealed record CreateTableOperation(
     string Schema,
     string Table,
     IReadOnlyList<ColumnDefinition> Columns,
     IReadOnlyList<string> PrimaryKeyColumns
 ) : MigrationOperation;
+
+public sealed record DropTableOperation(
+    string Schema,
+    string Table
+) : MigrationOperation;
+
+// ----------------- column-level -----------------
 
 public sealed record AddColumnOperation(
     string Schema,
@@ -20,6 +37,8 @@ public sealed record DropColumnOperation(
     string Table,
     string ColumnName
 ) : MigrationOperation;
+
+// ----------------- constraints -----------------
 
 public sealed record AddUniqueConstraintOperation(
     string Schema,
@@ -34,6 +53,8 @@ public sealed record DropConstraintOperation(
     string ConstraintName
 ) : MigrationOperation;
 
+// ----------------- indexes -----------------
+
 public sealed record CreateIndexOperation(
     string Schema,
     string Table,
@@ -47,12 +68,7 @@ public sealed record DropIndexOperation(
     string IndexName
 ) : MigrationOperation;
 
-public sealed record ColumnDefinition(
-    string Name,
-    string StoreType,
-    bool IsNullable,
-    bool IsUnique
-);
+// ----------------- foreign keys -----------------
 
 public sealed record AddForeignKeyOperation(
     string Schema,
@@ -70,3 +86,12 @@ public sealed record DropForeignKeyOperation(
     string Table,
     string ConstraintName
 ) : MigrationOperation;
+
+// ----------------- support types -----------------
+
+public sealed record ColumnDefinition(
+    string Name,
+    string StoreType,
+    bool IsNullable,
+    bool IsUnique
+);
