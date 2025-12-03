@@ -1,4 +1,3 @@
-
 /*
 Copyright 2025 Aron Gere
 
@@ -23,7 +22,7 @@ namespace Altruist.Migrations
     {
         /// <summary>
         /// Ensure that all tables / indexes / constraints for the given vault models
-        /// exist in the given logical schema (keyspace).
+        /// exist in the database, across all logical schemas (keyspaces).
         /// </summary>
         Task Migrate(Type[] modelTypes, CancellationToken cancellationToken = default);
     }
@@ -67,34 +66,40 @@ namespace Altruist.Migrations
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            // 4) per-schema migration, but always using the FULL ordered doc set
-            //    for planning so cross-schema FKs can be resolved.
+            // 4) load current database model per schema
+            var currentBySchema = new Dictionary<string, DatabaseModel>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var schemaName in schemaNames)
             {
-                _logger.LogInformation("🔧 Migrating schema '{Schema}'...", schemaName);
+                _logger.LogInformation("🔍 Inspecting schema '{Schema}'...", schemaName);
 
-                // 4.1) current model from DB (for this schema only)
                 var current = await _inspector
                     .GetCurrentModelAsync(schemaName, ct)
                     .ConfigureAwait(false);
 
-                // 4.2) diff -> operations (planner filters docs for this schema internally)
-                var operations = _planner.Plan(current, orderedDocs, schemaName);
-
-                if (operations.Count == 0)
-                {
-                    _logger.LogInformation("ℹ️ No migration operations for schema '{Schema}'.", schemaName);
-                    continue;
-                }
-
-                // 4.3) execute operations for this schema
-                await _executor.ApplyAsync(schemaName, operations).ConfigureAwait(false);
-
-                _logger.LogInformation(
-                    "✅ Schema '{Schema}' migration complete. {Count} operation(s) applied.",
-                    schemaName,
-                    operations.Count);
+                currentBySchema[schemaName] = current;
             }
+
+            // 5) diff -> operations (planner walks ALL docs in dependency order; each doc
+            //    knows its own schema, so we don't batch by schema here)
+            var operations = _planner.Plan(currentBySchema, orderedDocs);
+
+            if (operations.Count == 0)
+            {
+                _logger.LogInformation("ℹ️ No migration operations to apply.");
+                return;
+            }
+
+            // 6) execute all operations in one go.
+            //    Default schema is only used if an operation doesn't specify Schema,
+            //    but our planner always sets Schema explicitly. Still, pass a sane value.
+            var defaultSchema = schemaNames.FirstOrDefault() ?? NormalizeSchemaName(null);
+
+            await _executor.ApplyAsync(defaultSchema, operations).ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "✅ Vault schema migration complete. {Count} operation(s) applied.",
+                operations.Count);
         }
 
         // ----------------- helpers -----------------
@@ -146,7 +151,6 @@ namespace Altruist.Migrations
                     if (!docsByType.TryGetValue(fk.PrincipalType, out var principalDoc))
                     {
                         // Principal type not in this migration batch; ignore for ordering.
-                        // The planner will still validate existence / correctness.
                         continue;
                     }
 
@@ -206,5 +210,4 @@ namespace Altruist.Migrations
             return sorted;
         }
     }
-
 }

@@ -385,6 +385,11 @@ public class Document
         Environment.Exit(-1);
     }
 
+    public override string ToString()
+    {
+        return $"{Type.Name} [{Name}]";
+    }
+
     public sealed class VaultForeignKeyDefinition
     {
         public string PropertyName { get; }

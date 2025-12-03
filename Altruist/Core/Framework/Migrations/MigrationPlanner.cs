@@ -1,3 +1,13 @@
+/*
+Copyright 2025 Aron Gere
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+*/
+
 using Altruist.Persistence;
 
 namespace Altruist.Migrations;
@@ -94,69 +104,79 @@ public sealed class ForeignKeyModel
     }
 }
 
+/// <summary>
+/// Planner no longer takes a single schema name; it gets:
+/// - all current schemas (DatabaseModel per schema),
+/// - all desired Documents (already ordered by dependency).
+/// Each Document knows its own schema (via VaultAttribute.Keyspace).
+/// </summary>
 public interface IMigrationPlanner
 {
     IReadOnlyList<MigrationOperation> Plan(
-        DatabaseModel current,
-        IReadOnlyList<Document> desiredDocuments,
-        string schemaName);
+        IReadOnlyDictionary<string, DatabaseModel> currentBySchema,
+        IReadOnlyList<Document> desiredDocuments);
 }
 
 public abstract class AbstractMigrationPlanner : IMigrationPlanner
 {
     public IReadOnlyList<MigrationOperation> Plan(
-        DatabaseModel current,
-        IReadOnlyList<Document> desiredDocuments,
-        string schemaName)
+        IReadOnlyDictionary<string, DatabaseModel> currentBySchema,
+        IReadOnlyList<Document> desiredDocuments)
     {
         var ops = new List<MigrationOperation>();
-        var schemaNormalized = NormalizeSchemaName(schemaName);
-
-        // Only operate on docs whose Vault keyspace matches this schema.
-        // We still keep the full desiredDocuments list for FK resolution (cross-schema).
-        var docsForSchema = desiredDocuments
-            .Where(d =>
-            {
-                var docSchema = GetSchemaForDocument(d);
-                return string.Equals(docSchema, schemaNormalized, StringComparison.OrdinalIgnoreCase);
-            })
-            .ToList();
 
         // ─────────────────────────────────────────────
         // 1st pass: tables, columns, uniques, indexes, history
         // ─────────────────────────────────────────────
-        foreach (var doc in docsForSchema)
+        foreach (var doc in desiredDocuments)
         {
-            var tableName = doc.Name;
-            current.TryGetTable(tableName, out var existingTable);
+            var schema = GetSchemaForDocument(doc);
+
+            if (!currentBySchema.TryGetValue(schema, out var current))
+            {
+                current = new DatabaseModel(
+                    schema,
+                    new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
+            }
+
+            current.TryGetTable(doc.Name, out var existingTable);
 
             if (existingTable is null)
             {
-                PlanNewTable(ops, schemaNormalized, doc, desiredDocuments);
-                PlanHistoryTableForNew(ops, schemaNormalized, doc);
+                PlanNewTable(ops, schema, doc, desiredDocuments);
+                PlanHistoryTableForNew(ops, schema, doc);
             }
             else
             {
-                PlanExistingTableDiff(ops, schemaNormalized, doc, existingTable, desiredDocuments);
-                PlanHistoryTableDiff(ops, schemaNormalized, doc, current);
+                PlanExistingTableDiff(ops, schema, doc, existingTable, desiredDocuments);
+                PlanHistoryTableDiff(ops, schema, doc, current);
             }
         }
 
         // ─────────────────────────────────────────────
         // 2nd pass: foreign keys (after all tables exist)
         // ─────────────────────────────────────────────
-        foreach (var doc in docsForSchema)
+        foreach (var doc in desiredDocuments)
         {
-            var tableName = doc.Name;
-            current.TryGetTable(tableName, out var existingTable);
+            var schema = GetSchemaForDocument(doc);
+
+            if (!currentBySchema.TryGetValue(schema, out var current))
+            {
+                current = new DatabaseModel(
+                    schema,
+                    new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
+            }
+
+            current.TryGetTable(doc.Name, out var existingTable);
 
             if (existingTable is null)
             {
-                PlanForeignKeysForNewTable(ops, schemaNormalized, doc, desiredDocuments);
+                // table is new in this migration
+                PlanForeignKeysForNewTable(ops, schema, doc, desiredDocuments);
             }
             else
             {
-                PlanForeignKeyDiff(ops, schemaNormalized, doc, existingTable, desiredDocuments);
+                PlanForeignKeyDiff(ops, schema, doc, existingTable, desiredDocuments);
             }
         }
 
