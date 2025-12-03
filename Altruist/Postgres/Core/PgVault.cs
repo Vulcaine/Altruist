@@ -70,8 +70,9 @@ public sealed class QueryState
         };
     }
 
-    private QueryState(Dictionary<QueryPosition, HashSet<string>> parts,
-                       Dictionary<QueryPosition, List<object?>> parameters)
+    private QueryState(
+        Dictionary<QueryPosition, HashSet<string>> parts,
+        Dictionary<QueryPosition, List<object?>> parameters)
     {
         Parts = parts;
         Parameters = parameters;
@@ -120,7 +121,9 @@ public sealed class QueryState
         if (HasAny(QueryPosition.SELECT))
             return this;
 
-        var projection = string.Join(", ", doc.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
+        var projection = string.Join(", ",
+            doc.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
+
         return With(QueryPosition.SELECT, projection);
     }
 
@@ -271,7 +274,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return await _databaseProvider.ExecuteCountAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
     }
 
-    public virtual async Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
+    public virtual async Task<long> UpdateAsync(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
     {
         var updatedProperties = ExtractSetProperties(setPropertyCalls);
         // quote column identifiers here
@@ -322,15 +326,20 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         var next = (PgVault<TVaultModel>)Where(predicate);
         var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
-        var query = string.IsNullOrEmpty(where)
-            ? $"SELECT COUNT(*) FROM {VaultDocument.Name}"
-            : $"SELECT COUNT(*) FROM {VaultDocument.Name} WHERE {where}";
+        var from = next.QualifiedTableName();
 
-        var count = await _databaseProvider.ExecuteCountAsync(query, next._state.Parameters[QueryPosition.WHERE]!);
+        var query = string.IsNullOrEmpty(where)
+            ? $"SELECT COUNT(*) FROM {from}"
+            : $"SELECT COUNT(*) FROM {from} WHERE {where}";
+
+        var count = await _databaseProvider.ExecuteCountAsync(
+            query,
+            next._state.Parameters[QueryPosition.WHERE]!);
+
         return count > 0;
     }
 
-    // ------------------------ Non-query ops (unchanged behavior) ------------------------
+    // ------------------------ Non-query ops (unchanged behavior except FQN) ------------------------
 
     public virtual async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
@@ -349,7 +358,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         var select =
             st.Parts[QueryPosition.SELECT].Count == 0
-            ? string.Join(", ", VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
+            ? string.Join(", ",
+                VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
             : string.Join(", ", st.Parts[QueryPosition.SELECT]);
 
         var sql = $"SELECT {select} FROM {QualifiedTableName()}";
@@ -385,20 +395,24 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         return sql;
     }
 
-
-    private IEnumerable<string> ConvertSelectExpressionToString<TResult>(Expression<Func<TVaultModel, TResult>> selector)
+    private IEnumerable<string> ConvertSelectExpressionToString<TResult>(
+        Expression<Func<TVaultModel, TResult>> selector)
     {
         if (selector.Body is NewExpression ne && ne.Members is not null)
         {
             foreach (var m in ne.Members)
             {
                 var propName = m.Name;
-                var column = VaultDocument.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+                var column = VaultDocument.Columns.TryGetValue(propName, out var c)
+                    ? c
+                    : Document.ToCamelCase(propName);
+
                 yield return $"{QuoteIdent(column)} AS {QuoteIdent(propName)}";
             }
             yield break;
         }
-        throw new NotSupportedException("Unsupported expression type for SELECT. Use: x => new(...) with properties.");
+        throw new NotSupportedException(
+            "Unsupported expression type for SELECT. Use: x => new(...) with properties.");
     }
 
     // *** made internal so PgHistoricalVault can reuse them ***
@@ -413,10 +427,12 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         switch (expr)
         {
-            case UnaryExpression ue when ue.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked:
+            case UnaryExpression ue
+                when ue.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked:
                 return ToWhere(ue.Operand, modelParam);
 
-            case BinaryExpression be when be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse:
+            case BinaryExpression be
+                when be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse:
                 {
                     var op = GetOperator(be.NodeType);
                     var left = ToWhere(be.Left, modelParam);
@@ -440,7 +456,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
                                 {
                                     ExpressionType.Equal => $"{colSwapped} IS NULL",
                                     ExpressionType.NotEqual => $"{colSwapped} IS NOT NULL",
-                                    _ => throw new NotSupportedException("NULL can only be used with == or != in WHERE.")
+                                    _ => throw new NotSupportedException(
+                                        "NULL can only be used with == or != in WHERE.")
                                 };
                             }
 
@@ -457,7 +474,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
                         {
                             ExpressionType.Equal => $"{col} IS NULL",
                             ExpressionType.NotEqual => $"{col} IS NOT NULL",
-                            _ => throw new NotSupportedException("NULL can only be used with == or != in WHERE.")
+                            _ => throw new NotSupportedException(
+                                "NULL can only be used with == or != in WHERE.")
                         };
                     }
 
@@ -492,7 +510,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         if (expression is MemberExpression me && IsRootedInParameter(me, modelParam))
         {
             var propName = me.Member.Name;
-            var col = VaultDocument.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+            var col = VaultDocument.Columns.TryGetValue(propName, out var c)
+                ? c
+                : Document.ToCamelCase(propName);
+
             column = QuoteIdent(col);
             return true;
         }
@@ -528,7 +549,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         if (keySelector.Body is MemberExpression me)
         {
-            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
+            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c)
+                ? c
+                : Document.ToCamelCase(me.Member.Name);
+
             return QuoteIdent(col);
         }
         throw new NotSupportedException("Unsupported expression type in ORDER BY clause.");
@@ -538,7 +562,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     {
         if (keySelector.Body is MemberExpression me)
         {
-            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c) ? c : Document.ToCamelCase(me.Member.Name);
+            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c)
+                ? c
+                : Document.ToCamelCase(me.Member.Name);
+
             return QuoteIdent(col);
         }
         throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
@@ -555,7 +582,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             {
                 var propName = binding.Member.Name;
                 var value = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
-                var column = VaultDocument.Columns.TryGetValue(propName, out var c) ? c : Document.ToCamelCase(propName);
+                var column = VaultDocument.Columns.TryGetValue(propName, out var c)
+                    ? c
+                    : Document.ToCamelCase(propName);
+
                 updated[column] = value!;
             }
         }
@@ -564,7 +594,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     }
 
     private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
-    private string QualifiedTableName() => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
+
+    private string QualifiedTableName()
+        => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
 
     private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
     {
@@ -583,8 +615,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
             .ToArray();
 
+        // *** use fully-qualified table name here ***
         var upsertQuery = BuildUpsertQuery(
-            VaultDocument.Name,
+            QualifiedTableName(),
             columns,
             primaryKeyColumns
         );
@@ -618,6 +651,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
     /// Builds an INSERT ... ON CONFLICT (pk1, pk2, ...) DO UPDATE SET ... upsert statement.
     /// columns = physical column names (e.g. "id", "principalid", ...).
     /// primaryKeyNames = physical PK column names (one or many).
+    ///
+    /// IMPORTANT: tableName must already be a fully-qualified identifier,
+    /// e.g. "\"server\".\"servers\"" or "\"public\".\"account\"".
     /// </summary>
     private static string BuildUpsertQuery(
         string tableName,
@@ -636,7 +672,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             .ToArray();
 
         var insert =
-            $"INSERT INTO \"{tableName}\" ({string.Join(", ", columnNames)}) " +
+            $"INSERT INTO {tableName} ({string.Join(", ", columnNames)}) " +
             $"VALUES ({string.Join(", ", paramNames)})";
 
         var pkList = string.Join(
@@ -678,8 +714,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
             .ToArray();
 
+        // *** use fully-qualified table name here ***
         var upsertQuery = BuildUpsertQuery(
-            VaultDocument.Name,
+            QualifiedTableName(),
             columns,
             primaryKeyColumns
         );
@@ -735,7 +772,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     private string BuildHistoryQuery(string tableNameIgnored, IEnumerable<string> columns)
     {
-        var histQualified = $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name + "_history")}";
+        var histQualified =
+            $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name + "_history")}";
+
         var cols = string.Join(", ", columns.Select(QuoteIdent));
         var vals = string.Join(", ", columns.Select(_ => "?"));
         return $"INSERT INTO {histQualified} ({cols}, {QuoteIdent("timestamp")}) VALUES ({vals}, ?)";
@@ -784,7 +823,9 @@ internal static class TimestampSetterFactory
     {
         return _cache.GetOrAdd(modelType, static t =>
         {
-            var prop = t.GetProperty("Timestamp", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            var prop = t.GetProperty("Timestamp",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
             if (prop is null || !prop.CanWrite || prop.PropertyType != typeof(DateTime))
                 return null;
 
