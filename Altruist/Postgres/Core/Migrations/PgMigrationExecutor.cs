@@ -41,7 +41,7 @@ namespace Altruist.Migrations.Postgres
             "ALTER TABLE {table_fqn} DROP COLUMN IF EXISTS {column_ident} CASCADE;";
 
         private const string AddUniqueConstraintTemplate =
-            "ALTER TABLE {table_fqn} ADD CONSTRAINT {constraint_name} UNIQUE ({column_ident});";
+            "ALTER TABLE {table_fqn} ADD CONSTRAINT {constraint_name} UNIQUE ({column_list});";
 
         private const string DropConstraintTemplate =
             "ALTER TABLE {table_fqn} DROP CONSTRAINT IF EXISTS {constraint_name};";
@@ -180,10 +180,12 @@ namespace Altruist.Migrations.Postgres
 
             var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(addUnique.Table)}";
 
+            var columnList = string.Join(", ", addUnique.Columns.Select(QuoteIdent));
+
             var sql = AddUniqueConstraintTemplate
                 .Replace("{table_fqn}", tableFqn)
                 .Replace("{constraint_name}", QuoteIdent(addUnique.ConstraintName))
-                .Replace("{column_ident}", QuoteIdent(addUnique.Column));
+                .Replace("{column_list}", columnList);
 
             await _provider.ExecuteAsync(sql);
         }

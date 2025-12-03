@@ -39,7 +39,13 @@ public sealed class TableModel
     public string Name { get; }
     public IReadOnlyDictionary<string, ColumnModel> Columns { get; }
     public IReadOnlyList<string> PrimaryKeyColumns { get; }
-    public IReadOnlyDictionary<string, string> UniqueConstraints { get; }
+
+    /// <summary>
+    /// Unique constraints on this table, keyed by constraint name.
+    /// Each constraint can span one or more columns.
+    /// </summary>
+    public IReadOnlyDictionary<string, UniqueConstraintModel> UniqueConstraints { get; }
+
     public IReadOnlyDictionary<string, IndexModel> Indexes { get; }
 
     // NEW:
@@ -49,14 +55,14 @@ public sealed class TableModel
         string name,
         IReadOnlyDictionary<string, ColumnModel> columns,
         IReadOnlyList<string> primaryKeyColumns,
-        IReadOnlyDictionary<string, string> uniqueConstraints,
+        IReadOnlyDictionary<string, UniqueConstraintModel> uniqueConstraints,
         IReadOnlyDictionary<string, IndexModel> indexes,
         IReadOnlyList<ForeignKeyModel> foreignKeys)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         Columns = columns ?? throw new ArgumentNullException(nameof(columns));
         PrimaryKeyColumns = primaryKeyColumns ?? Array.Empty<string>();
-        UniqueConstraints = uniqueConstraints ?? new Dictionary<string, string>();
+        UniqueConstraints = uniqueConstraints ?? new Dictionary<string, UniqueConstraintModel>();
         Indexes = indexes ?? new Dictionary<string, IndexModel>();
         ForeignKeys = foreignKeys ?? Array.Empty<ForeignKeyModel>();
     }
@@ -88,6 +94,27 @@ public sealed class IndexModel
     }
 }
 
+public sealed class UniqueConstraintModel
+{
+    public string Name { get; }
+
+    /// <summary>
+    /// Physical column names participating in this UNIQUE constraint (in DB order).
+    /// </summary>
+    public List<string> Columns { get; }
+
+    public UniqueConstraintModel(string name, IEnumerable<string> columns)
+    {
+        Name = name ?? throw new ArgumentNullException(nameof(name));
+        Columns = new List<string>(columns ?? Array.Empty<string>());
+
+        if (Columns.Count == 0)
+        {
+            throw new ArgumentException("Unique constraint must contain at least one column.", nameof(columns));
+        }
+    }
+}
+
 public sealed class ForeignKeyModel
 {
     public string Name { get; }
@@ -105,7 +132,7 @@ public sealed class ForeignKeyModel
 }
 
 /// <summary>
-/// Planner no longer takes a single schema name; it gets:
+/// Planner now takes:
 /// - all current schemas (DatabaseModel per schema),
 /// - all desired Documents (already ordered by dependency).
 /// Each Document knows its own schema (via VaultAttribute.Keyspace).
@@ -224,6 +251,24 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         return NormalizeSchemaName(keyspace);
     }
 
+    // ---------- helpers for unique constraints ----------
+
+    protected static string NormalizeColumnSet(IEnumerable<string> columns)
+    {
+        return string.Join("|",
+            columns
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => c.ToLowerInvariant())
+                .OrderBy(c => c, StringComparer.Ordinal));
+    }
+
+    protected static string BuildUniqueConstraintName(string tableName, IReadOnlyList<string> columns)
+    {
+        // deterministic naming based on physical column names
+        var suffix = string.Join("_", columns);
+        return $"uq_{tableName}_{suffix}";
+    }
+
     // ---------- core planning logic (provider-agnostic, uses hooks above) ----------
 
     protected void PlanNewTable(
@@ -237,7 +282,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             throw new InvalidOperationException($"PrimaryKeyAttribute is required on '{doc.Type.Name}'.");
 
         var pkSet = new HashSet<string>(pkCols, StringComparer.OrdinalIgnoreCase);
-        var uniqueSet = new HashSet<string>(doc.UniqueKeys, StringComparer.OrdinalIgnoreCase);
+
+        var singleUniqueCols = new HashSet<string>(
+            doc.UniqueKeys
+               .Where(uk => uk.Columns.Count == 1)
+               .Select(uk => uk.Columns[0]),
+            StringComparer.OrdinalIgnoreCase);
 
         var columns = new List<ColumnDefinition>(doc.Columns.Count);
 
@@ -256,14 +306,14 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             var storeType = MapClrTypeToStoreType(clrType);
 
             bool isPk = pkSet.Contains(columnName);
-            bool isUnique = uniqueSet.Contains(columnName) || isPk;
+            bool isSingleUnique = singleUniqueCols.Contains(columnName);
             bool isNullable = !isPk && doc.NullableColumns.Contains(columnName);
 
             columns.Add(new ColumnDefinition(
                 Name: columnName,
                 StoreType: storeType,
                 IsNullable: isNullable,
-                IsUnique: isUnique));
+                IsUnique: isSingleUnique)); // column-level UNIQUE only for single-col unique keys
         }
 
         ops.Add(new CreateTableOperation(
@@ -271,6 +321,19 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             Table: doc.Name,
             Columns: columns,
             PrimaryKeyColumns: pkCols));
+
+        // For new tables:
+        // - Single-column unique constraints are already enforced via "UNIQUE" on the column.
+        // - Composite unique constraints MUST be added via explicit ADD CONSTRAINT UNIQUE.
+        foreach (var uk in doc.UniqueKeys.Where(uk => uk.Columns.Count > 1))
+        {
+            var constraintName = BuildUniqueConstraintName(doc.Name, uk.Columns);
+            ops.Add(new AddUniqueConstraintOperation(
+                schema,
+                doc.Name,
+                constraintName,
+                uk.Columns.ToArray()));
+        }
 
         var indexColumns = new HashSet<string>(
             doc.Indexes ?? new List<string>(),
@@ -280,7 +343,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         if (sortCol is not null)
             indexColumns.Add(sortCol);
 
-        indexColumns.RemoveWhere(c => pkSet.Contains(c) || uniqueSet.Contains(c));
+        // Do not create separate indexes:
+        // - on PK columns (implicit index)
+        // - on single-column UNIQUE constraints (also implicit index)
+        indexColumns.RemoveWhere(c =>
+            pkSet.Contains(c) ||
+            singleUniqueCols.Contains(c));
 
         foreach (var col in indexColumns)
         {
@@ -323,7 +391,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         TableModel existing,
         IReadOnlyList<Document> allDocs)
     {
-        var desired = new List<(string Column, string PrincipalSchema, string PrincipalTable, string PrincipalColumn, string ConstraintName, string OnDelete)>();
+        var desired = new List<(string Column,
+                                string PrincipalSchema,
+                                string PrincipalTable,
+                                string PrincipalColumn,
+                                string ConstraintName,
+                                string OnDelete)>();
 
         foreach (var fk in doc.ForeignKeys)
         {
@@ -341,9 +414,14 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         foreach (var dfk in desired)
         {
             bool already = existingFks.Any(efk =>
-                string.Equals(efk.Column, dfk.Column, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(efk.PrincipalTable, dfk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(efk.PrincipalColumn, dfk.PrincipalColumn, StringComparison.OrdinalIgnoreCase));
+                // Same constraint name (most robust: we generated it earlier)
+                string.Equals(efk.Name, dfk.ConstraintName, StringComparison.OrdinalIgnoreCase) ||
+
+                // Or same logical FK triple
+                (string.Equals(efk.Column, dfk.Column, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(efk.PrincipalTable, dfk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(efk.PrincipalColumn, dfk.PrincipalColumn, StringComparison.OrdinalIgnoreCase)));
+
             // NOTE: existing metadata doesn't track principal schema, so we ignore it for equality.
 
             if (!already)
@@ -364,9 +442,10 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         foreach (var efk in existingFks)
         {
             bool stillDesired = desired.Any(dfk =>
-                string.Equals(dfk.Column, efk.Column, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(dfk.PrincipalTable, efk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(dfk.PrincipalColumn, efk.PrincipalColumn, StringComparison.OrdinalIgnoreCase));
+                string.Equals(dfk.ConstraintName, efk.Name, StringComparison.OrdinalIgnoreCase) ||
+                (string.Equals(dfk.Column, efk.Column, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(dfk.PrincipalTable, efk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(dfk.PrincipalColumn, efk.PrincipalColumn, StringComparison.OrdinalIgnoreCase)));
 
             if (!stillDesired)
             {
@@ -493,10 +572,14 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             var storeType = MapClrTypeToStoreType(clrType);
 
             var pkSet = new HashSet<string>(existing.PrimaryKeyColumns, StringComparer.OrdinalIgnoreCase);
-            var uniqueSet = new HashSet<string>(doc.UniqueKeys, StringComparer.OrdinalIgnoreCase);
+            var singleUniqueCols = new HashSet<string>(
+                doc.UniqueKeys
+                   .Where(uk => uk.Columns.Count == 1)
+                   .Select(uk => uk.Columns[0]),
+                StringComparer.OrdinalIgnoreCase);
 
             bool isPk = pkSet.Contains(col);
-            bool isUnique = uniqueSet.Contains(col) || isPk;
+            bool isSingleUnique = singleUniqueCols.Contains(col);
 
             // use Document.NullableColumns for new columns as well
             bool isNullable = !isPk && doc.NullableColumns.Contains(col);
@@ -505,7 +588,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 Name: col,
                 StoreType: storeType,
                 IsNullable: isNullable,
-                IsUnique: isUnique);
+                IsUnique: isSingleUnique);
 
             ops.Add(new AddColumnOperation(schemaName, tableName, def));
         }
@@ -516,36 +599,57 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             ops.Add(new DropColumnOperation(schemaName, tableName, col));
         }
 
-        // unique constraints
-        var pkSet2 = new HashSet<string>(existing.PrimaryKeyColumns, StringComparer.OrdinalIgnoreCase);
-        var desiredUq = new HashSet<string>(doc.UniqueKeys, StringComparer.OrdinalIgnoreCase);
-        var existingUq = existing.UniqueConstraints; // column -> constraint
+        // ---------- UNIQUE constraints diff (single + composite) ----------
 
-        // add missing uniques
-        foreach (var col in desiredUq)
+        // desired unique constraints from Document
+        var desiredUniqueByKey = new Dictionary<string, Document.UniqueKeyDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var uk in doc.UniqueKeys)
         {
-            if (pkSet2.Contains(col))
-                continue;
-            if (existingUq.ContainsKey(col))
-                continue;
-
-            var constraintName = $"uq_{doc.Name}_{col}";
-            ops.Add(new AddUniqueConstraintOperation(schemaName, tableName, constraintName, col));
-        }
-
-        // drop uniques no longer desired
-        foreach (var kv in existingUq)
-        {
-            var col = kv.Key;
-            var constraintName = kv.Value;
-
-            if (!desiredUq.Contains(col))
+            var key = NormalizeColumnSet(uk.Columns);
+            if (!desiredUniqueByKey.ContainsKey(key))
             {
-                ops.Add(new DropConstraintOperation(schemaName, tableName, constraintName));
+                desiredUniqueByKey[key] = uk;
             }
         }
 
-        // indexes
+        // existing unique constraints from DB
+        var existingUniqueByKey = new Dictionary<string, UniqueConstraintModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var uc in existing.UniqueConstraints.Values)
+        {
+            var key = NormalizeColumnSet(uc.Columns);
+            if (!existingUniqueByKey.ContainsKey(key))
+            {
+                existingUniqueByKey[key] = uc;
+            }
+        }
+
+        // add missing uniques
+        foreach (var (normalized, uk) in desiredUniqueByKey)
+        {
+            if (existingUniqueByKey.ContainsKey(normalized))
+                continue;
+
+            var constraintName = BuildUniqueConstraintName(doc.Name, uk.Columns);
+            ops.Add(new AddUniqueConstraintOperation(
+                schemaName,
+                tableName,
+                constraintName,
+                uk.Columns.ToArray()));
+        }
+
+        // drop uniques no longer desired
+        foreach (var (normalized, existingUc) in existingUniqueByKey)
+        {
+            if (!desiredUniqueByKey.ContainsKey(normalized))
+            {
+                ops.Add(new DropConstraintOperation(schemaName, tableName, existingUc.Name));
+            }
+        }
+
+        // ---------- indexes ----------
+
+        var pkSet2 = new HashSet<string>(existing.PrimaryKeyColumns, StringComparer.OrdinalIgnoreCase);
+
         var desiredIndexCols = new HashSet<string>(
             doc.Indexes ?? new List<string>(),
             StringComparer.OrdinalIgnoreCase);
@@ -554,9 +658,15 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         if (sortCol is not null)
             desiredIndexCols.Add(sortCol);
 
+        var singleUniqueColumns = new HashSet<string>(
+            doc.UniqueKeys
+               .Where(uk => uk.Columns.Count == 1)
+               .Select(uk => uk.Columns[0]),
+            StringComparer.OrdinalIgnoreCase);
+
         desiredIndexCols.RemoveWhere(c =>
             pkSet2.Contains(c) ||
-            desiredUq.Contains(c));
+            singleUniqueColumns.Contains(c));
 
         var existingIndexes = existing.Indexes.Values;
 

@@ -32,7 +32,11 @@ public class Document
 
     public VaultPrimaryKeyAttribute? PrimaryKey { get; set; } = new();
 
-    public List<string> UniqueKeys { get; set; } = new();
+    /// <summary>
+    /// Logical UNIQUE constraints on this table (physical column names).
+    /// Each definition can be single-column or composite.
+    /// </summary>
+    public List<UniqueKeyDefinition> UniqueKeys { get; set; } = new();
 
     public VaultSortingByAttribute? SortingBy { get; set; }
 
@@ -59,7 +63,7 @@ public class Document
         List<string> fields,
         Dictionary<string, string> columns,
         List<string> indexes,
-        List<string> uniqueKeys,
+        List<UniqueKeyDefinition> uniqueKeys,
         Dictionary<string, Func<object, object?>> propertyAccessors,
         VaultPrimaryKeyAttribute? primaryKeyAttribute = null,
         VaultSortingByAttribute? sortingByAttribute = null,
@@ -107,16 +111,17 @@ public class Document
         var fields = new List<string>();
         var columns = new Dictionary<string, string>();
         var indexes = new List<string>();
-        var uniqueKeys = new List<string>();
+        var uniqueKeys = new List<UniqueKeyDefinition>();
         var accessors = new Dictionary<string, Func<object, object?>>();
         var primaryKey = type.GetCustomAttribute<VaultPrimaryKeyAttribute>();
         var sortingBy = type.GetCustomAttribute<VaultSortingByAttribute>();
         var foreignKeys = new List<VaultForeignKeyDefinition>();
         var nullableColumns = new List<string>();
 
-        // NEW: local map to populate FieldTypes
+        // local map to populate FieldTypes
         var fieldTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
 
+        // 1) Walk properties -> fields, columns, indexes, FKs, nullable, accessors, field types
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (prop.GetCustomAttribute<PrefabComponentAttribute>() is not null)
@@ -138,7 +143,7 @@ public class Document
             fields.Add(fieldName);
             columns[fieldName] = physical;
 
-            // NEW: track CLR type for this logical field
+            // track CLR type for this logical field
             fieldTypes[fieldName] = prop.PropertyType;
 
             // accessor cache
@@ -166,11 +171,61 @@ public class Document
             {
                 indexes.Add(physical);
             }
+        }
 
-            // [VaultUniqueColumn] -> UNIQUE constraint on physical column
-            if (prop.GetCustomAttribute<VaultUniqueColumnAttribute>() != null)
+        // 2) Class-level [VaultUniqueKey] -> UniqueKeys (physical column names, single or composite)
+        var uniqueKeyAttrs = type.GetCustomAttributes<VaultUniqueKeyAttribute>(inherit: false)
+                                 .ToArray();
+
+        if (uniqueKeyAttrs.Length > 0)
+        {
+            foreach (var attr in uniqueKeyAttrs)
             {
-                uniqueKeys.Add(physical);
+                if (attr.Keys is null || attr.Keys.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"[VaultUniqueKey] on type '{type.FullName}' must specify at least one key.");
+                }
+
+                var physicalColumns = new List<string>();
+
+                foreach (var key in attr.Keys)
+                {
+                    if (string.IsNullOrWhiteSpace(key))
+                        continue;
+
+                    // The key may be given as:
+                    // - property name, OR
+                    // - physical column name.
+                    // First try logical field name.
+                    if (columns.TryGetValue(key, out var physicalFromLogical))
+                    {
+                        physicalColumns.Add(physicalFromLogical);
+                        continue;
+                    }
+
+                    // Then try to match by physical column name.
+                    var match = columns.FirstOrDefault(kvp =>
+                        string.Equals(kvp.Value, key, StringComparison.OrdinalIgnoreCase));
+
+                    if (!string.IsNullOrWhiteSpace(match.Key))
+                    {
+                        physicalColumns.Add(match.Value);
+                        continue;
+                    }
+
+                    throw new InvalidOperationException(
+                        $"[VaultUniqueKey] on '{type.FullName}' references '{key}', " +
+                        "but no matching property or column was found.");
+                }
+
+                if (physicalColumns.Count == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"[VaultUniqueKey] on '{type.FullName}' did not resolve any valid columns.");
+                }
+
+                uniqueKeys.Add(new UniqueKeyDefinition(physicalColumns));
             }
         }
 
@@ -259,22 +314,38 @@ public class Document
             FailAndExit($"The type {Type.FullName} must have a 'Type' property.");
         }
 
-        // De-duplicate unique keys and indexes (case-insensitive)
-        UniqueKeys = UniqueKeys
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        // De-duplicate unique keys by normalized column-set (case-insensitive, order-insensitive)
+        var deduped = new List<UniqueKeyDefinition>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        foreach (var uk in UniqueKeys)
+        {
+            var normalized = AbstractNormalizeColumns(uk.Columns);
+            if (seen.Add(normalized))
+            {
+                deduped.Add(uk);
+            }
+        }
+
+        UniqueKeys = deduped;
+
+        // De-duplicate indexes (case-insensitive)
         Indexes = Indexes
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // A physical column should not be both UNIQUE and separately indexed.
-        // UNIQUE implies an index; we treat it as UNIQUE and drop the redundant index.
-        var overlap = Indexes
-            .Intersect(UniqueKeys, StringComparer.OrdinalIgnoreCase)
+        // A physical column should not be both UNIQUE (single-column) and separately indexed.
+        // UNIQUE implies an index; we treat it as UNIQUE and drop the redundant single-column index.
+        var singleUniqueColumns = new HashSet<string>(
+            UniqueKeys.Where(uk => uk.Columns.Count == 1)
+                      .Select(uk => uk.Columns[0]),
+            StringComparer.OrdinalIgnoreCase);
+
+        var overlapSingle = Indexes
+            .Where(ix => singleUniqueColumns.Contains(ix))
             .ToList();
 
-        foreach (var col in overlap)
+        foreach (var col in overlapSingle)
         {
             Indexes.RemoveAll(x => string.Equals(x, col, StringComparison.OrdinalIgnoreCase));
         }
@@ -332,6 +403,7 @@ public class Document
                     "but that property does not exist.");
             }
 
+            // ---------- PK membership check ----------
             var principalPkAttr = principalType.GetCustomAttribute<VaultPrimaryKeyAttribute>();
             bool isPk = false;
 
@@ -367,27 +439,109 @@ public class Document
                 isPk = pkPropertyNames.Contains(fk.PrincipalPropertyName);
             }
 
-            bool isUnique = principalProp?.GetCustomAttribute<VaultUniqueColumnAttribute>() is not null;
+            // ---------- UNIQUE membership check via [VaultUniqueKey] ----------
+            var uniqueAttrs = principalType.GetCustomAttributes<VaultUniqueKeyAttribute>(inherit: false)
+                                           .ToArray();
+            bool isUnique = false;
+
+            if (uniqueAttrs.Length > 0)
+            {
+                var uniquePropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var principalProps = principalType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+                foreach (var uk in uniqueAttrs)
+                {
+                    if (uk.Keys is null || uk.Keys.Length == 0)
+                        continue;
+
+                    if (uk.Keys.Length > 1)
+                    {
+                        // Composite unique keys exist, but PostgreSQL requires that a FK reference
+                        // the full set of columns of a UNIQUE or PRIMARY KEY constraint.
+                        // Since VaultForeignKeyDefinition can only express a single column,
+                        // we simply ignore composite [VaultUniqueKey] here for FK validation.
+                        continue;
+                    }
+
+                    var key = uk.Keys[0];
+
+                    var byName = principalProps.FirstOrDefault(p =>
+                        string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
+                    if (byName is not null)
+                    {
+                        uniquePropertyNames.Add(byName.Name);
+                        continue;
+                    }
+
+                    var byColumn = principalProps.FirstOrDefault(p =>
+                    {
+                        var colAttr = p.GetCustomAttribute<VaultColumnAttribute>();
+                        var physicalName = colAttr?.Name ?? p.Name.ToLowerInvariant();
+                        return string.Equals(physicalName, key, StringComparison.OrdinalIgnoreCase);
+                    });
+
+                    if (byColumn is not null)
+                    {
+                        uniquePropertyNames.Add(byColumn.Name);
+                    }
+                }
+
+                isUnique = uniquePropertyNames.Contains(fk.PrincipalPropertyName);
+            }
 
             if (!isPk && !isUnique)
             {
                 FailAndExit(
                     $"Foreign key '{Type.FullName}.{fk.PropertyName}' points to " +
                     $"'{principalType.FullName}.{fk.PrincipalPropertyName}', " +
-                    "but that property is neither part of [VaultPrimaryKey] nor marked [VaultUniqueColumn]. " +
+                    "but that property is neither part of [VaultPrimaryKey] nor covered by a single-column [VaultUniqueKey]. " +
                     "PostgreSQL requires referenced columns to be PRIMARY KEY or UNIQUE.");
             }
         }
     }
 
+    private static string AbstractNormalizeColumns(IEnumerable<string> columns)
+    {
+        return string.Join("|",
+            columns
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => c.ToLowerInvariant())
+                .OrderBy(c => c, StringComparer.Ordinal));
+    }
+
     private void FailAndExit(string message)
     {
+        // Keeping existing behavior: terminate the process on invalid model configuration.
         Environment.Exit(-1);
     }
 
     public override string ToString()
     {
         return $"{Type.Name} [{Name}]";
+    }
+
+    public sealed class UniqueKeyDefinition
+    {
+        /// <summary>
+        /// Physical column names participating in this UNIQUE constraint.
+        /// </summary>
+        public IReadOnlyList<string> Columns { get; }
+
+        public UniqueKeyDefinition(IEnumerable<string> columns)
+        {
+            if (columns is null)
+                throw new ArgumentNullException(nameof(columns));
+
+            var list = columns
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (list.Count == 0)
+                throw new ArgumentException("Unique key must contain at least one column.", nameof(columns));
+
+            Columns = list;
+        }
     }
 
     public sealed class VaultForeignKeyDefinition

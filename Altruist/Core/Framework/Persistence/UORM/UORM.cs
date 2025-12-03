@@ -33,11 +33,15 @@ public class VaultPrimaryKeyAttribute : Attribute
     public VaultPrimaryKeyAttribute(params string[] keys) => Keys = keys;
 }
 
-[AttributeUsage(AttributeTargets.Property)]
-public class VaultColumnIndexAttribute : Attribute { }
+[AttributeUsage(AttributeTargets.Class, Inherited = true)]
+public class VaultUniqueKeyAttribute : Attribute
+{
+    public string[] Keys { get; }
+    public VaultUniqueKeyAttribute(params string[] keys) => Keys = keys;
+}
 
 [AttributeUsage(AttributeTargets.Property)]
-public class VaultUniqueColumnAttribute : Attribute { }
+public class VaultColumnIndexAttribute : Attribute { }
 
 [AttributeUsage(AttributeTargets.Property)]
 public class VaultIgnoreAttribute : Attribute { }

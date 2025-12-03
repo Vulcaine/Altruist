@@ -44,7 +44,7 @@ public sealed record AddUniqueConstraintOperation(
     string Schema,
     string Table,
     string ConstraintName,
-    string Column
+    IReadOnlyList<string> Columns
 ) : MigrationOperation;
 
 public sealed record DropConstraintOperation(

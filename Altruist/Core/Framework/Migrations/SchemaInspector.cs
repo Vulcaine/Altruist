@@ -1,4 +1,3 @@
-
 /*
 Copyright 2025 Aron Gere
 
@@ -7,12 +6,6 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 */
 
 using Altruist.Persistence;
@@ -37,14 +30,19 @@ public abstract class AbstractSchemaInspector : ISchemaInspector
     {
         public readonly Dictionary<string, Dictionary<string, ColumnModel>> ColumnsByTable;
         public readonly Dictionary<string, List<string>> PrimaryKeysByTable;
-        public readonly Dictionary<string, Dictionary<string, string>> UniqueConstraintsByTable;
+
+        /// <summary>
+        /// tableName -> constraintName -> UniqueConstraintModel
+        /// </summary>
+        public readonly Dictionary<string, Dictionary<string, UniqueConstraintModel>> UniqueConstraintsByTable;
+
         public readonly Dictionary<string, Dictionary<string, IndexModel>> IndexesByTable;
         public readonly Dictionary<string, List<ForeignKeyModel>> ForeignKeysByTable;
 
         public SchemaSnapshot(
             Dictionary<string, Dictionary<string, ColumnModel>> columnsByTable,
             Dictionary<string, List<string>> primaryKeysByTable,
-            Dictionary<string, Dictionary<string, string>> uniqueConstraintsByTable,
+            Dictionary<string, Dictionary<string, UniqueConstraintModel>> uniqueConstraintsByTable,
             Dictionary<string, Dictionary<string, IndexModel>> indexesByTable,
             Dictionary<string, List<ForeignKeyModel>> foreignKeysByTable)
         {
@@ -70,7 +68,7 @@ public abstract class AbstractSchemaInspector : ISchemaInspector
         foreach (var (tableName, columnDict) in snapshot.ColumnsByTable)
         {
             snapshot.PrimaryKeysByTable.TryGetValue(tableName, out var pkCols);
-            snapshot.UniqueConstraintsByTable.TryGetValue(tableName, out var uqByColumn);
+            snapshot.UniqueConstraintsByTable.TryGetValue(tableName, out var uqDict);
             snapshot.IndexesByTable.TryGetValue(tableName, out var ixDict);
             snapshot.ForeignKeysByTable.TryGetValue(tableName, out var fkList);
 
@@ -78,7 +76,7 @@ public abstract class AbstractSchemaInspector : ISchemaInspector
                 name: tableName,
                 columns: columnDict,
                 primaryKeyColumns: pkCols ?? [],
-                uniqueConstraints: uqByColumn ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                uniqueConstraints: uqDict ?? new Dictionary<string, UniqueConstraintModel>(StringComparer.OrdinalIgnoreCase),
                 indexes: ixDict ?? new Dictionary<string, IndexModel>(StringComparer.OrdinalIgnoreCase),
                 foreignKeys: fkList ?? new List<ForeignKeyModel>());
 

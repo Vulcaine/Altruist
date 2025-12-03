@@ -158,7 +158,8 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
              AND tc.table_schema    = kcu.table_schema
              AND tc.table_name      = kcu.table_name
             WHERE tc.table_schema   = @schema
-              AND tc.constraint_type = 'PRIMARY KEY';";
+              AND tc.constraint_type = 'PRIMARY KEY'
+            ORDER BY tc.table_name, kcu.ordinal_position;";
         cmd.Parameters.AddWithValue("schema", schemaName);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -179,27 +180,29 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
         return result;
     }
 
-    private static async Task<Dictionary<string, Dictionary<string, string>>> LoadUniqueConstraintsAsync(
+    private static async Task<Dictionary<string, Dictionary<string, UniqueConstraintModel>>> LoadUniqueConstraintsAsync(
         NpgsqlConnection conn,
         string schemaName,
         CancellationToken ct)
     {
-        // table -> column -> constraintName
-        var result = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        // table -> constraintName -> UniqueConstraintModel
+        var result = new Dictionary<string, Dictionary<string, UniqueConstraintModel>>(StringComparer.OrdinalIgnoreCase);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT
                 tc.table_name,
                 tc.constraint_name,
-                kcu.column_name
+                kcu.column_name,
+                kcu.ordinal_position
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu
               ON tc.constraint_name = kcu.constraint_name
              AND tc.table_schema    = kcu.table_schema
              AND tc.table_name      = kcu.table_name
             WHERE tc.table_schema   = @schema
-              AND tc.constraint_type = 'UNIQUE';";
+              AND tc.constraint_type = 'UNIQUE'
+            ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position;";
         cmd.Parameters.AddWithValue("schema", schemaName);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -209,14 +212,19 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
             var constraintName = reader.GetString(1);
             var columnName = reader.GetString(2);
 
-            if (!result.TryGetValue(tableName, out var map))
+            if (!result.TryGetValue(tableName, out var tableConstraints))
             {
-                map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                result[tableName] = map;
+                tableConstraints = new Dictionary<string, UniqueConstraintModel>(StringComparer.OrdinalIgnoreCase);
+                result[tableName] = tableConstraints;
             }
 
-            // This assumes 1-column UNIQUE constraints (which matches your model)
-            map[columnName] = constraintName;
+            if (!tableConstraints.TryGetValue(constraintName, out var constraint))
+            {
+                constraint = new UniqueConstraintModel(constraintName, Enumerable.Empty<string>());
+                tableConstraints[constraintName] = constraint;
+            }
+
+            constraint.Columns.Add(columnName);
         }
 
         return result;
