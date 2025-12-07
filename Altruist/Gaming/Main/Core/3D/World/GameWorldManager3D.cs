@@ -79,6 +79,22 @@ namespace Altruist.Gaming.ThreeD
                 _partitions.Add(partition);
                 _partitionMap[new PartitionIndex3D(partition.Index.X, partition.Index.Y, partition.Index.Z)] = partition;
             }
+
+            InitializeHeightmap();
+        }
+
+        public void SetHeightmap(HeightmapData data)
+        {
+            _index.HeightmapData = data;
+        }
+
+
+        private void InitializeHeightmap()
+        {
+            if (HeightmapData is null)
+                return;
+
+
         }
 
         public async Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj)
@@ -121,9 +137,10 @@ namespace Altruist.Gaming.ThreeD
         /// Core spawn logic shared by dynamic & static world objects.
         /// </summary>
         private async Task<IPhysxBody3D?> SpawnObjectInternal(
-            IWorldObject3D obj,
-            PhysxBodyType bodyType,
-            bool isStatic, string? withId = null)
+     IWorldObject3D obj,
+     PhysxBodyType bodyType,
+     bool isStatic,
+     string? withId = null)
         {
             if (obj is null)
                 return null;
@@ -138,18 +155,35 @@ namespace Altruist.Gaming.ThreeD
                 mass: mass,
                 transform: obj.Transform);
 
-            var colliderDesc = PhysxCollider3D.Create(
+            // Use existing collider descriptors if present, otherwise create a default box.
+            var colliderDescs = obj.ColliderDescriptors;
+            if (colliderDescs == null || !colliderDescs.Any())
+            {
+                colliderDescs = new[]
+                {
+            PhysxCollider3D.Create(
                 PhysxColliderShape3D.Box3D,
                 bodyDesc.Transform,
-                isTrigger: false);
+                isTrigger: false)
+        };
+            }
 
             var body = _bodyApi.CreateBody(engine3D, bodyDesc);
-            var collider = _colliderApi.CreateCollider(colliderDesc);
 
-            _bodyApi.AddCollider(engine3D, body, collider);
+            var createdColliders = new List<IPhysxCollider3D>();
+            foreach (var cd in colliderDescs)
+            {
+                var collider = _colliderApi.CreateCollider(cd);
+                _bodyApi.AddCollider(engine3D, body, collider);
+                createdColliders.Add(collider);
+            }
+
             obj.BodyDescriptor = bodyDesc;
             obj.Body = body;
+            obj.ColliderDescriptors = colliderDescs;
+            obj.Colliders = createdColliders;
 
+            // partition registration stays as-is...
             IEnumerable<WorldPartitionManager3D> partitions;
 
             if (isStatic)
@@ -161,7 +195,7 @@ namespace Altruist.Gaming.ThreeD
 
                 partitions = p is null
                     ? Enumerable.Empty<WorldPartitionManager3D>()
-                    : [p];
+                    : new[] { p };
             }
             else
             {
@@ -177,13 +211,9 @@ namespace Altruist.Gaming.ThreeD
                 p.AddObject(obj);
 
             if (withId != null)
-            {
                 _flatInstanceCache[withId] = obj;
-            }
             else
-            {
                 _flatInstanceCache[obj.InstanceId] = obj;
-            }
 
             PhysxWorld.AddBody(body);
             await Task.CompletedTask;

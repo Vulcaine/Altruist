@@ -7,10 +7,14 @@ using BepuUtilities.Memory;
 namespace Altruist.Gaming.ThreeD;
 
 /// <summary>
-/// BEPU-specific extension: can both load heightmaps and build BEPU meshes from them.
+/// BEPU-specific extension: can both use all the 2D heightmap loaders (RAW/PNG/TIFF/JPEG)
+/// *and* build BEPU meshes from a <see cref="HeightmapData"/>.
 /// </summary>
 public interface IHeightmapLoader3D : IHeightmapLoader
 {
+    /// <summary>
+    /// Builds a BEPU <see cref="Mesh"/> from already loaded heightmap data.
+    /// </summary>
     Mesh LoadHeightmapMesh(HeightmapData data, BufferPool pool);
 }
 
@@ -19,19 +23,38 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
 {
     private readonly IHeightmapLoader _coreLoader;
 
-    // Optional: wrap the core loader so you can reuse the same binary format implementation.
+    /// <summary>
+    /// Wrap the core 2D heightmap loader facade so we can reuse all format loaders.
+    /// </summary>
     public BepuHeightmapLoader(IHeightmapLoader coreLoader)
     {
-        _coreLoader = coreLoader;
+        _coreLoader = coreLoader ?? throw new ArgumentNullException(nameof(coreLoader));
     }
 
-    public HeightmapData LoadHeightmapData(Stream stream)
-        => _coreLoader.LoadHeightmapData(stream);
+    // IHeightmapLoader facade passthrough
+    public IRawHeightmapLoader RAW => _coreLoader.RAW;
+    public IPngHeightmapLoader PNG => _coreLoader.PNG;
+    public ITiffHeightmapLoader TIFF => _coreLoader.TIFF;
+    public IJpegHeightmapLoader JPEG => _coreLoader.JPEG;
 
+    /// <summary>
+    /// Builds a BEPU mesh from the given <see cref="HeightmapData"/>.
+    /// This matches the layout used by the RAW/PNG/TIFF/JPEG loaders:
+    /// Heights[x, z] with cell sizes in X/Z and height scaled by <see cref="HeightmapData.HeightScale"/>.
+    /// </summary>
     public Mesh LoadHeightmapMesh(HeightmapData data, BufferPool pool)
     {
+        if (data is null)
+            throw new ArgumentNullException(nameof(data));
+
+        if (pool is null)
+            throw new ArgumentNullException(nameof(pool));
+
         int width = data.Width;
         int height = data.Height;
+
+        if (width < 2 || height < 2)
+            throw new ArgumentException("Heightmap must be at least 2x2 to build a mesh.", nameof(data));
 
         int quadWidth = width - 1;
         int quadHeight = height - 1;
@@ -52,6 +75,8 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
                 float z0 = z * data.CellSizeZ;
                 float z1 = (z + 1) * data.CellSizeZ;
 
+                // Heights[x, z] are in "height units" before HeightScale,
+                // multiply by HeightScale to get world-space Y.
                 float y00 = data.Heights[x, z] * data.HeightScale;
                 float y10 = data.Heights[x, z + 1] * data.HeightScale;
                 float y01 = data.Heights[x + 1, z] * data.HeightScale;

@@ -10,7 +10,8 @@ namespace Altruist.Physx.ThreeD
     {
         Sphere3D,
         Box3D,
-        Capsule3D
+        Capsule3D,
+        Heightmap3D
     }
 
     public readonly struct PhysxCollisionInfo3D

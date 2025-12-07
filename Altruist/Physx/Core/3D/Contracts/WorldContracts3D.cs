@@ -30,3 +30,21 @@ namespace Altruist.Physx.ThreeD
         IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1);
     }
 }
+
+public sealed class HeightmapData
+{
+    public int Width { get; init; }
+    public int Height { get; init; }
+
+    /// <summary>World-space distance between samples along X.</summary>
+    public float CellSizeX { get; init; }
+
+    /// <summary>World-space distance between samples along Z.</summary>
+    public float CellSizeZ { get; init; }
+
+    /// <summary>Multiplier from stored height to world-space Y.</summary>
+    public float HeightScale { get; init; }
+
+    /// <summary>Heights[x, z] in whatever units you decided (usually 0..1 before HeightScale).</summary>
+    public float[,] Heights { get; init; } = default!;
+}

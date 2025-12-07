@@ -93,6 +93,8 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         IEnumerable<PhysxCollider3DDesc> ColliderDescriptors { get; set; }
 
+        IEnumerable<IPhysxCollider3D> Colliders { get; set; }
+
         [VaultIgnore]
         public IPhysxBody3D? Body { get; set; }
     }
@@ -138,7 +140,7 @@ namespace Altruist.Gaming.ThreeD
         public IPhysxBody3D? Body { get; set; }
 
         [VaultIgnore]
-        public IEnumerable<IPhysxCollider3D> Colliders { get; }
+        public IEnumerable<IPhysxCollider3D> Colliders { get; set; }
 
         [VaultIgnore]
         public bool Expired { get; set; }

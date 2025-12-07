@@ -22,12 +22,15 @@ namespace Altruist.Physx.ThreeD
         public Transform3D Transform { get; }
         public bool IsTrigger { get; }
 
-        public PhysxCollider3DDesc(string id, PhysxColliderShape3D shape, Transform3D transform, bool isTrigger)
+        public HeightmapData? Heightmap { get; }
+
+        public PhysxCollider3DDesc(string id, PhysxColliderShape3D shape, Transform3D transform, HeightmapData? heightmap = null, bool isTrigger = false)
         {
             Id = id;
             Shape = shape;
             Transform = transform;
             IsTrigger = isTrigger;
+            Heightmap = heightmap;
         }
     }
 
@@ -43,7 +46,21 @@ namespace Altruist.Physx.ThreeD
             bool isTrigger = false)
         {
             var id = Guid.NewGuid().ToString("N");
-            return new PhysxCollider3DDesc(id, shape, transform, isTrigger);
+            return new PhysxCollider3DDesc(id, shape, transform, isTrigger: isTrigger);
+        }
+
+        public static PhysxCollider3DDesc CreateHeightmap(
+        HeightmapData data,
+        Transform3D transform,
+        bool isTrigger = false)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            return new PhysxCollider3DDesc(
+                id,
+                PhysxColliderShape3D.Heightmap3D,
+                transform,
+                isTrigger: isTrigger,
+                heightmap: data);
         }
 
         public static PhysxCollider3DDesc CreateSphere(
