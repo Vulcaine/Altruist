@@ -27,6 +27,7 @@ namespace Altruist.Gaming.ThreeD
     public interface IHeightmapFormatLoader
     {
         HeightmapData LoadHeightmap(Stream stream);
+        HeightmapData LoadHeightmap(string filePath);
     }
 
     /// <summary>
@@ -53,7 +54,7 @@ namespace Altruist.Gaming.ThreeD
     /// Facade that groups all format-specific loaders behind a single service.
     /// Usage:
     ///   _heightmapLoader.PNG.LoadHeightmap(stream);
-    ///   _heightmapLoader.RAW.LoadHeightmap(stream);
+    ///   _heightmapLoader.RAW.LoadHeightmap("terrain.hmap");
     /// </summary>
     public interface IHeightmapLoader
     {
@@ -152,6 +153,15 @@ namespace Altruist.Gaming.ThreeD
                 Heights = heights
             };
         }
+
+        public HeightmapData LoadHeightmap(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                throw new ArgumentException("File path must be non-empty.", nameof(filePath));
+
+            using var fs = File.OpenRead(filePath);
+            return LoadHeightmap(fs);
+        }
     }
 
     /// <summary>
@@ -194,6 +204,15 @@ namespace Altruist.Gaming.ThreeD
                 HeightScale = hScale,
                 Heights = heights
             };
+        }
+
+        public HeightmapData LoadHeightmap(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                throw new ArgumentException("File path must be non-empty.", nameof(filePath));
+
+            using var fs = File.OpenRead(filePath);
+            return LoadHeightmap(fs);
         }
     }
 
