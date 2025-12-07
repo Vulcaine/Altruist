@@ -30,4 +30,15 @@ namespace Altruist
             CaseInsensitive = caseInsensitive;
         }
     }
+
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+    public sealed class ConditionalOnAssemblyAttribute : Attribute
+    {
+        public string AssemblyName { get; }
+
+        public ConditionalOnAssemblyAttribute(string assemblyName)
+        {
+            AssemblyName = assemblyName;
+        }
+    }
 }

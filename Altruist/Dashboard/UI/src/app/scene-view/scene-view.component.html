@@ -1,0 +1,33 @@
+<div class="scene-root">
+  <header class="scene-header">
+    <div>
+      <h1>Scene View</h1>
+      <p>Visualize the current world state from your Altruist server.</p>
+    </div>
+    <div class="scene-header-actions">
+      <button class="btn btn-secondary" type="button">Refresh</button>
+      <button class="btn btn-primary" type="button">Auto-Update: Off</button>
+    </div>
+  </header>
+
+  <section class="scene-layout">
+    <aside class="scene-sidebar">
+      <h2>Worlds</h2>
+      <p class="hint">Later: list worlds, partitions, sessions, etc.</p>
+    </aside>
+
+    <section class="scene-canvas">
+      <div class="canvas-toolbar">
+        <span class="canvas-title">3D Scene</span>
+        <span class="canvas-hint">Three.js canvas will go here.</span>
+      </div>
+      <div class="canvas-placeholder">
+        <p>🗺️ Coming soon: interactive 3D terrain view.</p>
+        <p class="hint">
+          This area will be powered by Three.js, fetching data from
+          <code>/dashboard/v1/scene/&lt;worldIndex&gt;</code>.
+        </p>
+      </div>
+    </section>
+  </section>
+</div>

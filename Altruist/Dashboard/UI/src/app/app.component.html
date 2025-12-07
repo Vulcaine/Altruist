@@ -1,0 +1,37 @@
+<div class="dashboard-root">
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="brand">Altruist</span>
+      <span class="brand-sub">Server Dashboard</span>
+    </div>
+    <div class="topbar-right">
+      <!-- Later: env selector, auth user, etc -->
+      <span class="badge env">3D</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-section sidebar-title">Management</div>
+
+      <a routerLink="/scene" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">🗺️</span>
+        <span class="nav-label">Scene View</span>
+      </a>
+
+      <!-- Future sections -->
+      <!--
+      <div class="sidebar-section">Monitoring</div>
+      <a routerLink="/sessions" class="nav-item">Sessions</a>
+      <a routerLink="/metrics" class="nav-item">Metrics</a>
+      -->
+    </nav>
+
+    <!-- Main content -->
+    <main class="content">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>

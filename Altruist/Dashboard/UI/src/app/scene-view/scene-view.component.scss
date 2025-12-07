@@ -1,0 +1,136 @@
+.scene-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+.scene-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: radial-gradient(circle at top left, #1e293b, #020617);
+  border: 1px solid rgba(51, 65, 85, 0.9);
+
+  h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: #9ca3af;
+  }
+}
+
+.scene-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border-color: rgba(129, 140, 248, 0.9);
+}
+
+.btn-secondary {
+  border-color: rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.scene-layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.scene-sidebar {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(30, 64, 175, 0.7);
+
+  h2 {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: #9ca3af;
+  }
+}
+
+.scene-canvas {
+  border-radius: 10px;
+  border: 1px solid rgba(30, 64, 175, 0.7);
+  background: radial-gradient(circle at top, #020617, #000);
+
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.canvas-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(30, 64, 175, 0.7);
+  font-size: 13px;
+
+  .canvas-title {
+    font-weight: 500;
+  }
+
+  .canvas-hint {
+    color: #9ca3af;
+  }
+}
+
+.canvas-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+
+  .hint {
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  code {
+    background: rgba(15, 23, 42, 0.9);
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+}
