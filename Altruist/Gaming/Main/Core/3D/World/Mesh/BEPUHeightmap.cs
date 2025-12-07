@@ -19,6 +19,7 @@ public interface IHeightmapLoader3D : IHeightmapLoader
 }
 
 [Service(typeof(IHeightmapLoader3D))]
+[ConditionalOnConfig("altruist:game")]
 public sealed class BepuHeightmapLoader : IHeightmapLoader3D
 {
     private readonly IHeightmapLoader _coreLoader;

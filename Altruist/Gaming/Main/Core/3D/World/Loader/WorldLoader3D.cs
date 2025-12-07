@@ -51,6 +51,7 @@ namespace Altruist.Gaming.ThreeD
     /// This refactored version produces a fully wired GameWorldManager3D instead of a bare PhysxWorld3D.
     /// </summary>
     [Service(typeof(IWorldLoader3D))]
+    [ConditionalOnConfig("altruist:game")]
     public sealed class WorldLoader3D : IWorldLoader3D
     {
         private readonly IPhysxWorldEngineFactory3D _engineFactory;

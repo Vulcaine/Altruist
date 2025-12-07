@@ -27,6 +27,7 @@ namespace Altruist
     }
 
     [Service(typeof(IConnectionManager))]
+    [ConditionalOnConfig("altruist:server:transport")]
     public class ConnectionManager : IConnectionManager
     {
         private readonly ICodec _codec;

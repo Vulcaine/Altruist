@@ -37,7 +37,7 @@ public interface IAltruistRouter
 }
 
 [Service(typeof(IClientSynchronizator))]
-[ConditionalOnConfig("altruist:transport")]
+[ConditionalOnConfig("altruist:server:transport")]
 public class ClientSynchronizator : IClientSynchronizator
 {
     public Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
@@ -79,7 +79,7 @@ public abstract class DirectRouter : AbstractAltruistRouter
 }
 
 [Service]
-[ConditionalOnConfig("altruist:transport")]
+[ConditionalOnConfig("altruist:server:transport")]
 public class ClientSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
@@ -110,7 +110,7 @@ public class ClientSender : IAltruistRouterSender
 }
 
 [Service]
-[ConditionalOnConfig("altruist:transport")]
+[ConditionalOnConfig("altruist:server:transport")]
 public class RoomSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
@@ -139,7 +139,7 @@ public class RoomSender : IAltruistRouterSender
 }
 
 [Service]
-[ConditionalOnConfig("altruist:transport")]
+[ConditionalOnConfig("altruist:server:transport")]
 public class BroadcastSender
 {
     private readonly IConnectionStore _store;

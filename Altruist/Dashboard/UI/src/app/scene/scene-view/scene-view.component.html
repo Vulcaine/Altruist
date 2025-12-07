@@ -5,15 +5,42 @@
       <p>Visualize the current world state from your Altruist server.</p>
     </div>
     <div class="scene-header-actions">
-      <button class="btn btn-secondary" type="button">Refresh</button>
-      <button class="btn btn-primary" type="button">Auto-Update: Off</button>
+      <button class="btn btn-secondary" type="button" (click)="onRefresh()">
+        Refresh
+      </button>
+      <button class="btn btn-primary" type="button" [class.is-on]="autoUpdate">
+        Auto-Update: {{ autoUpdate ? "On" : "Off" }}
+      </button>
     </div>
   </header>
 
   <section class="scene-layout">
     <aside class="scene-sidebar">
       <h2>Worlds</h2>
-      <p class="hint">Later: list worlds, partitions, sessions, etc.</p>
+
+      @if (isLoading && worlds.length === 0) {
+      <div>Loading worlds...</div>
+      } @else if (!isLoading && worlds.length === 0) {
+      <div>No worlds available.</div>
+      } @else {
+      <ul class="world-list">
+        @for (world of worlds; track world.index) {
+        <li
+          class="world-item"
+          [class.world-item--active]="world === selectedWorld"
+          (click)="onSelectWorld(world)"
+        >
+          <div class="world-name">
+            #{{ world.index }} &mdash; {{ world.name || "Unnamed" }}
+          </div>
+          <div class="world-meta">
+            Partitions: {{ world.partitionCount }} · Objects:
+            {{ world.objectCount }}
+          </div>
+        </li>
+        }
+      </ul>
+      }
     </aside>
 
     <section class="scene-canvas">
@@ -21,13 +48,22 @@
         <span class="canvas-title">3D Scene</span>
 
         <span class="canvas-hint">
-          @if (isLoading) { Loading... } @else if (!hasData) { No data available
-          } @else { Live world data }
+          {{ statusHint }}
         </span>
       </div>
 
       <div class="canvas-body">
+        <!-- Always visible: default / loading globe -->
         <app-globe-scene></app-globe-scene>
+
+        <!-- Overlay world details when a world is selected -->
+        @if (selectedWorld) {
+        <app-world-scene
+          [world]="selectedWorld"
+          [objects]="selectedWorldObjects"
+          [isLoading]="isLoading"
+        />
+        }
       </div>
     </section>
   </section>

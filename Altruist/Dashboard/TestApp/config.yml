@@ -1,8 +1,30 @@
 altruist:
+  environment:
+    mode: 3D
+
   dashboard:
-    enabled: true
+    enabled: "true"
+
   server:
     http:
       host: "0.0.0.0"
       port: 8000
       path: "/"
+    transport:
+      mode: websocket
+      timeout: 60
+      codec:
+        provider: json
+      config:
+        path: "ws"
+  
+  persistence:
+    cache:
+      provider: "inmemory"
+
+  game:
+    engine:
+      diagnostics: true
+      frequency: 30
+      unit: "ticks"
+      gravity: { x: 0, y: -9.81 }

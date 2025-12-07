@@ -1,0 +1,35 @@
+@if (world) {
+<div class="world-scene-root">
+  <header class="world-scene-header">
+    <h3>World #{{ world.index }} &mdash; {{ world.name || "Unnamed" }}</h3>
+    <p>
+      Partitions: {{ world.partitionCount }} · Objects: {{ objects.length }}
+    </p>
+  </header>
+
+  <section class="world-scene-content">
+    <aside class="world-scene-sidepanel">
+      <h4>Objects</h4>
+
+      @if (isLoading) {
+      <div>Loading objects...</div>
+      } @else if (!isLoading && objects.length === 0) {
+      <div>No objects in this world.</div>
+      } @else {
+      <ul>
+        @for (obj of objects; track obj.instanceId) {
+        <li>
+          <strong>{{ obj.archetype || "Unknown" }}</strong>
+          <span class="obj-id">#{{ obj.instanceId }}</span>
+          <div class="obj-pos">
+            Pos: ({{ obj.transform.position.x }},
+            {{ obj.transform.position.y }}, {{ obj.transform.position.z }})
+          </div>
+        </li>
+        }
+      </ul>
+      }
+    </aside>
+  </section>
+</div>
+}

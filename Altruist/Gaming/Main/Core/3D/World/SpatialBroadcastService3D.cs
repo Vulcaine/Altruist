@@ -15,6 +15,7 @@ public interface ISpatialBroadcastService3D
 }
 
 [Service(typeof(ISpatialBroadcastService3D))]
+[ConditionalOnConfig("altruist:game")]
 [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
 public class SpatialBroadcastService3D : ISpatialBroadcastService3D
 {

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 
 namespace Altruist.Dashboard
@@ -13,28 +14,39 @@ namespace Altruist.Dashboard
     /// in this assembly. Consumers do NOT configure any dist folder; they just
     /// set altruist:dashboard:enabled = true and (optionally) altruist:dashboard:basePath.
     /// </summary>
-    [Service]
+    [Service(typeof(IStartupFilter), lifetime: ServiceLifetime.Transient)]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     public sealed class DashboardStartupFilter : IStartupFilter
     {
         private readonly string _basePath;
 
-        public DashboardStartupFilter(
-            [AppConfigValue("altruist:dashboard:basePath", "/dashboard")] string basePath)
+        public DashboardStartupFilter()
         {
-            _basePath = NormalizePath(basePath, "/dashboard");
+            _basePath = "/altruist/dashboard";
         }
 
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
         {
             return app =>
             {
-                const string embeddedRoot = "Altruist.Dashboard.UI.dist";
-
                 var assembly = typeof(DashboardStartupFilter).Assembly;
-                var fileProvider = new ManifestEmbeddedFileProvider(assembly, embeddedRoot);
 
-                var indexFile = fileProvider.GetFileInfo("index.html");
+                ManifestEmbeddedFileProvider fileProvider;
+                try
+                {
+                    // Use the whole manifest (no root subpath)
+                    fileProvider = new ManifestEmbeddedFileProvider(assembly);
+                }
+                catch (InvalidOperationException)
+                {
+                    // No manifest => no embedded UI; just skip dashboard
+                    next(app);
+                    return;
+                }
+
+                const string indexPath = "index.csr.html";
+
+                var indexFile = fileProvider.GetFileInfo(indexPath);
                 if (!indexFile.Exists)
                 {
                     next(app);
@@ -58,11 +70,11 @@ namespace Altruist.Dashboard
                     {
                         spaApp.Run(async context =>
                         {
-                            var idx = fileProvider.GetFileInfo("index.html");
+                            var idx = fileProvider.GetFileInfo(indexPath);
                             if (!idx.Exists)
                             {
                                 context.Response.StatusCode = StatusCodes.Status404NotFound;
-                                await context.Response.WriteAsync("Dashboard index.html not found.");
+                                await context.Response.WriteAsync("Dashboard index not found.");
                                 return;
                             }
 
@@ -74,17 +86,6 @@ namespace Altruist.Dashboard
 
                 next(app);
             };
-        }
-
-
-        private static string NormalizePath(string? path, string defaultIfEmpty)
-        {
-            var p = string.IsNullOrWhiteSpace(path) ? defaultIfEmpty : path!.Trim();
-            if (!p.StartsWith("/"))
-                p = "/" + p;
-            if (p.Length > 1 && p.EndsWith("/"))
-                p = p.TrimEnd('/');
-            return p;
         }
     }
 }

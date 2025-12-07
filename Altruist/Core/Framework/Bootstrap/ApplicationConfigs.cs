@@ -27,7 +27,7 @@ namespace Altruist
         public int Port { get; set; } = 5000;
     }
 
-    [ConfigurationProperties("altruist:transport")]
+    [ConfigurationProperties("altruist:server:transport")]
     public sealed class TransportConfigOptions
     {
         public string Mode { get; set; } = "websocket";

@@ -21,6 +21,7 @@ namespace Altruist.Gaming.ThreeD
     [Service(typeof(IGameWorldOrganizer))]
     [Service(typeof(IGameWorldOrganizer3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
+    [ConditionalOnConfig("altruist:game")]
     public class GameWorldOrganizer3D : IGameWorldOrganizer3D
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();

@@ -7,6 +7,7 @@ public interface IEffectManager
 }
 
 [Service(typeof(IEffectManager))]
+[ConditionalOnConfig("altruist:game")]
 public class EffectManager : IEffectManager
 {
     private readonly IAltruistEngine _engine;

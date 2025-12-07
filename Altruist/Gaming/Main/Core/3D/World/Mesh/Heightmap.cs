@@ -48,6 +48,7 @@ namespace Altruist.Gaming.ThreeD
     }
 
     [Service(typeof(IHeightmapLoader))]
+    [ConditionalOnConfig("altruist:game")]
     public sealed class HeightmapLoader : IHeightmapLoader
     {
         public HeightmapLoader(

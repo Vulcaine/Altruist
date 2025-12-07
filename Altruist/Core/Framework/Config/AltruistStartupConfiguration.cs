@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using System.Reflection;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Altruist
 {
@@ -78,37 +81,71 @@ namespace Altruist
         /// </summary>
         public async Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
         {
-            // If there's no HTTP block, there's nothing to start here (WS requires HTTP server).
+
             if (string.IsNullOrWhiteSpace(_httpHost) || string.IsNullOrWhiteSpace(_httpPort))
                 return;
 
-            // Build the (single) HTTP server
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
 
             builder.Logging.ClearProviders();
 
-            // Bring all root DI registrations into the web host
             foreach (var d in rootServices)
             {
                 if (d.ServiceType == typeof(IHostApplicationLifetime))
-                    continue; // don't override internal host service
+                    continue;
 
                 builder.Services.Add(d);
             }
 
-            // MVC controllers (they’ll be mounted under http base path)
-            builder.Services.AddControllers();
+            var mvcBuilder = builder.Services.AddControllers();
+
+            // Automatically register all loaded assemblies that contain MVC controllers
+            mvcBuilder.ConfigureApplicationPartManager(apm =>
+            {
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+
+                foreach (var assembly in assemblies)
+                {
+                    if (assembly.IsDynamic)
+                        continue;
+
+                    bool hasController = false;
+
+                    try
+                    {
+                        hasController = assembly
+                            .GetExportedTypes()
+                            .Any(t =>
+                                t.IsClass &&
+                                !t.IsAbstract &&
+                                typeof(ControllerBase).IsAssignableFrom(t));
+                    }
+                    catch (ReflectionTypeLoadException)
+                    {
+                        // some assemblies may fail GetExportedTypes; just skip them
+                        continue;
+                    }
+
+                    if (hasController)
+                    {
+                        // avoid duplicates
+                        if (!apm.ApplicationParts.OfType<AssemblyPart>()
+                                .Any(p => p.Assembly == assembly))
+                        {
+                            apm.ApplicationParts.Add(new AssemblyPart(assembly));
+                        }
+                    }
+                }
+            });
 
             var app = builder.Build();
-            var logger = app.Logger; // ⬅️ moved up so we can use it in WS validation
+            var logger = app.Logger;
 
-            // Base path for controllers (e.g., /api or /)
             if (_httpContextPath != "/" && !string.IsNullOrWhiteSpace(_httpContextPath))
             {
                 app.UsePathBase(_httpContextPath);
             }
 
-            // WebSockets only if the transport mode is websocket
             var useWebSocket = string.Equals(_packetTransport, "websocket", StringComparison.OrdinalIgnoreCase);
             if (useWebSocket)
             {
@@ -120,22 +157,13 @@ namespace Altruist
             }
 
             app.UseRouting();
-            app.MapControllers();                       // controllers live under PathBase if set
-            app.UseMiddleware<ReadinessMiddleware>();   // health/readiness
+            app.MapControllers();
+            app.UseMiddleware<ReadinessMiddleware>();
 
-            // Discover “portals” and mount them under the transport path
             if (useWebSocket && _transport is not null)
             {
                 var portals = PortalDiscovery.Discover().Distinct().ToArray();
 
-                // ─────────────────────────────────────────────────────────────
-                // 1) VALIDATE SHIELDS PER WS ROUTE BEFORE REGISTERING
-                //    - If multiple portals map to the same WS path and:
-                //      • some are shielded, some are not  → ERROR
-                //      • or shield types differ           → ERROR
-                // ─────────────────────────────────────────────────────────────
-
-                // Group portals by final WS path (transport base path + portal path)
                 var groupedByPath = portals
                     .Select(p => new
                     {

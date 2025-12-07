@@ -39,6 +39,7 @@ public interface IWorldTransformApi3D
 }
 
 [Service(typeof(IWorldPhysics3D))]
+[ConditionalOnConfig("altruist:game")]
 public sealed class WorldPhysics3D : IWorldPhysics3D
 {
     public IWorldForceApi3D Force { get; }

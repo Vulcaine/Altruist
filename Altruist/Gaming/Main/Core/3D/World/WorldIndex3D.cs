@@ -14,6 +14,7 @@ namespace Altruist.Gaming
     }
 
     [Service(typeof(IWorldIndex3D))]
+    [ConditionalOnConfig("altruist:game:worlds")]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [ConditionalOnConfig("altruist:game:worlds:items", KeyField = "id")]
     public sealed class WorldIndex3D : VaultModel, IWorldIndex3D

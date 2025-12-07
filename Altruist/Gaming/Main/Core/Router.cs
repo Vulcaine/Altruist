@@ -4,6 +4,7 @@ using Altruist.Networking;
 namespace Altruist.Gaming;
 
 [Service(typeof(IClientSynchronizator))]
+[ConditionalOnConfig("altruist:game")]
 public class GameClientSynchronizator : IClientSynchronizator
 {
     private readonly BroadcastSender _broadcast;

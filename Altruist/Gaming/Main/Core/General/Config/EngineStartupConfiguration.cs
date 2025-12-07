@@ -26,6 +26,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Gaming.Engine;
 
 [ServiceConfiguration]
+[ConditionalOnConfig("altruist:game:engine")]
 public class EngineStartupConfiguration : IAltruistConfiguration
 {
     public bool IsConfigured { get; set; }

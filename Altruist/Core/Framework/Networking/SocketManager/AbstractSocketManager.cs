@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Altruist;
 
 public interface ISocketManager
@@ -26,17 +24,14 @@ public interface ISocketManager
 }
 
 [Service(typeof(ISocketManager))]
+[ConditionalOnConfig("altruist:server:transport")]
 public class SocketManager : IConnectionStore, ISocketManager
 {
     protected readonly IConnectionStore _connectionStore;
 
-    // public ICodec Codec { get; }
-
-    public SocketManager(IServiceProvider serviceProvider)
+    public SocketManager(IConnectionStore connectionStore)
     {
-        // Codec = serviceProvider.GetService<ICodec>() ?? new JsonCodec();
-        _connectionStore = serviceProvider.GetRequiredService<IConnectionStore>();
-        // Cache = serviceProvider.GetRequiredService<ICacheProvider>();
+        _connectionStore = connectionStore;
     }
 
     public virtual void Initialize()
