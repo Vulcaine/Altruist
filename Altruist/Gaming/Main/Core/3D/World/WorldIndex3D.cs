@@ -12,7 +12,7 @@ namespace Altruist.Gaming
         IntVector3 Size { get; set; }
         Vector3 Gravity { get; set; }
 
-        HeightmapData? HeightmapData { get; set; }
+        HeightfieldData? HeightmapData { get; set; }
     }
 
     [Service(typeof(IWorldIndex3D))]
@@ -25,7 +25,7 @@ namespace Altruist.Gaming
         public Vector3 Position { get; set; }
         public IntVector3 Size { get; set; }
         public Vector3 Gravity { get; set; }
-        public HeightmapData? HeightmapData { get; set; }
+        public HeightfieldData? HeightmapData { get; set; }
         public float FixedDeltaTime { get; set; }
         public int Index { get; set; }
         public string Name { get; set; }

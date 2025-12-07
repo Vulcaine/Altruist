@@ -13,7 +13,7 @@ namespace Altruist.Gaming.ThreeD
         IWorldIndex3D Index { get; }
         IPhysxWorld3D PhysxWorld { get; }
 
-        HeightmapData? HeightmapData { get; }
+        HeightfieldData? HeightmapData { get; }
 
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
 
@@ -69,7 +69,7 @@ namespace Altruist.Gaming.ThreeD
         public IPhysxWorld3D PhysxWorld => _physx3D;
         public IWorldIndex3D Index => _index;
 
-        public HeightmapData? HeightmapData => _index.HeightmapData;
+        public HeightfieldData? HeightmapData => _index.HeightmapData;
 
         public void Initialize()
         {
@@ -83,7 +83,7 @@ namespace Altruist.Gaming.ThreeD
             InitializeHeightmap();
         }
 
-        public void SetHeightmap(HeightmapData data)
+        public void SetHeightmap(HeightfieldData data)
         {
             _index.HeightmapData = data;
         }

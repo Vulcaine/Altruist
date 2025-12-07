@@ -31,7 +31,7 @@ namespace Altruist.Physx.ThreeD
     }
 }
 
-public sealed class HeightmapData
+public sealed class HeightfieldData
 {
     public int Width { get; init; }
     public int Height { get; init; }

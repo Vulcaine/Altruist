@@ -8,14 +8,14 @@ namespace Altruist.Gaming.ThreeD;
 
 /// <summary>
 /// BEPU-specific extension: can both use all the 2D heightmap loaders (RAW/PNG/TIFF/JPEG)
-/// *and* build BEPU meshes from a <see cref="HeightmapData"/>.
+/// *and* build BEPU meshes from a <see cref="HeightfieldData"/>.
 /// </summary>
 public interface IHeightmapLoader3D : IHeightmapLoader
 {
     /// <summary>
     /// Builds a BEPU <see cref="Mesh"/> from already loaded heightmap data.
     /// </summary>
-    Mesh LoadHeightmapMesh(HeightmapData data, BufferPool pool);
+    Mesh LoadHeightmapMesh(HeightfieldData data, BufferPool pool);
 }
 
 [Service(typeof(IHeightmapLoader3D))]
@@ -38,11 +38,11 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
     public IJpegHeightmapLoader JPEG => _coreLoader.JPEG;
 
     /// <summary>
-    /// Builds a BEPU mesh from the given <see cref="HeightmapData"/>.
+    /// Builds a BEPU mesh from the given <see cref="HeightfieldData"/>.
     /// This matches the layout used by the RAW/PNG/TIFF/JPEG loaders:
-    /// Heights[x, z] with cell sizes in X/Z and height scaled by <see cref="HeightmapData.HeightScale"/>.
+    /// Heights[x, z] with cell sizes in X/Z and height scaled by <see cref="HeightfieldData.HeightScale"/>.
     /// </summary>
-    public Mesh LoadHeightmapMesh(HeightmapData data, BufferPool pool)
+    public Mesh LoadHeightmapMesh(HeightfieldData data, BufferPool pool)
     {
         if (data is null)
             throw new ArgumentNullException(nameof(data));

@@ -9,8 +9,8 @@ namespace Altruist.Gaming.ThreeD
     /// </summary>
     public interface IHeightmapFormatLoader
     {
-        HeightmapData LoadHeightmap(Stream stream);
-        HeightmapData LoadHeightmap(string filePath);
+        HeightfieldData LoadHeightmap(Stream stream);
+        HeightfieldData LoadHeightmap(string filePath);
     }
 
     /// <summary>
@@ -100,7 +100,7 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         protected abstract float ConvertPixelToHeight(TPixel pixel);
 
-        public HeightmapData LoadHeightmap(Stream stream)
+        public HeightfieldData LoadHeightmap(Stream stream)
         {
             if (stream == null)
                 throw new ArgumentNullException(nameof(stream));
@@ -126,7 +126,7 @@ namespace Altruist.Gaming.ThreeD
                 }
             });
 
-            return new HeightmapData
+            return new HeightfieldData
             {
                 Width = width,
                 Height = height,
@@ -137,7 +137,7 @@ namespace Altruist.Gaming.ThreeD
             };
         }
 
-        public HeightmapData LoadHeightmap(string filePath)
+        public HeightfieldData LoadHeightmap(string filePath)
         {
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path must be non-empty.", nameof(filePath));
@@ -155,7 +155,7 @@ namespace Altruist.Gaming.ThreeD
     [Service(typeof(IRawHeightmapLoader))]
     public sealed class RawHeightmapLoader : IRawHeightmapLoader
     {
-        public HeightmapData LoadHeightmap(Stream stream)
+        public HeightfieldData LoadHeightmap(Stream stream)
         {
             if (stream == null)
                 throw new ArgumentNullException(nameof(stream));
@@ -178,7 +178,7 @@ namespace Altruist.Gaming.ThreeD
                 }
             }
 
-            return new HeightmapData
+            return new HeightfieldData
             {
                 Width = width,
                 Height = height,
@@ -189,7 +189,7 @@ namespace Altruist.Gaming.ThreeD
             };
         }
 
-        public HeightmapData LoadHeightmap(string filePath)
+        public HeightfieldData LoadHeightmap(string filePath)
         {
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path must be non-empty.", nameof(filePath));

@@ -6,9 +6,9 @@ namespace Altruist.Gaming.ThreeD;
 
 public sealed class Terrain : WorldObject3D
 {
-    private readonly HeightmapData _heightmapData;
+    private readonly HeightfieldData _heightmapData;
 
-    public Terrain(Transform3D transform, HeightmapData heightmapData, string zoneId = "", string? archetype = null)
+    public Terrain(Transform3D transform, HeightfieldData heightmapData, string zoneId = "", string? archetype = null)
         : base(transform, zoneId, archetype)
     {
         _heightmapData = heightmapData;
