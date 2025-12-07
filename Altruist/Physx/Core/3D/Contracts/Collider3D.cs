@@ -48,7 +48,6 @@ namespace Altruist.Physx.ThreeD
         event Action<PhysxCollisionInfo3D>? OnCollisionExit;
     }
 
-
     public readonly struct PhysxRaycastHit3D
     {
         public IPhysxBody3D Body { get; }

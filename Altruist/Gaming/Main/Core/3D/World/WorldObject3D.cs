@@ -48,8 +48,18 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public PhysxBody3DDesc? BodyDescriptor { get; set; }
 
+        /// <summary>
+        /// Engine-agnostic collider descriptor (not persisted).
+        /// This is used by SpawnService3D to create the runtime body.
+        /// </summary>
+        [VaultIgnore]
+        public IEnumerable<PhysxCollider3DDesc> ColliderDescriptors { get; set; } = Enumerable.Empty<PhysxCollider3DDesc>();
+
         [VaultIgnore]
         public IPhysxBody3D? Body { get; set; }
+
+        [VaultIgnore]
+        public IEnumerable<IPhysxCollider3D> Colliders { get; set; } = Enumerable.Empty<IPhysxCollider3D>();
 
         [VaultIgnore]
         public string ZoneId { get; set; } = "";
@@ -79,6 +89,9 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         [VaultIgnore]
         PhysxBody3DDesc? BodyDescriptor { get; set; }
+
+        [VaultIgnore]
+        IEnumerable<PhysxCollider3DDesc> ColliderDescriptors { get; set; }
 
         [VaultIgnore]
         public IPhysxBody3D? Body { get; set; }
@@ -119,7 +132,13 @@ namespace Altruist.Gaming.ThreeD
         public PhysxBody3DDesc? BodyDescriptor { get; set; }
 
         [VaultIgnore]
+        public IEnumerable<PhysxCollider3DDesc> ColliderDescriptors { get; set; }
+
+        [VaultIgnore]
         public IPhysxBody3D? Body { get; set; }
+
+        [VaultIgnore]
+        public IEnumerable<IPhysxCollider3D> Colliders { get; }
 
         [VaultIgnore]
         public bool Expired { get; set; }
@@ -132,6 +151,8 @@ namespace Altruist.Gaming.ThreeD
             Transform = transform;
             ZoneId = zoneId;
             Archetype = archetype;
+            ColliderDescriptors = Enumerable.Empty<PhysxCollider3DDesc>();
+            Colliders = Enumerable.Empty<IPhysxCollider3D>();
         }
 
         public override string ToString()

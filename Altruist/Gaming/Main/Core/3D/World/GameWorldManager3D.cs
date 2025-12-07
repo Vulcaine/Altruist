@@ -13,6 +13,8 @@ namespace Altruist.Gaming.ThreeD
         IWorldIndex3D Index { get; }
         IPhysxWorld3D PhysxWorld { get; }
 
+        HeightmapData? HeightmapData { get; }
+
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
 
         IWorldObject3D? FindObject(string id);
@@ -66,6 +68,8 @@ namespace Altruist.Gaming.ThreeD
 
         public IPhysxWorld3D PhysxWorld => _physx3D;
         public IWorldIndex3D Index => _index;
+
+        public HeightmapData? HeightmapData => _index.HeightmapData;
 
         public void Initialize()
         {
