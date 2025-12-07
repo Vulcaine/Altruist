@@ -1,6 +1,5 @@
 using System.Numerics;
 
-using Altruist.Gaming.ThreeD;
 using Altruist.Numerics;
 
 namespace Altruist.Gaming
@@ -12,7 +11,6 @@ namespace Altruist.Gaming
         IntVector3 Size { get; set; }
         Vector3 Gravity { get; set; }
 
-        HeightfieldData? HeightmapData { get; set; }
     }
 
     [Service(typeof(IWorldIndex3D))]
@@ -25,7 +23,6 @@ namespace Altruist.Gaming
         public Vector3 Position { get; set; }
         public IntVector3 Size { get; set; }
         public Vector3 Gravity { get; set; }
-        public HeightfieldData? HeightmapData { get; set; }
         public float FixedDeltaTime { get; set; }
         public int Index { get; set; }
         public string Name { get; set; }

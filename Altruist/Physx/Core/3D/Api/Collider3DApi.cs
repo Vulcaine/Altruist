@@ -22,7 +22,7 @@ namespace Altruist.Physx.ThreeD
         public Transform3D Transform { get; }
         public bool IsTrigger { get; }
 
-        public HeightfieldData? Heightmap { get; }
+        public HeightfieldData? Heightfield { get; }
 
         public PhysxCollider3DDesc(string id, PhysxColliderShape3D shape, Transform3D transform, HeightfieldData? heightmap = null, bool isTrigger = false)
         {
@@ -30,7 +30,7 @@ namespace Altruist.Physx.ThreeD
             Shape = shape;
             Transform = transform;
             IsTrigger = isTrigger;
-            Heightmap = heightmap;
+            Heightfield = heightmap;
         }
     }
 

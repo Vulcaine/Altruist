@@ -35,6 +35,7 @@ namespace Altruist.Physx.ThreeD
                 id: desc.Id,
                 shape: desc.Shape,
                 transform: desc.Transform,
+                heightfield: desc.Heightfield,
                 isTrigger: desc.IsTrigger);
         }
 
@@ -63,6 +64,8 @@ namespace Altruist.Physx.ThreeD
             // IPhysxCollider3D
             // -----------------------
 
+            public HeightfieldData? Heightfield { get; set; }
+
             public Transform3D Transform { get; set; }
 
             public PhysxColliderShape3D Shape { get; }
@@ -75,12 +78,14 @@ namespace Altruist.Physx.ThreeD
                 string id,
                 PhysxColliderShape3D shape,
                 Transform3D transform,
-                bool isTrigger)
+                HeightfieldData? heightfield = null,
+                bool isTrigger = false)
             {
                 Id = id ?? throw new ArgumentNullException(nameof(id));
                 Shape = shape;
                 Transform = transform;
                 IsTrigger = isTrigger;
+                Heightfield = heightfield;
             }
 
             public void RaiseCollisionEnter(in PhysxCollisionInfo3D info)
