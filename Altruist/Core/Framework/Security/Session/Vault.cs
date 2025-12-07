@@ -22,6 +22,7 @@ using Altruist.UORM;
 namespace Altruist.Security;
 
 [Vault("security")]
+[ConditionalOnConfig("altruist:security")]
 public class AuthTokenSessionModel : VaultModel, IIdGenerator
 {
     [VaultColumn("principal-id")]

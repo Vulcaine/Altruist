@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Security;
 
 [Service(typeof(IShieldAuth))]
+[ConditionalOnConfig("altruist:security")]
 [ConditionalOnConfig("altruist:security:mode", havingValue: "session")]
 public class SessionTokenAuth : IShieldAuth
 {

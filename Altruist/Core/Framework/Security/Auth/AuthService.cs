@@ -23,6 +23,7 @@ public interface IAuthService
 }
 
 [Service(typeof(IAuthService))]
+[ConditionalOnConfig("altruist:security")]
 public class AuthService : IAuthService
 {
     protected readonly ISessionTokenIssuer _sessionTokenIssuer;

@@ -40,19 +40,20 @@ public sealed class ServerStatus : IServerStatus
 
     // All dependencies are injected; no manual BuildServiceProvider gymnastics.
     public ServerStatus(
-        IGeneralDatabaseProvider dbProvider,
-        ICacheProvider cacheProvider,
         IEnumerable<IConnectable> otherConnectables,
         ILoggerFactory loggerFactory,
-        IHostApplicationLifetime lifetime)
+        IHostApplicationLifetime lifetime,
+        IGeneralDatabaseProvider? dbProvider = null,
+        ICacheProvider? cacheProvider = null)
     {
         _logger = loggerFactory.CreateLogger<ServerStatus>();
         _lifetime = lifetime;
 
-        _connectables.Add(dbProvider);
+        if (dbProvider is IConnectable conn1)
+            _connectables.Add(conn1);
 
-        if (cacheProvider is IConnectable connectable)
-            _connectables.Add(connectable);
+        if (cacheProvider is IConnectable conn2)
+            _connectables.Add(conn2);
 
         // User/feature supplied connectables
         foreach (var c in otherConnectables)
@@ -64,7 +65,7 @@ public sealed class ServerStatus : IServerStatus
     /// Called automatically during startup via the [Configuration] mechanism.
     /// </summary>
     [PostConstruct]
-    public async Task Configure(IEngineCore engine)
+    public async Task Configure(IEngineCore? engine = null)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -73,9 +74,6 @@ public sealed class ServerStatus : IServerStatus
 
         foreach (var service in _connectables)
         {
-            if (service is IRelayService relay)
-                _logger.LogInformation("🔗 Starting relay portal {RelayName}...", relay.ServiceName);
-
             SubscribeToServiceEvents(service, tcs, engine);
 
             if (service.IsConnected)
@@ -92,18 +90,21 @@ public sealed class ServerStatus : IServerStatus
         await CheckAllConnectedAsync(tcs, engine);
     }
 
-    public void SignalState(IEngineCore engine, ReadyState state)
+    public void SignalState(IEngineCore? engine, ReadyState state)
     {
         if (state == ReadyState.Failed)
-            engine.Stop();
+            engine?.Stop();
         else if (state == ReadyState.Alive)
-            engine.Start();
+            engine?.Start();
 
         Status = state;
     }
 
-    private void StartTimeoutTimer(IEngineCore engine)
+    private void StartTimeoutTimer(IEngineCore? engine)
     {
+        if (engine is null)
+            return;
+
         _logger.LogInformation("⌛ Starting server timeout timer...");
         _startupTimeoutTimer?.Dispose();
         _startupTimeoutTimer = new Timer(_ =>
@@ -115,7 +116,7 @@ public sealed class ServerStatus : IServerStatus
         }, null, TimeSpan.FromMinutes(1), Timeout.InfiniteTimeSpan);
     }
 
-    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs, IEngineCore engine)
+    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs, IEngineCore? engine)
     {
         service.OnConnected += () =>
         {
@@ -161,7 +162,7 @@ public sealed class ServerStatus : IServerStatus
         };
     }
 
-    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs, IEngineCore engine)
+    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs, IEngineCore? engine)
     {
         lock (_connected)
         {
@@ -175,7 +176,7 @@ public sealed class ServerStatus : IServerStatus
         await tcs.Task;
     }
 
-    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs, IEngineCore engine)
+    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs, IEngineCore? engine)
     {
         _startupTimeoutTimer?.Dispose();
 
@@ -186,7 +187,7 @@ public sealed class ServerStatus : IServerStatus
         await Task.CompletedTask;
     }
 
-    private void Shutdown(IEngineCore engine, string reason, Exception? ex = null)
+    private void Shutdown(IEngineCore? engine, string reason, Exception? ex = null)
     {
         if (ex is not null)
             _logger.LogCritical(ex, "{Reason}", reason);

@@ -19,8 +19,10 @@
     <section class="scene-canvas">
       <div class="canvas-toolbar">
         <span class="canvas-title">3D Scene</span>
+
         <span class="canvas-hint">
-          Placeholder globe until real world data is wired in.
+          @if (isLoading) { Loading... } @else if (!hasData) { No data available
+          } @else { Live world data }
         </span>
       </div>
 

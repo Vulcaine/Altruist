@@ -265,18 +265,22 @@ namespace Altruist
             var settingsLines = settings.ToString()!.Replace('\r', ' ').Split('\n');
             int lineWidth = 50;
 
-            logBuilder.AppendLine("╔════════════════════════════════════════════════════╗");
-            logBuilder.AppendLine("║ The Portals Are Open! Connect At:                  ║");
-            logBuilder.AppendLine("║".PadRight(lineWidth + 3, '-') + "║");
-            foreach (var line in settingsLines)
+            if (settings.Endpoints.Count() > 0)
             {
-                int currentLineLength = "║ ".Length + line.Length + " ║".Length;
-                string paddedLine = $"║ {line.PadRight(currentLineLength + (lineWidth - currentLineLength))} ║";
-                logBuilder.AppendLine(paddedLine);
+                logBuilder.AppendLine("╔════════════════════════════════════════════════════╗");
+                logBuilder.AppendLine("║ The Portals Are Open! Connect At:                  ║");
+                logBuilder.AppendLine("║".PadRight(lineWidth + 3, '-') + "║");
+                foreach (var line in settingsLines)
+                {
+                    int currentLineLength = "║ ".Length + line.Length + " ║".Length;
+                    string paddedLine = $"║ {line.PadRight(currentLineLength + (lineWidth - currentLineLength))} ║";
+                    logBuilder.AppendLine(paddedLine);
+                }
+                logBuilder.AppendLine("║".PadRight(lineWidth + 3, '-') + "║");
+                logBuilder.AppendLine("║ ✨ Welcome, traveler! 🧙                           ║");
+                logBuilder.AppendLine("╚════════════════════════════════════════════════════╝");
             }
-            logBuilder.AppendLine("║".PadRight(lineWidth + 3, '-') + "║");
-            logBuilder.AppendLine("║ ✨ Welcome, traveler! 🧙                           ║");
-            logBuilder.AppendLine("╚════════════════════════════════════════════════════╝");
+
 
             return logBuilder.ToString();
         }

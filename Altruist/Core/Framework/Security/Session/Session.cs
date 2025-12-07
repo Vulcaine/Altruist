@@ -20,6 +20,7 @@ using Altruist.Persistence;
 namespace Altruist.Security;
 
 [Service]
+[ConditionalOnConfig("altruist:security")]
 public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionModel>
 {
     public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthTokenSessionModel>? vault = null) : base(cacheProvider, vault)
@@ -39,6 +40,7 @@ public interface ISessionTokenValidator : ITokenValidator
 }
 
 [Service(typeof(ISessionTokenValidator))]
+[ConditionalOnConfig("altruist:security")]
 public class SessionTokenValidator : ISessionTokenValidator
 {
     private readonly TokenSessionSyncService _syncService;

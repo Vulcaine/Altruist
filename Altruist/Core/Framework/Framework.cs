@@ -29,14 +29,14 @@ namespace Altruist
 
         public string ProcessId { get; } = $"{Environment.MachineName}-{Environment.ProcessId}-${Guid.NewGuid()}";
 
-        public ITransportServiceToken TransportToken { get; set; }
+        public ITransportServiceToken? TransportToken { get; set; }
         public List<IDatabaseServiceToken> DatabaseTokens { get; set; }
         public ICacheServiceToken? CacheToken { get; set; }
 
         public AltruistServerContext(
-            ITransportServiceToken token,
             List<IDatabaseServiceToken> databaseServiceTokens,
-            ICacheServiceToken? cacheToken,
+            ITransportServiceToken? token = null,
+            ICacheServiceToken? cacheToken = null,
             EngineConfigOptions? configOptions = null)
         {
             EngineEnabled = configOptions != null;
@@ -70,7 +70,7 @@ namespace Altruist
                 lines.Add($"💻 Address: {serverString}{endpoint}");
             }
 
-            if (!string.IsNullOrEmpty(TransportToken.Description))
+            if (!string.IsNullOrEmpty(TransportToken?.Description))
             {
                 lines.Add(TransportToken.Description);
             }

@@ -19,6 +19,7 @@ public sealed class PostgresDBToken : IDatabaseServiceToken
 }
 
 [ServiceConfiguration]
+[ConditionalOnConfig("altruist:persistance:database:provider", havingValue: "postgres")]
 public sealed class PostgresVaultConfiguration : PostgresConfigurationBase, IDatabaseConfiguration
 {
     public bool IsConfigured { get; set; }

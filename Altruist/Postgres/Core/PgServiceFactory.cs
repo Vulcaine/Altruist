@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Persistence.Postgres;
 
 [Service(typeof(IServiceFactory), ServiceLifetime.Singleton)]
+[ConditionalOnConfig("altruist:persistance:database:provider", havingValue: "postgres")]
 public sealed class PostgresServiceFactory : IServiceFactory
 {
     public bool CanCreate(Type serviceType)

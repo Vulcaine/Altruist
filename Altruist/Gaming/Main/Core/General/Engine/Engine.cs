@@ -258,6 +258,7 @@ public class EngineStaticTask
 }
 
 [Service(typeof(IEngineCore))]
+[ConditionalOnConfig("altruist:game:engine")]
 public class AltruistEngine : IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;

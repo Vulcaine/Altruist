@@ -51,6 +51,7 @@ public interface ISessionTokenIssuer : IIssuer
 }
 
 [Service(typeof(ISessionTokenIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
+[ConditionalOnConfig("altruist:security")]
 public class SessionTokenIssuer : ISessionTokenIssuer
 {
     private readonly TimeSpan _accessTokenExpiration;
@@ -79,6 +80,7 @@ public interface IJwtTokenIssuer : IIssuer
 }
 
 [Service(typeof(IJwtTokenIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
+[ConditionalOnConfig("altruist:security")]
 public class JwtTokenIssuer : IJwtTokenIssuer
 {
     public JwtBearerOptions JwtOptions { get; }

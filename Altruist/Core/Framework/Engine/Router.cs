@@ -37,6 +37,7 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
 }
 
 [Service]
+[ConditionalOnConfig("altruist:game:engine")]
 public class EngineClientSender : ClientSender
 {
     private readonly IAltruistEngine _engine;
