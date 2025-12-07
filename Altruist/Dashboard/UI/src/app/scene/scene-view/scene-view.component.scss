@@ -95,6 +95,12 @@
   overflow: hidden;
 }
 
+.canvas-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .canvas-toolbar {
   display: flex;
   justify-content: space-between;

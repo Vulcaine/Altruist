@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { SceneViewComponent } from './scene-view/scene-view.component';
+import { SceneViewComponent } from './scene/scene-view/scene-view.component';
 
 export const routes: Routes = [
   {
