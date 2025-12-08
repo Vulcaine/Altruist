@@ -6,6 +6,7 @@ Licensed under the Apache License, Version 2.0
 using Microsoft.AspNetCore.Mvc;
 
 using Altruist.Gaming.ThreeD;
+using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Dashboard
@@ -16,9 +17,9 @@ namespace Altruist.Dashboard
     /// </summary>
     [ApiController]
     [Route("/dashboard/v1/worlds")]
-    // [ConditionalOnConfig("altruist:game")]
-    // [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
-    // [ConditionalOnAssembly("Altruist.Dashboard")]
+    [ConditionalOnConfig("altruist:game")]
+    [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
+    [ConditionalOnAssembly("Altruist.Dashboard")]
     public sealed class WorldDashboardController : ControllerBase
     {
         private readonly IGameWorldOrganizer3D _worldOrganizer;
@@ -62,18 +63,29 @@ namespace Altruist.Dashboard
                 return NotFound(new { message = $"World {worldIndex} not found." });
 
             var objects = world.FindAllObjects<IWorldObject3D>()
-                .Select(o => new WorldObjectDto
+                .Select(o =>
                 {
-                    InstanceId = o.InstanceId,
-                    Archetype = o.Archetype ?? string.Empty,
-                    ZoneId = (o as WorldObject3D)?.ZoneId
-                             ?? (o as WorldObjectPrefab3D)?.ZoneId
-                             ?? string.Empty,
-                    ClientId = o.ClientId,
-                    Expired = (o as WorldObject3D)?.Expired
-                              ?? (o as WorldObjectPrefab3D)?.Expired
-                              ?? false,
-                    Transform = TransformDto.FromTransform(o.Transform)
+                    var dto = new WorldObjectDto
+                    {
+                        InstanceId = o.InstanceId,
+                        Archetype = o.Archetype ?? string.Empty,
+                        ZoneId = (o as WorldObject3D)?.ZoneId
+                                 ?? (o as WorldObjectPrefab3D)?.ZoneId
+                                 ?? string.Empty,
+                        ClientId = o.ClientId,
+                        Expired = (o as WorldObject3D)?.Expired
+                                  ?? (o as WorldObjectPrefab3D)?.Expired
+                                  ?? false,
+                        Transform = TransformDto.FromTransform(o.Transform),
+                        Colliders = new List<ColliderDto>()
+                    };
+
+                    foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
+                    {
+                        dto.Colliders.Add(ColliderDto.FromCollider(c));
+                    }
+
+                    return dto;
                 })
                 .ToList();
 
@@ -97,6 +109,7 @@ namespace Altruist.Dashboard
 
     /// <summary>
     /// Flattened representation of a world object for dashboard use.
+    /// Includes transform and collider descriptors.
     /// </summary>
     public sealed class WorldObjectDto
     {
@@ -108,6 +121,76 @@ namespace Altruist.Dashboard
         public bool Expired { get; set; }
 
         public TransformDto Transform { get; set; } = default!;
+
+        public List<ColliderDto> Colliders { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Collider descriptor for dashboard UI, including heightfield if present.
+    /// </summary>
+    public sealed class ColliderDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public PhysxColliderShape3D Shape { get; set; }
+        public TransformDto Transform { get; set; } = default!;
+        public bool IsTrigger { get; set; }
+
+        public HeightfieldDto? Heightfield { get; set; }
+
+        public static ColliderDto FromCollider(PhysxCollider3DDesc c)
+        {
+            return new ColliderDto
+            {
+                Id = c.Id,
+                Shape = c.Shape,
+                IsTrigger = c.IsTrigger,
+                Transform = TransformDto.FromTransform(c.Transform),
+                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Heightfield data for visualization (terrain).
+    /// </summary>
+    public sealed class HeightfieldDto
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+
+        public float CellSizeX { get; set; }
+        public float CellSizeZ { get; set; }
+        public float HeightScale { get; set; }
+
+        /// <summary>
+        /// Heights[x][z], same indexing as the engine's HeightfieldData.Heights[x,z].
+        /// </summary>
+        public float[][] Heights { get; set; } = Array.Empty<float[]>();
+
+        public static HeightfieldDto FromHeightfield(HeightfieldData hf)
+        {
+            var dto = new HeightfieldDto
+            {
+                Width = hf.Width,
+                Height = hf.Height,
+                CellSizeX = hf.CellSizeX,
+                CellSizeZ = hf.CellSizeZ,
+                HeightScale = hf.HeightScale,
+                Heights = new float[hf.Width][]
+            };
+
+            for (int x = 0; x < hf.Width; x++)
+            {
+                var row = new float[hf.Height];
+                for (int z = 0; z < hf.Height; z++)
+                {
+                    row[z] = hf.Heights[x, z];
+                }
+                dto.Heights[x] = row;
+            }
+
+            return dto;
+        }
     }
 
     public sealed class TransformDto

@@ -10,7 +10,11 @@ import {
   ViewChild,
 } from '@angular/core';
 import * as THREE from 'three';
-import { WorldObjectDto, WorldSummary } from '../models/world.model';
+import {
+  HeightfieldDto,
+  WorldObjectDto,
+  WorldSummary,
+} from '../models/world.model';
 
 @Component({
   selector: 'app-world-scene',
@@ -145,7 +149,7 @@ export class WorldSceneComponent
   };
 
   // ────────────────────────────────────────────────────────────────
-  // Input handling (WASD + Q/E turn)
+  // Input handling (WASD + Q/E yaw, R/F pitch)
   // ────────────────────────────────────────────────────────────────
 
   private onKeyDown = (event: KeyboardEvent) => {
@@ -253,21 +257,52 @@ export class WorldSceneComponent
     const group = new THREE.Group();
 
     for (const obj of this.objects) {
-      const t = obj.transform;
-      const sx = Math.max(0.1, t.size.x * t.scale.x);
-      const sy = Math.max(0.1, t.size.y * t.scale.y);
-      const sz = Math.max(0.1, t.size.z * t.scale.z);
+      // Prefer collider descriptors if present
+      if (obj.colliders && obj.colliders.length > 0) {
+        for (const col of obj.colliders) {
+          const t = col.transform ?? obj.transform;
 
-      const geom = new THREE.BoxGeometry(sx, sy, sz);
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0x22c55e,
-        wireframe: true,
-      });
+          if (col.heightfield) {
+            const mesh = this.createHeightfieldMesh(col.heightfield);
+            mesh.position.set(t.position.x, t.position.y, t.position.z);
+            mesh.scale.set(t.scale.x || 1, t.scale.y || 1, t.scale.z || 1);
 
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.set(t.position.x, t.position.y, t.position.z);
+            group.add(mesh);
+          } else {
+            const sx = Math.max(0.1, t.size.x * t.scale.x);
+            const sy = Math.max(0.1, t.size.y * t.scale.y);
+            const sz = Math.max(0.1, t.size.z * t.scale.z);
 
-      group.add(mesh);
+            const geom = new THREE.BoxGeometry(sx, sy, sz);
+            const mat = new THREE.MeshBasicMaterial({
+              color: 0x22c55e,
+              wireframe: true,
+            });
+
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(t.position.x, t.position.y, t.position.z);
+
+            group.add(mesh);
+          }
+        }
+      } else {
+        // Fallback: draw a single box from the object's transform
+        const t = obj.transform;
+        const sx = Math.max(0.1, t.size.x * t.scale.x);
+        const sy = Math.max(0.1, t.size.y * t.scale.y);
+        const sz = Math.max(0.1, t.size.z * t.scale.z);
+
+        const geom = new THREE.BoxGeometry(sx, sy, sz);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0x22c55e,
+          wireframe: true,
+        });
+
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(t.position.x, t.position.y, t.position.z);
+
+        group.add(mesh);
+      }
     }
 
     this.scene.add(group);
@@ -283,6 +318,58 @@ export class WorldSceneComponent
     } else {
       this.fitCameraToGroup();
     }
+  }
+
+  /** Build a wireframe mesh from heightfield data (terrain). */
+  private createHeightfieldMesh(hf: HeightfieldDto): THREE.Mesh {
+    const width = hf.width;
+    const height = hf.height;
+    const cellSizeX = hf.cellSizeX;
+    const cellSizeZ = hf.cellSizeZ;
+    const heightScale = hf.heightScale;
+
+    // Create vertex buffer: one vertex per (x,z) sample
+    const vertCount = width * height;
+    const positions = new Float32Array(vertCount * 3);
+
+    let idx = 0;
+    for (let z = 0; z < height; z++) {
+      for (let x = 0; x < width; x++) {
+        const h = hf.heights[x][z] * heightScale;
+
+        positions[idx++] = x * cellSizeX;
+        positions[idx++] = h;
+        positions[idx++] = z * cellSizeZ;
+      }
+    }
+
+    // Indices for triangles (same layout as server Mesh builder)
+    const indices: number[] = [];
+    for (let z = 0; z < height - 1; z++) {
+      for (let x = 0; x < width - 1; x++) {
+        const i00 = z * width + x;
+        const i10 = z * width + (x + 1);
+        const i01 = (z + 1) * width + x;
+        const i11 = (z + 1) * width + (x + 1);
+
+        // First triangle
+        indices.push(i00, i01, i10);
+        // Second triangle
+        indices.push(i10, i01, i11);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x22c55e,
+      wireframe: true,
+    });
+
+    return new THREE.Mesh(geom, mat);
   }
 
   private focusOnObject(obj: WorldObjectDto): void {
