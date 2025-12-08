@@ -271,11 +271,21 @@ namespace Altruist
                     portalType,
                     sp =>
                     {
+
                         var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, portalType, log);
                         RegisterGateMethodsFromInstance(instance!, log);
 
                         if (instance is IPortal portalInstance)
+                        {
+                            var portalAttribute = portalInstance.GetType().GetCustomAttribute<PortalAttribute>();
+                            if (portalAttribute is not null)
+                            {
+                                var basePath = cfg["altruist:server:transport:config:path"];
+                                portalInstance.Route = PathUtils.NormalizeRoute(basePath, portalAttribute.Endpoint);
+                            }
+
                             PortalGateRegistry<IPortal>.RegisterInstance(portalInstance);
+                        }
 
                         return instance!;
                     },

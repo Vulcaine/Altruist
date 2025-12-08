@@ -61,6 +61,22 @@ namespace Altruist
 
         public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
 
+        public async Task<IEnumerable<AltruistConnection>> GetConnectionsForPortal(IPortal portal)
+        {
+            var allConns = await GetAllConnectionsAsync();
+            var connections = new List<AltruistConnection>();
+
+            foreach (var conn in allConns)
+            {
+                if (conn.Route == portal.Route)
+                {
+                    connections.Add(conn);
+                }
+            }
+
+            return connections;
+        }
+
         public async Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId)
         {
             if (string.IsNullOrEmpty(packet.Event))
@@ -105,6 +121,11 @@ namespace Altruist
             var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
             {
+                if (portal.Route != connection.Route)
+                {
+                    continue;
+                }
+
                 try
                 {
                     await portal.OnConnectedAsync(clientId, this, connection);

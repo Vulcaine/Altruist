@@ -96,6 +96,7 @@ public interface ITransportClient
 
 public interface IConnectionManager
 {
+    Task<IEnumerable<AltruistConnection>> GetConnectionsForPortal(IPortal portal);
     Task HandleConnection(AltruistConnection socket, string @event, string clientId);
     Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId);
     void AddInterceptor(IInterceptor interceptor);

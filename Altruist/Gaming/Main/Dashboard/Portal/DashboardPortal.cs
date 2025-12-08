@@ -47,17 +47,9 @@ namespace Altruist.Dashboard
 
             var worlds = _gameWorldOrganizer.GetAllWorlds();
             var connectionsCursor = await _connectionManager.GetAllConnectionsAsync();
-            var dashboardConnections = new List<AltruistConnection>();
+            var dashboardConnections = await _connectionManager.GetConnectionsForPortal(this);
 
-            foreach (var conn in connectionsCursor)
-            {
-                if (string.Equals(conn.Route, "/ws/dashboard", StringComparison.OrdinalIgnoreCase))
-                {
-                    dashboardConnections.Add(conn);
-                }
-            }
-
-            if (dashboardConnections.Count == 0)
+            if (dashboardConnections.Count() == 0)
             {
                 return;
             }

@@ -28,7 +28,7 @@ namespace Altruist.Web
         [JsonPropertyName("IsConnected")]
         public override bool IsConnected => _webSocket != null && _webSocket.State == WebSocketState.Open;
 
-        public WebSocketConnection() { } // for json
+        public WebSocketConnection() { }
 
         public WebSocketConnection(WebSocket webSocket, string route, string remoteAddress, string connectionId, AuthDetails? authDetails)
         {

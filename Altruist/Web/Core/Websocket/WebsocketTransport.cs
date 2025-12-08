@@ -26,6 +26,10 @@ public sealed class WebSocketTransport : ITransport
     // path -> route meta (single manager, per-route shield)
     private readonly Dictionary<string, RouteInfo> _routes = new(StringComparer.Ordinal);
 
+    public WebSocketTransport()
+    {
+    }
+
     /// <summary>
     /// Interface-mandated generic registration. If TType is a ShieldAttribute (or derives from it),
     /// the route becomes shielded with that attribute; otherwise it's registered as public.
@@ -146,21 +150,21 @@ public sealed class WebSocketTransport : ITransport
                 }
             }
 
-            // If this is NOT a WebSocket request: shield ran, user is authenticated, continue to MVC
             if (!context.WebSockets.IsWebSocketRequest)
             {
                 await next();
                 return;
             }
 
-            // WebSocket path: accept and hand off
+
             var manager = sp.GetRequiredService<IConnectionManager>();
             var clientId = Guid.NewGuid().ToString("N");
             var socket = await context.WebSockets.AcceptWebSocketAsync();
             var remoteIp = context.Connection.RemoteIpAddress?.ToString();
+            var normalizedContextPath = PathUtils.NormalizeRoute(context.Request.Path);
 
-            var connection = new WebSocketConnection(socket, context.Request.Path, remoteIp ?? "", clientId, authDetails);
-            await manager.HandleConnection(connection, context.Request.Path, clientId);
+            var connection = new WebSocketConnection(socket, normalizedContextPath, remoteIp ?? "", clientId, authDetails);
+            await manager.HandleConnection(connection, normalizedContextPath, clientId);
         });
     }
 
