@@ -30,11 +30,12 @@ namespace Altruist.Web
 
         public WebSocketConnection() { } // for json
 
-        public WebSocketConnection(WebSocket webSocket, string remoteAddress, string connectionId, AuthDetails? authDetails)
+        public WebSocketConnection(WebSocket webSocket, string route, string remoteAddress, string connectionId, AuthDetails? authDetails)
         {
             _webSocket = webSocket;
             ConnectionId = connectionId;
             AuthDetails = authDetails;
+            Route = route;
             RemoteAddress = remoteAddress ?? "";
             ConnectedAt = DateTime.UtcNow;
         }

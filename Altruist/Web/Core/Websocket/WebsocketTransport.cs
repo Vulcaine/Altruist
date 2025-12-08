@@ -159,7 +159,7 @@ public sealed class WebSocketTransport : ITransport
             var socket = await context.WebSockets.AcceptWebSocketAsync();
             var remoteIp = context.Connection.RemoteIpAddress?.ToString();
 
-            var connection = new WebSocketConnection(socket, remoteIp ?? "", clientId, authDetails);
+            var connection = new WebSocketConnection(socket, context.Request.Path, remoteIp ?? "", clientId, authDetails);
             await manager.HandleConnection(connection, context.Request.Path, clientId);
         });
     }

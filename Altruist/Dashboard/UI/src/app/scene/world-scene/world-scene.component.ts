@@ -9,12 +9,15 @@ import {
   SimpleChanges,
   ViewChild,
 } from '@angular/core';
+import { Subscription } from 'rxjs';
 import * as THREE from 'three';
+import { DashboardWorldObjectStatePacket } from './models/world-realtime.model';
 import {
   HeightfieldDto,
   WorldObjectDto,
   WorldSummary,
-} from '../models/world.model';
+} from './models/world.model';
+import { WorldService } from './world-scene.service';
 
 @Component({
   selector: 'app-world-scene',
@@ -50,14 +53,20 @@ export class WorldSceneComponent
 
   private lastFrameTime = performance.now();
 
+  private worldSub?: Subscription;
+
+  constructor(private readonly worldService: WorldService) {}
+
   ngAfterViewInit(): void {
     this.viewInitialized = true;
     this.tryInitThree();
+    this.ensureLiveUpdates();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['world'] && this.world && this.viewInitialized) {
       this.tryInitThree();
+      this.ensureLiveUpdates(); // reconnect if world changed
     }
 
     if (this.scene && changes['objects'] && !changes['objects'].firstChange) {
@@ -85,6 +94,51 @@ export class WorldSceneComponent
     window.removeEventListener('resize', this.onWindowResize);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
+
+    if (this.worldSub) {
+      this.worldSub.unsubscribe();
+      this.worldSub = undefined;
+    }
+    this.worldService.disconnect();
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Live updates (websocket)
+  // ────────────────────────────────────────────────────────────────
+
+  private ensureLiveUpdates(): void {
+    if (!this.world) return;
+    if (this.worldSub) return; // already connected
+
+    this.worldSub = this.worldService
+      .connect(this.world.index)
+      .subscribe((packet) => {
+        this.applyWorldState(packet);
+      });
+  }
+
+  private applyWorldState(packet: DashboardWorldObjectStatePacket): void {
+    if (!this.world || packet.worldIndex !== this.world.index) {
+      return;
+    }
+
+    // Map by instanceId for quick lookup
+    const byId = new Map<string, WorldObjectDto>();
+    for (const obj of this.objects) {
+      byId.set(obj.instanceId, obj);
+    }
+
+    for (const state of packet.objects) {
+      const obj = byId.get(state.id);
+      if (!obj) continue;
+
+      obj.transform.position.x = state.position.x;
+      obj.transform.position.y = state.position.y;
+      obj.transform.position.z = state.position.z;
+    }
+
+    // Rebuild wireframe from updated transforms.
+    this.rebuildColliders();
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -104,7 +158,7 @@ export class WorldSceneComponent
 
   // ────────────────────────────────────────────────────────────────
   // Three.js setup
-  // ────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────
 
   private initThree(): void {
     const container = this.viewportRef!.nativeElement;
@@ -167,28 +221,24 @@ export class WorldSceneComponent
     const turnSpeed = 1.5; // yaw speed (Q/E), radians per second
     const pitchSpeed = 1.2; // pitch speed (R/F), radians per second
 
-    // Yaw: turn left/right with Q/E
     if (this.keys['q']) {
-      this.yaw += turnSpeed * dt; // turn left
+      this.yaw += turnSpeed * dt;
     }
     if (this.keys['e']) {
-      this.yaw -= turnSpeed * dt; // turn right
+      this.yaw -= turnSpeed * dt;
     }
 
-    // Pitch: look up/down with R/F
     if (this.keys['r']) {
-      this.pitch += pitchSpeed * dt; // look up
+      this.pitch += pitchSpeed * dt;
     }
     if (this.keys['f']) {
-      this.pitch -= pitchSpeed * dt; // look down
+      this.pitch -= pitchSpeed * dt;
     }
 
-    // Clamp pitch to avoid flipping over
-    const maxPitch = Math.PI / 2 - 0.1; // ~±80 degrees
+    const maxPitch = Math.PI / 2 - 0.1;
     if (this.pitch > maxPitch) this.pitch = maxPitch;
     if (this.pitch < -maxPitch) this.pitch = -maxPitch;
 
-    // Recompute forward/right vectors from yaw + pitch
     const forward = new THREE.Vector3(
       Math.cos(this.pitch) * Math.sin(this.yaw),
       Math.sin(this.pitch),
@@ -257,7 +307,6 @@ export class WorldSceneComponent
     const group = new THREE.Group();
 
     for (const obj of this.objects) {
-      // Prefer collider descriptors if present
       if (obj.colliders && obj.colliders.length > 0) {
         for (const col of obj.colliders) {
           const t = col.transform ?? obj.transform;
@@ -286,7 +335,6 @@ export class WorldSceneComponent
           }
         }
       } else {
-        // Fallback: draw a single box from the object's transform
         const t = obj.transform;
         const sx = Math.max(0.1, t.size.x * t.scale.x);
         const sy = Math.max(0.1, t.size.y * t.scale.y);
@@ -309,7 +357,6 @@ export class WorldSceneComponent
     this.collidersGroup = group;
 
     if (this.objects.length > 0) {
-      // prefer focusing selected object if present
       if (this.selectedObject) {
         this.focusOnObject(this.selectedObject);
       } else {
@@ -320,21 +367,19 @@ export class WorldSceneComponent
     }
   }
 
-  /** Build a wireframe mesh from heightfield data (terrain). */
   private createHeightfieldMesh(hf: HeightfieldDto): THREE.Mesh {
     const width = hf.width;
     const height = hf.height;
     const cellSizeX = hf.cellSizeX;
     const cellSizeZ = hf.cellSizeZ;
 
-    // Heights are already in world units (0..size.y), so don't apply heightScale again.
     const vertCount = width * height;
     const positions = new Float32Array(vertCount * 3);
 
     let idx = 0;
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
-        const h = hf.heights[x][z]; // <-- no * hf.heightScale
+        const h = hf.heights[x][z];
 
         positions[idx++] = x * cellSizeX;
         positions[idx++] = h;

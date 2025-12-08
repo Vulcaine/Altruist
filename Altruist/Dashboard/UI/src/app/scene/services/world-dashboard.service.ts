@@ -1,7 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { WorldObjectDto, WorldSummary } from '../models/world.model';
+import {
+  WorldObjectDto,
+  WorldSummary,
+} from '../world-scene/models/world.model';
 
 @Injectable({
   providedIn: 'root',

@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { GlobeSceneComponent } from '../globe-scene/globe-scene.component';
-import { WorldObjectDto, WorldSummary } from '../models/world.model';
 import { WorldDashboardService } from '../services/world-dashboard.service';
+import {
+  WorldObjectDto,
+  WorldSummary,
+} from '../world-scene/models/world.model';
 import { WorldSceneComponent } from '../world-scene/world-scene.component';
 
 @Component({

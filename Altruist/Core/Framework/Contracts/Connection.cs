@@ -23,6 +23,7 @@ namespace Altruist;
 public interface IAltruistConnection : IStoredModel
 {
     AuthDetails? AuthDetails { get; }
+    public string Route { get; set; }
     string ConnectionId { get; }
     string RemoteAddress { get; }
     DateTime ConnectedAt { get; }
@@ -39,6 +40,9 @@ public class AltruistConnection : StoredModel, IAltruistConnection
 {
     [JsonIgnore]
     public AuthDetails? AuthDetails { get; set; }
+
+    [JsonIgnore]
+    public string Route { get; set; } = "";
 
     [JsonPropertyName("connectedAt")]
     public DateTime ConnectedAt { get; set; }
