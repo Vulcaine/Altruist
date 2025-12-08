@@ -292,7 +292,7 @@ public class AltruistEngine : IAltruistEngine
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
         IGameWorldOrganizer worldCoordinator,
-        [AppConfigValue("altruist:game:engine:frequency")]
+        [AppConfigValue("altruist:game:engine:framerateHz", "30")]
         int engineFrequencyHz = 30,
         [AppConfigValue("altruist:game:engine:unit")]
         CycleUnit unit = CycleUnit.Ticks,

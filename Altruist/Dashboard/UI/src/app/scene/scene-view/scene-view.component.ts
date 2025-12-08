@@ -27,6 +27,9 @@ export class SceneViewComponent implements OnInit {
 
   autoUpdate = false; // future use
 
+  /** Last live update timestamp coming from WorldSceneComponent */
+  lastWorldUpdate: Date | null = null;
+
   constructor(private readonly worldService: WorldDashboardService) {}
 
   ngOnInit(): void {
@@ -63,6 +66,7 @@ export class SceneViewComponent implements OnInit {
     this.selectedWorld = world;
     this.isLoading = true;
     this.selectedObject = null;
+    this.lastWorldUpdate = null; // reset when changing world
 
     this.worldService.getWorldObjects(world.index).subscribe({
       next: (objects) => {
@@ -86,10 +90,21 @@ export class SceneViewComponent implements OnInit {
     this.selectedObject = obj;
   }
 
+  /** Handler for the child's lastUpdateChanged event */
+  onWorldLastUpdate(ts: Date): void {
+    this.lastWorldUpdate = ts;
+  }
+
   get statusHint(): string {
     if (this.isLoading) return 'Loading world...';
     if (!this.selectedWorld) return 'Select a world';
     if (!this.hasData) return 'No objects in this world';
+
+    if (this.lastWorldUpdate) {
+      const time = this.lastWorldUpdate.toLocaleTimeString();
+      return `Live world data · Last update: ${time}`;
+    }
+
     return 'Live world data';
   }
 }

@@ -4,6 +4,12 @@ import { Injectable, NgZone } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import { DashboardWorldObjectStatePacket } from './models/world-realtime.model';
 
+interface Envelope {
+  type: string;
+  header?: any;
+  message?: unknown;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -19,44 +25,30 @@ export class WorldService {
    * Returns an observable of world-state packets.
    */
   connect(worldIndex: number): Observable<DashboardWorldObjectStatePacket> {
-    // If already connected for this world, just return the observable.
     if (this.socket && this.currentWorldIndex === worldIndex) {
       return this.state$.asObservable();
     }
 
-    // If connected to a different world, close previous socket.
     this.disconnect();
 
     this.currentWorldIndex = worldIndex;
+    console.log('Connecting to dashboard websocket for world', worldIndex);
 
     const url = `ws://localhost:8000/ws/dashboard`;
     const ws = new WebSocket(url);
+    ws.binaryType = 'blob';
+
     this.socket = ws;
 
     ws.onopen = () => {
-      // No subscription message needed – server broadcasts to all "dashboard" routes.
-      // If later you need per-world subscription, send a small JSON packet here.
-      // Example:
-      // ws.send(JSON.stringify({ type: 'subscribeWorld', worldIndex }));
+      // No subscription message needed yet.
+      // If you later want to subscribe per-world, you can send here.
+      // ws.send(JSON.stringify({ type: 'SubscribeDashboardWorld', worldIndex }));
     };
 
     ws.onmessage = (event: MessageEvent) => {
-      // We assume JSON payload compatible with DashboardWorldObjectStatePacket
       this.zone.run(() => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (
-            data &&
-            typeof data === 'object' &&
-            'worldIndex' in data &&
-            data.worldIndex === this.currentWorldIndex
-          ) {
-            this.state$.next(data as DashboardWorldObjectStatePacket);
-          }
-        } catch (err) {
-          console.error('Failed to parse dashboard world packet', err);
-        }
+        this.handleMessage(event);
       });
     };
 
@@ -74,11 +66,62 @@ export class WorldService {
     return this.state$.asObservable();
   }
 
+  private handleMessage(event: MessageEvent): void {
+    if (typeof event.data === 'string') {
+      this.parseAndDispatch(event.data);
+    } else if (event.data instanceof Blob) {
+      event.data
+        .text()
+        .then((text) => this.parseAndDispatch(text))
+        .catch((err) => {
+          console.error('Failed to read dashboard world blob', err);
+        });
+    } else {
+      console.warn(
+        'Unsupported WS message type',
+        typeof event.data,
+        event.data
+      );
+    }
+  }
+
+  private parseAndDispatch(raw: string): void {
+    try {
+      const envelope = JSON.parse(raw) as Envelope;
+
+      if (!envelope || envelope.type !== 'DashboardWorldObjectStatePacket') {
+        return;
+      }
+
+      const msg = envelope.message as
+        | DashboardWorldObjectStatePacket
+        | undefined;
+      if (!msg) {
+        console.warn(
+          'DashboardWorldObjectStatePacket has empty/invalid message payload',
+          envelope
+        );
+        return;
+      }
+
+      if (
+        this.currentWorldIndex !== null &&
+        msg.worldIndex === this.currentWorldIndex
+      ) {
+        this.state$.next(msg);
+      }
+    } catch (err) {
+      console.error('Failed to parse dashboard world packet', err, raw);
+    }
+  }
+
   disconnect(): void {
     if (this.socket) {
       try {
         this.socket.close();
-      } catch {}
+      } catch {
+        // ignore
+      }
       this.socket = null;
     }
     this.currentWorldIndex = null;

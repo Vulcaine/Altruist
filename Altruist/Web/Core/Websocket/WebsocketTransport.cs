@@ -110,7 +110,7 @@ public sealed class WebSocketTransport : ITransport
                     route = new RouteInfo(context.Request.Path, shieldAttr.GetType());
                     _routes[route.Path] = route;
                 }
-                else
+                else if (route?.ShieldType is not null)
                 {
                     // No route info and no shield metadata: just continue as normal
                     await next();
@@ -122,7 +122,7 @@ public sealed class WebSocketTransport : ITransport
             AuthDetails? authDetails = null;
 
             // Enforce route shield (if any) FOR BOTH HTTP + WEBSOCKET
-            if (route.ShieldType is not null)
+            if (route?.ShieldType is not null)
             {
                 // Create a shield instance (attributes may depend on DI)
                 var shield = (ShieldAttribute)ActivatorUtilities.CreateInstance(sp, route.ShieldType);

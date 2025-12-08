@@ -7,7 +7,7 @@ using Altruist.Gaming.ThreeD;
 
 namespace Altruist.Dashboard
 {
-    [Portal("dashboard")]
+    [Portal("/dashboard")]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     public class DashboardPortal : Portal
     {
@@ -34,7 +34,7 @@ namespace Altruist.Dashboard
         /// - every _fullSyncInterval, send a snapshot of all non-terrain
         ///   world objects (positions etc.) to all "dashboard" connections.
         /// </summary>
-        [Cycle("update")]
+        [Cycle]
         public async Task UpdateDashboard()
         {
             var now = DateTime.UtcNow;
@@ -51,7 +51,7 @@ namespace Altruist.Dashboard
 
             foreach (var conn in connectionsCursor)
             {
-                if (string.Equals(conn.Route, "dashboard", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(conn.Route, "/ws/dashboard", StringComparison.OrdinalIgnoreCase))
                 {
                     dashboardConnections.Add(conn);
                 }

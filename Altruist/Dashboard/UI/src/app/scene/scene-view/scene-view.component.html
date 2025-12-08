@@ -9,7 +9,7 @@
         Refresh
       </button>
       <button class="btn btn-primary" type="button" [class.is-on]="autoUpdate">
-        Auto-Update: {{ autoUpdate ? 'On' : 'Off' }}
+        Auto-Update: {{ autoUpdate ? "On" : "Off" }}
       </button>
     </div>
   </header>
@@ -26,12 +26,16 @@
       <ul class="world-list">
         @for (world of worlds; track world.index) {
         <li class="world-item">
-          <button type="button" class="world-item-button" (click)="onSelectWorld(world)"
-            [class.world-item-button--active]="world === selectedWorld">
+          <button
+            type="button"
+            class="world-item-button"
+            (click)="onSelectWorld(world)"
+            [class.world-item-button--active]="world === selectedWorld"
+          >
             <div class="world-item-header">
               <span class="world-item-index">#{{ world.index }}</span>
               <span class="world-item-name">
-                {{ world.name || 'Unnamed' }}
+                {{ world.name || "Unnamed" }}
               </span>
             </div>
 
@@ -46,11 +50,15 @@
           <ul class="world-object-list">
             @for (obj of selectedWorldObjects; track obj.instanceId) {
             <li class="world-object-item">
-              <button type="button" class="world-object-button" (click)="onSelectObject(obj)"
-                [class.world-object-button--active]="obj === selectedObject">
+              <button
+                type="button"
+                class="world-object-button"
+                (click)="onSelectObject(obj)"
+                [class.world-object-button--active]="obj === selectedObject"
+              >
                 <div class="world-object-line">
                   <span class="world-object-name">
-                    {{ obj.archetype || 'Object' }}
+                    {{ obj.archetype || "Object" }}
                   </span>
                   <span class="world-object-id">
                     #{{ obj.instanceId.slice(0, 8) }}
@@ -85,8 +93,14 @@
         @if (!selectedWorld || isLoading) {
         <app-globe-scene></app-globe-scene>
         } @else {
-        <app-world-scene [world]="selectedWorld" [objects]="selectedWorldObjects" [isLoading]="isLoading"
-          [selectedObject]="selectedObject" />
+        <app-world-scene
+          [world]="selectedWorld"
+          [objects]="selectedWorldObjects"
+          [isLoading]="isLoading"
+          [selectedObject]="selectedObject"
+          (lastUpdateChanged)="onWorldLastUpdate($event)"
+        >
+        </app-world-scene>
         }
       </div>
     </section>

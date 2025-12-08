@@ -3,6 +3,7 @@ using System.Reflection;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace Altruist;
 
@@ -19,6 +20,13 @@ public static class AltruistBootstrap
     {
         EnsureAltruistAssembliesLoaded();
         ConfigureLogging();
+
+        using var tmpProvider = Services.BuildServiceProvider();
+        var logger = tmpProvider
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger<AltruistModuleConfig>();
+
+        BindConfigurationClasses(Services, logger);
         await BootstrapServices();
 
         // Build a single root provider
@@ -112,6 +120,82 @@ public static class AltruistBootstrap
 
             var log = loggerFactory.CreateLogger(implType);
             await DependencyResolver.InvokePostConstructAsync(instance, provider, cfg, log);
+        }
+    }
+
+    private static void BindConfigurationClasses(IServiceCollection services, ILogger logger)
+    {
+        var cfg = AppConfigLoader.Load();
+
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
+            .ToArray();
+
+        var cfgTypes = assemblies
+            .SelectMany(SafeGetTypes)
+            .Where(t => t.IsClass && !t.IsAbstract && t.GetCustomAttribute<ConfigurationPropertiesAttribute>(false) is not null)
+            .ToArray();
+
+        if (cfgTypes.Length == 0)
+        {
+            logger.LogDebug("ℹ️ No classes annotated with [ConfigurationProperties] found.");
+            return;
+        }
+
+        foreach (var t in cfgTypes)
+        {
+            var attr = t.GetCustomAttribute<ConfigurationPropertiesAttribute>(false)!;
+            var section = cfg.GetSection(attr.Path);
+
+            if (!section.Exists())
+            {
+                logger.LogDebug("Config section '{Path}' not found for type {Type}. Skipping.", attr.Path, t.FullName);
+                continue;
+            }
+
+            var looksArray = section.GetChildren().Any(c => int.TryParse(c.Key, out _));
+            if (looksArray)
+            {
+                var listType = typeof(List<>).MakeGenericType(t);
+                var listInstance = section.Get(listType);
+                if (listInstance is null)
+                {
+                    logger.LogWarning("Failed to bind list at '{Path}' to {Type}.", attr.Path, listType);
+                    continue;
+                }
+
+                services.AddSingleton(listType, listInstance);
+                var ienumType = typeof(IEnumerable<>).MakeGenericType(t);
+                var ireadOnlyListType = typeof(IReadOnlyList<>).MakeGenericType(t);
+                services.AddSingleton(ienumType, sp => sp.GetRequiredService(listType));
+                services.AddSingleton(ireadOnlyListType, sp => sp.GetRequiredService(listType));
+                logger.LogDebug("🔧 Bound config array '{Path}' to {Type}.", attr.Path, listType.Name);
+            }
+            else
+            {
+                var instance = Activator.CreateInstance(t);
+                if (instance is null)
+                {
+                    logger.LogWarning("Failed to create instance of {Type} for binding.", t.FullName);
+                    continue;
+                }
+
+                section.Bind(instance);
+                services.AddSingleton(t, instance);
+                logger.LogDebug("🔧 Bound config '{Path}' to {Type}.", attr.Path, t.Name);
+            }
+        }
+    }
+
+    private static IEnumerable<Type> SafeGetTypes(Assembly asm)
+    {
+        try
+        {
+            return asm.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(t => t is not null)!;
         }
     }
 

@@ -9,6 +9,7 @@
 
   <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
     <ProjectReference Include="..\..\Gaming\Main\Gaming.csproj" />
+     <ProjectReference Include="..\..\Web\Web.csproj" />
     <ProjectReference Include="..\Dashboard.csproj" />
   </ItemGroup>
   

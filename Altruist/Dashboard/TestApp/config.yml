@@ -25,7 +25,7 @@ altruist:
   game:
     engine:
       diagnostics: true
-      frequency: 30
+      framerateHz: 30
       unit: "ticks"
       gravity: { x: 0, y: -9.81 }
     worlds:

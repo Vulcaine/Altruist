@@ -43,6 +43,7 @@ namespace Altruist
     [ConfigurationProperties("altruist:game:engine")]
     public sealed class EngineConfigOptions
     {
+        public bool Diagnostics { get; set; } = false;
         public int FramerateHz { get; set; } = 60;
         public string Unit { get; set; } = "Ticks";
         public int? Throttle { get; set; }

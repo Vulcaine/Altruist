@@ -82,7 +82,7 @@ namespace Altruist
 
         [Key(2)]
         [JsonPropertyName("message")]
-        public IPacketBase Message { get; set; }
+        public object? Message { get; set; }
 
         public MessageEnvelope(PacketHeader header, IPacketBase message)
         {
