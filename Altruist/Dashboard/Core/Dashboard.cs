@@ -6,14 +6,6 @@ using Microsoft.Extensions.FileProviders;
 
 namespace Altruist.Dashboard
 {
-    /// <summary>
-    /// IStartupFilter that wires the Angular dashboard into the existing HTTP pipeline,
-    /// on the SAME host/port, under a configurable base path.
-    ///
-    /// The Angular app is embedded as resources under "Altruist.Dashboard.UI.dist"
-    /// in this assembly. Consumers do NOT configure any dist folder; they just
-    /// set altruist:dashboard:enabled = true and (optionally) altruist:dashboard:basePath.
-    /// </summary>
     [Service(typeof(IStartupFilter), lifetime: ServiceLifetime.Transient)]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     public sealed class DashboardStartupFilter : IStartupFilter
@@ -30,25 +22,14 @@ namespace Altruist.Dashboard
             return app =>
             {
                 var assembly = typeof(DashboardStartupFilter).Assembly;
-
-                ManifestEmbeddedFileProvider fileProvider;
-                try
-                {
-                    // Use the whole manifest (no root subpath)
-                    fileProvider = new ManifestEmbeddedFileProvider(assembly);
-                }
-                catch (InvalidOperationException)
-                {
-                    // No manifest => no embedded UI; just skip dashboard
-                    next(app);
-                    return;
-                }
+                var fileProvider = new EmbeddedFileProvider(assembly, baseNamespace: string.Empty);
 
                 const string indexPath = "index.csr.html";
 
                 var indexFile = fileProvider.GetFileInfo(indexPath);
                 if (!indexFile.Exists)
                 {
+                    // No embedded UI => skip dashboard
                     next(app);
                     return;
                 }
