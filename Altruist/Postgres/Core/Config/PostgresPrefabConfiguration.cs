@@ -11,7 +11,7 @@ namespace Altruist.Persistence.Postgres;
 /// Only types with [Prefab] + IPrefabModel are handled here.
 /// </summary>
 [ServiceConfiguration]
-[ConditionalOnConfig("altruist:persistance:database:provider", havingValue: "postgres")]
+[ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDatabaseConfiguration
 {
     public bool IsConfigured { get; set; }
