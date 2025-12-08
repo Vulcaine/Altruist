@@ -7,7 +7,7 @@ using Altruist.Gaming.ThreeD;
 
 namespace Altruist.Dashboard
 {
-    [Portal("/dashboard")]
+    [Portal("dashboard")]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     public class DashboardPortal : Portal
     {
@@ -19,6 +19,8 @@ namespace Altruist.Dashboard
 
         private DateTime _lastFullSyncUtc = DateTime.MinValue;
 
+        private IEnumerable<AltruistConnection> _connections;
+
         public DashboardPortal(
             IGameWorldOrganizer3D gameWorldOrganizer,
             IAltruistRouter router,
@@ -27,6 +29,13 @@ namespace Altruist.Dashboard
             _gameWorldOrganizer = gameWorldOrganizer;
             _router = router;
             _connectionManager = connectionManager;
+            _connections = Enumerable.Empty<AltruistConnection>();
+        }
+
+        public override async Task OnConnectedAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection)
+        {
+            await base.OnConnectedAsync(clientId, connectionManager, connection);
+            _connections = await _connectionManager.GetConnectionsForPortal(this);
         }
 
         /// <summary>
@@ -37,6 +46,11 @@ namespace Altruist.Dashboard
         [Cycle]
         public async Task UpdateDashboard()
         {
+            if (_connections.Count() == 0)
+            {
+                return;
+            }
+
             var now = DateTime.UtcNow;
             if (now - _lastFullSyncUtc < _fullSyncInterval)
             {
@@ -45,16 +59,7 @@ namespace Altruist.Dashboard
 
             _lastFullSyncUtc = now;
 
-            var worlds = _gameWorldOrganizer.GetAllWorlds();
-            var connectionsCursor = await _connectionManager.GetAllConnectionsAsync();
-            var dashboardConnections = await _connectionManager.GetConnectionsForPortal(this);
-
-            if (dashboardConnections.Count() == 0)
-            {
-                return;
-            }
-
-            foreach (var world in worlds)
+            foreach (var world in _gameWorldOrganizer.GetAllWorlds())
             {
                 var worldObjects = world
                     .FindAllObjects<IWorldObject3D>()
@@ -87,7 +92,7 @@ namespace Altruist.Dashboard
                     timestampUtc: now,
                     objects: objectStates);
 
-                foreach (var conn in dashboardConnections)
+                foreach (var conn in _connections)
                 {
                     await _router.Client.SendAsync(conn.ConnectionId, packet);
                 }
