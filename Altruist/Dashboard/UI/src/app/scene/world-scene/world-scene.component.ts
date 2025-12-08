@@ -26,7 +26,7 @@ export class WorldSceneComponent
   @Input() objects: WorldObjectDto[] = [];
   @Input() isLoading = false;
 
-  @ViewChild('viewport') // static = false (default)
+  @ViewChild('viewport')
   viewportRef?: ElementRef<HTMLDivElement>;
 
   private scene?: THREE.Scene;
@@ -42,10 +42,7 @@ export class WorldSceneComponent
   // free-fly camera state
   private keys: Record<string, boolean> = {};
   private yaw = 0;
-  private pitch = -0.3;
-  private isMouseLook = false;
-  private lastMouseX = 0;
-  private lastMouseY = 0;
+  private pitch = -0.3; // fixed slight downward tilt
 
   private lastFrameTime = performance.now();
 
@@ -55,7 +52,6 @@ export class WorldSceneComponent
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    // When world becomes non-null after init, try to spin up Three.js
     if (changes['world'] && this.world && this.viewInitialized) {
       this.tryInitThree();
     }
@@ -76,15 +72,6 @@ export class WorldSceneComponent
     window.removeEventListener('resize', this.onWindowResize);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
-
-    if (this.renderer?.domElement) {
-      this.renderer.domElement.removeEventListener(
-        'mousedown',
-        this.onMouseDown
-      );
-      window.removeEventListener('mouseup', this.onMouseUp);
-      window.removeEventListener('mousemove', this.onMouseMove);
-    }
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -134,10 +121,6 @@ export class WorldSceneComponent
     window.addEventListener('resize', this.onWindowResize);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
-
-    this.renderer.domElement.addEventListener('mousedown', this.onMouseDown);
-    window.addEventListener('mouseup', this.onMouseUp);
-    window.addEventListener('mousemove', this.onMouseMove);
   }
 
   private onWindowResize = () => {
@@ -153,7 +136,7 @@ export class WorldSceneComponent
   };
 
   // ────────────────────────────────────────────────────────────────
-  // Input handling (WASD + mouse look with Ctrl)
+  // Input handling (WASD + Q/E turn)
   // ────────────────────────────────────────────────────────────────
 
   private onKeyDown = (event: KeyboardEvent) => {
@@ -164,39 +147,19 @@ export class WorldSceneComponent
     this.keys[event.key.toLowerCase()] = false;
   };
 
-  private onMouseDown = (event: MouseEvent) => {
-    if (event.button === 0 && event.ctrlKey) {
-      this.isMouseLook = true;
-      this.lastMouseX = event.clientX;
-      this.lastMouseY = event.clientY;
-    }
-  };
-
-  private onMouseUp = () => {
-    this.isMouseLook = false;
-  };
-
-  private onMouseMove = (event: MouseEvent) => {
-    if (!this.isMouseLook) return;
-
-    const dx = event.clientX - this.lastMouseX;
-    const dy = event.clientY - this.lastMouseY;
-    this.lastMouseX = event.clientX;
-    this.lastMouseY = event.clientY;
-
-    const sensitivity = 0.005;
-
-    this.yaw -= dx * sensitivity;
-    this.pitch -= dy * sensitivity;
-
-    const maxPitch = Math.PI / 2 - 0.01;
-    this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
-  };
-
   private updateCamera(dt: number): void {
     if (!this.camera) return;
 
     const moveSpeed = 80;
+    const turnSpeed = 1.5; // radians per second
+
+    // Q/E rotate yaw
+    if (this.keys['q']) {
+      this.yaw += turnSpeed * dt; // turn left
+    }
+    if (this.keys['e']) {
+      this.yaw -= turnSpeed * dt; // turn right
+    }
 
     const forward = new THREE.Vector3(
       Math.cos(this.pitch) * Math.sin(this.yaw),
@@ -218,8 +181,9 @@ export class WorldSceneComponent
     if (this.keys['s']) vel.sub(forward);
     if (this.keys['a']) vel.sub(right);
     if (this.keys['d']) vel.add(right);
-    if (this.keys['q']) vel.sub(up);
-    if (this.keys['e']) vel.add(up);
+    // optional vertical movement with Z/X if you want later:
+    // if (this.keys['z']) vel.sub(up);
+    // if (this.keys['x']) vel.add(up);
 
     if (vel.lengthSq() > 0) {
       vel.normalize().multiplyScalar(moveSpeed * dt);
