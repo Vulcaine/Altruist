@@ -16,7 +16,7 @@ public interface ISocketManager
     Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
     Task<bool> IsConnectionExistsAsync(string connectionId);
     Task SaveRoomAsync(RoomPacket room);
-    Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId);
+    Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId);
 
     Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync();
 
@@ -98,9 +98,9 @@ public class SocketManager : IConnectionStore, ISocketManager
         return await _connectionStore.GetAllRoomsAsync();
     }
 
-    public virtual async Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
+    public virtual async Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId)
     {
-        return await _connectionStore.AddClientToRoomAsync(connectionId, roomId);
+        return await _connectionStore.JoinRoomAsync(connectionId, roomId);
     }
 
     public virtual async Task SaveRoomAsync(RoomPacket room)

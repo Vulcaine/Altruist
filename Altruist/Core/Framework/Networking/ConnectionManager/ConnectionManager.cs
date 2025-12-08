@@ -284,9 +284,9 @@ namespace Altruist
             return _socketManager.GetAllRoomsAsync();
         }
 
-        public Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
+        public Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId)
         {
-            return _socketManager.AddClientToRoomAsync(connectionId, roomId);
+            return _socketManager.JoinRoomAsync(connectionId, roomId);
         }
 
         public async Task SaveRoomAsync(RoomPacket room)

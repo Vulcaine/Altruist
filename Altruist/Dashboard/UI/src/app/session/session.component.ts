@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit } from '@angular/core';
+import { forkJoin } from 'rxjs';
 
 interface ConnectionDto {
   connectionId: string;
+  roomId?: string | null;
 }
 
 interface RoomSessionDto {
@@ -29,6 +31,8 @@ export class SessionComponent implements OnInit {
   rooms: RoomSessionDto[] = [];
   selectedRoom: RoomSessionDto | null = null;
 
+  allConnections: ConnectionDto[] = [];
+
   constructor(private readonly http: HttpClient) {}
 
   ngOnInit(): void {
@@ -39,9 +43,15 @@ export class SessionComponent implements OnInit {
     this.isLoading = true;
     this.errorMessage = '';
 
-    this.http.get<RoomSessionDto[]>(this.baseUrl).subscribe({
-      next: (rooms) => {
+    const rooms$ = this.http.get<RoomSessionDto[]>(this.baseUrl);
+    const allConnections$ = this.http.get<ConnectionDto[]>(
+      `${this.baseUrl}/connections`
+    );
+
+    forkJoin({ rooms: rooms$, allConnections: allConnections$ }).subscribe({
+      next: ({ rooms, allConnections }) => {
         this.rooms = rooms;
+        this.allConnections = allConnections;
         this.isLoading = false;
 
         // keep selection if still present

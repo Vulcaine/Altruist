@@ -102,7 +102,7 @@ public interface IConnectionManager
     Task DeleteRoomAsync(string roomName);
     Task<RoomPacket?> GetRoomAsync(string roomId);
     Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
-    Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId);
+    Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId);
     Task SaveRoomAsync(RoomPacket room);
     Task Cleanup();
     Task<bool> IsConnectionExistsAsync(string connectionId);

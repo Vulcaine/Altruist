@@ -68,6 +68,51 @@ namespace Altruist.Dashboard
         }
 
         /// <summary>
+        /// Get all active connections across the server, with their associated room (if any).
+        /// </summary>
+        [HttpGet("connections")]
+        public async Task<ActionResult<IEnumerable<ConnectionWithRoomDto>>> GetAllConnections()
+        {
+            // Get all known connections
+            var allConnectionsDict = await _socketManager.GetAllConnectionsDictAsync();
+
+            // Initialize map: connectionId -> roomId (null by default)
+            var connectionRoomMap = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var kvp in allConnectionsDict)
+            {
+                connectionRoomMap[kvp.Key] = null;
+            }
+
+            // Walk all rooms and mark which connection belongs to which room.
+            // Assumes a connection is in at most one "primary" room for dashboard purposes.
+            var roomsDict = await _socketManager.GetAllRoomsAsync();
+            foreach (var roomKvp in roomsDict)
+            {
+                var roomId = roomKvp.Key;
+                var connectionsInRoom = await _socketManager.GetConnectionsInRoomAsync(roomId);
+
+                foreach (var connId in connectionsInRoom.Keys)
+                {
+                    if (connectionRoomMap.ContainsKey(connId))
+                    {
+                        connectionRoomMap[connId] = roomId;
+                    }
+                }
+            }
+
+            var result = connectionRoomMap
+                .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+                .Select(kvp => new ConnectionWithRoomDto
+                {
+                    ConnectionId = kvp.Key,
+                    RoomId = kvp.Value
+                })
+                .ToList();
+
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Close a specific client session (connection).
         /// This will disconnect the client and remove it from any rooms.
         /// </summary>
@@ -154,6 +199,16 @@ namespace Altruist.Dashboard
     public sealed class ConnectionDto
     {
         public string ConnectionId { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Represents a connection with its associated room (if any).
+    /// Used by the "all connections" dashboard endpoint.
+    /// </summary>
+    public sealed class ConnectionWithRoomDto
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public string? RoomId { get; set; }
     }
 
     #endregion

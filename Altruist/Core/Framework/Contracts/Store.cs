@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,12 +32,11 @@ public interface IConnectionStore : ICleanUp
     Task<ICursor<AltruistConnection>> GetAllConnectionsAsync();
     Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync();
     Task<IEnumerable<string>> GetAllConnectionIdsAsync();
-
     Task<RoomPacket?> GetRoomAsync(string roomId);
     Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
     Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
     Task<RoomPacket> FindAvailableRoomAsync();
-    Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId);
+    Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId);
     Task<RoomPacket?> FindRoomForClientAsync(string clientId);
     Task<RoomPacket> CreateRoomAsync();
     Task SaveRoomAsync(RoomPacket room);
@@ -225,7 +224,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return room;
     }
 
-    public virtual async Task<RoomPacket?> AddClientToRoomAsync(string connectionId, string roomId)
+    public virtual async Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId)
     {
         var room = await GetRoomAsync(roomId);
         if (room == null)

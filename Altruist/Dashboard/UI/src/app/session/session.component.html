@@ -137,4 +137,64 @@
       } }
     </section>
   </section>
+
+  <!-- All connections panel (always visible, even if there are 0 rooms) -->
+  <section class="session-panel session-panel--all-connections">
+    <header class="panel-header">
+      <h2>All Connections</h2>
+      <span class="panel-meta">
+        @if (isLoading) { Loading… } @else {
+        {{ allConnections.length }} connection(s) }
+      </span>
+    </header>
+
+    @if (!isLoading && allConnections.length === 0) {
+    <div class="panel-empty">No active connections.</div>
+    } @else {
+    <div class="table-wrapper">
+      <table class="session-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Connection ID</th>
+            <th>Room</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (conn of allConnections; track conn.connectionId; let i = $index)
+          {
+          <tr>
+            <td>{{ i + 1 }}</td>
+            <td>
+              <code class="conn-id">
+                {{ conn.connectionId }}
+              </code>
+            </td>
+            <td>
+              @if (conn.roomId) {
+              <span class="room-id">
+                {{ conn.roomId }}
+              </span>
+              } @else {
+              <span class="badge">No room</span>
+              }
+            </td>
+            <td class="col-actions">
+              <button
+                class="btn btn-link btn-link--danger"
+                type="button"
+                (click)="onCloseSession(conn)"
+                [disabled]="isMutating"
+              >
+                Close session
+              </button>
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+  </section>
 </div>
