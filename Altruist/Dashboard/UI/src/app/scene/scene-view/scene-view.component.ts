@@ -20,6 +20,7 @@ export class SceneViewComponent implements OnInit {
   worlds: WorldSummary[] = [];
   selectedWorld: WorldSummary | null = null;
   selectedWorldObjects: WorldObjectDto[] = [];
+  selectedObject: WorldObjectDto | null = null;
 
   autoUpdate = false; // future use
 
@@ -58,19 +59,28 @@ export class SceneViewComponent implements OnInit {
   onSelectWorld(world: WorldSummary): void {
     this.selectedWorld = world;
     this.isLoading = true;
+    this.selectedObject = null;
 
     this.worldService.getWorldObjects(world.index).subscribe({
       next: (objects) => {
         this.selectedWorldObjects = objects;
         this.isLoading = false;
         this.hasData = objects.length > 0;
+
+        // optionally auto-focus first object
+        this.selectedObject = objects[0] ?? null;
       },
       error: () => {
         this.selectedWorldObjects = [];
+        this.selectedObject = null;
         this.isLoading = false;
         this.hasData = false;
       },
     });
+  }
+
+  onSelectObject(obj: WorldObjectDto): void {
+    this.selectedObject = obj;
   }
 
   get statusHint(): string {

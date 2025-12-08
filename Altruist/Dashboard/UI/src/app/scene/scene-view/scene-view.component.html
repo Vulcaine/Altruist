@@ -9,7 +9,7 @@
         Refresh
       </button>
       <button class="btn btn-primary" type="button" [class.is-on]="autoUpdate">
-        Auto-Update: {{ autoUpdate ? "On" : "Off" }}
+        Auto-Update: {{ autoUpdate ? 'On' : 'Off' }}
       </button>
     </div>
   </header>
@@ -31,7 +31,7 @@
             <div class="world-item-header">
               <span class="world-item-index">#{{ world.index }}</span>
               <span class="world-item-name">
-                {{ world.name || "Unnamed" }}
+                {{ world.name || 'Unnamed' }}
               </span>
             </div>
 
@@ -40,6 +40,32 @@
               {{ world.objectCount }}
             </div>
           </button>
+
+          <!-- Expanded object list for selected world -->
+          @if (world === selectedWorld && selectedWorldObjects.length > 0) {
+          <ul class="world-object-list">
+            @for (obj of selectedWorldObjects; track obj.instanceId) {
+            <li class="world-object-item">
+              <button type="button" class="world-object-button" (click)="onSelectObject(obj)"
+                [class.world-object-button--active]="obj === selectedObject">
+                <div class="world-object-line">
+                  <span class="world-object-name">
+                    {{ obj.archetype || 'Object' }}
+                  </span>
+                  <span class="world-object-id">
+                    #{{ obj.instanceId.slice(0, 8) }}
+                  </span>
+                </div>
+                <div class="world-object-pos">
+                  ({{ obj.transform.position.x }},
+                  {{ obj.transform.position.y }},
+                  {{ obj.transform.position.z }})
+                </div>
+              </button>
+            </li>
+            }
+          </ul>
+          }
         </li>
         }
       </ul>
@@ -59,7 +85,8 @@
         @if (!selectedWorld || isLoading) {
         <app-globe-scene></app-globe-scene>
         } @else {
-        <app-world-scene [world]="selectedWorld" [objects]="selectedWorldObjects" [isLoading]="isLoading" />
+        <app-world-scene [world]="selectedWorld" [objects]="selectedWorldObjects" [isLoading]="isLoading"
+          [selectedObject]="selectedObject" />
         }
       </div>
     </section>

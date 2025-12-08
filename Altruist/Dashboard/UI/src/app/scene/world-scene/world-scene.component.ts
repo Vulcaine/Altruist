@@ -25,6 +25,7 @@ export class WorldSceneComponent
   @Input() world: WorldSummary | null = null;
   @Input() objects: WorldObjectDto[] = [];
   @Input() isLoading = false;
+  @Input() selectedObject: WorldObjectDto | null = null;
 
   @ViewChild('viewport')
   viewportRef?: ElementRef<HTMLDivElement>;
@@ -39,7 +40,6 @@ export class WorldSceneComponent
   private hasThreeInitialized = false;
   private viewInitialized = false;
 
-  // free-fly camera state
   private keys: Record<string, boolean> = {};
   private yaw = 0;
   private pitch = -0.3; // fixed slight downward tilt
@@ -58,6 +58,15 @@ export class WorldSceneComponent
 
     if (this.scene && changes['objects'] && !changes['objects'].firstChange) {
       this.rebuildColliders();
+    }
+
+    if (
+      this.scene &&
+      this.camera &&
+      changes['selectedObject'] &&
+      this.selectedObject
+    ) {
+      this.focusOnObject(this.selectedObject);
     }
   }
 
@@ -153,7 +162,6 @@ export class WorldSceneComponent
     const moveSpeed = 80;
     const turnSpeed = 1.5; // radians per second
 
-    // Q/E rotate yaw
     if (this.keys['q']) {
       this.yaw += turnSpeed * dt; // turn left
     }
@@ -181,9 +189,6 @@ export class WorldSceneComponent
     if (this.keys['s']) vel.sub(forward);
     if (this.keys['a']) vel.sub(right);
     if (this.keys['d']) vel.add(right);
-    // optional vertical movement with Z/X if you want later:
-    // if (this.keys['z']) vel.sub(up);
-    // if (this.keys['x']) vel.add(up);
 
     if (vel.lengthSq() > 0) {
       vel.normalize().multiplyScalar(moveSpeed * dt);
@@ -255,17 +260,21 @@ export class WorldSceneComponent
     this.collidersGroup = group;
 
     if (this.objects.length > 0) {
-      this.focusOnFirstObject();
+      // prefer focusing selected object if present
+      if (this.selectedObject) {
+        this.focusOnObject(this.selectedObject);
+      } else {
+        this.focusOnObject(this.objects[0]);
+      }
     } else {
       this.fitCameraToGroup();
     }
   }
 
-  private focusOnFirstObject(): void {
-    if (!this.camera || this.objects.length === 0) return;
+  private focusOnObject(obj: WorldObjectDto): void {
+    if (!this.camera) return;
 
-    const first = this.objects[0];
-    const t = first.transform;
+    const t = obj.transform;
 
     const center = new THREE.Vector3(t.position.x, t.position.y, t.position.z);
 

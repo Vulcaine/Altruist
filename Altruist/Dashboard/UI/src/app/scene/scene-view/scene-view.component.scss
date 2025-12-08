@@ -98,6 +98,69 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
+/* nested object list under selected world */
+.world-object-list {
+  list-style: none;
+  padding: 4px 0 0 0;
+  margin: 4px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.world-object-item {
+  margin: 0;
+}
+
+.world-object-button {
+  width: 100%;
+  border: none;
+  border-radius: 0.4rem;
+  padding: 4px 8px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  text-align: left;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0.9;
+  transition: background 120ms ease, opacity 120ms ease, transform 80ms ease;
+}
+
+.world-object-button:hover {
+  background: #111827;
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.world-object-button--active {
+  background: rgba(37, 99, 235, 0.85);
+  opacity: 1;
+}
+
+.world-object-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.world-object-name {
+  font-weight: 500;
+}
+
+.world-object-id {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.world-object-pos {
+  font-size: 10px;
+  color: #6b7280;
+}
+
 .btn {
   border-radius: 999px;
   padding: 6px 12px;
@@ -159,6 +222,12 @@
   flex: 1;
   min-height: 0;
   display: flex;
+
+  /* make inner components (globe/world) fill the canvas */
+  >* {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
 }
 
 .canvas-toolbar {
