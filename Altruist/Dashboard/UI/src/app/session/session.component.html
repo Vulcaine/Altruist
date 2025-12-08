@@ -157,6 +157,7 @@
           <tr>
             <th>#</th>
             <th>Connection ID</th>
+            <th>IP address</th>
             <th>Room</th>
             <th class="col-actions">Actions</th>
           </tr>
@@ -172,6 +173,15 @@
               </code>
             </td>
             <td>
+              @if (conn.ipAddress) {
+              <code class="conn-id">
+                {{ conn.ipAddress }}
+              </code>
+              } @else {
+              <span class="badge">Unknown</span>
+              }
+            </td>
+            <td>
               @if (conn.roomId) {
               <span class="room-id">
                 {{ conn.roomId }}
@@ -182,7 +192,7 @@
             </td>
             <td class="col-actions">
               <button
-                class="btn btn-link btn-link--danger"
+                class="btn btn-solid-danger"
                 type="button"
                 (click)="onCloseSession(conn)"
                 [disabled]="isMutating"

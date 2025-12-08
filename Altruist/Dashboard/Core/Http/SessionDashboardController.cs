@@ -101,13 +101,18 @@ namespace Altruist.Dashboard
             }
 
             var result = connectionRoomMap
-                .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
-                .Select(kvp => new ConnectionWithRoomDto
+            .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+            .Select(kvp =>
+            {
+                var conn = allConnectionsDict[kvp.Key];
+                return new ConnectionWithRoomDto
                 {
                     ConnectionId = kvp.Key,
-                    RoomId = kvp.Value
-                })
-                .ToList();
+                    RoomId = kvp.Value,
+                    IpAddress = conn.RemoteAddress
+                };
+            })
+            .ToList();
 
             return Ok(result);
         }
@@ -209,6 +214,7 @@ namespace Altruist.Dashboard
     {
         public string ConnectionId { get; set; } = string.Empty;
         public string? RoomId { get; set; }
+        public string? IpAddress { get; set; }
     }
 
     #endregion

@@ -24,6 +24,7 @@ public interface IAltruistConnection : IStoredModel
 {
     AuthDetails? AuthDetails { get; }
     string ConnectionId { get; }
+    string RemoteAddress { get; }
     Task SendAsync(byte[] data);
     Task<byte[]> ReceiveAsync(CancellationToken cancellationToken);
     Task CloseAsync();
@@ -35,20 +36,23 @@ public interface IAltruistConnection : IStoredModel
 
 public class AltruistConnection : StoredModel, IAltruistConnection
 {
-    [JsonIgnore] // Not serialized
+    [JsonIgnore]
     public AuthDetails? AuthDetails { get; set; }
 
-    [JsonPropertyName("Type")]
+    [JsonPropertyName("remoteAddress")]
+    public string RemoteAddress { get; set; } = string.Empty;
+
+    [JsonPropertyName("type")]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public override string Type { get => GetType().Name; set => Type = value; }
 
-    [JsonPropertyName("ConnectionId")]
+    [JsonPropertyName("connectionId")]
     public string ConnectionId { get; set; } = string.Empty;
 
-    [JsonPropertyName("IsConnected")]
+    [JsonPropertyName("isConnected")]
     public virtual bool IsConnected { get; set; }
 
-    [JsonPropertyName("LastActivity")]
+    [JsonPropertyName("lastActivity")]
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
     public override string StorageId { get; set; } = Guid.NewGuid().ToString();
 

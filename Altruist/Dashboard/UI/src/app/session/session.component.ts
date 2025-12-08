@@ -5,6 +5,7 @@ import { forkJoin } from 'rxjs';
 
 interface ConnectionDto {
   connectionId: string;
+  ipAddress?: string | null;
   roomId?: string | null;
 }
 

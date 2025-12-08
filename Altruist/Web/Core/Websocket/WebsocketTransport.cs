@@ -3,7 +3,7 @@ using Altruist.Security;
 using Altruist.Transport;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http; 
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -157,8 +157,9 @@ public sealed class WebSocketTransport : ITransport
             var manager = sp.GetRequiredService<IConnectionManager>();
             var clientId = Guid.NewGuid().ToString("N");
             var socket = await context.WebSockets.AcceptWebSocketAsync();
+            var remoteIp = context.Connection.RemoteIpAddress?.ToString();
 
-            var connection = new WebSocketConnection(socket, clientId, authDetails);
+            var connection = new WebSocketConnection(socket, remoteIp ?? "", clientId, authDetails);
             await manager.HandleConnection(connection, context.Request.Path, clientId);
         });
     }
