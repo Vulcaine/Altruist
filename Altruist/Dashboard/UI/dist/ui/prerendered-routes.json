@@ -1,0 +1,6 @@
+{
+  "routes": {
+    "/altruist/dashboard/scene": {},
+    "/altruist/dashboard/sessions": {}
+  }
+}
