@@ -18,6 +18,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist;
 
+public static class StoreConstants
+{
+    public static string WaitingRoomId = "waiting_room";
+}
+
 public interface ICleanUp
 {
     Task Cleanup();
@@ -216,11 +221,17 @@ public abstract class AbstractConnectionStore : IConnectionStore
 
     public virtual async Task<RoomPacket> CreateRoomAsync(string? roomId = null)
     {
+
         var roomName = roomId ?? $"{Guid.NewGuid()}";
+        var existingRoom = await GetRoomAsync(roomName);
+
+        if (existingRoom != null)
+        {
+            return existingRoom;
+        }
+
         var room = new RoomPacket(roomName);
-
         await _memoryCache.SaveAsync(roomName, room);
-
         return room;
     }
 
@@ -286,6 +297,8 @@ public abstract class AbstractConnectionStore : IConnectionStore
         {
             _logger.LogInformation("Inactive connections have been removed from memory.");
         }
+
+        await CreateRoomAsync(StoreConstants.WaitingRoomId);
     }
 
     public virtual Task<bool> IsConnectionExistsAsync(string connectionId)

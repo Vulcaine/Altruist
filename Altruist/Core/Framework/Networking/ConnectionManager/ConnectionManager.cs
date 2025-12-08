@@ -30,7 +30,6 @@ namespace Altruist
     [ConditionalOnConfig("altruist:server:transport")]
     public class ConnectionManager : IConnectionManager
     {
-        private static string WaitingRoomId => "waiting_room";
         private readonly ICodec _codec;
         private readonly List<IInterceptor> _interceptors = new();
         private readonly ISocketManager _socketManager;
@@ -57,7 +56,7 @@ namespace Altruist
 
         private void Initialize()
         {
-            CreateRoomAsync(WaitingRoomId).GetAwaiter();
+            CreateRoomAsync(StoreConstants.WaitingRoomId).GetAwaiter();
         }
 
         public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
@@ -101,7 +100,7 @@ namespace Altruist
 
         public async Task HandleConnection(AltruistConnection connection, string @event, string clientId)
         {
-            await _socketManager.AddConnectionAsync(clientId, connection, WaitingRoomId);
+            await _socketManager.AddConnectionAsync(clientId, connection, StoreConstants.WaitingRoomId);
 
             var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
