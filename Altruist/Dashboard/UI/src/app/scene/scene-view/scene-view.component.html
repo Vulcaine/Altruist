@@ -18,25 +18,28 @@
     <aside class="scene-sidebar">
       <h2>Worlds</h2>
 
-      @if (isLoading && worlds.length === 0) {
+      @if (isLoadingWorlds && worlds.length === 0) {
       <div>Loading worlds...</div>
-      } @else if (!isLoading && worlds.length === 0) {
+      } @else if (!isLoadingWorlds && worlds.length === 0) {
       <div>No worlds available.</div>
       } @else {
       <ul class="world-list">
         @for (world of worlds; track world.index) {
-        <li
-          class="world-item"
-          [class.world-item--active]="world === selectedWorld"
-          (click)="onSelectWorld(world)"
-        >
-          <div class="world-name">
-            #{{ world.index }} &mdash; {{ world.name || "Unnamed" }}
-          </div>
-          <div class="world-meta">
-            Partitions: {{ world.partitionCount }} · Objects:
-            {{ world.objectCount }}
-          </div>
+        <li class="world-item">
+          <button type="button" class="world-item-button" (click)="onSelectWorld(world)"
+            [class.world-item-button--active]="world === selectedWorld">
+            <div class="world-item-header">
+              <span class="world-item-index">#{{ world.index }}</span>
+              <span class="world-item-name">
+                {{ world.name || "Unnamed" }}
+              </span>
+            </div>
+
+            <div class="world-item-meta">
+              Partitions: {{ world.partitionCount }} · Objects:
+              {{ world.objectCount }}
+            </div>
+          </button>
         </li>
         }
       </ul>
@@ -53,16 +56,10 @@
       </div>
 
       <div class="canvas-body">
-        <!-- Always visible: default / loading globe -->
+        @if (!selectedWorld || isLoading) {
         <app-globe-scene></app-globe-scene>
-
-        <!-- Overlay world details when a world is selected -->
-        @if (selectedWorld) {
-        <app-world-scene
-          [world]="selectedWorld"
-          [objects]="selectedWorldObjects"
-          [isLoading]="isLoading"
-        />
+        } @else {
+        <app-world-scene [world]="selectedWorld" [objects]="selectedWorldObjects" [isLoading]="isLoading" />
         }
       </div>
     </section>

@@ -1,25 +1,359 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
-import { GlobeSceneComponent } from '../globe-scene/globe-scene.component';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  Input,
+  OnChanges,
+  OnDestroy,
+  SimpleChanges,
+  ViewChild,
+} from '@angular/core';
+import * as THREE from 'three';
 import { WorldObjectDto, WorldSummary } from '../models/world.model';
 
 @Component({
   selector: 'app-world-scene',
   standalone: true,
-  imports: [CommonModule, GlobeSceneComponent],
+  imports: [CommonModule],
   templateUrl: './world-scene.component.html',
   styleUrl: './world-scene.component.scss',
 })
-export class WorldSceneComponent {
+export class WorldSceneComponent
+  implements AfterViewInit, OnChanges, OnDestroy
+{
   @Input() world: WorldSummary | null = null;
   @Input() objects: WorldObjectDto[] = [];
   @Input() isLoading = false;
 
-  get hasWorld(): boolean {
-    return !!this.world;
+  @ViewChild('viewport') // static = false (default)
+  viewportRef?: ElementRef<HTMLDivElement>;
+
+  private scene?: THREE.Scene;
+  private camera?: THREE.PerspectiveCamera;
+  private renderer?: THREE.WebGLRenderer;
+  private frameId: number | null = null;
+
+  private collidersGroup: THREE.Group | null = null;
+
+  private hasThreeInitialized = false;
+  private viewInitialized = false;
+
+  // free-fly camera state
+  private keys: Record<string, boolean> = {};
+  private yaw = 0;
+  private pitch = -0.3;
+  private isMouseLook = false;
+  private lastMouseX = 0;
+  private lastMouseY = 0;
+
+  private lastFrameTime = performance.now();
+
+  ngAfterViewInit(): void {
+    this.viewInitialized = true;
+    this.tryInitThree();
   }
 
-  get objectCount(): number {
-    return this.objects.length;
+  ngOnChanges(changes: SimpleChanges): void {
+    // When world becomes non-null after init, try to spin up Three.js
+    if (changes['world'] && this.world && this.viewInitialized) {
+      this.tryInitThree();
+    }
+
+    if (this.scene && changes['objects'] && !changes['objects'].firstChange) {
+      this.rebuildColliders();
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (this.frameId !== null) {
+      cancelAnimationFrame(this.frameId);
+    }
+    if (this.renderer) {
+      this.renderer.dispose();
+    }
+
+    window.removeEventListener('resize', this.onWindowResize);
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+
+    if (this.renderer?.domElement) {
+      this.renderer.domElement.removeEventListener(
+        'mousedown',
+        this.onMouseDown
+      );
+      window.removeEventListener('mouseup', this.onMouseUp);
+      window.removeEventListener('mousemove', this.onMouseMove);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Initialization guard
+  // ────────────────────────────────────────────────────────────────
+
+  private tryInitThree(): void {
+    if (this.hasThreeInitialized) return;
+    if (!this.world) return;
+    if (!this.viewportRef) return;
+
+    this.initThree();
+    this.rebuildColliders();
+    this.startRenderingLoop();
+    this.hasThreeInitialized = true;
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Three.js setup
+  // ────────────────────────────────────────────────────────────────
+
+  private initThree(): void {
+    const container = this.viewportRef!.nativeElement;
+    const width = container.clientWidth || container.offsetWidth || 640;
+    const height = container.clientHeight || container.offsetHeight || 480;
+
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x020617);
+
+    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
+    this.camera.position.set(0, 150, 250);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+    this.scene.add(ambient);
+
+    const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+    dir.position.set(100, 200, 100);
+    this.scene.add(dir);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(width, height);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    container.innerHTML = '';
+    container.appendChild(this.renderer.domElement);
+
+    window.addEventListener('resize', this.onWindowResize);
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+
+    this.renderer.domElement.addEventListener('mousedown', this.onMouseDown);
+    window.addEventListener('mouseup', this.onMouseUp);
+    window.addEventListener('mousemove', this.onMouseMove);
+  }
+
+  private onWindowResize = () => {
+    if (!this.renderer || !this.camera || !this.viewportRef) return;
+
+    const container = this.viewportRef.nativeElement;
+    const width = container.clientWidth || container.offsetWidth || 640;
+    const height = container.clientHeight || container.offsetHeight || 480;
+
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height);
+  };
+
+  // ────────────────────────────────────────────────────────────────
+  // Input handling (WASD + mouse look with Ctrl)
+  // ────────────────────────────────────────────────────────────────
+
+  private onKeyDown = (event: KeyboardEvent) => {
+    this.keys[event.key.toLowerCase()] = true;
+  };
+
+  private onKeyUp = (event: KeyboardEvent) => {
+    this.keys[event.key.toLowerCase()] = false;
+  };
+
+  private onMouseDown = (event: MouseEvent) => {
+    if (event.button === 0 && event.ctrlKey) {
+      this.isMouseLook = true;
+      this.lastMouseX = event.clientX;
+      this.lastMouseY = event.clientY;
+    }
+  };
+
+  private onMouseUp = () => {
+    this.isMouseLook = false;
+  };
+
+  private onMouseMove = (event: MouseEvent) => {
+    if (!this.isMouseLook) return;
+
+    const dx = event.clientX - this.lastMouseX;
+    const dy = event.clientY - this.lastMouseY;
+    this.lastMouseX = event.clientX;
+    this.lastMouseY = event.clientY;
+
+    const sensitivity = 0.005;
+
+    this.yaw -= dx * sensitivity;
+    this.pitch -= dy * sensitivity;
+
+    const maxPitch = Math.PI / 2 - 0.01;
+    this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
+  };
+
+  private updateCamera(dt: number): void {
+    if (!this.camera) return;
+
+    const moveSpeed = 80;
+
+    const forward = new THREE.Vector3(
+      Math.cos(this.pitch) * Math.sin(this.yaw),
+      Math.sin(this.pitch),
+      Math.cos(this.pitch) * Math.cos(this.yaw)
+    );
+
+    const right = new THREE.Vector3(
+      Math.sin(this.yaw - Math.PI / 2),
+      0,
+      Math.cos(this.yaw - Math.PI / 2)
+    );
+
+    const up = new THREE.Vector3(0, 1, 0);
+
+    const vel = new THREE.Vector3();
+
+    if (this.keys['w']) vel.add(forward);
+    if (this.keys['s']) vel.sub(forward);
+    if (this.keys['a']) vel.sub(right);
+    if (this.keys['d']) vel.add(right);
+    if (this.keys['q']) vel.sub(up);
+    if (this.keys['e']) vel.add(up);
+
+    if (vel.lengthSq() > 0) {
+      vel.normalize().multiplyScalar(moveSpeed * dt);
+      this.camera.position.add(vel);
+    }
+
+    const lookTarget = new THREE.Vector3()
+      .copy(this.camera.position)
+      .add(forward);
+    this.camera.lookAt(lookTarget);
+  }
+
+  private startRenderingLoop(): void {
+    const animate = () => {
+      const now = performance.now();
+      const dt = (now - this.lastFrameTime) / 1000;
+      this.lastFrameTime = now;
+
+      this.updateCamera(dt);
+      this.renderer!.render(this.scene!, this.camera!);
+
+      this.frameId = requestAnimationFrame(animate);
+    };
+    this.frameId = requestAnimationFrame(animate);
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Wireframe colliders
+  // ────────────────────────────────────────────────────────────────
+
+  private rebuildColliders(): void {
+    if (!this.scene) return;
+
+    if (this.collidersGroup) {
+      this.scene.remove(this.collidersGroup);
+      this.collidersGroup.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach((m) => m.dispose());
+        } else if (mesh.material) {
+          mesh.material.dispose();
+        }
+      });
+      this.collidersGroup = null;
+    }
+
+    const group = new THREE.Group();
+
+    for (const obj of this.objects) {
+      const t = obj.transform;
+      const sx = Math.max(0.1, t.size.x * t.scale.x);
+      const sy = Math.max(0.1, t.size.y * t.scale.y);
+      const sz = Math.max(0.1, t.size.z * t.scale.z);
+
+      const geom = new THREE.BoxGeometry(sx, sy, sz);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x22c55e,
+        wireframe: true,
+      });
+
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.set(t.position.x, t.position.y, t.position.z);
+
+      group.add(mesh);
+    }
+
+    this.scene.add(group);
+    this.collidersGroup = group;
+
+    if (this.objects.length > 0) {
+      this.focusOnFirstObject();
+    } else {
+      this.fitCameraToGroup();
+    }
+  }
+
+  private focusOnFirstObject(): void {
+    if (!this.camera || this.objects.length === 0) return;
+
+    const first = this.objects[0];
+    const t = first.transform;
+
+    const center = new THREE.Vector3(t.position.x, t.position.y, t.position.z);
+
+    const size = new THREE.Vector3(
+      t.size.x * t.scale.x,
+      t.size.y * t.scale.y,
+      t.size.z * t.scale.z
+    );
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const offset = maxDim * 3 || 50;
+
+    this.camera.position.set(
+      center.x + offset,
+      center.y + offset * 0.5,
+      center.z + offset
+    );
+
+    const dir = new THREE.Vector3()
+      .subVectors(center, this.camera.position)
+      .normalize();
+
+    this.pitch = Math.asin(dir.y);
+    this.yaw = Math.atan2(dir.x, dir.z);
+
+    this.camera.lookAt(center);
+  }
+
+  private fitCameraToGroup(): void {
+    if (!this.camera || !this.collidersGroup) return;
+
+    const box = new THREE.Box3().setFromObject(this.collidersGroup);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    if (!isFinite(size.x) || !isFinite(size.y) || !isFinite(size.z)) return;
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = (this.camera.fov * Math.PI) / 180;
+    const distance = maxDim / (2 * Math.tan(fov / 2)) + maxDim;
+
+    this.camera.position.set(
+      center.x + distance * 0.5,
+      center.y + distance * 0.5,
+      center.z + distance
+    );
+
+    const forward = new THREE.Vector3()
+      .subVectors(center, this.camera.position)
+      .normalize();
+    this.pitch = Math.asin(forward.y);
+    this.yaw = Math.atan2(forward.x, forward.z);
+
+    this.camera.lookAt(center);
   }
 }

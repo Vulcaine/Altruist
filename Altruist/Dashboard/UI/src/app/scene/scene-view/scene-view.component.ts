@@ -14,6 +14,7 @@ import { WorldSceneComponent } from '../world-scene/world-scene.component';
 })
 export class SceneViewComponent implements OnInit {
   isLoading = false;
+  isLoadingWorlds = false;
   hasData = false;
 
   worlds: WorldSummary[] = [];
@@ -29,37 +30,32 @@ export class SceneViewComponent implements OnInit {
   }
 
   private loadWorlds(): void {
-    this.isLoading = true;
+    this.isLoadingWorlds = true;
+
     this.worldService.getWorlds().subscribe({
       next: (worlds) => {
         this.worlds = worlds;
-        this.isLoading = false;
-        this.hasData = this.worlds.length > 0;
+        this.isLoadingWorlds = false;
 
-        // Optionally auto-select first world
-        if (this.worlds.length > 0) {
+        if (this.worlds.length > 0 && !this.selectedWorld) {
           this.onSelectWorld(this.worlds[0]);
         }
       },
       error: () => {
-        this.isLoading = false;
-        this.hasData = false;
+        this.isLoadingWorlds = false;
       },
     });
   }
 
   onRefresh(): void {
     if (this.selectedWorld) {
-      this.onSelectWorld(this.selectedWorld, { keepSelection: true });
+      this.onSelectWorld(this.selectedWorld);
     } else {
       this.loadWorlds();
     }
   }
 
-  onSelectWorld(
-    world: WorldSummary,
-    options: { keepSelection?: boolean } = {}
-  ): void {
+  onSelectWorld(world: WorldSummary): void {
     this.selectedWorld = world;
     this.isLoading = true;
 
@@ -67,7 +63,7 @@ export class SceneViewComponent implements OnInit {
       next: (objects) => {
         this.selectedWorldObjects = objects;
         this.isLoading = false;
-        this.hasData = true;
+        this.hasData = objects.length > 0;
       },
       error: () => {
         this.selectedWorldObjects = [];
@@ -78,8 +74,9 @@ export class SceneViewComponent implements OnInit {
   }
 
   get statusHint(): string {
-    if (this.isLoading) return 'Loading...';
-    if (!this.hasData) return 'No data available';
+    if (this.isLoading) return 'Loading world...';
+    if (!this.selectedWorld) return 'Select a world';
+    if (!this.hasData) return 'No objects in this world';
     return 'Live world data';
   }
 }

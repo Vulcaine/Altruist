@@ -17,7 +17,7 @@ altruist:
         provider: json
       config:
         path: "ws"
-  
+
   persistence:
     cache:
       provider: "inmemory"
@@ -28,3 +28,12 @@ altruist:
       frequency: 30
       unit: "ticks"
       gravity: { x: 0, y: -9.81 }
+    worlds:
+      partitioner: { width: 256, height: 256, depth: 256 }
+      items:
+        - index: 0
+          id: "world1"
+          data-path: "Resources/world.json"
+          size: { x: 100, y: 100, z: 100 }
+          gravity: { x: 0, y: -9.81 }
+          position: { x: 0, y: 0, z: 0 }
