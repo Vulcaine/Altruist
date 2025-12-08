@@ -179,12 +179,8 @@ public abstract class AbstractConnectionStore : IConnectionStore
 
     public virtual async Task<RoomPacket?> GetRoomAsync(string roomId)
     {
-        var room = await _memoryCache.GetAsync<RoomPacket>(roomId);
-        if (room == null)
-        {
-            return new RoomPacket(roomId);
-        }
-        return room;
+        return await _memoryCache.GetAsync<RoomPacket>(roomId);
+
     }
 
     public virtual async Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
