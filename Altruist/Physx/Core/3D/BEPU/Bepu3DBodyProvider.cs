@@ -204,14 +204,13 @@ namespace Altruist.Physx.ThreeD
 
         private static Mesh BuildMeshFromHeightfield(HeightfieldData hf, BufferPool pool)
         {
-            int width = hf.Width;   // X dimension (samples along X)
-            int length = hf.Height;  // Z dimension (samples along Z)
+            int width = hf.Width;
+            int length = hf.Height;
 
             float cellSizeX = hf.CellSizeX;
             float cellSizeZ = hf.CellSizeZ;
-            float heightScale = hf.HeightScale;
+            // float heightScale = hf.HeightScale; // not used here
 
-            // Each quad (x,z) -> (x+1,z+1) becomes 2 triangles.
             int quadCount = (width - 1) * (length - 1);
             int triangleCount = quadCount * 2;
 
@@ -223,24 +222,22 @@ namespace Altruist.Physx.ThreeD
             {
                 for (int x = 0; x < width - 1; x++)
                 {
-                    // Sample heights (x,z), (x+1,z), (x,z+1), (x+1,z+1)
-                    float h00 = hf.Heights[x, z] * heightScale;
-                    float h10 = hf.Heights[x + 1, z] * heightScale;
-                    float h01 = hf.Heights[x, z + 1] * heightScale;
-                    float h11 = hf.Heights[x + 1, z + 1] * heightScale;
+                    // Heights are already world-space values.
+                    float h00 = hf.Heights[x, z];
+                    float h10 = hf.Heights[x + 1, z];
+                    float h01 = hf.Heights[x, z + 1];
+                    float h11 = hf.Heights[x + 1, z + 1];
 
                     var v00 = new Vector3(x * cellSizeX, h00, z * cellSizeZ);
                     var v10 = new Vector3((x + 1) * cellSizeX, h10, z * cellSizeZ);
                     var v01 = new Vector3(x * cellSizeX, h01, (z + 1) * cellSizeZ);
                     var v11 = new Vector3((x + 1) * cellSizeX, h11, (z + 1) * cellSizeZ);
 
-                    // First triangle: v00, v01, v10
                     ref var t0 = ref triangles[triIndex++];
                     t0.A = v00;
                     t0.B = v01;
                     t0.C = v10;
 
-                    // Second triangle: v10, v01, v11
                     ref var t1 = ref triangles[triIndex++];
                     t1.A = v10;
                     t1.B = v01;

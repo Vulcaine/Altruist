@@ -326,16 +326,15 @@ export class WorldSceneComponent
     const height = hf.height;
     const cellSizeX = hf.cellSizeX;
     const cellSizeZ = hf.cellSizeZ;
-    const heightScale = hf.heightScale;
 
-    // Create vertex buffer: one vertex per (x,z) sample
+    // Heights are already in world units (0..size.y), so don't apply heightScale again.
     const vertCount = width * height;
     const positions = new Float32Array(vertCount * 3);
 
     let idx = 0;
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
-        const h = hf.heights[x][z] * heightScale;
+        const h = hf.heights[x][z]; // <-- no * hf.heightScale
 
         positions[idx++] = x * cellSizeX;
         positions[idx++] = h;
@@ -343,7 +342,6 @@ export class WorldSceneComponent
       }
     }
 
-    // Indices for triangles (same layout as server Mesh builder)
     const indices: number[] = [];
     for (let z = 0; z < height - 1; z++) {
       for (let x = 0; x < width - 1; x++) {
@@ -352,9 +350,7 @@ export class WorldSceneComponent
         const i01 = (z + 1) * width + x;
         const i11 = (z + 1) * width + (x + 1);
 
-        // First triangle
         indices.push(i00, i01, i10);
-        // Second triangle
         indices.push(i10, i01, i11);
       }
     }
