@@ -160,8 +160,10 @@ export class WorldSceneComponent
     if (!this.camera) return;
 
     const moveSpeed = 80;
-    const turnSpeed = 1.5; // radians per second
+    const turnSpeed = 1.5; // yaw speed (Q/E), radians per second
+    const pitchSpeed = 1.2; // pitch speed (R/F), radians per second
 
+    // Yaw: turn left/right with Q/E
     if (this.keys['q']) {
       this.yaw += turnSpeed * dt; // turn left
     }
@@ -169,6 +171,20 @@ export class WorldSceneComponent
       this.yaw -= turnSpeed * dt; // turn right
     }
 
+    // Pitch: look up/down with R/F
+    if (this.keys['r']) {
+      this.pitch += pitchSpeed * dt; // look up
+    }
+    if (this.keys['f']) {
+      this.pitch -= pitchSpeed * dt; // look down
+    }
+
+    // Clamp pitch to avoid flipping over
+    const maxPitch = Math.PI / 2 - 0.1; // ~±80 degrees
+    if (this.pitch > maxPitch) this.pitch = maxPitch;
+    if (this.pitch < -maxPitch) this.pitch = -maxPitch;
+
+    // Recompute forward/right vectors from yaw + pitch
     const forward = new THREE.Vector3(
       Math.cos(this.pitch) * Math.sin(this.yaw),
       Math.sin(this.pitch),
@@ -180,8 +196,6 @@ export class WorldSceneComponent
       0,
       Math.cos(this.yaw - Math.PI / 2)
     );
-
-    const up = new THREE.Vector3(0, 1, 0);
 
     const vel = new THREE.Vector3();
 
