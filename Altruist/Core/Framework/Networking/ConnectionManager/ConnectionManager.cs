@@ -30,6 +30,7 @@ namespace Altruist
     [ConditionalOnConfig("altruist:server:transport")]
     public class ConnectionManager : IConnectionManager
     {
+        private static string WaitingRoomId => "waiting_room";
         private readonly ICodec _codec;
         private readonly List<IInterceptor> _interceptors = new();
         private readonly ISocketManager _socketManager;
@@ -50,6 +51,13 @@ namespace Altruist
             _engine = engineCore;
             _logger = loggerFactory.CreateLogger(GetType());
             _idleTimeout = timeout;
+
+            Initialize();
+        }
+
+        private void Initialize()
+        {
+            CreateRoomAsync(WaitingRoomId).GetAwaiter();
         }
 
         public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
@@ -93,7 +101,7 @@ namespace Altruist
 
         public async Task HandleConnection(AltruistConnection connection, string @event, string clientId)
         {
-            await _socketManager.AddConnectionAsync(clientId, connection);
+            await _socketManager.AddConnectionAsync(clientId, connection, WaitingRoomId);
 
             var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
@@ -254,7 +262,7 @@ namespace Altruist
             return await _socketManager.GetConnectionsInRoomAsync(roomId);
         }
 
-        public async Task<RoomPacket> FindAvailableRoomAsync()
+        public async Task<RoomPacket?> FindAvailableRoomAsync()
         {
             return await _socketManager.FindAvailableRoomAsync();
         }
@@ -264,9 +272,9 @@ namespace Altruist
             return await _socketManager.FindRoomForClientAsync(clientId);
         }
 
-        public async Task<RoomPacket> CreateRoomAsync()
+        public async Task<RoomPacket> CreateRoomAsync(string? roomId = null)
         {
-            return await _socketManager.CreateRoomAsync();
+            return await _socketManager.CreateRoomAsync(roomId);
         }
 
         public Task DeleteRoomAsync(string roomName)

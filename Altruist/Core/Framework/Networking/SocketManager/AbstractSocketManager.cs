@@ -3,8 +3,8 @@ namespace Altruist;
 public interface ISocketManager
 {
     Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
-    Task<RoomPacket> FindAvailableRoomAsync();
-    Task<RoomPacket> CreateRoomAsync();
+    Task<RoomPacket?> FindAvailableRoomAsync();
+    Task<RoomPacket> CreateRoomAsync(string? roomId);
     Task DeleteRoomAsync(string roomName);
     Task RemoveConnectionAsync(string connectionId);
     Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null);
@@ -44,14 +44,14 @@ public class SocketManager : IConnectionStore, ISocketManager
         return await _connectionStore.GetConnectionsInRoomAsync(roomId);
     }
 
-    public virtual async Task<RoomPacket> FindAvailableRoomAsync()
+    public virtual async Task<RoomPacket?> FindAvailableRoomAsync()
     {
         return await _connectionStore.FindAvailableRoomAsync();
     }
 
-    public virtual async Task<RoomPacket> CreateRoomAsync()
+    public virtual async Task<RoomPacket> CreateRoomAsync(string? roomId = null)
     {
-        return await _connectionStore.CreateRoomAsync();
+        return await _connectionStore.CreateRoomAsync(roomId);
     }
 
     public virtual Task DeleteRoomAsync(string roomName)

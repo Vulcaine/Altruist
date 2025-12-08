@@ -36,6 +36,7 @@ namespace Altruist.Web
             ConnectionId = connectionId;
             AuthDetails = authDetails;
             RemoteAddress = remoteAddress ?? "";
+            ConnectedAt = DateTime.UtcNow;
         }
 
         public override async Task SendAsync(byte[] data)

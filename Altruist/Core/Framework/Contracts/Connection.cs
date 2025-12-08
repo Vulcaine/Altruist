@@ -25,6 +25,7 @@ public interface IAltruistConnection : IStoredModel
     AuthDetails? AuthDetails { get; }
     string ConnectionId { get; }
     string RemoteAddress { get; }
+    DateTime ConnectedAt { get; }
     Task SendAsync(byte[] data);
     Task<byte[]> ReceiveAsync(CancellationToken cancellationToken);
     Task CloseAsync();
@@ -38,6 +39,9 @@ public class AltruistConnection : StoredModel, IAltruistConnection
 {
     [JsonIgnore]
     public AuthDetails? AuthDetails { get; set; }
+
+    [JsonPropertyName("connectedAt")]
+    public DateTime ConnectedAt { get; set; }
 
     [JsonPropertyName("remoteAddress")]
     public string RemoteAddress { get; set; } = string.Empty;
@@ -100,9 +104,9 @@ public interface IConnectionManager
     Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync();
     Task<ICursor<AltruistConnection>> GetAllConnectionsAsync();
     Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
-    Task<RoomPacket> FindAvailableRoomAsync();
+    Task<RoomPacket?> FindAvailableRoomAsync();
     Task<RoomPacket?> FindRoomForClientAsync(string clientId);
-    Task<RoomPacket> CreateRoomAsync();
+    Task<RoomPacket> CreateRoomAsync(string? roomId);
     Task DeleteRoomAsync(string roomName);
     Task<RoomPacket?> GetRoomAsync(string roomId);
     Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();

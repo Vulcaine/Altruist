@@ -35,10 +35,10 @@ public interface IConnectionStore : ICleanUp
     Task<RoomPacket?> GetRoomAsync(string roomId);
     Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
     Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
-    Task<RoomPacket> FindAvailableRoomAsync();
+    Task<RoomPacket?> FindAvailableRoomAsync();
     Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId);
     Task<RoomPacket?> FindRoomForClientAsync(string clientId);
-    Task<RoomPacket> CreateRoomAsync();
+    Task<RoomPacket> CreateRoomAsync(string? roomId);
     Task SaveRoomAsync(RoomPacket room);
     Task DeleteRoomAsync(string roomId);
 }
@@ -195,7 +195,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         return rooms;
     }
 
-    public virtual async Task<RoomPacket> FindAvailableRoomAsync()
+    public virtual async Task<RoomPacket?> FindAvailableRoomAsync()
     {
         var cursor = await _memoryCache.GetAllAsync<RoomPacket>();
         foreach (var room in cursor)
@@ -206,7 +206,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
             }
         }
 
-        return await CreateRoomAsync();
+        return null;
     }
 
     public virtual async Task DeleteRoomAsync(string roomId)
@@ -214,26 +214,53 @@ public abstract class AbstractConnectionStore : IConnectionStore
         await _memoryCache.RemoveAndForgetAsync<RoomPacket>(roomId);
     }
 
-    public virtual async Task<RoomPacket> CreateRoomAsync()
+    public virtual async Task<RoomPacket> CreateRoomAsync(string? roomId = null)
     {
-        var roomId = $"{Guid.NewGuid()}";
-        var room = new RoomPacket(roomId);
+        var roomName = roomId ?? $"{Guid.NewGuid()}";
+        var room = new RoomPacket(roomName);
 
-        await _memoryCache.SaveAsync(roomId, room);
+        await _memoryCache.SaveAsync(roomName, room);
 
         return room;
     }
 
     public virtual async Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId)
     {
+        var existingRoomId = await _memoryCache.GetAsync<string>(connectionId);
+        if (!string.IsNullOrEmpty(existingRoomId))
+        {
+            if (string.Equals(existingRoomId, roomId, StringComparison.Ordinal))
+            {
+                return await GetRoomAsync(roomId);
+            }
+
+            var existingRoom = await _memoryCache.GetAsync<RoomPacket>(existingRoomId);
+            if (existingRoom != null)
+            {
+                if (existingRoom.ConnectionIds.Remove(connectionId))
+                {
+                    if (existingRoom.ConnectionIds.Count == 0)
+                    {
+                        await _memoryCache.RemoveAndForgetAsync<RoomPacket>(existingRoomId);
+                    }
+                    else
+                    {
+                        await _memoryCache.SaveAsync(existingRoomId, existingRoom);
+                    }
+                }
+            }
+        }
+
         var room = await GetRoomAsync(roomId);
         if (room == null)
         {
             return null;
         }
+
         room = room.AddConnection(connectionId);
         await SaveRoomAsync(room);
-        await _memoryCache.SaveAsync(connectionId, roomId);
+        await _memoryCache.SaveAsync(connectionId, room.Id);
+
         return room;
     }
 
