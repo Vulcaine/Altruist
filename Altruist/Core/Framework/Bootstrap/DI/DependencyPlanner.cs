@@ -196,25 +196,11 @@ public static class DependencyPlanner
         var factories = _assemblies
             .SelectMany(SafeGetTypes)
             .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IServiceFactory).IsAssignableFrom(t))
-            .SelectMany(t =>
-                t.GetCustomAttributes<ServiceAttribute>()
-                 .Where(sa => (sa.ServiceType ?? t) == typeof(IServiceFactory))
-                 .Select(sa => (impl: t, lifetime: sa.Lifetime)))
-            .Where(x => DependencyResolver.ShouldRegister(x.impl, cfg, log))
+            .Where(x => DependencyResolver.ShouldRegister(x, cfg, log))
             .ToList();
 
-        if (factories.Count == 0)
-        {
-            factories = _assemblies
-                .SelectMany(SafeGetTypes)
-                .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IServiceFactory).IsAssignableFrom(t))
-                .Where(t => DependencyResolver.ShouldRegister(t, cfg, log))
-                .Select(t => (impl: t, lifetime: ServiceLifetime.Singleton))
-                .ToList();
-        }
-
         foreach (var f in factories)
-            DependencyResolver.RegisterPlannedService(services, cfg, log, f.impl, typeof(IServiceFactory), f.lifetime);
+            DependencyResolver.RegisterPlannedService(services, cfg, log, f, typeof(IServiceFactory), ServiceLifetime.Singleton);
     }
 
     /// <summary>
