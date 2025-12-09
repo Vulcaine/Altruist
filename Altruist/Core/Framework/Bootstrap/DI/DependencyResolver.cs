@@ -314,9 +314,6 @@ namespace Altruist
             Type serviceType,
             ServiceLifetime lifetime)
         {
-            // Avoid duplicates; also avoid ever registering non-serviceable types
-            if (services.Any(d => d.ServiceType == serviceType))
-                return;
             if (IsNonServiceable(serviceType))
                 return;
 
