@@ -27,6 +27,9 @@ export class SceneViewComponent implements OnInit {
 
   autoUpdate = false; // future use
 
+  /** Whether the selected world's object list is collapsed */
+  objectsCollapsed = false;
+
   /** Last live update timestamp coming from WorldSceneComponent */
   lastWorldUpdate: Date | null = null;
 
@@ -70,6 +73,9 @@ export class SceneViewComponent implements OnInit {
     this.selectedWorldObjects = [];
     this.hasData = false;
 
+    // expand objects list whenever a new world is selected
+    this.objectsCollapsed = false;
+
     this.worldService.streamWorldObjects(world.index).subscribe({
       next: (obj: WorldObjectDto) => {
         const idx = this.selectedWorldObjects.findIndex(
@@ -104,6 +110,13 @@ export class SceneViewComponent implements OnInit {
 
   onSelectObject(obj: WorldObjectDto): void {
     this.selectedObject = obj;
+  }
+
+  /** Toggle collapse of object list for the selected world */
+  toggleWorldObjects(event: MouseEvent): void {
+    // prevent the click from also triggering onSelectWorld
+    event.stopPropagation();
+    this.objectsCollapsed = !this.objectsCollapsed;
   }
 
   /** Handler for the child's lastUpdateChanged event */

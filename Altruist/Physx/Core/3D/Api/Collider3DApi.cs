@@ -32,6 +32,12 @@ namespace Altruist.Physx.ThreeD
             IsTrigger = isTrigger;
             Heightfield = heightmap;
         }
+
+        public override string ToString()
+        {
+            return
+                $"PhysxCollider3DDesc(Id={Id}, Shape={Shape}, Transform={Transform}, IsTrigger={IsTrigger}, Heightfield={Heightfield})";
+        }
     }
 
     /// <summary>

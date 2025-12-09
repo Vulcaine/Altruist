@@ -163,6 +163,8 @@ namespace Altruist.Gaming.ThreeD
             var sz = Transform.Size;
             var sc = Transform.Scale;
 
+            var collidersStr = string.Join(", ", ColliderDescriptors.Select(c => c.ToString()));
+
             return
                 $"{GetType().Name}(" +
                 $"Id={InstanceId}, " +
@@ -170,7 +172,8 @@ namespace Altruist.Gaming.ThreeD
                 $"ZoneId={ZoneId}, " +
                 $"Pos=({p.X},{p.Y},{p.Z}), " +
                 $"Size=({sz.X:0.##},{sz.Y:0.##},{sz.Z:0.##}), " +
-                $"Scale=({sc.X:0.##},{sc.Y:0.##},{sc.Z:0.##}))";
+                $"Scale=({sc.X:0.##},{sc.Y:0.##},{sc.Z:0.##})," +
+                $"Colliders=[{collidersStr}])";
         }
 
         public virtual Task Step(float dt, IWorldPhysics3D worldPhysics) { return Task.CompletedTask; }
@@ -178,9 +181,10 @@ namespace Altruist.Gaming.ThreeD
 
     public class AnonymousWorldObject3D : WorldObject3D
     {
-        public AnonymousWorldObject3D(Transform3D transform)
-            : base(transform, zoneId: string.Empty, archetype: string.Empty)
+        public AnonymousWorldObject3D(Transform3D transform, PhysxBody3DDesc? bodyDescriptor = null, string zoneId = "", string? archetype = null)
+            : base(transform, zoneId: zoneId, archetype: archetype)
         {
+            BodyDescriptor = bodyDescriptor;
         }
     }
 }

@@ -81,6 +81,11 @@ namespace Altruist.ThreeD.Numerics
         public Scale3D Scale { get; set; }
         public Rotation3D Rotation { get; set; }
 
+        public override string ToString()
+        {
+            return $"(Position: {Position}, Size: {Size}, Scale: {Scale}, Rotation: {Rotation})";
+        }
+
         public Transform3D(Position3D position, Size3D size, Scale3D scale, Rotation3D rotation)
         {
             Position = position;

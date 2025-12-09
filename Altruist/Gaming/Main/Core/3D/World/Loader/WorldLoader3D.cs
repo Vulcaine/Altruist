@@ -1,6 +1,11 @@
 /*
 Copyright 2025 Aron Gere
-Licensed under the Apache License, Version 2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+You may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
 */
 
 using System.Numerics;
@@ -8,6 +13,7 @@ using System.Reflection;
 using System.Text.Json;
 
 using Altruist.Numerics;
+using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
 
@@ -94,7 +100,6 @@ namespace Altruist.Gaming.ThreeD
 
             if (string.IsNullOrWhiteSpace(json))
                 throw new ArgumentException("World JSON content cannot be null or empty.", nameof(json));
-
 
             var worldSchema = JsonSerializer.Deserialize<WorldSchema>(json, _options)
                               ?? throw new InvalidOperationException("Failed to deserialize world JSON into WorldSchema.");
@@ -186,8 +191,8 @@ namespace Altruist.Gaming.ThreeD
         }
 
         private void BuildBodiesRecursive(
-    WorldObjectSchema node,
-    AccumulatedTransform parent)
+            WorldObjectSchema node,
+            AccumulatedTransform parent)
         {
             // Compose parent + local -> world
             var localRot = EulerToQuaternion(node.RotationEuler.ToNumerics());
@@ -218,12 +223,13 @@ namespace Altruist.Gaming.ThreeD
             // Build the *world object* transform (position + rotation + size + scale) from the node.
             var worldObjectTransform = BuildWorldObjectTransform(worldTransform, node);
 
-            // If this node has at least one supported collider, materialize it as a world object.
-            var hasSupportedCollider =
-                node.Colliders is { Count: > 0 } &&
-                node.Colliders.Any(c => TryMapShape(c.Shape, out _));
+            // Build collider descriptors for this node (if any).
+            var colliderDescs = BuildColliderDescriptors(node, worldTransform);
+            var hasSupportedCollider = colliderDescs.Count > 0;
 
-            if (hasSupportedCollider && TryCreateWorldObject(node, worldObjectTransform, out var obj))
+            // Only materialize an object if we have at least one supported collider.
+            if (hasSupportedCollider &&
+                TryCreateWorldObject(node, worldObjectTransform, colliderDescs, out var obj))
             {
                 _spawnedWorldObjects.Add(obj);
             }
@@ -238,9 +244,34 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <summary>
+        /// Build PhysxCollider3DDesc instances for all supported colliders on this node.
+        /// </summary>
+        private static List<PhysxCollider3DDesc> BuildColliderDescriptors(
+            WorldObjectSchema node,
+            AccumulatedTransform objectWorld)
+        {
+            var result = new List<PhysxCollider3DDesc>();
+
+            if (node.Colliders is not { Count: > 0 })
+                return result;
+
+            foreach (var col in node.Colliders)
+            {
+                if (!TryMapShape(col.Shape, out var shape))
+                    continue;
+
+                var transform = BuildColliderTransform(objectWorld, col);
+                var desc = PhysxCollider3D.Create(shape, transform, isTrigger: false);
+                result.Add(desc);
+            }
+
+            return result;
+        }
+
         private static Transform3D BuildWorldObjectTransform(
-    AccumulatedTransform worldTransform,
-    WorldObjectSchema node)
+            AccumulatedTransform worldTransform,
+            WorldObjectSchema node)
         {
             // World-space position of the object root
             var position3D = new Position3D(
@@ -268,27 +299,38 @@ namespace Altruist.Gaming.ThreeD
             return new Transform3D(position3D, size3D, scale3D, rotation3D);
         }
 
-
+        /// <summary>
+        /// Create or materialize a world object for this node and attach body/collider descriptors.
+        /// </summary>
         private bool TryCreateWorldObject(
-    WorldObjectSchema node,
-    Transform3D transform,
-    out IWorldObject3D obj)
+            WorldObjectSchema node,
+            Transform3D transform,
+            IReadOnlyList<PhysxCollider3DDesc> colliderDescs,
+            out IWorldObject3D obj)
         {
-            // No archetype → anonymous world object with the correct world transform
-            if (string.IsNullOrWhiteSpace(node.Archetype))
+            // Decide body "mass" from node.Type; anything not explicitly "Dynamic"
+            // is treated as static world geometry (mass == 0).
+            var isDynamic = string.Equals(node.Type, "Dynamic", StringComparison.OrdinalIgnoreCase);
+            var bodyType = isDynamic ? PhysxBodyType.Dynamic : PhysxBodyType.Static;
+            var mass = isDynamic ? 1f : 0f;
+
+            var bodyDesc = PhysxBody3D.Create(bodyType, mass, transform);
+
+            // No archetype → anonymous world object
+            if (string.IsNullOrWhiteSpace(node.Archetype) ||
+                !_archetypeMap.TryGetValue(node.Archetype.Trim(), out var type))
             {
-                obj = new AnonymousWorldObject3D(transform)
-                {
-                    // BodyDescriptor is left null; GameWorldManager3D will create it on spawn.
-                    BodyDescriptor = null
-                };
+                var anon = new AnonymousWorldObject3D(
+                    transform,
+                    bodyDescriptor: bodyDesc,
+                    archetype: node.Archetype ?? string.Empty);
+
+                anon.ColliderDescriptors = colliderDescs;
+                obj = anon;
                 return true;
             }
 
             obj = default!;
-
-            if (!_archetypeMap.TryGetValue(node.Archetype.Trim(), out var type))
-                return false;
 
             var defaultCtor = type.GetConstructor(Type.EmptyTypes);
             if (defaultCtor == null)
@@ -305,17 +347,16 @@ namespace Altruist.Gaming.ThreeD
                     $"World object type '{type.FullName}' must implement IWorldObject3D.");
             }
 
-            // Set the full world transform (position + rotation + size + scale) directly
+            // Set transform + body/collider descriptors
             worldObj.Transform = transform;
+            worldObj.BodyDescriptor = bodyDesc;
+            worldObj.ColliderDescriptors = colliderDescs;
 
             // Best-effort: ensure ZoneId is initialized (if the object also implements IWorldObject).
             if (worldObj is IWorldObject wo)
             {
                 wo.ZoneId = string.Empty;
             }
-
-            // Let GameWorldManager3D create the body descriptor if needed.
-            worldObj.BodyDescriptor = worldObj.BodyDescriptor;
 
             obj = worldObj;
             return true;

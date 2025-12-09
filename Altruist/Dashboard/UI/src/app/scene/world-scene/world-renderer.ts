@@ -3,6 +3,19 @@ import * as THREE from 'three';
 import { HeightfieldDto, WorldObjectDto } from './models/world.model';
 import { WorldInputController } from './world-input.controller';
 
+// Mirror of backend PhysxColliderShape3D enum
+// C#:
+//   Sphere3D = 0,
+//   Box3D = 1,
+//   Capsule3D = 2,
+//   Heightfield3D = 3
+enum PhysxColliderShape3D {
+  Sphere3D = 0,
+  Box3D = 1,
+  Capsule3D = 2,
+  Heightfield3D = 3,
+}
+
 export class WorldRenderer {
   scene?: THREE.Scene;
   camera?: THREE.PerspectiveCamera;
@@ -165,23 +178,14 @@ export class WorldRenderer {
             mesh.scale.set(t.scale.x || 1, t.scale.y || 1, t.scale.z || 1);
             group.add(mesh);
           } else {
-            const sx = Math.max(0.1, t.size.x * t.scale.x);
-            const sy = Math.max(0.1, t.size.y * t.scale.y);
-            const sz = Math.max(0.1, t.size.z * t.scale.z);
-
-            const geom = new THREE.BoxGeometry(sx, sy, sz);
-            const mat = new THREE.MeshBasicMaterial({
-              color: 0x22c55e,
-              wireframe: true,
-            });
-
-            const mesh = new THREE.Mesh(geom, mat);
-            mesh.position.set(t.position.x, t.position.y, t.position.z);
+            const mesh = this.createColliderMesh(col, t);
             group.add(mesh);
           }
         }
       } else {
+        // Fallback: visualize the whole object as a box
         const t = obj.transform;
+
         const sx = Math.max(0.1, t.size.x * t.scale.x);
         const sy = Math.max(0.1, t.size.y * t.scale.y);
         const sz = Math.max(0.1, t.size.z * t.scale.z);
@@ -218,6 +222,71 @@ export class WorldRenderer {
         this.fitCameraToGroup();
       }
     }
+  }
+
+  /**
+   * Create a THREE.Mesh for a non-heightfield collider,
+   * using its shape from the backend.
+   */
+  private createColliderMesh(
+    col: { shape: PhysxColliderShape3D | number; transform?: any },
+    t: any
+  ): THREE.Mesh {
+    const shape = col.shape as number;
+
+    const sx = Math.max(0.0001, t.size.x * t.scale.x);
+    const sy = Math.max(0.0001, t.size.y * t.scale.y);
+    const sz = Math.max(0.0001, t.size.z * t.scale.z);
+
+    let geom: THREE.BufferGeometry;
+
+    switch (shape) {
+      case PhysxColliderShape3D.Sphere3D: {
+        // Size.X stores radius for sphere (per PhysxCollider3D.CreateSphere).
+        const radius = Math.max(0.05, sx);
+        geom = new THREE.SphereGeometry(radius, 16, 12);
+        break;
+      }
+
+      case PhysxColliderShape3D.Capsule3D: {
+        // Capsule: Size.X = radius, Size.Y = halfLength (world-loader side)
+        const radius = Math.max(0.05, sx);
+        const halfLength = Math.max(0, sy);
+        const cylLength = Math.max(0.05, halfLength * 2);
+
+        // Use CapsuleGeometry if available, otherwise approximate with a cylinder
+        const CapsuleGeomCtor = (THREE as any).CapsuleGeometry;
+        if (typeof CapsuleGeomCtor === 'function') {
+          geom = new CapsuleGeomCtor(radius, cylLength, 8, 16);
+        } else {
+          // Fallback: cylinder approximation
+          const height = cylLength + 2 * radius;
+          geom = new THREE.CylinderGeometry(radius, radius, height, 8, 1, true);
+        }
+        break;
+      }
+
+      case PhysxColliderShape3D.Box3D:
+      default: {
+        // Box collider uses half extents in Size (see BuildColliderTransform),
+        // so multiply by 2 to get full dimensions.
+        const fullX = Math.max(0.1, sx * 2);
+        const fullY = Math.max(0.1, sy * 2);
+        const fullZ = Math.max(0.1, sz * 2);
+        geom = new THREE.BoxGeometry(fullX, fullY, fullZ);
+        break;
+      }
+    }
+
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x22c55e,
+      wireframe: true,
+    });
+
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.position.set(t.position.x, t.position.y, t.position.z);
+
+    return mesh;
   }
 
   private createHeightfieldMesh(hf: HeightfieldDto): THREE.Mesh {

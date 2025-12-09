@@ -84,13 +84,9 @@ namespace Altruist.Dashboard
                 {
                     InstanceId = o.InstanceId,
                     Archetype = o.Archetype ?? string.Empty,
-                    ZoneId = (o as WorldObject3D)?.ZoneId
-                             ?? (o as WorldObjectPrefab3D)?.ZoneId
-                             ?? string.Empty,
+                    ZoneId = o.ZoneId,
                     ClientId = o.ClientId,
-                    Expired = (o as WorldObject3D)?.Expired
-                              ?? (o as WorldObjectPrefab3D)?.Expired
-                              ?? false,
+                    Expired = o.Expired,
                     Transform = TransformDto.FromTransform(o.Transform),
                     Colliders = new List<ColliderDto>()
                 };

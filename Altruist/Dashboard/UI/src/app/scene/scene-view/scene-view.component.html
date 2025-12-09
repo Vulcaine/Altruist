@@ -37,6 +37,18 @@
               <span class="world-item-name">
                 {{ world.name || "Unnamed" }}
               </span>
+
+              <!-- Collapse / expand button for the selected world -->
+              @if (world === selectedWorld) {
+              <button
+                type="button"
+                class="world-collapse-button"
+                [attr.aria-expanded]="!objectsCollapsed"
+                (click)="toggleWorldObjects($event)"
+              >
+                {{ objectsCollapsed ? "▼ Show objects" : "▲ Hide objects" }}
+              </button>
+              }
             </div>
 
             <div class="world-item-meta">
@@ -46,33 +58,40 @@
           </button>
 
           <!-- Expanded object list for selected world -->
-          @if (world === selectedWorld && selectedWorldObjects.length > 0) {
-          <ul class="world-object-list">
-            @for (obj of selectedWorldObjects; track obj.instanceId) {
-            <li class="world-object-item">
-              <button
-                type="button"
-                class="world-object-button"
-                (click)="onSelectObject(obj)"
-                [class.world-object-button--active]="obj === selectedObject"
-              >
-                <div class="world-object-line">
-                  <span class="world-object-name">
-                    {{ obj.archetype || "Object" }}
-                  </span>
-                  <span class="world-object-id">
-                    #{{ obj.instanceId.slice(0, 8) }}
-                  </span>
-                </div>
-                <div class="world-object-pos">
-                  ({{ obj.transform.position.x }},
-                  {{ obj.transform.position.y }},
-                  {{ obj.transform.position.z }})
-                </div>
-              </button>
-            </li>
-            }
-          </ul>
+          @if ( world === selectedWorld && !objectsCollapsed &&
+          selectedWorldObjects.length > 0 ) {
+          <!-- Fixed-height scroll area for objects -->
+          <div
+            class="world-object-scroll"
+            style="max-height: 260px; overflow-y: auto"
+          >
+            <ul class="world-object-list">
+              @for (obj of selectedWorldObjects; track obj.instanceId) {
+              <li class="world-object-item">
+                <button
+                  type="button"
+                  class="world-object-button"
+                  (click)="onSelectObject(obj)"
+                  [class.world-object-button--active]="obj === selectedObject"
+                >
+                  <div class="world-object-line">
+                    <span class="world-object-name">
+                      {{ obj.archetype || "Object" }}
+                    </span>
+                    <span class="world-object-id">
+                      #{{ obj.instanceId.slice(0, 8) }}
+                    </span>
+                  </div>
+                  <div class="world-object-pos">
+                    ({{ obj.transform.position.x }},
+                    {{ obj.transform.position.y }},
+                    {{ obj.transform.position.z }})
+                  </div>
+                </button>
+              </li>
+              }
+            </ul>
+          </div>
           }
         </li>
         }
