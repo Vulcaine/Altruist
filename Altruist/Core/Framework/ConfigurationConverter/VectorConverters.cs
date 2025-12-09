@@ -10,6 +10,10 @@ public sealed class Vector2ConfigConverter : IConfigConverter<Vector2>
 {
     public Type TargetType => typeof(Vector2);
 
+    private readonly JsonSerializerOptions _jsonOptions;
+
+    public Vector2ConfigConverter(JsonSerializerOptions options) => _jsonOptions = options;
+
     public Vector2 Convert(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -18,8 +22,7 @@ public sealed class Vector2ConfigConverter : IConfigConverter<Vector2>
         var s = value.Trim();
         if (s.StartsWith("{") || s.StartsWith("["))
         {
-            var dto = JsonSerializer.Deserialize<Vector2Dto>(s, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                      ?? throw new FormatException("Invalid Vector2 JSON default.");
+            var dto = JsonSerializer.Deserialize<Vector2Dto>(s, _jsonOptions) ?? throw new FormatException("Invalid Vector2 JSON default.");
             return new Vector2(dto.X, dto.Y);
         }
 
@@ -42,6 +45,10 @@ public sealed class Vector3ConfigConverter : IConfigConverter<Vector3>
 {
     public Type TargetType => typeof(Vector3);
 
+    private readonly JsonSerializerOptions _jsonOptions;
+
+    public Vector3ConfigConverter(JsonSerializerOptions options) => _jsonOptions = options;
+
     public Vector3 Convert(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -50,7 +57,7 @@ public sealed class Vector3ConfigConverter : IConfigConverter<Vector3>
         var s = value.Trim();
         if (s.StartsWith("{") || s.StartsWith("["))
         {
-            var dto = JsonSerializer.Deserialize<Vector3Dto>(s, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            var dto = JsonSerializer.Deserialize<Vector3Dto>(s, _jsonOptions)
                       ?? throw new FormatException("Invalid Vector3 JSON default.");
             return new Vector3(dto.X, dto.Y, dto.Z);
         }

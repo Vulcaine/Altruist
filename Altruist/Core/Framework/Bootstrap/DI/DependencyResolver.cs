@@ -8,6 +8,7 @@ You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 
 using System.Globalization;
 using System.Reflection;
+using System.Text.Json;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,14 +61,15 @@ namespace Altruist
         // --------------------------- Public API ---------------------------
 
         /// <summary>Make sure custom converters are discovered exactly once.</summary>
-        public static void EnsureConverters(IServiceCollection services, ILogger log)
+        public static void EnsureConverters(IServiceCollection services, IConfiguration cfg, ILogger log)
         {
             if (_converters is not null)
                 return;
+
             lock (_convLock)
             {
                 if (_converters is null)
-                    _converters = DiscoverConverters(services, log);
+                    _converters = DiscoverConverters(services, cfg, log);
             }
         }
 
@@ -617,44 +619,77 @@ namespace Altruist
             return ok;
         }
 
-        private static Dictionary<Type, IConfigConverter> DiscoverConverters(IServiceCollection services, ILogger log)
+        private static Dictionary<Type, IConfigConverter> DiscoverConverters(
+            IServiceCollection services,
+            IConfiguration cfg,
+            ILogger log)
         {
             var map = new Dictionary<Type, IConfigConverter>();
-            var temp = services.BuildServiceProvider();
 
-            foreach (var t in TypeDiscovery.FindTypesWithAttribute<ConfigConverterAttribute>(
-                         AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName)).ToArray()))
+            var assemblies = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
+                .ToArray();
+
+            var converterTypes = TypeDiscovery
+                .FindTypesWithAttribute<ConfigConverterAttribute>(assemblies)
+                .ToArray();
+
+            foreach (var t in converterTypes)
+            {
+                DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, t);
+            }
+
+            using var temp = services.BuildServiceProvider();
+
+            foreach (var t in converterTypes)
             {
                 TryAddConverter(map, temp, t, log);
             }
+
             if (map.Count > 0)
                 log.LogDebug("🔧 Discovered {Count} ConfigConverter(s).", map.Count);
+
             return map;
         }
 
-        private static void TryAddConverter(Dictionary<Type, IConfigConverter> map, IServiceProvider sp, Type t, ILogger log)
+        private static void TryAddConverter(
+            Dictionary<Type, IConfigConverter> map,
+            IServiceProvider sp,
+            Type t,
+            ILogger log)
         {
             var attr = t.GetCustomAttribute<ConfigConverterAttribute>(false)!;
             var inst = CreateConverter(sp, t);
             if (inst is null)
             {
-                log.LogWarning("⚠️ Failed to create converter {Type} for {Target}.", t.FullName, attr.TargetType.Name);
+                log.LogWarning("⚠️ Failed to create converter {Type} for {Target}.",
+                    t.FullName, attr.TargetType.Name);
                 return;
             }
+
             map[attr.TargetType] = inst;
         }
 
         private static IConfigConverter? CreateConverter(IServiceProvider sp, Type t)
         {
             try
-            { return (IConfigConverter?)ActivatorUtilities.CreateInstance(sp, t); }
+            {
+                return (IConfigConverter?)ActivatorUtilities.CreateInstance(sp, t);
+            }
             catch
             {
                 try
-                { return (IConfigConverter?)Activator.CreateInstance(t); }
-                catch { return null; }
+                {
+                    return (IConfigConverter?)Activator.CreateInstance(t);
+                }
+                catch
+                {
+                    return null;
+                }
             }
         }
+
 
         // ------------------- Config conversion pipeline ------------------
 
@@ -771,11 +806,12 @@ namespace Altruist
 
                 try
                 {
-                    var opts = new System.Text.Json.JsonSerializerOptions
+                    var opts = new JsonSerializerOptions
                     {
-                        PropertyNameCaseInsensitive = true
+                        PropertyNameCaseInsensitive = true,
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                     };
-                    return System.Text.Json.JsonSerializer.Deserialize(raw, target, opts);
+                    return JsonSerializer.Deserialize(raw, target, opts);
                 }
                 catch
                 {

@@ -22,7 +22,7 @@ public sealed class ServiceConfigurationAttribute : Attribute
 /// <summary>
 /// Marks a configuration class that should be discovered and executed by
 /// <see cref="ConfigAttributeConfiguration"/>.
-/// 
+///
 /// ⚠️ May only be applied to types that implement <see cref="IAltruistConfiguration"/>.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
@@ -51,10 +51,10 @@ public sealed class AppConfigValueAttribute : Attribute
 
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-public sealed class ConfigConverterAttribute : Attribute
+public sealed class ConfigConverterAttribute : ServiceAttribute
 {
     public Type TargetType { get; }
-    public ConfigConverterAttribute(Type targetType) => TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
+    public ConfigConverterAttribute(Type targetType) : base(targetType, lifetime: ServiceLifetime.Singleton) => TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
 }
 
 public interface IConfigConverter

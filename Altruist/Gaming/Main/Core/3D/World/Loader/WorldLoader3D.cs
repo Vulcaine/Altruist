@@ -65,16 +65,20 @@ namespace Altruist.Gaming.ThreeD
         private readonly List<IWorldObject3D> _spawnedWorldObjects = new();
         public IReadOnlyList<IWorldObject3D> SpawnedWorldObjects => _spawnedWorldObjects;
 
+        private readonly JsonSerializerOptions _options;
+
         public WorldLoader3D(
             IPhysxWorldEngineFactory3D engineFactory,
             IPhysxBodyApiProvider3D bodyApi,
             IPhysxColliderApiProvider3D colliderApi,
-            IWorldPartitioner3D worldPartitioner)
+            IWorldPartitioner3D worldPartitioner,
+            JsonSerializerOptions options)
         {
-            _engineFactory = engineFactory ?? throw new ArgumentNullException(nameof(engineFactory));
-            _bodyApi = bodyApi ?? throw new ArgumentNullException(nameof(bodyApi));
-            _colliderApi = colliderApi ?? throw new ArgumentNullException(nameof(colliderApi));
-            _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));
+            _engineFactory = engineFactory;
+            _options = options;
+            _bodyApi = bodyApi;
+            _colliderApi = colliderApi;
+            _worldPartitioner = worldPartitioner;
 
             _archetypeMap = BuildArchetypeMap();
         }
@@ -91,12 +95,8 @@ namespace Altruist.Gaming.ThreeD
             if (string.IsNullOrWhiteSpace(json))
                 throw new ArgumentException("World JSON content cannot be null or empty.", nameof(json));
 
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            };
 
-            var worldSchema = JsonSerializer.Deserialize<WorldSchema>(json, options)
+            var worldSchema = JsonSerializer.Deserialize<WorldSchema>(json, _options)
                               ?? throw new InvalidOperationException("Failed to deserialize world JSON into WorldSchema.");
 
             index.Size = new IntVector3(

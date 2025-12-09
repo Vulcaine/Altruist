@@ -41,11 +41,12 @@ public class JsonMessageEncoder : IEncoder
 [ConditionalOnConfig("altruist:server:transport:codec:provider", havingValue: "json")]
 public class JsonMessageDecoder : IDecoder
 {
-    private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+    private readonly JsonSerializerOptions _jsonOptions;
+
+    public JsonMessageDecoder(JsonSerializerOptions options)
     {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+        _jsonOptions = options;
+    }
 
     public TPacket Decode<TPacket>(byte[] message)
     {
@@ -67,6 +68,11 @@ public class JsonMessageDecoder : IDecoder
 [ConditionalOnConfig("altruist:server:transport:codec:provider", havingValue: "json")]
 public class JsonCodec : ICodec
 {
-    public IEncoder Encoder { get; } = new JsonMessageEncoder();
-    public IDecoder Decoder { get; } = new JsonMessageDecoder();
+    public JsonCodec(IEncoder encoder, IDecoder decoder)
+    {
+        Encoder = encoder;
+        Decoder = decoder;
+    }
+    public IEncoder Encoder { get; }
+    public IDecoder Decoder { get; }
 }

@@ -8,6 +8,13 @@ public sealed class ListStringConfigConverter : IConfigConverter<List<string>>
 {
     public Type TargetType => typeof(List<string>);
 
+    private readonly JsonSerializerOptions _jsonOptions;
+
+    public ListStringConfigConverter(JsonSerializerOptions options)
+    {
+        _jsonOptions = options;
+    }
+
     public List<string>? Convert(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -17,7 +24,7 @@ public sealed class ListStringConfigConverter : IConfigConverter<List<string>>
 
         // JSON array?
         if (s.StartsWith("["))
-            return JsonSerializer.Deserialize<List<string>>(s, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            return JsonSerializer.Deserialize<List<string>>(s, _jsonOptions)
                    ?? new List<string>();
 
         // CSV
@@ -35,10 +42,16 @@ public sealed class EnumerableStringConfigConverter : IConfigConverter<IEnumerab
 {
     public Type TargetType => typeof(IEnumerable<string>);
 
+    private readonly ListStringConfigConverter _converter;
+
+    public EnumerableStringConfigConverter(ListStringConfigConverter converter)
+    {
+        _converter = converter;
+    }
+
     public IEnumerable<string>? Convert(string value)
     {
-        // Reuse the List<string> converter behavior
-        var list = new ListStringConfigConverter().Convert(value);
+        var list = _converter.Convert(value);
         return list ?? Enumerable.Empty<string>();
     }
 
@@ -51,9 +64,16 @@ public sealed class ReadOnlyListStringConfigConverter : IConfigConverter<IReadOn
 {
     public Type TargetType => typeof(IReadOnlyList<string>);
 
+    private readonly ListStringConfigConverter _converter;
+
+    public ReadOnlyListStringConfigConverter(ListStringConfigConverter converter)
+    {
+        _converter = converter;
+    }
+
     public IReadOnlyList<string>? Convert(string value)
     {
-        var list = new ListStringConfigConverter().Convert(value);
+        var list = _converter.Convert(value);
         return list ?? [];
     }
 
@@ -66,6 +86,10 @@ public sealed class DictionaryStringStringConfigConverter : IConfigConverter<Dic
 {
     public Type TargetType => typeof(Dictionary<string, string>);
 
+    private readonly JsonSerializerOptions _jsonOptions;
+
+    public DictionaryStringStringConfigConverter(JsonSerializerOptions options) => _jsonOptions = options;
+
     public Dictionary<string, string>? Convert(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -76,10 +100,7 @@ public sealed class DictionaryStringStringConfigConverter : IConfigConverter<Dic
         // JSON object?
         if (s.StartsWith("{"))
         {
-            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(s, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(s, _jsonOptions);
             return dict ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -108,9 +129,16 @@ public sealed class ReadOnlyDictionaryStringStringConfigConverter : IConfigConve
 {
     public Type TargetType => typeof(IReadOnlyDictionary<string, string>);
 
+    private readonly DictionaryStringStringConfigConverter _converter;
+
+    public ReadOnlyDictionaryStringStringConfigConverter(DictionaryStringStringConfigConverter converter)
+    {
+        _converter = converter;
+    }
+
     public IReadOnlyDictionary<string, string>? Convert(string value)
     {
-        var dict = new DictionaryStringStringConfigConverter().Convert(value);
+        var dict = _converter.Convert(value);
         // Return as read-only view
         return dict ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }

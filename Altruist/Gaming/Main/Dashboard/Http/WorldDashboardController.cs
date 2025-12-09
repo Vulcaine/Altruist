@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 
 using Altruist.Gaming.ThreeD;
 using Altruist.Physx.ThreeD;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 
 namespace Altruist.Dashboard
 {
@@ -22,11 +24,16 @@ namespace Altruist.Dashboard
     public sealed class WorldDashboardController : ControllerBase
     {
         private readonly IGameWorldOrganizer3D _worldOrganizer;
+        private readonly JsonSerializerOptions _jsonOptions;
 
-        public WorldDashboardController(IGameWorldOrganizer3D worldOrganizer)
+        public WorldDashboardController(
+             IGameWorldOrganizer3D worldOrganizer,
+             JsonSerializerOptions jsonOptions)
         {
             _worldOrganizer = worldOrganizer;
+            _jsonOptions = jsonOptions;
         }
+
 
         /// <summary>
         /// List all loaded worlds.
@@ -50,45 +57,53 @@ namespace Altruist.Dashboard
         }
 
         /// <summary>
-        /// Get all world objects in the specified world.
-        /// Intended for visualization / debugging in the dashboard.
+        /// Stream all world objects as NDJSON (one JSON object per line).
+        /// Better for huge worlds than one giant array.
         /// </summary>
-        /// <param name="worldIndex">World index to query.</param>
-        [HttpGet("{worldIndex:int}/objects")]
-        public ActionResult<IEnumerable<WorldObjectDto>> GetWorldObjects(int worldIndex)
+        [HttpGet("{worldIndex:int}/objects/stream")]
+        public async Task StreamWorldObjects(int worldIndex, CancellationToken ct)
         {
             var world = _worldOrganizer.GetWorld(worldIndex);
             if (world is null)
-                return NotFound(new { message = $"World {worldIndex} not found." });
+            {
+                Response.StatusCode = StatusCodes.Status404NotFound;
+                await Response.WriteAsJsonAsync(
+                    new { message = $"World {worldIndex} not found." }, _jsonOptions, ct);
+                return;
+            }
 
-            var objects = world.FindAllObjects<IWorldObject3D>()
-                .Select(o =>
+            Response.StatusCode = StatusCodes.Status200OK;
+            Response.ContentType = "application/x-ndjson";
+
+            // Enumerate objects and write each as its own JSON line
+            foreach (var o in world.FindAllObjects<IWorldObject3D>())
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var dto = new WorldObjectDto
                 {
-                    var dto = new WorldObjectDto
-                    {
-                        InstanceId = o.InstanceId,
-                        Archetype = o.Archetype ?? string.Empty,
-                        ZoneId = (o as WorldObject3D)?.ZoneId
-                                 ?? (o as WorldObjectPrefab3D)?.ZoneId
-                                 ?? string.Empty,
-                        ClientId = o.ClientId,
-                        Expired = (o as WorldObject3D)?.Expired
-                                  ?? (o as WorldObjectPrefab3D)?.Expired
-                                  ?? false,
-                        Transform = TransformDto.FromTransform(o.Transform),
-                        Colliders = new List<ColliderDto>()
-                    };
+                    InstanceId = o.InstanceId,
+                    Archetype = o.Archetype ?? string.Empty,
+                    ZoneId = (o as WorldObject3D)?.ZoneId
+                             ?? (o as WorldObjectPrefab3D)?.ZoneId
+                             ?? string.Empty,
+                    ClientId = o.ClientId,
+                    Expired = (o as WorldObject3D)?.Expired
+                              ?? (o as WorldObjectPrefab3D)?.Expired
+                              ?? false,
+                    Transform = TransformDto.FromTransform(o.Transform),
+                    Colliders = new List<ColliderDto>()
+                };
 
-                    foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
-                    {
-                        dto.Colliders.Add(ColliderDto.FromCollider(c));
-                    }
+                foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
+                {
+                    dto.Colliders.Add(ColliderDto.FromCollider(c));
+                }
 
-                    return dto;
-                })
-                .ToList();
-
-            return Ok(objects);
+                await JsonSerializer.SerializeAsync(Response.Body, dto, _jsonOptions, ct);
+                await Response.WriteAsync("\n", ct);
+                await Response.Body.FlushAsync(ct);
+            }
         }
     }
 }

@@ -66,22 +66,38 @@ export class SceneViewComponent implements OnInit {
     this.selectedWorld = world;
     this.isLoading = true;
     this.selectedObject = null;
-    this.lastWorldUpdate = null; // reset when changing world
+    this.lastWorldUpdate = null;
+    this.selectedWorldObjects = [];
+    this.hasData = false;
 
-    this.worldService.getWorldObjects(world.index).subscribe({
-      next: (objects) => {
-        this.selectedWorldObjects = objects;
+    this.worldService.streamWorldObjects(world.index).subscribe({
+      next: (obj: WorldObjectDto) => {
+        const idx = this.selectedWorldObjects.findIndex(
+          (o) => o.instanceId === obj.instanceId
+        );
+
+        if (idx >= 0) {
+          this.selectedWorldObjects[idx] = obj;
+        } else {
+          this.selectedWorldObjects = [...this.selectedWorldObjects, obj];
+        }
+
+        this.hasData = this.selectedWorldObjects.length > 0;
+
+        if (!this.selectedObject && this.selectedWorldObjects.length > 0) {
+          this.selectedObject = this.selectedWorldObjects[0];
+        }
+
         this.isLoading = false;
-        this.hasData = objects.length > 0;
-
-        // optionally auto-focus first object
-        this.selectedObject = objects[0] ?? null;
       },
       error: () => {
         this.selectedWorldObjects = [];
         this.selectedObject = null;
         this.isLoading = false;
         this.hasData = false;
+      },
+      complete: () => {
+        this.isLoading = false;
       },
     });
   }

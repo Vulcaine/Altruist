@@ -24,7 +24,7 @@ namespace Altruist
             var cfg = GetConfig();
             var logger = GetLogger(services);
 
-            DependencyResolver.EnsureConverters(services, logger);
+            DependencyResolver.EnsureConverters(services, cfg, logger);
 
             var registered = new List<string>();
             RegisterServiceAttributes(services, cfg, logger, registered);

@@ -45,7 +45,7 @@ namespace Altruist
             var loggerFactory = tmp.GetRequiredService<ILoggerFactory>();
             var bootstrapLogger = loggerFactory.CreateLogger<ConfigAttributeConfiguration>();
 
-            DependencyResolver.EnsureConverters(services, bootstrapLogger);
+            DependencyResolver.EnsureConverters(services, cfg, bootstrapLogger);
 
             // 1) Register all configuration classes in DI (once)
             foreach (var item in candidates)
