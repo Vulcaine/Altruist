@@ -17,6 +17,9 @@ export class WorldInputController {
     this.keys[event.key.toLowerCase()] = false;
   };
 
+  /** Called whenever the user actually moves/rotates the camera (WASD/QE/RF). */
+  onUserMove?: () => void;
+
   attach(): void {
     window.addEventListener('keydown', this.keyDownHandler);
     window.addEventListener('keyup', this.keyUpHandler);
@@ -28,20 +31,26 @@ export class WorldInputController {
   }
 
   updateCamera(camera: THREE.PerspectiveCamera, dt: number): void {
+    let moved = false;
+
     // Yaw: Q/E
     if (this.keys['q']) {
       this.yaw += this.turnSpeed * dt;
+      moved = true;
     }
     if (this.keys['e']) {
       this.yaw -= this.turnSpeed * dt;
+      moved = true;
     }
 
     // Pitch: R/F
     if (this.keys['r']) {
       this.pitch += this.pitchSpeed * dt;
+      moved = true;
     }
     if (this.keys['f']) {
       this.pitch -= this.pitchSpeed * dt;
+      moved = true;
     }
 
     // Clamp pitch
@@ -63,10 +72,22 @@ export class WorldInputController {
 
     const vel = new THREE.Vector3();
 
-    if (this.keys['w']) vel.add(forward);
-    if (this.keys['s']) vel.sub(forward);
-    if (this.keys['a']) vel.sub(right);
-    if (this.keys['d']) vel.add(right);
+    if (this.keys['w']) {
+      vel.add(forward);
+      moved = true;
+    }
+    if (this.keys['s']) {
+      vel.sub(forward);
+      moved = true;
+    }
+    if (this.keys['a']) {
+      vel.sub(right);
+      moved = true;
+    }
+    if (this.keys['d']) {
+      vel.add(right);
+      moved = true;
+    }
 
     if (vel.lengthSq() > 0) {
       vel.normalize().multiplyScalar(this.moveSpeed * dt);
@@ -75,6 +96,10 @@ export class WorldInputController {
 
     const lookTarget = new THREE.Vector3().copy(camera.position).add(forward);
     camera.lookAt(lookTarget);
+
+    if (moved && this.onUserMove) {
+      this.onUserMove();
+    }
   }
 
   /** Used when we focus on an object so yaw/pitch follow the new view direction. */

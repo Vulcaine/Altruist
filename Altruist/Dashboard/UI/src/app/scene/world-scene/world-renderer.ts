@@ -13,6 +13,9 @@ export class WorldRenderer {
   private lastFrameTime = performance.now();
   private resizeHandler?: () => void;
 
+  private followSelection = true;
+  private lastSelectedId: string | null = null;
+
   constructor(private readonly input: WorldInputController) {}
 
   init(container: HTMLDivElement): void {
@@ -51,6 +54,10 @@ export class WorldRenderer {
     };
 
     window.addEventListener('resize', this.resizeHandler);
+
+    this.input.onUserMove = () => {
+      this.followSelection = false;
+    };
 
     this.input.attach();
     this.lastFrameTime = performance.now();
@@ -112,12 +119,25 @@ export class WorldRenderer {
   ): void {
     if (!this.scene) return;
 
-    const shouldFrameCamera =
-      this.camera &&
-      this.camera.position.x === 0 &&
-      this.camera.position.y === 0 &&
-      this.camera.position.z === 0;
+    const camera = this.camera;
+    const isCameraAtOrigin =
+      !!camera &&
+      camera.position.x === 0 &&
+      camera.position.y === 0 &&
+      camera.position.z === 0;
 
+    // Detect selection changes (by instanceId) so we can
+    // re-enable follow when the user clicks a new object.
+    const selectedId = selected?.instanceId ?? null;
+    const selectionChanged = selectedId !== this.lastSelectedId;
+    this.lastSelectedId = selectedId;
+
+    // If selection changed in the UI, resume following it.
+    if (selectionChanged && selectedId !== null) {
+      this.followSelection = true;
+    }
+
+    // Clear previous colliders
     if (this.collidersGroup) {
       this.scene.remove(this.collidersGroup);
       this.collidersGroup.traverse((obj) => {
@@ -143,7 +163,6 @@ export class WorldRenderer {
             const mesh = this.createHeightfieldMesh(col.heightfield);
             mesh.position.set(t.position.x, t.position.y, t.position.z);
             mesh.scale.set(t.scale.x || 1, t.scale.y || 1, t.scale.z || 1);
-
             group.add(mesh);
           } else {
             const sx = Math.max(0.1, t.size.x * t.scale.x);
@@ -158,7 +177,6 @@ export class WorldRenderer {
 
             const mesh = new THREE.Mesh(geom, mat);
             mesh.position.set(t.position.x, t.position.y, t.position.z);
-
             group.add(mesh);
           }
         }
@@ -176,7 +194,6 @@ export class WorldRenderer {
 
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.set(t.position.x, t.position.y, t.position.z);
-
         group.add(mesh);
       }
     }
@@ -184,13 +201,19 @@ export class WorldRenderer {
     this.scene.add(group);
     this.collidersGroup = group;
 
-    if (shouldFrameCamera) {
+    if (!camera) return;
+
+    // 1) If we have a selected object AND we're in followSelection mode,
+    //    always zoom camera to it (even on live updates).
+    if (selected && this.followSelection) {
+      this.focusOnObject(selected);
+      return;
+    }
+
+    // 2) Otherwise, only auto-frame the world once, when camera is still at origin.
+    if (isCameraAtOrigin) {
       if (objects.length > 0) {
-        if (selected) {
-          this.focusOnObject(selected);
-        } else {
-          this.focusOnObject(objects[0]);
-        }
+        this.focusOnObject(objects[0]);
       } else {
         this.fitCameraToGroup();
       }

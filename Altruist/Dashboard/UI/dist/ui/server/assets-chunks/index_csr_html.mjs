@@ -22,6 +22,6 @@ export default `<!DOCTYPE html>
   <link rel="stylesheet" href="/altruist/dashboard/styles-5INURTSO.css"></head>
   <body ngcm="">
     <app-root></app-root>
-  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-CJIRI7QN.js" type="module"></script></body>
+  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-6S3CIPOC.js" type="module"></script></body>
 </html>
 `;
