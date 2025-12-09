@@ -5,7 +5,7 @@ using Altruist;
 
 using Microsoft.Extensions.DependencyInjection;
 
-[Service(typeof(IServiceFactory), ServiceLifetime.Singleton)]
+[Service(lifetime: ServiceLifetime.Singleton)]
 public class JsonOptionsServiceFactory : IServiceFactory
 {
     public bool CanCreate(Type serviceType) => serviceType == typeof(JsonSerializerOptions);
