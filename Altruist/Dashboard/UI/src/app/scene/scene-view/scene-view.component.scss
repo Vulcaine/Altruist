@@ -209,6 +209,8 @@
 }
 
 .scene-canvas {
+  position: relative;
+
   border-radius: 10px;
   border: 1px solid rgba(30, 64, 175, 0.7);
   background: radial-gradient(circle at top, #020617, #000);
@@ -217,6 +219,7 @@
   flex-direction: column;
   overflow: hidden;
 }
+
 
 .canvas-body {
   flex: 1;
@@ -228,6 +231,28 @@
     flex: 1 1 auto;
     min-width: 0;
   }
+}
+
+.camera-hud {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 8px 10px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #e5e7eb;
+  background: rgba(2, 6, 23, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  pointer-events: none;
+  min-width: 180px;
+}
+
+.camera-hud-title {
+  font-weight: 600;
+  font-size: 11px;
+  opacity: 0.8;
+  margin-bottom: 4px;
 }
 
 .canvas-toolbar {

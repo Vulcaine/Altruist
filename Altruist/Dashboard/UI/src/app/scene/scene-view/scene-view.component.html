@@ -117,10 +117,26 @@
           [objects]="selectedWorldObjects"
           [isLoading]="isLoading"
           [selectedObject]="selectedObject"
+          (cameraChanged)="onCameraChanged($event)"
           (lastUpdateChanged)="onWorldLastUpdate($event)"
         >
         </app-world-scene>
-        }
+        @if (cameraInfo) {
+        <div class="camera-hud">
+          <div class="camera-hud-title">Camera</div>
+          <div>
+            Pos:
+            {{ cameraInfo.position.x | number : "1.1-2" }},
+            {{ cameraInfo.position.y | number : "1.1-2" }},
+            {{ cameraInfo.position.z | number : "1.1-2" }}
+          </div>
+          <div>
+            Rot: Y {{ cameraInfo.rotation.yaw | number : "1.0-1" }}° P
+            {{ cameraInfo.rotation.pitch | number : "1.0-1" }}° R
+            {{ cameraInfo.rotation.roll | number : "1.0-1" }}°
+          </div>
+        </div>
+        } }
       </div>
     </section>
   </section>

@@ -16,6 +16,11 @@ enum PhysxColliderShape3D {
   Heightfield3D = 3,
 }
 
+export interface CameraInfo {
+  position: { x: number; y: number; z: number };
+  rotation: { yaw: number; pitch: number; roll: number };
+}
+
 export class WorldRenderer {
   scene?: THREE.Scene;
   camera?: THREE.PerspectiveCamera;
@@ -29,7 +34,10 @@ export class WorldRenderer {
   private followSelection = true;
   private lastSelectedId: string | null = null;
 
-  constructor(private readonly input: WorldInputController) {}
+  constructor(
+    private readonly input: WorldInputController,
+    private readonly onCameraInfo?: (info: CameraInfo) => void
+  ) {}
 
   init(container: HTMLDivElement): void {
     const width = container.clientWidth || container.offsetWidth || 640;
@@ -85,6 +93,25 @@ export class WorldRenderer {
       this.lastFrameTime = now;
 
       this.input.updateCamera(this.camera!, dt);
+      if (this.onCameraInfo && this.camera) {
+        const euler = new THREE.Euler().setFromQuaternion(
+          this.camera.quaternion,
+          'YXZ'
+        );
+
+        this.onCameraInfo({
+          position: {
+            x: this.camera.position.x,
+            y: this.camera.position.y,
+            z: this.camera.position.z,
+          },
+          rotation: {
+            yaw: THREE.MathUtils.radToDeg(euler.y),
+            pitch: THREE.MathUtils.radToDeg(euler.x),
+            roll: THREE.MathUtils.radToDeg(euler.z),
+          },
+        });
+      }
       this.renderer!.render(this.scene!, this.camera!);
 
       this.frameId = requestAnimationFrame(animate);

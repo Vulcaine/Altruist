@@ -7,6 +7,7 @@ import {
   WorldSummary,
 } from '../world-scene/models/world.model';
 import { WorldSceneComponent } from '../world-scene/world-scene.component';
+import { CameraInfo } from '../world-scene/world-renderer';
 
 @Component({
   selector: 'app-scene-view',
@@ -25,13 +26,13 @@ export class SceneViewComponent implements OnInit {
   selectedWorldObjects: WorldObjectDto[] = [];
   selectedObject: WorldObjectDto | null = null;
 
-  autoUpdate = false; // future use
+  autoUpdate = false;
 
-  /** Whether the selected world's object list is collapsed */
   objectsCollapsed = false;
 
-  /** Last live update timestamp coming from WorldSceneComponent */
   lastWorldUpdate: Date | null = null;
+
+  cameraInfo: CameraInfo | null = null;
 
   constructor(private readonly worldService: WorldDashboardService) {}
 
@@ -65,6 +66,10 @@ export class SceneViewComponent implements OnInit {
     }
   }
 
+  onCameraChanged(info: CameraInfo): void {
+    this.cameraInfo = info;
+  }
+
   onSelectWorld(world: WorldSummary): void {
     this.selectedWorld = world;
     this.isLoading = true;
@@ -72,8 +77,6 @@ export class SceneViewComponent implements OnInit {
     this.lastWorldUpdate = null;
     this.selectedWorldObjects = [];
     this.hasData = false;
-
-    // expand objects list whenever a new world is selected
     this.objectsCollapsed = false;
 
     this.worldService.streamWorldObjects(world.index).subscribe({
@@ -112,14 +115,11 @@ export class SceneViewComponent implements OnInit {
     this.selectedObject = obj;
   }
 
-  /** Toggle collapse of object list for the selected world */
   toggleWorldObjects(event: MouseEvent): void {
-    // prevent the click from also triggering onSelectWorld
     event.stopPropagation();
     this.objectsCollapsed = !this.objectsCollapsed;
   }
 
-  /** Handler for the child's lastUpdateChanged event */
   onWorldLastUpdate(ts: Date): void {
     this.lastWorldUpdate = ts;
   }

@@ -15,7 +15,7 @@ import { Subscription } from 'rxjs';
 import { DashboardWorldObjectStatePacket } from './models/world-realtime.model';
 import { WorldObjectDto, WorldSummary } from './models/world.model';
 import { WorldInputController } from './world-input.controller';
-import { WorldRenderer } from './world-renderer';
+import { CameraInfo, WorldRenderer } from './world-renderer';
 import { WorldService } from './world-scene.service';
 
 @Component({
@@ -36,6 +36,9 @@ export class WorldSceneComponent
   /** Emitted whenever a live world state packet is applied. */
   @Output() lastUpdateChanged = new EventEmitter<Date>();
 
+  /** 🔴 Emitted every frame with camera position/rotation. */
+  @Output() cameraChanged = new EventEmitter<CameraInfo>();
+
   @ViewChild('viewport')
   viewportRef?: ElementRef<HTMLDivElement>;
 
@@ -45,9 +48,14 @@ export class WorldSceneComponent
   private worldSub?: Subscription;
 
   private readonly inputController = new WorldInputController();
-  private readonly renderer = new WorldRenderer(this.inputController);
+  private readonly renderer: WorldRenderer;
 
-  constructor(private readonly worldService: WorldService) {}
+  constructor(private readonly worldService: WorldService) {
+    // Wire renderer callback -> Angular output
+    this.renderer = new WorldRenderer(this.inputController, (info) =>
+      this.cameraChanged.emit(info)
+    );
+  }
 
   ngAfterViewInit(): void {
     this.viewInitialized = true;
