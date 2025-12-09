@@ -23,7 +23,7 @@ export class WorldRenderer {
     this.scene.background = new THREE.Color(0x020617);
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
-    this.camera.position.set(0, 150, 250);
+    this.camera.position.set(0, 0, 0);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.4);
     this.scene.add(ambient);
@@ -52,9 +52,7 @@ export class WorldRenderer {
 
     window.addEventListener('resize', this.resizeHandler);
 
-    // Start listening for keyboard input
     this.input.attach();
-
     this.lastFrameTime = performance.now();
   }
 
@@ -114,7 +112,12 @@ export class WorldRenderer {
   ): void {
     if (!this.scene) return;
 
-    // Clear previous colliders
+    const shouldFrameCamera =
+      this.camera &&
+      this.camera.position.x === 0 &&
+      this.camera.position.y === 0 &&
+      this.camera.position.z === 0;
+
     if (this.collidersGroup) {
       this.scene.remove(this.collidersGroup);
       this.collidersGroup.traverse((obj) => {
@@ -181,14 +184,16 @@ export class WorldRenderer {
     this.scene.add(group);
     this.collidersGroup = group;
 
-    if (objects.length > 0) {
-      if (selected) {
-        this.focusOnObject(selected);
+    if (shouldFrameCamera) {
+      if (objects.length > 0) {
+        if (selected) {
+          this.focusOnObject(selected);
+        } else {
+          this.focusOnObject(objects[0]);
+        }
       } else {
-        this.focusOnObject(objects[0]);
+        this.fitCameraToGroup();
       }
-    } else {
-      this.fitCameraToGroup();
     }
   }
 

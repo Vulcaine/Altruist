@@ -100,7 +100,6 @@ export class WorldSceneComponent
   }
 
   private applyWorldState(packet: DashboardWorldObjectStatePacket): void {
-    console.log('WORLD STATE RECV');
     if (!this.world || packet.worldIndex !== this.world.index) {
       return;
     }

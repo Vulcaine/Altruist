@@ -18,6 +18,9 @@ export class WorldService {
   private state$ = new Subject<DashboardWorldObjectStatePacket>();
   private currentWorldIndex: number | null = null;
 
+  private shouldReconnect = false;
+  private reconnectTimeoutId: number | null = null;
+
   constructor(private readonly zone: NgZone) {}
 
   /**
@@ -25,24 +28,38 @@ export class WorldService {
    * Returns an observable of world-state packets.
    */
   connect(worldIndex: number): Observable<DashboardWorldObjectStatePacket> {
+    // If already connected for this world, just return stream.
     if (this.socket && this.currentWorldIndex === worldIndex) {
       return this.state$.asObservable();
     }
 
-    this.disconnect();
+    // Explicit connect means we *do* want auto reconnect.
+    this.shouldReconnect = true;
+
+    // Tear down any existing socket first.
+    this.cleanupSocket();
 
     this.currentWorldIndex = worldIndex;
     console.log('Connecting to dashboard websocket for world', worldIndex);
 
+    this.openSocket(worldIndex);
+
+    return this.state$.asObservable();
+  }
+
+  private openSocket(worldIndex: number): void {
     const url = `ws://localhost:8000/ws/dashboard`;
     const ws = new WebSocket(url);
     ws.binaryType = 'blob';
-
     this.socket = ws;
 
     ws.onopen = () => {
-      // No subscription message needed yet.
-      // If you later want to subscribe per-world, you can send here.
+      // Clear any pending reconnect timer once we’re successfully connected.
+      if (this.reconnectTimeoutId !== null) {
+        clearTimeout(this.reconnectTimeoutId);
+        this.reconnectTimeoutId = null;
+      }
+      // If you ever need per-world subscribe, send here:
       // ws.send(JSON.stringify({ type: 'SubscribeDashboardWorld', worldIndex }));
     };
 
@@ -59,11 +76,26 @@ export class WorldService {
     ws.onclose = () => {
       this.zone.run(() => {
         this.socket = null;
-        this.currentWorldIndex = null;
+
+        // If the app still cares about this world, auto-reconnect.
+        if (this.shouldReconnect && this.currentWorldIndex !== null) {
+          if (this.reconnectTimeoutId !== null) {
+            clearTimeout(this.reconnectTimeoutId);
+          }
+          this.reconnectTimeoutId = window.setTimeout(() => {
+            console.log(
+              'Dashboard websocket closed, reconnecting for world',
+              this.currentWorldIndex
+            );
+            if (this.currentWorldIndex !== null && this.shouldReconnect) {
+              this.openSocket(this.currentWorldIndex);
+            }
+          }, 2000); // simple 2s backoff
+        } else {
+          this.currentWorldIndex = null;
+        }
       });
     };
-
-    return this.state$.asObservable();
   }
 
   private handleMessage(event: MessageEvent): void {
@@ -96,6 +128,7 @@ export class WorldService {
       const msg = envelope.message as
         | DashboardWorldObjectStatePacket
         | undefined;
+
       if (!msg) {
         console.warn(
           'DashboardWorldObjectStatePacket has empty/invalid message payload',
@@ -115,7 +148,23 @@ export class WorldService {
     }
   }
 
+  /**
+   * Called by the app when the scene is destroyed / world view closed.
+   * Stops auto-reconnect and closes the socket.
+   */
   disconnect(): void {
+    this.shouldReconnect = false;
+
+    if (this.reconnectTimeoutId !== null) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
+    this.cleanupSocket();
+    this.currentWorldIndex = null;
+  }
+
+  private cleanupSocket(): void {
     if (this.socket) {
       try {
         this.socket.close();
@@ -124,6 +173,5 @@ export class WorldService {
       }
       this.socket = null;
     }
-    this.currentWorldIndex = null;
   }
 }
