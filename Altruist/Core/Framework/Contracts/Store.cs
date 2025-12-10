@@ -75,7 +75,6 @@ public abstract class AbstractConnectionStore : IConnectionStore
 
             existingRoom.ConnectionIds.Add(connectionId);
             await _memoryCache.SaveAsync(roomId, existingRoom);
-            await _memoryCache.SaveAsync(connectionId, roomId);
             return true;
         }
 

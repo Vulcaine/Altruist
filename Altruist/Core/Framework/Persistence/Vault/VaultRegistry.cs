@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
@@ -43,6 +43,11 @@ namespace Altruist
         public static void Register<TModel>(string keyspace)
             where TModel : class, IVaultModel
             => Register(typeof(TModel), keyspace);
+
+        public static IReadOnlyCollection<VaultMetadata> GetAll()
+        {
+            return _byClr.Values.Distinct().ToArray();
+        }
 
         public static void Register(Type clrType, string keyspace)
         {

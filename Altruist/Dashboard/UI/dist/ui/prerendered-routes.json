@@ -1,8 +1,9 @@
 {
   "routes": {
     "/altruist/dashboard": {},
-    "/altruist/dashboard/cache": {},
+    "/altruist/dashboard/cache-view": {},
     "/altruist/dashboard/scene": {},
-    "/altruist/dashboard/sessions": {}
+    "/altruist/dashboard/sessions": {},
+    "/altruist/dashboard/vault-view": {}
   }
 }
