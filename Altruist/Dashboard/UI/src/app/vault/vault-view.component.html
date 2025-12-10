@@ -1,62 +1,172 @@
 <div class="vault-view">
+  <!-- ================= HEADER ================= -->
   <header class="vault-header">
-    <input
-      type="text"
-      [(ngModel)]="vaultFilter"
-      (ngModelChange)="applyVaultFilter()"
-      placeholder="Filter vaults…"
-    />
+    <div class="vault-header-main">
+      <h2>🔐 Vault Dashboard</h2>
+      <p class="vault-status">{{ statusText }}</p>
+    </div>
+
+    <div class="vault-header-actions">
+      <input
+        type="text"
+        [(ngModel)]="vaultFilter"
+        (ngModelChange)="applyVaultFilter()"
+        placeholder="Filter by type / keyspace / table…"
+      />
+      <button type="button" (click)="loadVaults()" [disabled]="isLoadingVaults">
+        Refresh
+      </button>
+    </div>
   </header>
 
+  @if (error) {
+  <div class="vault-error">
+    {{ error }}
+  </div>
+  }
+
+  <!-- ================= LAYOUT ================= -->
   <section class="vault-layout">
+    <!-- ============ SIDEBAR ============ -->
     <aside class="vault-sidebar">
-      <ul>
+      <h3>Vaults</h3>
+
+      @if (!hasVaults && !isLoadingVaults) {
+      <p class="vault-empty">No vaults registered.</p>
+      } @else {
+      <ul class="vault-list">
         @for (v of filteredVaults; track v.typeKey) {
-        <li>
+        <li class="vault-item">
           <button
+            type="button"
+            class="vault-item-button"
+            [class.vault-item-button--active]="
+              selectedVault?.typeKey === v.typeKey
+            "
             (click)="onSelectVault(v)"
-            [class.active]="selectedVault?.typeKey === v.typeKey"
           >
-            {{ v.clrTypeShort }}
+            <div class="vault-item-main">
+              <span class="vault-item-type">{{ v.clrTypeShort }}</span>
+              <span class="vault-item-keyspace">{{ v.keyspace }}</span>
+            </div>
+
+            <div class="vault-item-meta">
+              <span class="vault-item-table">{{ v.tableName }}</span>
+              <span
+                class="vault-item-tag"
+                *ngIf="v.storeHistory"
+                title="History is stored for this vault"
+              >
+                History
+              </span>
+            </div>
           </button>
         </li>
         }
       </ul>
+      }
     </aside>
 
+    <!-- ============ MAIN ============ -->
     <main class="vault-main">
       @if (!selectedVault) {
-      <p>Select a vault</p>
+      <div class="vault-main-empty">
+        <p>Select a vault from the left to view its contents.</p>
+      </div>
       } @else {
-      <table class="vault-table">
-        <thead>
-          <tr>
-            @for (col of visibleColumns; track col.fieldName) {
-            <th>{{ col.fieldName }}</th>
-            }
-          </tr>
-        </thead>
+      <!-- ===== TABLE HEADER ===== -->
+      <header class="vault-table-header">
+        <div class="vault-table-title">
+          <h3>{{ selectedVault.clrTypeShort }}</h3>
+          <p>
+            {{ selectedVault.typeKey }} ·
+            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> ·
+            <span class="vault-table-name">{{ selectedVault.tableName }}</span>
+          </p>
+        </div>
 
-        <tbody>
-          @for (item of items; let i = $index; track i) {
-          <tr>
-            @for (col of visibleColumns; track col.fieldName) {
-            <td>
-              <input
-                [value]="item[col.fieldName]"
-                (input)="
-                  onCellEdit(i, col.fieldName, $any($event.target).value)
-                "
-              />
-            </td>
-            }
-          </tr>
-          }
-        </tbody>
-      </table>
+        <div class="vault-table-controls">
+          <label>
+            Page size
+            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+              @for (sz of pageSizeOptions; track sz) {
+              <option [value]="sz">{{ sz }}</option>
+              }
+            </select>
+          </label>
 
+          <div class="vault-pagination">
+            <button
+              type="button"
+              (click)="goPrevPage()"
+              [disabled]="currentPage === 0 || isLoadingItems"
+            >
+              ‹
+            </button>
+            <span> Page {{ displayPage }} / {{ totalPages }} </span>
+            <button
+              type="button"
+              (click)="goNextPage()"
+              [disabled]="currentPage >= totalPages - 1 || isLoadingItems"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- ===== TABLE ===== -->
+      <section class="vault-table-section">
+        @if (isLoadingItems) {
+        <div class="vault-main-empty">
+          <p>Loading items…</p>
+        </div>
+        } @else if (!hasItems) {
+        <div class="vault-main-empty">
+          <p>No items in this vault.</p>
+        </div>
+        } @else {
+        <div class="vault-table-wrapper">
+          <table class="vault-table">
+            <thead>
+              <tr>
+                @for (col of visibleColumns; track col.fieldName) {
+                <th [title]="col.columnName">
+                  <span class="col-name">{{ col.fieldName }}</span>
+                  <span class="col-meta" *ngIf="col.isPrimaryKey">PK</span>
+                  <span class="col-meta" *ngIf="col.isUnique">UQ</span>
+                  <span class="col-meta" *ngIf="col.isIndexed">IDX</span>
+                  <span class="col-meta" *ngIf="col.isForeignKey">FK</span>
+                </th>
+                }
+              </tr>
+            </thead>
+
+            <tbody>
+              @for (item of items; let row = $index; track row) {
+              <tr class="vault-row">
+                @for (col of visibleColumns; track col.fieldName) {
+                <td class="vault-cell">
+                  <input
+                    [value]="item[col.fieldName]"
+                    (input)="
+                      onCellEdit(row, col.fieldName, $any($event.target).value)
+                    "
+                    class="vault-cell-input"
+                  />
+                </td>
+                }
+              </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        }
+      </section>
+
+      <!-- ===== COMMIT BAR ===== -->
       <div class="vault-commit-bar" *ngIf="hasPendingChanges">
-        <button (click)="commitChanges()">Commit changes</button>
+        <button type="button" (click)="commitChanges()">Commit changes</button>
         <span>{{ dirtyItems.size }} row(s) modified</span>
       </div>
       }

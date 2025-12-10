@@ -3,12 +3,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import {
-  VaultBatchUpdateRequest,
-  VaultBatchUpdateResult,
-  VaultDefinitionDto,
-  VaultItemPageDto,
-} from './vault.model';
+import { VaultDefinitionDto, VaultItemPageDto } from './vault.model';
 
 @Injectable({ providedIn: 'root' })
 export class VaultDashboardService {
@@ -32,12 +27,10 @@ export class VaultDashboardService {
     );
   }
 
-  batchUpdate(
-    request: VaultBatchUpdateRequest
-  ): Observable<VaultBatchUpdateResult> {
-    return this.http.post<VaultBatchUpdateResult>(
-      `${this.baseUrl}/${encodeURIComponent(request.typeKey)}/batch-update`,
-      request
+  batchUpdate(typeKey: string, payload: any): Observable<any> {
+    return this.http.post(
+      `/dashboard/v1/vaults/${encodeURIComponent(typeKey)}/batch-update`,
+      payload
     );
   }
 }
