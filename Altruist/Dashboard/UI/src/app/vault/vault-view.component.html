@@ -11,8 +11,20 @@
         type="text"
         [(ngModel)]="vaultFilter"
         (ngModelChange)="applyVaultFilter()"
-        placeholder="Filter by type / keyspace / table…"
+        placeholder="Filter vaults…"
       />
+
+      @if (hasPendingChanges) {
+      <button
+        type="button"
+        class="commit-button"
+        (click)="commitChanges()"
+        title="Commit pending changes"
+      >
+        ⬆️ Commit ({{ dirtyItems.size }})
+      </button>
+      }
+
       <button type="button" (click)="loadVaults()" [disabled]="isLoadingVaults">
         Refresh
       </button>
@@ -20,9 +32,7 @@
   </header>
 
   @if (error) {
-  <div class="vault-error">
-    {{ error }}
-  </div>
+  <div class="vault-error">{{ error }}</div>
   }
 
   <!-- ================= LAYOUT ================= -->
@@ -52,13 +62,9 @@
 
             <div class="vault-item-meta">
               <span class="vault-item-table">{{ v.tableName }}</span>
-              <span
-                class="vault-item-tag"
-                *ngIf="v.storeHistory"
-                title="History is stored for this vault"
-              >
-                History
-              </span>
+              @if (v.storeHistory) {
+              <span class="vault-item-tag">History</span>
+              }
             </div>
           </button>
         </li>
@@ -71,9 +77,10 @@
     <main class="vault-main">
       @if (!selectedVault) {
       <div class="vault-main-empty">
-        <p>Select a vault from the left to view its contents.</p>
+        <p>Select a vault.</p>
       </div>
       } @else {
+
       <!-- ===== TABLE HEADER ===== -->
       <header class="vault-table-header">
         <div class="vault-table-title">
@@ -99,15 +106,15 @@
             <button
               type="button"
               (click)="goPrevPage()"
-              [disabled]="currentPage === 0 || isLoadingItems"
+              [disabled]="currentPage === 0"
             >
               ‹
             </button>
-            <span> Page {{ displayPage }} / {{ totalPages }} </span>
+            <span>Page {{ displayPage }} / {{ totalPages }}</span>
             <button
               type="button"
               (click)="goNextPage()"
-              [disabled]="currentPage >= totalPages - 1 || isLoadingItems"
+              [disabled]="currentPage >= totalPages - 1"
             >
               ›
             </button>
@@ -123,7 +130,7 @@
         </div>
         } @else if (!hasItems) {
         <div class="vault-main-empty">
-          <p>No items in this vault.</p>
+          <p>No items.</p>
         </div>
         } @else {
         <div class="vault-table-wrapper">
@@ -131,12 +138,12 @@
             <thead>
               <tr>
                 @for (col of visibleColumns; track col.fieldName) {
-                <th [title]="col.columnName">
+                <th>
                   <span class="col-name">{{ col.fieldName }}</span>
-                  <span class="col-meta" *ngIf="col.isPrimaryKey">PK</span>
-                  <span class="col-meta" *ngIf="col.isUnique">UQ</span>
-                  <span class="col-meta" *ngIf="col.isIndexed">IDX</span>
-                  <span class="col-meta" *ngIf="col.isForeignKey">FK</span>
+                  @if (col.isPrimaryKey) { <span class="col-meta">PK</span> }
+                  @if (col.isUnique) { <span class="col-meta">UQ</span> } @if
+                  (col.isIndexed) { <span class="col-meta">IDX</span> } @if
+                  (col.isForeignKey) { <span class="col-meta">FK</span> }
                 </th>
                 }
               </tr>
@@ -146,14 +153,22 @@
               @for (item of items; let row = $index; track row) {
               <tr class="vault-row">
                 @for (col of visibleColumns; track col.fieldName) {
-                <td class="vault-cell">
+                <td
+                  class="vault-cell"
+                  (dblclick)="startEdit(row, col.fieldName)"
+                >
+                  @if (isEditing(row, col.fieldName)) {
                   <input
                     [value]="item[col.fieldName]"
                     (input)="
                       onCellEdit(row, col.fieldName, $any($event.target).value)
                     "
                     class="vault-cell-input"
+                    autofocus
                   />
+                  } @else {
+                  <code>{{ item[col.fieldName] }}</code>
+                  }
                 </td>
                 }
               </tr>
@@ -163,12 +178,6 @@
         </div>
         }
       </section>
-
-      <!-- ===== COMMIT BAR ===== -->
-      <div class="vault-commit-bar" *ngIf="hasPendingChanges">
-        <button type="button" (click)="commitChanges()">Commit changes</button>
-        <span>{{ dirtyItems.size }} row(s) modified</span>
-      </div>
       }
     </main>
   </section>

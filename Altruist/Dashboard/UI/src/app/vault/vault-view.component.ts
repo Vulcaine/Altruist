@@ -1,5 +1,3 @@
-// src/app/vault-view/vault-view.component.ts
-
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -35,6 +33,9 @@ export class VaultViewComponent implements OnInit, OnDestroy {
   items: Record<string, any>[] = [];
   originalItems: Record<string, any>[] = [];
 
+  // ---------- editing modes ----------
+  editing: Set<string> = new Set(); // key: `${rowIndex}:${field}`
+
   // ---------- dirty tracking ----------
   dirtyItems = new Map<number, Record<string, any>>();
   hasPendingChanges = false;
@@ -61,6 +62,10 @@ export class VaultViewComponent implements OnInit, OnDestroy {
 
   // ================= computed =================
 
+  get visibleColumns() {
+    return this.selectedVault?.columns ?? [];
+  }
+
   get hasVaults(): boolean {
     return this.vaults.length > 0;
   }
@@ -69,14 +74,8 @@ export class VaultViewComponent implements OnInit, OnDestroy {
     return this.items.length > 0;
   }
 
-  get visibleColumns() {
-    return this.selectedVault?.columns ?? [];
-  }
-
   get totalPages(): number {
-    return this.pageSize > 0
-      ? Math.max(1, Math.ceil(this.totalItems / this.pageSize))
-      : 1;
+    return Math.max(1, Math.ceil(this.totalItems / this.pageSize));
   }
 
   get displayPage(): number {
@@ -99,7 +98,7 @@ export class VaultViewComponent implements OnInit, OnDestroy {
       (this.currentPage + 1) * this.pageSize
     );
 
-    return `${start} – ${end} of ${this.totalItems} items`;
+    return `${start}–${end} of ${this.totalItems}`;
   }
 
   // ================= loading =================
@@ -127,24 +126,18 @@ export class VaultViewComponent implements OnInit, OnDestroy {
 
   applyVaultFilter(): void {
     const ft = this.vaultFilter.trim().toLowerCase();
-    if (!ft) {
-      this.filteredVaults = this.vaults;
-      return;
-    }
-
-    this.filteredVaults = this.vaults.filter((v) => {
-      return (
-        v.clrTypeShort.toLowerCase().includes(ft) ||
-        v.typeKey.toLowerCase().includes(ft) ||
-        v.keyspace.toLowerCase().includes(ft) ||
-        v.tableName.toLowerCase().includes(ft)
-      );
-    });
+    this.filteredVaults = !ft
+      ? this.vaults
+      : this.vaults.filter(
+          (v) =>
+            v.clrTypeShort.toLowerCase().includes(ft) ||
+            v.typeKey.toLowerCase().includes(ft) ||
+            v.keyspace.toLowerCase().includes(ft) ||
+            v.tableName.toLowerCase().includes(ft)
+        );
   }
 
   onSelectVault(vault: VaultDefinitionDto): void {
-    if (this.selectedVault === vault) return;
-
     if (this.hasPendingChanges) {
       const ok = confirm(
         'You have uncommitted changes. Discard them and switch vault?'
@@ -154,6 +147,7 @@ export class VaultViewComponent implements OnInit, OnDestroy {
 
     this.selectedVault = vault;
     this.currentPage = 0;
+    this.editing.clear();
     this.dirtyItems.clear();
     this.hasPendingChanges = false;
     this.loadPage();
@@ -167,14 +161,13 @@ export class VaultViewComponent implements OnInit, OnDestroy {
   }
 
   goPrevPage(): void {
-    if (this.currentPage <= 0 || this.isLoadingItems) return;
+    if (this.currentPage <= 0) return;
     this.currentPage--;
     this.loadPage();
   }
 
   goNextPage(): void {
-    if (this.currentPage >= this.totalPages - 1 || this.isLoadingItems) return;
-
+    if (this.currentPage >= this.totalPages - 1) return;
     this.currentPage++;
     this.loadPage();
   }
@@ -194,8 +187,11 @@ export class VaultViewComponent implements OnInit, OnDestroy {
         next: (page: VaultItemPageDto) => {
           this.items = page.items;
           this.originalItems = JSON.parse(JSON.stringify(page.items));
+
           this.totalItems = page.total;
           this.isLoadingItems = false;
+
+          this.editing.clear();
           this.dirtyItems.clear();
           this.hasPendingChanges = false;
         },
@@ -208,21 +204,29 @@ export class VaultViewComponent implements OnInit, OnDestroy {
 
   // ================= editing =================
 
-  onCellEdit(rowIndex: number, field: string, value: any): void {
-    const original = this.originalItems[rowIndex]?.[field];
+  startEdit(row: number, field: string): void {
+    this.editing.add(`${row}:${field}`);
+  }
+
+  isEditing(row: number, field: string): boolean {
+    return this.editing.has(`${row}:${field}`);
+  }
+
+  onCellEdit(row: number, field: string, value: any): void {
+    const original = this.originalItems[row]?.[field];
 
     if (value === original) {
-      const entry = this.dirtyItems.get(rowIndex);
+      const entry = this.dirtyItems.get(row);
       if (entry) {
         delete entry[field];
         if (Object.keys(entry).length === 0) {
-          this.dirtyItems.delete(rowIndex);
+          this.dirtyItems.delete(row);
         }
       }
     } else {
-      const entry = this.dirtyItems.get(rowIndex) ?? {};
+      const entry = this.dirtyItems.get(row) ?? {};
       entry[field] = value;
-      this.dirtyItems.set(rowIndex, entry);
+      this.dirtyItems.set(row, entry);
     }
 
     this.hasPendingChanges = this.dirtyItems.size > 0;
@@ -242,9 +246,7 @@ export class VaultViewComponent implements OnInit, OnDestroy {
 
     this.service.batchUpdate(this.selectedVault.typeKey, payload).subscribe({
       next: () => this.loadPage(),
-      error: () => {
-        this.error = 'Failed to commit changes.';
-      },
+      error: () => (this.error = 'Failed to commit changes.'),
     });
   }
 

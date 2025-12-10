@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Text.Json;
+
 using Altruist.Persistence;
 
 using Microsoft.AspNetCore.Mvc;
@@ -185,6 +187,7 @@ public sealed class VaultDashboardController : ControllerBase
         var pkFields = doc.PrimaryKey?.Keys
             ?? throw new InvalidOperationException("Vault has no primary key.");
 
+        // Resolve IVault<T>
         var vaultType = typeof(IVault<>).MakeGenericType(md.ClrType);
         dynamic vault = _serviceProvider.GetRequiredService(vaultType);
 
@@ -192,23 +195,30 @@ public sealed class VaultDashboardController : ControllerBase
 
         foreach (var row in request.Items)
         {
+            // --- Extract primary key values ---
             var pk = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             foreach (var pkField in pkFields)
             {
-                if (!row.TryGetValue(pkField, out var pkValue))
+                if (!row.TryGetValue(pkField, out var rawPkValue))
                     throw new InvalidOperationException(
                         $"Missing primary key field '{pkField}'.");
 
-                pk[pkField] = pkValue;
+                pk[pkField] = ConvertIncomingValue(rawPkValue, doc.FieldTypes[pkField]);
             }
 
+            // --- Extract changed fields ---
             var changes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var (field, value) in row)
+
+            foreach (var (field, rawValue) in row)
             {
                 if (pkFields.Contains(field))
                     continue;
 
-                changes[field] = value;
+                if (!doc.FieldTypes.TryGetValue(field, out var targetType))
+                    continue;
+
+                var converted = ConvertIncomingValue(rawValue, targetType);
+                changes[field] = converted;
             }
 
             if (changes.Count == 0)
@@ -218,10 +228,51 @@ public sealed class VaultDashboardController : ControllerBase
             updated++;
         }
 
-        return Ok(new VaultBatchUpdateResultDto
+        return Ok(new VaultBatchUpdateResultDto { Updated = updated });
+    }
+
+    private static object? ConvertIncomingValue(object? rawValue, Type targetType)
+    {
+        if (rawValue is null)
+            return null;
+
+        // If JSON came in as JsonElement, convert it properly
+        if (rawValue is JsonElement je)
         {
-            Updated = updated
-        });
+            if (je.ValueKind == JsonValueKind.Null)
+                return null;
+
+            if (targetType == typeof(string))
+                return je.GetString();
+
+            if (targetType == typeof(int))
+                return je.GetInt32();
+
+            if (targetType == typeof(long))
+                return je.GetInt64();
+
+            if (targetType == typeof(bool))
+                return je.GetBoolean();
+
+            if (targetType == typeof(float))
+                return je.GetSingle();
+
+            if (targetType == typeof(double))
+                return je.GetDouble();
+
+            if (targetType == typeof(DateTime))
+                return je.GetDateTime();
+
+            if (targetType.IsEnum)
+                return Enum.Parse(targetType, je.GetString()!, ignoreCase: true);
+
+            return JsonSerializer.Deserialize(je.GetRawText(), targetType);
+        }
+
+        if (targetType.IsAssignableFrom(rawValue.GetType()))
+            return rawValue;
+
+        return Convert.ChangeType(rawValue, targetType);
     }
 
     [HttpGet]

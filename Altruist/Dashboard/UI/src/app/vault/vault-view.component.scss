@@ -1,6 +1,23 @@
 // src/app/vault-view/vault-view.component.scss
 @use '../../styles/dashboard-theme' as theme;
 
+.commit-button {
+  @include theme.pill-button-base;
+  background: #16a34a; // green
+  border-color: #15803d;
+  color: white;
+  font-weight: 600;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  transition: background 120ms ease, transform 80ms ease;
+
+  &:hover {
+    background: #22c55e;
+    transform: translateY(-1px);
+    box-shadow: theme.$shadow-elevated;
+  }
+}
+
 .vault-view {
   display: flex;
   flex-direction: column;
