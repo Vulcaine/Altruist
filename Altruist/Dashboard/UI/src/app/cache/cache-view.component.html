@@ -10,6 +10,7 @@
         type="text"
         placeholder="Filter by type, group, key or content…"
         [(ngModel)]="filterText"
+        (ngModelChange)="onFilterChange($event)"
       />
       <button type="button" (click)="loadEntries()" [disabled]="isLoading">
         Refresh
@@ -31,7 +32,7 @@
         </thead>
         <tbody>
           <tr
-            *ngFor="let entry of filteredEntries"
+            *ngFor="let entry of pagedEntries"
             (dblclick)="onRowDoubleClick(entry)"
           >
             <td class="type-cell">
@@ -54,6 +55,38 @@
           </tr>
         </tbody>
       </table>
+
+      <!-- Page size + paginator -->
+      <div class="cache-pagination" *ngIf="showPager">
+        <div class="page-size">
+          <label>
+            Page size
+            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+              <option *ngFor="let size of pageSizeOptions" [value]="size">
+                {{ size }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div class="page-nav">
+          <button
+            type="button"
+            (click)="goPrevPage()"
+            [disabled]="currentPage === 0"
+          >
+            ‹
+          </button>
+          <span> Page {{ currentPage + 1 }} / {{ totalPages }} </span>
+          <button
+            type="button"
+            (click)="goNextPage()"
+            [disabled]="currentPage >= totalPages - 1"
+          >
+            ›
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 

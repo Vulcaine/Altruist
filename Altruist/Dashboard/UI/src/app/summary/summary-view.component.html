@@ -1,0 +1,301 @@
+<div class="summary-root">
+  <header class="summary-header">
+    <div class="header-main">
+      <h1>✨ Altruist Dashboard</h1>
+      <p>
+        High-level overview of configuration, engine state, and discovered
+        services.
+      </p>
+    </div>
+
+    <div class="header-actions">
+      <button type="button" (click)="loadSummary()" [disabled]="isLoading">
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (error) {
+    <div class="summary-error">
+      {{ error }}
+    </div>
+  }
+
+  @if (isLoading && !summary) {
+    <div class="summary-loading">Loading summary…</div>
+  }
+
+  @if (summary) {
+    <!-- Top row: Engine + stats -->
+    <section class="summary-top">
+      <article class="engine-card">
+        <h2>🎮 Engine</h2>
+
+        @if (!engine) {
+          <p class="muted">Engine configuration not available.</p>
+        } @else {
+          <div class="engine-grid">
+            <div class="engine-stat">
+              <span class="label">Diagnostics</span>
+              <span class="value">
+                {{ engine.diagnostics ? 'Enabled' : 'Disabled' }}
+              </span>
+            </div>
+            <div class="engine-stat">
+              <span class="label">Framerate</span>
+              <span class="value">
+                {{ engine.framerateHz }} {{ engine.unit }}
+              </span>
+            </div>
+            <div class="engine-stat">
+              <span class="label">Throttle</span>
+              <span class="value">
+                {{ engine.throttle ?? '—' }}
+              </span>
+            </div>
+            <div class="engine-stat">
+              <span class="label">Gravity</span>
+              <span class="value" *ngIf="engine.gravity; else noGravity">
+                ({{ engine.gravity!.x }}, {{ engine.gravity!.y }},
+                {{ engine.gravity!.z }})
+              </span>
+              <ng-template #noGravity>
+                <span class="value">—</span>
+              </ng-template>
+            </div>
+          </div>
+        }
+      </article>
+
+      <article class="stats-card">
+        <h2>📊 Overview</h2>
+        <div class="stats-grid">
+          <div class="stat">
+            <span class="label">Config entries</span>
+            <span class="value">{{ configCount }}</span>
+          </div>
+          <div class="stat">
+            <span class="label">Discovered services</span>
+            <span class="value">{{ serviceCount }}</span>
+          </div>
+          <div class="stat">
+            <span class="label">Portals</span>
+            <span class="value">{{ portals.length }}</span>
+          </div>
+          <div class="stat">
+            <span class="label">Altruist services</span>
+            <span class="value">{{ altruistServices.length }}</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Middle: configuration -->
+    <section class="summary-configs">
+      <header class="panel-header">
+        <div>
+          <h2>🔧 Configuration</h2>
+          <p class="panel-meta">
+            All <code>altruist:*</code> configuration entries (read-only).
+          </p>
+        </div>
+        <div class="panel-controls">
+          <input
+            type="text"
+            placeholder="Filter configuration…"
+            [(ngModel)]="configFilter"
+          />
+        </div>
+      </header>
+
+      <div class="config-list">
+        @if (!configEntries.length) {
+          <p class="muted">No configuration entries match your filter.</p>
+        } @else {
+          <table class="config-table">
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of configEntries; track c.key) {
+                <tr>
+                  <td class="config-key">
+                    <code>{{ c.key }}</code>
+                  </td>
+                  <td class="config-value">
+                    <code>{{ c.value ?? 'null' }}</code>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+    </section>
+
+    <!-- Bottom: services browser as grouped table -->
+    <section class="summary-services">
+      <header class="panel-header">
+        <div>
+          <h2>🧩 Services & Portals</h2>
+          <p class="panel-meta">
+            Discovered services grouped by role and attributes.
+          </p>
+        </div>
+        <div class="panel-controls">
+          <input
+            type="text"
+            placeholder="Filter by name, type, assembly, endpoint…"
+            [(ngModel)]="serviceFilter"
+          />
+        </div>
+      </header>
+
+      <div class="services-table-wrapper">
+        @if (!services.length) {
+          <p class="muted">No services match your filter.</p>
+        } @else {
+          <table class="services-table">
+            <thead>
+              <tr>
+                <th class="col-name">Name</th>
+                <th class="col-type">Type</th>
+                <th class="col-details">Details</th>
+                <th class="col-assembly">Assembly</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Portals section -->
+              @if (portals.length) {
+                <tr class="group-row">
+                  <td colspan="4">Portals</td>
+                </tr>
+
+                @for (p of portals; track p.fullName) {
+                  <tr class="service-row portal-row">
+                    <td class="cell-name">
+                      <div class="service-name">{{ p.name }}</div>
+                    </td>
+                    <td class="cell-type">
+                      <code>{{ p.fullName }}</code>
+                    </td>
+                    <td class="cell-details">
+                      <div class="pill-row">
+                        <span class="pill pill-endpoint" *ngIf="p.endpoint">
+                          {{ p.endpoint }}
+                        </span>
+                        <span class="pill pill-context" *ngIf="p.context">
+                          {{ p.context }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="cell-assembly">
+                      <span class="pill pill-assembly">
+                        {{ p.assembly }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              }
+
+              <!-- Altruist services section -->
+              @if (altruistServices.length) {
+                <tr class="group-row">
+                  <td colspan="4">Altruist services</td>
+                </tr>
+
+                @for (s of altruistServices; track s.fullName) {
+                  <tr class="service-row">
+                    <td class="cell-name">
+                      <div class="service-name">{{ s.name }}</div>
+                    </td>
+                    <td class="cell-type">
+                      <code>{{ s.fullName }}</code>
+                    </td>
+                    <td class="cell-details">
+                      <div class="pill-row">
+                        <span class="pill pill-lifetime" *ngIf="s.lifetime">
+                          {{ s.lifetime }}
+                        </span>
+                        <span
+                          class="pill pill-service-type"
+                          *ngIf="s.serviceType"
+                        >
+                          {{ s.serviceType }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="cell-assembly">
+                      <span class="pill pill-assembly">
+                        {{ s.assembly }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              }
+
+              <!-- Service factories section -->
+              @if (serviceFactories.length) {
+                <tr class="group-row">
+                  <td colspan="4">Service factories</td>
+                </tr>
+
+                @for (f of serviceFactories; track f.fullName) {
+                  <tr class="service-row">
+                    <td class="cell-name">
+                      <div class="service-name">{{ f.name }}</div>
+                    </td>
+                    <td class="cell-type">
+                      <code>{{ f.fullName }}</code>
+                    </td>
+                    <td class="cell-details">
+                      <div class="pill-row">
+                        <!-- nothing special yet, just keep layout consistent -->
+                      </div>
+                    </td>
+                    <td class="cell-assembly">
+                      <span class="pill pill-assembly">
+                        {{ f.assembly }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              }
+
+              <!-- Service configurations section -->
+              @if (serviceConfigs.length) {
+                <tr class="group-row">
+                  <td colspan="4">Service configurations</td>
+                </tr>
+
+                @for (c of serviceConfigs; track c.fullName) {
+                  <tr class="service-row">
+                    <td class="cell-name">
+                      <div class="service-name">{{ c.name }}</div>
+                    </td>
+                    <td class="cell-type">
+                      <code>{{ c.fullName }}</code>
+                    </td>
+                    <td class="cell-details">
+                      <div class="pill-row">
+                        <!-- could add extra config tags later -->
+                      </div>
+                    </td>
+                    <td class="cell-assembly">
+                      <span class="pill pill-assembly">
+                        {{ c.assembly }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+    </section>
+  }
+</div>

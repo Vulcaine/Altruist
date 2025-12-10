@@ -1,4 +1,9 @@
-// Base
+// src/styles/dashboard-theme.scss
+
+// -----------------------------
+// Base surfaces
+// -----------------------------
+
 $bg-root: #020617; // page background
 $bg-panel: rgba(15, 23, 42, 0.9);
 $bg-panel-solid: #0f172a;
@@ -6,27 +11,73 @@ $bg-panel-hover: #1e293b;
 $bg-header: radial-gradient(circle at top left, #1e293b, #020617);
 $bg-canvas: radial-gradient(circle at top, #020617, #000);
 
+// -----------------------------
+// Borders
+// -----------------------------
+
 $border-subtle: rgba(51, 65, 85, 0.9);
 $border-strong: rgba(30, 64, 175, 0.7);
 $border-muted: rgba(148, 163, 184, 0.5);
 
+// Panel border alias
+$border-panel: $border-subtle;
+
+// -----------------------------
 // Text
+// -----------------------------
+
 $text-main: #e5e7eb;
 $text-muted: #9ca3af;
 $text-soft: rgba(255, 255, 255, 0.7);
 
+// Aliases used by components
+$text-primary: $text-main;
+
+// -----------------------------
 // Accent
+// -----------------------------
+
 $accent: #2563eb;
+
+// Soft accent fill (chips, subtle borders, etc.)
+$accent-soft: rgba(37, 99, 235, 0.18);
+
 $accent-strong: linear-gradient(135deg, #4f46e5, #7c3aed);
 $accent-border: rgba(129, 140, 248, 0.9);
 
+// -----------------------------
 // Danger
+// -----------------------------
+
 $danger-bg: rgba(248, 113, 113, 0.12);
 $danger-bg-strong: rgba(248, 113, 113, 0.16);
 $danger-border: rgba(248, 113, 113, 0.7);
 $danger-text: #fecaca;
 
-// Misc
+// -----------------------------
+// Inputs
+// -----------------------------
+
+$input-bg: rgba(15, 23, 42, 0.9);
+$input-border: $border-muted;
+$input-placeholder: $text-muted;
+
+// -----------------------------
+// Pills / tags
+// -----------------------------
+
+$pill-bg: rgba(15, 23, 42, 0.95);
+$pill-border: $border-muted;
+$pill-text: $text-soft;
+
+$pill-accent-bg: rgba(37, 99, 235, 0.18);
+$pill-accent-border: rgba(37, 99, 235, 0.85);
+$pill-accent-text: #bfdbfe;
+
+// -----------------------------
+// Shadows & radii
+// -----------------------------
+
 $shadow-elevated: 0 2px 6px rgba(0, 0, 0, 0.35);
 $shadow-modal: 0 12px 30px rgba(0, 0, 0, 0.25);
 
@@ -35,7 +86,10 @@ $radius-md: 8px;
 $radius-sm: 6px;
 $radius-pill: 999px;
 
-// Mixins
+// -----------------------------
+// Button mixins
+// -----------------------------
+
 @mixin pill-button-base {
   border-radius: $radius-pill;
   padding: 6px 12px;

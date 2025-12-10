@@ -1,0 +1,390 @@
+@use '../../styles/dashboard-theme' as theme;
+
+.summary-root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* Header */
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: radial-gradient(circle at top left, #1e293b, #020617);
+  border: 1px solid theme.$border-strong;
+  box-shadow: theme.$shadow-elevated;
+
+  .header-main {
+    h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 0.25rem 0 0;
+      font-size: 0.85rem;
+      color: theme.$text-muted;
+    }
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 0.5rem;
+
+    button {
+      border-radius: 999px;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.8rem;
+      border: 1px solid theme.$accent-soft;
+      background: linear-gradient(135deg, theme.$accent, theme.$accent-strong);
+      color: #f9fafb;
+      cursor: pointer;
+      transition: transform 120ms ease, filter 120ms ease;
+
+      &:hover:enabled {
+        transform: translateY(-1px);
+        filter: brightness(1.05);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+    }
+  }
+}
+
+/* States */
+
+.summary-error {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: theme.$danger-bg;
+  border: 1px solid theme.$danger-border;
+  color: theme.$danger-text;
+  font-size: 0.85rem;
+}
+
+.summary-loading {
+  padding: 1rem;
+  text-align: center;
+  color: theme.$text-muted;
+  font-size: 0.9rem;
+}
+
+/* Top: engine + stats */
+
+.summary-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 0.75rem;
+
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.engine-card,
+.stats-card {
+  background: theme.$bg-panel;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  border: 1px solid theme.$border-panel;
+}
+
+.engine-card h2,
+.stats-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.muted {
+  color: theme.$text-muted;
+  font-size: 0.85rem;
+}
+
+.engine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem;
+
+  .engine-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.85rem;
+
+    .label {
+      font-size: 0.75rem;
+      color: theme.$text-muted;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .value {
+      font-weight: 500;
+    }
+  }
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+
+    .label {
+      font-size: 0.75rem;
+      color: theme.$text-muted;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .value {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+  }
+}
+
+/* Panel header shared */
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+
+  h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .panel-meta {
+    margin: 0.2rem 0 0;
+    font-size: 0.8rem;
+    color: theme.$text-muted;
+  }
+
+  .panel-controls {
+    input[type='text'] {
+      min-width: 220px;
+      padding: 0.3rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid theme.$input-border;
+      background: theme.$input-bg;
+      color: theme.$text-primary;
+      font-size: 0.8rem;
+
+      &::placeholder {
+        color: theme.$input-placeholder;
+      }
+    }
+  }
+}
+
+/* Config list */
+
+.summary-configs {
+  background: theme.$bg-panel;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  border: 1px solid theme.$border-panel;
+
+  .config-list {
+    max-height: 260px;
+    overflow: auto;
+    margin-top: 0.25rem;
+  }
+}
+
+.config-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+
+  thead th {
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid theme.$border-panel;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: theme.$text-muted;
+  }
+
+  td {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  }
+
+  .config-key code,
+  .config-value code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      'Liberation Mono', 'Courier New', monospace;
+  }
+
+  .config-key code {
+    font-size: 0.8rem;
+  }
+
+  .config-value code {
+    font-size: 0.8rem;
+    color: theme.$text-soft;
+  }
+}
+
+/* Services section */
+
+.summary-services {
+  background: theme.$bg-panel;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  border: 1px solid theme.$border-panel;
+}
+
+.services-table-wrapper {
+  margin-top: 0.25rem;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.services-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+
+  thead th {
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid theme.$border-panel;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: theme.$text-muted;
+  }
+
+  .col-name {
+    width: 16rem;
+  }
+
+  .col-type {
+    width: 26rem;
+  }
+
+  .col-details {
+    width: 20rem;
+  }
+
+  .col-assembly {
+    width: 10rem;
+  }
+
+  tbody tr.service-row {
+    transition: background 120ms ease;
+  }
+
+  tbody tr.service-row:hover {
+    background: rgba(15, 23, 42, 0.9);
+  }
+
+  .group-row {
+    td {
+      padding: 0.5rem 0.5rem 0.25rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: theme.$accent;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+    }
+  }
+
+  .service-row td {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    vertical-align: middle;
+  }
+
+  .portal-row {
+    box-shadow: inset 2px 0 0 theme.$accent-soft;
+  }
+
+  .cell-name .service-name {
+    font-weight: 600;
+  }
+
+  .cell-type code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: theme.$text-soft;
+  }
+
+  .cell-details {
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+  }
+
+  .cell-assembly {
+    text-align: right;
+  }
+}
+
+/* Pills */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid theme.$pill-border;
+  background: theme.$pill-bg;
+  color: theme.$pill-text;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.pill-assembly {
+  opacity: 0.9;
+}
+
+.pill-lifetime {
+  border-color: theme.$accent-soft;
+  background: theme.$accent-soft;
+}
+
+.pill-service-type {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pill-endpoint {
+  border-color: theme.$pill-accent-border;
+  background: theme.$pill-accent-bg;
+  color: theme.$pill-accent-text;
+}
+
+.pill-context {
+  opacity: 0.9;
+}

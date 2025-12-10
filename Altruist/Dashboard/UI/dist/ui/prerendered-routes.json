@@ -4,6 +4,7 @@
     "/altruist/dashboard/cache-view": {},
     "/altruist/dashboard/scene": {},
     "/altruist/dashboard/sessions": {},
+    "/altruist/dashboard/summary-view": {},
     "/altruist/dashboard/vault-view": {}
   }
 }

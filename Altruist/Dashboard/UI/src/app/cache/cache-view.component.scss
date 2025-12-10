@@ -9,6 +9,43 @@
   background: theme.$bg-root;
   color: theme.$text-main;
 
+  .cache-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+
+    .page-size {
+      label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+
+        select {
+          padding: 0.15rem 0.4rem;
+          border-radius: 999px;
+          border: 1px solid rgba(148, 163, 184, 0.5);
+          background: rgba(15, 23, 42, 0.95);
+        }
+      }
+    }
+
+    .page-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+
+      button {
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        background: rgba(15, 23, 42, 0.9);
+        cursor: pointer;
+      }
+    }
+  }
+
   .cache-header {
     display: flex;
     justify-content: space-between;
