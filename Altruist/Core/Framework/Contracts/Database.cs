@@ -155,6 +155,9 @@ public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
     Task SaveAsync(TVaultModel entity, bool? saveHistory = false);
     Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false);
     Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
+    Task UpdateAsync(
+        IReadOnlyDictionary<string, object?> primaryKey,
+        IReadOnlyDictionary<string, object?> changes);
     Task<long> CountAsync();
     Task<bool> DeleteAsync();
     Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate);

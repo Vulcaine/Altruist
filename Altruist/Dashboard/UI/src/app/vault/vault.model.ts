@@ -29,3 +29,12 @@ export interface VaultItemPageDto {
   fields: string[];
   items: Record<string, any>[];
 }
+
+export interface VaultBatchUpdateRequest {
+  typeKey: string;
+  items: Record<string, any>[];
+}
+
+export interface VaultBatchUpdateResult {
+  updated: number;
+}

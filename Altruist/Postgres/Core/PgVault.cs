@@ -813,6 +813,60 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             Enum e => $"'{e}'",
             _ => value.ToString()!
         };
+    public virtual async Task UpdateAsync(
+    IReadOnlyDictionary<string, object?> primaryKey,
+    IReadOnlyDictionary<string, object?> changes)
+    {
+        if (primaryKey is null || primaryKey.Count == 0)
+            throw new ArgumentException("Primary key is required.", nameof(primaryKey));
+
+        if (changes is null || changes.Count == 0)
+            return;
+
+        var st = _state;
+
+        foreach (var (field, value) in changes)
+        {
+            if (!VaultDocument.Columns.TryGetValue(field, out var column))
+                column = Document.ToCamelCase(field);
+
+            st = st.With(
+                QueryPosition.SET,
+                $"{QuoteIdent(column)} = ?",
+                value
+            );
+        }
+
+        foreach (var (pkField, pkValue) in primaryKey)
+        {
+            if (!VaultDocument.Columns.TryGetValue(pkField, out var column))
+                column = Document.ToCamelCase(pkField);
+
+            if (pkValue is null)
+            {
+                st = st.With(
+                    QueryPosition.WHERE,
+                    $"{QuoteIdent(column)} IS NULL"
+                );
+            }
+            else
+            {
+                st = st.With(
+                    QueryPosition.WHERE,
+                    $"{QuoteIdent(column)} = ?",
+                    pkValue
+                );
+            }
+        }
+
+        var sql = BuildUpdateQuery(st);
+        var parameters = st.Parameters[QueryPosition.SET]
+            .Concat(st.Parameters[QueryPosition.WHERE])
+            .ToList();
+
+        await _databaseProvider.ExecuteAsync(sql, parameters!);
+    }
+
 }
 
 internal static class TimestampSetterFactory

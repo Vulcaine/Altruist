@@ -30,9 +30,13 @@ export class VaultViewComponent implements OnInit, OnDestroy {
   currentPage = 0;
   totalItems = 0;
 
-  // current page items
-  fields: string[] = [];
+  // data
   items: Record<string, any>[] = [];
+  originalItems: Record<string, any>[] = [];
+
+  // dirty tracking
+  dirtyItems = new Map<number, Record<string, any>>();
+  hasPendingChanges = false;
 
   private sub?: Subscription;
 
@@ -43,11 +47,19 @@ export class VaultViewComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.hasPendingChanges) {
+      const ok = confirm(
+        'You have uncommitted changes. Leaving will discard them. Continue?'
+      );
+      if (!ok) return;
+    }
     this.sub?.unsubscribe();
   }
 
-  get hasVaults(): boolean {
-    return this.vaults.length > 0;
+  // ---------- computed ----------
+
+  get visibleColumns() {
+    return this.selectedVault?.columns ?? [];
   }
 
   get hasItems(): boolean {
@@ -55,53 +67,27 @@ export class VaultViewComponent implements OnInit, OnDestroy {
   }
 
   get totalPages(): number {
-    return this.pageSize > 0
-      ? Math.max(1, Math.ceil(this.totalItems / this.pageSize))
-      : 1;
+    return Math.max(1, Math.ceil(this.totalItems / this.pageSize));
   }
 
   get displayPage(): number {
     return this.currentPage + 1;
   }
 
-  get statusText(): string {
-    if (this.isLoadingVaults) return 'Loading vaults…';
-    if (!this.hasVaults) return 'No vaults registered.';
-    if (!this.selectedVault) return 'Select a vault to inspect.';
-    if (this.isLoadingItems) return 'Loading items…';
-
-    if (this.totalItems === 0) {
-      return `Vault '${this.selectedVault.clrTypeShort}' is empty.`;
-    }
-
-    const start = this.currentPage * this.pageSize + 1;
-    const end = Math.min(
-      this.totalItems,
-      (this.currentPage + 1) * this.pageSize
-    );
-    return `${start} – ${end} of ${this.totalItems} items`;
-  }
-
-  get visibleColumns() {
-    return this.selectedVault?.columns ?? [];
-  }
+  // ---------- loading ----------
 
   loadVaults(): void {
     this.isLoadingVaults = true;
-    this.error = null;
-
     this.service.getVaults().subscribe({
       next: (vaults) => {
         this.vaults = vaults;
-        this.applyVaultFilter();
+        this.filteredVaults = vaults;
         this.isLoadingVaults = false;
-
-        if (!this.selectedVault && this.vaults.length > 0) {
-          this.onSelectVault(this.vaults[0]);
+        if (!this.selectedVault && vaults.length > 0) {
+          this.onSelectVault(vaults[0]);
         }
       },
-      error: (err) => {
-        console.error(err);
+      error: () => {
         this.error = 'Failed to load vaults.';
         this.isLoadingVaults = false;
       },
@@ -110,42 +96,28 @@ export class VaultViewComponent implements OnInit, OnDestroy {
 
   applyVaultFilter(): void {
     const ft = this.vaultFilter.trim().toLowerCase();
-    if (!ft) {
-      this.filteredVaults = this.vaults;
-      return;
-    }
-
-    this.filteredVaults = this.vaults.filter((v) => {
-      return (
-        v.clrTypeShort.toLowerCase().includes(ft) ||
-        v.typeKey.toLowerCase().includes(ft) ||
-        v.keyspace.toLowerCase().includes(ft) ||
-        v.tableName.toLowerCase().includes(ft)
-      );
-    });
+    this.filteredVaults = !ft
+      ? this.vaults
+      : this.vaults.filter(
+          (v) =>
+            v.typeKey.toLowerCase().includes(ft) ||
+            v.clrTypeShort.toLowerCase().includes(ft) ||
+            v.keyspace.toLowerCase().includes(ft)
+        );
   }
 
   onSelectVault(vault: VaultDefinitionDto): void {
-    if (this.selectedVault === vault) return;
+    if (this.hasPendingChanges) {
+      const ok = confirm(
+        'You have uncommitted changes. Discard them and switch vault?'
+      );
+      if (!ok) return;
+    }
+
     this.selectedVault = vault;
     this.currentPage = 0;
-    this.loadPage();
-  }
-
-  onPageSizeChange(): void {
-    this.currentPage = 0;
-    this.loadPage();
-  }
-
-  goPrevPage(): void {
-    if (this.currentPage <= 0) return;
-    this.currentPage--;
-    this.loadPage();
-  }
-
-  goNextPage(): void {
-    if (this.currentPage >= this.totalPages - 1) return;
-    this.currentPage++;
+    this.dirtyItems.clear();
+    this.hasPendingChanges = false;
     this.loadPage();
   }
 
@@ -153,41 +125,77 @@ export class VaultViewComponent implements OnInit, OnDestroy {
     if (!this.selectedVault) return;
 
     this.isLoadingItems = true;
-    this.error = null;
-
     const skip = this.currentPage * this.pageSize;
-    const take = this.pageSize;
 
     this.sub?.unsubscribe();
     this.sub = this.service
-      .getVaultItems(this.selectedVault.typeKey, skip, take)
+      .getVaultItems(this.selectedVault.typeKey, skip, this.pageSize)
       .subscribe({
         next: (page: VaultItemPageDto) => {
-          this.fields = page.fields;
           this.items = page.items;
+          this.originalItems = JSON.parse(JSON.stringify(page.items));
           this.totalItems = page.total;
           this.isLoadingItems = false;
+          this.dirtyItems.clear();
+          this.hasPendingChanges = false;
         },
-        error: (err) => {
-          console.error(err);
+        error: () => {
           this.error = 'Failed to load vault items.';
           this.isLoadingItems = false;
         },
       });
   }
 
-  prettyValue(value: any): string {
-    if (value === null || value === undefined) return '—';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') {
-      return String(value);
+  // ---------- editing ----------
+
+  onCellEdit(rowIndex: number, field: string, value: any): void {
+    const original = this.originalItems[rowIndex]?.[field];
+
+    if (value === original) {
+      const entry = this.dirtyItems.get(rowIndex);
+      if (entry) {
+        delete entry[field];
+        if (Object.keys(entry).length === 0) {
+          this.dirtyItems.delete(rowIndex);
+        }
+      }
+    } else {
+      const entry = this.dirtyItems.get(rowIndex) ?? {};
+      entry[field] = value;
+      this.dirtyItems.set(rowIndex, entry);
     }
-    // Fallback: JSON snippet
-    try {
-      const json = JSON.stringify(value);
-      return json.length > 80 ? json.slice(0, 77) + '…' : json;
-    } catch {
-      return String(value);
+
+    this.hasPendingChanges = this.dirtyItems.size > 0;
+  }
+
+  commitChanges(): void {
+    if (!this.selectedVault || this.dirtyItems.size === 0) return;
+
+    const payload = {
+      typeKey: this.selectedVault.typeKey,
+      items: Array.from(this.dirtyItems.entries()).map(
+        ([rowIndex, changes]) => ({
+          ...this.pickPrimaryKeys(this.items[rowIndex]),
+          ...changes,
+        })
+      ),
+    };
+
+    this.service.batchUpdate(payload).subscribe({
+      next: () => this.loadPage(),
+      error: () => {
+        this.error = 'Failed to commit changes.';
+      },
+    });
+  }
+
+  private pickPrimaryKeys(item: Record<string, any>): Record<string, any> {
+    const result: Record<string, any> = {};
+    for (const col of this.visibleColumns) {
+      if (col.isPrimaryKey) {
+        result[col.fieldName] = item[col.fieldName];
+      }
     }
+    return result;
   }
 }
