@@ -1,10 +1,12 @@
 /*
 Copyright 2025 Aron Gere
+
 Licensed under the Apache License, Version 2.0
 */
 
 using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
+using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
@@ -29,8 +31,28 @@ namespace Altruist.Gaming.ThreeD
             float radius,
             string roomId);
 
+        /// <summary>
+        /// Find all partitions intersecting a sphere around a position.
+        /// Useful for "what partitions does this player see?" style queries.
+        /// </summary>
         IEnumerable<WorldPartitionManager3D> FindPartitionsForPosition(int x, int y, int z, float radius);
+
+        /// <summary>
+        /// Find a single partition that contains a specific position (if any).
+        /// </summary>
         WorldPartitionManager3D? FindPartitionForPosition(int x, int y, int z);
+
+        /// <summary>
+        /// Find all partitions whose AABB intersects the provided bounds.
+        /// </summary>
+        IEnumerable<WorldPartitionManager3D> FindPartitionsForBounds(
+            float minX, float minY, float minZ,
+            float maxX, float maxY, float maxZ);
+
+        /// <summary>
+        /// Find all partitions that intersect the bounds of the given object.
+        /// </summary>
+        IEnumerable<WorldPartitionManager3D> FindPartitionsForObject(IWorldObject3D obj);
     }
 
     public sealed class GameWorldManager3D : IGameWorldManager3D
@@ -76,25 +98,24 @@ namespace Altruist.Gaming.ThreeD
                 _partitions.Add(partition);
                 _partitionMap[new PartitionIndex3D(partition.Index.X, partition.Index.Y, partition.Index.Z)] = partition;
             }
-
         }
 
-
+        /// <summary>
+        /// Recalculate which partitions contain the given object, based on its bounds.
+        /// </summary>
         public async Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj)
         {
             if (obj is null)
                 return Enumerable.Empty<WorldPartitionManager3D>();
 
+            // Remove from all old partitions / caches
             DestroyObject(obj);
 
-            var radius = ComputePartitionRadius(obj);
-            var partitions = FindPartitionsForPosition(
-                obj.Transform.Position.X,
-                obj.Transform.Position.Y,
-                obj.Transform.Position.Z,
-                radius);
-
+            var partitions = FindPartitionsForObject(obj);
             AddObjectToPartitions(obj, partitions);
+
+            // NOTE: previously this method did not re-add to _flatInstanceCache either;
+            // preserving that behavior for now.
             return await Task.FromResult(partitions.ToList());
         }
 
@@ -120,15 +141,17 @@ namespace Altruist.Gaming.ThreeD
         /// Core spawn logic shared by dynamic & static world objects.
         /// </summary>
         private async Task<IPhysxBody3D?> SpawnObjectInternal(
-     IWorldObject3D obj,
-     PhysxBodyType bodyType,
-     bool isStatic,
-     string? withId = null)
+            IWorldObject3D obj,
+            PhysxBodyType bodyType,
+            bool isStatic,
+            string? withId = null)
         {
             if (obj is null)
                 return null;
 
-            obj.Archetype = obj is AnonymousWorldObject3D ? obj.Archetype : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
+            obj.Archetype = obj is AnonymousWorldObject3D
+                ? obj.Archetype
+                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
 
             var engine3D = PhysxWorld.Engine;
             var mass = isStatic ? 0f : 1f;
@@ -142,13 +165,13 @@ namespace Altruist.Gaming.ThreeD
             var colliderDescs = obj.ColliderDescriptors;
             if (colliderDescs == null || !colliderDescs.Any())
             {
-                colliderDescs = new[]
-                {
-            PhysxCollider3D.Create(
-                PhysxColliderShape3D.Box3D,
-                bodyDesc.Transform,
-                isTrigger: false)
-        };
+                colliderDescs =
+                [
+                    PhysxCollider3D.Create(
+                        PhysxColliderShape3D.Box3D,
+                        bodyDesc.Transform,
+                        isTrigger: false)
+                ];
             }
 
             var body = _bodyApi.CreateBody(engine3D, bodyDesc);
@@ -166,30 +189,9 @@ namespace Altruist.Gaming.ThreeD
             obj.ColliderDescriptors = colliderDescs;
             obj.Colliders = createdColliders;
 
-            // partition registration stays as-is...
-            IEnumerable<WorldPartitionManager3D> partitions;
-
-            if (isStatic)
-            {
-                var p = FindPartitionForPosition(
-                    obj.Transform.Position.X,
-                    obj.Transform.Position.Y,
-                    obj.Transform.Position.Z);
-
-                partitions = p is null
-                    ? Enumerable.Empty<WorldPartitionManager3D>()
-                    : new[] { p };
-            }
-            else
-            {
-                var radius = ComputePartitionRadius(obj);
-                partitions = FindPartitionsForPosition(
-                    obj.Transform.Position.X,
-                    obj.Transform.Position.Y,
-                    obj.Transform.Position.Z,
-                    radius);
-            }
-
+            // Bounds-based partition registration: big objects (e.g. landscape)
+            // get added to every partition their collider bounds touch.
+            var partitions = FindPartitionsForObject(obj);
             foreach (var p in partitions)
                 p.AddObject(obj);
 
@@ -208,8 +210,7 @@ namespace Altruist.Gaming.ThreeD
             if (string.IsNullOrWhiteSpace(instanceId))
                 return null;
 
-            // First let all partitions try to destroy the object.
-            // Keep the first non-null result if they return it.
+            // Let all partitions try to destroy the object.
             var removedFromPartitions = _partitions
                 .Select(p => p.DestroyObject(instanceId))
                 .FirstOrDefault(o => o != null);
@@ -258,6 +259,10 @@ namespace Altruist.Gaming.ThreeD
             return _partitionMap.TryGetValue(new PartitionIndex3D(indexX, indexY, indexZ), out var p) ? p : null;
         }
 
+        /// <summary>
+        /// Sphere-based query: find partitions intersecting a radius around a point.
+        /// Kept for visibility queries (player perspective).
+        /// </summary>
         public IEnumerable<WorldPartitionManager3D> FindPartitionsForPosition(int x, int y, int z, float radius)
         {
             float minX = x - radius;
@@ -267,6 +272,17 @@ namespace Altruist.Gaming.ThreeD
             float minZ = z - radius;
             float maxZ = z + radius;
 
+            return FindPartitionsForBounds(minX, minY, minZ, maxX, maxY, maxZ);
+        }
+
+        /// <summary>
+        /// AABB-based query: find partitions whose bounds intersect the given bounds.
+        /// </summary>
+        public IEnumerable<WorldPartitionManager3D> FindPartitionsForBounds(
+            float minX, float minY, float minZ,
+            float maxX, float maxY, float maxZ)
+        {
+            // Simple AABB intersection test between query bounds and partition bounds.
             return _partitions.Where(partition =>
                 maxX >= partition.Position.X &&
                 minX <= partition.Position.X + partition.Size.X &&
@@ -275,6 +291,91 @@ namespace Altruist.Gaming.ThreeD
                 maxZ >= partition.Position.Z &&
                 minZ <= partition.Position.Z + partition.Size.Z
             );
+        }
+
+        /// <summary>
+        /// Compute an object's axis-aligned bounds.
+        /// Preferred source = non-trigger collider descriptor.
+        /// If no collider descriptors exist (or something looks degenerate),
+        /// we fall back to the object's Transform (old behavior).
+        /// </summary>
+        private static (float minX, float minY, float minZ, float maxX, float maxY, float maxZ)
+            GetObjectBounds(IWorldObject3D obj)
+        {
+            PhysxCollider3DDesc? chosen = null;
+            PhysxCollider3DDesc? firstAny = null;
+
+            var colliders = obj.ColliderDescriptors;
+            if (colliders != null)
+            {
+                foreach (var c in colliders)
+                {
+                    if (!firstAny.HasValue)
+                        firstAny = c;
+
+                    if (!c.IsTrigger)
+                    {
+                        chosen = c;
+                        break;
+                    }
+                }
+
+                if (!chosen.HasValue && firstAny.HasValue)
+                    chosen = firstAny;
+            }
+
+            Transform3D transformToUse;
+
+            if (chosen.HasValue)
+            {
+                transformToUse = chosen.Value.Transform;
+            }
+            else
+            {
+                transformToUse = obj.Transform;
+            }
+
+            var pos = transformToUse.Position;
+            var size = transformToUse.Size;
+            bool colliderDegenerate =
+                size.X == 0f && size.Y == 0f && size.Z == 0f ||
+                float.IsNaN(size.X) || float.IsNaN(size.Y) || float.IsNaN(size.Z) ||
+                float.IsInfinity(size.X) || float.IsInfinity(size.Y) || float.IsInfinity(size.Z);
+
+            if (colliderDegenerate)
+            {
+                var objSize = obj.Transform.Size;
+                if (!(objSize.X == 0f && objSize.Y == 0f && objSize.Z == 0f))
+                {
+                    size = objSize;
+                    pos = obj.Transform.Position;
+                }
+            }
+
+            var halfX = size.X * 0.5f;
+            var halfY = size.Y * 0.5f;
+            var halfZ = size.Z * 0.5f;
+
+            var minX = pos.X - halfX;
+            var maxX = pos.X + halfX;
+            var minY = pos.Y - halfY;
+            var maxY = pos.Y + halfY;
+            var minZ = pos.Z - halfZ;
+            var maxZ = pos.Z + halfZ;
+
+            return (minX, minY, minZ, maxX, maxY, maxZ);
+        }
+
+        /// <summary>
+        /// Find all partitions intersecting the bounds of the given object.
+        /// </summary>
+        public IEnumerable<WorldPartitionManager3D> FindPartitionsForObject(IWorldObject3D obj)
+        {
+            if (obj is null)
+                return Enumerable.Empty<WorldPartitionManager3D>();
+
+            var (minX, minY, minZ, maxX, maxY, maxZ) = GetObjectBounds(obj);
+            return FindPartitionsForBounds(minX, minY, minZ, maxX, maxY, maxZ);
         }
 
         private IEnumerable<WorldPartitionManager3D> AddObjectToPartitions(
@@ -290,7 +391,7 @@ namespace Altruist.Gaming.ThreeD
 
         /// <summary>
         /// Compute a partition search radius from the object's transform size.
-        /// Uses half of the largest dimension; minimal floor if degenerate.
+        /// Kept for callers that still want a radius-based query.
         /// </summary>
         private static float ComputePartitionRadius(IWorldObject3D obj)
         {
@@ -302,7 +403,9 @@ namespace Altruist.Gaming.ThreeD
             return r;
         }
 
-        public IWorldObject3D? FindObject(string id) => _flatInstanceCache.TryGetValue(id, out var obj) ? obj : null;
+        public IWorldObject3D? FindObject(string id)
+            => _flatInstanceCache.TryGetValue(id, out var obj) ? obj : null;
+
         public IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D
         {
             return _flatInstanceCache.Values
