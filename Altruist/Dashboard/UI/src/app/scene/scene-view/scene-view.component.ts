@@ -4,10 +4,15 @@ import { GlobeSceneComponent } from '../globe-scene/globe-scene.component';
 import { WorldDashboardService } from '../services/world-dashboard.service';
 import {
   WorldObjectDto,
+  WorldPartitionDto,
   WorldSummary,
 } from '../world-scene/models/world.model';
-import { WorldSceneComponent } from '../world-scene/world-scene.component';
 import { CameraInfo } from '../world-scene/world-renderer';
+import { WorldSceneComponent } from '../world-scene/world-scene.component';
+
+interface PartitionUI extends WorldPartitionDto {
+  collapsed: boolean;
+}
 
 @Component({
   selector: 'app-scene-view',
@@ -17,20 +22,21 @@ import { CameraInfo } from '../world-scene/world-renderer';
   styleUrl: './scene-view.component.scss',
 })
 export class SceneViewComponent implements OnInit {
+  worlds: WorldSummary[] = [];
+  selectedWorld: WorldSummary | null = null;
+
+  partitions: PartitionUI[] = [];
+  selectedPartition: PartitionUI | null = null;
+
+  selectedObject: WorldObjectDto | null = null;
+  lastWorldUpdate: Date | null = null;
+
   isLoading = false;
   isLoadingWorlds = false;
   hasData = false;
-
-  worlds: WorldSummary[] = [];
-  selectedWorld: WorldSummary | null = null;
-  selectedWorldObjects: WorldObjectDto[] = [];
-  selectedObject: WorldObjectDto | null = null;
+  worldCollapsed = false;
 
   autoUpdate = false;
-
-  objectsCollapsed = false;
-
-  lastWorldUpdate: Date | null = null;
 
   cameraInfo: CameraInfo | null = null;
 
@@ -42,14 +48,13 @@ export class SceneViewComponent implements OnInit {
 
   private loadWorlds(): void {
     this.isLoadingWorlds = true;
-
     this.worldService.getWorlds().subscribe({
       next: (worlds) => {
         this.worlds = worlds;
         this.isLoadingWorlds = false;
 
-        if (this.worlds.length > 0 && !this.selectedWorld) {
-          this.onSelectWorld(this.worlds[0]);
+        if (!this.selectedWorld && worlds.length > 0) {
+          this.onSelectWorld(worlds[0]);
         }
       },
       error: () => {
@@ -66,41 +71,26 @@ export class SceneViewComponent implements OnInit {
     }
   }
 
-  onCameraChanged(info: CameraInfo): void {
-    this.cameraInfo = info;
-  }
-
   onSelectWorld(world: WorldSummary): void {
     this.selectedWorld = world;
-    this.isLoading = true;
+    this.selectedPartition = null;
+    this.partitions = [];
     this.selectedObject = null;
     this.lastWorldUpdate = null;
-    this.selectedWorldObjects = [];
+    this.worldCollapsed = false;
+    this.isLoading = true;
     this.hasData = false;
-    this.objectsCollapsed = false;
 
     this.worldService.streamWorldObjects(world.index).subscribe({
-      next: (obj: WorldObjectDto) => {
-        const idx = this.selectedWorldObjects.findIndex(
-          (o) => o.instanceId === obj.instanceId
-        );
-
-        if (idx >= 0) {
-          this.selectedWorldObjects[idx] = obj;
-        } else {
-          this.selectedWorldObjects = [...this.selectedWorldObjects, obj];
-        }
-
-        this.hasData = this.selectedWorldObjects.length > 0;
-
-        if (!this.selectedObject && this.selectedWorldObjects.length > 0) {
-          this.selectedObject = this.selectedWorldObjects[0];
-        }
-
+      next: (p) => {
+        // partitions start collapsed by default
+        this.partitions.push({ ...p, collapsed: true });
+        this.hasData = true;
         this.isLoading = false;
       },
       error: () => {
-        this.selectedWorldObjects = [];
+        this.partitions = [];
+        this.selectedPartition = null;
         this.selectedObject = null;
         this.isLoading = false;
         this.hasData = false;
@@ -111,13 +101,33 @@ export class SceneViewComponent implements OnInit {
     });
   }
 
+  get visibleObjects(): WorldObjectDto[] {
+    if (this.selectedPartition) {
+      return this.selectedPartition.objects;
+    }
+    return this.partitions.flatMap((p) => p.objects);
+  }
+
+  onSelectPartition(p: PartitionUI): void {
+    this.selectedPartition = p;
+    this.selectedObject = null;
+  }
+
   onSelectObject(obj: WorldObjectDto): void {
     this.selectedObject = obj;
   }
 
-  toggleWorldObjects(event: MouseEvent): void {
-    event.stopPropagation();
-    this.objectsCollapsed = !this.objectsCollapsed;
+  toggleWorld(): void {
+    this.worldCollapsed = !this.worldCollapsed;
+  }
+
+  togglePartition(p: PartitionUI, e: MouseEvent): void {
+    e.stopPropagation();
+    p.collapsed = !p.collapsed;
+  }
+
+  onCameraChanged(info: CameraInfo): void {
+    this.cameraInfo = info;
   }
 
   onWorldLastUpdate(ts: Date): void {

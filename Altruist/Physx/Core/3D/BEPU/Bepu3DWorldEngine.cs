@@ -15,11 +15,27 @@ using BepuUtilities.Memory;
 namespace Altruist.Physx.ThreeD
 {
 
+    public struct WorldEngineCacheKey
+    {
+        public Vector3 Gravity;
+        public float FixedDeltaTime;
+
+        public WorldEngineCacheKey(Vector3 gravity, float fixedDeltaTime) { Gravity = gravity; FixedDeltaTime = fixedDeltaTime; }
+    }
+
     [Service(typeof(IPhysxWorldEngineFactory3D))]
     public sealed class BepuWorldEngineFactory3D : IPhysxWorldEngineFactory3D
     {
-        public IPhysxWorldEngine3D Create(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
-            => new BepuWorldEngine3D(gravity, fixedDeltaTime);
+        private Dictionary<WorldEngineCacheKey, IPhysxWorldEngine3D> _cache = new();
+        public IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
+        {
+            if (_cache.TryGetValue(new WorldEngineCacheKey(gravity, fixedDeltaTime), out var existing))
+            {
+                return existing;
+            }
+
+            return new BepuWorldEngine3D(gravity, fixedDeltaTime);
+        }
     }
 
     public class BepuWorldEngine3D : IPhysxWorldEngine3D

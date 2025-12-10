@@ -20,7 +20,7 @@ namespace Altruist.Physx.ThreeD
 
     public interface IPhysxWorldEngineFactory3D
     {
-        IPhysxWorldEngine3D Create(Vector3 gravity, float fixedDeltaTime = 1f / 60f);
+        IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f);
     }
 
     public interface IPhysxWorld3D : IPhysxWorld

@@ -291,6 +291,29 @@ public class InMemoryCache : IMemoryCacheProvider
 
         return Task.FromResult(result);
     }
+
+    public IEnumerable<CacheEntrySnapshot> GetSnapshot()
+    {
+        foreach (var typeEntry in _cacheSource)
+        {
+            var type = typeEntry.Key;
+            var groupMap = typeEntry.Value;
+
+            foreach (var groupEntry in groupMap)
+            {
+                var groupId = groupEntry.Key;
+                var cache = groupEntry.Value;
+
+                foreach (var key in cache.Keys)
+                {
+                    if (cache.TryGet(key, out var value))
+                    {
+                        yield return new CacheEntrySnapshot(type, groupId, key, value);
+                    }
+                }
+            }
+        }
+    }
 }
 
 

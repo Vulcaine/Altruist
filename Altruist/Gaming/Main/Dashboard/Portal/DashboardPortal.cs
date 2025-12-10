@@ -1,8 +1,3 @@
-/*
-Copyright 2025 Aron Gere
-Licensed under the Apache License, Version 2.0
-*/
-
 using Altruist.Gaming.ThreeD;
 
 namespace Altruist.Dashboard
@@ -10,23 +5,20 @@ namespace Altruist.Dashboard
     [Portal("dashboard")]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     [ConditionalOnAssembly("Altruist.Dashboard")]
-    public class DashboardPortal : Portal
+    public sealed class DashboardPortal : Portal
     {
         private readonly IGameWorldOrganizer3D _gameWorldOrganizer;
         private readonly IAltruistRouter _router;
         private readonly IConnectionManager _connectionManager;
 
-        private readonly TimeSpan _fullSyncInterval = TimeSpan.FromSeconds(1.0);
-        private DateTime _lastFullSyncUtc = DateTime.MinValue;
+        private readonly TimeSpan _fullSyncInterval = TimeSpan.FromSeconds(1);
+        private DateTime _lastSyncUtc = DateTime.MinValue;
 
-        private IEnumerable<AltruistConnection> _connections;
+        private IEnumerable<AltruistConnection> _connections = Enumerable.Empty<AltruistConnection>();
 
-        /// <summary>
-        /// Per-world snapshot of last sent object states.
-        /// worldIndex -> (instanceId -> lastState)
-        /// </summary>
-        private readonly Dictionary<int, Dictionary<string, DashboardWorldObjectStateDto>> _lastWorldSnapshots =
-            new Dictionary<int, Dictionary<string, DashboardWorldObjectStateDto>>();
+        /// worldIndex → instanceId → last state
+        private readonly Dictionary<int, Dictionary<string, DashboardWorldObjectStateDto>> _snapshots =
+            new();
 
         public DashboardPortal(
             IGameWorldOrganizer3D gameWorldOrganizer,
@@ -36,7 +28,6 @@ namespace Altruist.Dashboard
             _gameWorldOrganizer = gameWorldOrganizer;
             _router = router;
             _connectionManager = connectionManager;
-            _connections = Enumerable.Empty<AltruistConnection>();
         }
 
         public override async Task OnConnectedAsync(
@@ -48,82 +39,81 @@ namespace Altruist.Dashboard
             _connections = await _connectionManager.GetConnectionsForPortal(this);
         }
 
-        /// <summary>
-        /// Periodic dashboard update:
-        /// - every _fullSyncInterval, scan all non-terrain world objects
-        /// - build per-object state
-        /// - send ONLY the ones that changed since last snapshot
-        /// </summary>
         [Cycle]
         public async Task UpdateDashboard()
         {
             if (!_connections.Any())
-            {
                 return;
-            }
 
             var now = DateTime.UtcNow;
-            if (now - _lastFullSyncUtc < _fullSyncInterval)
-            {
+            if (now - _lastSyncUtc < _fullSyncInterval)
                 return;
-            }
 
-            _lastFullSyncUtc = now;
+            _lastSyncUtc = now;
 
             foreach (var world in _gameWorldOrganizer.GetAllWorlds())
             {
-                var worldObjects = world
-                    .FindAllObjects<IWorldObject3D>()
-                    .Where(o => o is not Terrain)
-                    .ToList();
-
-                // No objects at all in this world -> nothing to send
-                if (worldObjects.Count == 0)
-                    continue;
-
                 var worldIndex = world.Index.Index;
 
-                if (!_lastWorldSnapshots.TryGetValue(worldIndex, out var lastSnapshotForWorld))
+                if (!_snapshots.TryGetValue(worldIndex, out var snapshot))
                 {
-                    lastSnapshotForWorld = new Dictionary<string, DashboardWorldObjectStateDto>();
-                    _lastWorldSnapshots[worldIndex] = lastSnapshotForWorld;
+                    snapshot = new Dictionary<string, DashboardWorldObjectStateDto>();
+                    _snapshots[worldIndex] = snapshot;
                 }
 
-                var changedStates = new List<DashboardWorldObjectStateDto>();
+                var partitionDtos = new List<DashboardPartitionStateDto>();
 
-                foreach (var obj in worldObjects)
+                foreach (var partition in world.FindPartitionsForPosition(0, 0, 0, float.MaxValue))
                 {
-                    var t = obj.Transform;
+                    var changedObjects = new List<DashboardWorldObjectStateDto>();
 
-                    var currentState = new DashboardWorldObjectStateDto
+                    foreach (var obj in partition.GetAllObjects<IWorldObject3D>())
                     {
-                        InstanceId = obj.InstanceId,
-                        Archetype = obj.Archetype ?? string.Empty,
-                        Position = new Vector3Dto
+                        if (obj is Terrain)
+                            continue;
+
+                        var t = obj.Transform;
+
+                        var current = new DashboardWorldObjectStateDto
                         {
-                            X = t.Position.X,
-                            Y = t.Position.Y,
-                            Z = t.Position.Z
-                        }
-                    };
+                            InstanceId = obj.InstanceId,
+                            Archetype = obj.Archetype ?? string.Empty,
+                            Position = new Vector3Dto
+                            {
+                                X = t.Position.X,
+                                Y = t.Position.Y,
+                                Z = t.Position.Z
+                            }
+                        };
 
-                    if (!lastSnapshotForWorld.TryGetValue(obj.InstanceId, out var lastState) ||
-                        !AreEqual(lastState, currentState))
+                        if (!snapshot.TryGetValue(obj.InstanceId, out var last) ||
+                            !AreEqual(last, current))
+                        {
+                            snapshot[obj.InstanceId] = current;
+                            changedObjects.Add(current);
+                        }
+                    }
+
+                    if (changedObjects.Count > 0)
                     {
-                        // State changed or new object -> remember and mark for sending
-                        lastSnapshotForWorld[obj.InstanceId] = currentState;
-                        changedStates.Add(currentState);
+                        partitionDtos.Add(new DashboardPartitionStateDto
+                        {
+                            X = partition.Index.X,
+                            Y = partition.Index.Y,
+                            Z = partition.Index.Z,
+                            Objects = changedObjects
+                        });
                     }
                 }
 
-                // If nothing changed for this world, skip sending a packet.
-                if (changedStates.Count == 0)
+                if (partitionDtos.Count == 0)
                     continue;
 
                 var packet = new DashboardWorldObjectStatePacket(
-                    worldIndex: worldIndex,
-                    timestampUtc: now,
-                    objects: changedStates);
+                    worldIndex,
+                    now,
+                    partitionDtos
+                );
 
                 foreach (var conn in _connections)
                 {
@@ -132,28 +122,21 @@ namespace Altruist.Dashboard
             }
         }
 
-        // --------------------------------------------------------------------
-        // Snapshot equality helpers
-        // --------------------------------------------------------------------
-
         private static bool AreEqual(
             DashboardWorldObjectStateDto a,
             DashboardWorldObjectStateDto b)
         {
-            if (!string.Equals(a.InstanceId, b.InstanceId, StringComparison.Ordinal))
+            if (a.InstanceId != b.InstanceId)
+                return false;
+            if (a.Archetype != b.Archetype)
                 return false;
 
-            if (!string.Equals(a.Archetype, b.Archetype, StringComparison.Ordinal))
-                return false;
-
-            return FloatEqual(a.Position.X, b.Position.X)
-                && FloatEqual(a.Position.Y, b.Position.Y)
-                && FloatEqual(a.Position.Z, b.Position.Z);
+            return FloatEq(a.Position.X, b.Position.X)
+                && FloatEq(a.Position.Y, b.Position.Y)
+                && FloatEq(a.Position.Z, b.Position.Z);
         }
 
-        private static bool FloatEqual(float a, float b, float epsilon = 1e-4f)
-        {
-            return Math.Abs(a - b) <= epsilon;
-        }
+        private static bool FloatEq(float a, float b, float eps = 1e-4f)
+            => Math.Abs(a - b) <= eps;
     }
 }

@@ -15,6 +15,7 @@
   </header>
 
   <section class="scene-layout">
+    <!-- LEFT: worlds / partitions / objects -->
     <aside class="scene-sidebar">
       <h2>Worlds</h2>
 
@@ -26,9 +27,11 @@
       <ul class="world-list">
         @for (world of worlds; track world.index) {
         <li class="world-item">
-          <button
-            type="button"
+          <!-- world header -->
+          <div
             class="world-item-button"
+            role="button"
+            tabindex="0"
             (click)="onSelectWorld(world)"
             [class.world-item-button--active]="world === selectedWorld"
           >
@@ -38,15 +41,13 @@
                 {{ world.name || "Unnamed" }}
               </span>
 
-              <!-- Collapse / expand button for the selected world -->
               @if (world === selectedWorld) {
               <button
                 type="button"
                 class="world-collapse-button"
-                [attr.aria-expanded]="!objectsCollapsed"
-                (click)="toggleWorldObjects($event)"
+                (click)="toggleWorld(); $event.stopPropagation()"
               >
-                {{ objectsCollapsed ? "▼ Show objects" : "▲ Hide objects" }}
+                {{ worldCollapsed ? "Show partitions" : "Hide partitions" }}
               </button>
               }
             </div>
@@ -55,43 +56,67 @@
               Partitions: {{ world.partitionCount }} · Objects:
               {{ world.objectCount }}
             </div>
-          </button>
+          </div>
 
-          <!-- Expanded object list for selected world -->
-          @if ( world === selectedWorld && !objectsCollapsed &&
-          selectedWorldObjects.length > 0 ) {
-          <!-- Fixed-height scroll area for objects -->
-          <div
-            class="world-object-scroll"
-            style="max-height: 260px; overflow-y: auto"
-          >
-            <ul class="world-object-list">
-              @for (obj of selectedWorldObjects; track obj.instanceId) {
-              <li class="world-object-item">
+          <!-- partitions + objects -->
+          @if (world === selectedWorld && !worldCollapsed) {
+          <ul class="partition-list">
+            @for (p of partitions; track p.indexX + ':' + p.indexY + ':' +
+            p.indexZ) {
+            <li class="partition-item">
+              <!-- partition header -->
+              <div
+                class="partition-header"
+                role="button"
+                tabindex="0"
+                (click)="onSelectPartition(p)"
+                [class.partition-header--active]="p === selectedPartition"
+              >
+                <div class="partition-header-main">
+                  <span class="partition-title">
+                    Partition [{{ p.indexX }}, {{ p.indexY }}, {{ p.indexZ }}]
+                  </span>
+                  <span class="partition-meta">
+                    {{ p.objects.length }} objects
+                  </span>
+                </div>
+
                 <button
                   type="button"
-                  class="world-object-button"
-                  (click)="onSelectObject(obj)"
-                  [class.world-object-button--active]="obj === selectedObject"
+                  class="partition-toggle-button"
+                  (click)="togglePartition(p, $event)"
                 >
-                  <div class="world-object-line">
-                    <span class="world-object-name">
-                      {{ obj.archetype || "Object" }}
-                    </span>
-                    <span class="world-object-id">
-                      #{{ obj.instanceId.slice(0, 8) }}
-                    </span>
-                  </div>
-                  <div class="world-object-pos">
-                    ({{ obj.transform.position.x }},
-                    {{ obj.transform.position.y }},
-                    {{ obj.transform.position.z }})
-                  </div>
+                  {{ p.collapsed ? "▼ Expand" : "▲ Collapse" }}
                 </button>
-              </li>
+              </div>
+
+              <!-- objects in partition -->
+              @if (!p.collapsed && p.objects.length > 0) {
+              <ul class="world-object-list">
+                @for (obj of p.objects; track obj.instanceId) {
+                <li class="world-object-item">
+                  <button
+                    type="button"
+                    class="world-object-button"
+                    (click)="onSelectObject(obj)"
+                    [class.world-object-button--active]="obj === selectedObject"
+                  >
+                    <div class="world-object-line">
+                      <span class="world-object-name">
+                        {{ obj.archetype || "Object" }}
+                      </span>
+                      <span class="world-object-id">
+                        #{{ obj.instanceId.slice(0, 6) }}
+                      </span>
+                    </div>
+                  </button>
+                </li>
+                }
+              </ul>
               }
-            </ul>
-          </div>
+            </li>
+            }
+          </ul>
           }
         </li>
         }
@@ -99,10 +124,10 @@
       }
     </aside>
 
+    <!-- RIGHT: canvas -->
     <section class="scene-canvas">
       <div class="canvas-toolbar">
         <span class="canvas-title">3D Scene</span>
-
         <span class="canvas-hint">
           {{ statusHint }}
         </span>
@@ -114,13 +139,13 @@
         } @else {
         <app-world-scene
           [world]="selectedWorld"
-          [objects]="selectedWorldObjects"
-          [isLoading]="isLoading"
+          [objects]="visibleObjects"
           [selectedObject]="selectedObject"
+          [isLoading]="isLoading"
           (cameraChanged)="onCameraChanged($event)"
           (lastUpdateChanged)="onWorldLastUpdate($event)"
-        >
-        </app-world-scene>
+        ></app-world-scene>
+
         @if (cameraInfo) {
         <div class="camera-hud">
           <div class="camera-hud-title">Camera</div>

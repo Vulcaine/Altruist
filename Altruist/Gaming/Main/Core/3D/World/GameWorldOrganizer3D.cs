@@ -96,6 +96,7 @@ namespace Altruist.Gaming.ThreeD
 
         public void Step(float deltaTime)
         {
+            var steppedEngines = new HashSet<object>();
             foreach (var world in _worlds.Values)
             {
                 try
@@ -114,15 +115,19 @@ namespace Altruist.Gaming.ThreeD
                         }
                         catch
                         {
-                            // Intentionally swallow step exceptions per-object
+                            // Swallow per-object step exceptions
                         }
                     }
 
-                    world.PhysxWorld.Step(deltaTime);
+                    var engine = world.PhysxWorld.Engine;
+                    if (engine != null && steppedEngines.Add(engine))
+                    {
+                        world.PhysxWorld.Step(deltaTime);
+                    }
                 }
                 catch
                 {
-                    // Intentionally swallow step exceptions per-world
+                    // Swallow per-world step exceptions
                 }
             }
         }

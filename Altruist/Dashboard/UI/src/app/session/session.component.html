@@ -61,6 +61,7 @@
                 </span>
               </td>
               <td class="col-actions">
+                @if (room.roomId !== 'waiting_room') {
                 <button
                   class="btn btn-link"
                   type="button"
@@ -69,6 +70,7 @@
                 >
                   Delete room
                 </button>
+                }
               </td>
             </tr>
             }

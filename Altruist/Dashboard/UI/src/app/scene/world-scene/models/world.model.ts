@@ -17,8 +17,6 @@ export interface WorldSummary {
   objectCount: number;
 }
 
-// Matches PhysxColliderShape3D numeric enum on the server.
-// We keep this as number; if you want explicit names, you can export an enum.
 export type PhysxColliderShape3D = number;
 
 export interface HeightfieldDto {
@@ -27,7 +25,6 @@ export interface HeightfieldDto {
   cellSizeX: number;
   cellSizeZ: number;
   heightScale: number;
-  // heights[x][z]
   heights: number[][];
 }
 
@@ -47,4 +44,11 @@ export interface WorldObjectDto {
   expired: boolean;
   transform: TransformDto;
   colliders: ColliderDto[];
+}
+
+export interface WorldPartitionDto {
+  indexX: number;
+  indexY: number;
+  indexZ: number;
+  objects: WorldObjectDto[];
 }

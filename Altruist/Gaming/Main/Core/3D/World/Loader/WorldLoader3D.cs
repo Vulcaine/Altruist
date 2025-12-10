@@ -119,7 +119,7 @@ namespace Altruist.Gaming.ThreeD
             {
                 _spawnedWorldObjects.Clear();
 
-                var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
+                var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
                 var physxWorld = new PhysxWorld3D(engine);
 
                 var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _bodyApi, _colliderApi);
@@ -145,7 +145,7 @@ namespace Altruist.Gaming.ThreeD
             _spawnedWorldObjects.Clear();
 
             // 1) Create engine + PhysX world
-            var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
+            var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
             var physxWorld = new PhysxWorld3D(engine);
 
             // 2) Create the game world manager (this will own the PhysX world & partitioning)

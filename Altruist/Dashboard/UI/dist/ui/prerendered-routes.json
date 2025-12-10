@@ -1,5 +1,7 @@
 {
   "routes": {
+    "/altruist/dashboard": {},
+    "/altruist/dashboard/cache": {},
     "/altruist/dashboard/scene": {},
     "/altruist/dashboard/sessions": {}
   }
