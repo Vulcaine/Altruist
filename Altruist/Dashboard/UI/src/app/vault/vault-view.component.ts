@@ -232,6 +232,16 @@ export class VaultViewComponent implements OnInit, OnDestroy {
     this.hasPendingChanges = this.dirtyItems.size > 0;
   }
 
+  onCellBlur(row: number, field: string): void {
+    const key = `${row}:${field}`;
+    const original = this.originalItems[row]?.[field];
+    const current = this.items[row]?.[field];
+
+    if (current === original && this.editing.has(key)) {
+      this.editing.delete(key);
+    }
+  }
+
   commitChanges(): void {
     if (!this.selectedVault || this.dirtyItems.size === 0) return;
 

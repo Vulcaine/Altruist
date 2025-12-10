@@ -163,6 +163,7 @@
                     (input)="
                       onCellEdit(row, col.fieldName, $any($event.target).value)
                     "
+                    (blur)="onCellBlur(row, col.fieldName)"
                     class="vault-cell-input"
                     autofocus
                   />
