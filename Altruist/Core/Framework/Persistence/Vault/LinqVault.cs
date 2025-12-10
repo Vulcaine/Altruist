@@ -180,4 +180,6 @@ public class LinqVault<TVaultModel> : ILinqVault<TVaultModel> where TVaultModel 
     {
         throw new NotImplementedException();
     }
+
+    public Task UpdateAsync(IReadOnlyDictionary<string, object?> primaryKey, IReadOnlyDictionary<string, object?> changes) => throw new NotImplementedException();
 }
