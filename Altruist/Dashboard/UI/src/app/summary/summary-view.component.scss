@@ -1,12 +1,24 @@
 @use '../../styles.scss' as *;
-
 .summary-root {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
   height: 100%;
-  padding: 1rem;
+  min-height: 0;
   overflow: hidden;
+}
+
+.summary-configs,
+.summary-services {
+  @extend .panel;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.services-table-wrapper,
+.config-list {
+  min-width: 100%;
+  overflow: auto;
 }
 
 .summary-header {
@@ -26,20 +38,4 @@
   @extend .panel;
   flex: 1 1 320px;
   min-width: 280px;
-}
-
-.summary-configs,
-.summary-services {
-  @extend .panel;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
-.config-list,
-.services-table-wrapper {
-  flex: 1 1 auto;
-  overflow-y: auto;
 }
