@@ -1,6 +1,7 @@
 <div class="vault-view">
+
   <!-- HEADER -->
-  <header class="vault-header">
+  <header class="panel vault-header">
     <div class="vault-header-main">
       <h2>🔐 Vault Dashboard</h2>
       <p class="vault-status">{{ statusText }}</p>
@@ -23,26 +24,28 @@
   </header>
 
   @if (error) {
-  <div class="vault-error">{{ error }}</div>
+  <div class="panel vault-error">{{ error }}</div>
   }
 
-  <!-- LAYOUT -->
+  <!-- GRID LAYOUT -->
   <section class="vault-layout">
 
-    <!-- SIDEBAR -->
-    <aside class="vault-sidebar">
+    <!-- SIDEBAR (PANEL) -->
+    <aside class="panel vault-sidebar">
       <h3>Vaults</h3>
 
       @if (!hasVaults && !isLoadingVaults) {
+
       <p class="vault-empty">No vaults registered.</p>
+
       } @else {
 
       <ul class="list">
 
         @for (group of groupedVaults; track group.keyspace) {
+
         <li>
 
-          <!-- SIDEBAR GROUP -->
           <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">
             <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">▶</span>
             <span>{{ group.keyspace }}</span>
@@ -53,21 +56,18 @@
           <ul class="sublist">
 
             @for (v of group.vaults; track v.typeKey) {
-            <li>
 
-              <!-- SIDEBAR ITEM -->
+            <li>
               <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"
                 (click)="onSelectVault(v)">
                 <div class="vault-item-type">{{ v.clrTypeShort }}</div>
                 <div class="vault-item-meta">
                   {{ v.tableName }}
-                  @if (v.storeHistory) {
-                  <span class="vault-item-tag">History</span>
-                  }
+                  @if (v.storeHistory) { <span class="vault-item-tag">History</span> }
                 </div>
               </button>
-
             </li>
+
             }
 
           </ul>
@@ -75,6 +75,7 @@
           }
 
         </li>
+
         }
 
       </ul>
@@ -83,8 +84,8 @@
 
     </aside>
 
-    <!-- MAIN -->
-    <main class="vault-main">
+    <!-- MAIN PANEL -->
+    <main class="panel vault-main">
 
       @if (!selectedVault) {
 
@@ -94,10 +95,11 @@
 
       } @else {
 
-      <header class="vault-table-header">
-        <div class="vault-table-title">
+      <!-- TABLE HEADER -->
+      <header class="panel-header vault-table-header">
+        <div>
           <h3>{{ selectedVault.clrTypeShort }}</h3>
-          <p>
+          <p class="muted">
             {{ selectedVault.typeKey }} ·
             <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> ·
             <span class="vault-table-name">{{ selectedVault.tableName }}</span>
@@ -116,26 +118,35 @@
           </label>
 
           <div class="vault-pagination">
-            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">‹</button>
+            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">
+              ‹
+            </button>
 
             <span>Page {{ displayPage }} / {{ totalPages }}</span>
 
-            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">›</button>
+            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">
+              ›
+            </button>
           </div>
 
         </div>
       </header>
 
+      <!-- TABLE AREA -->
       <section class="vault-table-section">
 
         @if (isLoadingItems) {
+
         <div class="vault-main-empty">
           <p>Loading items…</p>
         </div>
+
         } @else if (!hasItems) {
+
         <div class="vault-main-empty">
           <p>No items.</p>
         </div>
+
         } @else {
 
         <div class="vault-table-wrapper">
@@ -146,22 +157,19 @@
               <tr>
                 @for (col of orderedColumns; track col.fieldName) {
                 <th [class.pk-header]="col.isPrimaryKey">
-                  <span class="col-name">{{ col.fieldName }}</span>
+                  {{ col.fieldName }}
 
                   @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }
                   @if (col.isUnique) { <span class="col-meta">UQ</span> }
                   @if (col.isIndexed) { <span class="col-meta">IDX</span> }
                   @if (col.isForeignKey) { <span class="col-meta">FK</span> }
-
                 </th>
                 }
               </tr>
             </thead>
 
             <tbody>
-
               @for (item of items; let row = $index; track row) {
-
               <tr>
 
                 @for (col of orderedColumns; track col.fieldName) {
@@ -185,9 +193,7 @@
                 }
 
               </tr>
-
               }
-
             </tbody>
 
           </table>

@@ -17,6 +17,7 @@
 
   <section class="scene-layout">
 
+    <!-- SIDEBAR -->
     <aside class="scene-sidebar">
       <h2>Worlds</h2>
 
@@ -39,7 +40,11 @@
           <!-- WORLD HEADER -->
           <button class="sidebar-group" (click)="onSelectWorld(world)" [class.active]="world === selectedWorld">
 
-            <span class="chevron" [class.collapsed]="worldCollapsed && world === selectedWorld">▶</span>
+            <!-- WORLD COLLAPSE TOGGLE -->
+            <span class="chevron" (click)="toggleWorld(); $event.stopPropagation()"
+              [class.collapsed]="worldCollapsed && world === selectedWorld">
+              ▶
+            </span>
 
             <span>#{{ world.index }} — {{ world.name || 'Unnamed' }}</span>
 
@@ -51,7 +56,7 @@
             }
           </button>
 
-          <!-- PARTITIONS -->
+          <!-- PARTITION LIST -->
           @if (world === selectedWorld && !worldCollapsed) {
 
           <ul class="sublist">
@@ -60,9 +65,13 @@
 
             <li>
 
+              <!-- PARTITION HEADER -->
               <button class="sidebar-group" (click)="onSelectPartition(p)" [class.active]="p === selectedPartition">
 
-                <span class="chevron" [class.collapsed]="p.collapsed">▶</span>
+                <!-- PARTITION COLLAPSE TOGGLE -->
+                <span class="chevron" (click)="togglePartition(p, $event)" [class.collapsed]="p.collapsed">
+                  ▶
+                </span>
 
                 <span>
                   Partition [{{ p.indexX }}, {{ p.indexY }}, {{ p.indexZ }}]
@@ -73,7 +82,7 @@
                 </span>
               </button>
 
-              <!-- OBJECTS -->
+              <!-- OBJECT LIST -->
               @if (!p.collapsed && p.objects.length > 0) {
 
               <ul class="sublist">
@@ -81,16 +90,17 @@
                 @for (obj of p.objects; track obj.instanceId) {
 
                 <li>
-
                   <button class="sidebar-item" [class.active]="obj === selectedObject" (click)="onSelectObject(obj)">
+
                     <div class="world-object-name">
                       {{ obj.archetype || 'Object' }}
                     </div>
+
                     <div class="world-object-id">
                       #{{ obj.instanceId.slice(0, 6) }}
                     </div>
-                  </button>
 
+                  </button>
                 </li>
 
                 }
