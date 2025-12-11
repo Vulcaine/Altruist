@@ -1,4 +1,5 @@
 <div class="scene-root">
+
   <header class="scene-header">
     <div>
       <h1>Scene View</h1>
@@ -16,22 +17,26 @@
 
   <section class="scene-layout">
 
-    <!-- SIDEBAR -->
     <aside class="scene-sidebar">
       <h2>Worlds</h2>
 
       @if (isLoadingWorlds && worlds.length === 0) {
-      <div>Loading worlds...</div>
+
+      <div>Loading worlds…</div>
+
       } @else if (!isLoadingWorlds && worlds.length === 0) {
+
       <div>No worlds available.</div>
+
       } @else {
 
-      <ul class="world-list">
+      <ul class="list">
 
         @for (world of worlds; track world.index) {
+
         <li>
 
-          <!-- UNIFIED GROUP -->
+          <!-- WORLD HEADER -->
           <button class="sidebar-group" (click)="onSelectWorld(world)" [class.active]="world === selectedWorld">
 
             <span class="chevron" [class.collapsed]="worldCollapsed && world === selectedWorld">▶</span>
@@ -40,20 +45,21 @@
 
             @if (world === selectedWorld) {
             <span class="world-meta">
-              {{ world.partitionCount }} partitions · {{ world.objectCount }} objects
+              {{ world.partitionCount }} partitions ·
+              {{ world.objectCount }} objects
             </span>
             }
           </button>
 
+          <!-- PARTITIONS -->
           @if (world === selectedWorld && !worldCollapsed) {
 
-          <!-- PARTITION LIST -->
-          <ul class="partition-list">
+          <ul class="sublist">
 
             @for (p of partitions; track p.indexX + ':' + p.indexY + ':' + p.indexZ) {
+
             <li>
 
-              <!-- UNIFIED GROUP FOR PARTITION -->
               <button class="sidebar-group" (click)="onSelectPartition(p)" [class.active]="p === selectedPartition">
 
                 <span class="chevron" [class.collapsed]="p.collapsed">▶</span>
@@ -67,14 +73,15 @@
                 </span>
               </button>
 
+              <!-- OBJECTS -->
               @if (!p.collapsed && p.objects.length > 0) {
 
-              <ul class="world-object-list">
+              <ul class="sublist">
 
                 @for (obj of p.objects; track obj.instanceId) {
+
                 <li>
 
-                  <!-- UNIFIED SIDEBAR ITEM -->
                   <button class="sidebar-item" [class.active]="obj === selectedObject" (click)="onSelectObject(obj)">
                     <div class="world-object-name">
                       {{ obj.archetype || 'Object' }}
@@ -85,6 +92,7 @@
                   </button>
 
                 </li>
+
                 }
 
               </ul>
@@ -92,6 +100,7 @@
               }
 
             </li>
+
             }
 
           </ul>
@@ -99,6 +108,7 @@
           }
 
         </li>
+
         }
 
       </ul>
@@ -109,6 +119,7 @@
 
     <!-- CANVAS -->
     <section class="scene-canvas">
+
       <div class="canvas-toolbar">
         <span class="canvas-title">3D Scene</span>
         <span class="canvas-hint">{{ statusHint }}</span>
@@ -128,14 +139,17 @@
         </app-world-scene>
 
         @if (cameraInfo) {
+
         <div class="camera-hud">
           <div class="camera-hud-title">Camera</div>
+
           <div>
             Pos:
             {{ cameraInfo.position.x | number:'1.1-2' }},
             {{ cameraInfo.position.y | number:'1.1-2' }},
             {{ cameraInfo.position.z | number:'1.1-2' }}
           </div>
+
           <div>
             Rot:
             Y {{ cameraInfo.rotation.yaw | number:'1.0-1' }}°
@@ -143,12 +157,15 @@
             R {{ cameraInfo.rotation.roll | number:'1.0-1' }}°
           </div>
         </div>
+
         }
 
         }
 
       </div>
+
     </section>
 
   </section>
+
 </div>

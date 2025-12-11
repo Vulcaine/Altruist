@@ -36,23 +36,26 @@
       @if (!hasVaults && !isLoadingVaults) {
       <p class="vault-empty">No vaults registered.</p>
       } @else {
-      <ul class="vault-list">
+
+      <ul class="list">
 
         @for (group of groupedVaults; track group.keyspace) {
         <li>
 
-          <!-- UNIFIED SIDEBAR GROUP -->
+          <!-- SIDEBAR GROUP -->
           <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">
             <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">▶</span>
             <span>{{ group.keyspace }}</span>
           </button>
 
           @if (!collapsedKeyspaces.has(group.keyspace)) {
-          <ul class="vault-sublist">
+
+          <ul class="sublist">
 
             @for (v of group.vaults; track v.typeKey) {
             <li>
-              <!-- UNIFIED SIDEBAR ITEM -->
+
+              <!-- SIDEBAR ITEM -->
               <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"
                 (click)="onSelectVault(v)">
                 <div class="vault-item-type">{{ v.clrTypeShort }}</div>
@@ -63,20 +66,26 @@
                   }
                 </div>
               </button>
+
             </li>
             }
 
           </ul>
+
           }
+
         </li>
         }
 
       </ul>
+
       }
+
     </aside>
 
     <!-- MAIN -->
     <main class="vault-main">
+
       @if (!selectedVault) {
 
       <div class="vault-main-empty">
@@ -96,6 +105,7 @@
         </div>
 
         <div class="vault-table-controls">
+
           <label>
             Page size
             <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
@@ -112,10 +122,12 @@
 
             <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">›</button>
           </div>
+
         </div>
       </header>
 
       <section class="vault-table-section">
+
         @if (isLoadingItems) {
         <div class="vault-main-empty">
           <p>Loading items…</p>
@@ -127,6 +139,7 @@
         } @else {
 
         <div class="vault-table-wrapper">
+
           <table class="table vault-table">
 
             <thead>
@@ -134,44 +147,59 @@
                 @for (col of orderedColumns; track col.fieldName) {
                 <th [class.pk-header]="col.isPrimaryKey">
                   <span class="col-name">{{ col.fieldName }}</span>
+
                   @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }
                   @if (col.isUnique) { <span class="col-meta">UQ</span> }
                   @if (col.isIndexed) { <span class="col-meta">IDX</span> }
                   @if (col.isForeignKey) { <span class="col-meta">FK</span> }
+
                 </th>
                 }
               </tr>
             </thead>
 
             <tbody>
+
               @for (item of items; let row = $index; track row) {
+
               <tr>
 
                 @for (col of orderedColumns; track col.fieldName) {
+
                 <td [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">
 
                   @if (isEditing(row, col.fieldName)) {
+
                   <input class="input vault-cell-input" [value]="item[col.fieldName]"
                     (input)="onCellEdit(row, col.fieldName, $any($event.target).value)"
                     (blur)="onCellBlur(row, col.fieldName)" autofocus />
+
                   } @else {
+
                   <code>{{ item[col.fieldName] }}</code>
+
                   }
 
                 </td>
+
                 }
 
               </tr>
+
               }
+
             </tbody>
 
           </table>
+
         </div>
 
         }
+
       </section>
 
       }
+
     </main>
 
   </section>
