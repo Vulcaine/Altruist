@@ -22,6 +22,6 @@ export default `<!DOCTYPE html>
   <style>*{box-sizing:border-box}html,body{margin:0;padding:0;background:#020617;color:#e5e7eb;font-family:Inter,system-ui,sans-serif;height:100%;overflow:hidden}body{overflow:hidden}app-root{flex:1;min-height:0;min-width:0;overflow:hidden}</style><link rel="stylesheet" href="/altruist/dashboard/styles-A6JBY4VQ.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="/altruist/dashboard/styles-A6JBY4VQ.css"></noscript></head>
   <body ngcm="">
     <app-root></app-root>
-  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-TA6DMQ7D.js" type="module"></script></body>
+  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-W6Q3RCGP.js" type="module"></script></body>
 </html>
 `;

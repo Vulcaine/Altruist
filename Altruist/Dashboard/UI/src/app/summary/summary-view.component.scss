@@ -1,41 +1,58 @@
 @use '../../styles.scss' as *;
+
+/* ROOT — fills the screen and allows children to manage scroll */
 .summary-root {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 0;
+  min-height: 0; // REQUIRED
   overflow: hidden;
+  padding: 1rem;
+  gap: 1rem;
 }
 
-.summary-configs,
-.summary-services {
-  @extend .panel;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.services-table-wrapper,
-.config-list {
-  min-width: 100%;
-  overflow: auto;
-}
-
+/* HEADER stays fixed height */
 .summary-header {
   @extend .panel;
   flex-shrink: 0;
 }
 
+/* WRAPS ENGINE + OVERVIEW into a single region that CAN shrink */
 .summary-top {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
-  flex-shrink: 0;
+  flex-shrink: 1; // <-- ALLOWS shrinking (important!)
+  min-height: 0; // <-- ALLOWS scroll siblings below
 }
 
+/* Cards inside summary-top */
 .engine-card,
 .stats-card {
   @extend .panel;
-  flex: 1 1 320px;
-  min-width: 280px;
+  flex: 1 1 300px;
+  min-width: 260px;
+  min-height: 0;
+}
+
+/* CONFIG + SERVICES panels share remaining height */
+.summary-configs,
+.summary-services {
+  @extend .panel;
+  flex: 1 1 0; // ensures they fill remaining space
+  min-height: 0; // REQUIRED for scrolling
+  overflow: auto; // scroll when content is too tall
+}
+
+/* internal scroll areas */
+.config-list,
+.services-table-wrapper {
+  min-width: 100%;
+  overflow: auto;
+}
+
+/* tables fit inside scroll area */
+.config-table,
+.services-table {
+  width: 100%;
 }
