@@ -1,251 +1,25 @@
-@use '../../styles/dashboard-theme' as theme;
 @use '../../styles.scss' as *;
 
+/* Component-specific layout only */
+
 .vault-layout {
-  flex: 1;
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: 1rem;
+  flex: 1;
   min-height: 0;
 }
-
-/* ---------------------- BASIC BUTTON ---------------------- */
-
-.commit-button {
-  @include theme.pill-button-base;
-  background: #16a34a;
-  border-color: #15803d;
-  color: white;
-  font-weight: 600;
-  padding: 0.35rem 0.9rem;
-  font-size: 0.85rem;
-
-  &:hover {
-    background: #22c55e;
-    transform: translateY(-1px);
-    box-shadow: theme.$shadow-elevated;
-  }
-}
-
-/* ---------------------- ROOT ---------------------- */
-
-.vault-view {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  height: 100%;
-  padding: 1rem;
-  background: theme.$bg-root;
-  color: theme.$text-main;
-}
-
-/* ---------------------- HEADER ---------------------- */
-
-.vault-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  border-radius: theme.$radius-lg;
-  background: theme.$bg-header;
-  border: 1px solid theme.$border-subtle;
-
-  .vault-header-main {
-    h2 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-    }
-
-    .vault-status {
-      margin-top: 2px;
-      font-size: 0.85rem;
-      color: theme.$text-muted;
-    }
-  }
-
-  .vault-header-actions {
-    display: flex;
-    gap: 0.5rem;
-
-    input {
-      min-width: 250px;
-      padding: 0.3rem 0.5rem;
-      border-radius: theme.$radius-pill;
-      border: 1px solid theme.$border-muted;
-      background: rgba(15, 23, 42, 0.9);
-      color: theme.$text-main;
-      font-size: 0.85rem;
-
-      &::placeholder {
-        color: theme.$text-muted;
-      }
-
-      &:focus {
-        outline: none;
-        border-color: theme.$accent;
-      }
-    }
-
-    button {
-      @include theme.pill-button-base;
-      background: rgba(15, 23, 42, 0.9);
-      border-color: theme.$border-muted;
-    }
-  }
-}
-
-/* ---------------------- SIDEBAR ---------------------- */
-
-.vault-sidebar {
-  background: theme.$bg-panel;
-  border: 1px solid theme.$border-strong;
-  border-radius: theme.$radius-lg;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-
-  h3 {
-    margin: 0 0 10px;
-    font-size: 0.95rem;
-    font-weight: 600;
-  }
-}
-
-.vault-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-/* ---------------------- GROUP HEADER (Badge Style) ---------------------- */
-
-.vault-group-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-
-  background: rgba(30, 40, 70, 0.35); // deep blue highlight
-  color: theme.$text-soft;
-  border-radius: theme.$radius-pill;
-  padding: 0.3rem 0.55rem;
-
-  border: 1px solid rgba(70, 90, 140, 0.55); // bluish border, no grey
-  font-size: 0.78rem;
-
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
-
-  &:hover {
-    background: rgba(40, 55, 100, 0.45);
-    border-color: theme.$accent; // subtle accent on hover
-  }
-
-  .chevron {
-    font-size: 0.75rem;
-    transition: transform 0.15s ease;
-
-    &.collapsed {
-      transform: rotate(-90deg);
-    }
-  }
-
-  .vault-group-title {
-    font-weight: 600;
-    color: theme.$text-main;
-  }
-}
-
-.vault-sublist {
-  padding-left: 0.4rem;
-  margin: 4px 0 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-/* ---------------------- VAULT ITEM ---------------------- */
-
-.vault-item-button {
-  width: 100%;
-  border-radius: 0.55rem;
-  padding: 0.55rem 0.6rem;
-
-  background: rgba(15, 25, 50, 0.65); // DEEP NAVY, no grey
-  border: 1px solid rgba(40, 60, 110, 0.4);
-
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-
-  opacity: 0.9;
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    transform 80ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
-
-  &:hover {
-    background: rgba(20, 30, 70, 0.75);
-    opacity: 1;
-    transform: translateY(-1px);
-    box-shadow: theme.$shadow-elevated;
-  }
-}
-
-.vault-item-button--active {
-  background: theme.$accent;
-  border-color: theme.$accent;
-  opacity: 1;
-}
-
-.vault-item-main {
-  display: flex;
-  justify-content: space-between;
-}
-
-.vault-item-type {
-  font-weight: 600;
-  font-size: 0.93rem;
-}
-
-.vault-item-meta {
-  font-size: 0.75rem;
-  color: theme.$text-muted;
-}
-
-/* ---------------------- MAIN PANEL ---------------------- */
 
 .vault-main {
-  background: theme.$bg-panel;
-  border: 1px solid theme.$border-strong;
-  border-radius: theme.$radius-lg;
+  @extend .panel;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-/* ---------------------- TABLE ---------------------- */
-
-.pk-header {
-  background: rgba(255, 230, 150, 0.25);
+.vault-table-wrapper {
+  flex: 1;
+  overflow: auto;
 }
 
-.pk-cell {
-  background: rgba(255, 230, 150, 0.35);
-  font-weight: 600;
-  border-right: 2px solid #e0b132;
-}
-
-.pk-tag {
-  color: #b87500;
-  font-weight: bold;
-}
+/* Use global .table, .pk-header, .pk-cell */
