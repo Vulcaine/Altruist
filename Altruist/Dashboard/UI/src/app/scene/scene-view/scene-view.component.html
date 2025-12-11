@@ -4,10 +4,10 @@
       <h1>Scene View</h1>
       <p>Visualize the current world state from your Altruist server.</p>
     </div>
+
     <div class="scene-header-actions">
-      <button class="button-base" type="button" (click)="onRefresh()">
-        Refresh
-      </button>
+      <button class="button-base" (click)="onRefresh()">Refresh</button>
+
       <button class="button-primary" type="button" [class.is-on]="autoUpdate">
         Auto-Update: {{ autoUpdate ? "On" : "Off" }}
       </button>
@@ -15,6 +15,8 @@
   </header>
 
   <section class="scene-layout">
+
+    <!-- SIDEBAR -->
     <aside class="scene-sidebar">
       <h2>Worlds</h2>
 
@@ -23,80 +25,89 @@
       } @else if (!isLoadingWorlds && worlds.length === 0) {
       <div>No worlds available.</div>
       } @else {
+
       <ul class="world-list">
+
         @for (world of worlds; track world.index) {
-        <li class="world-item">
-          <div class="world-item-button" role="button" tabindex="0" (click)="onSelectWorld(world)"
-            [class.world-item-button--active]="world === selectedWorld">
-            <div class="world-item-header">
-              <span class="world-item-index">#{{ world.index }}</span>
-              <span class="world-item-name">
-                {{ world.name || "Unnamed" }}
-              </span>
+        <li>
 
-              @if (world === selectedWorld) {
-              <button type="button" class="world-collapse-button" (click)="toggleWorld(); $event.stopPropagation()">
-                {{ worldCollapsed ? "Show partitions" : "Hide partitions" }}
-              </button>
-              }
-            </div>
+          <!-- UNIFIED GROUP -->
+          <button class="sidebar-group" (click)="onSelectWorld(world)" [class.active]="world === selectedWorld">
 
-            <div class="world-item-meta">
-              Partitions: {{ world.partitionCount }} · Objects:
-              {{ world.objectCount }}
-            </div>
-          </div>
+            <span class="chevron" [class.collapsed]="worldCollapsed && world === selectedWorld">▶</span>
+
+            <span>#{{ world.index }} — {{ world.name || 'Unnamed' }}</span>
+
+            @if (world === selectedWorld) {
+            <span class="world-meta">
+              {{ world.partitionCount }} partitions · {{ world.objectCount }} objects
+            </span>
+            }
+          </button>
 
           @if (world === selectedWorld && !worldCollapsed) {
-          <ul class="partition-list">
-            @for (p of partitions; track p.indexX + ':' + p.indexY + ':' +
-            p.indexZ) {
-            <li class="partition-item">
-              <div class="partition-header" role="button" tabindex="0" (click)="onSelectPartition(p)"
-                [class.partition-header--active]="p === selectedPartition">
-                <div class="partition-header-main">
-                  <span class="partition-title">
-                    Partition [{{ p.indexX }}, {{ p.indexY }}, {{ p.indexZ }}]
-                  </span>
-                  <span class="partition-meta">
-                    {{ p.objects.length }} objects
-                  </span>
-                </div>
 
-                <button type="button" class="partition-toggle-button" (click)="togglePartition(p, $event)">
-                  {{ p.collapsed ? "▼ Expand" : "▲ Collapse" }}
-                </button>
-              </div>
+          <!-- PARTITION LIST -->
+          <ul class="partition-list">
+
+            @for (p of partitions; track p.indexX + ':' + p.indexY + ':' + p.indexZ) {
+            <li>
+
+              <!-- UNIFIED GROUP FOR PARTITION -->
+              <button class="sidebar-group" (click)="onSelectPartition(p)" [class.active]="p === selectedPartition">
+
+                <span class="chevron" [class.collapsed]="p.collapsed">▶</span>
+
+                <span>
+                  Partition [{{ p.indexX }}, {{ p.indexY }}, {{ p.indexZ }}]
+                </span>
+
+                <span class="partition-meta">
+                  {{ p.objects.length }} objects
+                </span>
+              </button>
 
               @if (!p.collapsed && p.objects.length > 0) {
+
               <ul class="world-object-list">
+
                 @for (obj of p.objects; track obj.instanceId) {
-                <li class="world-object-item">
-                  <button type="button" class="world-object-button" (click)="onSelectObject(obj)"
-                    [class.world-object-button--active]="obj === selectedObject">
-                    <div class="world-object-line">
-                      <span class="world-object-name">
-                        {{ obj.archetype || "Object" }}
-                      </span>
-                      <span class="world-object-id">
-                        #{{ obj.instanceId.slice(0, 6) }}
-                      </span>
+                <li>
+
+                  <!-- UNIFIED SIDEBAR ITEM -->
+                  <button class="sidebar-item" [class.active]="obj === selectedObject" (click)="onSelectObject(obj)">
+                    <div class="world-object-name">
+                      {{ obj.archetype || 'Object' }}
+                    </div>
+                    <div class="world-object-id">
+                      #{{ obj.instanceId.slice(0, 6) }}
                     </div>
                   </button>
+
                 </li>
                 }
+
               </ul>
+
               }
+
             </li>
             }
+
           </ul>
+
           }
+
         </li>
         }
+
       </ul>
+
       }
+
     </aside>
 
+    <!-- CANVAS -->
     <section class="scene-canvas">
       <div class="canvas-toolbar">
         <span class="canvas-title">3D Scene</span>
@@ -104,30 +115,40 @@
       </div>
 
       <div class="canvas-body">
+
         @if (!selectedWorld || isLoading) {
+
         <app-globe-scene></app-globe-scene>
+
         } @else {
+
         <app-world-scene [world]="selectedWorld" [objects]="visibleObjects" [selectedObject]="selectedObject"
           [isLoading]="isLoading" (cameraChanged)="onCameraChanged($event)"
-          (lastUpdateChanged)="onWorldLastUpdate($event)"></app-world-scene>
+          (lastUpdateChanged)="onWorldLastUpdate($event)">
+        </app-world-scene>
 
         @if (cameraInfo) {
         <div class="camera-hud">
           <div class="camera-hud-title">Camera</div>
           <div>
             Pos:
-            {{ cameraInfo.position.x | number : "1.1-2" }},
-            {{ cameraInfo.position.y | number : "1.1-2" }},
-            {{ cameraInfo.position.z | number : "1.1-2" }}
+            {{ cameraInfo.position.x | number:'1.1-2' }},
+            {{ cameraInfo.position.y | number:'1.1-2' }},
+            {{ cameraInfo.position.z | number:'1.1-2' }}
           </div>
           <div>
-            Rot: Y {{ cameraInfo.rotation.yaw | number : "1.0-1" }}° P
-            {{ cameraInfo.rotation.pitch | number : "1.0-1" }}° R
-            {{ cameraInfo.rotation.roll | number : "1.0-1" }}°
+            Rot:
+            Y {{ cameraInfo.rotation.yaw | number:'1.0-1' }}°
+            P {{ cameraInfo.rotation.pitch | number:'1.0-1' }}°
+            R {{ cameraInfo.rotation.roll | number:'1.0-1' }}°
           </div>
         </div>
-        } }
+        }
+
+        }
+
       </div>
     </section>
+
   </section>
 </div>
