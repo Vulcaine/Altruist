@@ -1,5 +1,6 @@
 <div class="summary-root">
 
+  <!-- PAGE HEADER -->
   <header class="summary-header">
     <div class="header-main">
       <h1>✨ Altruist Dashboard</h1>
@@ -29,9 +30,13 @@
       <h2>🎮 Engine</h2>
 
       @if (!engine) {
+
       <p class="muted">Engine configuration not available.</p>
+
       } @else {
+
       <div class="engine-grid">
+
         <div class="engine-stat">
           <span class="label">Diagnostics</span>
           <span class="value">{{ engine.diagnostics ? "Enabled" : "Disabled" }}</span>
@@ -55,12 +60,16 @@
             } @else { — }
           </span>
         </div>
+
       </div>
+
       }
+
     </article>
 
     <article class="stats-card">
       <h2>📊 Overview</h2>
+
       <div class="stats-grid">
         <div class="stat"><span class="label">Config entries</span> <span class="value">{{ configCount }}</span></div>
         <div class="stat"><span class="label">Discovered services</span> <span class="value">{{ serviceCount }}</span>
@@ -69,19 +78,22 @@
         <div class="stat"><span class="label">Altruist services</span> <span class="value">{{ altruistServices.length
             }}</span></div>
       </div>
+
     </article>
   </section>
 
+
   <!-- CONFIGURATION -->
   <section class="summary-configs">
-    <header class="panel-header">
+
+    <header class="panel-header sticky-header">
       <div>
         <h2>🔧 Configuration</h2>
         <p class="panel-meta">Editable entries are marked with ✏️</p>
       </div>
 
       <div class="panel-controls">
-        <input type="text" class="input" placeholder="Filter configuration…" [(ngModel)]="configFilter" />
+        <input type="text" class="input" placeholder="Filter configuration…" [(ngModel)]="configFilter">
       </div>
     </header>
 
@@ -94,8 +106,11 @@
 
     <div class="config-list">
       @if (!configEntries.length) {
+
       <p class="muted">No configuration entries match your filter.</p>
+
       } @else {
+
       <table class="table config-table">
         <thead>
           <tr>
@@ -103,47 +118,62 @@
             <th>Value</th>
           </tr>
         </thead>
+
         <tbody>
           @for (c of configEntries; track c.key) {
           <tr>
+
             <td class="config-key">
-              <code>{{ c.key }}</code> @if (c.modifiable) { <span class="pencil">✏️</span> }
+              <code>{{ c.key }}</code>
+              @if (c.modifiable) { <span class="pencil">✏️</span> }
             </td>
 
             <td class="config-value">
+
               @if (editingKey === c.key) {
               <input class="input config-edit-input" [(ngModel)]="editBuffer[c.key]"
-                (ngModelChange)="onEditInput(c.key, $event)" />
+                (ngModelChange)="onEditInput(c.key, $event)">
               } @else {
               <code class="modifiable" (dblclick)="beginEdit(c.key, c.value)">
-                        {{ c.value ?? "null" }}
-                      </code>
+                      {{ c.value ?? "null" }}
+                    </code>
               }
+
             </td>
+
           </tr>
           }
         </tbody>
       </table>
+
       }
     </div>
+
   </section>
+
 
   <!-- SERVICES -->
   <section class="summary-services">
-    <header class="panel-header">
+
+    <header class="panel-header sticky-header">
       <div>
         <h2>🧩 Services & Portals</h2>
         <p class="panel-meta">Discovered services grouped by role and attributes.</p>
       </div>
+
       <div class="panel-controls">
-        <input type="text" class="input" placeholder="Filter…" [(ngModel)]="serviceFilter" />
+        <input type="text" class="input" placeholder="Filter…" [(ngModel)]="serviceFilter">
       </div>
     </header>
 
     <div class="services-table-wrapper">
+
       @if (!services.length) {
+
       <p class="muted">No services match your filter.</p>
+
       } @else {
+
       <table class="table services-table">
         <thead>
           <tr>
@@ -155,63 +185,103 @@
         </thead>
 
         <tbody>
-          <!-- portals -->
+
+          <!-- PORTALS -->
           @if (portals.length) {
           <tr class="group-row">
             <td colspan="4">Portals</td>
           </tr>
+
           @for (p of portals; track p.fullName) {
-          <tr class="service-row portal-row">
+          <tr class="service-row">
             <td class="cell-name">
               <div class="service-name">{{ p.name }}</div>
             </td>
             <td class="cell-type"><code>{{ p.fullName }}</code></td>
             <td class="cell-details">
-              <div class="pill-row">...</div>
+              <div class="pill-row">
+                @if (p.endpoint) { <span class="pill pill-endpoint">{{ p.endpoint }}</span> }
+                @if (p.context) { <span class="pill pill-context">{{ p.context }}</span> }
+              </div>
             </td>
-            <td class="cell-assembly"><span class="pill pill-assembly">{{ p.assembly }}</span></td>
+            <td class="cell-assembly">
+              <span class="pill pill-assembly">{{ p.assembly }}</span>
+            </td>
           </tr>
           }
           }
 
-          <!-- altruist services -->
+          <!-- ALTRUIST SERVICES -->
           @if (altruistServices.length) {
           <tr class="group-row">
             <td colspan="4">Altruist services</td>
           </tr>
+
           @for (s of altruistServices; track s.fullName) {
           <tr class="service-row">
-            <td class="cell-name">{{ s.name }}</td>
+            <td class="cell-name">
+              <div class="service-name">{{ s.name }}</div>
+            </td>
             <td class="cell-type"><code>{{ s.fullName }}</code></td>
-            <td class="cell-details">...</td>
-            <td class="cell-assembly"><span class="pill pill-assembly">{{ s.assembly }}</span></td>
+            <td class="cell-details">
+              <div class="pill-row">
+                @if (s.lifetime) { <span class="pill pill-lifetime">{{ s.lifetime }}</span> }
+                @if (s.serviceType) { <span class="pill pill-service-type">{{ s.serviceType }}</span> }
+              </div>
+            </td>
+            <td class="cell-assembly">
+              <span class="pill pill-assembly">{{ s.assembly }}</span>
+            </td>
           </tr>
           }
           }
 
-          <!-- factories -->
+          <!-- FACTORIES -->
           @if (serviceFactories.length) {
           <tr class="group-row">
             <td colspan="4">Service factories</td>
           </tr>
+
           @for (f of serviceFactories; track f.fullName) {
-          <tr class="service-row">...</tr>
+          <tr class="service-row">
+            <td class="cell-name">
+              <div class="service-name">{{ f.name }}</div>
+            </td>
+            <td class="cell-type"><code>{{ f.fullName }}</code></td>
+            <td class="cell-details"></td>
+            <td class="cell-assembly"><span class="pill pill-assembly">{{ f.assembly }}</span></td>
+          </tr>
           }
           }
 
-          <!-- configs -->
+          <!-- SERVICE CONFIGS -->
           @if (serviceConfigs.length) {
           <tr class="group-row">
             <td colspan="4">Service configurations</td>
           </tr>
+
           @for (c of serviceConfigs; track c.fullName) {
-          <tr class="service-row">...</tr>
+          <tr class="service-row">
+            <td class="cell-name">
+              <div class="service-name">{{ c.name }}</div>
+            </td>
+            <td class="cell-type"><code>{{ c.fullName }}</code></td>
+            <td class="cell-details"></td>
+            <td class="cell-assembly"><span class="pill pill-assembly">{{ c.assembly }}</span></td>
+          </tr>
           }
           }
+
         </tbody>
+
       </table>
+
       }
+
     </div>
+
   </section>
+
   }
+
 </div>
