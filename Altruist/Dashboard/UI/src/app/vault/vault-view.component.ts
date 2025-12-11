@@ -3,7 +3,11 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { VaultDashboardService } from './vault-dashboard.service';
-import { VaultDefinitionDto, VaultItemPageDto } from './vault.model';
+import {
+  VaultColumnDto,
+  VaultDefinitionDto,
+  VaultItemPageDto,
+} from './vault.model';
 
 @Component({
   selector: 'app-vault-view',
@@ -13,9 +17,10 @@ import { VaultDefinitionDto, VaultItemPageDto } from './vault.model';
   styleUrl: './vault-view.component.scss',
 })
 export class VaultViewComponent implements OnInit, OnDestroy {
-  // ---------- vault list ----------
   vaults: VaultDefinitionDto[] = [];
   filteredVaults: VaultDefinitionDto[] = [];
+  groupedVaults: { keyspace: string; vaults: VaultDefinitionDto[] }[] = [];
+
   selectedVault: VaultDefinitionDto | null = null;
 
   vaultFilter = '';
@@ -23,28 +28,27 @@ export class VaultViewComponent implements OnInit, OnDestroy {
   isLoadingItems = false;
   error: string | null = null;
 
-  // ---------- paging ----------
   pageSizeOptions = [10, 25, 50, 100];
   pageSize = 25;
   currentPage = 0;
   totalItems = 0;
 
-  // ---------- data ----------
   items: Record<string, any>[] = [];
   originalItems: Record<string, any>[] = [];
 
-  // ---------- editing modes ----------
-  editing: Set<string> = new Set(); // key: `${rowIndex}:${field}`
-
-  // ---------- dirty tracking ----------
+  editing: Set<string> = new Set();
   dirtyItems = new Map<number, Record<string, any>>();
   hasPendingChanges = false;
+
+  collapsedKeyspaces = new Set<string>();
 
   private sub?: Subscription;
 
   constructor(private readonly service: VaultDashboardService) {}
 
-  // ================= lifecycle =================
+  // -------------------------------------------------------------------
+  //  LIFECYCLE
+  // -------------------------------------------------------------------
 
   ngOnInit(): void {
     this.loadVaults();
@@ -60,11 +64,23 @@ export class VaultViewComponent implements OnInit, OnDestroy {
     this.sub?.unsubscribe();
   }
 
-  // ================= computed =================
+  // -------------------------------------------------------------------
+  //  COLUMN ORDERING
+  // -------------------------------------------------------------------
 
-  get visibleColumns() {
-    return this.selectedVault?.columns ?? [];
+  get orderedColumns(): VaultColumnDto[] {
+    if (!this.selectedVault?.columns) return [];
+    const cols = [...this.selectedVault.columns];
+
+    const pk = cols.filter((c) => c.isPrimaryKey);
+    const rest = cols.filter((c) => !c.isPrimaryKey);
+
+    return [...pk, ...rest];
   }
+
+  // -------------------------------------------------------------------
+  //  COMPUTED PROPERTIES
+  // -------------------------------------------------------------------
 
   get hasVaults(): boolean {
     return this.vaults.length > 0;
@@ -97,11 +113,12 @@ export class VaultViewComponent implements OnInit, OnDestroy {
       this.totalItems,
       (this.currentPage + 1) * this.pageSize
     );
-
     return `${start}–${end} of ${this.totalItems}`;
   }
 
-  // ================= loading =================
+  // -------------------------------------------------------------------
+  //  LOAD VAULTS
+  // -------------------------------------------------------------------
 
   loadVaults(): void {
     this.isLoadingVaults = true;
@@ -124,8 +141,13 @@ export class VaultViewComponent implements OnInit, OnDestroy {
     });
   }
 
+  // -------------------------------------------------------------------
+  //  FILTER + GROUPING
+  // -------------------------------------------------------------------
+
   applyVaultFilter(): void {
     const ft = this.vaultFilter.trim().toLowerCase();
+
     this.filteredVaults = !ft
       ? this.vaults
       : this.vaults.filter(
@@ -135,7 +157,38 @@ export class VaultViewComponent implements OnInit, OnDestroy {
             v.keyspace.toLowerCase().includes(ft) ||
             v.tableName.toLowerCase().includes(ft)
         );
+
+    this.groupVaultsByKeyspace();
   }
+
+  groupVaultsByKeyspace() {
+    const map: Record<string, VaultDefinitionDto[]> = {};
+
+    for (const v of this.filteredVaults) {
+      if (!map[v.keyspace]) map[v.keyspace] = [];
+      map[v.keyspace].push(v);
+    }
+
+    // Convert and sort alphabetically
+    this.groupedVaults = Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([keyspace, vaults]) => ({
+        keyspace,
+        vaults,
+      }));
+  }
+
+  toggleKeyspace(key: string) {
+    if (this.collapsedKeyspaces.has(key)) {
+      this.collapsedKeyspaces.delete(key);
+    } else {
+      this.collapsedKeyspaces.add(key);
+    }
+  }
+
+  // -------------------------------------------------------------------
+  //  SELECT VAULT
+  // -------------------------------------------------------------------
 
   onSelectVault(vault: VaultDefinitionDto): void {
     if (this.hasPendingChanges) {
@@ -153,7 +206,9 @@ export class VaultViewComponent implements OnInit, OnDestroy {
     this.loadPage();
   }
 
-  // ================= paging =================
+  // -------------------------------------------------------------------
+  //  PAGINATION
+  // -------------------------------------------------------------------
 
   onPageSizeChange(): void {
     this.currentPage = 0;
@@ -202,7 +257,9 @@ export class VaultViewComponent implements OnInit, OnDestroy {
       });
   }
 
-  // ================= editing =================
+  // -------------------------------------------------------------------
+  //  EDITING
+  // -------------------------------------------------------------------
 
   startEdit(row: number, field: string): void {
     this.editing.add(`${row}:${field}`);
@@ -242,6 +299,10 @@ export class VaultViewComponent implements OnInit, OnDestroy {
     }
   }
 
+  // -------------------------------------------------------------------
+  //  SAVE
+  // -------------------------------------------------------------------
+
   commitChanges(): void {
     if (!this.selectedVault || this.dirtyItems.size === 0) return;
 
@@ -262,7 +323,7 @@ export class VaultViewComponent implements OnInit, OnDestroy {
 
   private pickPrimaryKeys(item: Record<string, any>): Record<string, any> {
     const result: Record<string, any> = {};
-    for (const col of this.visibleColumns) {
+    for (const col of this.orderedColumns) {
       if (col.isPrimaryKey) {
         result[col.fieldName] = item[col.fieldName];
       }
