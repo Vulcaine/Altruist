@@ -27,6 +27,10 @@ export class SummaryViewComponent implements OnInit {
 
   readonly ServiceCategory = ServiceCategory;
 
+  // Editing state
+  editingKey: string | null = null;
+  editBuffer: Record<string, string> = {}; // key → modified value
+
   constructor(private readonly summaryService: SummaryDashboardService) {}
 
   ngOnInit(): void {
@@ -41,6 +45,8 @@ export class SummaryViewComponent implements OnInit {
       next: (s) => {
         this.summary = s;
         this.isLoading = false;
+        this.editingKey = null;
+        this.editBuffer = {};
       },
       error: (err) => {
         console.error(err);
@@ -50,11 +56,9 @@ export class SummaryViewComponent implements OnInit {
     });
   }
 
-  get engine(): EngineInfoDto | null {
-    return this.summary?.engine ?? null;
-  }
-
-  // ---------- configuration ----------
+  // ---------------------------------------------------
+  // CONFIG ENTRIES
+  // ---------------------------------------------------
 
   get configEntries(): ConfigEntryDto[] {
     if (!this.summary) return [];
@@ -68,7 +72,49 @@ export class SummaryViewComponent implements OnInit {
     );
   }
 
-  // ---------- services & portals ----------
+  beginEdit(key: string, currentValue: string | null) {
+    const entry = this.summary?.configs.find((x) => x.key === key);
+    if (!entry || !entry.modifiable) return;
+
+    this.editingKey = key;
+    this.editBuffer[key] = currentValue ?? '';
+  }
+
+  onEditInput(key: string, value: string) {
+    this.editBuffer[key] = value;
+  }
+
+  cancelEdit() {
+    this.editingKey = null;
+  }
+
+  get hasPendingConfigChanges(): boolean {
+    return Object.keys(this.editBuffer).length > 0;
+  }
+
+  saveConfigChanges() {
+    const updates = Object.entries(this.editBuffer).map(([key, value]) => ({
+      key,
+      value,
+    }));
+
+    this.summaryService.updateConfigBatch(updates).subscribe({
+      next: () => {
+        this.loadSummary(); // reload fresh config
+      },
+      error: () => {
+        this.error = 'Failed to update configuration.';
+      },
+    });
+  }
+
+  // ---------------------------------------------------
+  // Service filtering
+  // ---------------------------------------------------
+
+  get engine(): EngineInfoDto | null {
+    return this.summary?.engine ?? null;
+  }
 
   get services(): ServiceInfoDto[] {
     if (!this.summary) return [];
@@ -105,8 +151,6 @@ export class SummaryViewComponent implements OnInit {
       (s) => s.category === ServiceCategory.ServiceConfiguration
     );
   }
-
-  // ---------- stats ----------
 
   get serviceCount(): number {
     return this.summary?.serviceCount ?? 0;

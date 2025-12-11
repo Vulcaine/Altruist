@@ -698,54 +698,58 @@ namespace Altruist
             var path = a.Path ?? string.Empty;
             IConfigurationSection section;
 
-            // Track wildcard usage for better error messages
+            // Track wildcard usage for error diagnostics
             var starIndex = path.IndexOf('*');
             string? afterStar = null;
 
-            // Support wildcard: everything before '*' is ignored, everything after '*'
-            // is treated as a path relative to the *current* cfg.
+            // -------------------------------------------------------------------
+            // ✔ SPECIAL CASE: ILiveConfigValue<T>
+            // -------------------------------------------------------------------
+            if (target.IsGenericType &&
+                target.GetGenericTypeDefinition() == typeof(ILiveConfigValue<>))
+            {
+                var genArg = target.GetGenericArguments()[0];
+                var fullPath = ExpandWildcardPath(cfg, a.Path!);
+
+                var wrapperType = typeof(LiveConfigValue<>).MakeGenericType(genArg);
+                return Activator.CreateInstance(wrapperType, cfg, fullPath);
+            }
+            // -------------------------------------------------------------------
+
+            // -------------------------------------------------------------------
+            // Wildcard ("*") support
+            // -------------------------------------------------------------------
             if (starIndex >= 0)
             {
-                // Slice everything after the star (and optional ':')
-                afterStar =
-                    starIndex + 1 < path.Length
-                        ? path[(starIndex + 1)..].TrimStart(':')
-                        : string.Empty;
+                afterStar = (starIndex + 1 < path.Length)
+                    ? path[(starIndex + 1)..].TrimStart(':')
+                    : string.Empty;
 
                 if (string.IsNullOrEmpty(afterStar))
-                {
-                    // '*' by itself means "this section"
-                    // If cfg is already a section, just treat it as such.
                     section = cfg as IConfigurationSection ?? cfg.GetSection(string.Empty);
-                }
                 else
-                {
-                    // Relative to current cfg root
                     section = cfg.GetSection(afterStar);
-                }
             }
             else
             {
-                // No wildcard – legacy behavior
                 section = cfg.GetSection(path);
             }
 
-            // Found the section -> bind/convert
+            // Found → convert / bind normally
             if (section.Exists())
                 return BindOrConvert(section, target);
 
-            // Attribute-level default (string) wins if provided
+            // Attribute default → convert to target type
             if (a.Default is not null)
                 return DefaultTo(target, a.Default);
 
-            // ---- Missing config but the target is OPTIONAL (nullable or reference type) ----
-            // In this case we *do not* treat it as fatal; we just return null and let the
-            // constructor parameter default / nullable semantics handle it.
+            // Target type is nullable OR reference → permit null
             if (Nullable.GetUnderlyingType(target) is not null || !target.IsValueType)
                 return null;
 
-            // ---- Missing REQUIRED config for a non-nullable value type ----
-
+            // -------------------------------------------------------------------
+            // Missing required config for *non-nullable* value type → fatal
+            // -------------------------------------------------------------------
             var rootPath = (cfg as IConfigurationSection)?.Path ?? "<root>";
             string hint;
 
@@ -756,15 +760,10 @@ namespace Altruist
                 hint =
                     $"Wildcard path '{path}' was resolved relative to configuration root '{rootPath}', " +
                     $"looking for '{rel}', but that section does not exist.\n" +
-                    "This usually means one of the following:\n" +
-                    "  • The type is being constructed with the WRONG configuration root\n" +
-                    "    (for example the global config instead of a per-item section).\n" +
-                    "  • The corresponding list-style ConditionalOnConfig(Path=..., KeyField=...)\n" +
-                    "    is pointing at the wrong path, so instances are not registered per item.\n" +
-                    "  • Or the expected key is missing from the item in your YAML.\n\n" +
-                    "If you expected this to bind from a list item (e.g. 'altruist:game:worlds:items:0:index'),\n" +
-                    "make sure this type is constructed with that item section as its configuration root\n" +
-                    "(for example via [ConditionalOnConfig(\"altruist:game:worlds:items\", KeyField = \"id\")]).";
+                    "This usually means:\n" +
+                    "  • The type is being constructed with the WRONG configuration root;\n" +
+                    "  • Or the conditional registration path is incorrect;\n" +
+                    "  • Or the expected key is missing from your config.\n";
             }
             else
             {
@@ -777,6 +776,26 @@ namespace Altruist
             FailAndExit(log, msg);
             throw new InvalidOperationException(msg);
         }
+
+        private static string ExpandWildcardPath(IConfiguration cfg, string wildcardPath)
+        {
+            var star = wildcardPath.IndexOf('*');
+            if (star < 0)
+                return wildcardPath;
+
+            var after = star + 1 < wildcardPath.Length
+                ? wildcardPath[(star + 1)..].TrimStart(':')
+                : string.Empty;
+
+            // cfg is already the correct per-item root: e.g. "altruist:game:worlds:items:0"
+            var root = (cfg as IConfigurationSection)?.Path ?? "";
+
+            if (string.IsNullOrEmpty(after))
+                return root;
+
+            return $"{root}:{after}";
+        }
+
 
         private static object? BindOrConvert(IConfigurationSection s, Type target)
         {

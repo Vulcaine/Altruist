@@ -11,6 +11,52 @@
 
 /* Header */
 
+.save-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: theme.$bg-panel;
+  border: 1px solid theme.$accent-soft;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+
+  button {
+    border-radius: 6px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    border: 1px solid theme.$accent-soft;
+    background: theme.$accent;
+    color: white;
+
+    &.muted {
+      background: #475569;
+      border-color: #334155;
+    }
+  }
+}
+
+.pencil {
+  margin-left: 0.4rem;
+  opacity: 0.7;
+  font-size: 0.75rem;
+}
+
+code.modifiable {
+  cursor: pointer;
+  color: theme.$accent;
+}
+
+.config-edit-input {
+  width: 100%;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid theme.$input-border;
+  background: theme.$input-bg;
+  color: theme.$text-primary;
+}
+
 .summary-header {
   display: flex;
   justify-content: space-between;

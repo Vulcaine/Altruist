@@ -1,12 +1,3 @@
-// Altruist/ConfigAttributeConfiguration.cs
-/*
-Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-You may obtain a copy of the License at
-http://www.apache.org/licenses/LICENSE-2.0
-*/
-
 using System.Reflection;
 
 using Altruist.Contracts;
@@ -14,6 +5,7 @@ using Altruist.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
 
 namespace Altruist
 {
@@ -23,7 +15,6 @@ namespace Altruist
 
         public async Task Configure(IServiceCollection services)
         {
-            // Make sure IServiceCollection itself is injectable
             if (!services.Any(d => d.ServiceType == typeof(IServiceCollection)))
                 services.AddSingleton(services);
 
@@ -47,7 +38,6 @@ namespace Altruist
 
             DependencyResolver.EnsureConverters(services, cfg, bootstrapLogger);
 
-            // 1) Register all configuration classes in DI (once)
             foreach (var item in candidates)
             {
                 if (!typeof(IAltruistConfiguration).IsAssignableFrom(item.Type))
@@ -56,16 +46,10 @@ namespace Altruist
                 RegisterConfigType(services, cfg, item.Type, item.Attr, bootstrapLogger);
             }
 
-            // 2) Execute Configure() on each configuration instance (once)
             foreach (var item in candidates)
             {
                 if (!typeof(IAltruistConfiguration).IsAssignableFrom(item.Type))
-                {
-                    bootstrapLogger.LogError(
-                        "{Type} is marked with [ServiceConfiguration] but does not implement IAltruistConfiguration. Skipping.",
-                        item.Type.FullName);
                     continue;
-                }
 
                 await ConfigureConfigTypeAsync(services, cfg, item.Type, item.Attr, bootstrapLogger)
                     .ConfigureAwait(false);
@@ -74,45 +58,153 @@ namespace Altruist
             IsConfigured = true;
         }
 
-        /// <summary>
-        /// Used by service registration to ensure a given configuration type
-        /// is both registered in DI and has had Configure() executed once.
-        /// </summary>
         public static void EnsureConfigurationRegisteredAndConfigured(
-            IServiceCollection services,
-            Type configType,
-            IConfiguration cfg,
-            ILogger log)
+    IServiceCollection services,
+    Type configType,
+    IConfiguration cfg,
+    ILogger log)
         {
             if (configType is null)
                 throw new ArgumentNullException(nameof(configType));
 
             if (!typeof(IAltruistConfiguration).IsAssignableFrom(configType))
-            {
-                log.LogWarning(
-                    "DependsOn configuration type {ConfigType} does not implement IAltruistConfiguration. Ignoring.",
-                    configType.FullName);
                 return;
-            }
 
             var attr = configType.GetCustomAttribute<ServiceConfigurationAttribute>()
-                       ?? new ServiceConfigurationAttribute(); // default: self, singleton
+                       ?? new ServiceConfigurationAttribute();
 
-            // 1) Register the configuration type (if not yet registered)
+            // Register if missing
             RegisterConfigType(services, cfg, configType, attr, log);
 
-            // 2) Configure the instance once
+            // And configure synchronously
             ConfigureConfigTypeSync(services, cfg, configType, attr, log);
         }
 
-        // ----------------- helpers -----------------
-
-        private static void RegisterConfigType(
+        private static void ConfigureConfigTypeSync(
             IServiceCollection services,
             IConfiguration cfg,
             Type type,
             ServiceConfigurationAttribute attr,
             ILogger log)
+        {
+            ConfigureConfigTypeAsync(services, cfg, type, attr, log)
+                .GetAwaiter()
+                .GetResult();
+        }
+
+        // -----------------------------------------------------------------------------------
+        //  FIX: Resolve full config path from wildcarded AppConfigValue("*:something")
+        // -----------------------------------------------------------------------------------
+
+        private static string ResolveWildcardPath(
+            IConfiguration cfg,
+            Type declaringType,
+            AppConfigValueAttribute attr)
+        {
+            var star = attr.Path!.IndexOf('*');
+            if (star < 0)
+                return attr.Path!; // no wildcard
+
+            var after = star + 1 < attr.Path.Length
+                ? attr.Path[(star + 1)..].TrimStart(':')
+                : string.Empty;
+
+            // Determine instance root by inspecting ConditionalOnConfig(KeyField)
+            var conds = declaringType.GetCustomAttributes<ConditionalOnConfigAttribute>().ToArray();
+            var listAttr = conds.FirstOrDefault(c => !string.IsNullOrEmpty(c.KeyField));
+
+            if (listAttr is null)
+            {
+                // fallback: treat cfg as root
+                var rootPath = (cfg as IConfigurationSection)?.Path ?? "";
+                return string.IsNullOrEmpty(after)
+                    ? rootPath
+                    : $"{rootPath}:{after}";
+            }
+
+            var listRoot = listAttr.Path;
+
+            var section = cfg.GetSection(listRoot);
+            var children = section.GetChildren().ToArray();
+
+            // Determine which child corresponds to this instance
+            foreach (var child in children)
+            {
+                var keyFieldVal = child[listAttr.KeyField!];
+                if (keyFieldVal is null)
+                    continue;
+
+                // If this cfg is exactly this child, we found our root
+                if (cfg is IConfigurationSection s &&
+                    s.Path.StartsWith(child.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    return string.IsNullOrEmpty(after)
+                        ? child.Path
+                        : $"{child.Path}:{after}";
+                }
+            }
+
+            // fallback: assume cfg is already correct root
+            var fallbackRoot = (cfg as IConfigurationSection)?.Path ?? "";
+            return string.IsNullOrEmpty(after)
+                ? fallbackRoot
+                : $"{fallbackRoot}:{after}";
+        }
+
+
+        private static Func<ParameterInfo, object?> CustomConfigResolver(
+            IServiceProvider sp,
+            IConfiguration cfg)
+        {
+            return param =>
+            {
+                var attr = param.GetCustomAttribute<AppConfigValueAttribute>();
+                if (attr == null)
+                    return null;
+
+                var logger = sp.GetRequiredService<ILogger<ConfigAttributeConfiguration>>();
+
+                var target = param.ParameterType;
+
+                // FIX: Handle ILiveConfigValue<T>
+                if (target.IsGenericType &&
+                    target.GetGenericTypeDefinition() == typeof(ILiveConfigValue<>))
+                {
+                    var inner = target.GetGenericArguments()[0];
+                    var declaring = param.Member.DeclaringType!;
+
+                    // Compute absolute full path
+                    var fullPath = ResolveWildcardPath(cfg, declaring, attr);
+
+                    // Read initial value
+                    var initial = DependencyResolver.ResolveFromConfig(
+                        cfg,
+                        inner,
+                        new AppConfigValueAttribute(fullPath),
+                        logger
+                    );
+
+                    // Create live wrapper
+                    var liveType = typeof(LiveConfigValue<>).MakeGenericType(inner);
+                    return Activator.CreateInstance(liveType, cfg, fullPath, initial);
+                }
+
+                // Non-live value fallback
+                return DependencyResolver.ResolveFromConfig(
+                    cfg, param.ParameterType, attr, logger);
+            };
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Existing code unchanged below
+        // -----------------------------------------------------------------------------------
+
+        static void RegisterConfigType(
+    IServiceCollection services,
+    IConfiguration cfg,
+    Type type,
+    ServiceConfigurationAttribute attr,
+    ILogger log)
         {
             if (!typeof(IAltruistConfiguration).IsAssignableFrom(type))
                 return;
@@ -123,7 +215,6 @@ namespace Altruist
             var serviceType = attr.ServiceType ?? type;
             var lifetime = attr.Lifetime;
 
-            // Avoid duplicate registrations
             if (services.Any(d => d.ServiceType == serviceType))
                 return;
 
@@ -132,16 +223,24 @@ namespace Altruist
                 sp =>
                 {
                     var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<ConfigAttributeConfiguration>();
-                    var instance = DependencyResolver.CreateWithConfiguration(sp, cfg, type, logger, lifetime);
-                    return instance!;
+                    DependencyResolver.EnsureConverters(services, cfg, logger);
+
+                    // 🔥 Create a wrapper configuration that resolves wildcard paths correctly.
+                    var wrappedCfg = new WildcardConfigWrapper(cfg, type);
+
+                    // 🔥 Now use DependencyResolver normally — no modifications required.
+                    return DependencyResolver.CreateWithConfiguration(
+                        sp,
+                        wrappedCfg,
+                        type,
+                        logger,
+                        lifetime
+                    );
                 },
                 lifetime));
-
-            log.LogDebug("🔧 Registered configuration {Config} as {ServiceType} ({Lifetime}).",
-                type.FullName, serviceType.FullName, lifetime);
         }
 
-        private static async Task ConfigureConfigTypeAsync(
+        static async Task ConfigureConfigTypeAsync(
             IServiceCollection services,
             IConfiguration cfg,
             Type type,
@@ -156,51 +255,106 @@ namespace Altruist
                 return;
 
             if (instanceObj is not IAltruistConfiguration configInstance)
-            {
-                log.LogError(
-                    "Resolved {Service} does not implement IAltruistConfiguration. Skipping.",
-                    serviceType.FullName);
                 return;
-            }
 
             if (configInstance.IsConfigured)
-            {
-                log.LogDebug("Skipping Configure for {Type} (already configured).", type.FullName);
                 return;
-            }
 
-            try
-            {
-                await configInstance.Configure(services).ConfigureAwait(false);
-                configInstance.IsConfigured = true;
-
-                log.LogDebug("Ran Configure for {Type} (Order={Order}).", type.FullName, attr.Order);
-            }
-            catch (TargetInvocationException tie) when (tie.InnerException is not null)
-            {
-                log.LogError(tie.InnerException, "Error running Configure on {Type}.", type.FullName);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Failed to execute configuration for {Type}.", type.FullName);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Synchronous wrapper used from DependsOn path.
-        /// </summary>
-        private static void ConfigureConfigTypeSync(
-            IServiceCollection services,
-            IConfiguration cfg,
-            Type type,
-            ServiceConfigurationAttribute attr,
-            ILogger log)
-        {
-            ConfigureConfigTypeAsync(services, cfg, type, attr, log)
-                .GetAwaiter()
-                .GetResult();
+            await configInstance.Configure(services).ConfigureAwait(false);
+            configInstance.IsConfigured = true;
         }
     }
+
+    public sealed class WildcardConfigWrapper : IConfiguration
+    {
+        private readonly IConfiguration _inner;
+        private readonly Type _declaring;
+
+        public WildcardConfigWrapper(IConfiguration inner, Type declaring)
+        {
+            _inner = inner;
+            _declaring = declaring;
+        }
+
+        public IConfigurationSection GetSection(string key)
+        {
+            // If key contains wildcard -> rewrite to full path
+            if (key.Contains("*"))
+            {
+                key = ResolveWildcardPath(_inner, _declaring, new AppConfigValueAttribute(key));
+            }
+
+            return _inner.GetSection(key);
+        }
+
+        // Passthrough
+        public IEnumerable<IConfigurationSection> GetChildren() => _inner.GetChildren();
+        public IChangeToken GetReloadToken() => _inner.GetReloadToken();
+
+        public string? this[string key]
+        {
+            get => _inner[key];
+            set => _inner[key] = value;
+        }
+
+        private static string ResolveWildcardPath(
+    IConfiguration cfg,
+    Type declaringType,
+    AppConfigValueAttribute attr)
+        {
+            if (attr.Path is null)
+                return "";
+
+            var starIndex = attr.Path.IndexOf('*');
+            if (starIndex < 0)
+                return attr.Path; // no wildcard → full path stays as-is
+
+            // After the '*:' part
+            string afterStar = starIndex + 1 < attr.Path.Length
+                ? attr.Path[(starIndex + 1)..].TrimStart(':')
+                : string.Empty;
+
+            // Discover root from ConditionalOnConfig(..., KeyField = "id")
+            var conds = declaringType.GetCustomAttributes<ConditionalOnConfigAttribute>().ToArray();
+            var listAttr = conds.FirstOrDefault(c => !string.IsNullOrEmpty(c.KeyField));
+
+            // If no list / wildcard metadata exists → fallback to cfg root
+            if (listAttr is null)
+            {
+                var cfgRoot = (cfg as IConfigurationSection)?.Path ?? "";
+                return string.IsNullOrEmpty(afterStar)
+                    ? cfgRoot
+                    : $"{cfgRoot}:{afterStar}";
+            }
+
+            var listRoot = listAttr.Path; // e.g., "altruist:game:worlds:items"
+            var listSection = cfg.GetSection(listRoot);
+
+            // Find children (items:0, items:1, ...)
+            var children = listSection.GetChildren().ToArray();
+
+            // Determine which child corresponds to THIS instance
+            if (cfg is IConfigurationSection currentSection)
+            {
+                foreach (var child in children)
+                {
+                    // Match by section prefix (items:0, items:1...)
+                    if (currentSection.Path.StartsWith(child.Path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return string.IsNullOrEmpty(afterStar)
+                            ? child.Path                         // "*"
+                            : $"{child.Path}:{afterStar}";       // "*:gravity"
+                    }
+                }
+            }
+
+            // Fallback if instance root cannot be inferred:
+            var fallbackRoot = (cfg as IConfigurationSection)?.Path ?? "";
+
+            return string.IsNullOrEmpty(afterStar)
+                ? fallbackRoot
+                : $"{fallbackRoot}:{afterStar}";
+        }
+    }
+
 }

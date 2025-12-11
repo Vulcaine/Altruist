@@ -13,4 +13,8 @@ export class SummaryDashboardService {
   getSummary(): Observable<AltruistSummaryDto> {
     return this.http.get<AltruistSummaryDto>(this.baseUrl);
   }
+
+  updateConfigBatch(entries: { key: string; value: string }[]) {
+    return this.http.post(`${this.baseUrl}/config/update-batch`, entries);
+  }
 }

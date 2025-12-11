@@ -3,6 +3,7 @@
 export interface ConfigEntryDto {
   key: string;
   value: string | null;
+  modifiable: boolean;
 }
 
 export interface Vector3Dto {

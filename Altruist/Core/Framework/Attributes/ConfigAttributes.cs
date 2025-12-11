@@ -1,5 +1,7 @@
 // Altruist/ConfigValueAttribute.cs
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 
 namespace Altruist;
 
@@ -66,4 +68,94 @@ public interface IConfigConverter
 public interface IConfigConverter<T> : IConfigConverter
 {
     new T? Convert(string value);
+}
+
+public interface ILiveConfigValue<T>
+{
+    T Current { get; }
+    event Action<T> OnChange;
+}
+
+public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
+{
+    readonly IConfiguration config;
+    readonly string key;
+
+    public T Current { get; private set; }
+    public event Action<T>? OnChange;
+
+    public LiveConfigValue(IConfiguration config, string key)
+    {
+        this.config = config;
+        this.key = key;
+
+        LiveConfigRegistry.Register(key);
+
+        Current = config.GetValue<T>(key)!;
+        ChangeToken.OnChange(config.GetReloadToken, Reload);
+    }
+
+    void Reload()
+    {
+        Current = config.GetValue<T>(key)!;
+        OnChange?.Invoke(Current);
+    }
+}
+
+public static class LiveConfigSugarExtensions
+{
+
+    public static void BindTo<T>(
+        this ILiveConfigValue<T> live,
+        Action<T> setter)
+    {
+        setter(live.Current);
+        live.OnChange += setter;
+    }
+}
+
+[Service]
+public sealed class MutableConfigProvider : ConfigurationProvider
+{
+    public override void Set(string key, string? value)
+    {
+        Data[key] = value;
+        OnReload();
+    }
+}
+
+[Service]
+public sealed class MutableConfigSource : IConfigurationSource
+{
+    public readonly MutableConfigProvider Provider;
+
+    public MutableConfigSource(MutableConfigProvider mutableConfigProvider)
+    {
+        Provider = mutableConfigProvider;
+    }
+
+    public IConfigurationProvider Build(IConfigurationBuilder builder)
+        => new MutableConfigProvider();
+}
+
+public static class LiveConfigRegistry
+{
+    private static readonly HashSet<string> _keys = new(StringComparer.OrdinalIgnoreCase);
+
+    public static void Register(string key) => _keys.Add(key);
+    public static bool IsLiveConfig(string key)
+    {
+        foreach (var liveKey in _keys)
+        {
+            // exact match
+            if (key.Equals(liveKey, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // nested match → e.g. "gravity" matches "gravity:x"
+            if (key.StartsWith(liveKey + ":", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
 }

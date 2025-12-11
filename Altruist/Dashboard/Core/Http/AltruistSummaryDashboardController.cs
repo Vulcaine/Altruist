@@ -54,6 +54,7 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
     {
         public string Key { get; set; } = default!;
         public string? Value { get; set; }
+        public bool Modifiable { get; set; }
     }
 
     public sealed class Vector3Dto
@@ -105,6 +106,34 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
     }
 
     // ------------------ Endpoint ------------------
+
+    [HttpPost("config/update")]
+    public ActionResult UpdateConfig([FromBody] ConfigEntryDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Key))
+            return BadRequest("Missing key.");
+
+        var mutable = _configuration
+            .GetChildren()
+            .Select(c => c)
+            .Where(_ => true);
+
+        var provider = _configuration
+            .GetType()
+            .GetField("_providers", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.GetValue(_configuration) as IEnumerable<IConfigurationProvider>;
+
+        var mutableProvider = provider?
+            .FirstOrDefault(p => p is MutableConfigProvider) as MutableConfigProvider;
+
+        if (mutableProvider is null)
+            return StatusCode(500, "Mutable configuration provider not found.");
+
+        // Set new value -> triggers reload token
+        mutableProvider.Set(dto.Key, dto.Value ?? "");
+
+        return Ok(new { Updated = dto.Key, Value = dto.Value });
+    }
 
     [HttpGet]
     public ActionResult<AltruistSummaryDto> GetSummary()
@@ -167,6 +196,11 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
             .Where(r => !parentKeys.Contains(r.Key))
             .OrderBy(r => r.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        foreach (var entry in filtered)
+        {
+            entry.Modifiable = LiveConfigRegistry.IsLiveConfig(entry.Key);
+        }
 
         return filtered;
     }

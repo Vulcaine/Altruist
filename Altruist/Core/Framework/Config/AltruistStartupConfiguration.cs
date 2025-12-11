@@ -1,17 +1,17 @@
+using System.Reflection;
 using System.Text;
 
 using Altruist.Contracts;
+using Altruist.Security;
 using Altruist.Transport;
 using Altruist.Web.Features;
-using Altruist.Security;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.AspNetCore.Mvc.ApplicationParts;
-using System.Reflection;
-using Microsoft.AspNetCore.Mvc;
 
 namespace Altruist
 {
@@ -86,7 +86,15 @@ namespace Altruist
                 return;
 
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
+            using var tempProvider = rootServices.BuildServiceProvider();
 
+            var configSource = tempProvider.GetService<MutableConfigSource>();
+
+            if (configSource == null)
+                throw new InvalidOperationException("MutableConfigSource not registered.");
+
+            // Insert into WebApplication builder
+            builder.Configuration.Sources.Insert(0, configSource);
             builder.Logging.ClearProviders();
 
             foreach (var d in rootServices)
