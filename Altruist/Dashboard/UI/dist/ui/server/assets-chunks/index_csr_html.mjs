@@ -19,9 +19,9 @@ export default `<!DOCTYPE html>
         color: #e5e7eb;
       }
     </style>
-  <style>*{box-sizing:border-box}html,body{margin:0;padding:0;background:#020617;color:#e5e7eb;font-family:Inter,system-ui,sans-serif;height:100%;overflow:hidden}body{overflow:hidden}app-root{flex:1;min-height:0;min-width:0;overflow-x:hidden;overflow-y:auto}</style><link rel="stylesheet" href="/altruist/dashboard/styles-FWPUOQNV.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="/altruist/dashboard/styles-FWPUOQNV.css"></noscript></head>
+  <style>*{box-sizing:border-box}html,body{height:100%;margin:0}body{overflow:auto}</style><link rel="stylesheet" href="/altruist/dashboard/styles-RJC2EMFM.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="/altruist/dashboard/styles-RJC2EMFM.css"></noscript></head>
   <body ngcm="">
     <app-root></app-root>
-  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-XGJHNM56.js" type="module"></script></body>
+  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-2BTCY2GF.js" type="module"></script></body>
 </html>
 `;
