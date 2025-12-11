@@ -184,11 +184,12 @@ body {
 .sidebar-group {
     background: rgba(25, 35, 60, 0.35);
     border-radius: theme.$radius-pill;
-    border: 1px solid rgba(70, 90, 140, 0.55);
+    border: none;
     padding: 0.35rem 0.65rem;
     display: flex;
     align-items: center;
     gap: 0.4rem;
+    margin: 2.5px;
     font-size: 0.78rem;
     cursor: pointer;
     color: theme.$text-main;
@@ -210,7 +211,7 @@ body {
 .sidebar-item {
     border-radius: 0.55rem;
     background: rgba(15, 25, 50, 0.65);
-    border: 1px solid rgba(40, 60, 110, 0.4);
+    border: none;
     padding: 0.55rem 0.7rem;
     display: flex;
     flex-direction: column;
@@ -224,6 +225,7 @@ body {
         transform: translateY(-1px);
         box-shadow: theme.$shadow-elevated;
         opacity: 1;
+        border: 1px solid rgba(40, 60, 110, 0.4);
     }
 
     &.active {
