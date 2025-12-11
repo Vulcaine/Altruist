@@ -19,9 +19,9 @@ export default `<!DOCTYPE html>
         color: #e5e7eb;
       }
     </style>
-  <link rel="stylesheet" href="/altruist/dashboard/styles-5INURTSO.css"></head>
+  <link rel="stylesheet" href="/altruist/dashboard/styles-L3ZXESFG.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="/altruist/dashboard/styles-L3ZXESFG.css"></noscript></head>
   <body ngcm="">
     <app-root></app-root>
-  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-XNE2JPAW.js" type="module"></script></body>
+  <script src="/altruist/dashboard/polyfills-6ISPNSXF.js" type="module"></script><script src="/altruist/dashboard/main-HPO6CHJM.js" type="module"></script></body>
 </html>
 `;

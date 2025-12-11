@@ -1,1 +1,12 @@
 /* You can add global styles to this file, and also import other style files */
+thead {
+    background: rgba(10, 20, 40, 0.9); // navy glass
+}
+
+tbody tr:nth-child(odd) {
+    background: rgba(12, 20, 45, 0.95);
+}
+
+tbody tr:nth-child(even) {
+    background: rgba(16, 25, 55, 0.95);
+}
