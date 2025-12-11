@@ -37,8 +37,8 @@
       <ul class="vault-list">
         @for (group of groupedVaults; track group.keyspace) {
         <li class="vault-group">
-          <button type="button" class="vault-group-toggle" (click)="toggleKeyspace(group.keyspace)">
-            <span class="arrow" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">▶</span>
+          <button type="button" class="vault-group-header" (click)="toggleKeyspace(group.keyspace)">
+            <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">▶</span>
             <span class="vault-group-title">{{ group.keyspace }}</span>
           </button>
 
@@ -46,8 +46,9 @@
           <ul class="vault-sublist">
             @for (v of group.vaults; track v.typeKey) {
             <li class="vault-item">
-              <button type="button" class="vault-item-button"
-                [class.vault-item-button--active]="selectedVault?.typeKey === v.typeKey" (click)="onSelectVault(v)">
+              <button type="button" class="vault-item-button" [class.vault-item-button--active]="
+                  selectedVault?.typeKey === v.typeKey
+                " (click)="onSelectVault(v)">
                 <div class="vault-item-main">
                   <span class="vault-item-type">{{ v.clrTypeShort }}</span>
                 </div>
@@ -76,12 +77,14 @@
         <p>Select a vault.</p>
       </div>
       } @else {
+
       <header class="vault-table-header">
         <div class="vault-table-title">
           <h3>{{ selectedVault.clrTypeShort }}</h3>
           <p>
             {{ selectedVault.typeKey }} ·
-            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> ·
+            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span>
+            ·
             <span class="vault-table-name">{{ selectedVault.tableName }}</span>
           </p>
         </div>
@@ -125,15 +128,10 @@
                 @for (col of orderedColumns; track col.fieldName) {
                 <th [class.pk-header]="col.isPrimaryKey">
                   <span class="col-name">{{ col.fieldName }}</span>
-                  @if (col.isPrimaryKey) {
-                  <span class="col-meta pk-tag">PK</span>
-                  } @if (col.isUnique) {
-                  <span class="col-meta">UQ</span>
-                  } @if (col.isIndexed) {
-                  <span class="col-meta">IDX</span>
-                  } @if (col.isForeignKey) {
-                  <span class="col-meta">FK</span>
-                  }
+                  @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }
+                  @if (col.isUnique) { <span class="col-meta">UQ</span> }
+                  @if (col.isIndexed) { <span class="col-meta">IDX</span> }
+                  @if (col.isForeignKey) { <span class="col-meta">FK</span> }
                 </th>
                 }
               </tr>

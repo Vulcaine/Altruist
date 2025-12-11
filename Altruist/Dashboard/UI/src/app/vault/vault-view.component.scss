@@ -1,15 +1,15 @@
-// src/app/vault-view/vault-view.component.scss
 @use '../../styles/dashboard-theme' as theme;
+
+/* ---------------------- BASIC BUTTON ---------------------- */
 
 .commit-button {
   @include theme.pill-button-base;
-  background: #16a34a; // green
+  background: #16a34a;
   border-color: #15803d;
   color: white;
   font-weight: 600;
   padding: 0.35rem 0.9rem;
   font-size: 0.85rem;
-  transition: background 120ms ease, transform 80ms ease;
 
   &:hover {
     background: #22c55e;
@@ -17,6 +17,8 @@
     box-shadow: theme.$shadow-elevated;
   }
 }
+
+/* ---------------------- ROOT ---------------------- */
 
 .vault-view {
   display: flex;
@@ -28,20 +30,18 @@
   color: theme.$text-main;
 }
 
+/* ---------------------- HEADER ---------------------- */
+
 .vault-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
   padding: 10px 12px;
   border-radius: theme.$radius-lg;
   background: theme.$bg-header;
   border: 1px solid theme.$border-subtle;
 
   .vault-header-main {
-    display: flex;
-    flex-direction: column;
-
     h2 {
       margin: 0;
       font-size: 18px;
@@ -49,7 +49,7 @@
     }
 
     .vault-status {
-      margin: 2px 0 0;
+      margin-top: 2px;
       font-size: 0.85rem;
       color: theme.$text-muted;
     }
@@ -58,14 +58,13 @@
   .vault-header-actions {
     display: flex;
     gap: 0.5rem;
-    align-items: center;
 
-    input[type='text'] {
+    input {
       min-width: 250px;
       padding: 0.3rem 0.5rem;
       border-radius: theme.$radius-pill;
       border: 1px solid theme.$border-muted;
-      background: rgba(15, 23, 42, 0.95);
+      background: rgba(15, 23, 42, 0.9);
       color: theme.$text-main;
       font-size: 0.85rem;
 
@@ -81,66 +80,84 @@
 
     button {
       @include theme.pill-button-base;
-      border-color: theme.$border-muted;
       background: rgba(15, 23, 42, 0.9);
-      font-size: 0.85rem;
+      border-color: theme.$border-muted;
     }
   }
 }
 
-.vault-error {
-  padding: 0.75rem 1rem;
-  border-radius: theme.$radius-md;
-  background: theme.$danger-bg;
-  color: theme.$danger-text;
-  font-size: 0.85rem;
-}
-
-.vault-layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-  gap: 1rem;
-  min-height: 0;
-}
-
-/* Sidebar */
+/* ---------------------- SIDEBAR ---------------------- */
 
 .vault-sidebar {
-  border-radius: theme.$radius-lg;
-  padding: 10px 12px;
   background: theme.$bg-panel;
   border: 1px solid theme.$border-strong;
+  border-radius: theme.$radius-lg;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   min-height: 0;
 
   h3 {
-    margin: 0 0 8px;
+    margin: 0 0 10px;
     font-size: 0.95rem;
     font-weight: 600;
-  }
-
-  .vault-empty {
-    margin: 0.5rem 0 0;
-    font-size: 0.85rem;
-    color: theme.$text-muted;
   }
 }
 
 .vault-list {
   list-style: none;
   padding: 0;
-  margin: 0.25rem 0 0;
+  margin: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  overflow-y: auto;
+  gap: 0.25rem;
 }
 
-.vault-item {
-  margin: 0;
+/* ---------------------- GROUP HEADER (Badge Style) ---------------------- */
+
+.vault-group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(60, 65, 80, 0.28);
+  color: theme.$text-soft;
+  border-radius: theme.$radius-pill;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgba(90, 95, 110, 0.4);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 120ms ease;
+
+  &:hover {
+    background: rgba(80, 85, 100, 0.35);
+  }
+
+  .chevron {
+    transition: transform 0.15s ease;
+
+    &.collapsed {
+      transform: rotate(-90deg);
+    }
+  }
+
+  .vault-group-title {
+    font-weight: 600;
+  }
 }
+
+.vault-sublist {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-left: 0.35rem;
+}
+
+/* ---------------------- VAULT ITEM ---------------------- */
 
 .vault-item-button {
   width: 100%;
@@ -154,19 +171,15 @@
   flex-direction: column;
   gap: 0.2rem;
   cursor: pointer;
-  transition:
-    background 120ms ease,
-    transform 80ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
   opacity: 0.9;
-}
+  transition: background 120ms, transform 80ms, box-shadow 120ms, opacity 120ms;
 
-.vault-item-button:hover {
-  background: theme.$bg-panel-hover;
-  transform: translateY(-1px);
-  box-shadow: theme.$shadow-elevated;
-  opacity: 1;
+  &:hover {
+    background: theme.$bg-panel-hover;
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: theme.$shadow-elevated;
+  }
 }
 
 .vault-item-button--active {
@@ -177,225 +190,33 @@
 .vault-item-main {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
 }
 
 .vault-item-type {
   font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.vault-item-keyspace {
-  font-size: 0.75rem;
-  color: theme.$text-soft;
+  font-size: 0.93rem;
 }
 
 .vault-item-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: theme.$text-muted;
 }
 
-.vault-item-table {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vault-item-tag {
-  padding: 0.05rem 0.4rem;
-  border-radius: theme.$radius-pill;
-  border: 1px solid rgba(52, 211, 153, 0.7);
-  background: rgba(16, 185, 129, 0.12);
-  color: #a7f3d0;
-  font-size: 0.7rem;
-}
-
-/* Main */
+/* ---------------------- MAIN PANEL ---------------------- */
 
 .vault-main {
-  border-radius: theme.$radius-lg;
   background: theme.$bg-panel;
   border: 1px solid theme.$border-strong;
+  border-radius: theme.$radius-lg;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-.vault-main-empty {
-  padding: 1.5rem;
-  font-size: 0.9rem;
-  color: theme.$text-muted;
-}
+/* ---------------------- TABLE ---------------------- */
 
-.vault-table-header {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid theme.$border-subtle;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-
-  .vault-table-title {
-    h3 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-    }
-
-    p {
-      margin: 0.15rem 0 0;
-      font-size: 0.8rem;
-      color: theme.$text-muted;
-    }
-
-    .vault-keyspace {
-      color: theme.$text-soft;
-    }
-
-    .vault-table-name {
-      color: theme.$text-muted;
-    }
-  }
-
-  .vault-table-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.8rem;
-
-    label {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-
-      select {
-        padding: 0.15rem 0.4rem;
-        border-radius: theme.$radius-pill;
-        border: 1px solid theme.$border-muted;
-        background: rgba(15, 23, 42, 0.95);
-        color: theme.$text-main;
-        font-size: 0.8rem;
-      }
-    }
-
-    .vault-pagination {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-
-      button {
-        @include theme.pill-button-base;
-        padding: 0.15rem 0.5rem;
-        font-size: 0.8rem;
-        border-color: theme.$border-muted;
-        background: rgba(15, 23, 42, 0.9);
-      }
-
-      span {
-        font-size: 0.8rem;
-        color: theme.$text-soft;
-      }
-    }
-  }
-}
-
-.vault-table-section {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.vault-table-wrapper {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.vault-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-
-  thead {
-    background: rgba(15, 23, 42, 0.98);
-
-    th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      padding: 0.45rem 0.6rem;
-      text-align: left;
-      border-bottom: 1px solid theme.$border-strong;
-      font-weight: 500;
-      font-size: 0.75rem;
-      color: theme.$text-soft;
-      backdrop-filter: blur(8px);
-
-      .col-name {
-        font-weight: 600;
-      }
-
-      .col-meta {
-        margin-left: 0.25rem;
-        font-size: 0.7rem;
-        padding: 0.05rem 0.3rem;
-        border-radius: theme.$radius-pill;
-        background: rgba(15, 23, 42, 0.9);
-        border: 1px solid theme.$border-muted;
-        color: theme.$text-muted;
-      }
-    }
-  }
-
-  tbody {
-    tr {
-      transition:
-        background 0.12s ease,
-        transform 0.08s ease,
-        box-shadow 0.12s ease;
-
-      &:nth-child(even) {
-        background: rgba(15, 23, 42, 0.92);
-      }
-
-      &:nth-child(odd) {
-        background: rgba(15, 23, 42, 0.98);
-      }
-
-      &:hover {
-        background: theme.$bg-panel-hover;
-        transform: translateY(-1px);
-        box-shadow: theme.$shadow-elevated;
-      }
-    }
-
-    .vault-row {
-      cursor: default;
-    }
-
-    .vault-cell {
-      padding: 0.35rem 0.6rem;
-      border-bottom: 1px solid rgba(15, 23, 42, 0.95);
-      vertical-align: top;
-
-      code {
-        display: block;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          'Liberation Mono', 'Courier New', monospace;
-        font-size: 0.78rem;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: theme.$text-soft;
-      }
-    }
-  }
+.pk-header {
+  background: rgba(255, 230, 150, 0.25);
 }
 
 .pk-cell {
