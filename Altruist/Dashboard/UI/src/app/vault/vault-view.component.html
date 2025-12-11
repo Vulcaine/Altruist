@@ -11,8 +11,7 @@
         placeholder="Filter vaults…" />
 
       @if (hasPendingChanges) {
-      <button type="button" class="button-primary commit-button" (click)="commitChanges()"
-        title="Commit pending changes">
+      <button type="button" class="button-primary commit-button" (click)="commitChanges()">
         ⬆️ Commit ({{ dirtyItems.size }})
       </button>
       }
@@ -29,6 +28,7 @@
 
   <!-- LAYOUT -->
   <section class="vault-layout">
+
     <!-- SIDEBAR -->
     <aside class="vault-sidebar">
       <h3>Vaults</h3>
@@ -37,25 +37,27 @@
       <p class="vault-empty">No vaults registered.</p>
       } @else {
       <ul class="vault-list">
+
         @for (group of groupedVaults; track group.keyspace) {
-        <li class="vault-group">
-          <button type="button" class="vault-group-header" (click)="toggleKeyspace(group.keyspace)">
+        <li>
+
+          <!-- UNIFIED SIDEBAR GROUP -->
+          <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">
             <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">▶</span>
-            <span class="vault-group-title">{{ group.keyspace }}</span>
+            <span>{{ group.keyspace }}</span>
           </button>
 
           @if (!collapsedKeyspaces.has(group.keyspace)) {
           <ul class="vault-sublist">
-            @for (v of group.vaults; track v.typeKey) {
-            <li class="vault-item">
-              <button type="button" class="vault-item-button"
-                [class.vault-item-button--active]="selectedVault?.typeKey === v.typeKey" (click)="onSelectVault(v)">
-                <div class="vault-item-main">
-                  <span class="vault-item-type">{{ v.clrTypeShort }}</span>
-                </div>
 
+            @for (v of group.vaults; track v.typeKey) {
+            <li>
+              <!-- UNIFIED SIDEBAR ITEM -->
+              <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"
+                (click)="onSelectVault(v)">
+                <div class="vault-item-type">{{ v.clrTypeShort }}</div>
                 <div class="vault-item-meta">
-                  <span class="vault-item-table">{{ v.tableName }}</span>
+                  {{ v.tableName }}
                   @if (v.storeHistory) {
                   <span class="vault-item-tag">History</span>
                   }
@@ -63,10 +65,12 @@
               </button>
             </li>
             }
+
           </ul>
           }
         </li>
         }
+
       </ul>
       }
     </aside>
@@ -74,9 +78,11 @@
     <!-- MAIN -->
     <main class="vault-main">
       @if (!selectedVault) {
+
       <div class="vault-main-empty">
         <p>Select a vault.</p>
       </div>
+
       } @else {
 
       <header class="vault-table-header">
@@ -84,8 +90,7 @@
           <h3>{{ selectedVault.clrTypeShort }}</h3>
           <p>
             {{ selectedVault.typeKey }} ·
-            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span>
-            ·
+            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> ·
             <span class="vault-table-name">{{ selectedVault.tableName }}</span>
           </p>
         </div>
@@ -101,13 +106,11 @@
           </label>
 
           <div class="vault-pagination">
-            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">
-              ‹
-            </button>
+            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">‹</button>
+
             <span>Page {{ displayPage }} / {{ totalPages }}</span>
-            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">
-              ›
-            </button>
+
+            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">›</button>
           </div>
         </div>
       </header>
@@ -122,8 +125,10 @@
           <p>No items.</p>
         </div>
         } @else {
+
         <div class="vault-table-wrapper">
           <table class="table vault-table">
+
             <thead>
               <tr>
                 @for (col of orderedColumns; track col.fieldName) {
@@ -140,9 +145,11 @@
 
             <tbody>
               @for (item of items; let row = $index; track row) {
-              <tr class="vault-row">
+              <tr>
+
                 @for (col of orderedColumns; track col.fieldName) {
-                <td class="vault-cell" [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">
+                <td [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">
+
                   @if (isEditing(row, col.fieldName)) {
                   <input class="input vault-cell-input" [value]="item[col.fieldName]"
                     (input)="onCellEdit(row, col.fieldName, $any($event.target).value)"
@@ -150,17 +157,22 @@
                   } @else {
                   <code>{{ item[col.fieldName] }}</code>
                   }
+
                 </td>
                 }
+
               </tr>
               }
             </tbody>
+
           </table>
         </div>
+
         }
       </section>
 
       }
     </main>
+
   </section>
 </div>
