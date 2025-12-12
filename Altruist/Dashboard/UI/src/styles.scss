@@ -219,6 +219,8 @@ body {
     cursor: pointer;
     opacity: 0.9;
     transition: 120ms ease;
+    width: 100%;
+    text-align: left;
 
     &:hover {
         background: rgba(20, 30, 70, 0.75);

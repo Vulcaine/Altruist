@@ -123,6 +123,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     private async Task EnsureConnectedAsync()
     {
+        IsConnected = _conn?.State == ConnectionState.Open;
         if (!IsConnected)
             await ConnectAsync();
     }
