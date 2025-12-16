@@ -5,9 +5,9 @@ namespace Altruist
 {
     public struct ServiceHealthResponse
     {
-        public bool online;
-        public ReadyState readyState;
-        public string message;
+        public bool Online { get; init; }
+        public ReadyState ReadyState { get; init; }
+        public string Message { get; init; }
     }
 
     public sealed class ServiceHealthDetailsResponse
@@ -72,17 +72,17 @@ namespace Altruist
                 {
                     return Ok(new ServiceHealthResponse
                     {
-                        online = false,
-                        readyState = _status.Status,
-                        message = "Service initializing"
+                        Online = false,
+                        ReadyState = _status.Status,
+                        Message = "Service initializing"
                     });
                 }
 
                 return Ok(new ServiceHealthResponse
                 {
-                    online = true,
-                    readyState = _status.Status,
-                    message = "OK"
+                    Online = true,
+                    ReadyState = _status.Status,
+                    Message = "OK"
                 });
             }
             catch (Exception ex)
@@ -91,8 +91,9 @@ namespace Altruist
 
                 return StatusCode(503, new ServiceHealthResponse
                 {
-                    online = false,
-                    message = ex.Message
+                    Online = false,
+                    ReadyState = ReadyState.Failed,
+                    Message = ex.Message
                 });
             }
         }
