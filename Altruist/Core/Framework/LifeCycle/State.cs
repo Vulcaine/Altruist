@@ -38,6 +38,8 @@ public sealed class ServerStatus : IServerStatus
     private bool _startup;
     private Timer? _startupTimeoutTimer;
 
+    public HashSet<IConnectable> Connectables => _connectables;
+
     // All dependencies are injected; no manual BuildServiceProvider gymnastics.
     public ServerStatus(
         IEnumerable<IConnectable> otherConnectables,
