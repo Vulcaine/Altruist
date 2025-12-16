@@ -24,7 +24,7 @@ namespace Altruist
     }
 
     [ApiController]
-    [Route("health")]
+    [Route("altruist/health")]
     public class ServiceHealthController : ControllerBase
     {
         private readonly ILogger<ServiceHealthController> _logger;
