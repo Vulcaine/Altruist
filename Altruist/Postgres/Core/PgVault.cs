@@ -649,6 +649,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
 
     /// <summary>
     /// Builds an INSERT ... ON CONFLICT (pk1, pk2, ...) DO UPDATE SET ... upsert statement.
+    /// Uses '?' placeholders so the provider can expand them to unique @p1..@pn across batched statements.
     /// columns = physical column names (e.g. "id", "principalid", ...).
     /// primaryKeyNames = physical PK column names (one or many).
     ///
@@ -667,13 +668,13 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             .Select(c => $"\"{c}\"")
             .ToArray();
 
-        var paramNames = columns
-            .Select((_, i) => $"@p{i + 1}")
+        var placeholders = columns
+            .Select(_ => "?")
             .ToArray();
 
         var insert =
             $"INSERT INTO {tableName} ({string.Join(", ", columnNames)}) " +
-            $"VALUES ({string.Join(", ", paramNames)})";
+            $"VALUES ({string.Join(", ", placeholders)})";
 
         var pkList = string.Join(
             ", ",
