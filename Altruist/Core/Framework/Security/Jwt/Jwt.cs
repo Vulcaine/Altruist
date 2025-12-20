@@ -87,6 +87,11 @@ public class JwtAuth : IShieldAuth
 
     private AuthDetails ExtractAuthDetails(string token)
     {
+        if (token == null || token.Length == 0)
+        {
+            throw new Exception("Invalid JWT: Token is null or empty.");
+        }
+
         var jwt = _tokenHandler.ReadJwtToken(token);
         var expClaim = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Exp);
 
