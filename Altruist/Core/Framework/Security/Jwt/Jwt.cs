@@ -89,7 +89,7 @@ public class JwtAuth : IShieldAuth
     {
         if (token == null || token.Length == 0)
         {
-            throw new Exception("Invalid JWT: Token is null or empty.");
+            throw new UnauthorizedAccessException("Invalid JWT: Token is null or empty.");
         }
 
         var jwt = _tokenHandler.ReadJwtToken(token);
@@ -97,7 +97,7 @@ public class JwtAuth : IShieldAuth
 
         if (expClaim == null || !long.TryParse(expClaim.Value, out long expUnix))
         {
-            throw new Exception("Invalid JWT: Missing or malformed expiration claim.");
+            throw new UnauthorizedAccessException("Invalid JWT: Missing or malformed expiration claim.");
         }
 
         var expirationTime = DateTimeOffset.FromUnixTimeSeconds(expUnix);

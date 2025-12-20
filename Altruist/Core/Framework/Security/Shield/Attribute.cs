@@ -40,15 +40,23 @@ public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
             var authHandler = (IShieldAuth)serviceProvider.GetService(_authHandlerType)!;
             if (authHandler != null)
             {
-                var result = await authHandler.HandleAuthAsync(new HttpAuthContext(context.HttpContext));
 
-                // store AuthResult for anyone else (e.g. WebSocketTransport) to reuse
-                context.HttpContext.Items["AuthResult"] = result;
+                try
+                {
+                    var result = await authHandler.HandleAuthAsync(new HttpAuthContext(context.HttpContext));
 
-                if (!result.AuthorizationResult.Succeeded)
+                    context.HttpContext.Items["AuthResult"] = result;
+
+                    if (!result.AuthorizationResult.Succeeded)
+                    {
+                        context.Result = new UnauthorizedResult();
+                    }
+                }
+                catch (UnauthorizedAccessException)
                 {
                     context.Result = new UnauthorizedResult();
                 }
+
             }
         }
     }
