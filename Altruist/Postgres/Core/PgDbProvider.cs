@@ -347,17 +347,75 @@ public class SqlDbProvider : ISqlDatabaseProvider
         }
     }
 
-    private static object? ConvertValue(object val, Type targetType)
+    private object? ConvertValue(object val, Type targetType)
     {
-        if (targetType.IsAssignableFrom(val.GetType()))
+        if (val is null)
+            return null;
+
+        var valType = val.GetType();
+        if (targetType.IsAssignableFrom(valType))
             return val;
+
         if (targetType.IsEnum)
-            return Enum.Parse(targetType, val.ToString()!, ignoreCase: true);
+            return val is string s
+                ? Enum.Parse(targetType, s, ignoreCase: true)
+                : Enum.ToObject(targetType, Convert.ToInt32(val));
+
+        if (TryDeserializeJson(val, targetType, out var jsonObj))
+            return jsonObj;
+
         if (targetType == typeof(Guid))
-            return val switch { Guid g => g, string s => Guid.Parse(s), _ => new Guid((byte[])val) };
+            return val switch
+            {
+                Guid g => g,
+                string s => Guid.Parse(s),
+                byte[] b => new Guid(b),
+                _ => Guid.Parse(val.ToString()!)
+            };
+
         if (targetType == typeof(DateTime))
             return Convert.ToDateTime(val, System.Globalization.CultureInfo.InvariantCulture);
+
         return Convert.ChangeType(val, targetType);
+    }
+
+    private bool TryDeserializeJson(object val, Type targetType, out object? result)
+    {
+        result = null;
+
+        if (targetType == typeof(string))
+            return false;
+
+        if (!IsJsonTargetType(targetType))
+            return false;
+
+        result = val switch
+        {
+            string json => JsonSerializer.Deserialize(json, targetType, _jsonOptions),
+            JsonDocument doc => doc.Deserialize(targetType, _jsonOptions),
+            _ => null
+        };
+
+        return result is not null;
+    }
+
+    private static bool IsJsonTargetType(Type t)
+    {
+        // Any IDictionary
+        if (typeof(System.Collections.IDictionary).IsAssignableFrom(t))
+            return true;
+
+        // Any IEnumerable except string (lists/arrays/etc.)
+        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(t))
+            return true;
+
+        // Any POCO-ish type (not a primitive-ish scalar)
+        return !t.IsPrimitive
+               && t != typeof(decimal)
+               && t != typeof(Guid)
+               && t != typeof(DateTime)
+               && t != typeof(DateTimeOffset)
+               && t != typeof(TimeSpan);
     }
 
     private static bool ShouldWriteAsJsonb(Type type)
@@ -429,6 +487,14 @@ public class SqlDbProvider : ISqlDatabaseProvider
             }
 
             var type = value.GetType();
+
+            if (type.IsEnum)
+            {
+                p.NpgsqlDbType = NpgsqlDbType.Text;
+                p.Value = value.ToString()!;
+                cmd.Parameters.Add(p);
+                continue;
+            }
 
             if (ShouldWriteAsJsonb(type))
             {
