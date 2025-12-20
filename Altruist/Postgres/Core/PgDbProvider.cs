@@ -33,13 +33,14 @@ public class SqlDbProvider : ISqlDatabaseProvider
     private readonly string _host;
     private readonly int _port;
     private readonly string _username;
-    private readonly string _password;  // keep original casing
+    private readonly string _password;
     private readonly string _database;
 
-    // Optional tuning flags
     private readonly bool _pooling;
-    private readonly string _sslModeRaw;             // lowercased raw input preserved for parse
-    private readonly bool _trustServerCertificate;   // useful for local dev if SSL is enabled
+    private readonly string _sslModeRaw;
+    private readonly bool _trustServerCertificate;
+
+    private readonly JsonSerializerOptions _jsonOptions;
 
     // ---------- helpers ----------
 
@@ -88,6 +89,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
     public event Action<Exception>? OnRetryExhausted;
 
     public SqlDbProvider(
+        JsonSerializerOptions jsonOptions,
         [AppConfigValue("altruist:persistence:database:host")] string host,
         [AppConfigValue("altruist:persistence:database:port", "5432")] int port,
         [AppConfigValue("altruist:persistence:database:username")] string username,
@@ -99,8 +101,6 @@ public class SqlDbProvider : ISqlDatabaseProvider
         [AppConfigValue("altruist:persistence:database:trust-server-certificate", "false")] bool trustServerCertificate = false
     )
     {
-        // Normalize all string inputs to lowercase first (as requested).
-        // NOTE: Password is intentionally NOT lowercased.
         var hostLower = NormLower(host);
         var userLower = NormLower(username);
         var dbLower = NormLower(database);
@@ -109,14 +109,14 @@ public class SqlDbProvider : ISqlDatabaseProvider
         _host = string.IsNullOrWhiteSpace(hostLower) ? "localhost" : hostLower;
         _port = port <= 0 ? 5432 : port;
 
-        // For PostgreSQL, unquoted identifiers fold to lower-case; normalizing user/db helps avoid surprises.
         _username = string.IsNullOrWhiteSpace(userLower) ? throw new ArgumentNullException(nameof(username)) : userLower;
         _database = string.IsNullOrWhiteSpace(dbLower) ? throw new ArgumentNullException(nameof(database)) : dbLower;
 
-        _password = password ?? throw new ArgumentNullException(nameof(password)); // keep original casing
+        _password = password ?? throw new ArgumentNullException(nameof(password));
         _pooling = pooling;
-        _sslModeRaw = sslLower; // store lowercased raw; we map to enum later
+        _sslModeRaw = sslLower;
         _trustServerCertificate = trustServerCertificate;
+        _jsonOptions = jsonOptions;
     }
 
     #region Connection lifecycle
@@ -360,11 +360,50 @@ public class SqlDbProvider : ISqlDatabaseProvider
         return Convert.ChangeType(val, targetType);
     }
 
+    private static bool ShouldWriteAsJsonb(Type type)
+    {
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            type = Nullable.GetUnderlyingType(type)!;
+
+        if (type.IsEnum)
+            return false;
+
+        // types Npgsql knows well without help
+        if (type == typeof(string) ||
+            type == typeof(bool) ||
+            type == typeof(byte) ||
+            type == typeof(short) ||
+            type == typeof(int) ||
+            type == typeof(long) ||
+            type == typeof(float) ||
+            type == typeof(double) ||
+            type == typeof(decimal) ||
+            type == typeof(Guid) ||
+            type == typeof(DateTime) ||
+            type == typeof(DateTimeOffset) ||
+            type == typeof(TimeSpan) ||
+            type == typeof(byte[]))
+            return false;
+
+        // arrays are handled by Npgsql as pg arrays in your code
+        if (type.IsArray)
+            return false;
+
+        // dictionaries / lists / POCOs -> jsonb
+        if (typeof(System.Collections.IDictionary).IsAssignableFrom(type))
+            return true;
+        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type) && type != typeof(string))
+            return true;
+
+        // any other POCO -> jsonb
+        return true;
+    }
+
     /// <summary>
     /// Translates '?' placeholders to PostgreSQL '@p1..@pn' and binds parameters.
     /// Handles single-quoted string literals to avoid replacing '?' inside them.
     /// </summary>
-    private static NpgsqlCommand PrepareCommand(NpgsqlConnection conn, string sql, List<object>? parameters)
+    private NpgsqlCommand PrepareCommand(NpgsqlConnection conn, string sql, List<object>? parameters)
     {
         var cmd = conn.CreateCommand();
 
@@ -385,29 +424,20 @@ public class SqlDbProvider : ISqlDatabaseProvider
             if (value is null)
             {
                 p.Value = DBNull.Value;
+                cmd.Parameters.Add(p);
+                continue;
+            }
+
+            var type = value.GetType();
+
+            if (ShouldWriteAsJsonb(type))
+            {
+                p.NpgsqlDbType = NpgsqlDbType.Jsonb;
+                p.Value = JsonSerializer.Serialize(value, _jsonOptions);
             }
             else
             {
-                var type = value.GetType();
-
-                if (type.IsGenericType &&
-                    type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
-                {
-                    var args = type.GetGenericArguments();
-                    if (args[0] == typeof(string) && args[1] == typeof(string))
-                    {
-                        p.NpgsqlDbType = NpgsqlDbType.Jsonb;
-                        p.Value = JsonSerializer.Serialize(value);
-                    }
-                    else
-                    {
-                        p.Value = value;
-                    }
-                }
-                else
-                {
-                    p.Value = value;
-                }
+                p.Value = value;
             }
 
             cmd.Parameters.Add(p);
