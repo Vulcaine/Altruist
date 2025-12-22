@@ -511,7 +511,7 @@ public class Document
 
     private void FailAndExit(string message)
     {
-        // Keeping existing behavior: terminate the process on invalid model configuration.
+        Console.Error.WriteLine(message);
         Environment.Exit(-1);
     }
 
