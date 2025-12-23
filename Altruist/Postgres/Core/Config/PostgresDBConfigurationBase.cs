@@ -139,93 +139,30 @@ public abstract class PostgresConfigurationBase
     // ----------------- initializer system -----------------
 
     private static async Task RunInitializersAsync(
-        IServiceProvider sp,
-        Type[] initializerTypes,
-        ILogger logger)
+    IServiceProvider sp,
+    Type[] initializerTypes,
+    ILogger logger)
     {
-        if (initializerTypes.Length == 0)
+        if (initializerTypes == null || initializerTypes.Length == 0)
             return;
 
-        // respect C# initializer Order
         var ordered = initializerTypes
             .Select(t => ActivatorUtilities.CreateInstance(sp, t))
             .Cast<IDatabaseInitializer>()
             .OrderBy(i => i.Order)
+            .ThenBy(i => i.GetType().FullName, StringComparer.Ordinal)
             .ToList();
-
-        var allResults = new List<IVaultModel>();
 
         foreach (var init in ordered)
         {
             try
             {
-                var result = await init.InitializeAsync(sp);
-
-                if (result != null && result.Any())
-                {
-                    allResults.AddRange(result);
-                    logger.LogInformation("✔ Initializer {Init} executed. Inserted {Count} items.",
-                        init.GetType().Name, result.Count());
-                }
+                await init.InitializeAsync(sp).ConfigureAwait(false);
+                logger.LogInformation("✔ Initializer {Init} executed.", init.GetType().Name);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex,
-                    "❌ Initializer {Init} failed: {Message}",
-                    init.GetType().Name, ex.Message);
-            }
-        }
-
-        if (allResults.Count == 0)
-            return;
-
-        // Group by vault type & save
-        foreach (var group in allResults.GroupBy(m => m.GetType()))
-        {
-            var modelType = group.Key;
-            var list = group.ToList();
-
-            try
-            {
-                var vaultType = typeof(IVault<>).MakeGenericType(modelType);
-                var vault = sp.GetRequiredService(vaultType);
-
-                // find SaveBatchAsync(IEnumerable<T>, bool?)
-                var saveBatch = vaultType
-                    .GetMethods()
-                    .First(m =>
-                        m.Name == "SaveBatchAsync" &&
-                        m.GetParameters().Length >= 1 &&
-                        m.GetParameters()[0].ParameterType.IsGenericType &&
-                        m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
-                    );
-
-                var casted = typeof(Enumerable)
-                    .GetMethod("Cast")!
-                    .MakeGenericMethod(modelType)
-                    .Invoke(null, [list])!;
-
-                var toList = typeof(Enumerable)
-                    .GetMethod("ToList")!
-                    .MakeGenericMethod(modelType)
-                    .Invoke(null, [casted])!;
-
-                object?[] args =
-                    saveBatch.GetParameters().Length == 2
-                        ? [toList, null]
-                        : [toList];
-
-                var task = (Task)saveBatch.Invoke(vault, args)!;
-                await task.ConfigureAwait(false);
-
-                logger.LogInformation("📦 Inserted {Count} items into vault {Model}.",
-                    list.Count, modelType.Name);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex,
-                    "❌ Failed inserting initializer data for {Model}: {Message}",
-                    modelType.Name, ex.Message);
+                logger.LogError(ex, "❌ Initializer {Init} failed: {Message}", init.GetType().Name, ex.Message);
             }
         }
     }
