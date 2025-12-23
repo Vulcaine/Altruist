@@ -490,7 +490,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
             if (type.IsEnum)
             {
-                p.NpgsqlDbType = NpgsqlDbType.Text;
+                p.NpgsqlDbType = NpgsqlDbType.Integer;
                 p.Value = value.ToString()!;
                 cmd.Parameters.Add(p);
                 continue;

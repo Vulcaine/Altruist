@@ -79,7 +79,7 @@ public sealed class PostgresMigrationPlanner : AbstractMigrationPlanner
             return "jsonb";
 
         if (type.IsEnum)
-            return "text";
+            return "integer";
 
         return "jsonb";
     }
