@@ -135,7 +135,7 @@ internal sealed class PgHistoricalVault<TVaultModel> : IHistoricalVault<TVaultMo
             bool b => b ? "TRUE" : "FALSE",
             DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
             TimeSpan ts => ConvertTimeSpanToDatabaseFormat(ts),
-            Enum e => $"'{e}'",
+            Enum e => Convert.ToInt32(e).ToString(),
             _ => value.ToString()!
         };
 

@@ -491,7 +491,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
             if (type.IsEnum)
             {
                 p.NpgsqlDbType = NpgsqlDbType.Integer;
-                p.Value = value.ToString()!;
+                p.Value = Convert.ToInt32(value);
                 cmd.Parameters.Add(p);
                 continue;
             }
