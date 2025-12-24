@@ -1,5 +1,3 @@
-// PgJoinExpressionTranslator.cs
-
 using System.Linq.Expressions;
 
 using Altruist.Querying;
@@ -10,9 +8,6 @@ internal static class PgJoinExpressionTranslator
 {
     // ---------------- JOIN ----------------
 
-    /// <summary>
-    /// Typed join (kept for callers that already have typed vaults).
-    /// </summary>
     public static string BuildJoin<TLeft, TRight>(
         PgVault<TLeft> left,
         PgVault<TRight> right,
@@ -23,9 +18,6 @@ internal static class PgJoinExpressionTranslator
         where TRight : class, IVaultModel
         => BuildJoinDynamic(left, right, leftKey, rightKey, joinType);
 
-    /// <summary>
-    /// Dynamic join builder for "join from current / join from left / join from explicit".
-    /// </summary>
     public static string BuildJoinDynamic(
         object left,
         object right,
@@ -48,21 +40,18 @@ internal static class PgJoinExpressionTranslator
         return $"{join} {QualifiedTable(right)} ON {leftCol} = {rightCol}";
     }
 
-    // ---------------- SELECT ----------------
+    // ---------------- SELECT (2..6 params) ----------------
 
     public static string BuildSelect(
         LambdaExpression? projection,
-        object left,
-        object right,
+        object from,
         IReadOnlyList<string> joins,
-        IReadOnlyList<string> wheres)
+        IReadOnlyList<string> wheres,
+        IReadOnlyDictionary<ParameterExpression, object> paramMap)
     {
-        var select =
-            projection is null
-                ? "*"
-                : Select(projection, left, right);
+        var select = projection is null ? "*" : Select(projection, paramMap);
 
-        var sql = $"SELECT {select} FROM {QualifiedTable(left)}";
+        var sql = $"SELECT {select} FROM {QualifiedTable(from)}";
 
         if (joins.Count > 0)
             sql += " " + string.Join(" ", joins);
@@ -73,47 +62,33 @@ internal static class PgJoinExpressionTranslator
         return sql;
     }
 
-    // ---------------- WHERE ----------------
+    // ---------------- WHERE (N params) ----------------
 
-    public static string Translate<TLeft, TRight>(
-        Expression<Func<TLeft, TRight, bool>> predicate,
-        PgVault<TLeft> left,
-        PgVault<TRight> right)
-        where TLeft : class, IVaultModel
-        where TRight : class, IVaultModel
-    {
-        return Visit(predicate.Body,
-            predicate.Parameters[0],
-            predicate.Parameters[1],
-            left,
-            right);
-    }
+    public static string Translate(
+        LambdaExpression predicate,
+        IReadOnlyDictionary<ParameterExpression, object> paramMap)
+        => Visit(predicate.Body, paramMap);
 
     private static string Visit(
         Expression expr,
-        ParameterExpression leftParam,
-        ParameterExpression rightParam,
-        object left,
-        object right)
+        IReadOnlyDictionary<ParameterExpression, object> paramMap)
     {
         expr = StripConvert(expr);
 
         if (expr is BinaryExpression be)
         {
             var op = Operator(be.NodeType);
-            return $"({Visit(be.Left, leftParam, rightParam, left, right)} {op} {Visit(be.Right, leftParam, rightParam, left, right)})";
+            return $"({Visit(be.Left, paramMap)} {op} {Visit(be.Right, paramMap)})";
         }
 
         if (expr is MemberExpression me)
         {
-            if (IsRooted(me, leftParam))
-                return Resolve(me, left);
-            if (IsRooted(me, rightParam))
-                return Resolve(me, right);
+            var rootParam = GetRootParameter(me);
+            if (rootParam is not null && paramMap.TryGetValue(rootParam, out var vault))
+                return Resolve(me, vault);
         }
 
-        // NOTE: This is still "dynamic evaluation" of constants in WHERE.
-        // If you want 0 compilation/reflection, replace this with a safe constant extractor.
+        // NOTE: still compiles constants. If you truly want 0 compilation, replace with a constant extractor.
         var value = Expression.Lambda(expr).Compile().DynamicInvoke();
         return FormatValue(value);
     }
@@ -142,12 +117,13 @@ internal static class PgJoinExpressionTranslator
 
     // ---------------- HELPERS ----------------
 
-    private static bool IsRooted(MemberExpression me, ParameterExpression param)
+    private static ParameterExpression? GetRootParameter(MemberExpression me)
     {
         Expression? root = me.Expression;
         while (root is MemberExpression inner)
             root = inner.Expression;
-        return root == param;
+
+        return root as ParameterExpression;
     }
 
     private static string QualifiedTable(object vault)
@@ -194,76 +170,66 @@ internal static class PgJoinExpressionTranslator
         return expr;
     }
 
-    // ---------------- Projection translation ----------------
+    // ---------------- Projection translation (N params) ----------------
 
-    private static string Select(LambdaExpression selector, object left, object right)
+    private static string Select(LambdaExpression selector, IReadOnlyDictionary<ParameterExpression, object> paramMap)
     {
         var body = StripConvert(selector.Body);
 
-        // anonymous type: new { A = c.X, B = e.Y }
+        // anonymous type: new { A = x.Prop, B = y.Prop2 }
         if (body is NewExpression ne && ne.Members is not null)
         {
             var cols = new List<string>(ne.Arguments.Count);
-
             for (int i = 0; i < ne.Arguments.Count; i++)
             {
                 var alias = ne.Members[i].Name;
-                var sqlExpr = SelectValue(ne.Arguments[i], selector.Parameters[0], selector.Parameters[1], left, right);
+                var sqlExpr = SelectValue(ne.Arguments[i], paramMap);
                 cols.Add($"{sqlExpr} AS \"{alias}\"");
             }
-
             return string.Join(", ", cols);
         }
 
-        // DTO initializer: new T { Prop = c.X, Prop2 = e.Y }
+        // DTO init: new T { Prop = x.Prop, Prop2 = y.Prop2 }
         if (body is MemberInitExpression mie)
         {
             var cols = new List<string>(mie.Bindings.Count);
-
             foreach (var b in mie.Bindings)
             {
                 if (b is not MemberAssignment ma)
                     throw new NotSupportedException("Only member assignments supported in projections.");
 
                 var alias = ma.Member.Name;
-                var sqlExpr = SelectValue(ma.Expression, selector.Parameters[0], selector.Parameters[1], left, right);
+                var sqlExpr = SelectValue(ma.Expression, paramMap);
                 cols.Add($"{sqlExpr} AS \"{alias}\"");
             }
-
             return string.Join(", ", cols);
         }
 
         throw new NotSupportedException("Projection must be 'new { ... }' or 'new T { ... }'.");
     }
 
-    private static string SelectValue(
-        Expression expr,
-        ParameterExpression leftParam,
-        ParameterExpression rightParam,
-        object left,
-        object right)
+    private static string SelectValue(Expression expr, IReadOnlyDictionary<ParameterExpression, object> paramMap)
     {
         expr = StripConvert(expr);
 
-        // direct column: c.Name / e.ItemInstanceId etc.
+        // direct member => column
         if (expr is MemberExpression me)
         {
-            var source =
-                IsRooted(me, leftParam) ? left :
-                IsRooted(me, rightParam) ? right :
-                throw new NotSupportedException("Projection member must be rooted in left or right parameter.");
+            var rootParam = GetRootParameter(me);
+            if (rootParam is null || !paramMap.TryGetValue(rootParam, out var vault))
+                throw new NotSupportedException("Projection member must be rooted in a query parameter.");
 
-            return Resolve(me, source);
+            return Resolve(me, vault);
         }
 
         // x ?? y
         if (expr is BinaryExpression be && be.NodeType == ExpressionType.Coalesce)
         {
-            var leftSql = SelectValue(be.Left, leftParam, rightParam, left, right);
+            var leftSql = SelectValue(be.Left, paramMap);
 
             var rhs = StripConvert(be.Right);
 
-            // x ?? null  => x
+            // x ?? null => x
             if (rhs is ConstantExpression ce && ce.Value is null)
                 return leftSql;
 
@@ -274,7 +240,7 @@ internal static class PgJoinExpressionTranslator
             // COALESCE(x, otherColumn)
             if (rhs is MemberExpression me2)
             {
-                var rightSql = SelectValue(me2, leftParam, rightParam, left, right);
+                var rightSql = SelectValue(me2, paramMap);
                 return $"COALESCE({leftSql}, {rightSql})";
             }
 
