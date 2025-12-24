@@ -240,11 +240,11 @@ public class SqlDbProvider : ISqlDatabaseProvider
     #region Provider API (Query / Execute)
 
     public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string sql, List<object>? parameters = null)
-        where TVaultModel : class, IVaultModel
+        where TVaultModel : class
         => (await ExecuteFetchAsync<TVaultModel>(sql, parameters).ConfigureAwait(false)).ToList();
 
     public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string sql, List<object>? parameters = null)
-        where TVaultModel : class, IVaultModel
+        where TVaultModel : class
         => (await ExecuteFetchAsync<TVaultModel>(sql, parameters).ConfigureAwait(false)).FirstOrDefault();
 
     public async Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null)
@@ -302,7 +302,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
     }
 
     private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(string sql, List<object>? parameters)
-        where TVaultModel : class, IVaultModel
+        where TVaultModel : class
     {
         try
         {

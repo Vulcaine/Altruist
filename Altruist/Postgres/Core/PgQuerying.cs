@@ -1,4 +1,5 @@
 // PgVaultQuery.cs
+
 using System.Linq.Expressions;
 
 using Altruist.Persistence.Postgres.Querying;
@@ -145,28 +146,13 @@ internal sealed class PgVaultJoinQuery<TLeft, TRight>
     }
 
     async Task<List<TResult>> IVaultJoinQuery<TLeft, TRight>.SelectAsync<TResult>(
-        Expression<Func<TLeft, TRight, TResult>> selector)
+    Expression<Func<TLeft, TRight, TResult>> selector)
     {
-        if (!typeof(IVaultModel).IsAssignableFrom(typeof(TResult)))
-        {
-            throw new NotSupportedException(
-                $"Postgres provider can only project to IVaultModel. " +
-                $"Type '{typeof(TResult).Name}' is not supported.");
-        }
+        if (typeof(TResult).IsValueType)
+            throw new NotSupportedException("SelectAsync<TResult> only supports reference types.");
 
-        return (List<TResult>)(object)await SelectVaultAsync((dynamic)selector);
-    }
-
-    internal async Task<List<TResult>> SelectVaultAsync<TResult>(
-        Expression<Func<TLeft, TRight, TResult>> selector)
-        where TResult : class, IVaultModel
-    {
         var sql = PgJoinExpressionTranslator.BuildSelect(
-            selector,
-            _root,
-            _right,
-            _joins,
-            _wheres);
+            selector, _root, _right, _joins, _wheres);
 
         return (await _root.DatabaseProvider.QueryAsync<TResult>(sql)).ToList();
     }

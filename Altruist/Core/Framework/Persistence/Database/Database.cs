@@ -65,22 +65,19 @@ public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
     Task ConnectAsync(int maxRetries, int delayMilliseconds);
     Task ShutdownAsync(Exception? ex = null);
 
-    // Query APIs (parameter list aligns with Vaults using "?" placeholders)
-    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string sql, List<object>? parameters = null)
-        where TVaultModel : class, IVaultModel;
+    // Allow projecting to any reference type (DTO/record/class/anonymous types etc.)
+    Task<IEnumerable<T>> QueryAsync<T>(string sql, List<object>? parameters = null)
+        where T : class;
 
-    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string sql, List<object>? parameters = null)
-        where TVaultModel : class, IVaultModel;
+    Task<T?> QuerySingleAsync<T>(string sql, List<object>? parameters = null)
+        where T : class;
 
     Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null);
-
-    /// <summary>Executes INSERT/UPDATE/DELETE or batched statements; returns affected rows (driver-dependent).</summary>
     Task<long> ExecuteAsync(string sql, List<object>? parameters = null);
 
-    // Optional POCO-based ops (no-ops in current SqlDbProvider; kept for parity with Scylla provider)
+    // Keep these constrained because they are “vault model” operations
     Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
     Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
 
-    // Bootstrap / DDL
     Task CreateSchemaAsync(string schema, ReplicationOptions? options = null);
 }

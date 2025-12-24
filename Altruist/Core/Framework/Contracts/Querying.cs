@@ -59,7 +59,6 @@ public interface IVaultJoinQuery<TLeft, TRight>
     );
 
     // --- Projection ---
-    Task<List<TResult>> SelectAsync<TResult>(
-        Expression<Func<TLeft, TRight, TResult>> selector
-    );
+    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<TLeft, TRight, TResult>> selector)
+        where TResult : class;
 }
