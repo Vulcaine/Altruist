@@ -302,42 +302,59 @@ public class SqlDbProvider : ISqlDatabaseProvider
     }
 
     private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(string sql, List<object>? parameters)
-        where TVaultModel : class
+    where TVaultModel : class
     {
         try
         {
             await EnsureConnectedAsync();
             using var cmd = PrepareCommand(_conn!, sql, parameters);
+
+            // Keep SequentialAccess if you want, but then you MUST read in ordinal order.
             using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess).ConfigureAwait(false);
+
             var list = new List<TVaultModel>();
             var type = typeof(TVaultModel);
 
             var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                            .Where(p => p.CanWrite).ToArray();
+                            .Where(p => p.CanWrite)
+                            .ToArray();
 
+            // Map column name -> ordinal
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < reader.FieldCount; i++)
                 ordinals[reader.GetName(i)] = i;
 
+            // Build property bindings and SORT by ordinal (critical for SequentialAccess)
+            var bindings = props
+                .Select(p => (Prop: p, HasOrd: ordinals.TryGetValue(p.Name, out var o), Ord: o))
+                .Where(x => x.HasOrd)
+                .OrderBy(x => x.Ord)
+                .ToArray();
+
             while (await reader.ReadAsync().ConfigureAwait(false))
             {
                 var inst = Activator.CreateInstance<TVaultModel>();
-                foreach (var p in props)
+
+                foreach (var b in bindings)
                 {
-                    if (!ordinals.TryGetValue(p.Name, out var ord))
+                    var p = b.Prop;
+                    var ord = b.Ord;
+
+                    if (await reader.IsDBNullAsync(ord).ConfigureAwait(false))
                         continue;
-                    var val = await reader.IsDBNullAsync(ord).ConfigureAwait(false)
-                        ? null
-                        : reader.GetValue(ord);
-                    if (val is not null)
-                    {
-                        var targetType = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
-                        var converted = ConvertValue(val, targetType);
-                        p.SetValue(inst, converted);
-                    }
+
+                    var val = reader.GetValue(ord);
+                    if (val is null)
+                        continue;
+
+                    var targetType = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+                    var converted = ConvertValue(val, targetType);
+                    p.SetValue(inst, converted);
                 }
+
                 list.Add(inst);
             }
+
             return list;
         }
         finally

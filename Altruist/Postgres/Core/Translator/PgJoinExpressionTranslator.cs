@@ -80,6 +80,8 @@ internal static class PgJoinExpressionTranslator
         object left,
         object right)
     {
+        expr = StripConvert(expr);
+
         if (expr is BinaryExpression be)
         {
             var op = Operator(be.NodeType);
@@ -94,6 +96,8 @@ internal static class PgJoinExpressionTranslator
                 return Resolve(me, right);
         }
 
+        // NOTE: This is still "dynamic evaluation" of constants in WHERE.
+        // If you want 0 compilation/reflection, replace this with a safe constant extractor.
         var value = Expression.Lambda(expr).Compile().DynamicInvoke();
         return FormatValue(value);
     }
@@ -102,7 +106,9 @@ internal static class PgJoinExpressionTranslator
 
     public static string Column(LambdaExpression expr, object vault)
     {
-        if (expr.Body is not MemberExpression me)
+        var body = StripConvert(expr.Body);
+
+        if (body is not MemberExpression me)
             throw new NotSupportedException("Join key must be a property access.");
 
         return Resolve(me, vault);
@@ -150,7 +156,7 @@ internal static class PgJoinExpressionTranslator
         ExpressionType.LessThanOrEqual => "<=",
         ExpressionType.AndAlso => "AND",
         ExpressionType.OrElse => "OR",
-        _ => throw new NotSupportedException()
+        _ => throw new NotSupportedException($"Unsupported operator: {t}")
     };
 
     private static string FormatValue(object? value) => value switch
@@ -159,32 +165,110 @@ internal static class PgJoinExpressionTranslator
         string s => $"'{s.Replace("'", "''")}'",
         bool b => b ? "TRUE" : "FALSE",
         DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
+        Enum e => Convert.ToInt64(e).ToString(), // safer for SQL than enum name
         _ => value!.ToString()!
     };
 
+    private static Expression StripConvert(Expression expr)
+    {
+        while (expr is UnaryExpression u &&
+               (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
+            expr = u.Operand;
+
+        return expr;
+    }
+
+    // ---------------- Projection translation ----------------
+
     private static string Select(LambdaExpression selector, object left, object right)
     {
-        if (selector.Body is not NewExpression ne)
-            throw new NotSupportedException("Projection must be new { ... }");
+        var body = StripConvert(selector.Body);
 
-        var cols = new List<string>();
-
-        for (int i = 0; i < ne.Arguments.Count; i++)
+        // anonymous type: new { A = c.X, B = e.Y }
+        if (body is NewExpression ne && ne.Members is not null)
         {
-            var arg = ne.Arguments[i];
-            var alias = ne.Members![i].Name;
+            var cols = new List<string>(ne.Arguments.Count);
 
-            if (arg is MemberExpression me)
+            for (int i = 0; i < ne.Arguments.Count; i++)
             {
-                var source = IsRooted(me, selector.Parameters[0]) ? left : right;
-                cols.Add($"{Resolve(me, source)} AS \"{alias}\"");
+                var alias = ne.Members[i].Name;
+                var sqlExpr = SelectValue(ne.Arguments[i], selector.Parameters[0], selector.Parameters[1], left, right);
+                cols.Add($"{sqlExpr} AS \"{alias}\"");
             }
-            else
-            {
-                throw new NotSupportedException("Only member projections supported.");
-            }
+
+            return string.Join(", ", cols);
         }
 
-        return string.Join(", ", cols);
+        // DTO initializer: new T { Prop = c.X, Prop2 = e.Y }
+        if (body is MemberInitExpression mie)
+        {
+            var cols = new List<string>(mie.Bindings.Count);
+
+            foreach (var b in mie.Bindings)
+            {
+                if (b is not MemberAssignment ma)
+                    throw new NotSupportedException("Only member assignments supported in projections.");
+
+                var alias = ma.Member.Name;
+                var sqlExpr = SelectValue(ma.Expression, selector.Parameters[0], selector.Parameters[1], left, right);
+                cols.Add($"{sqlExpr} AS \"{alias}\"");
+            }
+
+            return string.Join(", ", cols);
+        }
+
+        throw new NotSupportedException("Projection must be 'new { ... }' or 'new T { ... }'.");
+    }
+
+    private static string SelectValue(
+        Expression expr,
+        ParameterExpression leftParam,
+        ParameterExpression rightParam,
+        object left,
+        object right)
+    {
+        expr = StripConvert(expr);
+
+        // direct column: c.Name / e.ItemInstanceId etc.
+        if (expr is MemberExpression me)
+        {
+            var source =
+                IsRooted(me, leftParam) ? left :
+                IsRooted(me, rightParam) ? right :
+                throw new NotSupportedException("Projection member must be rooted in left or right parameter.");
+
+            return Resolve(me, source);
+        }
+
+        // x ?? y
+        if (expr is BinaryExpression be && be.NodeType == ExpressionType.Coalesce)
+        {
+            var leftSql = SelectValue(be.Left, leftParam, rightParam, left, right);
+
+            var rhs = StripConvert(be.Right);
+
+            // x ?? null  => x (same semantics for ref types)
+            if (rhs is ConstantExpression ce && ce.Value is null)
+                return leftSql;
+
+            // COALESCE(x, <literal>)
+            if (rhs is ConstantExpression ce2)
+                return $"COALESCE({leftSql}, {FormatValue(ce2.Value)})";
+
+            // COALESCE(x, otherColumn)
+            if (rhs is MemberExpression me2)
+            {
+                var rightSql = SelectValue(me2, leftParam, rightParam, left, right);
+                return $"COALESCE({leftSql}, {rightSql})";
+            }
+
+            throw new NotSupportedException("Unsupported coalesce RHS in projection.");
+        }
+
+        // constants (rare, but allow)
+        if (expr is ConstantExpression c)
+            return FormatValue(c.Value);
+
+        throw new NotSupportedException($"Unsupported projection expression: {expr.NodeType}");
     }
 }
