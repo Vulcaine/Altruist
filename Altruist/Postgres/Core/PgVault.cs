@@ -454,6 +454,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         if (entity is null)
             throw new ArgumentNullException(nameof(entity));
 
+        entity.OnSave();
+
         var fields = VaultDocument.Fields.ToArray();
         var columns = fields.Select(f => VaultDocument.Columns[f]).ToArray();
 
@@ -499,6 +501,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         var list = entities as IList<TVaultModel> ?? entities.ToList();
         if (list.Count == 0)
             throw new ArgumentException("Entities cannot be empty.", nameof(entities));
+
+        foreach (var e in list)
+            e.OnSave();
 
         var fields = VaultDocument.Fields.ToArray();
         var columns = fields.Select(f => VaultDocument.Columns[f]).ToArray();

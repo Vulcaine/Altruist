@@ -44,6 +44,7 @@ public interface ITypedModel
 public interface IStoredModel : ITypedModel
 {
     public string StorageId { get; set; }
+
 }
 
 public abstract class StoredModel : IStoredModel
@@ -73,6 +74,8 @@ public interface IPrefabModel : IVaultModel
 public interface IVaultModel : IStoredModel
 {
     DateTime Timestamp { get; set; }
+
+    void OnSave();
 }
 
 [VaultPrimaryKey(nameof(StorageId))]
