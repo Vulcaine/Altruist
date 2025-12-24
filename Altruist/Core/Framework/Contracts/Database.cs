@@ -103,11 +103,11 @@ public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel
 
 }
 
-public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
-{
-    IDatabaseServiceToken Token { get; }
-    IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-}
+// public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
+// {
+//     IDatabaseServiceToken Token { get; }
+//     IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
+// }
 
 public interface IGeneralDatabaseProvider : IConnectable
 {
@@ -182,23 +182,23 @@ public interface ICqlVault<TVaultModel> : IVault<TVaultModel> where TVaultModel 
 
 }
 
-/// <summary>
-/// Resolve typed repositories by compile-time keyspace type or at runtime by keyspace name.
-/// </summary>
-public interface IRepositoryFactory
-{
-    /// <summary>
-    /// Return a strongly-typed repository for the given keyspace type.
-    /// </summary>
-    IVaultRepository<TKeyspace> Make<TKeyspace>() where TKeyspace : class, IKeyspace;
+// /// <summary>
+// /// Resolve typed repositories by compile-time keyspace type or at runtime by keyspace name.
+// /// </summary>
+// public interface IRepositoryFactory
+// {
+//     /// <summary>
+//     /// Return a strongly-typed repository for the given keyspace type.
+//     /// </summary>
+//     IVaultRepository<TKeyspace> Make<TKeyspace>() where TKeyspace : class, IKeyspace;
 
-    /// <summary>
-    /// Return a repository for the keyspace instance whose <see cref="IKeyspace.Name"/> matches.
-    /// Since the keyspace type is only known at runtime, this returns a non-generic
-    /// adapter that still supports <c>Select&lt;TModel&gt;()</c> and <c>Select(Type)</c>.
-    /// </summary>
-    IAnyVaultRepository Make(string keyspaceName);
-}
+//     /// <summary>
+//     /// Return a repository for the keyspace instance whose <see cref="IKeyspace.Name"/> matches.
+//     /// Since the keyspace type is only known at runtime, this returns a non-generic
+//     /// adapter that still supports <c>Select&lt;TModel&gt;()</c> and <c>Select(Type)</c>.
+//     /// </summary>
+//     IAnyVaultRepository Make(string keyspaceName);
+// }
 
 /// <summary>
 /// Non-generic repository surface so callers that only have a keyspace name can still call
