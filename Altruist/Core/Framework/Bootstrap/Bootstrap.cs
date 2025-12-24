@@ -1,9 +1,9 @@
 // Altruist/Bootstrap.cs
 using System.Reflection;
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
 
 namespace Altruist;
 
@@ -13,9 +13,6 @@ public static class AltruistBootstrap
 
     private static readonly HashSet<string> _constructionCache = new();
 
-    /// <summary>
-    /// Entry point called by your app. Add more steps after BootstrapServices as needed.
-    /// </summary>
     public static async Task Bootstrap()
     {
         EnsureAltruistAssembliesLoaded();
@@ -29,39 +26,28 @@ public static class AltruistBootstrap
         BindConfigurationClasses(Services, logger);
         await BootstrapServices();
 
-        // Build a single root provider
         using var provider = Services.BuildServiceProvider();
         Dependencies.UseRootProvider(provider);
 
-        // 1) Run global [PostConstruct] for all services
         await RunPostConstructsAsync(provider);
         await AltruistModuleConfig.RunModulesAsync(provider);
 
-        // 2) Start the HTTP server (if AltruistStartupConfiguration is registered)
         var startup = provider.GetService<AltruistStartupConfiguration>();
         if (startup is not null)
-        {
             await startup.StartAsync(Services);
-        }
     }
 
-    // If you still need this somewhere else, keep it:
-    public static IServiceProvider GetServiceProvider() => Services.BuildServiceProvider();
-
-    /// <summary>
-    /// Scans loaded assemblies for types annotated with [Service] and registers them.
-    /// Uses a console logger by default, or the app's configured ILoggerFactory if available.
-    /// </summary>
     public static async Task BootstrapServices()
     {
-        await new AltruistServiceConfig().Configure(Services);
+        using var tmpProvider = Services.BuildServiceProvider();
+        var logger = tmpProvider
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger<AltruistServiceConfig>();
+
+        await new AltruistServiceConfig(logger).Configure(Services);
         await new ConfigAttributeConfiguration().Configure(Services);
     }
 
-    /// <summary>
-    /// Registers a simple console logger if logging hasn't been configured yet.
-    /// Safe to call multiple times.
-    /// </summary>
     public static void ConfigureLogging()
     {
         Services.AddLogging(loggingBuilder =>
@@ -77,10 +63,6 @@ public static class AltruistBootstrap
         AssemblyLoader.EnsureAllReferencedAssembliesLoaded();
     }
 
-    /// <summary>
-    /// After all services/modules are registered, run [PostConstruct]
-    /// for every service whose concrete type declares one.
-    /// </summary>
     private static async Task RunPostConstructsAsync(IServiceProvider provider)
     {
         var cfg = AppConfigLoader.Load();
@@ -104,7 +86,6 @@ public static class AltruistBootstrap
             }
             catch
             {
-                // If resolution fails here, skip – real errors will surface when used.
                 continue;
             }
 

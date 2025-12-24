@@ -4,6 +4,8 @@ public static class Dependencies
 {
     private static IServiceProvider? _provider;
 
+    public static IServiceProvider? RootProvider => _provider;
+
     /// <summary>
     /// Set the root service provider. Call this once during bootstrap.
     /// </summary>
