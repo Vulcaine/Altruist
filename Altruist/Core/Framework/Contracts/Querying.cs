@@ -37,6 +37,8 @@ public interface IVaultQuery<T> where T : class, IVaultModel
     Task<List<T>> ToListAsync();
     Task<T?> FirstOrDefaultAsync();
     Task<long> CountAsync();
+
+    Task SaveAsync(T entity, bool? saveHistory = false);
 }
 
 public interface IVaultJoinQuery<TLeft, TRight>

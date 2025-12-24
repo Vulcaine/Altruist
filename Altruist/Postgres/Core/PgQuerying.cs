@@ -73,6 +73,9 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
     public Task<List<T>> ToListAsync() => Vault.ToListAsync();
     public Task<T?> FirstOrDefaultAsync() => Vault.FirstOrDefaultAsync();
     public Task<long> CountAsync() => Vault.CountAsync();
+
+    public Task SaveAsync(T entity, bool? saveHistory = false)
+    => Vault.SaveAsync(entity, saveHistory);
 }
 
 internal sealed class PgVaultJoinQuery<TLeft, TRight>
