@@ -70,14 +70,9 @@ public interface IPrefabModel : IVaultModel
     Dictionary<string, string?> ComponentRefs { get; set; }
 }
 
-public interface IVaultModel : IStoredModel, IVaultOnSave
+public interface IVaultModel : IStoredModel
 {
     DateTime Timestamp { get; set; }
-}
-
-public interface IVaultOnSave
-{
-    void OnSave();
 }
 
 [VaultPrimaryKey(nameof(StorageId))]

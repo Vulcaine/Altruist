@@ -23,7 +23,7 @@ public sealed class PgPrefabVault<TPrefab>
     public TPrefab Construct()
     {
         var prefab = new TPrefab();
-        PrefabHandleInitializer.InitializeHandles(prefab, _services);
+        PrefabHandleInitializer.InitializeHandles(prefab, Services);
         return prefab;
     }
 
@@ -33,7 +33,7 @@ public sealed class PgPrefabVault<TPrefab>
     {
         var list = await base.ToListAsync().ConfigureAwait(false);
         foreach (var p in list)
-            PrefabHandleInitializer.InitializeHandles(p, _services);
+            PrefabHandleInitializer.InitializeHandles(p, Services);
         return list;
     }
 
@@ -42,7 +42,7 @@ public sealed class PgPrefabVault<TPrefab>
     {
         var list = await base.ToListAsync(predicate).ConfigureAwait(false);
         foreach (var p in list)
-            PrefabHandleInitializer.InitializeHandles(p, _services);
+            PrefabHandleInitializer.InitializeHandles(p, Services);
         return list;
     }
 
@@ -50,14 +50,14 @@ public sealed class PgPrefabVault<TPrefab>
     {
         var p = await base.FirstOrDefaultAsync().ConfigureAwait(false);
         if (p != null)
-            PrefabHandleInitializer.InitializeHandles(p, _services);
+            PrefabHandleInitializer.InitializeHandles(p, Services);
         return p;
     }
 
     public new async Task<TPrefab?> FirstAsync()
     {
         var p = await base.FirstAsync().ConfigureAwait(false);
-        PrefabHandleInitializer.InitializeHandles(p!, _services);
+        PrefabHandleInitializer.InitializeHandles(p!, Services);
         return p;
     }
 
