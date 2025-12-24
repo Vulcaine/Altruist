@@ -6,12 +6,6 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 */
 
 using System.Collections.Concurrent;
@@ -36,7 +30,6 @@ public enum QueryPosition
 
 /// <summary>
 /// Immutable per-chain query state.
-/// Each fluent call creates a new state with one extra piece added.
 /// </summary>
 public sealed class QueryState
 {
@@ -45,29 +38,11 @@ public sealed class QueryState
 
     public QueryState()
     {
-        Parts = new Dictionary<QueryPosition, HashSet<string>>
-        {
-            { QueryPosition.SELECT,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.FROM,     new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.WHERE,    new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.ORDER_BY, new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.LIMIT,    new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.OFFSET,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.UPDATE,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.SET,      new HashSet<string>(StringComparer.Ordinal) }
-        };
+        Parts = Enum.GetValues<QueryPosition>()
+            .ToDictionary(p => p, _ => new HashSet<string>(StringComparer.Ordinal));
 
-        Parameters = new Dictionary<QueryPosition, List<object?>>
-        {
-            { QueryPosition.SELECT,   new List<object?>() },
-            { QueryPosition.FROM,     new List<object?>() },
-            { QueryPosition.WHERE,    new List<object?>() },
-            { QueryPosition.ORDER_BY, new List<object?>() },
-            { QueryPosition.LIMIT,    new List<object?>() },
-            { QueryPosition.OFFSET,   new List<object?>() },
-            { QueryPosition.UPDATE,   new List<object?>() },
-            { QueryPosition.SET,      new List<object?>() }
-        };
+        Parameters = Enum.GetValues<QueryPosition>()
+            .ToDictionary(p => p, _ => new List<object?>());
     }
 
     private QueryState(
@@ -80,36 +55,17 @@ public sealed class QueryState
 
     public QueryState With(QueryPosition pos, string part, object? parameter = null)
     {
-        // clone shallow; copy only the mutated bucket
-        var newParts = new Dictionary<QueryPosition, HashSet<string>>(Parts.Count);
-        foreach (var kv in Parts)
-        {
-            if (kv.Key == pos)
-            {
-                var copy = new HashSet<string>(kv.Value, StringComparer.Ordinal);
-                copy.Add(part);
-                newParts[kv.Key] = copy;
-            }
-            else
-            {
-                newParts[kv.Key] = kv.Value;
-            }
-        }
+        var newParts = Parts.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Key == pos
+                ? new HashSet<string>(kv.Value) { part }
+                : kv.Value);
 
-        var newParams = new Dictionary<QueryPosition, List<object?>>(Parameters.Count);
-        foreach (var kv in Parameters)
-        {
-            if (kv.Key == pos && parameter is not null)
-            {
-                var copy = new List<object?>(kv.Value);
-                copy.Add(parameter);
-                newParams[kv.Key] = copy;
-            }
-            else
-            {
-                newParams[kv.Key] = kv.Value;
-            }
-        }
+        var newParams = Parameters.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Key == pos && parameter is not null
+                ? new List<object?>(kv.Value) { parameter }
+                : kv.Value);
 
         return new QueryState(newParts, newParams);
     }
@@ -122,31 +78,29 @@ public sealed class QueryState
             return this;
 
         var projection = string.Join(", ",
-            doc.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
+            doc.Columns.Select(kvp =>
+                $"\"{kvp.Value}\" AS \"{kvp.Key}\""));
 
         return With(QueryPosition.SELECT, projection);
     }
-
-    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
 }
 
 /// <summary>
-/// PostgreSQL vault with a fluent API similar to the CQL vault.
+/// PostgreSQL vault.
 /// </summary>
-public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
+public class PgVault<TVaultModel> : IVault<TVaultModel>
+    where TVaultModel : class, IVaultModel
 {
-    protected readonly IServiceProvider _serviceProvider;
-    protected readonly ISqlDatabaseProvider _databaseProvider;
+    protected readonly IServiceProvider _services;
+    protected readonly ISqlDatabaseProvider _database;
     protected readonly QueryState _state;
-    protected readonly IServiceProvider Services;
 
     public IKeyspace Keyspace { get; }
-    public readonly Document VaultDocument;
+    public Document VaultDocument { get; }
 
-    // Expose provider for historical adapter (same assembly, so internal is fine)
-    internal ISqlDatabaseProvider DatabaseProvider => _databaseProvider;
+    internal ISqlDatabaseProvider DatabaseProvider => _database;
 
-    private IHistoricalVault<TVaultModel> _history;
+    private IHistoricalVault<TVaultModel>? _history;
 
     public IHistoricalVault<TVaultModel> History
     {
@@ -155,7 +109,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
             if (!VaultDocument.StoreHistory)
                 throw new InvalidOperationException("History is not enabled for this document.");
 
-            return _history;
+            return _history ??= new PgHistoricalVault<TVaultModel>(this);
         }
     }
 
@@ -163,746 +117,187 @@ public class PgVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : clas
         TimestampSetterFactory.Create(typeof(TVaultModel));
 
     public PgVault(
-        ISqlDatabaseProvider databaseProvider,
-        IKeyspace schema,
+        ISqlDatabaseProvider database,
+        IKeyspace keyspace,
         Document document,
         IServiceProvider services)
-        : this(databaseProvider, schema, document, services, new QueryState())
+        : this(database, keyspace, document, services, new QueryState())
     {
     }
 
     protected PgVault(
-        ISqlDatabaseProvider databaseProvider,
-        IKeyspace schema,
+        ISqlDatabaseProvider database,
+        IKeyspace keyspace,
         Document document,
         IServiceProvider services,
         QueryState state)
     {
-        _databaseProvider = databaseProvider;
-        _serviceProvider = services;
+        _database = database;
+        _services = services;
+        Keyspace = keyspace;
         VaultDocument = document;
-        Keyspace = schema;
-        Services = services;
         _state = state;
-        _history = new PgHistoricalVault<TVaultModel>(this);
     }
 
-    protected virtual PgVault<TVaultModel> Create(QueryState state)
-        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, Services, state);
+    private PgVault<TVaultModel> New(QueryState state)
+        => new PgVault<TVaultModel>(_database, Keyspace, VaultDocument, _services, state);
 
-    // ------------------------ Fluent query ops (return NEW instance) ------------------------
+    // ---------------- Query ops ----------------
 
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
     {
-        string whereClause = ConvertWherePredicateToString(predicate);
-        var next = _state.With(QueryPosition.WHERE, whereClause)
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
+        var where = PgQueryTranslator.Where(predicate, VaultDocument);
+        return New(_state.With(QueryPosition.WHERE, where)
+                         .EnsureProjectionSelected(VaultDocument));
     }
 
-    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> key)
     {
-        string orderByClause = ConvertOrderByToString(keySelector);
-        var next = _state.With(QueryPosition.ORDER_BY, orderByClause)
-                         .With(QueryPosition.SELECT, orderByClause);
-        return New(next);
+        var clause = PgQueryTranslator.OrderBy(key, VaultDocument);
+        return New(_state.With(QueryPosition.ORDER_BY, clause)
+                         .With(QueryPosition.SELECT, clause));
     }
 
-    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> key)
     {
-        string orderByDescClause = ConvertOrderByDescendingToString(keySelector);
-        var next = _state.With(QueryPosition.ORDER_BY, orderByDescClause + " DESC")
-                         .With(QueryPosition.SELECT, orderByDescClause);
-        return New(next);
+        var clause = PgQueryTranslator.OrderBy(key, VaultDocument);
+        return New(_state.With(QueryPosition.ORDER_BY, clause + " DESC")
+                         .With(QueryPosition.SELECT, clause));
     }
 
     public IVault<TVaultModel> Take(int count)
-    {
-        var next = _state.With(QueryPosition.LIMIT, $"LIMIT {count}")
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
-    }
+        => New(_state.With(QueryPosition.LIMIT, $"LIMIT {count}")
+                     .EnsureProjectionSelected(VaultDocument));
 
     public IVault<TVaultModel> Skip(int count)
-    {
-        var next = _state.With(QueryPosition.OFFSET, $"OFFSET {count}")
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
-    }
+        => New(_state.With(QueryPosition.OFFSET, $"OFFSET {count}")
+                     .EnsureProjectionSelected(VaultDocument));
 
-    // ------------------------ Terminal ops (use current state) ------------------------
+    // ---------------- Execution ----------------
 
-    public virtual async Task<List<TVaultModel>> ToListAsync()
+    public async Task<List<TVaultModel>> ToListAsync()
     {
         var st = _state.EnsureProjectionSelected(VaultDocument);
-        string query = BuildSelectQuery(st);
-        return (await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!)).ToList();
+        return (await _database.QueryAsync<TVaultModel>(BuildSelect(st))).ToList();
     }
 
-    public virtual async Task<TVaultModel?> FirstOrDefaultAsync()
+    public async Task<List<TVaultModel>> ToListAsync(
+        Expression<Func<TVaultModel, bool>> predicate)
+        => await Where(predicate).ToListAsync();
+
+    public async Task<TVaultModel?> FirstOrDefaultAsync()
+        => (await Take(1).ToListAsync()).FirstOrDefault();
+
+    public async Task<TVaultModel?> FirstAsync()
+        => (await Take(1).ToListAsync()).First();
+
+    public async Task<long> CountAsync()
     {
-        var st = _state.EnsureProjectionSelected(VaultDocument)
-                       .With(QueryPosition.LIMIT, "LIMIT 1");
-        string query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!);
-        return result.FirstOrDefault();
+        var where = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
+        var sql = string.IsNullOrEmpty(where)
+            ? $"SELECT COUNT(*) FROM {QualifiedTable}"
+            : $"SELECT COUNT(*) FROM {QualifiedTable} WHERE {where}";
+
+        return await _database.ExecuteCountAsync(sql);
     }
 
-    public virtual async Task<TVaultModel?> FirstAsync()
+    public async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+        => await Where(predicate).CountAsync() > 0;
+
+    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(
+        Expression<Func<TVaultModel, TResult>> selector)
+        where TResult : class, IVaultModel
     {
-        var st = _state.EnsureProjectionSelected(VaultDocument)
-                       .With(QueryPosition.LIMIT, "LIMIT 1");
-        string query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, st.Parameters[QueryPosition.SELECT]!);
-        return result.First();
-    }
-
-    public virtual async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        var next = (PgVault<TVaultModel>)Where(predicate);
-        return await next.ToListAsync();
-    }
-
-    public virtual async Task<long> CountAsync()
-    {
-        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-        var from = QualifiedTableName();
-        var sql = string.IsNullOrEmpty(whereClause)
-            ? $"SELECT COUNT(*) FROM {from}"
-            : $"SELECT COUNT(*) FROM {from} WHERE {whereClause}";
-
-        return await _databaseProvider.ExecuteCountAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
-    }
-
-    public virtual async Task<long> UpdateAsync(
-        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        var updatedProperties = ExtractSetProperties(setPropertyCalls);
-        // quote column identifiers here
-        var setStrings = updatedProperties.Select(kv =>
-            (object)$"{QuoteIdent(kv.Key)} = {ConvertToSqlValue(kv.Value)}").ToList();
-
         var st = _state;
-        foreach (var s in setStrings)
-            st = st.With(QueryPosition.SET, (string)s)!;
+        foreach (var col in PgQueryTranslator.Select(selector, VaultDocument))
+            st = st.With(QueryPosition.SELECT, col);
 
-        var sql = BuildUpdateQuery(st);
-        var concatenated = st.Parameters[QueryPosition.WHERE]
-            .Concat(st.Parameters[QueryPosition.SET]).ToList();
-
-        return await _databaseProvider.ExecuteAsync(sql, concatenated!);
+        return await _database.QueryAsync<TResult>(BuildSelect(st));
     }
 
-    public virtual async Task<bool> DeleteAsync()
-    {
-        var from = QualifiedTableName();
-        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-        var sql = string.IsNullOrEmpty(whereClause)
-            ? $"DELETE FROM {from}"
-            : $"DELETE FROM {from} WHERE {whereClause}";
-
-        var affected = await _databaseProvider.ExecuteAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
-        return affected > 0;
-    }
-
-    public virtual Task<ICursor<TVaultModel>> ToCursorAsync()
+    public Task<ICursor<TVaultModel>> ToCursorAsync()
         => throw new NotImplementedException();
 
-    public virtual async Task<IEnumerable<TResult>> SelectAsync<TResult>(
-        Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel
+    // ---------------- Mutations ----------------
+
+    public async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
-        if (_state.Parts[QueryPosition.SELECT].Contains("*"))
-            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
-
-        var st = _state;
-        foreach (var column in ConvertSelectExpressionToString(selector))
-            st = st.With(QueryPosition.SELECT, column);
-
-        var query = BuildSelectQuery(st);
-        return await _databaseProvider.QueryAsync<TResult>(query, st.Parameters[QueryPosition.SELECT]!);
-    }
-
-    public virtual async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        var next = (PgVault<TVaultModel>)Where(predicate);
-        var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
-        var from = next.QualifiedTableName();
-
-        var query = string.IsNullOrEmpty(where)
-            ? $"SELECT COUNT(*) FROM {from}"
-            : $"SELECT COUNT(*) FROM {from} WHERE {where}";
-
-        var count = await _databaseProvider.ExecuteCountAsync(
-            query,
-            next._state.Parameters[QueryPosition.WHERE]!);
-
-        return count > 0;
-    }
-
-    // ------------------------ Non-query ops (unchanged behavior except FQN) ------------------------
-
-    public virtual async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
-    {
-        await SaveEntityAsync(entity, saveHistory);
-    }
-
-    public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
-        SaveEntitiesAsync(entities, saveHistory);
-
-    private PgVault<TVaultModel> New(QueryState st)
-        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, _serviceProvider, st);
-
-    // ------------------------ Query building helpers ------------------------
-
-    private string BuildSelectQuery(QueryState st)
-    {
-        var select =
-            st.Parts[QueryPosition.SELECT].Count == 0
-            ? string.Join(", ",
-                VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
-            : string.Join(", ", st.Parts[QueryPosition.SELECT]);
-
-        var sql = $"SELECT {select} FROM {QualifiedTableName()}";
-
-        var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where))
-            sql += $" WHERE {where}";
-
-        var orderBy = string.Join(", ", st.Parts[QueryPosition.ORDER_BY]);
-        if (!string.IsNullOrEmpty(orderBy))
-            sql += $" ORDER BY {orderBy}";
-
-        var limit = string.Join(" ", st.Parts[QueryPosition.LIMIT]);
-        if (!string.IsNullOrEmpty(limit))
-            sql += $" {limit}";
-
-        var offset = string.Join(" ", st.Parts[QueryPosition.OFFSET]);
-        if (!string.IsNullOrEmpty(offset))
-            sql += $" {offset}";
-
-        return sql;
-    }
-
-    private string BuildUpdateQuery(QueryState st)
-    {
-        var set = string.Join(", ", st.Parts[QueryPosition.SET]);
-        var sql = $"UPDATE {QualifiedTableName()} SET {set}";
-
-        var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where))
-            sql += $" WHERE {where}";
-
-        return sql;
-    }
-
-    private IEnumerable<string> ConvertSelectExpressionToString<TResult>(
-        Expression<Func<TVaultModel, TResult>> selector)
-    {
-        if (selector.Body is NewExpression ne && ne.Members is not null)
-        {
-            foreach (var m in ne.Members)
-            {
-                var propName = m.Name;
-                var column = VaultDocument.Columns.TryGetValue(propName, out var c)
-                    ? c
-                    : Document.ToCamelCase(propName);
-
-                yield return $"{QuoteIdent(column)} AS {QuoteIdent(propName)}";
-            }
-            yield break;
-        }
-        throw new NotSupportedException(
-            "Unsupported expression type for SELECT. Use: x => new(...) with properties.");
-    }
-
-    // *** made internal so PgHistoricalVault can reuse them ***
-    public virtual string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        var modelParam = predicate.Parameters[0];
-        var sql = ToWhere(predicate.Body, modelParam);
-        return sql;
-    }
-
-    private string ToWhere(Expression expr, ParameterExpression modelParam)
-    {
-        switch (expr)
-        {
-            case UnaryExpression ue
-                when ue.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked:
-                return ToWhere(ue.Operand, modelParam);
-
-            case BinaryExpression be
-                when be.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse:
-                {
-                    var op = GetOperator(be.NodeType);
-                    var left = ToWhere(be.Left, modelParam);
-                    var right = ToWhere(be.Right, modelParam);
-                    return $"({left}) {op} ({right})";
-                }
-
-            case BinaryExpression be when IsComparison(be.NodeType):
-                {
-                    // Allow col == value and value == col (with flipped op for <, >, <=, >=)
-                    if (!TryReadColumnName(be.Left, modelParam, out var col))
-                    {
-                        if (TryReadColumnName(be.Right, modelParam, out var colSwapped))
-                        {
-                            var cmp = FlipOperator(be.NodeType);
-                            var val = ExpressionUtils.Evaluate(be.Left);
-
-                            if (val is null)
-                            {
-                                return cmp switch
-                                {
-                                    ExpressionType.Equal => $"{colSwapped} IS NULL",
-                                    ExpressionType.NotEqual => $"{colSwapped} IS NOT NULL",
-                                    _ => throw new NotSupportedException(
-                                        "NULL can only be used with == or != in WHERE.")
-                                };
-                            }
-
-                            return $"{colSwapped} {GetOperator(cmp)} {ConvertToSqlValue(val)}";
-                        }
-                        throw new NotSupportedException("WHERE comparison must involve a model property.");
-                    }
-
-                    var valueObj = ExpressionUtils.Evaluate(be.Right);
-
-                    if (valueObj is null)
-                    {
-                        return be.NodeType switch
-                        {
-                            ExpressionType.Equal => $"{col} IS NULL",
-                            ExpressionType.NotEqual => $"{col} IS NOT NULL",
-                            _ => throw new NotSupportedException(
-                                "NULL can only be used with == or != in WHERE.")
-                        };
-                    }
-
-                    return $"{col} {GetOperator(be.NodeType)} {ConvertToSqlValue(valueObj)}";
-                }
-
-            default:
-                throw new NotSupportedException("Unsupported expression in WHERE.");
-        }
-    }
-
-    private static bool IsComparison(ExpressionType t) =>
-        t is ExpressionType.Equal or ExpressionType.NotEqual
-          or ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual
-          or ExpressionType.LessThan or ExpressionType.LessThanOrEqual;
-
-    private static ExpressionType FlipOperator(ExpressionType t) => t switch
-    {
-        ExpressionType.GreaterThan => ExpressionType.LessThan,
-        ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual,
-        ExpressionType.LessThan => ExpressionType.GreaterThan,
-        ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual,
-        _ => t // Equal / NotEqual are symmetric
-    };
-
-    private bool TryReadColumnName(Expression expression, ParameterExpression modelParam, out string column)
-    {
-        while (expression is UnaryExpression ue &&
-               (ue.NodeType == ExpressionType.Convert || ue.NodeType == ExpressionType.ConvertChecked))
-            expression = ue.Operand;
-
-        if (expression is MemberExpression me && IsRootedInParameter(me, modelParam))
-        {
-            var propName = me.Member.Name;
-            var col = VaultDocument.Columns.TryGetValue(propName, out var c)
-                ? c
-                : Document.ToCamelCase(propName);
-
-            column = QuoteIdent(col);
-            return true;
-        }
-
-        column = "";
-        return false;
-    }
-
-    private static bool IsRootedInParameter(MemberExpression me, ParameterExpression modelParam)
-    {
-        Expression? root = me.Expression;
-        while (root is MemberExpression inner)
-            root = inner.Expression;
-
-        return root == modelParam;
-    }
-
-    private static string GetOperator(ExpressionType expressionType) =>
-        expressionType switch
-        {
-            ExpressionType.Equal => "=",
-            ExpressionType.NotEqual => "!=",
-            ExpressionType.GreaterThan => ">",
-            ExpressionType.GreaterThanOrEqual => ">=",
-            ExpressionType.LessThan => "<",
-            ExpressionType.LessThanOrEqual => "<=",
-            ExpressionType.AndAlso => "AND",
-            ExpressionType.OrElse => "OR",
-            _ => throw new NotSupportedException($"Unsupported operator: {expressionType}")
-        };
-
-    internal string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        if (keySelector.Body is MemberExpression me)
-        {
-            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c)
-                ? c
-                : Document.ToCamelCase(me.Member.Name);
-
-            return QuoteIdent(col);
-        }
-        throw new NotSupportedException("Unsupported expression type in ORDER BY clause.");
-    }
-
-    internal string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        if (keySelector.Body is MemberExpression me)
-        {
-            var col = VaultDocument.Columns.TryGetValue(me.Member.Name, out var c)
-                ? c
-                : Document.ToCamelCase(me.Member.Name);
-
-            return QuoteIdent(col);
-        }
-        throw new NotSupportedException("Unsupported expression type in ORDER BY DESC clause.");
-    }
-
-    private Dictionary<string, object> ExtractSetProperties(
-        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        var updated = new Dictionary<string, object>(StringComparer.Ordinal);
-
-        if (setPropertyCalls.Body is MemberInitExpression mi)
-        {
-            foreach (var binding in mi.Bindings.OfType<MemberAssignment>())
-            {
-                var propName = binding.Member.Name;
-                var value = Expression.Lambda(binding.Expression).Compile().DynamicInvoke()!;
-                var column = VaultDocument.Columns.TryGetValue(propName, out var c)
-                    ? c
-                    : Document.ToCamelCase(propName);
-
-                updated[column] = value!;
-            }
-        }
-
-        return updated;
-    }
-
-    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
-
-    private string QualifiedTableName()
-        => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
-
-    private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
-    {
-        if (entity is null)
-            throw new ArgumentNullException(nameof(entity));
-
         entity.OnSave();
-
-        var fields = VaultDocument.Fields.ToArray();
-        var columns = fields
-            .Select(f => VaultDocument.Columns[f])
-            .ToArray();
-
-        var pkKeys = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
-        var primaryKeyColumns = pkKeys
-            .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
-            .ToArray();
-
-        // *** use fully-qualified table name here ***
-        var upsertQuery = BuildUpsertQuery(
-            QualifiedTableName(),
-            columns,
-            primaryKeyColumns
-        );
-
-        var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
-        var queries = new List<string> { upsertQuery };
-
-        if (VaultDocument.StoreHistory == true)
-        {
-            if (saveHistory == true)
-            {
-                var historyQuery = BuildHistoryQuery(VaultDocument.Name, columns);
-                queries.Add(historyQuery);
-
-                var historyParams = GetParameterValues(entity, fields, includeTimestamp: true);
-                parameters.AddRange(historyParams.Skip(fields.Length));
-            }
-        }
-        else if (saveHistory == true)
-        {
-            throw new InvalidOperationException(
-                $"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
-        }
-
-        var batchQuery = string.Join(";", queries) + ";";
-
-        await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
+        _timestampSetter?.Invoke(entity, DateTime.UtcNow);
+        await _database.UpdateAsync(entity);
     }
 
-    /// <summary>
-    /// Builds an INSERT ... ON CONFLICT (pk1, pk2, ...) DO UPDATE SET ... upsert statement.
-    /// Uses '?' placeholders so the provider can expand them to unique @p1..@pn across batched statements.
-    /// columns = physical column names (e.g. "id", "principalid", ...).
-    /// primaryKeyNames = physical PK column names (one or many).
-    ///
-    /// IMPORTANT: tableName must already be a fully-qualified identifier,
-    /// e.g. "\"server\".\"servers\"" or "\"public\".\"account\"".
-    /// </summary>
-    private static string BuildUpsertQuery(
-        string tableName,
-        IReadOnlyList<string> columns,
-        IReadOnlyList<string> primaryKeyNames)
+    public async Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
     {
-        if (primaryKeyNames is null || primaryKeyNames.Count == 0)
-            throw new ArgumentException("At least one primary key column must be specified.", nameof(primaryKeyNames));
-
-        var columnNames = columns
-            .Select(c => $"\"{c}\"")
-            .ToArray();
-
-        var placeholders = columns
-            .Select(_ => "?")
-            .ToArray();
-
-        var insert =
-            $"INSERT INTO {tableName} ({string.Join(", ", columnNames)}) " +
-            $"VALUES ({string.Join(", ", placeholders)})";
-
-        var pkList = string.Join(
-            ", ",
-            primaryKeyNames.Select(pk => $"\"{pk}\""));
-
-        var pkSet = new HashSet<string>(primaryKeyNames, StringComparer.OrdinalIgnoreCase);
-
-        var setClauses = columns
-            .Where(c => !pkSet.Contains(c))
-            .Select(c => $"\"{c}\" = EXCLUDED.\"{c}\"");
-
-        var upsert =
-            $"{insert} " +
-            $"ON CONFLICT ({pkList}) DO UPDATE SET {string.Join(", ", setClauses)}";
-
-        return upsert;
+        foreach (var e in entities)
+            await SaveAsync(e, saveHistory);
     }
 
-    private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
+    public async Task<long> UpdateAsync(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> set)
+        => await _database.ExecuteAsync(
+            PgQueryTranslator.BuildUpdate(set, _state, VaultDocument, QualifiedTable));
+
+    public async Task UpdateAsync(
+        IReadOnlyDictionary<string, object?> primaryKey,
+        IReadOnlyDictionary<string, object?> changes)
+        => await _database.ExecuteAsync(
+            PgQueryTranslator.BuildUpdate(primaryKey, changes, VaultDocument, QualifiedTable));
+
+    public async Task<bool> DeleteAsync()
     {
-        if (entities is null)
-            throw new ArgumentNullException(nameof(entities));
+        var where = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
+        var sql = string.IsNullOrEmpty(where)
+            ? $"DELETE FROM {QualifiedTable}"
+            : $"DELETE FROM {QualifiedTable} WHERE {where}";
 
-        var list = entities as IList<TVaultModel> ?? entities.ToList();
-        if (list.Count == 0)
-            throw new ArgumentException("Entities cannot be empty.", nameof(entities));
-
-        foreach (var e in list)
-            e.OnSave();
-
-        var fields = VaultDocument.Fields.ToArray();
-        var columns = fields
-            .Select(f => VaultDocument.Columns[f])
-            .ToArray();
-
-        var pkKeys = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
-        var primaryKeyColumns = pkKeys
-            .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
-            .ToArray();
-
-        // *** use fully-qualified table name here ***
-        var upsertQuery = BuildUpsertQuery(
-            QualifiedTableName(),
-            columns,
-            primaryKeyColumns
-        );
-
-        string? historyQuery = null;
-        if (VaultDocument.StoreHistory == true)
-        {
-            if (saveHistory == true)
-            {
-                historyQuery = BuildHistoryQuery(VaultDocument.Name, columns);
-            }
-        }
-        else if (saveHistory == true)
-        {
-            throw new InvalidOperationException(
-                $"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
-        }
-
-        var queries = new List<string>();
-        var allParams = new List<object?>();
-
-        foreach (var e in list)
-        {
-            var canSave = true;
-            if (!canSave)
-                continue;
-
-            queries.Add(upsertQuery);
-            allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
-
-            if (historyQuery is not null)
-            {
-                queries.Add(historyQuery);
-                var historyParams = GetParameterValues(e, fields, includeTimestamp: true);
-                allParams.AddRange(historyParams.Skip(fields.Length));
-            }
-        }
-
-        if (queries.Count == 0)
-            return;
-
-        var batchQuery = string.Join(";", queries) + ";";
-        await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
+        return await _database.ExecuteAsync(sql) > 0;
     }
 
-    private string BuildInsertQuery(string tableNameIgnored, IEnumerable<string> columns)
+    // ---------------- SQL helpers ----------------
+
+    private string BuildSelect(QueryState st)
     {
-        // ignore the string param; always use the qualified table
-        var cols = string.Join(", ", columns.Select(QuoteIdent));
-        var vals = string.Join(", ", columns.Select(_ => "?"));
-        return $"INSERT INTO {QualifiedTableName()} ({cols}) VALUES ({vals})";
+        var sql = $"SELECT {string.Join(", ", st.Parts[QueryPosition.SELECT])} FROM {QualifiedTable}";
+
+        if (st.Parts[QueryPosition.WHERE].Count > 0)
+            sql += " WHERE " + string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
+
+        if (st.Parts[QueryPosition.ORDER_BY].Count > 0)
+            sql += " ORDER BY " + string.Join(", ", st.Parts[QueryPosition.ORDER_BY]);
+
+        if (st.Parts[QueryPosition.LIMIT].Count > 0)
+            sql += " " + string.Join(" ", st.Parts[QueryPosition.LIMIT]);
+
+        if (st.Parts[QueryPosition.OFFSET].Count > 0)
+            sql += " " + string.Join(" ", st.Parts[QueryPosition.OFFSET]);
+
+        return sql;
     }
 
-    private string BuildHistoryQuery(string tableNameIgnored, IEnumerable<string> columns)
-    {
-        var histQualified =
-            $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name + "_history")}";
-
-        var cols = string.Join(", ", columns.Select(QuoteIdent));
-        var vals = string.Join(", ", columns.Select(_ => "?"));
-        return $"INSERT INTO {histQualified} ({cols}, {QuoteIdent("timestamp")}) VALUES ({vals}, ?)";
-    }
-
-    private object?[] GetParameterValues(TVaultModel entity, IEnumerable<string> fields, bool includeTimestamp)
-    {
-        var values = fields.Select(field => VaultDocument.PropertyAccessors[field](entity)).ToList();
-
-        if (includeTimestamp && _timestampSetter is not null)
-        {
-            var now = DateTime.UtcNow;
-            _timestampSetter(entity, now);
-            values.Add(now);
-        }
-
-        return values.ToArray();
-    }
-
-    private static string ConvertTimeSpanToDatabaseFormat(TimeSpan ts)
-    {
-        // Postgres INTERVAL literal; keep it simple as "DD HH:MM:SS"
-        var totalDays = (int)ts.TotalDays;
-        var remainder = ts - TimeSpan.FromDays(totalDays);
-        return $"'{totalDays} days {remainder:hh\\:mm\\:ss}'";
-    }
-
-    private static string ConvertToSqlValue(object? value) =>
-        value switch
-        {
-            null => "NULL",
-            string s => $"'{s.Replace("'", "''")}'",
-            bool b => b ? "TRUE" : "FALSE",
-            DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-            TimeSpan ts => ConvertTimeSpanToDatabaseFormat(ts),
-            Enum e => Convert.ToInt32(e).ToString(),
-            _ => value.ToString()!
-        };
-    public virtual async Task UpdateAsync(
-    IReadOnlyDictionary<string, object?> primaryKey,
-    IReadOnlyDictionary<string, object?> changes)
-    {
-        if (primaryKey is null || primaryKey.Count == 0)
-            throw new ArgumentException("Primary key is required.", nameof(primaryKey));
-
-        if (changes is null || changes.Count == 0)
-            return;
-
-        var st = _state;
-
-        foreach (var (field, value) in changes)
-        {
-            if (!VaultDocument.Columns.TryGetValue(field, out var column))
-                column = Document.ToCamelCase(field);
-
-            st = st.With(
-                QueryPosition.SET,
-                $"{QuoteIdent(column)} = ?",
-                value
-            );
-        }
-
-        foreach (var (pkField, pkValue) in primaryKey)
-        {
-            if (!VaultDocument.Columns.TryGetValue(pkField, out var column))
-                column = Document.ToCamelCase(pkField);
-
-            if (pkValue is null)
-            {
-                st = st.With(
-                    QueryPosition.WHERE,
-                    $"{QuoteIdent(column)} IS NULL"
-                );
-            }
-            else
-            {
-                st = st.With(
-                    QueryPosition.WHERE,
-                    $"{QuoteIdent(column)} = ?",
-                    pkValue
-                );
-            }
-        }
-
-        var sql = BuildUpdateQuery(st);
-        var parameters = st.Parameters[QueryPosition.SET]
-            .Concat(st.Parameters[QueryPosition.WHERE])
-            .ToList();
-
-        await _databaseProvider.ExecuteAsync(sql, parameters!);
-    }
-
+    private string QualifiedTable
+        => $"\"{Keyspace.Name}\".\"{VaultDocument.Name}\"";
 }
 
 internal static class TimestampSetterFactory
 {
-    private static readonly ConcurrentDictionary<Type, Action<object, DateTime>?> _cache = new();
+    private static readonly ConcurrentDictionary<Type, Action<object, DateTime>?> Cache = new();
 
     public static Action<object, DateTime>? Create(Type modelType)
-    {
-        return _cache.GetOrAdd(modelType, static t =>
+        => Cache.GetOrAdd(modelType, t =>
         {
             var prop = t.GetProperty("Timestamp",
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-            if (prop is null || !prop.CanWrite || prop.PropertyType != typeof(DateTime))
+            if (prop == null || prop.PropertyType != typeof(DateTime) || !prop.CanWrite)
                 return null;
 
-            var target = Expression.Parameter(typeof(object), "target");
-            var value = Expression.Parameter(typeof(DateTime), "value");
+            var target = Expression.Parameter(typeof(object));
+            var value = Expression.Parameter(typeof(DateTime));
+            var assign = Expression.Assign(
+                Expression.Property(Expression.Convert(target, t), prop),
+                value);
 
-            var casted = Expression.Convert(target, t);
-            var member = Expression.Property(casted, prop);
-            var assign = Expression.Assign(member, value);
-
-            var lambda = Expression.Lambda<Action<object, DateTime>>(assign, target, value);
-            return lambda.Compile();
+            return Expression.Lambda<Action<object, DateTime>>(assign, target, value).Compile();
         });
-    }
-}
-
-public static class ExpressionUtils
-{
-    public static object? Evaluate(Expression e)
-    {
-        if (e.NodeType == ExpressionType.Constant)
-            return ((ConstantExpression)e).Value;
-        return Expression.Lambda(e).Compile().DynamicInvoke();
-    }
 }

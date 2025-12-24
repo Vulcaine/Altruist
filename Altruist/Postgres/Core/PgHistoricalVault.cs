@@ -14,39 +14,49 @@ internal sealed class PgHistoricalVault<TVaultModel> : IHistoricalVault<TVaultMo
     {
     }
 
-    public PgHistoricalVault(PgVault<TVaultModel> owner, QueryState state)
+    private PgHistoricalVault(PgVault<TVaultModel> owner, QueryState state)
     {
         _owner = owner;
         _state = state;
     }
 
-    private PgHistoricalVault<TVaultModel> New(QueryState st) => new PgHistoricalVault<TVaultModel>(_owner, st);
+    private PgHistoricalVault<TVaultModel> New(QueryState st)
+        => new PgHistoricalVault<TVaultModel>(_owner, st);
 
-    public IHistoricalVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
+    // ---------------- Query ops ----------------
+
+    public IHistoricalVault<TVaultModel> Where(
+        Expression<Func<TVaultModel, bool>> predicate)
     {
-        var whereClause = _owner.ConvertWherePredicateToString(predicate);
+        var where = PgQueryTranslator.Where(predicate, _owner.VaultDocument);
+
         var next = _state
-            .With(QueryPosition.WHERE, whereClause)
+            .With(QueryPosition.WHERE, where)
             .EnsureProjectionSelected(_owner.VaultDocument);
 
         return New(next);
     }
 
-    public IHistoricalVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    public IHistoricalVault<TVaultModel> OrderBy<TKey>(
+        Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        var orderByClause = _owner.ConvertOrderByToString(keySelector);
+        var orderBy = PgQueryTranslator.OrderBy(keySelector, _owner.VaultDocument);
+
         var next = _state
-            .With(QueryPosition.ORDER_BY, orderByClause)
+            .With(QueryPosition.ORDER_BY, orderBy)
             .EnsureProjectionSelected(_owner.VaultDocument);
 
         return New(next);
     }
 
-    public IHistoricalVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    public IHistoricalVault<TVaultModel> OrderByDescending<TKey>(
+        Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        var orderByClause = _owner.ConvertOrderByDescendingToString(keySelector) + " DESC";
+        var orderBy = PgQueryTranslator
+            .OrderBy(keySelector, _owner.VaultDocument) + " DESC";
+
         var next = _state
-            .With(QueryPosition.ORDER_BY, orderByClause)
+            .With(QueryPosition.ORDER_BY, orderBy)
             .EnsureProjectionSelected(_owner.VaultDocument);
 
         return New(next);
@@ -70,79 +80,67 @@ internal sealed class PgHistoricalVault<TVaultModel> : IHistoricalVault<TVaultMo
         return New(next);
     }
 
-    public async Task<List<TVaultModel>> ToListAsync(DateTime startTime, DateTime endTime)
+    // ---------------- Execution ----------------
+
+    public async Task<List<TVaultModel>> ToListAsync(
+        DateTime startTime,
+        DateTime endTime)
     {
         var st = _state.EnsureProjectionSelected(_owner.VaultDocument);
 
-        // Build SELECT projection like the main vault
         var select =
             st.Parts[QueryPosition.SELECT].Count == 0
-                ? string.Join(", ", _owner.VaultDocument.Columns.Select(kvp =>
-                    $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
+                ? string.Join(", ",
+                    _owner.VaultDocument.Columns.Select(kvp =>
+                        $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
                 : string.Join(", ", st.Parts[QueryPosition.SELECT]);
 
-        var historyTableFqn =
-            $"{QuoteIdent(_owner.Keyspace.Name)}.{QuoteIdent(_owner.VaultDocument.Name + "_history")}";
+        var historyTable =
+            $"{QuoteIdent(_owner.Keyspace.Name)}." +
+            $"{QuoteIdent(_owner.VaultDocument.Name + "_history")}";
 
         var sql = new StringBuilder();
         sql.Append("SELECT ").Append(select)
-           .Append(" FROM ").Append(historyTableFqn);
+           .Append(" FROM ").Append(historyTable);
 
-        // Existing WHERE chain from the historical query
         var existingWhere = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
 
-        var startLiteral = ConvertToSqlValue(startTime);
-        var endLiteral = ConvertToSqlValue(endTime);
-
         var timeFilter =
-            $"{QuoteIdent("timestamp")} >= {startLiteral} AND {QuoteIdent("timestamp")} <= {endLiteral}";
+            $"{QuoteIdent("timestamp")} >= {ToSql(startTime)} " +
+            $"AND {QuoteIdent("timestamp")} <= {ToSql(endTime)}";
 
-        string finalWhere;
-        if (string.IsNullOrEmpty(existingWhere))
-            finalWhere = timeFilter;
-        else
-            finalWhere = $"({existingWhere}) AND {timeFilter}";
+        var finalWhere = string.IsNullOrEmpty(existingWhere)
+            ? timeFilter
+            : $"({existingWhere}) AND {timeFilter}";
 
         sql.Append(" WHERE ").Append(finalWhere);
 
-        var orderBy = string.Join(", ", st.Parts[QueryPosition.ORDER_BY]);
-        if (!string.IsNullOrEmpty(orderBy))
-            sql.Append(" ORDER BY ").Append(orderBy);
+        if (st.Parts[QueryPosition.ORDER_BY].Count > 0)
+            sql.Append(" ORDER BY ")
+               .Append(string.Join(", ", st.Parts[QueryPosition.ORDER_BY]));
 
-        var limit = string.Join(" ", st.Parts[QueryPosition.LIMIT]);
-        if (!string.IsNullOrEmpty(limit))
-            sql.Append(' ').Append(limit);
+        if (st.Parts[QueryPosition.LIMIT].Count > 0)
+            sql.Append(' ')
+               .Append(string.Join(" ", st.Parts[QueryPosition.LIMIT]));
 
-        var offset = string.Join(" ", st.Parts[QueryPosition.OFFSET]);
-        if (!string.IsNullOrEmpty(offset))
-            sql.Append(' ').Append(offset);
+        if (st.Parts[QueryPosition.OFFSET].Count > 0)
+            sql.Append(' ')
+               .Append(string.Join(" ", st.Parts[QueryPosition.OFFSET]));
 
-        // We inline literals here; no additional parameters at the moment.
         var rows = await _owner.DatabaseProvider
             .QueryAsync<TVaultModel>(sql.ToString(), parameters: null);
 
         return rows.ToList();
     }
 
-    private static string QuoteIdent(string ident) =>
-        $"\"{ident.Replace("\"", "\"\"")}\"";
+    // ---------------- Helpers ----------------
 
-    private static string ConvertToSqlValue(object? value) =>
-        value switch
-        {
-            null => "NULL",
-            string s => $"'{s.Replace("'", "''")}'",
-            bool b => b ? "TRUE" : "FALSE",
-            DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-            TimeSpan ts => ConvertTimeSpanToDatabaseFormat(ts),
-            Enum e => Convert.ToInt32(e).ToString(),
-            _ => value.ToString()!
-        };
+    private static string QuoteIdent(string ident)
+        => $"\"{ident.Replace("\"", "\"\"")}\"";
 
-    private static string ConvertTimeSpanToDatabaseFormat(TimeSpan ts)
+    private static string ToSql(object value) => value switch
     {
-        var totalDays = (int)ts.TotalDays;
-        var remainder = ts - TimeSpan.FromDays(totalDays);
-        return $"'{totalDays} days {remainder:hh\\:mm\\:ss}'";
-    }
+        DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
+        _ => throw new NotSupportedException("Unsupported history literal.")
+    };
 }
