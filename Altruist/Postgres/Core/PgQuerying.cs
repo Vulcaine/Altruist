@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence.Postgres;
 
+[Service(typeof(IVaultQuery))]
+[ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PgVaultQuery : IVaultQuery
 {
     private readonly IServiceProvider _services;
