@@ -1,3 +1,5 @@
+// PgJoinExpressionTranslator.cs
+
 using System.Linq.Expressions;
 
 using Altruist.Querying;
@@ -8,6 +10,9 @@ internal static class PgJoinExpressionTranslator
 {
     // ---------------- JOIN ----------------
 
+    /// <summary>
+    /// Typed join (kept for callers that already have typed vaults).
+    /// </summary>
     public static string BuildJoin<TLeft, TRight>(
         PgVault<TLeft> left,
         PgVault<TRight> right,
@@ -16,6 +21,17 @@ internal static class PgJoinExpressionTranslator
         JoinType joinType)
         where TLeft : class, IVaultModel
         where TRight : class, IVaultModel
+        => BuildJoinDynamic(left, right, leftKey, rightKey, joinType);
+
+    /// <summary>
+    /// Dynamic join builder for "join from current / join from left / join from explicit".
+    /// </summary>
+    public static string BuildJoinDynamic(
+        object left,
+        object right,
+        LambdaExpression leftKey,
+        LambdaExpression rightKey,
+        JoinType joinType)
     {
         var join = joinType switch
         {
@@ -165,7 +181,7 @@ internal static class PgJoinExpressionTranslator
         string s => $"'{s.Replace("'", "''")}'",
         bool b => b ? "TRUE" : "FALSE",
         DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-        Enum e => Convert.ToInt64(e).ToString(), // safer for SQL than enum name
+        Enum e => Convert.ToInt64(e).ToString(),
         _ => value!.ToString()!
     };
 
@@ -247,7 +263,7 @@ internal static class PgJoinExpressionTranslator
 
             var rhs = StripConvert(be.Right);
 
-            // x ?? null  => x (same semantics for ref types)
+            // x ?? null  => x
             if (rhs is ConstantExpression ce && ce.Value is null)
                 return leftSql;
 
@@ -265,7 +281,7 @@ internal static class PgJoinExpressionTranslator
             throw new NotSupportedException("Unsupported coalesce RHS in projection.");
         }
 
-        // constants (rare, but allow)
+        // constants
         if (expr is ConstantExpression c)
             return FormatValue(c.Value);
 

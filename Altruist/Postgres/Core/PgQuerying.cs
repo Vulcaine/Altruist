@@ -51,27 +51,29 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
     public IVaultQuery<T> Take(int count)
         => new PgVaultQuery<T>((PgVault<T>)Vault.Take(count));
 
-    public IVaultJoinQuery<T, TOther> Join<TOther>(
+    public IVaultJoinQuery<T, TRight> Join<TRight>(
         Expression<Func<T, object>> leftKey,
-        Expression<Func<TOther, object>> rightKey,
+        Expression<Func<TRight, object>> rightKey,
         JoinType joinType = JoinType.Inner)
-        where TOther : class, IVaultModel
+        where TRight : class, IVaultModel
     {
-        var other = Dependencies.Inject<IVault<TOther>>();
+        var rightVault = Dependencies.Inject<IVault<TRight>>();
 
-        if (other is not PgVault<TOther> otherVault)
+        if (rightVault is not PgVault<TRight> pgRight)
         {
             throw new InvalidOperationException(
-                $"Expected DI to resolve '{typeof(IVault<TOther>).Name}' as '{typeof(PgVault<TOther>).Name}', " +
-                $"but got '{other.GetType().Name}'.");
+                $"Expected DI to resolve '{typeof(IVault<TRight>).Name}' as '{typeof(PgVault<TRight>).Name}', " +
+                $"but got '{rightVault.GetType().Name}'.");
         }
 
-        return new PgVaultJoinQuery<T, TOther>(
-            Vault,
-            otherVault,
-            leftKey,
-            rightKey,
-            joinType);
+        return new PgVaultJoinQuery<T, TRight>(
+            root: Vault,
+            right: pgRight,
+            leftKey: leftKey,
+            rightKey: rightKey,
+            joinType: joinType,
+            joins: null,
+            wheres: null);
     }
 
     public Task<List<T>> ToListAsync() => Vault.ToListAsync();
@@ -82,77 +84,173 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
         => Vault.SaveAsync(entity, saveHistory);
 }
 
-internal sealed class PgVaultJoinQuery<TLeft, TRight>
-    : IVaultJoinQuery<TLeft, TRight>
+internal sealed class PgVaultJoinQuery<TLeft, TCurrent>
+    : IVaultJoinQuery<TLeft, TCurrent>
     where TLeft : class, IVaultModel
-    where TRight : class, IVaultModel
+    where TCurrent : class, IVaultModel
 {
     private readonly PgVault<TLeft> _root;
-    private readonly PgVault<TRight> _right;
+    private readonly PgVault<TCurrent> _current;
 
-    private readonly List<string> _joins = new();
-    private readonly List<string> _wheres = new();
+    private readonly List<string> _joins;
+    private readonly List<string> _wheres;
 
     public PgVaultJoinQuery(
         PgVault<TLeft> root,
-        PgVault<TRight> right,
+        PgVault<TCurrent> right,
         LambdaExpression leftKey,
         LambdaExpression rightKey,
-        JoinType joinType)
+        JoinType joinType,
+        List<string>? joins,
+        List<string>? wheres)
     {
         _root = root;
-        _right = right;
+        _current = right;
 
-        _joins.Add(PgJoinExpressionTranslator.BuildJoin(
-            root,
-            right,
-            leftKey,
-            rightKey,
-            joinType));
+        _joins = joins is null ? new List<string>() : new List<string>(joins);
+        _wheres = wheres is null ? new List<string>() : new List<string>(wheres);
+
+        _joins.Add(PgJoinExpressionTranslator.BuildJoinDynamic(
+            left: root,
+            right: right,
+            leftKey: leftKey,
+            rightKey: rightKey,
+            joinType: joinType));
     }
 
+    private PgVaultJoinQuery(
+        PgVault<TLeft> root,
+        PgVault<TCurrent> current,
+        List<string> joins,
+        List<string> wheres)
+    {
+        _root = root;
+        _current = current;
+        _joins = joins;
+        _wheres = wheres;
+    }
+
+    // Default: join from CURRENT (last joined)
     public IVaultJoinQuery<TLeft, TNext> Join<TNext>(
-        Expression<Func<TRight, object>> leftKey,
+        Expression<Func<TCurrent, object>> leftKey,
         Expression<Func<TNext, object>> rightKey,
         JoinType joinType = JoinType.Inner)
         where TNext : class, IVaultModel
     {
-        var next = Dependencies.Inject<IVault<TNext>>();
+        var nextVault = Dependencies.Inject<IVault<TNext>>();
 
-        if (next is not PgVault<TNext> nextVault)
+        if (nextVault is not PgVault<TNext> pgNext)
         {
             throw new InvalidOperationException(
                 $"Expected DI to resolve '{typeof(IVault<TNext>).Name}' as '{typeof(PgVault<TNext>).Name}', " +
-                $"but got '{next.GetType().Name}'.");
+                $"but got '{nextVault.GetType().Name}'.");
         }
 
-        var chained = new PgVaultJoinQuery<TLeft, TNext>(
-            _root,
-            nextVault,
-            leftKey,
-            rightKey,
-            joinType);
+        var joins = new List<string>(_joins);
+        joins.Add(PgJoinExpressionTranslator.BuildJoinDynamic(
+            left: _current,
+            right: pgNext,
+            leftKey: leftKey,
+            rightKey: rightKey,
+            joinType: joinType));
 
-        chained._joins.InsertRange(0, _joins);
-        chained._wheres.AddRange(_wheres);
-
-        return chained;
+        return new PgVaultJoinQuery<TLeft, TNext>(
+            root: _root,
+            current: pgNext,
+            joins: joins,
+            wheres: new List<string>(_wheres));
     }
 
-    public IVaultJoinQuery<TLeft, TRight> Where(Expression<Func<TLeft, TRight, bool>> predicate)
+    // Escape hatch: join from ROOT (left)
+    public IVaultJoinQuery<TLeft, TNext> JoinFromLeft<TNext>(
+        Expression<Func<TLeft, object>> leftKey,
+        Expression<Func<TNext, object>> rightKey,
+        JoinType joinType = JoinType.Inner)
+        where TNext : class, IVaultModel
     {
-        _wheres.Add(PgJoinExpressionTranslator.Translate(predicate, _root, _right));
-        return this;
+        var nextVault = Dependencies.Inject<IVault<TNext>>();
+
+        if (nextVault is not PgVault<TNext> pgNext)
+        {
+            throw new InvalidOperationException(
+                $"Expected DI to resolve '{typeof(IVault<TNext>).Name}' as '{typeof(PgVault<TNext>).Name}', " +
+                $"but got '{nextVault.GetType().Name}'.");
+        }
+
+        var joins = new List<string>(_joins);
+        joins.Add(PgJoinExpressionTranslator.BuildJoinDynamic(
+            left: _root,
+            right: pgNext,
+            leftKey: leftKey,
+            rightKey: rightKey,
+            joinType: joinType));
+
+        return new PgVaultJoinQuery<TLeft, TNext>(
+            root: _root,
+            current: pgNext,
+            joins: joins,
+            wheres: new List<string>(_wheres));
     }
 
-    async Task<List<TResult>> IVaultJoinQuery<TLeft, TRight>.SelectAsync<TResult>(
-    Expression<Func<TLeft, TRight, TResult>> selector)
+    // Escape hatch: join from ANY explicit joined type
+    public IVaultJoinQuery<TLeft, TNext> JoinFrom<TFrom, TNext>(
+        Expression<Func<TFrom, object>> leftKey,
+        Expression<Func<TNext, object>> rightKey,
+        JoinType joinType = JoinType.Inner)
+        where TFrom : class, IVaultModel
+        where TNext : class, IVaultModel
     {
-        if (typeof(TResult).IsValueType)
-            throw new NotSupportedException("SelectAsync<TResult> only supports reference types.");
+        var fromVault = Dependencies.Inject<IVault<TFrom>>();
+        if (fromVault is not PgVault<TFrom> pgFrom)
+        {
+            throw new InvalidOperationException(
+                $"Expected DI to resolve '{typeof(IVault<TFrom>).Name}' as '{typeof(PgVault<TFrom>).Name}', " +
+                $"but got '{fromVault.GetType().Name}'.");
+        }
 
+        var nextVault = Dependencies.Inject<IVault<TNext>>();
+        if (nextVault is not PgVault<TNext> pgNext)
+        {
+            throw new InvalidOperationException(
+                $"Expected DI to resolve '{typeof(IVault<TNext>).Name}' as '{typeof(PgVault<TNext>).Name}', " +
+                $"but got '{nextVault.GetType().Name}'.");
+        }
+
+        var joins = new List<string>(_joins);
+        joins.Add(PgJoinExpressionTranslator.BuildJoinDynamic(
+            left: pgFrom,
+            right: pgNext,
+            leftKey: leftKey,
+            rightKey: rightKey,
+            joinType: joinType));
+
+        return new PgVaultJoinQuery<TLeft, TNext>(
+            root: _root,
+            current: pgNext,
+            joins: joins,
+            wheres: new List<string>(_wheres));
+    }
+
+    public IVaultJoinQuery<TLeft, TCurrent> Where(Expression<Func<TLeft, TCurrent, bool>> predicate)
+    {
+        var nextWheres = new List<string>(_wheres)
+        {
+            PgJoinExpressionTranslator.Translate(predicate, _root, _current)
+        };
+
+        return new PgVaultJoinQuery<TLeft, TCurrent>(
+            root: _root,
+            current: _current,
+            joins: new List<string>(_joins),
+            wheres: nextWheres);
+    }
+
+    async Task<List<TResult>> IVaultJoinQuery<TLeft, TCurrent>.SelectAsync<TResult>(
+        Expression<Func<TLeft, TCurrent, TResult>> selector)
+        where TResult : class
+    {
         var sql = PgJoinExpressionTranslator.BuildSelect(
-            selector, _root, _right, _joins, _wheres);
+            selector, _root, _current, _joins, _wheres);
 
         return (await _root.DatabaseProvider.QueryAsync<TResult>(sql)).ToList();
     }

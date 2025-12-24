@@ -26,12 +26,11 @@ public interface IVaultQuery<T> where T : class, IVaultModel
     IVaultQuery<T> Take(int count);
 
     // --- Join entry ---
-    IVaultJoinQuery<T, TOther> Join<TOther>(
-        Expression<Func<T, object>> leftKey,
-        Expression<Func<TOther, object>> rightKey,
-        JoinType joinType = JoinType.Inner
-    )
-    where TOther : class, IVaultModel;
+    IVaultJoinQuery<T, TRight> Join<TRight>(
+         Expression<Func<T, object>> leftKey,
+         Expression<Func<TRight, object>> rightKey,
+         JoinType joinType = JoinType.Inner)
+         where TRight : class, IVaultModel;
 
     // --- Execution ---
     Task<List<T>> ToListAsync();
@@ -41,24 +40,34 @@ public interface IVaultQuery<T> where T : class, IVaultModel
     Task SaveAsync(T entity, bool? saveHistory = false);
 }
 
-public interface IVaultJoinQuery<TLeft, TRight>
+public interface IVaultJoinQuery<TLeft, TCurrent>
     where TLeft : class, IVaultModel
-    where TRight : class, IVaultModel
+    where TCurrent : class, IVaultModel
 {
-    // --- Continue joining ---
+    // Default: join from the CURRENT (last-joined) table
     IVaultJoinQuery<TLeft, TNext> Join<TNext>(
-        Expression<Func<TRight, object>> leftKey,
+        Expression<Func<TCurrent, object>> leftKey,
         Expression<Func<TNext, object>> rightKey,
-        JoinType joinType = JoinType.Inner
-    )
-    where TNext : class, IVaultModel;
+        JoinType joinType = JoinType.Inner)
+        where TNext : class, IVaultModel;
 
-    // --- Filtering ---
-    IVaultJoinQuery<TLeft, TRight> Where(
-        Expression<Func<TLeft, TRight, bool>> predicate
-    );
+    // Escape hatch: join from the ROOT (left)
+    IVaultJoinQuery<TLeft, TNext> JoinFromLeft<TNext>(
+        Expression<Func<TLeft, object>> leftKey,
+        Expression<Func<TNext, object>> rightKey,
+        JoinType joinType = JoinType.Inner)
+        where TNext : class, IVaultModel;
 
-    // --- Projection ---
-    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<TLeft, TRight, TResult>> selector)
+    // Escape hatch: join from ANY previously joined type (explicit)
+    IVaultJoinQuery<TLeft, TNext> JoinFrom<TFrom, TNext>(
+        Expression<Func<TFrom, object>> leftKey,
+        Expression<Func<TNext, object>> rightKey,
+        JoinType joinType = JoinType.Inner)
+        where TFrom : class, IVaultModel
+        where TNext : class, IVaultModel;
+
+    IVaultJoinQuery<TLeft, TCurrent> Where(Expression<Func<TLeft, TCurrent, bool>> predicate);
+
+    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<TLeft, TCurrent, TResult>> selector)
         where TResult : class;
 }
