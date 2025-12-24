@@ -1,9 +1,8 @@
+// PgVaultQuery.cs
 using System.Linq.Expressions;
 
 using Altruist.Persistence.Postgres.Querying;
 using Altruist.Querying;
-
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence.Postgres;
 
@@ -11,16 +10,9 @@ namespace Altruist.Persistence.Postgres;
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PgVaultQuery : IVaultQuery
 {
-    private readonly IServiceProvider _services;
-
-    public PgVaultQuery(IServiceProvider services)
-    {
-        _services = services;
-    }
-
     public IVaultQuery<T> From<T>() where T : class, IVaultModel
     {
-        var vault = _services.GetRequiredService<IVault<T>>();
+        var vault = Dependencies.Inject<IVault<T>>();
 
         if (vault is not PgVault<T> pgVault)
         {
@@ -29,7 +21,7 @@ public sealed class PgVaultQuery : IVaultQuery
                 $"but got '{vault.GetType().Name}'.");
         }
 
-        return new PgVaultQuery<T>(pgVault, _services);
+        return new PgVaultQuery<T>(pgVault);
     }
 }
 
@@ -37,28 +29,26 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
     where T : class, IVaultModel
 {
     internal readonly PgVault<T> Vault;
-    private readonly IServiceProvider _services;
 
-    public PgVaultQuery(PgVault<T> vault, IServiceProvider services)
+    public PgVaultQuery(PgVault<T> vault)
     {
         Vault = vault;
-        _services = services;
     }
 
     public IVaultQuery<T> Where(Expression<Func<T, bool>> predicate)
-        => new PgVaultQuery<T>((PgVault<T>)Vault.Where(predicate), _services);
+        => new PgVaultQuery<T>((PgVault<T>)Vault.Where(predicate));
 
     public IVaultQuery<T> OrderBy<TKey>(Expression<Func<T, TKey>> keySelector)
-        => new PgVaultQuery<T>((PgVault<T>)Vault.OrderBy(keySelector), _services);
+        => new PgVaultQuery<T>((PgVault<T>)Vault.OrderBy(keySelector));
 
     public IVaultQuery<T> OrderByDescending<TKey>(Expression<Func<T, TKey>> keySelector)
-        => new PgVaultQuery<T>((PgVault<T>)Vault.OrderByDescending(keySelector), _services);
+        => new PgVaultQuery<T>((PgVault<T>)Vault.OrderByDescending(keySelector));
 
     public IVaultQuery<T> Skip(int count)
-        => new PgVaultQuery<T>((PgVault<T>)Vault.Skip(count), _services);
+        => new PgVaultQuery<T>((PgVault<T>)Vault.Skip(count));
 
     public IVaultQuery<T> Take(int count)
-        => new PgVaultQuery<T>((PgVault<T>)Vault.Take(count), _services);
+        => new PgVaultQuery<T>((PgVault<T>)Vault.Take(count));
 
     public IVaultJoinQuery<T, TOther> Join<TOther>(
         Expression<Func<T, object>> leftKey,
@@ -66,7 +56,7 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
         JoinType joinType = JoinType.Inner)
         where TOther : class, IVaultModel
     {
-        var other = _services.GetRequiredService<IVault<TOther>>();
+        var other = Dependencies.Inject<IVault<TOther>>();
 
         if (other is not PgVault<TOther> otherVault)
         {
@@ -78,7 +68,6 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
         return new PgVaultJoinQuery<T, TOther>(
             Vault,
             otherVault,
-            _services,
             leftKey,
             rightKey,
             joinType);
@@ -99,7 +88,6 @@ internal sealed class PgVaultJoinQuery<TLeft, TRight>
 {
     private readonly PgVault<TLeft> _root;
     private readonly PgVault<TRight> _right;
-    private readonly IServiceProvider _services;
 
     private readonly List<string> _joins = new();
     private readonly List<string> _wheres = new();
@@ -107,14 +95,12 @@ internal sealed class PgVaultJoinQuery<TLeft, TRight>
     public PgVaultJoinQuery(
         PgVault<TLeft> root,
         PgVault<TRight> right,
-        IServiceProvider services,
         LambdaExpression leftKey,
         LambdaExpression rightKey,
         JoinType joinType)
     {
         _root = root;
         _right = right;
-        _services = services;
 
         _joins.Add(PgJoinExpressionTranslator.BuildJoin(
             root,
@@ -130,7 +116,7 @@ internal sealed class PgVaultJoinQuery<TLeft, TRight>
         JoinType joinType = JoinType.Inner)
         where TNext : class, IVaultModel
     {
-        var next = _services.GetRequiredService<IVault<TNext>>();
+        var next = Dependencies.Inject<IVault<TNext>>();
 
         if (next is not PgVault<TNext> nextVault)
         {
@@ -142,7 +128,6 @@ internal sealed class PgVaultJoinQuery<TLeft, TRight>
         var chained = new PgVaultJoinQuery<TLeft, TNext>(
             _root,
             nextVault,
-            _services,
             leftKey,
             rightKey,
             joinType);

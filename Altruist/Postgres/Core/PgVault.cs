@@ -1,3 +1,4 @@
+// PgVault.cs
 /*
 Copyright 2025 Aron Gere
 
@@ -6,12 +7,6 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 */
 
 using System.Collections.Concurrent;
@@ -34,10 +29,6 @@ public enum QueryPosition
     SET
 }
 
-/// <summary>
-/// Immutable per-chain query state.
-/// Each fluent call creates a new state with one extra piece added.
-/// </summary>
 public sealed class QueryState
 {
     public readonly Dictionary<QueryPosition, HashSet<string>> Parts;
@@ -129,24 +120,20 @@ public sealed class QueryState
     private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
 }
 
-/// <summary>
-/// PostgreSQL vault with a fluent API similar to the CQL vault.
-/// </summary>
 public class PgVault<TVaultModel> : IVault<TVaultModel>
     where TVaultModel : class, IVaultModel
 {
-    protected readonly IServiceProvider _serviceProvider;
     protected readonly ISqlDatabaseProvider _databaseProvider;
     protected readonly QueryState _state;
 
-    protected readonly IServiceProvider Services;
+    private readonly IServiceProvider _services;
 
     public IKeyspace Keyspace { get; }
     public readonly Document VaultDocument;
 
     internal ISqlDatabaseProvider DatabaseProvider => _databaseProvider;
 
-    private IHistoricalVault<TVaultModel> _history;
+    private readonly IHistoricalVault<TVaultModel> _history;
 
     public IHistoricalVault<TVaultModel> History
     {
@@ -179,8 +166,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         QueryState state)
     {
         _databaseProvider = databaseProvider;
-        _serviceProvider = services;
-        Services = services;
+        _services = services;
 
         VaultDocument = document;
         Keyspace = schema;
@@ -190,11 +176,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     }
 
     protected virtual PgVault<TVaultModel> Create(QueryState state)
-        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, Services, state);
+        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, Dependencies.RootProvider ?? _services, state);
 
     protected PgVault<TVaultModel> New(QueryState state) => Create(state);
-
-    // ------------------------ Fluent query ops (return NEW instance) ------------------------
 
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
     {
@@ -234,40 +218,19 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         return New(next);
     }
 
-    // ------------------------ Terminal ops (use current state) ------------------------
-
     public virtual async Task<List<TVaultModel>> ToListAsync()
     {
         var st = _state.EnsureProjectionSelected(VaultDocument);
         var query = BuildSelectQuery(st);
-
-        var parameters =
-            st.Parameters[QueryPosition.WHERE]
-                .Concat(st.Parameters[QueryPosition.SELECT])
-                .Concat(st.Parameters[QueryPosition.ORDER_BY])
-                .Concat(st.Parameters[QueryPosition.LIMIT])
-                .Concat(st.Parameters[QueryPosition.OFFSET])
-                .ToList();
-
-        return (await _databaseProvider.QueryAsync<TVaultModel>(query, parameters!)).ToList();
+        return (await _databaseProvider.QueryAsync<TVaultModel>(query, parameters: null)).ToList();
     }
 
     public virtual async Task<TVaultModel?> FirstOrDefaultAsync()
     {
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
-
         var query = BuildSelectQuery(st);
-
-        var parameters =
-            st.Parameters[QueryPosition.WHERE]
-                .Concat(st.Parameters[QueryPosition.SELECT])
-                .Concat(st.Parameters[QueryPosition.ORDER_BY])
-                .Concat(st.Parameters[QueryPosition.LIMIT])
-                .Concat(st.Parameters[QueryPosition.OFFSET])
-                .ToList();
-
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, parameters!);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, parameters: null);
         return result.FirstOrDefault();
     }
 
@@ -275,18 +238,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     {
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
-
         var query = BuildSelectQuery(st);
-
-        var parameters =
-            st.Parameters[QueryPosition.WHERE]
-                .Concat(st.Parameters[QueryPosition.SELECT])
-                .Concat(st.Parameters[QueryPosition.ORDER_BY])
-                .Concat(st.Parameters[QueryPosition.LIMIT])
-                .Concat(st.Parameters[QueryPosition.OFFSET])
-                .ToList();
-
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, parameters!);
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, parameters: null);
         return result.First();
     }
 
@@ -305,7 +258,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             ? $"SELECT COUNT(*) FROM {from}"
             : $"SELECT COUNT(*) FROM {from} WHERE {whereClause}";
 
-        return await _databaseProvider.ExecuteCountAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
+        return await _databaseProvider.ExecuteCountAsync(sql, parameters: null);
     }
 
     public virtual async Task<long> UpdateAsync(
@@ -342,7 +295,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             ? $"DELETE FROM {from}"
             : $"DELETE FROM {from} WHERE {whereClause}";
 
-        var affected = await _databaseProvider.ExecuteAsync(sql, _state.Parameters[QueryPosition.WHERE]!);
+        var affected = await _databaseProvider.ExecuteAsync(sql, parameters: null);
         return affected > 0;
     }
 
@@ -361,16 +314,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             st = st.With(QueryPosition.SELECT, column);
 
         var query = BuildSelectQuery(st);
-
-        var parameters =
-            st.Parameters[QueryPosition.WHERE]
-                .Concat(st.Parameters[QueryPosition.SELECT])
-                .Concat(st.Parameters[QueryPosition.ORDER_BY])
-                .Concat(st.Parameters[QueryPosition.LIMIT])
-                .Concat(st.Parameters[QueryPosition.OFFSET])
-                .ToList();
-
-        return await _databaseProvider.QueryAsync<TResult>(query, parameters!);
+        return await _databaseProvider.QueryAsync<TResult>(query, parameters: null);
     }
 
     public virtual async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
@@ -383,14 +327,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             ? $"SELECT COUNT(*) FROM {from}"
             : $"SELECT COUNT(*) FROM {from} WHERE {where}";
 
-        var count = await _databaseProvider.ExecuteCountAsync(
-            query,
-            next._state.Parameters[QueryPosition.WHERE]!);
-
+        var count = await _databaseProvider.ExecuteCountAsync(query, parameters: null);
         return count > 0;
     }
-
-    // ------------------------ Non-query ops ------------------------
 
     public virtual async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
     {
@@ -399,8 +338,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
 
     public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
         SaveEntitiesAsync(entities, saveHistory);
-
-    // ------------------------ Translation hooks (override-able) ------------------------
 
     public virtual string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
         => PgQueryTranslator.Where(predicate, VaultDocument);
@@ -411,15 +348,13 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     internal virtual string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
         => PgQueryTranslator.OrderBy(keySelector, VaultDocument);
 
-    // ------------------------ Query building helpers ------------------------
-
     private string BuildSelectQuery(QueryState st)
     {
         var select =
             st.Parts[QueryPosition.SELECT].Count == 0
-            ? string.Join(", ",
-                VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
-            : string.Join(", ", st.Parts[QueryPosition.SELECT]);
+                ? string.Join(", ",
+                    VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
+                : string.Join(", ", st.Parts[QueryPosition.SELECT]);
 
         var sql = $"SELECT {select} FROM {QualifiedTableName()}";
 
@@ -446,8 +381,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
 
     private string QualifiedTableName()
         => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
-
-    // ------------------------ Saving (RESTORED) ------------------------
 
     private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
     {
@@ -535,10 +468,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
 
         foreach (var e in list)
         {
-            var canSave = true;
-            if (!canSave)
-                continue;
-
             queries.Add(upsertQuery);
             allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
 
@@ -557,11 +486,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
     }
 
-    /// <summary>
-    /// Builds an INSERT ... ON CONFLICT (pk1, pk2, ...) DO UPDATE SET ... upsert statement.
-    /// Uses '?' placeholders so the provider can expand them to unique @p1..@pn across batched statements.
-    /// IMPORTANT: tableName must already be fully-qualified and quoted.
-    /// </summary>
     private static string BuildUpsertQuery(
         string tableName,
         IReadOnlyList<string> columns,
