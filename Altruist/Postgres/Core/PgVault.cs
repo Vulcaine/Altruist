@@ -9,9 +9,7 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 */
 
-using System.Collections.Concurrent;
 using System.Linq.Expressions;
-using System.Reflection;
 
 using Microsoft.EntityFrameworkCore.Query;
 
@@ -143,9 +141,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             return _history;
         }
     }
-
-    private static readonly Action<object, DateTime>? _timestampSetter =
-        TimestampSetterFactory.Create(typeof(TVaultModel));
 
     public PgVault(
         ISqlDatabaseProvider databaseProvider,
@@ -520,40 +515,12 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     {
         var values = fields.Select(field => VaultDocument.PropertyAccessors[field](entity)).ToList();
 
-        if (includeTimestamp && _timestampSetter is not null)
+        if (includeTimestamp)
         {
             var now = DateTime.UtcNow;
-            _timestampSetter(entity, now);
             values.Add(now);
         }
 
         return values.ToArray();
-    }
-}
-
-internal static class TimestampSetterFactory
-{
-    private static readonly ConcurrentDictionary<Type, Action<object, DateTime>?> _cache = new();
-
-    public static Action<object, DateTime>? Create(Type modelType)
-    {
-        return _cache.GetOrAdd(modelType, static t =>
-        {
-            var prop = t.GetProperty("Timestamp",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-            if (prop is null || !prop.CanWrite || prop.PropertyType != typeof(DateTime))
-                return null;
-
-            var target = Expression.Parameter(typeof(object), "target");
-            var value = Expression.Parameter(typeof(DateTime), "value");
-
-            var casted = Expression.Convert(target, t);
-            var member = Expression.Property(casted, prop);
-            var assign = Expression.Assign(member, value);
-
-            var lambda = Expression.Lambda<Action<object, DateTime>>(assign, target, value);
-            return lambda.Compile();
-        });
     }
 }
