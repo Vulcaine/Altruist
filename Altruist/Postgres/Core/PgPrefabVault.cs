@@ -12,37 +12,37 @@ public sealed class PgPrefabVault<TPrefab>
     public PgPrefabVault(
         ISqlDatabaseProvider provider,
         IKeyspace keyspace,
-        Document doc,
-        IServiceProvider services)
-        : base(provider, keyspace, doc, services)
+        Document doc)
+        : base(provider, keyspace, doc)
     {
     }
-
-    // ---------------- Construction ----------------
 
     public TPrefab Construct()
     {
         var prefab = new TPrefab();
-        PrefabHandleInitializer.InitializeHandles(prefab, Services);
+        PrefabHandleInitializer.InitializeHandles(prefab, Dependencies.RootProvider!);
         return prefab;
     }
-
-    // ---------------- Query execution (shadowed) ----------------
 
     public new async Task<List<TPrefab>> ToListAsync()
     {
         var list = await base.ToListAsync().ConfigureAwait(false);
+        var sp = Dependencies.RootProvider!;
+
         foreach (var p in list)
-            PrefabHandleInitializer.InitializeHandles(p, Services);
+            PrefabHandleInitializer.InitializeHandles(p, sp);
+
         return list;
     }
 
-    public new async Task<List<TPrefab>> ToListAsync(
-        Expression<Func<TPrefab, bool>> predicate)
+    public new async Task<List<TPrefab>> ToListAsync(Expression<Func<TPrefab, bool>> predicate)
     {
         var list = await base.ToListAsync(predicate).ConfigureAwait(false);
+        var sp = Dependencies.RootProvider!;
+
         foreach (var p in list)
-            PrefabHandleInitializer.InitializeHandles(p, Services);
+            PrefabHandleInitializer.InitializeHandles(p, sp);
+
         return list;
     }
 
@@ -50,18 +50,17 @@ public sealed class PgPrefabVault<TPrefab>
     {
         var p = await base.FirstOrDefaultAsync().ConfigureAwait(false);
         if (p != null)
-            PrefabHandleInitializer.InitializeHandles(p, Services);
+            PrefabHandleInitializer.InitializeHandles(p, Dependencies.RootProvider!);
         return p;
     }
 
     public new async Task<TPrefab?> FirstAsync()
     {
         var p = await base.FirstAsync().ConfigureAwait(false);
-        PrefabHandleInitializer.InitializeHandles(p!, Services);
+        if (p != null)
+            PrefabHandleInitializer.InitializeHandles(p, Dependencies.RootProvider!);
         return p;
     }
-
-    // ---------------- Persistence ----------------
 
     public new async Task SaveAsync(TPrefab entity, bool? saveHistory = false)
     {
@@ -69,17 +68,13 @@ public sealed class PgPrefabVault<TPrefab>
         await base.SaveAsync(entity, saveHistory).ConfigureAwait(false);
     }
 
-    public new async Task SaveBatchAsync(
-        IEnumerable<TPrefab> entities,
-        bool? saveHistory = false)
+    public new async Task SaveBatchAsync(IEnumerable<TPrefab> entities, bool? saveHistory = false)
     {
         foreach (var e in entities)
             await SaveTrackedComponentsAsync(e).ConfigureAwait(false);
 
         await base.SaveBatchAsync(entities, saveHistory).ConfigureAwait(false);
     }
-
-    // ---------------- Component persistence ----------------
 
     private async Task SaveTrackedComponentsAsync(TPrefab prefab)
     {
@@ -95,14 +90,17 @@ public sealed class PgPrefabVault<TPrefab>
             var meta = kv.Key;
             var component = kv.Value;
 
-            await meta.SaveBatchAsync(
-                new[] { component }
-            ).ConfigureAwait(false);
-
+            await meta.SaveBatchAsync(new[] { component }).ConfigureAwait(false);
             pm.ComponentRefs[meta.Name] = component.StorageId;
         }
 
         PrefabComponentTracker.Clear(pm);
+    }
+
+    public override string ConvertWherePredicateToString(Expression<Func<TPrefab, bool>> predicate)
+    {
+        var visitor = new PrefabExpressionVisitor(typeof(TPrefab));
+        return visitor.Translate(predicate);
     }
 }
 
@@ -134,8 +132,7 @@ internal sealed class PrefabExpressionVisitor
             BinaryExpression b when IsComparison(b.NodeType)
                 => VisitComparison(b),
 
-            _ => throw new NotSupportedException(
-                $"Unsupported expression in prefab WHERE: {expr}")
+            _ => throw new NotSupportedException($"Unsupported expression in prefab WHERE: {expr}")
         };
     }
 
@@ -150,11 +147,10 @@ internal sealed class PrefabExpressionVisitor
         if (TryResolveComponentAccess(b.Right, out var comp2))
         {
             var val = ExpressionUtils.Evaluate(b.Left);
-            return $"(component_refs->>'{comp2}') {Op(Flip(b.NodeType))} {ToSqlLiteral(val)}";
+            return $"(component_refs->>'{comp2}') {Op(b.NodeType)} {ToSqlLiteral(val)}";
         }
 
-        throw new NotSupportedException(
-            "Prefab WHERE must compare against component access.");
+        throw new NotSupportedException("Prefab WHERE must compare against component access.");
     }
 
     private bool TryResolveComponentAccess(Expression expr, out string compName)
@@ -191,8 +187,6 @@ internal sealed class PrefabExpressionVisitor
         ExpressionType.NotEqual => "!=",
         _ => throw new NotSupportedException()
     };
-
-    private static ExpressionType Flip(ExpressionType t) => t;
 
     private static string ToSqlLiteral(object? value) => value switch
     {

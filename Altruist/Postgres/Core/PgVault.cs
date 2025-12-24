@@ -126,8 +126,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     protected readonly ISqlDatabaseProvider _databaseProvider;
     protected readonly QueryState _state;
 
-    private readonly IServiceProvider _services;
-
     public IKeyspace Keyspace { get; }
     public readonly Document VaultDocument;
 
@@ -152,9 +150,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     public PgVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
-        Document document,
-        IServiceProvider services)
-        : this(databaseProvider, schema, document, services, new QueryState())
+        Document document)
+        : this(databaseProvider, schema, document, new QueryState())
     {
     }
 
@@ -162,11 +159,9 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
         Document document,
-        IServiceProvider services,
         QueryState state)
     {
         _databaseProvider = databaseProvider;
-        _services = services;
 
         VaultDocument = document;
         Keyspace = schema;
@@ -176,7 +171,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     }
 
     protected virtual PgVault<TVaultModel> Create(QueryState state)
-        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, Dependencies.RootProvider ?? _services, state);
+        => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, state);
 
     protected PgVault<TVaultModel> New(QueryState state) => Create(state);
 
