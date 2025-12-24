@@ -23,7 +23,7 @@ internal sealed class PortalWarmup
     }
 
     [PostConstruct]
-    private Task WarmAsync()
+    public Task WarmAsync()
     {
         var portals = PortalDiscovery.Discover().Distinct().ToArray();
 
