@@ -1,3 +1,4 @@
+// PostgresVaultConfiguration.cs
 using System.Reflection;
 
 using Altruist.Contracts;
@@ -5,7 +6,6 @@ using Altruist.UORM;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 using Npgsql;
 
@@ -13,7 +13,7 @@ namespace Altruist.Persistence.Postgres;
 
 public sealed class PostgresDBToken : IDatabaseServiceToken
 {
-    public static PostgresDBToken Instance { get; } = new PostgresDBToken();
+    public static PostgresDBToken Instance { get; } = new();
     public IDatabaseConfiguration Configuration => new PostgresVaultConfiguration();
     public string Description => "💾 Database: PostgreSQL";
 }
@@ -23,7 +23,6 @@ public sealed class PostgresDBToken : IDatabaseServiceToken
 public sealed class PostgresVaultConfiguration : PostgresConfigurationBase, IDatabaseConfiguration
 {
     public bool IsConfigured { get; set; }
-
     public string DatabaseName => "PostgreSQL";
 
     public async Task Configure(IServiceCollection services)
@@ -31,28 +30,25 @@ public sealed class PostgresVaultConfiguration : PostgresConfigurationBase, IDat
         var cfg = AppConfigLoader.Load();
         var assemblies = DiscoverAssemblies();
 
-        // 1) Discover schemas + vault models (ONLY [Vault]-annotated IVaultModel types)
+        // Discover once (per config)
         var schemaTypes = FindSchemaTypes(assemblies).ToArray();
-        var vaultModelTypes = FindModelTypes(assemblies).ToArray();      // note: FindModelTypes, not FindVaultModelTypes
+        var vaultModelTypes = FindVaultModelTypes(assemblies).ToArray();
         var initializerTypes = FindInitializers(assemblies).ToArray();
 
-        // 2) Register schemas (idempotent)
-        using (var tmp = services.BuildServiceProvider())
-        {
-            var logger = tmp.GetRequiredService<ILoggerFactory>()
-                            .CreateLogger<PostgresVaultConfiguration>();
-            RegisterSchemas(services, cfg, schemaTypes, logger);
-        }
+        // Register schemas ONCE globally (idempotent + guarded)
+        EnsureSchemasRegistered(services, cfg, schemaTypes, loggerName: nameof(PostgresVaultConfiguration));
 
+        // Register vaults + core pg services
         RegisterVaultsViaServiceFactory(services, vaultModelTypes);
         RegisterNpgsqlDataSource(services, cfg);
         RegisterTransactionalServices(services, assemblies);
 
-        await BootstrapModelsAsync(
-            services,
-            vaultModelTypes,
-            initializerTypes,
-            "Vaults");
+        // Contribute types to global bootstrap coordinator and try to run bootstrap once
+        DatabaseBootstrapCoordinator.AddModels(vaultModelTypes);
+        DatabaseBootstrapCoordinator.AddInitializers(initializerTypes);
+        DatabaseBootstrapCoordinator.MarkVaultConfigured();
+
+        await DatabaseBootstrapCoordinator.TryBootstrapOnceAsync(services, logPrefix: "Postgres").ConfigureAwait(false);
 
         IsConfigured = true;
     }
@@ -99,7 +95,7 @@ public sealed class PostgresVaultConfiguration : PostgresConfigurationBase, IDat
         }
     }
 
-    // ----------------- Npgsql + transactional -----------------
+    // ----------------- Npgsql -----------------
 
     private static void RegisterNpgsqlDataSource(IServiceCollection services, IConfiguration cfg)
     {
@@ -153,69 +149,11 @@ public sealed class PostgresVaultConfiguration : PostgresConfigurationBase, IDat
         if (string.IsNullOrWhiteSpace(connString))
             throw new InvalidOperationException("PostgreSQL connection string not found in configuration.");
 
-        services.AddSingleton(sp =>
+        services.AddSingleton(_ =>
         {
             var builder = new NpgsqlDataSourceBuilder(connString);
             return builder.Build();
         });
-    }
-
-    private static void RegisterTransactionalServices(IServiceCollection services, Assembly[] assemblies)
-    {
-        // 1) Scan assemblies and populate registry
-        TransactionalRegistry.WarmUp(assemblies);
-
-        // 2) Wrap DI registrations that have transactional methods
-        var descriptors = services.ToList();
-        services.Clear();
-
-        foreach (var descriptor in descriptors)
-        {
-            if (descriptor.ImplementationType is { } implType &&
-                TransactionalRegistry.HasTransactionalMethods(implType))
-            {
-                services.Add(WrapServiceIfTransactional(descriptor, implType));
-            }
-            else
-            {
-                services.Add(descriptor);
-            }
-        }
-    }
-
-    private static ServiceDescriptor WrapServiceIfTransactional(ServiceDescriptor descriptor, Type implType)
-    {
-        var serviceType = descriptor.ServiceType;
-        var lifetime = descriptor.Lifetime;
-
-        var decoratorFactory = BuildDecoratorFactory(serviceType, implType);
-
-        return new ServiceDescriptor(serviceType, decoratorFactory, lifetime);
-    }
-
-    private static Func<IServiceProvider, object> BuildDecoratorFactory(Type serviceType, Type implType)
-    {
-        var useType = implType;
-
-        return sp =>
-        {
-            var inner = ActivatorUtilities.CreateInstance(sp, useType);
-
-            var proxyServiceType = serviceType.IsAssignableFrom(useType) ? serviceType : useType;
-
-            var createMethod = typeof(DispatchProxy)
-                .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .Single(m => m.Name == nameof(DispatchProxy.Create) && m.GetGenericArguments().Length == 2)
-                .MakeGenericMethod(proxyServiceType, typeof(TransactionalDecorator<>).MakeGenericType(proxyServiceType));
-
-            var proxy = createMethod.Invoke(null, null)!;
-
-            var decorator = (dynamic)proxy;
-            decorator.Inner = inner;
-            decorator.DataSource = sp.GetRequiredService<NpgsqlDataSource>();
-
-            return proxy;
-        };
     }
 }
 
@@ -228,6 +166,5 @@ public sealed class DefaultSchema : IKeyspace
     }
 
     public string Name { get; }
-
     public IDatabaseServiceToken DatabaseToken => PostgresDBToken.Instance;
 }

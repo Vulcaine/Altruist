@@ -1,19 +1,4 @@
-/*
-Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
+// PostgresConfigurationBase.cs
 using System.Reflection;
 
 using Altruist.Migrations;
@@ -22,6 +7,7 @@ using Altruist.UORM;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Altruist.Persistence.Postgres;
 
@@ -55,7 +41,30 @@ public abstract class PostgresConfigurationBase
         return "public";
     }
 
-    // ----------------- schema registration -----------------
+    // ----------------- schema registration (global guarded) -----------------
+
+    private static int _schemasRegistered;
+
+    protected static void EnsureSchemasRegistered(
+        IServiceCollection services,
+        IConfiguration cfg,
+        Type[] schemaTypes,
+        string loggerName)
+    {
+        if (schemaTypes.Length == 0)
+            return;
+
+        // global guard: register schemas only once even if multiple configurations run
+        if (Interlocked.CompareExchange(ref _schemasRegistered, 1, 0) != 0)
+            return;
+
+        // best-effort logger factory (avoid failing if logging not registered yet)
+        using var tmp = services.BuildServiceProvider();
+        var loggerFactory = tmp.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+        var logger = loggerFactory.CreateLogger(loggerName);
+
+        RegisterSchemas(services, cfg, schemaTypes, logger);
+    }
 
     protected static void RegisterSchemas(
         IServiceCollection services,
@@ -78,95 +87,193 @@ public abstract class PostgresConfigurationBase
         }
     }
 
-    // ----------------- bootstrap logic -----------------
+    // ----------------- transactional wrapping (unchanged, but moved to base so it's reusable) -----------------
 
-    protected static async Task BootstrapModelsAsync(
-        IServiceCollection services,
-        Type[] modelTypes,
-        Type[] initializerTypes,
-        string logPrefix)
+    protected static void RegisterTransactionalServices(IServiceCollection services, Assembly[] assemblies)
     {
-        using var sp = services.BuildServiceProvider();
-        var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(logPrefix);
+        TransactionalRegistry.WarmUp(assemblies);
 
-        var provider = sp.GetService<ISqlDatabaseProvider>();
-        var migrator = sp.GetService<IVaultSchemaMigrator>();
+        var descriptors = services.ToList();
+        services.Clear();
 
-        if (provider is null)
+        foreach (var descriptor in descriptors)
         {
-            logger.LogWarning("⚠️ No ISqlDatabaseProvider registered; skipping bootstrap.");
-            return;
+            if (descriptor.ImplementationType is { } implType &&
+                TransactionalRegistry.HasTransactionalMethods(implType))
+            {
+                services.Add(WrapServiceIfTransactional(descriptor, implType));
+            }
+            else
+            {
+                services.Add(descriptor);
+            }
         }
-
-        if (migrator is null)
-        {
-            logger.LogWarning("⚠️ No IVaultSchemaMigrator registered; skipping schema migration.");
-            return;
-        }
-
-        if (modelTypes.Length == 0)
-        {
-            logger.LogInformation("ℹ️ No model types found.");
-            return;
-        }
-
-        // Discover which schemas/keyspaces we need from the models
-        var schemaNames = modelTypes
-            .Select(GetSchemaName)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Select(n => n.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        // 1) Connect once
-        await provider.ConnectAsync();
-
-        // 2) Create all schemas before running any migrations
-        foreach (var schemaName in schemaNames)
-        {
-            await provider.CreateSchemaAsync(schemaName, null);
-        }
-
-        // 3) Let the migrator handle keyspaces, dependency ordering, and per-schema planning
-        await migrator.Migrate(modelTypes);
-
-        // 4) Run initializers (data seeds)
-        await RunInitializersAsync(sp, initializerTypes, logger);
-
-        logger.LogInformation(
-            "🐘 PostgreSQL {Prefix} bootstrap complete. {Count} vault model(s), {Init} initializer(s).",
-            logPrefix,
-            modelTypes.Length,
-            initializerTypes.Length);
     }
 
-    // ----------------- initializer system -----------------
-
-    private static async Task RunInitializersAsync(
-    IServiceProvider sp,
-    Type[] initializerTypes,
-    ILogger logger)
+    private static ServiceDescriptor WrapServiceIfTransactional(ServiceDescriptor descriptor, Type implType)
     {
-        if (initializerTypes == null || initializerTypes.Length == 0)
-            return;
+        var serviceType = descriptor.ServiceType;
+        var lifetime = descriptor.Lifetime;
+        var decoratorFactory = BuildDecoratorFactory(serviceType, implType);
+        return new ServiceDescriptor(serviceType, decoratorFactory, lifetime);
+    }
 
-        var ordered = initializerTypes
-            .Select(t => ActivatorUtilities.CreateInstance(sp, t))
-            .Cast<IDatabaseInitializer>()
-            .OrderBy(i => i.Order)
-            .ThenBy(i => i.GetType().FullName, StringComparer.Ordinal)
-            .ToList();
+    private static Func<IServiceProvider, object> BuildDecoratorFactory(Type serviceType, Type implType)
+    {
+        var useType = implType;
 
-        foreach (var init in ordered)
+        return sp =>
         {
-            try
+            var inner = ActivatorUtilities.CreateInstance(sp, useType);
+
+            var proxyServiceType = serviceType.IsAssignableFrom(useType) ? serviceType : useType;
+
+            var createMethod = typeof(DispatchProxy)
+                .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Single(m => m.Name == nameof(DispatchProxy.Create) && m.GetGenericArguments().Length == 2)
+                .MakeGenericMethod(proxyServiceType, typeof(TransactionalDecorator<>).MakeGenericType(proxyServiceType));
+
+            var proxy = createMethod.Invoke(null, null)!;
+
+            var decorator = (dynamic)proxy;
+            decorator.Inner = inner;
+            decorator.DataSource = sp.GetRequiredService<Npgsql.NpgsqlDataSource>();
+
+            return proxy;
+        };
+    }
+
+    // ----------------- global bootstrap coordinator -----------------
+
+    /// <summary>
+    /// Coordinates schema migration + initializer execution so it runs once
+    /// after BOTH the vault config and prefab config have had a chance to register services.
+    /// </summary>
+    protected internal static class DatabaseBootstrapCoordinator
+    {
+        private static readonly object Gate = new();
+
+        private static readonly HashSet<Type> AllModels = new();
+        private static readonly HashSet<Type> AllInitializers = new();
+
+        private static int _vaultConfigured;
+        private static int _prefabConfigured;
+        private static int _bootstrapped;
+
+        public static void AddModels(IEnumerable<Type> modelTypes)
+        {
+            lock (Gate)
             {
-                await init.InitializeAsync(sp).ConfigureAwait(false);
-                logger.LogInformation("✔ Initializer {Init} executed.", init.GetType().Name);
+                foreach (var t in modelTypes)
+                    AllModels.Add(t);
             }
-            catch (Exception ex)
+        }
+
+        public static void AddInitializers(IEnumerable<Type> initializerTypes)
+        {
+            lock (Gate)
             {
-                logger.LogError(ex, "❌ Initializer {Init} failed: {Message}", init.GetType().Name, ex.Message);
+                foreach (var t in initializerTypes)
+                    AllInitializers.Add(t);
+            }
+        }
+
+        public static void MarkVaultConfigured() => Interlocked.Exchange(ref _vaultConfigured, 1);
+        public static void MarkPrefabConfigured() => Interlocked.Exchange(ref _prefabConfigured, 1);
+
+        public static async Task TryBootstrapOnceAsync(IServiceCollection services, string logPrefix)
+        {
+            // Wait until both have run
+            if (Volatile.Read(ref _vaultConfigured) == 0 || Volatile.Read(ref _prefabConfigured) == 0)
+                return;
+
+            // Only one winner runs bootstrap
+            if (Interlocked.CompareExchange(ref _bootstrapped, 1, 0) != 0)
+                return;
+
+            Type[] modelTypes;
+            Type[] initializerTypes;
+
+            lock (Gate)
+            {
+                modelTypes = AllModels.ToArray();
+                initializerTypes = AllInitializers.ToArray();
+            }
+
+            using var sp = services.BuildServiceProvider();
+            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(logPrefix);
+
+            var provider = sp.GetService<ISqlDatabaseProvider>();
+            var migrator = sp.GetService<IVaultSchemaMigrator>();
+
+            if (provider is null)
+            {
+                logger.LogWarning("⚠️ No ISqlDatabaseProvider registered; skipping bootstrap.");
+                return;
+            }
+
+            if (migrator is null)
+            {
+                logger.LogWarning("⚠️ No IVaultSchemaMigrator registered; skipping schema migration.");
+                return;
+            }
+
+            if (modelTypes.Length == 0)
+            {
+                logger.LogInformation("ℹ️ No model types found; skipping schema migration.");
+                await RunInitializersAsync(sp, initializerTypes, logger).ConfigureAwait(false);
+                return;
+            }
+
+            // Determine schemas/keyspaces from the models
+            var schemaNames = modelTypes
+                .Select(GetSchemaName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Select(n => n.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            await provider.ConnectAsync().ConfigureAwait(false);
+
+            foreach (var schemaName in schemaNames)
+                await provider.CreateSchemaAsync(schemaName, null).ConfigureAwait(false);
+
+            await migrator.Migrate(modelTypes).ConfigureAwait(false);
+
+            await RunInitializersAsync(sp, initializerTypes, logger).ConfigureAwait(false);
+
+            logger.LogInformation(
+                "🐘 PostgreSQL bootstrap complete. {Count} model(s), {Init} initializer(s).",
+                modelTypes.Length,
+                initializerTypes.Length);
+        }
+
+        private static async Task RunInitializersAsync(
+            IServiceProvider sp,
+            Type[] initializerTypes,
+            ILogger logger)
+        {
+            if (initializerTypes.Length == 0)
+                return;
+
+            var ordered = initializerTypes
+                .Select(t => ActivatorUtilities.CreateInstance(sp, t))
+                .Cast<IDatabaseInitializer>()
+                .OrderBy(i => i.Order)
+                .ThenBy(i => i.GetType().FullName, StringComparer.Ordinal)
+                .ToList();
+
+            foreach (var init in ordered)
+            {
+                try
+                {
+                    await init.InitializeAsync(sp).ConfigureAwait(false);
+                    logger.LogInformation("✔ Initializer {Init} executed.", init.GetType().Name);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "❌ Initializer {Init} failed: {Message}", init.GetType().Name, ex.Message);
+                }
             }
         }
     }

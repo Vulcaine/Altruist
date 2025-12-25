@@ -1,23 +1,22 @@
+// PostgresPrefabConfiguration.cs
 using System.Reflection;
 
 using Altruist.Contracts;
 using Altruist.UORM;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Altruist.Persistence.Postgres;
 
 /// <summary>
 /// PostgreSQL configuration for prefab models.
-/// Only types with [Prefab] + IPrefabModel are handled here.
+/// Only types with IPrefabModel + a VaultAttribute-derived header ([Prefab], etc.) are handled here.
 /// </summary>
 [ServiceConfiguration]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDatabaseConfiguration
 {
     public bool IsConfigured { get; set; }
-
     public string DatabaseName => "PostgreSQL Prefabs";
 
     public async Task Configure(IServiceCollection services)
@@ -29,33 +28,22 @@ public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDa
         var prefabTypes = FindPrefabModelTypes(assemblies).ToArray();
         var initializerTypes = FindInitializers(assemblies).ToArray();
 
-        if (prefabTypes.Length == 0)
-            return;
+        EnsureSchemasRegistered(services, cfg, schemaTypes, loggerName: nameof(PostgresPrefabConfiguration));
 
-        // Register schemas (same as vault config; required if you rely on IKeyspace resolution via DI)
-        using (var tmp = services.BuildServiceProvider())
+        if (prefabTypes.Length > 0)
         {
-            var logger = tmp.GetRequiredService<ILoggerFactory>()
-                            .CreateLogger<PostgresPrefabConfiguration>();
-            RegisterSchemas(services, cfg, schemaTypes, logger);
+            foreach (var prefabType in prefabTypes)
+                PrefabMetadataRegistry.RegisterPrefab(prefabType);
+
+            RegisterPrefabVaultsViaServiceFactory(services, prefabTypes);
+            RegisterPrefabVaultAliases(services, prefabTypes);
         }
 
-        // 1) Register prefab metadata so expression translator knows components.
-        foreach (var prefabType in prefabTypes)
-            PrefabMetadataRegistry.RegisterPrefab(prefabType);
+        DatabaseBootstrapCoordinator.AddModels(prefabTypes);
+        DatabaseBootstrapCoordinator.AddInitializers(initializerTypes);
+        DatabaseBootstrapCoordinator.MarkPrefabConfigured();
 
-        // 2) Register IVault<TPrefab> via IServiceFactory (PgPrefabVault<T> is chosen by PostgresServiceFactory)
-        RegisterPrefabVaultsViaServiceFactory(services, prefabTypes);
-
-        // 3) Register IPrefabVault<TPrefab> aliases
-        RegisterPrefabVaultAliases(services, prefabTypes);
-
-        // 4) Bootstrap *prefab models* (FIX: correct arrays, correct initializer list)
-        await BootstrapModelsAsync(
-            services,
-            prefabTypes,
-            initializerTypes,
-            "Prefabs");
+        await DatabaseBootstrapCoordinator.TryBootstrapOnceAsync(services, logPrefix: "Postgres").ConfigureAwait(false);
 
         IsConfigured = true;
     }
@@ -63,14 +51,14 @@ public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDa
     // ----------------- prefab discovery -----------------
 
     private static IEnumerable<Type> FindPrefabModelTypes(Assembly[] assemblies) =>
-    assemblies
-        .SelectMany(a => a.GetTypes())
-        .Where(t =>
-            t is not null &&
-            t.IsClass &&
-            !t.IsAbstract &&
-            typeof(IPrefabModel).IsAssignableFrom(t) &&
-            t.GetCustomAttribute<VaultAttribute>(inherit: false) is not null);
+        assemblies
+            .SelectMany(a => a.GetTypes())
+            .Where(t =>
+                t is not null &&
+                t.IsClass &&
+                !t.IsAbstract &&
+                typeof(IPrefabModel).IsAssignableFrom(t) &&
+                t.GetCustomAttribute<VaultAttribute>(inherit: false) is not null);
 
     // ----------------- registration -----------------
 

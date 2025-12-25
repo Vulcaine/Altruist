@@ -25,6 +25,7 @@ public sealed class PgModelSqlMetadata
 }
 
 [Service(typeof(IPgModelSqlMetadataProvider))]
+[ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PgModelSqlMetadataProvider : IPgModelSqlMetadataProvider
 {
     private readonly ConcurrentDictionary<Type, PgModelSqlMetadata> _byType = new();

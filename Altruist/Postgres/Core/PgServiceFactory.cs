@@ -55,7 +55,8 @@ public sealed class PostgresServiceFactory : IServiceFactory
         if (isPrefab)
         {
             var prefabVaultType = typeof(PgPrefabVault<>).MakeGenericType(modelType);
-            return Activator.CreateInstance(prefabVaultType, sqlProvider, keyspace, doc)!;
+            var sqlMetaProvider = sp.GetService<IPgModelSqlMetadataProvider>();
+            return Activator.CreateInstance(prefabVaultType, sqlProvider, keyspace, doc, sqlMetaProvider)!;
         }
         else
         {
