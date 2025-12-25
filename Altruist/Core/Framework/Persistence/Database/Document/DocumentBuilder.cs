@@ -1,9 +1,3 @@
-// DocumentBuilder.cs
-/*
-Copyright 2025 Aron Gere
-Licensed under the Apache License, Version 2.0
-*/
-
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
@@ -47,6 +41,10 @@ internal static class DocumentBuilder
         ScanColumns(type, fields, columns, indexes, foreignKeys, accessors, fieldTypes, nullablePhysical);
         ScanUniqueKeys(type, columns, uniqueKeys);
 
+        // NEW: prefab component ref columns
+        if (typeof(IPrefabModel).IsAssignableFrom(type))
+            AddPrefabComponentRefColumns(type, fields, columns, indexes, foreignKeys, accessors, fieldTypes, nullablePhysical);
+
         var doc = new Document(
             header: header,
             type: type,
@@ -61,7 +59,6 @@ internal static class DocumentBuilder
             storeHistory: header.StoreHistory,
             foreignKeys: foreignKeys);
 
-        // wire additional metadata after construction (does not affect validation semantics today)
         doc.FieldTypes = fieldTypes;
         doc.NullableColumns = new HashSet<string>(nullablePhysical, StringComparer.OrdinalIgnoreCase);
 
@@ -80,6 +77,7 @@ internal static class DocumentBuilder
     {
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
+            // Skip prefab handle properties (not persisted)
             if (prop.GetCustomAttribute<PrefabComponentAttribute>(inherit: true) is not null)
                 continue;
 
@@ -102,7 +100,6 @@ internal static class DocumentBuilder
             if (colAttr.Nullable)
                 nullablePhysical.Add(physical);
 
-            // FK metadata (schema/migrations)
             var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>(inherit: true);
             if (fkAttr is not null)
             {
@@ -114,9 +111,92 @@ internal static class DocumentBuilder
                     onDelete: fkAttr.OnDelete));
             }
 
-            // Index metadata
             if (prop.GetCustomAttribute<VaultColumnIndexAttribute>(inherit: true) is not null)
                 indexes.Add(physical);
+        }
+    }
+
+    private static void AddPrefabComponentRefColumns(
+        Type prefabType,
+        List<string> fields,
+        Dictionary<string, string> columns,
+        List<string> indexes,
+        List<Document.VaultForeignKeyDefinition> foreignKeys,
+        Dictionary<string, Func<object, object?>> accessors,
+        Dictionary<string, Type> fieldTypes,
+        List<string> nullablePhysical)
+    {
+        PrefabMetadataRegistry.RegisterPrefab(prefabType);
+        var metas = PrefabMetadataRegistry.GetComponents(prefabType);
+        if (metas.Count == 0)
+            return;
+
+        // Map existing FK definitions by dependent physical column to avoid duplicates
+        var fkByDependentCol = new HashSet<string>(
+            foreignKeys.Select(fk => fk.ColumnName),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var meta in metas)
+        {
+            // If the ref is an explicit persisted CLR property, ScanColumns already added it.
+            // We still want to ensure it has FK + index (if not already).
+            if (meta.HasExplicitRefProperty)
+            {
+                if (!columns.TryGetValue(meta.RefLogicalFieldName, out var physical))
+                    continue; // should not happen if property has [VaultColumn]
+
+                // Index FK cols by default (Postgres does NOT auto-index FK columns)
+                if (!indexes.Contains(physical, StringComparer.OrdinalIgnoreCase))
+                    indexes.Add(physical);
+
+                // Ensure FK exists (some explicit properties might only have [VaultColumn])
+                if (!fkByDependentCol.Contains(physical))
+                {
+                    foreignKeys.Add(new Document.VaultForeignKeyDefinition(
+                        propertyName: meta.RefLogicalFieldName,
+                        columnName: physical,
+                        principalType: meta.ComponentType,
+                        principalPropertyName: meta.PrincipalKeyPropertyName,
+                        onDelete: "CASCADE"));
+
+                    fkByDependentCol.Add(physical);
+                }
+
+                continue;
+            }
+
+            // Shadow field: add it to Document as persisted column
+            var logical = meta.RefLogicalFieldName; // "__CharacterRef"
+            var physicalCol = meta.RefColumnName;   // "prefab_character_ref"
+
+            if (columns.Values.Any(v => string.Equals(v, physicalCol, StringComparison.OrdinalIgnoreCase)))
+                continue; // avoid collisions
+
+            fields.Add(logical);
+            columns[logical] = physicalCol;
+
+            fieldTypes[logical] = typeof(string);
+            accessors[logical] = obj =>
+            {
+                if (obj is not PrefabModel pm)
+                    return null;
+
+                return pm.ComponentRefs.TryGetValue(meta.Name, out var id) ? id : null;
+            };
+
+            // nullable (prefab might not have that component set)
+            nullablePhysical.Add(physicalCol);
+
+            // index by default (important for joins + deletes)
+            indexes.Add(physicalCol);
+
+            // FK => principal StorageId (or overridden principal key)
+            foreignKeys.Add(new Document.VaultForeignKeyDefinition(
+                propertyName: logical,
+                columnName: physicalCol,
+                principalType: meta.ComponentType,
+                principalPropertyName: meta.PrincipalKeyPropertyName,
+                onDelete: "CASCADE"));
         }
     }
 
@@ -142,7 +222,6 @@ internal static class DocumentBuilder
                 if (string.IsNullOrWhiteSpace(key))
                     continue;
 
-                // key can be logical property name OR physical column name
                 if (columns.TryGetValue(key, out var physicalFromLogical))
                 {
                     physicalCols.Add(physicalFromLogical);

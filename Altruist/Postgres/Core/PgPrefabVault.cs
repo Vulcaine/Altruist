@@ -1,5 +1,3 @@
-// PgPrefabVault.cs
-
 using System.Linq.Expressions;
 using System.Text.Json;
 
@@ -96,7 +94,9 @@ public sealed class PgPrefabVault<TPrefab>
                 throw new InvalidOperationException(
                     $"Tracked component '{meta.Name}' ({component.GetType().Name}) has empty StorageId.");
 
+            // keep both JSONB and (if applicable) explicit ref property in sync
             pm.ComponentRefs[meta.Name] = component.StorageId;
+            meta.SetRefId(pm, component.StorageId);
 
             var sqlModel = _sqlMeta.Get(component.GetType());
             batch.Add(sqlModel.UpsertSql, sqlModel.GetUpsertParameters(component));
@@ -141,6 +141,7 @@ public sealed class PgPrefabVault<TPrefab>
                         $"Tracked component '{meta.Name}' ({component.GetType().Name}) has empty StorageId.");
 
                 pm.ComponentRefs[meta.Name] = component.StorageId;
+                meta.SetRefId(pm, component.StorageId);
 
                 var sqlModel = _sqlMeta.Get(component.GetType());
                 batch.Add(sqlModel.UpsertSql, sqlModel.GetUpsertParameters(component));
@@ -180,6 +181,7 @@ public sealed class PgPrefabVault<TPrefab>
 
         foreach (var meta in metas)
         {
+            // Still use jsonb as "load plan"
             if (!pm.ComponentRefs.TryGetValue(meta.Name, out var id) || string.IsNullOrWhiteSpace(id))
                 continue;
 
@@ -242,7 +244,7 @@ public sealed class PgPrefabVault<TPrefab>
 
     public override string ConvertWherePredicateToString(Expression<Func<TPrefab, bool>> predicate)
     {
-        var visitor = new PrefabExpressionVisitor(typeof(TPrefab));
+        var visitor = new PrefabExpressionVisitor(typeof(TPrefab), _sqlMeta);
         return visitor.Translate(predicate);
     }
 
@@ -302,14 +304,15 @@ public sealed class PgPrefabVault<TPrefab>
     }
 }
 
-
 internal sealed class PrefabExpressionVisitor
 {
     private readonly Type _prefabType;
+    private readonly IPgModelSqlMetadataProvider _sqlMeta;
 
-    public PrefabExpressionVisitor(Type prefabType)
+    public PrefabExpressionVisitor(Type prefabType, IPgModelSqlMetadataProvider sqlMeta)
     {
-        _prefabType = prefabType;
+        _prefabType = prefabType ?? throw new ArgumentNullException(nameof(prefabType));
+        _sqlMeta = sqlMeta ?? throw new ArgumentNullException(nameof(sqlMeta));
     }
 
     public string Translate(LambdaExpression lambda)
@@ -337,44 +340,92 @@ internal sealed class PrefabExpressionVisitor
 
     private string VisitComparison(BinaryExpression b)
     {
-        if (TryResolveComponentAccess(b.Left, out var comp))
+        if (TryResolveComponentMember(b.Left, out var meta, out var member))
         {
             var val = ExpressionUtils.Evaluate(b.Right);
-            return $"(component_refs->>'{comp}') {Op(b.NodeType)} {ToSqlLiteral(val)}";
+            return BuildComponentPredicate(meta, member, b.NodeType, val);
         }
 
-        if (TryResolveComponentAccess(b.Right, out var comp2))
+        if (TryResolveComponentMember(b.Right, out var meta2, out var member2))
         {
             var val = ExpressionUtils.Evaluate(b.Left);
-            return $"(component_refs->>'{comp2}') {Op(b.NodeType)} {ToSqlLiteral(val)}";
+            // reverse operator for symmetry? For == and != it's same.
+            return BuildComponentPredicate(meta2, member2, b.NodeType, val);
         }
 
         throw new NotSupportedException("Prefab WHERE must compare against component access.");
     }
 
-    private bool TryResolveComponentAccess(Expression expr, out string compName)
+    private string BuildComponentPredicate(
+        PrefabComponentMetadata meta,
+        string member,
+        ExpressionType op,
+        object? value)
     {
-        compName = "";
+        // 1) Handle Id => compare against prefab ref column
+        if (string.Equals(member, nameof(IPrefabHandle<IVaultModel>.Id), StringComparison.Ordinal))
+        {
+            var col = Quote(meta.RefColumnName);
+
+            if (value is null)
+                return op == ExpressionType.Equal ? $"{col} IS NULL" : $"{col} IS NOT NULL";
+
+            return $"{col} {Op(op)} {ToSqlLiteral(value)}";
+        }
+
+        // 2) Any other member => EXISTS join semantics:
+        // EXISTS (SELECT 1 FROM principal WHERE principal.<pk> = prefab.<refcol> AND principal.<membercol> op value)
+        var principalSql = _sqlMeta.Get(meta.ComponentType);
+        var principalDoc = principalSql.Document;
+
+        var principalSchema = principalSql.QualifiedTable; // already schema-qualified + quoted by provider usually
+        // But QualifiedTable includes full "schema"."table". We'll use it directly as FROM target.
+
+        // Resolve principal PK column (StorageId by default)
+        var pkCol = principalDoc.Columns.TryGetValue(meta.PrincipalKeyPropertyName, out var pkPhysical)
+            ? pkPhysical
+            : Document.ToCamelCase(meta.PrincipalKeyPropertyName);
+
+        // Resolve principal member column
+        var memberCol = principalDoc.Columns.TryGetValue(member, out var memberPhysical)
+            ? memberPhysical
+            : Document.ToCamelCase(member);
+
+        var refColExpr = Quote(meta.RefColumnName);
+        var where = $"c.{Quote(pkCol)} = {refColExpr} AND c.{Quote(memberCol)} {Op(op)} {ToSqlLiteral(value)}";
+
+        return op == ExpressionType.Equal
+            ? $"EXISTS (SELECT 1 FROM {principalSchema} c WHERE {where})"
+            : $"NOT EXISTS (SELECT 1 FROM {principalSchema} c WHERE {where})";
+    }
+
+    private bool TryResolveComponentMember(Expression expr, out PrefabComponentMetadata meta, out string memberName)
+    {
+        meta = default!;
+        memberName = "";
 
         while (expr is UnaryExpression u &&
                (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
             expr = u.Operand;
 
-        if (expr is MemberExpression me &&
-            me.Expression is MemberExpression owner)
-        {
-            var candidate = owner.Member.Name;
+        // expecting: p.Character.<Something>
+        if (expr is not MemberExpression leaf)
+            return false;
 
-            if (PrefabMetadataRegistry
-                .GetComponents(_prefabType)
-                .Any(c => c.Name == candidate))
-            {
-                compName = candidate;
-                return true;
-            }
-        }
+        if (leaf.Expression is not MemberExpression owner)
+            return false;
 
-        return false;
+        var componentName = owner.Member.Name;
+
+        var found = PrefabMetadataRegistry.GetComponents(_prefabType)
+            .FirstOrDefault(c => string.Equals(c.Name, componentName, StringComparison.Ordinal));
+
+        if (found is null)
+            return false;
+
+        meta = found;
+        memberName = leaf.Member.Name;
+        return true;
     }
 
     private static bool IsComparison(ExpressionType t) =>
@@ -396,4 +447,6 @@ internal sealed class PrefabExpressionVisitor
         Enum e => $"'{e.ToString().Replace("'", "''")}'",
         _ => $"'{value!.ToString()!.Replace("'", "''")}'"
     };
+
+    private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 }
