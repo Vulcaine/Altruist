@@ -27,13 +27,15 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
         RegisterSchemasOnce(services, cfg, schemaTypes);
         RegisterNpgsqlDataSource(services, cfg);
 
-
+        // Vaults are persisted + migrated
         var vaultModelTypes = PostgresVaultSetup.Configure(services, assemblies);
-        var prefabModelTypes = PostgresPrefabSetup.Configure(services, assemblies);
+
+        // Prefabs are NOT persisted (no prefab tables) -> do not participate in migrations/bootstrap.
+        // Prefab services are registered via PostgresPrefabsConfiguration (separate [ServiceConfiguration]).
+
         RegisterTransactionalServices(services, assemblies);
 
         var allModelTypes = vaultModelTypes
-            .Concat(prefabModelTypes)
             .Distinct()
             .ToArray();
 
@@ -102,7 +104,7 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
         // Connect once
         await provider.ConnectAsync().ConfigureAwait(false);
 
-        // Create schemas used by both vaults + prefabs
+        // Create schemas used by persisted models (vaults).
         var schemaNames = modelTypes
             .Select(GetSchemaName)
             .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -113,7 +115,7 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
         foreach (var schemaName in schemaNames)
             await provider.CreateSchemaAsync(schemaName, null).ConfigureAwait(false);
 
-        // Migrate once for all models
+        // Migrate once for persisted models
         if (modelTypes.Length > 0)
             await migrator.Migrate(modelTypes).ConfigureAwait(false);
         else

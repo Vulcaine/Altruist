@@ -4,11 +4,14 @@ namespace Altruist.Persistence.Postgres;
 
 internal static class ExpressionUtils
 {
-    public static object? Evaluate(Expression e)
+    public static object? Evaluate(Expression expr)
     {
-        if (e is ConstantExpression ce)
-            return ce.Value;
+        if (expr is ConstantExpression c)
+            return c.Value;
 
-        return Expression.Lambda(e).Compile().DynamicInvoke();
+        var lambda = Expression.Lambda<Func<object?>>(
+            Expression.Convert(expr, typeof(object)));
+
+        return lambda.Compile().Invoke();
     }
 }

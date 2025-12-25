@@ -1,71 +1,49 @@
-/*
-Copyright 2025 Aron Gere
-Licensed under the Apache License, Version 2.0
-*/
-
 namespace Altruist.Persistence;
 
-using System;
-
-using Altruist.UORM;
+[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+public sealed class PrefabAttribute : Attribute
+{
+    public string Id { get; }
+    public PrefabAttribute(string id) => Id = id ?? throw new ArgumentNullException(nameof(id));
+}
 
 /// <summary>
-/// Alias for <see cref="VaultAttribute"/> tailored for prefabs.
-/// Registers prefabs in the same pipeline as vault models: same keyspace, same table bootstrap.
+/// Marks the root component (the FROM anchor).
+/// Property type must be an IVaultModel (single).
 /// </summary>
-[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-public class PrefabAttribute : VaultAttribute
+[AttributeUsage(AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
+public sealed class PrefabComponentRootAttribute : Attribute
 {
-    /// <summary>
-    /// Logical prefab id (kept for ergonomics). Mirrors <see cref="VaultAttribute.Name"/>.
-    /// </summary>
-    public string Id => base.Name;
-
-    /// <summary>
-    /// Prefab alias. Works identically to <see cref="VaultAttribute"/> but reads nicer on prefab classes.
-    /// </summary>
-    /// <param name="id">Prefab id (stored as <see cref="VaultAttribute.Name"/>).</param>
-    /// <param name="StoreHistory">If true, enable historical storage.</param>
-    /// <param name="Keyspace">DB keyspace; defaults to "altruist".</param>
-    /// <param name="DbToken">DB token/provider; defaults to "ScyllaDB".</param>
-    public PrefabAttribute(
-        string id,
-        bool StoreHistory = false,
-        string Keyspace = "altruist",
-        string DbToken = "Postgres")
-        : base(Name: id, StoreHistory: StoreHistory, Keyspace: Keyspace, DbToken: DbToken)
-    {
-    }
 }
 
-[AttributeUsage(AttributeTargets.Property)]
-public sealed class PrefabComponentAttribute : Attribute
+/// <summary>
+/// Marks a component reference that can be queried and included.
+/// No nesting: Principal must be the root property name.
+/// </summary>
+[AttributeUsage(AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
+public sealed class PrefabComponentRefAttribute : Attribute
 {
     /// <summary>
-    /// Name of the prefab component this component should auto-load after.
-    /// For example: AutoLoadOn = nameof(Character).
+    /// Name of the principal prefab component property (must be root due to "no nesting").
+    /// Example: nameof(Character)
     /// </summary>
-    public string? AutoLoadOn { get; set; }
+    public string Principal { get; }
 
     /// <summary>
-    /// Name of the relation key used to tie this component to the AutoLoadOn component.
-    /// Required when AutoLoadOn is specified (enforced at metadata registration time).
-    /// For now this is validated but not deeply used; it’s reserved for richer relations.
+    /// For COLLECTION refs: FK property name on dependent model, e.g. nameof(EquipmentItemVault.CharacterId).
+    ///
+    /// For SINGLE refs: FK property name on the principal model pointing to dependent PK, e.g. nameof(CharacterVault.GuildId).
     /// </summary>
-    public string? RelationKey { get; set; }
-}
+    public string ForeignKey { get; }
 
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
-public sealed class OnPrefabComponentLoadAttribute : Attribute
-{
     /// <summary>
-    /// Name of the prefab component property this method reacts to.
-    /// For example: [OnPrefabComponentLoad(nameof(Character))]
+    /// For SINGLE refs: principal key property name on the dependent model (defaults to StorageId).
     /// </summary>
-    public string ComponentName { get; }
+    public string PrincipalKey { get; set; } = nameof(IVaultModel.StorageId);
 
-    public OnPrefabComponentLoadAttribute(string componentName)
+    public PrefabComponentRefAttribute(string principal, string foreignKey)
     {
-        ComponentName = componentName ?? throw new ArgumentNullException(nameof(componentName));
+        Principal = principal ?? throw new ArgumentNullException(nameof(principal));
+        ForeignKey = foreignKey ?? throw new ArgumentNullException(nameof(foreignKey));
     }
 }

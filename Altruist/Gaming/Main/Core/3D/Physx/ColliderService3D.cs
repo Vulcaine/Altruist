@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 using System.Numerics;
 
-using Altruist.Persistence;
+// using Altruist.Persistence;
 
 namespace Altruist.Gaming.ThreeD
 {
@@ -25,7 +25,7 @@ namespace Altruist.Gaming.ThreeD
         Bounds3D Compute(SphereCollider3DModel c);
         Bounds3D Compute(BoxCollider3DModel c);
         Bounds3D Compute(CapsuleCollider3DModel c);
-        Task<Bounds3D> ComputeBoundsAsync(IPrefabHandle<IPrefabModel> prefab);
+        // Task<Bounds3D> ComputeBoundsAsync(IPrefabHandle<IPrefabModel> prefab);
     }
 
     // [Service(typeof(IColliderService3D))]

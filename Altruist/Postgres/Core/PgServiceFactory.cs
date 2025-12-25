@@ -1,7 +1,8 @@
+// PostgresServiceFactory.cs
+
 using System.Reflection;
 
 using Altruist.Contracts;
-using Altruist.Gaming.Prefabs;
 using Altruist.UORM;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -19,19 +20,17 @@ public sealed class PostgresServiceFactory : IServiceFactory
 
         var genDef = serviceType.GetGenericTypeDefinition();
 
-        if (genDef != typeof(IVault<>) && genDef != typeof(IPrefabVault<>))
+        // Prefabs are NOT vault-backed anymore.
+        if (genDef != typeof(IVault<>))
             return false;
 
         var modelType = serviceType.GetGenericArguments()[0];
 
-        if (!typeof(IVaultModel).IsAssignableFrom(modelType) && !typeof(IPrefabModel).IsAssignableFrom(modelType))
+        if (!typeof(IVaultModel).IsAssignableFrom(modelType))
             return false;
 
-        // Only models with [Vault] or [Prefab] are supported
-        var hasVaultAttr = modelType.GetCustomAttribute<VaultAttribute>() != null;
-        var hasPrefabAttr = modelType.GetCustomAttribute<PrefabAttribute>() != null;
-
-        return hasVaultAttr || hasPrefabAttr;
+        // Only models with [Vault] (or derived) are supported by PgVault<T>.
+        return modelType.GetCustomAttribute<VaultAttribute>() != null;
     }
 
     public object Create(IServiceProvider sp, Type serviceType)
@@ -45,25 +44,15 @@ public sealed class PostgresServiceFactory : IServiceFactory
         var loggerFactory = sp.GetService<ILoggerFactory>();
 
         var schemaName = GetSchemaName(modelType);
+
         var keyspace = sp.GetServices<IKeyspace>()
                          .FirstOrDefault(k => k.Name == schemaName)
                   ?? new DefaultSchema(schemaName);
 
         var doc = Document.From(modelType);
 
-        var isPrefab = typeof(IPrefabModel).IsAssignableFrom(modelType);
-
-        if (isPrefab)
-        {
-            var prefabVaultType = typeof(PgPrefabVault<>).MakeGenericType(modelType);
-            var sqlMetaProvider = sp.GetService<IPgModelSqlMetadataProvider>();
-            return Activator.CreateInstance(prefabVaultType, sqlProvider, keyspace, doc, sqlMetaProvider)!;
-        }
-        else
-        {
-            var vaultType = typeof(PgVault<>).MakeGenericType(modelType);
-            return Activator.CreateInstance(vaultType, sqlProvider, keyspace, doc)!;
-        }
+        var vaultType = typeof(PgVault<>).MakeGenericType(modelType);
+        return Activator.CreateInstance(vaultType, sqlProvider, keyspace, doc)!;
     }
 
     private static string GetSchemaName(Type modelType)
