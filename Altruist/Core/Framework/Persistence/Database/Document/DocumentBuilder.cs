@@ -22,8 +22,7 @@ internal static class DocumentBuilder
         if (!typeof(IStoredModel).IsAssignableFrom(type))
             throw new InvalidOperationException($"The type {type.FullName} must implement IModel.");
 
-        // Single attribute lookup for EVERYTHING (Vault/Prefab/Derived).
-        var header = type.GetCustomAttribute<VaultAttribute>(inherit: false);
+        var header = type.GetCustomAttribute<VaultAttribute>(inherit: true);
         if (header is null)
             throw new InvalidOperationException(
                 $"The type {type.FullName} must have a [Vault] (or derived) attribute.");
@@ -32,8 +31,8 @@ internal static class DocumentBuilder
             ? ToSnakeCase(type.Name)
             : header.Name;
 
-        var primaryKey = type.GetCustomAttribute<VaultPrimaryKeyAttribute>(inherit: false);
-        var sortingBy = type.GetCustomAttribute<VaultSortingByAttribute>(inherit: false);
+        var primaryKey = type.GetCustomAttribute<VaultPrimaryKeyAttribute>(inherit: true);
+        var sortingBy = type.GetCustomAttribute<VaultSortingByAttribute>(inherit: true);
 
         var fields = new List<string>();
         var columns = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -81,13 +80,13 @@ internal static class DocumentBuilder
     {
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            if (prop.GetCustomAttribute<PrefabComponentAttribute>(inherit: false) is not null)
+            if (prop.GetCustomAttribute<PrefabComponentAttribute>(inherit: true) is not null)
                 continue;
 
-            if (prop.GetCustomAttribute<VaultIgnoreAttribute>(inherit: false) is not null)
+            if (prop.GetCustomAttribute<VaultIgnoreAttribute>(inherit: true) is not null)
                 continue;
 
-            var colAttr = prop.GetCustomAttribute<VaultColumnAttribute>(inherit: false);
+            var colAttr = prop.GetCustomAttribute<VaultColumnAttribute>(inherit: true);
             if (colAttr is null)
                 continue;
 
@@ -104,7 +103,7 @@ internal static class DocumentBuilder
                 nullablePhysical.Add(physical);
 
             // FK metadata (schema/migrations)
-            var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>(inherit: false);
+            var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>(inherit: true);
             if (fkAttr is not null)
             {
                 foreignKeys.Add(new Document.VaultForeignKeyDefinition(
@@ -116,7 +115,7 @@ internal static class DocumentBuilder
             }
 
             // Index metadata
-            if (prop.GetCustomAttribute<VaultColumnIndexAttribute>(inherit: false) is not null)
+            if (prop.GetCustomAttribute<VaultColumnIndexAttribute>(inherit: true) is not null)
                 indexes.Add(physical);
         }
     }
@@ -126,7 +125,7 @@ internal static class DocumentBuilder
         Dictionary<string, string> columns,
         List<Document.UniqueKeyDefinition> uniqueKeys)
     {
-        var uniqueKeyAttrs = type.GetCustomAttributes<VaultUniqueKeyAttribute>(inherit: false).ToArray();
+        var uniqueKeyAttrs = type.GetCustomAttributes<VaultUniqueKeyAttribute>(inherit: true).ToArray();
         if (uniqueKeyAttrs.Length == 0)
             return;
 
