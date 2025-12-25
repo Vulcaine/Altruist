@@ -1,8 +1,10 @@
 using System.Reflection;
 
 using Altruist.Contracts;
+using Altruist.UORM;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Altruist.Persistence.Postgres;
 
@@ -20,12 +22,23 @@ public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDa
 
     public async Task Configure(IServiceCollection services)
     {
+        var cfg = AppConfigLoader.Load();
         var assemblies = DiscoverAssemblies();
+
         var schemaTypes = FindSchemaTypes(assemblies).ToArray();
         var prefabTypes = FindPrefabModelTypes(assemblies).ToArray();
+        var initializerTypes = FindInitializers(assemblies).ToArray();
 
         if (prefabTypes.Length == 0)
             return;
+
+        // Register schemas (same as vault config; required if you rely on IKeyspace resolution via DI)
+        using (var tmp = services.BuildServiceProvider())
+        {
+            var logger = tmp.GetRequiredService<ILoggerFactory>()
+                            .CreateLogger<PostgresPrefabConfiguration>();
+            RegisterSchemas(services, cfg, schemaTypes, logger);
+        }
 
         // 1) Register prefab metadata so expression translator knows components.
         foreach (var prefabType in prefabTypes)
@@ -37,8 +50,12 @@ public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDa
         // 3) Register IPrefabVault<TPrefab> aliases
         RegisterPrefabVaultAliases(services, prefabTypes);
 
-        // 4) Bootstrap prefab tables (separate log prefix)
-        await BootstrapModelsAsync(services, schemaTypes, prefabTypes, "Prefabs");
+        // 4) Bootstrap *prefab models* (FIX: correct arrays, correct initializer list)
+        await BootstrapModelsAsync(
+            services,
+            prefabTypes,
+            initializerTypes,
+            "Prefabs");
 
         IsConfigured = true;
     }
@@ -46,12 +63,14 @@ public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDa
     // ----------------- prefab discovery -----------------
 
     private static IEnumerable<Type> FindPrefabModelTypes(Assembly[] assemblies) =>
-        TypeDiscovery.FindTypesWithAttribute<PrefabAttribute>(assemblies)
-            .Where(t =>
-                t is not null &&
-                t.IsClass &&
-                !t.IsAbstract &&
-                typeof(IPrefabModel).IsAssignableFrom(t))!;
+    assemblies
+        .SelectMany(a => a.GetTypes())
+        .Where(t =>
+            t is not null &&
+            t.IsClass &&
+            !t.IsAbstract &&
+            typeof(IPrefabModel).IsAssignableFrom(t) &&
+            t.GetCustomAttribute<VaultAttribute>(inherit: false) is not null);
 
     // ----------------- registration -----------------
 

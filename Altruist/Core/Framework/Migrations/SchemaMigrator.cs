@@ -54,9 +54,12 @@ namespace Altruist.Migrations
                 return;
 
             // 1) desired model from vault models
-            var allDocs = modelTypes
+            var initialDocs = modelTypes
                 .Select(Document.From)
                 .ToArray();
+
+            // FIX: expand docs with FK principal docs so planner can resolve principal schema/table/column
+            var allDocs = ExpandWithForeignKeyPrincipals(initialDocs);
 
             // 2) global dependency-aware ordering across ALL keyspaces
             var orderedDocs = OrderDocumentsByDependencies(allDocs);
@@ -81,8 +84,7 @@ namespace Altruist.Migrations
                 currentBySchema[schemaName] = current;
             }
 
-            // 5) diff -> operations (planner walks ALL docs in dependency order; each doc
-            //    knows its own schema, so we don't batch by schema here)
+            // 5) diff -> operations
             var operations = _planner.Plan(currentBySchema, orderedDocs);
 
             if (operations.Count == 0)
@@ -91,9 +93,7 @@ namespace Altruist.Migrations
                 return;
             }
 
-            // 6) execute all operations in one go.
-            //    Default schema is only used if an operation doesn't specify Schema,
-            //    but our planner always sets Schema explicitly. Still, pass a sane value.
+            // 6) execute all operations
             var defaultSchema = schemaNames.FirstOrDefault() ?? NormalizeSchemaName(null);
 
             await _executor.ApplyAsync(defaultSchema, operations).ConfigureAwait(false);
@@ -101,6 +101,41 @@ namespace Altruist.Migrations
             _logger.LogInformation(
                 "✅ Vault schema migration complete. {Count} operation(s) applied.",
                 operations.Count);
+        }
+
+        private static Document[] ExpandWithForeignKeyPrincipals(IReadOnlyList<Document> docs)
+        {
+            var byType = new Dictionary<Type, Document>();
+            var queue = new Queue<Document>();
+
+            foreach (var d in docs)
+            {
+                if (!byType.ContainsKey(d.Type))
+                    byType[d.Type] = d;
+                queue.Enqueue(d);
+            }
+
+            while (queue.Count > 0)
+            {
+                var doc = queue.Dequeue();
+
+                if (doc.ForeignKeys is null || doc.ForeignKeys.Count == 0)
+                    continue;
+
+                foreach (var fk in doc.ForeignKeys)
+                {
+                    var principalType = fk.PrincipalType;
+                    if (byType.ContainsKey(principalType))
+                        continue;
+
+                    // Will throw if principal type lacks [Vault]/[Prefab] – that’s good feedback.
+                    var principalDoc = Document.From(principalType);
+                    byType[principalType] = principalDoc;
+                    queue.Enqueue(principalDoc);
+                }
+            }
+
+            return byType.Values.ToArray();
         }
 
         // ----------------- helpers -----------------

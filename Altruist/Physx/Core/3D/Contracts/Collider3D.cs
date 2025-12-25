@@ -44,7 +44,7 @@ namespace Altruist.Physx.ThreeD
         Transform3D Transform { get; set; }
         PhysxColliderShape3D Shape { get; }
 
-        HeightfieldData Heightfield { get; set; }
+        HeightfieldData? Heightfield { get; set; }
 
         event Action<PhysxCollisionInfo3D>? OnCollisionEnter;
         event Action<PhysxCollisionInfo3D>? OnCollisionStay;

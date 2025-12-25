@@ -1,5 +1,6 @@
-namespace Altruist.Persistence;
+// PrefabHandle.cs
 
+namespace Altruist.Persistence;
 
 public interface IPrefabHandle<T>
     where T : class, IVaultModel
@@ -57,6 +58,22 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
         PrefabComponentLifecycle.OnComponentLoadedSync(_owner, _meta, entity);
     }
 
+    internal void ApplyBulk(T? entity)
+    {
+        _cached = entity;
+        _loaded = true;
+
+        if (entity is null)
+            return;
+
+        if (string.IsNullOrEmpty(entity.StorageId))
+            throw new InvalidOperationException(
+                $"Cannot ApplyBulk component of type {typeof(T).Name} with empty StorageId.");
+
+        _id = entity.StorageId;
+        _owner.ComponentRefs[_meta.Name] = _id;
+    }
+
     public async ValueTask<T?> LoadAsync(CancellationToken ct = default)
     {
         if (_loaded)
@@ -82,7 +99,7 @@ internal sealed class PrefabHandle<T> : IPrefabHandle<T>
         {
             PrefabComponentTracker.Track(_owner, _meta, entity);
             await PrefabComponentLifecycle
-                .OnComponentLoadedAsync(_owner, _meta, entity)
+                .OnComponentLoadedAsync(_owner, _meta, entity, allowAutoLoad: true)
                 .ConfigureAwait(false);
         }
 
@@ -97,7 +114,7 @@ public static class PrefabComponentLifecycle
         PrefabComponentMetadata meta,
         IVaultModel component)
     {
-        OnComponentLoadedAsync(owner, meta, component)
+        OnComponentLoadedAsync(owner, meta, component, allowAutoLoad: true)
             .GetAwaiter()
             .GetResult();
     }
@@ -105,15 +122,17 @@ public static class PrefabComponentLifecycle
     public static async Task OnComponentLoadedAsync(
         PrefabModel owner,
         PrefabComponentMetadata meta,
-        IVaultModel? component)
+        IVaultModel? component,
+        bool allowAutoLoad = true)
     {
         if (meta.OnLoadedCallbacks is { Length: > 0 })
         {
             foreach (var cb in meta.OnLoadedCallbacks)
-            {
                 await cb(owner, component).ConfigureAwait(false);
-            }
         }
+
+        if (!allowAutoLoad)
+            return;
 
         var allComponents = PrefabMetadataRegistry.GetComponents(owner.GetType());
         foreach (var dep in allComponents)
@@ -125,6 +144,10 @@ public static class PrefabComponentLifecycle
             if (handleObj is null)
                 continue;
 
+            // No reflection path would require exposing a non-generic load hook; since
+            // this is not on the hot path (bulk load disables autoload), we keep existing behavior.
+            //
+            // If you want 0 reflection here too, add a non-generic IPrefabHandleBase with LoadObjectAsync().
             var handleIface = typeof(IPrefabHandle<>).MakeGenericType(dep.ComponentType);
             var loadMethod = handleIface.GetMethod(
                 nameof(IPrefabHandle<IVaultModel>.LoadAsync),

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text.Json;
 
 namespace Altruist.Persistence;
 
@@ -18,7 +19,6 @@ public static class PrefabMetadataRegistry
 
         var list = new List<PrefabComponentMetadata>();
 
-        // ---------- scan properties for [PrefabComponent] ----------
         foreach (var prop in prefabType.GetProperties(
                      BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
@@ -38,7 +38,6 @@ public static class PrefabMetadataRegistry
                     $"must be of type IPrefabHandle<TComponent>.");
             }
 
-            // If AutoLoadOn is present, RelationKey must be provided (design requirement)
             if (!string.IsNullOrWhiteSpace(attr.AutoLoadOn) &&
                 string.IsNullOrWhiteSpace(attr.RelationKey))
             {
@@ -54,6 +53,10 @@ public static class PrefabMetadataRegistry
             var handleFactory = CompileHandleFactory(componentType);
             var saver = CompileSaveBatchDelegate(componentType);
 
+            // NEW: compile bulk-apply and typed deserializer once
+            var applyBulk = CompileApplyBulkToHandle(componentType);
+            var deserialize = CompileDeserializeJson(componentType);
+
             list.Add(new PrefabComponentMetadata
             {
                 Name = prop.Name,
@@ -63,6 +66,8 @@ public static class PrefabMetadataRegistry
                 Getter = getter,
                 HandleFactory = handleFactory,
                 SaveBatchAsync = saver,
+                ApplyBulkToHandle = applyBulk,
+                DeserializeJson = deserialize,
                 AutoLoadOn = attr.AutoLoadOn,
                 RelationKey = attr.RelationKey,
                 OnLoadedCallbacks = Array.Empty<Func<object, object?, Task>>()
@@ -71,7 +76,6 @@ public static class PrefabMetadataRegistry
 
         var metas = list.ToArray();
 
-        // ---------- scan methods for [OnPrefabComponentLoad] ----------
         var callbacksByComponent = new Dictionary<string, List<Func<object, object?, Task>>>(
             StringComparer.Ordinal);
 
@@ -101,7 +105,6 @@ public static class PrefabMetadataRegistry
             }
         }
 
-        // ---------- attach callbacks to metadata ----------
         var finalList = new List<PrefabComponentMetadata>(metas.Length);
         foreach (var meta in metas)
         {
@@ -116,6 +119,8 @@ public static class PrefabMetadataRegistry
                 Getter = meta.Getter,
                 HandleFactory = meta.HandleFactory,
                 SaveBatchAsync = meta.SaveBatchAsync,
+                ApplyBulkToHandle = meta.ApplyBulkToHandle,
+                DeserializeJson = meta.DeserializeJson,
                 AutoLoadOn = meta.AutoLoadOn,
                 RelationKey = meta.RelationKey,
                 OnLoadedCallbacks = cbList?.ToArray()
@@ -125,6 +130,55 @@ public static class PrefabMetadataRegistry
 
         _byPrefab[prefabType] = finalList.ToArray();
     }
+
+    private static Action<object, IVaultModel?> CompileApplyBulkToHandle(Type componentType)
+    {
+        // (object handle, IVaultModel? obj) => ((PrefabHandle<T>)handle).ApplyBulk((T?)obj)
+        var handleObj = Expression.Parameter(typeof(object), "handle");
+        var modelObj = Expression.Parameter(typeof(IVaultModel), "model"); // allow null at call-site
+
+        var concreteHandleType = typeof(PrefabHandle<>).MakeGenericType(componentType);
+
+        var castHandle = Expression.Convert(handleObj, concreteHandleType);
+        var castModel = Expression.Convert(modelObj, componentType); // null ok => null
+
+        var applyBulk = concreteHandleType.GetMethod("ApplyBulk", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (applyBulk is null)
+            throw new InvalidOperationException($"PrefabHandle<{componentType.Name}> must have internal ApplyBulk.");
+
+        var call = Expression.Call(castHandle, applyBulk, castModel);
+
+        var lambda = Expression.Lambda<Action<object, IVaultModel?>>(
+            call,
+            handleObj,
+            modelObj);
+
+        return lambda.Compile();
+    }
+
+    private static Func<string, JsonSerializerOptions, IVaultModel?> CompileDeserializeJson(Type componentType)
+    {
+        // (string json, JsonSerializerOptions opts) => (IVaultModel?)JsonSerializer.Deserialize<T>(json, opts)
+        var json = Expression.Parameter(typeof(string), "json");
+        var opts = Expression.Parameter(typeof(JsonSerializerOptions), "opts");
+
+        var deserialize = typeof(JsonSerializer)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .First(m =>
+                m.Name == nameof(JsonSerializer.Deserialize) &&
+                m.IsGenericMethodDefinition &&
+                m.GetParameters().Length == 2 &&
+                m.GetParameters()[0].ParameterType == typeof(string) &&
+                m.GetParameters()[1].ParameterType == typeof(JsonSerializerOptions))
+            .MakeGenericMethod(componentType);
+
+        var call = Expression.Call(deserialize, json, opts);
+        var box = Expression.Convert(call, typeof(IVaultModel));
+
+        return Expression.Lambda<Func<string, JsonSerializerOptions, IVaultModel?>>(box, json, opts).Compile();
+    }
+
+    // ... everything else unchanged from your file (CompileOnComponentLoadCallback / setters / getters / etc) ...
 
     private static Func<object, object?, Task> CompileOnComponentLoadCallback(
         Type prefabType,
@@ -156,8 +210,6 @@ public static class PrefabMetadataRegistry
                 $"must return void or Task.");
         }
 
-        // We build a delegate:
-        // (prefabObj, componentObj, services) => { resolve extra parameters from DI; invoke method; await if Task; }
         return async (prefabObj, componentObj) =>
         {
             if (componentObj is null)
@@ -168,21 +220,14 @@ public static class PrefabMetadataRegistry
             for (int i = 0; i < parameters.Length; i++)
             {
                 if (i == 0)
-                {
-                    args[0] = componentObj; // already the component instance
-                }
+                    args[0] = componentObj;
                 else
-                {
-                    var serviceType = parameters[i].ParameterType;
-                    args[i] = Dependencies.Inject(serviceType);
-                }
+                    args[i] = Dependencies.Inject(parameters[i].ParameterType);
             }
 
             var result = method.Invoke(prefabObj, args);
             if (result is Task t)
-            {
                 await t.ConfigureAwait(false);
-            }
         };
     }
 
@@ -231,7 +276,6 @@ public static class PrefabMetadataRegistry
 
         var newExpr = Expression.New(ctor, ownerParam, metaParam, idParam);
 
-        // (owner, sp, meta, id) => (object)new PrefabHandle<T>(owner, sp, meta, id)
         return Expression
             .Lambda<Func<PrefabModel, PrefabComponentMetadata, string?, object>>(
                 newExpr, ownerParam, metaParam, idParam)
@@ -241,20 +285,17 @@ public static class PrefabMetadataRegistry
     private static Func<IReadOnlyCollection<IVaultModel>, Task>
      CompileSaveBatchDelegate(Type componentType)
     {
-        // IVault<TComponent>
+        // unchanged from your version
         var vaultType = typeof(IVault<>).MakeGenericType(componentType);
 
-        // Enumerable.Cast<TComponent>(...)
         var castMethod = typeof(Enumerable)
             .GetMethod(nameof(Enumerable.Cast), BindingFlags.Public | BindingFlags.Static)!
             .MakeGenericMethod(componentType);
 
-        // Enumerable.ToList<TComponent>(...)
         var toListMethod = typeof(Enumerable)
             .GetMethod(nameof(Enumerable.ToList), BindingFlags.Public | BindingFlags.Static)!
             .MakeGenericMethod(componentType);
 
-        // Find SaveBatchAsync on IVault<TComponent>
         var enumerableOfComponent = typeof(IEnumerable<>).MakeGenericType(componentType);
 
         var saveBatch = vaultType.GetMethod(
@@ -266,21 +307,13 @@ public static class PrefabMetadataRegistry
                       ?? throw new InvalidOperationException(
                             $"IVault<{componentType.Name}> must have SaveBatchAsync.");
 
-        // Build the delegate:
-        // async items => {
-        //   var vault = (IVault<TComponent>)Dependencies.Inject(vaultType);
-        //   var typed = items.Cast<TComponent>().ToList();
-        //   await vault.SaveBatchAsync(typed, null_or_default);
-        // }
         return async items =>
         {
             if (items is null || items.Count == 0)
                 return;
 
-            // Resolve the vault via your global DI helper
             var vault = Dependencies.Inject(vaultType);
 
-            // items : IReadOnlyCollection<IVaultModel> -> IEnumerable<IVaultModel> for Cast<T>
             var casted = castMethod.Invoke(null, [items])!;
             var list = toListMethod.Invoke(null, [casted])!;
 
@@ -288,24 +321,15 @@ public static class PrefabMetadataRegistry
             var parameters = saveBatch.GetParameters();
 
             if (parameters.Length == 2)
-            {
-                // SaveBatchAsync(IEnumerable<T>, bool?)
                 result = saveBatch.Invoke(vault, [list, null]);
-            }
             else
-            {
-                // SaveBatchAsync(IEnumerable<T>)
                 result = saveBatch.Invoke(vault, [list]);
-            }
 
             if (result is Task t)
-            {
                 await t.ConfigureAwait(false);
-            }
         };
     }
 }
-
 
 public sealed class PrefabComponentInfo
 {
@@ -319,29 +343,20 @@ public sealed class PrefabComponentMetadata
 {
     public string Name { get; init; } = default!;
     public Type PrefabType { get; init; } = default!;
-    public Type ComponentType { get; init; } = default!;  // Spaceship, AnotherPrefab, etc.
+    public Type ComponentType { get; init; } = default!;
 
     public Action<object, object?> Setter { get; init; } = default!;
     public Func<object, object?> Getter { get; init; } = default!;
 
     public Func<PrefabModel, PrefabComponentMetadata, string?, object> HandleFactory { get; init; } = default!;
-
     public Func<IReadOnlyCollection<IVaultModel>, Task> SaveBatchAsync { get; init; } = default!;
 
-    /// <summary>
-    /// If set, this component will be auto-loaded when the component with this name is loaded.
-    /// </summary>
-    public string? AutoLoadOn { get; init; }
+    public Action<object /*handle*/, IVaultModel? /*component*/> ApplyBulkToHandle { get; init; } = default!;
+    public Func<string, System.Text.Json.JsonSerializerOptions, IVaultModel?> DeserializeJson { get; init; } = default!;
 
-    /// <summary>
-    /// Relation key metadata (currently validated when AutoLoadOn is present).
-    /// </summary>
+    public string? AutoLoadOn { get; init; }
     public string? RelationKey { get; init; }
 
-    /// <summary>
-    /// Compiled callbacks to invoke when this component is loaded.
-    /// Signature: (prefabInstance, componentInstance, services) => Task
-    /// </summary>
     public Func<object, object?, Task>[] OnLoadedCallbacks { get; init; }
         = Array.Empty<Func<object, object?, Task>>();
 }

@@ -47,8 +47,12 @@ public abstract class PostgresConfigurationBase
 
     protected static string GetSchemaName(Type modelType)
     {
-        var va = modelType.GetCustomAttribute<VaultAttribute>();
-        return string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!;
+        // Works for [Vault], [Prefab], and any future : VaultAttribute attribute.
+        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: false);
+        if (!string.IsNullOrWhiteSpace(va?.Keyspace))
+            return va!.Keyspace!.Trim();
+
+        return "public";
     }
 
     // ----------------- schema registration -----------------

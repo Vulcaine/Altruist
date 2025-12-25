@@ -1,3 +1,5 @@
+// Prefab.cs
+
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
@@ -15,7 +17,12 @@ public abstract class PrefabModel : VaultModel, IPrefabModel
 public interface IPrefabVault<TPrefab> : IVault<TPrefab>
     where TPrefab : PrefabModel
 {
-    public TPrefab Construct();
+    TPrefab Construct();
+
+    /// <summary>
+    /// Loads all prefab components in one roundtrip (best-effort).
+    /// </summary>
+    Task LoadAllComponentsAsync(TPrefab prefab, CancellationToken ct = default);
 }
 
 public sealed class PrefabComponentBucket
