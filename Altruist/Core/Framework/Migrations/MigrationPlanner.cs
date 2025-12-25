@@ -8,6 +8,9 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 */
 
+using System.Security.Cryptography;
+using System.Text;
+
 using Altruist.Persistence;
 
 namespace Altruist.Migrations;
@@ -146,6 +149,8 @@ public interface IMigrationPlanner
 
 public abstract class AbstractMigrationPlanner : IMigrationPlanner
 {
+    protected const int MaxConstraintNameLength = 60;
+
     public IReadOnlyList<MigrationOperation> Plan(
         IReadOnlyDictionary<string, DatabaseModel> currentBySchema,
         IReadOnlyList<Document> desiredDocuments)
@@ -264,9 +269,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
     protected static string BuildUniqueConstraintName(string tableName, IReadOnlyList<string> columns)
     {
-        // deterministic naming based on physical column names
-        var suffix = string.Join("_", columns);
-        return $"uq_{tableName}_{suffix}";
+        // Deterministic, safe-length naming.
+        // Example: uq_character_inventory_slot_kind
+        return ConstructConstraintName("uq", tableName, string.Join("_", columns));
     }
 
     // ---------- core planning logic (provider-agnostic, uses hooks above) ----------
@@ -358,18 +363,23 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     }
 
     protected void PlanForeignKeysForNewTable(
-        List<MigrationOperation> ops,
-        string schema,
-        Document doc,
-        IReadOnlyList<Document> allDocs)
+    List<MigrationOperation> ops,
+    string schema,
+    Document doc,
+    IReadOnlyList<Document> allDocs)
     {
         foreach (var fk in doc.ForeignKeys)
         {
             var (principalSchema, principalTable, principalColumn) =
                 ResolveForeignKeyTarget(doc, fk, allDocs);
 
-            var constraintName =
-                $"fk_{doc.Name}_{fk.ColumnName}_{principalTable}_{principalColumn}";
+            // Unified, <= 60 chars, deterministic + unique
+            var constraintName = ConstructConstraintName(
+                "fk",
+                doc.Name,
+                fk.ColumnName,
+                principalTable,
+                principalColumn);
 
             ops.Add(new AddForeignKeyOperation(
                 Schema: schema,               // dependent schema
@@ -385,11 +395,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     }
 
     protected void PlanForeignKeyDiff(
-        List<MigrationOperation> ops,
-        string schema,
-        Document doc,
-        TableModel existing,
-        IReadOnlyList<Document> allDocs)
+    List<MigrationOperation> ops,
+    string schema,
+    Document doc,
+    TableModel existing,
+    IReadOnlyList<Document> allDocs)
     {
         var desired = new List<(string Column,
                                 string PrincipalSchema,
@@ -403,7 +413,13 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             var (principalSchema, principalTable, principalColumn) =
                 ResolveForeignKeyTarget(doc, fk, allDocs);
 
-            var constraintName = $"fk_{doc.Name}_{fk.ColumnName}_{principalTable}_{principalColumn}";
+            // Unified, <= 60 chars, deterministic + unique
+            var constraintName = ConstructConstraintName(
+                "fk",
+                doc.Name,
+                fk.ColumnName,
+                principalTable,
+                principalColumn);
 
             desired.Add((fk.ColumnName, principalSchema, principalTable, principalColumn, constraintName, fk.OnDelete));
         }
@@ -414,15 +430,13 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         foreach (var dfk in desired)
         {
             bool already = existingFks.Any(efk =>
-                // Same constraint name (most robust: we generated it earlier)
+                // Prefer constraint-name identity (most robust)
                 string.Equals(efk.Name, dfk.ConstraintName, StringComparison.OrdinalIgnoreCase) ||
 
-                // Or same logical FK triple
+                // Or same FK triple
                 (string.Equals(efk.Column, dfk.Column, StringComparison.OrdinalIgnoreCase) &&
                  string.Equals(efk.PrincipalTable, dfk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
                  string.Equals(efk.PrincipalColumn, dfk.PrincipalColumn, StringComparison.OrdinalIgnoreCase)));
-
-            // NOTE: existing metadata doesn't track principal schema, so we ignore it for equality.
 
             if (!already)
             {
@@ -443,9 +457,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         {
             bool stillDesired = desired.Any(dfk =>
                 string.Equals(dfk.ConstraintName, efk.Name, StringComparison.OrdinalIgnoreCase) ||
-                (string.Equals(dfk.Column, efk.Column, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(dfk.PrincipalTable, efk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(dfk.PrincipalColumn, efk.PrincipalColumn, StringComparison.OrdinalIgnoreCase)));
+                string.Equals(dfk.Column, efk.Column, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(dfk.PrincipalTable, efk.PrincipalTable, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(dfk.PrincipalColumn, efk.PrincipalColumn, StringComparison.OrdinalIgnoreCase));
 
             if (!stillDesired)
             {
@@ -806,5 +820,59 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         return doc.Columns.TryGetValue(sortProp, out var col)
             ? col
             : Document.ToCamelCase(sortProp);
+    }
+
+    protected static string ConstructConstraintName(string prefix, params string[] parts)
+    {
+        if (string.IsNullOrWhiteSpace(prefix))
+            throw new ArgumentException("Constraint prefix must be provided.", nameof(prefix));
+
+        // Keep deterministic naming. We normalize casing only (don’t over-sanitize;
+        // executor quotes identifiers anyway).
+        static string NormalizePart(string s)
+            => string.IsNullOrWhiteSpace(s) ? "" : s.Trim().ToLowerInvariant();
+
+        var normalizedParts = parts
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(NormalizePart)
+            .ToArray();
+
+        var full = $"{prefix}_{string.Join("_", normalizedParts)}";
+
+        if (full.Length <= MaxConstraintNameLength)
+            return full;
+
+        // Deterministic short hash of the *full* name (so uniqueness is preserved).
+        // 12 hex chars = 48 bits; extremely low collision risk for schema objects.
+        var hash = ShortHexHash(full, hexChars: 12);
+
+        // Reserve "_{hash}" suffix
+        var reserve = 1 + hash.Length;
+        var keepLen = MaxConstraintNameLength - reserve;
+
+        // Keep a stable prefix portion, trim trailing '_' so formatting stays nice
+        var kept = full[..keepLen].TrimEnd('_');
+
+        // Ensure we don’t end up with empty prefix part after trimming
+        if (string.IsNullOrWhiteSpace(kept))
+            kept = prefix.ToLowerInvariant();
+
+        return $"{kept}_{hash}";
+    }
+
+    private static string ShortHexHash(string input, int hexChars)
+    {
+        if (hexChars <= 0)
+            throw new ArgumentOutOfRangeException(nameof(hexChars));
+
+        // SHA256 -> hex; take prefix
+        using var sha = SHA256.Create();
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var hash = sha.ComputeHash(bytes);
+
+        // Convert.ToHexString gives uppercase; normalize to lowercase
+        var hex = Convert.ToHexString(hash).ToLowerInvariant();
+
+        return hexChars >= hex.Length ? hex : hex[..hexChars];
     }
 }

@@ -94,7 +94,7 @@ namespace Altruist.Migrations
             }
 
             // 6) execute all operations
-            var defaultSchema = schemaNames.FirstOrDefault() ?? NormalizeSchemaName(null);
+            var defaultSchema = "altruist";
 
             await _executor.ApplyAsync(defaultSchema, operations).ConfigureAwait(false);
 
