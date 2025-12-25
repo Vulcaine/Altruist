@@ -29,7 +29,7 @@ public interface IServerStatus
 public interface IAltruistContext
 {
     // IServerStatus AppStatus { get; set; }
-    ITransportServiceToken TransportToken { get; set; }
+    ITransportServiceToken? TransportToken { get; set; }
     List<IDatabaseServiceToken> DatabaseTokens { get; set; }
     ICacheServiceToken? CacheToken { get; set; }
     ServerInfo ServerInfo { get; set; }

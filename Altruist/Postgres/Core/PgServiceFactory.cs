@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using Altruist.Contracts;
 using Altruist.Gaming.Prefabs;
 using Altruist.UORM;
 
@@ -70,4 +71,21 @@ public sealed class PostgresServiceFactory : IServiceFactory
         var va = modelType.GetCustomAttribute<VaultAttribute>();
         return string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!;
     }
+}
+
+public sealed class PostgresDBToken : IDatabaseServiceToken
+{
+    public static PostgresDBToken Instance { get; } = new();
+    public string Description => "💾 Database: PostgreSQL";
+}
+
+public sealed class DefaultSchema : IKeyspace
+{
+    public DefaultSchema(string? name = null)
+    {
+        Name = string.IsNullOrWhiteSpace(name) ? "public" : name!;
+    }
+
+    public string Name { get; }
+    public IDatabaseServiceToken DatabaseToken => PostgresDBToken.Instance;
 }

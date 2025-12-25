@@ -1,13 +1,12 @@
-// PostgresConfigurationBase.cs
 using System.Reflection;
 
-using Altruist.Migrations;
 using Altruist.UORM;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+
+using Npgsql;
 
 namespace Altruist.Persistence.Postgres;
 
@@ -24,47 +23,20 @@ public abstract class PostgresConfigurationBase
         TypeDiscovery.FindTypesWithAttribute<KeyspaceAttribute>(assemblies)
             .Where(t => t.IsClass && !t.IsAbstract && typeof(IKeyspace).IsAssignableFrom(t));
 
-    protected static IEnumerable<Type> FindModelTypes(Assembly[] assemblies) =>
-        TypeDiscovery.FindTypesWithAttribute<VaultAttribute>(assemblies)
-            .Where(t => t.IsClass && !t.IsAbstract && typeof(IVaultModel).IsAssignableFrom(t));
-
     protected static IEnumerable<Type> FindInitializers(Assembly[] assemblies) =>
         TypeDiscovery.FindTypesImplementing<IDatabaseInitializer>(assemblies);
 
     protected static string GetSchemaName(Type modelType)
     {
         // Works for [Vault], [Prefab], and any future : VaultAttribute attribute.
-        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: false);
+        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
         if (!string.IsNullOrWhiteSpace(va?.Keyspace))
             return va!.Keyspace!.Trim();
 
         return "public";
     }
 
-    // ----------------- schema registration (global guarded) -----------------
-
-    private static int _schemasRegistered;
-
-    protected static void EnsureSchemasRegistered(
-        IServiceCollection services,
-        IConfiguration cfg,
-        Type[] schemaTypes,
-        string loggerName)
-    {
-        if (schemaTypes.Length == 0)
-            return;
-
-        // global guard: register schemas only once even if multiple configurations run
-        if (Interlocked.CompareExchange(ref _schemasRegistered, 1, 0) != 0)
-            return;
-
-        // best-effort logger factory (avoid failing if logging not registered yet)
-        using var tmp = services.BuildServiceProvider();
-        var loggerFactory = tmp.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
-        var logger = loggerFactory.CreateLogger(loggerName);
-
-        RegisterSchemas(services, cfg, schemaTypes, logger);
-    }
+    // ----------------- schema registration -----------------
 
     protected static void RegisterSchemas(
         IServiceCollection services,
@@ -87,7 +59,7 @@ public abstract class PostgresConfigurationBase
         }
     }
 
-    // ----------------- transactional wrapping (unchanged, but moved to base so it's reusable) -----------------
+    // ----------------- transactional wrapping -----------------
 
     protected static void RegisterTransactionalServices(IServiceCollection services, Assembly[] assemblies)
     {
@@ -114,6 +86,7 @@ public abstract class PostgresConfigurationBase
     {
         var serviceType = descriptor.ServiceType;
         var lifetime = descriptor.Lifetime;
+
         var decoratorFactory = BuildDecoratorFactory(serviceType, implType);
         return new ServiceDescriptor(serviceType, decoratorFactory, lifetime);
     }
@@ -125,7 +98,6 @@ public abstract class PostgresConfigurationBase
         return sp =>
         {
             var inner = ActivatorUtilities.CreateInstance(sp, useType);
-
             var proxyServiceType = serviceType.IsAssignableFrom(useType) ? serviceType : useType;
 
             var createMethod = typeof(DispatchProxy)
@@ -137,144 +109,69 @@ public abstract class PostgresConfigurationBase
 
             var decorator = (dynamic)proxy;
             decorator.Inner = inner;
-            decorator.DataSource = sp.GetRequiredService<Npgsql.NpgsqlDataSource>();
+            decorator.DataSource = sp.GetRequiredService<NpgsqlDataSource>();
 
             return proxy;
         };
     }
 
-    // ----------------- global bootstrap coordinator -----------------
+    // ----------------- Npgsql data source -----------------
 
-    /// <summary>
-    /// Coordinates schema migration + initializer execution so it runs once
-    /// after BOTH the vault config and prefab config have had a chance to register services.
-    /// </summary>
-    protected internal static class DatabaseBootstrapCoordinator
+    protected static void RegisterNpgsqlDataSource(IServiceCollection services, IConfiguration cfg)
     {
-        private static readonly object Gate = new();
+        if (services.Any(d => d.ServiceType == typeof(NpgsqlDataSource)))
+            return;
 
-        private static readonly HashSet<Type> AllModels = new();
-        private static readonly HashSet<Type> AllInitializers = new();
+        var connString = cfg.GetConnectionString("postgres");
 
-        private static int _vaultConfigured;
-        private static int _prefabConfigured;
-        private static int _bootstrapped;
-
-        public static void AddModels(IEnumerable<Type> modelTypes)
+        if (string.IsNullOrWhiteSpace(connString))
         {
-            lock (Gate)
+            var dbSection = cfg.GetSection("altruist:persistence:database");
+
+            var provider = dbSection["provider"];
+            if (!string.Equals(provider, "postgres", StringComparison.OrdinalIgnoreCase))
             {
-                foreach (var t in modelTypes)
-                    AllModels.Add(t);
+                throw new InvalidOperationException(
+                    $"Postgres configuration used but provider is '{provider ?? "<null>"}'.");
             }
+
+            var host = dbSection["host"] ?? "localhost";
+            var portStr = dbSection["port"] ?? "5432";
+            var username = dbSection["username"];
+            var password = dbSection["password"];
+            var database = dbSection["database"];
+
+            if (string.IsNullOrWhiteSpace(username) ||
+                string.IsNullOrWhiteSpace(password) ||
+                string.IsNullOrWhiteSpace(database))
+            {
+                throw new InvalidOperationException(
+                    "PostgreSQL configuration is incomplete. " +
+                    "Expected altruist:persistence:database:username, :password, :database.");
+            }
+
+            if (!int.TryParse(portStr, out var port))
+                port = 5432;
+
+            var builder = new NpgsqlConnectionStringBuilder
+            {
+                Host = host,
+                Port = port,
+                Username = username,
+                Password = password,
+                Database = database,
+            };
+
+            connString = builder.ConnectionString;
         }
 
-        public static void AddInitializers(IEnumerable<Type> initializerTypes)
+        if (string.IsNullOrWhiteSpace(connString))
+            throw new InvalidOperationException("PostgreSQL connection string not found in configuration.");
+
+        services.AddSingleton(_ =>
         {
-            lock (Gate)
-            {
-                foreach (var t in initializerTypes)
-                    AllInitializers.Add(t);
-            }
-        }
-
-        public static void MarkVaultConfigured() => Interlocked.Exchange(ref _vaultConfigured, 1);
-        public static void MarkPrefabConfigured() => Interlocked.Exchange(ref _prefabConfigured, 1);
-
-        public static async Task TryBootstrapOnceAsync(IServiceCollection services, string logPrefix)
-        {
-            // Wait until both have run
-            if (Volatile.Read(ref _vaultConfigured) == 0 || Volatile.Read(ref _prefabConfigured) == 0)
-                return;
-
-            // Only one winner runs bootstrap
-            if (Interlocked.CompareExchange(ref _bootstrapped, 1, 0) != 0)
-                return;
-
-            Type[] modelTypes;
-            Type[] initializerTypes;
-
-            lock (Gate)
-            {
-                modelTypes = AllModels.ToArray();
-                initializerTypes = AllInitializers.ToArray();
-            }
-
-            using var sp = services.BuildServiceProvider();
-            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(logPrefix);
-
-            var provider = sp.GetService<ISqlDatabaseProvider>();
-            var migrator = sp.GetService<IVaultSchemaMigrator>();
-
-            if (provider is null)
-            {
-                logger.LogWarning("⚠️ No ISqlDatabaseProvider registered; skipping bootstrap.");
-                return;
-            }
-
-            if (migrator is null)
-            {
-                logger.LogWarning("⚠️ No IVaultSchemaMigrator registered; skipping schema migration.");
-                return;
-            }
-
-            if (modelTypes.Length == 0)
-            {
-                logger.LogInformation("ℹ️ No model types found; skipping schema migration.");
-                await RunInitializersAsync(sp, initializerTypes, logger).ConfigureAwait(false);
-                return;
-            }
-
-            // Determine schemas/keyspaces from the models
-            var schemaNames = modelTypes
-                .Select(GetSchemaName)
-                .Where(n => !string.IsNullOrWhiteSpace(n))
-                .Select(n => n.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            await provider.ConnectAsync().ConfigureAwait(false);
-
-            foreach (var schemaName in schemaNames)
-                await provider.CreateSchemaAsync(schemaName, null).ConfigureAwait(false);
-
-            await migrator.Migrate(modelTypes).ConfigureAwait(false);
-
-            await RunInitializersAsync(sp, initializerTypes, logger).ConfigureAwait(false);
-
-            logger.LogInformation(
-                "🐘 PostgreSQL bootstrap complete. {Count} model(s), {Init} initializer(s).",
-                modelTypes.Length,
-                initializerTypes.Length);
-        }
-
-        private static async Task RunInitializersAsync(
-            IServiceProvider sp,
-            Type[] initializerTypes,
-            ILogger logger)
-        {
-            if (initializerTypes.Length == 0)
-                return;
-
-            var ordered = initializerTypes
-                .Select(t => ActivatorUtilities.CreateInstance(sp, t))
-                .Cast<IDatabaseInitializer>()
-                .OrderBy(i => i.Order)
-                .ThenBy(i => i.GetType().FullName, StringComparer.Ordinal)
-                .ToList();
-
-            foreach (var init in ordered)
-            {
-                try
-                {
-                    await init.InitializeAsync(sp).ConfigureAwait(false);
-                    logger.LogInformation("✔ Initializer {Init} executed.", init.GetType().Name);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "❌ Initializer {Init} failed: {Message}", init.GetType().Name, ex.Message);
-                }
-            }
-        }
+            var builder = new NpgsqlDataSourceBuilder(connString);
+            return builder.Build();
+        });
     }
 }

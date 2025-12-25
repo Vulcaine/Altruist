@@ -1,54 +1,28 @@
-// PostgresPrefabConfiguration.cs
 using System.Reflection;
 
-using Altruist.Contracts;
 using Altruist.UORM;
 
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence.Postgres;
 
-/// <summary>
-/// PostgreSQL configuration for prefab models.
-/// Only types with IPrefabModel + a VaultAttribute-derived header ([Prefab], etc.) are handled here.
-/// </summary>
-[ServiceConfiguration]
-[ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
-public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDatabaseConfiguration
+internal static class PostgresPrefabSetup
 {
-    public bool IsConfigured { get; set; }
-    public string DatabaseName => "PostgreSQL Prefabs";
-
-    public async Task Configure(IServiceCollection services)
+    public static Type[] Configure(IServiceCollection services, Assembly[] assemblies)
     {
-        var cfg = AppConfigLoader.Load();
-        var assemblies = DiscoverAssemblies();
-
-        var schemaTypes = FindSchemaTypes(assemblies).ToArray();
         var prefabTypes = FindPrefabModelTypes(assemblies).ToArray();
-        var initializerTypes = FindInitializers(assemblies).ToArray();
 
-        EnsureSchemasRegistered(services, cfg, schemaTypes, loggerName: nameof(PostgresPrefabConfiguration));
+        if (prefabTypes.Length == 0)
+            return prefabTypes;
 
-        if (prefabTypes.Length > 0)
-        {
-            foreach (var prefabType in prefabTypes)
-                PrefabMetadataRegistry.RegisterPrefab(prefabType);
+        foreach (var prefabType in prefabTypes)
+            PrefabMetadataRegistry.RegisterPrefab(prefabType);
 
-            RegisterPrefabVaultsViaServiceFactory(services, prefabTypes);
-            RegisterPrefabVaultAliases(services, prefabTypes);
-        }
+        RegisterPrefabVaultsViaServiceFactory(services, prefabTypes);
+        RegisterPrefabVaultAliases(services, prefabTypes);
 
-        DatabaseBootstrapCoordinator.AddModels(prefabTypes);
-        DatabaseBootstrapCoordinator.AddInitializers(initializerTypes);
-        DatabaseBootstrapCoordinator.MarkPrefabConfigured();
-
-        await DatabaseBootstrapCoordinator.TryBootstrapOnceAsync(services, logPrefix: "Postgres").ConfigureAwait(false);
-
-        IsConfigured = true;
+        return prefabTypes;
     }
-
-    // ----------------- prefab discovery -----------------
 
     private static IEnumerable<Type> FindPrefabModelTypes(Assembly[] assemblies) =>
         assemblies
@@ -58,19 +32,15 @@ public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDa
                 t.IsClass &&
                 !t.IsAbstract &&
                 typeof(IPrefabModel).IsAssignableFrom(t) &&
+                // single check covers [Vault] + [Prefab] + any derived VaultAttribute
                 t.GetCustomAttribute<VaultAttribute>(inherit: false) is not null);
 
-    // ----------------- registration -----------------
-
-    private static void RegisterPrefabVaultsViaServiceFactory(
-        IServiceCollection services,
-        Type[] prefabTypes)
+    private static void RegisterPrefabVaultsViaServiceFactory(IServiceCollection services, Type[] prefabTypes)
     {
         foreach (var prefabType in prefabTypes)
         {
             var schemaName = GetSchemaName(prefabType);
 
-            // Register as a model in VaultRegistry so Document / migrations know about it
             VaultRegistry.Register(prefabType, schemaName);
 
             var vaultIface = typeof(IVault<>).MakeGenericType(prefabType);
@@ -100,5 +70,14 @@ public sealed class PostgresPrefabConfiguration : PostgresConfigurationBase, IDa
 
             services.AddSingleton(prefabVaultIface, sp => sp.GetRequiredService(vaultIface));
         }
+    }
+
+    private static string GetSchemaName(Type modelType)
+    {
+        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: false);
+        if (!string.IsNullOrWhiteSpace(va?.Keyspace))
+            return va!.Keyspace!.Trim();
+
+        return "public";
     }
 }
