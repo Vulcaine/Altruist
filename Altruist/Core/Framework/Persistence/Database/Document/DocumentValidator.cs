@@ -78,10 +78,67 @@ internal static class DocumentValidator
         foreach (var fk in doc.ForeignKeys)
         {
             ValidateOnDelete(doc, fk);
-            ValidatePrincipalType(doc, fk);
-            ValidatePrincipalPropertyExists(doc, fk);
-            ValidateReferencedColumnIsPkOrUnique(doc, fk);
+
+            // Build principal metadata via Document (canonical source of truth)
+            var principalDoc = Document.From(fk.PrincipalType);
+
+            ValidatePrincipalStoredModel(doc, fk, principalDoc);
+            ValidatePrincipalColumnExists(doc, fk, principalDoc);
+            ValidateReferencedColumnIsPkOrUnique(doc, fk, principalDoc);
         }
+    }
+
+    private static void ValidatePrincipalColumnExists(
+        Document dependentDoc,
+        Document.VaultForeignKeyDefinition fk,
+        Document principalDoc)
+    {
+        var (_, principalPhysical) = ResolvePrincipalLogicalAndPhysical(principalDoc, fk.PrincipalPropertyName);
+
+        if (principalPhysical is null)
+        {
+            Document.FailAndExit(
+                $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to '{fk.PrincipalType.FullName}.{fk.PrincipalPropertyName}', " +
+                "but that property/column does not exist on the principal document.");
+        }
+    }
+
+    private static (string? Logical, string? Physical) ResolvePrincipalLogicalAndPhysical(
+    Document principalDoc,
+    string principalPropertyOrColumn)
+    {
+        if (string.IsNullOrWhiteSpace(principalPropertyOrColumn))
+            return (null, null);
+
+        // 1) Treat it as a logical property name first
+        if (principalDoc.Columns.TryGetValue(principalPropertyOrColumn, out var physical))
+            return (principalPropertyOrColumn, physical);
+
+        // 2) Treat it as a physical column name
+        var match = principalDoc.Columns.FirstOrDefault(kvp =>
+            string.Equals(kvp.Value, principalPropertyOrColumn, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(match.Key))
+            return (match.Key, match.Value);
+
+        return (null, null);
+    }
+
+    private static void ValidatePrincipalStoredModel(
+        Document dependentDoc,
+        Document.VaultForeignKeyDefinition fk,
+        Document principalDoc)
+    {
+        if (!typeof(IStoredModel).IsAssignableFrom(fk.PrincipalType))
+        {
+            Document.FailAndExit(
+                $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to type '{fk.PrincipalType.FullName}' " +
+                "which does not implement IStoredModel.");
+        }
+
+        // If principalDoc was built, it necessarily had a VaultAttribute (or derived),
+        // because Document.From requires it. So we don't re-check attributes here.
+        _ = principalDoc;
     }
 
     private static void ValidateOnDelete(Document doc, Document.VaultForeignKeyDefinition fk)
@@ -102,63 +159,67 @@ internal static class DocumentValidator
         }
     }
 
-    private static void ValidatePrincipalType(Document doc, Document.VaultForeignKeyDefinition fk)
+    private static void ValidateReferencedColumnIsPkOrUnique(
+        Document dependentDoc,
+        Document.VaultForeignKeyDefinition fk,
+        Document principalDoc)
     {
-        var principalType = fk.PrincipalType;
+        var (_, principalPhysical) = ResolvePrincipalLogicalAndPhysical(principalDoc, fk.PrincipalPropertyName);
 
-        if (!typeof(IStoredModel).IsAssignableFrom(principalType))
+        if (principalPhysical is null)
         {
             Document.FailAndExit(
-                $"Foreign key '{doc.Type.FullName}.{fk.PropertyName}' points to type '{principalType.FullName}' " +
-                "which does not implement IStoredModel.");
+                $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to '{fk.PrincipalType.FullName}.{fk.PrincipalPropertyName}', " +
+                "but that property/column does not exist on the principal document.");
         }
 
-        // single check covers VaultAttribute + all derived (PrefabAttribute etc.)
-        if (principalType.GetCustomAttribute<VaultAttribute>(inherit: false) is null)
-        {
-            Document.FailAndExit(
-                $"Foreign key '{doc.Type.FullName}.{fk.PropertyName}' points to type '{principalType.FullName}' " +
-                "which is missing [Vault] (or a derived VaultAttribute).");
-        }
-    }
+        // ----- PK check (membership) -----
+        var pkPhysicalCols = ResolveKeyColumnsToPhysical(principalDoc, principalDoc.PrimaryKey?.Keys);
+        var isPk = principalPhysical != null && pkPhysicalCols.Contains(principalPhysical);
 
-    private static void ValidatePrincipalPropertyExists(Document doc, Document.VaultForeignKeyDefinition fk)
-    {
-        var principalProp = fk.PrincipalType.GetProperty(
-            fk.PrincipalPropertyName,
-            BindingFlags.Public | BindingFlags.Instance);
-
-        if (principalProp is null)
-        {
-            Document.FailAndExit(
-                $"Foreign key '{doc.Type.FullName}.{fk.PropertyName}' points to " +
-                $"'{fk.PrincipalType.FullName}.{fk.PrincipalPropertyName}', " +
-                "but that property does not exist.");
-        }
-    }
-
-    private static void ValidateReferencedColumnIsPkOrUnique(Document doc, Document.VaultForeignKeyDefinition fk)
-    {
-        var principalType = fk.PrincipalType;
-
-        // ---------- PK membership check ----------
-        var pkAttr = principalType.GetCustomAttribute<VaultPrimaryKeyAttribute>(inherit: false);
-        var isPk = pkAttr?.Keys is { Length: > 0 } && IsPropertyCoveredByKeys(principalType, fk.PrincipalPropertyName, pkAttr.Keys);
-
-        // ---------- UNIQUE membership check (single-column only) ----------
-        var uniqueAttrs = principalType.GetCustomAttributes<VaultUniqueKeyAttribute>(inherit: false).ToArray();
-        var isUnique = uniqueAttrs.Any(uk =>
-            uk.Keys is { Length: 1 } &&
-            IsPropertyCoveredByKeys(principalType, fk.PrincipalPropertyName, uk.Keys!));
+        // ----- Unique check (single-column UNIQUE constraints only) -----
+        var isUnique = principalPhysical != null && principalDoc.UniqueKeys.Any(uk =>
+            uk.Columns.Count == 1 &&
+            StringEquals(uk.Columns[0], principalPhysical));
 
         if (!isPk && !isUnique)
         {
             Document.FailAndExit(
-                $"Foreign key '{doc.Type.FullName}.{fk.PropertyName}' points to " +
-                $"'{principalType.FullName}.{fk.PrincipalPropertyName}', " +
-                "but that property is neither part of [VaultPrimaryKey] nor covered by a single-column [VaultUniqueKey]. " +
-                "PostgreSQL requires referenced columns to be PRIMARY KEY or UNIQUE.");
+                $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to " +
+                $"'{fk.PrincipalType.FullName}.{fk.PrincipalPropertyName}', " +
+                "but that referenced column is neither PRIMARY KEY nor covered by a single-column UNIQUE constraint. " +
+                "DB provider requires referenced columns to be PRIMARY KEY or UNIQUE.");
         }
+    }
+
+    private static HashSet<string> ResolveKeyColumnsToPhysical(Document principalDoc, string[]? keys)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (keys is null || keys.Length == 0)
+            return set;
+
+        foreach (var key in keys)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                continue;
+
+            // key is a logical property name
+            if (principalDoc.Columns.TryGetValue(key, out var physicalFromLogical))
+            {
+                set.Add(physicalFromLogical);
+                continue;
+            }
+
+            // key is a physical column name
+            var match = principalDoc.Columns.Values.FirstOrDefault(v =>
+                string.Equals(v, key, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(match))
+                set.Add(match);
+        }
+
+        return set;
     }
 
     private static bool IsPropertyCoveredByKeys(Type principalType, string principalPropertyName, string[] keys)
@@ -201,4 +262,8 @@ internal static class DocumentValidator
                 .Where(c => !string.IsNullOrWhiteSpace(c))
                 .Select(c => c.ToLowerInvariant())
                 .OrderBy(c => c, StringComparer.Ordinal));
+
+
+    private static bool StringEquals(string a, string b) =>
+    string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }
