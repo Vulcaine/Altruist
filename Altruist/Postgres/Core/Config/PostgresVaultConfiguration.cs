@@ -51,7 +51,7 @@ internal static class PostgresVaultSetup
 
     private static string GetSchemaName(Type modelType)
     {
-        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: false);
+        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
         if (!string.IsNullOrWhiteSpace(va?.Keyspace))
             return va!.Keyspace!.Trim();
 

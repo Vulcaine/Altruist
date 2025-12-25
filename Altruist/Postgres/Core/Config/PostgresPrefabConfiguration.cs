@@ -32,8 +32,7 @@ internal static class PostgresPrefabSetup
                 t.IsClass &&
                 !t.IsAbstract &&
                 typeof(IPrefabModel).IsAssignableFrom(t) &&
-                // single check covers [Vault] + [Prefab] + any derived VaultAttribute
-                t.GetCustomAttribute<VaultAttribute>(inherit: false) is not null);
+                t.GetCustomAttribute<VaultAttribute>(inherit: true) is not null);
 
     private static void RegisterPrefabVaultsViaServiceFactory(IServiceCollection services, Type[] prefabTypes)
     {
