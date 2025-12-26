@@ -1,24 +1,28 @@
 using System.Linq.Expressions;
+using System.Reflection;
 
-using Altruist.Persistence.Postgres;
+using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
 internal sealed class PgPrefabWhereTranslator
 {
-    private readonly IPgModelSqlMetadataProvider _sqlMeta;
     private readonly PrefabMeta _prefab;
 
-    public PgPrefabWhereTranslator(IPgModelSqlMetadataProvider sqlMeta, PrefabMeta prefab)
+    public PgPrefabWhereTranslator(PrefabMeta prefab)
     {
-        _sqlMeta = sqlMeta;
         _prefab = prefab;
     }
 
-    public string Translate(LambdaExpression lambda)
-        => Visit(lambda.Body);
+    public SqlFragment Translate(LambdaExpression lambda)
+    {
+        if (lambda.Parameters.Count != 1)
+            throw new NotSupportedException("Prefab Where must have exactly one parameter.");
 
-    private string Visit(Expression expr)
+        return Visit(lambda.Body);
+    }
+
+    private SqlFragment Visit(Expression expr)
     {
         return expr switch
         {
@@ -26,260 +30,298 @@ internal sealed class PgPrefabWhereTranslator
                 => Visit(u.Operand),
 
             BinaryExpression b when b.NodeType == ExpressionType.AndAlso
-                => $"({Visit(b.Left)}) AND ({Visit(b.Right)})",
+                => Combine("AND", Visit(b.Left), Visit(b.Right)),
 
             BinaryExpression b when b.NodeType == ExpressionType.OrElse
-                => $"({Visit(b.Left)}) OR ({Visit(b.Right)})",
+                => Combine("OR", Visit(b.Left), Visit(b.Right)),
 
-            BinaryExpression b when IsComparison(b.NodeType)
+            BinaryExpression b when b.NodeType is ExpressionType.Equal or ExpressionType.NotEqual
                 => VisitComparison(b),
 
-            MethodCallExpression mc
-                => VisitMethodCall(mc),
+            MethodCallExpression m
+                => VisitMethodCall(m),
 
-            _ => throw new NotSupportedException($"Unsupported prefab WHERE expression: {expr.NodeType} / {expr}")
+            _ => throw new NotSupportedException($"Unsupported expression in prefab WHERE: {expr.NodeType} ({expr})")
         };
     }
 
-    private string VisitMethodCall(MethodCallExpression mc)
+    private SqlFragment VisitMethodCall(MethodCallExpression m)
     {
-        // collection.Any(x => predicate)
-        if (mc.Method.Name == nameof(Enumerable.Any) && mc.Arguments.Count == 2)
+        // Support: p.Equipment.Any(e => e.Kind == "Sword")
+        if (IsEnumerableAny(m, out var sourceExpr, out var predicate))
         {
-            // first arg is collection property
-            var collectionExpr = mc.Arguments[0];
-            var predicate = (LambdaExpression)StripQuotes(mc.Arguments[1]);
+            var compName = GetComponentNameFromAnySource(sourceExpr);
+            if (!_prefab.ComponentsByName.TryGetValue(compName, out var comp))
+                throw new InvalidOperationException($"Unknown prefab component '{compName}'.");
 
-            var (collectionName, meta) = ResolveCollectionComponent(collectionExpr);
+            if (comp.Kind != PrefabComponentKind.Collection)
+                throw new NotSupportedException($"Any() is only supported on collection components. '{compName}' is {comp.Kind}.");
 
-            // No nesting: principal is always root
-            var rootSql = _sqlMeta.Get(_prefab.RootComponentType);
-            var depSql = _sqlMeta.Get(meta.ComponentType);
+            // EXISTS (SELECT 1 FROM dep d WHERE d.fk = r.storage_id AND <predicate>)
+            var depDoc = Document.From(comp.ComponentType);
+            var depTable = QualifiedTable(comp.ComponentType, depDoc);
 
-            var depDoc = depSql.Document;
+            var fkCol = Col(depDoc, comp.ForeignKeyPropertyName);
+            var rootPkCol = Col(Document.From(_prefab.RootComponentType), nameof(IVaultModel.StorageId));
 
-            var fkLogical = meta.ForeignKeyPropertyName;
-            var fkPhysical = depDoc.Columns.TryGetValue(fkLogical, out var fkPhys)
-                ? fkPhys
-                : Document.ToCamelCase(fkLogical);
+            var sql = $"EXISTS (SELECT 1 FROM {depTable} d WHERE d.{Q(fkCol)} = r.{Q(rootPkCol)}";
+            var args = new List<object?>();
 
-            // Translate predicate over dependent row alias "d"
-            var predSql = new DependentPredicateTranslator(_sqlMeta, depSql.ModelType).Translate(predicate, "d");
+            if (predicate != null)
+            {
+                // predicate param is the dependent row parameter
+                var predFrag = VisitDependentPredicate(depDoc, predicate);
+                sql += $" AND ({predFrag.Sql})";
+                args.AddRange(predFrag.Parameters);
+            }
 
-            // principal key is root StorageId (assumed)
-            var rootDoc = rootSql.Document;
-            var rootPkPhysical = rootDoc.Columns.TryGetValue(nameof(IVaultModel.StorageId), out var rpk)
-                ? rpk
-                : Document.ToCamelCase(nameof(IVaultModel.StorageId));
+            sql += ")";
 
-            return
-                $"EXISTS (SELECT 1 FROM {depSql.QualifiedTable} d " +
-                $"WHERE d.\"{fkPhysical}\" = r.\"{rootPkPhysical}\" AND ({predSql}))";
+            return new SqlFragment(sql, args);
         }
 
-        throw new NotSupportedException($"Unsupported method call in prefab WHERE: {mc.Method.Name}");
+        throw new NotSupportedException($"Unsupported method call in prefab WHERE: {m.Method.Name}");
     }
 
-    private string VisitComparison(BinaryExpression b)
+    private SqlFragment VisitComparison(BinaryExpression b)
     {
-        // left could be p.Character.Name or p.Character.StorageId etc.
-        if (TryResolveRootMember(b.Left, out var rootMember))
+        // Member == Constant
+        if (TryResolveComponentMember(b.Left, out var comp, out var memberLogical, rowAlias: out var alias) &&
+            TryEvaluate(b.Right, out var value))
         {
-            var val = ExpressionUtils.Evaluate(b.Right);
-            return $"r.\"{rootMember}\" {Op(b.NodeType)} {ToSqlLiteral(val)}";
+            return BuildComparison(comp, memberLogical, alias, b.NodeType, value);
         }
 
-        if (TryResolveRootMember(b.Right, out var rootMember2))
+        if (TryResolveComponentMember(b.Right, out var comp2, out var memberLogical2, rowAlias: out var alias2) &&
+            TryEvaluate(b.Left, out var value2))
         {
-            var val = ExpressionUtils.Evaluate(b.Left);
-            return $"r.\"{rootMember2}\" {Op(b.NodeType)} {ToSqlLiteral(val)}";
+            // symmetric for ==/!=
+            return BuildComparison(comp2, memberLogical2, alias2, b.NodeType, value2);
         }
 
-        throw new NotSupportedException("Prefab WHERE supports only root member comparisons and collection Any(...).");
+        throw new NotSupportedException("Prefab WHERE comparisons must be component member compared to a value.");
     }
 
-    private bool TryResolveRootMember(Expression expr, out string physicalColumn)
+    private SqlFragment BuildComparison(
+        PrefabComponentMeta comp,
+        string memberLogical,
+        string alias,
+        ExpressionType op,
+        object? value)
     {
-        physicalColumn = "";
+        var isEq = op == ExpressionType.Equal;
+        var isNe = op == ExpressionType.NotEqual;
 
-        expr = StripConvert(expr);
+        if (!isEq && !isNe)
+            throw new NotSupportedException("Only == and != are supported.");
 
-        // Expect: p.<RootProperty>.<Member>
+        // Root member: r."<col>" = ?
+        if (comp.Kind == PrefabComponentKind.Root)
+        {
+            var rootDoc = Document.From(_prefab.RootComponentType);
+            var col = Col(rootDoc, memberLogical);
+
+            if (value is null)
+                return new SqlFragment(isEq ? $"{alias}.{Q(col)} IS NULL" : $"{alias}.{Q(col)} IS NOT NULL");
+
+            return new SqlFragment($"{alias}.{Q(col)} {(isEq ? "=" : "!=")} ?", new List<object?> { value });
+        }
+
+        // Single ref member: EXISTS join
+        if (comp.Kind == PrefabComponentKind.Single)
+        {
+            // root FK (on root) -> dependent PK
+            var rootDoc = Document.From(_prefab.RootComponentType);
+            var rootFkCol = Col(rootDoc, comp.ForeignKeyPropertyName);
+
+            var depDoc = Document.From(comp.ComponentType);
+            var depTable = QualifiedTable(comp.ComponentType, depDoc);
+
+            var depPkCol = Col(depDoc, comp.PrincipalKeyPropertyName);
+            var depMemberCol = Col(depDoc, memberLogical);
+
+            var cmp = value is null
+                ? (isEq ? $"c.{Q(depMemberCol)} IS NULL" : $"c.{Q(depMemberCol)} IS NOT NULL")
+                : $"c.{Q(depMemberCol)} {(isEq ? "=" : "!=")} ?";
+
+            var sql = $"EXISTS (SELECT 1 FROM {depTable} c WHERE c.{Q(depPkCol)} = r.{Q(rootFkCol)} AND {cmp})";
+
+            var args = new List<object?>();
+            if (value is not null)
+                args.Add(value);
+
+            return new SqlFragment(sql, args);
+        }
+
+        // Collection direct member compare is not supported outside Any()
+        throw new NotSupportedException($"Direct comparison against collection component '{comp.Name}' is not supported. Use Any(...).");
+    }
+
+    private SqlFragment VisitDependentPredicate(Document depDoc, LambdaExpression predicate)
+    {
+        // Supports simple comparisons + AND/OR on dependent row parameter.
+        return VisitDependentExpr(depDoc, predicate.Body);
+    }
+
+    private SqlFragment VisitDependentExpr(Document depDoc, Expression expr)
+    {
+        return expr switch
+        {
+            UnaryExpression u when u.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked
+                => VisitDependentExpr(depDoc, u.Operand),
+
+            BinaryExpression b when b.NodeType == ExpressionType.AndAlso
+                => Combine("AND", VisitDependentExpr(depDoc, b.Left), VisitDependentExpr(depDoc, b.Right)),
+
+            BinaryExpression b when b.NodeType == ExpressionType.OrElse
+                => Combine("OR", VisitDependentExpr(depDoc, b.Left), VisitDependentExpr(depDoc, b.Right)),
+
+            BinaryExpression b when b.NodeType is ExpressionType.Equal or ExpressionType.NotEqual
+                => VisitDependentComparison(depDoc, b),
+
+            _ => throw new NotSupportedException($"Unsupported expression inside Any(): {expr.NodeType} ({expr})")
+        };
+    }
+
+    private SqlFragment VisitDependentComparison(Document depDoc, BinaryExpression b)
+    {
+        if (b.Left is MemberExpression me && TryEvaluate(b.Right, out var value))
+        {
+            var col = Col(depDoc, me.Member.Name);
+            return DepCmp(col, b.NodeType, value);
+        }
+
+        if (b.Right is MemberExpression me2 && TryEvaluate(b.Left, out var value2))
+        {
+            var col = Col(depDoc, me2.Member.Name);
+            return DepCmp(col, b.NodeType, value2);
+        }
+
+        throw new NotSupportedException("Any() predicate must compare a dependent member to a value.");
+    }
+
+    private static SqlFragment DepCmp(string physicalCol, ExpressionType op, object? value)
+    {
+        var isEq = op == ExpressionType.Equal;
+        var isNe = op == ExpressionType.NotEqual;
+
+        if (value is null)
+            return new SqlFragment(isEq ? $"d.{Q(physicalCol)} IS NULL" : $"d.{Q(physicalCol)} IS NOT NULL");
+
+        return new SqlFragment($"d.{Q(physicalCol)} {(isEq ? "=" : "!=")} ?", new List<object?> { value });
+    }
+
+    private bool TryResolveComponentMember(Expression expr, out PrefabComponentMeta comp, out string memberLogical, out string rowAlias)
+    {
+        comp = default!;
+        memberLogical = "";
+        rowAlias = "r"; // root alias default
+
+        while (expr is UnaryExpression u &&
+               (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
+            expr = u.Operand;
+
+        // expecting: p.<Component>.<Member>
         if (expr is not MemberExpression leaf)
             return false;
 
         if (leaf.Expression is not MemberExpression owner)
             return false;
 
-        if (owner.Member.Name != _prefab.RootPropertyName)
+        var componentName = owner.Member.Name;
+
+        if (!_prefab.ComponentsByName.TryGetValue(componentName, out comp!))
             return false;
 
-        var rootSql = _sqlMeta.Get(_prefab.RootComponentType);
-        var rootDoc = rootSql.Document;
-
-        var logical = leaf.Member.Name;
-        physicalColumn = rootDoc.Columns.TryGetValue(logical, out var phys)
-            ? phys
-            : Document.ToCamelCase(logical);
-
+        // Root alias is "r" in our root FROM
+        rowAlias = "r";
+        memberLogical = leaf.Member.Name;
         return true;
     }
 
-    private (string Name, PrefabComponentMeta Meta) ResolveCollectionComponent(Expression expr)
+    private static bool IsEnumerableAny(MethodCallExpression m, out Expression source, out LambdaExpression? predicate)
     {
-        expr = StripConvert(expr);
+        predicate = null;
+        source = null!;
 
-        // Expect: p.<CollectionProperty>
-        if (expr is MemberExpression me)
+        if (m.Method.Name != "Any")
+            return false;
+
+        // Enumerable.Any(source) or Enumerable.Any(source, predicate)
+        if (m.Arguments.Count == 1)
         {
-            var name = me.Member.Name;
-
-            if (!_prefab.ComponentsByName.TryGetValue(name, out var meta))
-                throw new InvalidOperationException($"Unknown prefab component '{name}'.");
-
-            if (meta.Kind != PrefabComponentKind.Collection)
-                throw new InvalidOperationException($"'{name}' is not a collection component.");
-
-            return (name, meta);
-        }
-
-        throw new NotSupportedException("Any() must be called on a prefab collection component property.");
-    }
-
-    private static Expression StripConvert(Expression e)
-    {
-        while (e is UnaryExpression u &&
-               (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
-            e = u.Operand;
-        return e;
-    }
-
-    private static Expression StripQuotes(Expression e)
-    {
-        while (e is UnaryExpression u && u.NodeType == ExpressionType.Quote)
-            e = u.Operand;
-        return e;
-    }
-
-    private static bool IsComparison(ExpressionType t)
-        => t is ExpressionType.Equal or ExpressionType.NotEqual;
-
-    private static string Op(ExpressionType t) => t switch
-    {
-        ExpressionType.Equal => "=",
-        ExpressionType.NotEqual => "!=",
-        _ => throw new NotSupportedException()
-    };
-
-    private static string ToSqlLiteral(object? value) => value switch
-    {
-        null => "NULL",
-        string s => $"'{s.Replace("'", "''")}'",
-        bool b => b ? "TRUE" : "FALSE",
-        DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-        Enum e => $"'{e.ToString().Replace("'", "''")}'",
-        _ => $"'{value!.ToString()!.Replace("'", "''")}'"
-    };
-
-    /// <summary>
-    /// Very small translator for "e => e.Prop == value" inside Any(...).
-    /// Supports AND/OR and ==/!= on dependent members.
-    /// </summary>
-    private sealed class DependentPredicateTranslator
-    {
-        private readonly IPgModelSqlMetadataProvider _sqlMeta;
-        private readonly Type _depType;
-
-        public DependentPredicateTranslator(IPgModelSqlMetadataProvider sqlMeta, Type depType)
-        {
-            _sqlMeta = sqlMeta;
-            _depType = depType;
-        }
-
-        public string Translate(LambdaExpression lambda, string alias)
-            => Visit(lambda.Body, alias);
-
-        private string Visit(Expression expr, string alias)
-        {
-            return expr switch
-            {
-                UnaryExpression u when u.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked
-                    => Visit(u.Operand, alias),
-
-                BinaryExpression b when b.NodeType == ExpressionType.AndAlso
-                    => $"({Visit(b.Left, alias)}) AND ({Visit(b.Right, alias)})",
-
-                BinaryExpression b when b.NodeType == ExpressionType.OrElse
-                    => $"({Visit(b.Left, alias)}) OR ({Visit(b.Right, alias)})",
-
-                BinaryExpression b when IsComparison(b.NodeType)
-                    => VisitComparison(b, alias),
-
-                _ => throw new NotSupportedException($"Unsupported Any(...) predicate: {expr}")
-            };
-        }
-
-        private string VisitComparison(BinaryExpression b, string alias)
-        {
-            if (TryResolveDependentMember(b.Left, out var col))
-            {
-                var val = ExpressionUtils.Evaluate(b.Right);
-                return $"{alias}.\"{col}\" {Op(b.NodeType)} {ToSqlLiteral(val)}";
-            }
-
-            if (TryResolveDependentMember(b.Right, out var col2))
-            {
-                var val = ExpressionUtils.Evaluate(b.Left);
-                return $"{alias}.\"{col2}\" {Op(b.NodeType)} {ToSqlLiteral(val)}";
-            }
-
-            throw new NotSupportedException("Any(...) predicate must compare dependent member to a constant/captured value.");
-        }
-
-        private bool TryResolveDependentMember(Expression expr, out string physicalColumn)
-        {
-            physicalColumn = "";
-            expr = StripConvert(expr);
-
-            if (expr is not MemberExpression me)
-                return false;
-
-            // e.Prop
-            if (me.Expression is not ParameterExpression)
-                return false;
-
-            var depSql = _sqlMeta.Get(_depType);
-            var depDoc = depSql.Document;
-
-            var logical = me.Member.Name;
-            physicalColumn = depDoc.Columns.TryGetValue(logical, out var phys)
-                ? phys
-                : Document.ToCamelCase(logical);
-
+            source = m.Arguments[0];
             return true;
         }
-    }
-}
 
-internal static class ExpressionUtils
-{
-    public static object? Evaluate(Expression expr)
-    {
-        expr = StripConvert(expr);
+        if (m.Arguments.Count == 2)
+        {
+            source = m.Arguments[0];
+            predicate = StripQuote(m.Arguments[1]) as LambdaExpression
+                ?? throw new NotSupportedException("Any() predicate must be a lambda.");
+            return true;
+        }
 
-        if (expr is ConstantExpression c)
-            return c.Value;
-
-        var lambda = Expression.Lambda<Func<object?>>(
-            Expression.Convert(expr, typeof(object)));
-        return lambda.Compile().Invoke();
+        return false;
     }
 
-    private static Expression StripConvert(Expression e)
+    private static Expression StripQuote(Expression e)
     {
-        while (e is UnaryExpression u &&
-               (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
+        while (e.NodeType == ExpressionType.Quote && e is UnaryExpression u)
             e = u.Operand;
         return e;
     }
+
+    private static string GetComponentNameFromAnySource(Expression sourceExpr)
+    {
+        // sourceExpr should be MemberExpression: p.Equipment
+        while (sourceExpr is UnaryExpression u &&
+               (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
+            sourceExpr = u.Operand;
+
+        if (sourceExpr is MemberExpression me)
+            return me.Member.Name;
+
+        throw new NotSupportedException("Any() source must be a prefab component member, e.g. p => p.Equipment.Any(...)");
+    }
+
+    private static bool TryEvaluate(Expression expr, out object? value)
+    {
+        try
+        {
+            value = Expression.Lambda(expr).Compile().DynamicInvoke();
+            return true;
+        }
+        catch
+        {
+            value = null;
+            return false;
+        }
+    }
+
+    private static SqlFragment Combine(string op, SqlFragment a, SqlFragment b)
+    {
+        var sql = $"({a.Sql}) {op} ({b.Sql})";
+        var args = new List<object?>(a.Parameters.Count + b.Parameters.Count);
+        args.AddRange(a.Parameters);
+        args.AddRange(b.Parameters);
+        return new SqlFragment(sql, args);
+    }
+
+    private static string QualifiedTable(Type modelType, Document doc)
+    {
+        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
+        var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
+        return $"{Q(schema)}.{Q(doc.Name)}";
+    }
+
+    private static string Col(Document doc, string logical)
+        => doc.Columns.TryGetValue(logical, out var physical) ? physical : Document.ToCamelCase(logical);
+
+    private static string Q(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
+}
+
+internal readonly record struct SqlFragment(string Sql, List<object?> Parameters)
+{
+    public SqlFragment(string sql) : this(sql, new List<object?>()) { }
 }

@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-using Altruist.Persistence.Postgres;
+using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
@@ -9,25 +9,29 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
     where TPrefab : PrefabModel, new()
 {
     private readonly ISqlDatabaseProvider _db;
-    private readonly IPgModelSqlMetadataProvider _sqlMeta;
 
     private readonly List<string> _wheres = new();
+    private readonly List<object?> _whereParams = new();
     private readonly HashSet<string> _includes = new(StringComparer.Ordinal);
 
     private int? _skip;
     private int? _take;
 
-    public PgPrefabQuery(ISqlDatabaseProvider db, IPgModelSqlMetadataProvider sqlMeta)
+    public PgPrefabQuery(ISqlDatabaseProvider db)
     {
         _db = db;
-        _sqlMeta = sqlMeta;
     }
 
     public IPrefabQuery<TPrefab> Where(Expression<Func<TPrefab, bool>> predicate)
     {
         var meta = PrefabDocument.Get(typeof(TPrefab));
-        var translator = new PgPrefabWhereTranslator(_sqlMeta, meta);
-        _wheres.Add(translator.Translate(predicate));
+        var translator = new PgPrefabWhereTranslator(meta);
+
+        var frag = translator.Translate(predicate);
+
+        _wheres.Add(frag.Sql);
+        _whereParams.AddRange(frag.Parameters);
+
         return this;
     }
 
@@ -38,15 +42,18 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         return this;
     }
 
-    private IPrefabQuery<TPrefab> Skip(int count) { _skip = count; return this; }
-    private IPrefabQuery<TPrefab> Take(int count) { _take = count; return this; }
+    // Keep these private (as you requested)
+    private PgPrefabQuery<TPrefab> Skip(int count) { _skip = count; return this; }
+    private PgPrefabQuery<TPrefab> Take(int count) { _take = count; return this; }
 
     public async Task<List<TPrefab>> ToListAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var prefabMeta = PrefabDocument.Get(typeof(TPrefab));
 
-        var rootSql = _sqlMeta.Get(prefabMeta.RootComponentType);
-        var rootTable = rootSql.QualifiedTable;
+        var rootDoc = Document.From(prefabMeta.RootComponentType);
+        var rootTable = PgDocSql.QualifiedTable(prefabMeta.RootComponentType, rootDoc);
 
         // Root query: SELECT r.* FROM root r WHERE ...
         var sql = $"SELECT r.* FROM {rootTable} r";
@@ -54,14 +61,14 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         if (_wheres.Count > 0)
             sql += " WHERE " + string.Join(" AND ", _wheres.Select(w => $"({w})"));
 
-        if (_skip.HasValue && _skip.Value > 0)
+        if (_skip is > 0)
             sql += $" OFFSET {_skip.Value}";
 
         if (_take.HasValue)
             sql += $" LIMIT {_take.Value}";
 
         // Load root rows strongly typed
-        var roots = await QueryTypedList(rootSql.ModelType, sql, parameters: Array.Empty<object?>()).ConfigureAwait(false);
+        var roots = await QueryTypedList(prefabMeta.RootComponentType, sql, _whereParams).ConfigureAwait(false);
         if (roots.Count == 0)
             return new List<TPrefab>();
 
@@ -78,8 +85,8 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         if (_includes.Count == 0)
             return list;
 
-        var loader = new PgPrefabEagerLoader(_db, _sqlMeta, prefabMeta);
-        await loader.HydrateAsync(list, _includes, ct).ConfigureAwait(false);
+        var loader = new PgPrefabEagerLoader(_db, prefabMeta);
+        await loader.HydrateAsync(list, _includes, ct);
 
         return list;
     }
@@ -87,7 +94,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
     public async Task<TPrefab?> FirstOrDefaultAsync(CancellationToken ct = default)
     {
         Take(1);
-        var list = await ToListAsync(ct).ConfigureAwait(false);
+        var list = await ToListAsync(ct);
         return list.FirstOrDefault();
     }
 
@@ -107,12 +114,16 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
     {
         var p = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException($"Property '{propertyName}' not found on {target.GetType().Name}.");
+
         p.SetValue(target, value);
     }
 
-    private async Task<List<object>> QueryTypedList(Type modelType, string sql, object?[] parameters)
+    private async Task<List<object>> QueryTypedList(Type modelType, string sql, List<object?>? parameters)
     {
-        // Try to invoke ISqlDatabaseProvider.QueryAsync<T>(string) or QueryAsync<T>(string, object?[])
+        // Support common shapes:
+        // - QueryAsync<T>(string sql)
+        // - QueryAsync<T>(string sql, List<object>? parameters = null)
+        // - QueryAsync<T>(string sql, object?[] parameters)
         var methods = _db.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public);
 
         var candidates = methods
@@ -122,7 +133,6 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         if (candidates.Count == 0)
             throw new InvalidOperationException("No QueryAsync<T> method found on ISqlDatabaseProvider implementation.");
 
-        MethodInfo? chosen = null;
         object? taskObj = null;
 
         foreach (var m in candidates)
@@ -134,16 +144,31 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
             {
                 if (ps.Length == 1)
                 {
-                    chosen = gm;
                     taskObj = gm.Invoke(_db, new object?[] { sql });
-                    break;
+                    if (taskObj != null)
+                        break;
                 }
-
-                if (ps.Length == 2)
+                else if (ps.Length == 2)
                 {
-                    chosen = gm;
-                    taskObj = gm.Invoke(_db, new object?[] { sql, parameters });
-                    break;
+                    var pType = ps[1].ParameterType;
+
+                    // List<object>
+                    if (typeof(List<object>).IsAssignableFrom(pType))
+                    {
+                        var list = parameters?.Select(x => x ?? DBNull.Value).Cast<object>().ToList() ?? null;
+                        taskObj = gm.Invoke(_db, new object?[] { sql, list });
+                        if (taskObj != null)
+                            break;
+                    }
+
+                    // object?[]
+                    if (pType.IsArray)
+                    {
+                        var arr = parameters?.ToArray() ?? Array.Empty<object?>();
+                        taskObj = gm.Invoke(_db, new object?[] { sql, arr });
+                        if (taskObj != null)
+                            break;
+                    }
                 }
             }
             catch
@@ -152,21 +177,33 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
             }
         }
 
-        if (chosen is null || taskObj is null)
+        if (taskObj is null)
             throw new InvalidOperationException("Could not invoke QueryAsync<T> with supported parameter shapes.");
 
         var task = (Task)taskObj;
         await task.ConfigureAwait(false);
 
         var resultProp = taskObj.GetType().GetProperty("Result")
-                         ?? throw new InvalidOperationException("QueryAsync Task has no Result.");
+            ?? throw new InvalidOperationException("QueryAsync Task has no Result.");
 
         var enumerable = (System.Collections.IEnumerable)resultProp.GetValue(taskObj)!;
 
-        var list = new List<object>();
+        var listOut = new List<object>();
         foreach (var it in enumerable)
-            list.Add(it!);
+            listOut.Add(it!);
 
-        return list;
+        return listOut;
+    }
+
+    private static class PgDocSql
+    {
+        public static string QualifiedTable(Type modelType, Document doc)
+        {
+            var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
+            var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
+            return $"{Quote(schema)}.{Quote(doc.Name)}";
+        }
+
+        private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
     }
 }

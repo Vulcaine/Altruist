@@ -1,47 +1,45 @@
 using System.Reflection;
 
-using Altruist.Persistence.Postgres;
+using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
 internal sealed class PgPrefabEagerLoader
 {
     private readonly ISqlDatabaseProvider _db;
-    private readonly IPgModelSqlMetadataProvider _sqlMeta;
     private readonly PrefabMeta _prefab;
 
-    public PgPrefabEagerLoader(ISqlDatabaseProvider db, IPgModelSqlMetadataProvider sqlMeta, PrefabMeta prefab)
+    public PgPrefabEagerLoader(ISqlDatabaseProvider db, PrefabMeta prefab)
     {
         _db = db;
-        _sqlMeta = sqlMeta;
         _prefab = prefab;
     }
 
     public async Task HydrateAsync<TPrefab>(List<TPrefab> prefabs, HashSet<string> includes, CancellationToken ct)
         where TPrefab : PrefabModel, new()
     {
+        // Root already set. Hydrate included refs.
         foreach (var inc in includes)
         {
+            ct.ThrowIfCancellationRequested();
+
             if (!_prefab.ComponentsByName.TryGetValue(inc, out var comp))
                 continue;
 
-            // Root already loaded by the root query
-            if (string.Equals(inc, _prefab.RootPropertyName, StringComparison.Ordinal))
-                continue;
-
             if (comp.Kind == PrefabComponentKind.Collection)
-                await HydrateCollectionAsync(prefabs, comp).ConfigureAwait(false);
-            else
-                await HydrateSingleAsync(prefabs, comp).ConfigureAwait(false);
+                await HydrateCollectionAsync(prefabs, comp, ct);
+
+            if (comp.Kind == PrefabComponentKind.Single)
+                await HydrateSingleAsync(prefabs, comp, ct);
         }
     }
 
-    private async Task HydrateCollectionAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp)
+    private async Task HydrateCollectionAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
         where TPrefab : PrefabModel, new()
     {
-        // principal is root (no nesting)
+        // Root ids
         var rootIds = prefabs
-            .Select(p => GetRootComponent(p)?.StorageId)
+            .Select(p => GetRoot(p)?.StorageId)
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct(StringComparer.Ordinal)
             .ToList();
@@ -49,137 +47,116 @@ internal sealed class PgPrefabEagerLoader
         if (rootIds.Count == 0)
             return;
 
-        var depSql = _sqlMeta.Get(comp.ComponentType);
-        var depDoc = depSql.Document;
+        var depType = comp.ComponentType;
+        var depDoc = Document.From(depType);
 
-        var fkLogical = comp.ForeignKeyPropertyName;
-        var fkCol = depDoc.Columns.TryGetValue(fkLogical, out var fkPhys)
-            ? fkPhys
-            : Document.ToCamelCase(fkLogical);
+        var depTable = QualifiedTable(depType, depDoc);
+        var fkCol = Col(depDoc, comp.ForeignKeyPropertyName);
 
         var inSql = string.Join(", ", Enumerable.Repeat("?", rootIds.Count));
-        var sql = $"SELECT * FROM {depSql.QualifiedTable} d WHERE d.\"{fkCol}\" IN ({inSql})";
+        var sql = $"SELECT * FROM {depTable} d WHERE d.{Quote(fkCol)} IN ({inSql})";
 
-        var depRows = await QueryTypedList(depSql.ModelType, sql, rootIds.Cast<object?>().ToArray()).ConfigureAwait(false);
+        var depRows = await QueryTypedList(depType, sql, rootIds.Cast<object?>().ToList());
 
-        var fkProp = depSql.ModelType.GetProperty(fkLogical, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    ?? throw new InvalidOperationException($"{depSql.ModelType.Name} missing FK property {fkLogical}.");
+        // group by FK (dependent FK == root StorageId)
+        var fkProp = depType.GetProperty(comp.ForeignKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"{depType.Name} missing FK property {comp.ForeignKeyPropertyName}");
 
         var grouped = depRows
-            .GroupBy(r => (string?)fkProp.GetValue(r) ?? "", StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+            .GroupBy(r => (string?)fkProp.GetValue(r), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key ?? "", g => g.ToList(), StringComparer.Ordinal);
 
         foreach (var p in prefabs)
         {
-            var id = GetRootComponent(p)?.StorageId ?? "";
-            grouped.TryGetValue(id, out var list);
-            list ??= new List<object>();
+            var id = GetRoot(p)?.StorageId ?? "";
+            if (!grouped.TryGetValue(id, out var list))
+                list = new List<object>();
 
-            SetCollectionProperty(p, comp.Property, depSql.ModelType, list);
+            SetEnumerableProperty(p, comp.Property, depType, list);
         }
     }
 
-    private async Task HydrateSingleAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp)
+    private async Task HydrateSingleAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
         where TPrefab : PrefabModel, new()
     {
-        // Single ref rule:
-        // FK is on ROOT (principal/root) pointing to referenced component PK.
-        // Example:
-        //   CharacterVault.GuildId (FK) -> GuildVault.StorageId (PK)
+        // Single ref:
+        // root has FK property (comp.ForeignKeyPropertyName) that points to dependent PK.
         var rootType = _prefab.RootComponentType;
+        var rootDoc = Document.From(rootType);
 
-        var fkPropOnRoot = rootType.GetProperty(comp.ForeignKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                          ?? throw new InvalidOperationException($"{rootType.Name} missing FK property {comp.ForeignKeyPropertyName}.");
+        var rootFkProp = rootType.GetProperty(comp.ForeignKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"{rootType.Name} missing FK property {comp.ForeignKeyPropertyName}");
 
         var fkValues = prefabs
-            .Select(p => GetRootComponent(p))
+            .Select(p => GetRoot(p))
             .Where(r => r != null)
-            .Select(r => (string?)fkPropOnRoot.GetValue(r!))
+            .Select(r => (string?)rootFkProp.GetValue(r!))
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
         if (fkValues.Count == 0)
-        {
-            // No FK values => set nulls so user doesn't see stale data
-            foreach (var p in prefabs)
-                comp.Property.SetValue(p, null);
-
             return;
-        }
 
-        var refSql = _sqlMeta.Get(comp.ComponentType);
-        var refDoc = refSql.Document;
+        var depType = comp.ComponentType;
+        var depDoc = Document.From(depType);
 
-        var pkLogical = comp.PrincipalKeyPropertyName;
-        var pkCol = refDoc.Columns.TryGetValue(pkLogical, out var pkPhys)
-            ? pkPhys
-            : Document.ToCamelCase(pkLogical);
+        var depTable = QualifiedTable(depType, depDoc);
+        var pkCol = Col(depDoc, comp.PrincipalKeyPropertyName);
 
         var inSql = string.Join(", ", Enumerable.Repeat("?", fkValues.Count));
-        var sql = $"SELECT * FROM {refSql.QualifiedTable} x WHERE x.\"{pkCol}\" IN ({inSql})";
+        var sql = $"SELECT * FROM {depTable} c WHERE c.{Quote(pkCol)} IN ({inSql})";
 
-        var rows = await QueryTypedList(refSql.ModelType, sql, fkValues.Cast<object?>().ToArray()).ConfigureAwait(false);
+        var rows = await QueryTypedList(depType, sql, fkValues.Cast<object?>().ToList());
 
-        var pkProp = refSql.ModelType.GetProperty(pkLogical, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    ?? throw new InvalidOperationException($"{refSql.ModelType.Name} missing PK property {pkLogical}.");
+        var pkProp = depType.GetProperty(comp.PrincipalKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"{depType.Name} missing PK property {comp.PrincipalKeyPropertyName}");
 
         var byPk = rows.ToDictionary(r => (string?)pkProp.GetValue(r) ?? "", r => r, StringComparer.Ordinal);
 
         foreach (var p in prefabs)
         {
-            var root = GetRootComponent(p);
+            var root = GetRoot(p);
             if (root is null)
-            {
-                comp.Property.SetValue(p, null);
                 continue;
-            }
 
-            var fk = (string?)fkPropOnRoot.GetValue(root);
+            var fk = (string?)rootFkProp.GetValue(root);
             if (string.IsNullOrWhiteSpace(fk))
-            {
-                comp.Property.SetValue(p, null);
                 continue;
-            }
 
-            comp.Property.SetValue(p, byPk.TryGetValue(fk, out var obj) ? obj : null);
+            if (byPk.TryGetValue(fk!, out var depObj))
+                comp.Property.SetValue(p, depObj);
         }
     }
 
-    private IVaultModel? GetRootComponent<TPrefab>(TPrefab prefab) where TPrefab : PrefabModel, new()
+    private IVaultModel? GetRoot<TPrefab>(TPrefab prefab) where TPrefab : PrefabModel, new()
     {
         var p = typeof(TPrefab).GetProperty(_prefab.RootPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException($"Root property '{_prefab.RootPropertyName}' missing on {typeof(TPrefab).Name}.");
+
         return (IVaultModel?)p.GetValue(prefab);
     }
 
-    private static void SetCollectionProperty<TPrefab>(TPrefab prefab, PropertyInfo prop, Type elementType, List<object> items)
+    private static void SetEnumerableProperty<TPrefab>(TPrefab prefab, PropertyInfo prop, Type elementType, List<object> items)
     {
-        // Support List<T>, IReadOnlyList<T>, IEnumerable<T> (but we materialize a List<T>)
-        if (!prop.PropertyType.IsGenericType)
-            throw new InvalidOperationException($"Property {prop.Name} must be a generic collection type.");
-
-        var genDef = prop.PropertyType.GetGenericTypeDefinition();
-        var elem = prop.PropertyType.GetGenericArguments()[0];
-
-        if (elem != elementType)
-            throw new InvalidOperationException($"Property {prop.Name} element type must be {elementType.Name}.");
-
-        if (genDef != typeof(List<>) && genDef != typeof(IReadOnlyList<>) && genDef != typeof(IEnumerable<>))
-            throw new InvalidOperationException($"Property {prop.Name} must be List<T>, IReadOnlyList<T>, or IEnumerable<T>.");
-
         var listType = typeof(List<>).MakeGenericType(elementType);
         var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
 
         foreach (var it in items)
             list.Add(it);
 
+        if (!prop.PropertyType.IsAssignableFrom(listType))
+        {
+            // allow assigning List<T> into IReadOnlyList<T>/IEnumerable<T>
+            if (!prop.PropertyType.IsAssignableFrom(typeof(IEnumerable<>).MakeGenericType(elementType)))
+                throw new InvalidOperationException($"Property {prop.Name} is not compatible with {listType.Name}.");
+        }
+
         prop.SetValue(prefab, list);
     }
 
-    private async Task<List<object>> QueryTypedList(Type modelType, string sql, object?[] parameters)
+    private async Task<List<object>> QueryTypedList(Type modelType, string sql, List<object?> parameters)
     {
-        // Find ISqlDatabaseProvider.QueryAsync<T>(string) or QueryAsync<T>(string, object?[])
         var methods = _db.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public);
 
         var candidates = methods
@@ -201,18 +178,32 @@ internal sealed class PgPrefabEagerLoader
                 if (ps.Length == 1)
                 {
                     taskObj = gm.Invoke(_db, new object?[] { sql });
-                    break;
+                    if (taskObj != null)
+                        break;
                 }
-
-                if (ps.Length == 2)
+                else if (ps.Length == 2)
                 {
-                    taskObj = gm.Invoke(_db, new object?[] { sql, parameters });
-                    break;
+                    var pType = ps[1].ParameterType;
+
+                    if (typeof(List<object>).IsAssignableFrom(pType))
+                    {
+                        var list = parameters.Select(x => x ?? DBNull.Value).Cast<object>().ToList();
+                        taskObj = gm.Invoke(_db, new object?[] { sql, list });
+                        if (taskObj != null)
+                            break;
+                    }
+
+                    if (pType.IsArray)
+                    {
+                        taskObj = gm.Invoke(_db, new object?[] { sql, parameters.ToArray() });
+                        if (taskObj != null)
+                            break;
+                    }
                 }
             }
             catch
             {
-                // try next overload
+                // try next
             }
         }
 
@@ -223,14 +214,26 @@ internal sealed class PgPrefabEagerLoader
         await task.ConfigureAwait(false);
 
         var resultProp = taskObj.GetType().GetProperty("Result")
-                         ?? throw new InvalidOperationException("QueryAsync Task has no Result.");
+            ?? throw new InvalidOperationException("QueryAsync Task has no Result.");
 
         var enumerable = (System.Collections.IEnumerable)resultProp.GetValue(taskObj)!;
 
-        var list = new List<object>();
+        var outList = new List<object>();
         foreach (var it in enumerable)
-            list.Add(it!);
+            outList.Add(it!);
 
-        return list;
+        return outList;
     }
+
+    private static string QualifiedTable(Type modelType, Document doc)
+    {
+        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
+        var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
+        return $"{Quote(schema)}.{Quote(doc.Name)}";
+    }
+
+    private static string Col(Document doc, string logical)
+        => doc.Columns.TryGetValue(logical, out var physical) ? physical : Document.ToCamelCase(logical);
+
+    private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 }

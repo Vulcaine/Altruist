@@ -4,6 +4,7 @@ namespace Altruist.Persistence;
 
 public interface IPrefabs
 {
+    Task SaveAsync(PrefabModel prefab, CancellationToken ct = default);
     IPrefabQuery<TPrefab> Query<TPrefab>()
         where TPrefab : PrefabModel, new();
 }
@@ -11,6 +12,7 @@ public interface IPrefabs
 public interface IPrefabQuery<TPrefab>
     where TPrefab : PrefabModel, new()
 {
+
     IPrefabQuery<TPrefab> Where(Expression<Func<TPrefab, bool>> predicate);
 
     IPrefabQuery<TPrefab> Include<TProp>(Expression<Func<TPrefab, TProp>> selector);

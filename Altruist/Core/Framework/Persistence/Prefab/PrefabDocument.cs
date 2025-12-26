@@ -5,6 +5,7 @@ namespace Altruist.Persistence;
 
 public enum PrefabComponentKind
 {
+    Root,
     Single,
     Collection
 }
@@ -16,18 +17,20 @@ public sealed record PrefabComponentMeta
     public Type ComponentType { get; init; } = default!;
     public PropertyInfo Property { get; init; } = default!;
 
-    // Principal is always root (no nesting)
+    /// <summary>
+    /// No nesting: principal is always root property name.
+    /// </summary>
     public string PrincipalPropertyName { get; init; } = default!;
 
     /// <summary>
     /// FK property name:
-    /// - Collection: FK on dependent model referencing principal key (usually StorageId)
-    /// - Single: FK on principal model referencing dependent PK
+    /// - Collection: FK on dependent model referencing root StorageId
+    /// - Single: FK on root model referencing dependent PK
     /// </summary>
     public string ForeignKeyPropertyName { get; init; } = default!;
 
     /// <summary>
-    /// Single-only: dependent PK property name (defaults to StorageId)
+    /// Single-only: dependent PK property name (defaults to StorageId).
     /// </summary>
     public string PrincipalKeyPropertyName { get; init; } = nameof(IVaultModel.StorageId);
 }
@@ -41,8 +44,8 @@ public sealed record PrefabMeta
 }
 
 /// <summary>
-/// Builds and caches PrefabMeta from attributes on a prefab type.
-/// This is the single source of truth for prefab structure.
+/// Builds + caches PrefabMeta from attributes on a prefab type.
+/// This is the SINGLE source of truth for prefab structure.
 /// </summary>
 public static class PrefabDocument
 {
@@ -61,10 +64,8 @@ public static class PrefabDocument
 
         var props = prefabType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-        // 1) find root
-        var rootProps = props
-            .Where(p => p.GetCustomAttribute<PrefabComponentRootAttribute>() != null)
-            .ToList();
+        // 1) Root
+        var rootProps = props.Where(p => p.GetCustomAttribute<PrefabComponentRootAttribute>() != null).ToList();
 
         if (rootProps.Count == 0)
             throw new InvalidOperationException($"{prefabType.Name} must have exactly one [PrefabComponentRoot] property.");
@@ -77,25 +78,27 @@ public static class PrefabDocument
         if (!typeof(IVaultModel).IsAssignableFrom(rootProp.PropertyType))
             throw new InvalidOperationException($"{prefabType.Name}.{rootProp.Name} root must be an IVaultModel (single).");
 
+        if (!rootProp.CanWrite)
+            throw new InvalidOperationException($"{prefabType.Name}.{rootProp.Name} root property must be settable.");
+
         var rootName = rootProp.Name;
         var rootType = rootProp.PropertyType;
 
-        // 2) gather refs
         var components = new Dictionary<string, PrefabComponentMeta>(StringComparer.Ordinal)
         {
-            // Root is also a component
             [rootName] = new PrefabComponentMeta
             {
                 Name = rootName,
-                Kind = PrefabComponentKind.Single,
+                Kind = PrefabComponentKind.Root,
                 ComponentType = rootType,
                 Property = rootProp,
                 PrincipalPropertyName = rootName,
-                ForeignKeyPropertyName = "", // unused for root
+                ForeignKeyPropertyName = "",
                 PrincipalKeyPropertyName = nameof(IVaultModel.StorageId)
             }
         };
 
+        // 2) Refs
         foreach (var p in props)
         {
             var refAttr = p.GetCustomAttribute<PrefabComponentRefAttribute>();
@@ -112,11 +115,16 @@ public static class PrefabDocument
                     $"Principal must be the root property '{rootName}'.");
             }
 
+            if (!p.CanWrite)
+                throw new InvalidOperationException($"{prefabType.Name}.{p.Name} component property must be settable.");
+
             var (kind, componentType) = ResolveKindAndType(p.PropertyType);
 
             if (kind == PrefabComponentKind.Collection)
             {
-                // Collection must be some enumerable of IVaultModel
+                if (string.IsNullOrWhiteSpace(refAttr.ForeignKey))
+                    throw new InvalidOperationException($"{prefabType.Name}.{p.Name} collection ref requires ForeignKey.");
+
                 components[p.Name] = new PrefabComponentMeta
                 {
                     Name = p.Name,
@@ -130,7 +138,9 @@ public static class PrefabDocument
             }
             else
             {
-                // Single: FK on principal (root) points to dependent PK
+                if (string.IsNullOrWhiteSpace(refAttr.ForeignKey))
+                    throw new InvalidOperationException($"{prefabType.Name}.{p.Name} single ref requires ForeignKey (FK on root).");
+
                 components[p.Name] = new PrefabComponentMeta
                 {
                     Name = p.Name,
@@ -144,17 +154,6 @@ public static class PrefabDocument
                         : refAttr.PrincipalKey.Trim()
                 };
             }
-        }
-
-        // Validate root property is writable (we will set it)
-        if (!rootProp.CanWrite)
-            throw new InvalidOperationException($"{prefabType.Name}.{rootName} root property must be settable.");
-
-        // Validate ref properties are writable (we will set them on include)
-        foreach (var kv in components)
-        {
-            if (!kv.Value.Property.CanWrite)
-                throw new InvalidOperationException($"{prefabType.Name}.{kv.Key} component property must be settable.");
         }
 
         return new PrefabMeta
