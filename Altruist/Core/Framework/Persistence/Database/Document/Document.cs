@@ -177,4 +177,15 @@ public sealed class VaultDocument
             OnDelete = string.IsNullOrWhiteSpace(onDelete) ? "CASCADE" : onDelete;
         }
     }
+
+    public string QualifiedTable()
+    {
+        var schema = string.IsNullOrWhiteSpace(Header.Keyspace) ? "public" : Header.Keyspace.Trim();
+        return $"{Quote(schema)}.{Quote(Name)}";
+    }
+
+    public static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
+
+    public string Col(string logical)
+       => Columns.TryGetValue(logical, out var physical) ? physical : ToCamelCase(logical);
 }

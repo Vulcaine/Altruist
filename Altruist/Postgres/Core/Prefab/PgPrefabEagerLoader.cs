@@ -82,8 +82,8 @@ internal sealed class PgPrefabEagerLoader
         var depType = comp.ComponentType;
         var depDoc = VaultDocument.From(depType);
 
-        var depTable = QualifiedTable(depDoc);
-        var fkCol = Col(depDoc, comp.ForeignKeyPropertyName);
+        var depTable = depDoc.QualifiedTable();
+        var fkCol = depDoc.Col(comp.ForeignKeyPropertyName);
 
         string sql;
         List<object?> parameters;
@@ -91,13 +91,13 @@ internal sealed class PgPrefabEagerLoader
         // If you truly only ever have one root id in practice, this is the fast path.
         if (rootIds.Count == 1)
         {
-            sql = $"SELECT * FROM {depTable} d WHERE d.{Quote(fkCol)} = ?";
+            sql = $"SELECT * FROM {depTable} d WHERE d.{VaultDocument.Quote(fkCol)} = ?";
             parameters = new List<object?>(1) { rootIds[0] };
         }
         else
         {
             var inSql = string.Join(", ", Enumerable.Repeat("?", rootIds.Count));
-            sql = $"SELECT * FROM {depTable} d WHERE d.{Quote(fkCol)} IN ({inSql})";
+            sql = $"SELECT * FROM {depTable} d WHERE d.{VaultDocument.Quote(fkCol)} IN ({inSql})";
             parameters = rootIds.Cast<object?>().ToList();
         }
 
@@ -200,21 +200,21 @@ internal sealed class PgPrefabEagerLoader
         var depType = comp.ComponentType;
         var depDoc = VaultDocument.From(depType);
 
-        var depTable = QualifiedTable(depDoc);
-        var pkCol = Col(depDoc, comp.PrincipalKeyPropertyName);
+        var depTable = depDoc.QualifiedTable();
+        var pkCol = depDoc.Col(comp.PrincipalKeyPropertyName);
 
         string sql;
         List<object?> parameters;
 
         if (fkValues.Count == 1)
         {
-            sql = $"SELECT * FROM {depTable} c WHERE c.{Quote(pkCol)} = ?";
+            sql = $"SELECT * FROM {depTable} c WHERE c.{VaultDocument.Quote(pkCol)} = ?";
             parameters = new List<object?>(1) { fkValues[0] };
         }
         else
         {
             var inSql = string.Join(", ", Enumerable.Repeat("?", fkValues.Count));
-            sql = $"SELECT * FROM {depTable} c WHERE c.{Quote(pkCol)} IN ({inSql})";
+            sql = $"SELECT * FROM {depTable} c WHERE c.{VaultDocument.Quote(pkCol)} IN ({inSql})";
             parameters = fkValues.Cast<object?>().ToList();
         }
 
@@ -307,15 +307,4 @@ internal sealed class PgPrefabEagerLoader
             return Expression.Lambda<Func<IList>>(cast).Compile();
         });
     }
-
-    private static string QualifiedTable(VaultDocument doc)
-    {
-        var schema = string.IsNullOrWhiteSpace(doc.Header.Keyspace) ? "public" : doc.Header.Keyspace.Trim();
-        return $"{Quote(schema)}.{Quote(doc.Name)}";
-    }
-
-    private static string Col(VaultDocument doc, string logical)
-        => doc.Columns.TryGetValue(logical, out var physical) ? physical : VaultDocument.ToCamelCase(logical);
-
-    private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 }

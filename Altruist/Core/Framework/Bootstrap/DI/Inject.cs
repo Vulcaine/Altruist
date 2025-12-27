@@ -1,3 +1,5 @@
+using Altruist;
+
 using Microsoft.Extensions.DependencyInjection;
 
 public static class Dependencies
@@ -36,9 +38,10 @@ public static class Dependencies
             throw new ArgumentNullException(nameof(serviceType));
 
         if (_provider is null)
-            throw new InvalidOperationException(
-                "Altruist root provider is not initialized. " +
-                "Call Altruist.UseRootProvider(...) during bootstrap.");
+        {
+            var tmpProvider = AltruistBootstrap.Services.BuildServiceProvider();
+            return tmpProvider.GetRequiredService(serviceType);
+        }
 
         return _provider.GetRequiredService(serviceType);
     }

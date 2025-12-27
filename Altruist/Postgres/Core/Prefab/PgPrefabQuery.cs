@@ -1,8 +1,5 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
-using System.Reflection;
-
-using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
@@ -58,7 +55,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         var prefabMeta = PrefabDocument.Get(typeof(TPrefab));
 
         var rootDoc = VaultDocument.From(prefabMeta.RootComponentType);
-        var rootTable = PgDocSql.QualifiedTable(prefabMeta.RootComponentType, rootDoc);
+        var rootTable = rootDoc.QualifiedTable();
 
         var sql = $"SELECT r.* FROM {rootTable} r";
 
@@ -134,16 +131,4 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         });
     }
 
-    private static class PgDocSql
-    {
-        public static string QualifiedTable(Type modelType, VaultDocument doc)
-        {
-            // Allowed: attribute discovery
-            var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
-            var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
-            return $"{Quote(schema)}.{Quote(doc.Name)}";
-        }
-
-        private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
-    }
 }
