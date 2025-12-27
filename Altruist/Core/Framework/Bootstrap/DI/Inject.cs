@@ -22,9 +22,10 @@ public static class Dependencies
     public static T Inject<T>() where T : notnull
     {
         if (_provider is null)
-            throw new InvalidOperationException(
-                "Altruist root provider is not initialized. " +
-                "Call Altruist.UseRootProvider(...) during bootstrap.");
+        {
+            var tmpProvider = AltruistBootstrap.Services.BuildServiceProvider();
+            return tmpProvider.GetRequiredService<T>();
+        }
 
         return _provider.GetRequiredService<T>();
     }
