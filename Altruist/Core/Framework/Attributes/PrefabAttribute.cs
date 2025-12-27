@@ -43,6 +43,8 @@ public sealed class PrefabComponentRefAttribute : Attribute
 
     public PrefabComponentRefAttribute(string principal, string foreignKey)
     {
+        Principal = principal ?? throw new ArgumentNullException(nameof(principal));
+        ForeignKey = foreignKey ?? throw new ArgumentNullException(nameof(foreignKey));
     }
 }
 

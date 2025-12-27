@@ -111,7 +111,7 @@ public static class PrefabDocument
             if (!string.Equals(refAttr.Principal, rootName, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
-                    $"{prefabType.Name}.{p.Name} has Principal='{refAttr.Principal}', but nesting is disabled. " +
+                    $"{prefabType.Name}.{p.Name} has Principal='{refAttr.Principal}'. " +
                     $"Principal must be the root property '{rootName}'.");
             }
 
