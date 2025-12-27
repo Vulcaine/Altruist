@@ -59,13 +59,13 @@ public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
         string sql,
         List<object?>? parameters = null,
         CancellationToken ct = default)
-        where TVaultModel : class, IVaultModel;
+        where TVaultModel : class;
 
     Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
         string sql,
         List<object?>? parameters = null,
         CancellationToken ct = default)
-        where TVaultModel : class, IVaultModel;
+        where TVaultModel : class;
 
     Task<long> ExecuteCountAsync(
         string sql,

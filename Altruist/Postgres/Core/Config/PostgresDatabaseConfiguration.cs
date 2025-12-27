@@ -113,7 +113,7 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
             .ToList();
 
         foreach (var schemaName in schemaNames)
-            await provider.CreateSchemaAsync(schemaName, null).ConfigureAwait(false);
+            await provider.CreateSchemaAsync(schemaName).ConfigureAwait(false);
 
         // Migrate once for persisted models
         if (modelTypes.Length > 0)

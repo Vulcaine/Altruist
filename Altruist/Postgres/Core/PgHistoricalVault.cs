@@ -84,8 +84,10 @@ internal sealed class PgHistoricalVault<TVaultModel> : IHistoricalVault<TVaultMo
 
     public async Task<List<TVaultModel>> ToListAsync(
         DateTime startTime,
-        DateTime endTime)
+        DateTime endTime, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var st = _state.EnsureProjectionSelected(_owner.VaultDocument);
 
         var select =

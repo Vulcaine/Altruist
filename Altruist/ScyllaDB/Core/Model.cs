@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 // using Altruist.Contracts;
-using Altruist.Persistence;
 
 namespace Altruist.ScyllaDB;
 
@@ -24,14 +23,6 @@ public enum ReplicationStrategy
     SimpleStrategy,
     NetworkTopologyStrategy
 }
-
-
-
-public class ScyllaReplicationOptions : ReplicationOptions
-{
-    public ReplicationStrategy Strategy { get; set; } = ReplicationStrategy.SimpleStrategy;
-}
-
 
 
 // public abstract class ScyllaKeyspace : IScyllaKeyspace
