@@ -1,6 +1,18 @@
-using System.Reflection;
+// PgPrefabEagerLoader.cs
+/*
+Copyright 2025 Aron Gere
 
-using Altruist.UORM;
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+*/
+
+using System.Collections;
+using System.Collections.Concurrent;
+using System.Linq.Expressions;
+
 
 namespace Altruist.Persistence;
 
@@ -8,6 +20,13 @@ internal sealed class PgPrefabEagerLoader
 {
     private readonly ISqlDatabaseProvider _db;
     private readonly PrefabMeta _prefab;
+
+    // (targetType, propName) => getter/setter compiled once
+    private static readonly ConcurrentDictionary<(Type Target, string Prop), Func<object, object?>> _getterCache = new();
+    private static readonly ConcurrentDictionary<(Type Target, string Prop), Action<object, object?>> _setterCache = new();
+
+    // elementType => () => new List<elementType>() compiled once
+    private static readonly ConcurrentDictionary<Type, Func<IList>> _listFactoryCache = new();
 
     public PgPrefabEagerLoader(ISqlDatabaseProvider db, PrefabMeta prefab)
     {
@@ -27,22 +46,35 @@ internal sealed class PgPrefabEagerLoader
                 continue;
 
             if (comp.Kind == PrefabComponentKind.Collection)
-                await HydrateCollectionAsync(prefabs, comp, ct);
-
-            if (comp.Kind == PrefabComponentKind.Single)
-                await HydrateSingleAsync(prefabs, comp, ct);
+                await HydrateCollectionAsync(prefabs, comp, ct).ConfigureAwait(false);
+            else if (comp.Kind == PrefabComponentKind.Single)
+                await HydrateSingleAsync(prefabs, comp, ct).ConfigureAwait(false);
         }
     }
 
     private async Task HydrateCollectionAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
         where TPrefab : PrefabModel, new()
     {
-        // Root ids
-        var rootIds = prefabs
-            .Select(p => GetRoot(p)?.StorageId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        // Root ids (StorageId)
+        var rootGetter = GetGetter(typeof(TPrefab), _prefab.RootPropertyName);
+
+        var rootIds = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var p in prefabs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (rootGetter(p!) is not IVaultModel root)
+                continue;
+
+            var id = root.StorageId;
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            if (seen.Add(id))
+                rootIds.Add(id);
+        }
 
         if (rootIds.Count == 0)
             return;
@@ -50,50 +82,117 @@ internal sealed class PgPrefabEagerLoader
         var depType = comp.ComponentType;
         var depDoc = VaultDocument.From(depType);
 
-        var depTable = QualifiedTable(depType, depDoc);
+        var depTable = QualifiedTable(depDoc);
         var fkCol = Col(depDoc, comp.ForeignKeyPropertyName);
 
-        var inSql = string.Join(", ", Enumerable.Repeat("?", rootIds.Count));
-        var sql = $"SELECT * FROM {depTable} d WHERE d.{Quote(fkCol)} IN ({inSql})";
+        string sql;
+        List<object?> parameters;
 
-        var depRows = await QueryTypedList(depType, sql, rootIds.Cast<object?>().ToList());
+        // If you truly only ever have one root id in practice, this is the fast path.
+        if (rootIds.Count == 1)
+        {
+            sql = $"SELECT * FROM {depTable} d WHERE d.{Quote(fkCol)} = ?";
+            parameters = new List<object?>(1) { rootIds[0] };
+        }
+        else
+        {
+            var inSql = string.Join(", ", Enumerable.Repeat("?", rootIds.Count));
+            sql = $"SELECT * FROM {depTable} d WHERE d.{Quote(fkCol)} IN ({inSql})";
+            parameters = rootIds.Cast<object?>().ToList();
+        }
+
+        // Materialize dependent rows as objects (instances are of depType)
+        var depRows = await _db.QueryAsync(depType, sql, parameters, ct).ConfigureAwait(false);
+        if (depRows.Count == 0)
+        {
+            // still set empty lists on each prefab
+            SetEmptyCollections(prefabs, comp, depType);
+            return;
+        }
 
         // group by FK (dependent FK == root StorageId)
-        var fkProp = depType.GetProperty(comp.ForeignKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"{depType.Name} missing FK property {comp.ForeignKeyPropertyName}");
+        var depFkGetter = GetGetter(depType, comp.ForeignKeyPropertyName);
 
-        var grouped = depRows
-            .GroupBy(r => (string?)fkProp.GetValue(r), StringComparer.Ordinal)
-            .ToDictionary(g => g.Key ?? "", g => g.ToList(), StringComparer.Ordinal);
+        var grouped = new Dictionary<string, List<object>>(StringComparer.Ordinal);
+        foreach (var row in depRows)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var fk = depFkGetter(row) as string;
+            if (string.IsNullOrWhiteSpace(fk))
+                continue;
+
+            if (!grouped.TryGetValue(fk!, out var list))
+            {
+                list = new List<object>();
+                grouped[fk!] = list;
+            }
+
+            list.Add(row);
+        }
+
+        // prefab.<CollectionProp> = new List<depType>(...)
+        var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
+        var listFactory = GetListFactory(depType);
 
         foreach (var p in prefabs)
         {
-            var id = GetRoot(p)?.StorageId ?? "";
-            if (!grouped.TryGetValue(id, out var list))
-                list = new List<object>();
+            ct.ThrowIfCancellationRequested();
 
-            SetEnumerableProperty(p, comp.Property, depType, list);
+            var root = rootGetter(p!) as IVaultModel;
+            var id = root?.StorageId ?? "";
+
+            var items = grouped.TryGetValue(id, out var list) ? list : null;
+
+            var typedList = listFactory();
+            if (items is not null)
+            {
+                foreach (var it in items)
+                    typedList.Add(it);
+            }
+
+            prefabSetter(p!, typedList);
+        }
+    }
+
+    private void SetEmptyCollections<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, Type elementType)
+        where TPrefab : PrefabModel, new()
+    {
+        var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
+        var listFactory = GetListFactory(elementType);
+
+        foreach (var p in prefabs)
+        {
+            var typedList = listFactory();
+            prefabSetter(p!, typedList);
         }
     }
 
     private async Task HydrateSingleAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
         where TPrefab : PrefabModel, new()
     {
-        // Single ref:
-        // root has FK property (comp.ForeignKeyPropertyName) that points to dependent PK.
         var rootType = _prefab.RootComponentType;
-        var rootDoc = VaultDocument.From(rootType);
+        var rootFkGetter = GetGetter(rootType, comp.ForeignKeyPropertyName);
 
-        var rootFkProp = rootType.GetProperty(comp.ForeignKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"{rootType.Name} missing FK property {comp.ForeignKeyPropertyName}");
+        var rootGetter = GetGetter(typeof(TPrefab), _prefab.RootPropertyName);
 
-        var fkValues = prefabs
-            .Select(p => GetRoot(p))
-            .Where(r => r != null)
-            .Select(r => (string?)rootFkProp.GetValue(r!))
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var fkValues = new List<string>();
+        var fkSeen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var p in prefabs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (rootGetter(p!) is not IVaultModel root)
+                continue;
+
+            var fk = rootFkGetter(root) as string;
+            if (string.IsNullOrWhiteSpace(fk))
+                continue;
+
+            if (fkSeen.Add(fk!))
+                fkValues.Add(fk!);
+        }
 
         if (fkValues.Count == 0)
             return;
@@ -101,134 +200,117 @@ internal sealed class PgPrefabEagerLoader
         var depType = comp.ComponentType;
         var depDoc = VaultDocument.From(depType);
 
-        var depTable = QualifiedTable(depType, depDoc);
+        var depTable = QualifiedTable(depDoc);
         var pkCol = Col(depDoc, comp.PrincipalKeyPropertyName);
 
-        var inSql = string.Join(", ", Enumerable.Repeat("?", fkValues.Count));
-        var sql = $"SELECT * FROM {depTable} c WHERE c.{Quote(pkCol)} IN ({inSql})";
+        string sql;
+        List<object?> parameters;
 
-        var rows = await QueryTypedList(depType, sql, fkValues.Cast<object?>().ToList());
+        if (fkValues.Count == 1)
+        {
+            sql = $"SELECT * FROM {depTable} c WHERE c.{Quote(pkCol)} = ?";
+            parameters = new List<object?>(1) { fkValues[0] };
+        }
+        else
+        {
+            var inSql = string.Join(", ", Enumerable.Repeat("?", fkValues.Count));
+            sql = $"SELECT * FROM {depTable} c WHERE c.{Quote(pkCol)} IN ({inSql})";
+            parameters = fkValues.Cast<object?>().ToList();
+        }
 
-        var pkProp = depType.GetProperty(comp.PrincipalKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"{depType.Name} missing PK property {comp.PrincipalKeyPropertyName}");
+        var rows = await _db.QueryAsync(depType, sql, parameters, ct).ConfigureAwait(false);
+        if (rows.Count == 0)
+            return;
 
-        var byPk = rows.ToDictionary(r => (string?)pkProp.GetValue(r) ?? "", r => r, StringComparer.Ordinal);
+        var depPkGetter = GetGetter(depType, comp.PrincipalKeyPropertyName);
+
+        var byPk = new Dictionary<string, object>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var pk = depPkGetter(row) as string;
+            if (string.IsNullOrWhiteSpace(pk))
+                continue;
+
+            byPk[pk!] = row;
+        }
+
+        // prefab.<SingleProp> = depObj
+        var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
 
         foreach (var p in prefabs)
         {
-            var root = GetRoot(p);
-            if (root is null)
+            ct.ThrowIfCancellationRequested();
+
+            if (rootGetter(p!) is not IVaultModel root)
                 continue;
 
-            var fk = (string?)rootFkProp.GetValue(root);
+            var fk = rootFkGetter(root) as string;
             if (string.IsNullOrWhiteSpace(fk))
                 continue;
 
             if (byPk.TryGetValue(fk!, out var depObj))
-                comp.Property.SetValue(p, depObj);
+                prefabSetter(p!, depObj);
         }
     }
 
-    private IVaultModel? GetRoot<TPrefab>(TPrefab prefab) where TPrefab : PrefabModel, new()
+    // --------------------- fast cached member access ---------------------
+
+    private static Func<object, object?> GetGetter(Type targetType, string propName)
     {
-        var p = typeof(TPrefab).GetProperty(_prefab.RootPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Root property '{_prefab.RootPropertyName}' missing on {typeof(TPrefab).Name}.");
-
-        return (IVaultModel?)p.GetValue(prefab);
-    }
-
-    private static void SetEnumerableProperty<TPrefab>(TPrefab prefab, PropertyInfo prop, Type elementType, List<object> items)
-    {
-        var listType = typeof(List<>).MakeGenericType(elementType);
-        var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-
-        foreach (var it in items)
-            list.Add(it);
-
-        if (!prop.PropertyType.IsAssignableFrom(listType))
+        return _getterCache.GetOrAdd((targetType, propName), static key =>
         {
-            // allow assigning List<T> into IReadOnlyList<T>/IEnumerable<T>
-            if (!prop.PropertyType.IsAssignableFrom(typeof(IEnumerable<>).MakeGenericType(elementType)))
-                throw new InvalidOperationException($"Property {prop.Name} is not compatible with {listType.Name}.");
-        }
+            var (t, name) = key;
 
-        prop.SetValue(prefab, list);
+            var target = Expression.Parameter(typeof(object), "target");
+            var castTarget = Expression.Convert(target, t);
+
+            var member = Expression.PropertyOrField(castTarget, name);
+            var box = Expression.Convert(member, typeof(object));
+
+            return Expression.Lambda<Func<object, object?>>(box, target).Compile();
+        });
     }
 
-    private async Task<List<object>> QueryTypedList(Type modelType, string sql, List<object?> parameters)
+    private static Action<object, object?> GetSetter(Type targetType, string propName)
     {
-        var methods = _db.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public);
-
-        var candidates = methods
-            .Where(m => m.Name == nameof(ISqlDatabaseProvider.QueryAsync) && m.IsGenericMethodDefinition)
-            .ToList();
-
-        if (candidates.Count == 0)
-            throw new InvalidOperationException("No QueryAsync<T> method found on ISqlDatabaseProvider implementation.");
-
-        object? taskObj = null;
-
-        foreach (var m in candidates)
+        return _setterCache.GetOrAdd((targetType, propName), static key =>
         {
-            var gm = m.MakeGenericMethod(modelType);
-            var ps = gm.GetParameters();
+            var (t, name) = key;
 
-            try
-            {
-                if (ps.Length == 1)
-                {
-                    taskObj = gm.Invoke(_db, new object?[] { sql });
-                    if (taskObj != null)
-                        break;
-                }
-                else if (ps.Length == 2)
-                {
-                    var pType = ps[1].ParameterType;
+            var target = Expression.Parameter(typeof(object), "target");
+            var value = Expression.Parameter(typeof(object), "value");
 
-                    if (typeof(List<object>).IsAssignableFrom(pType))
-                    {
-                        var list = parameters.Select(x => x ?? DBNull.Value).Cast<object>().ToList();
-                        taskObj = gm.Invoke(_db, new object?[] { sql, list });
-                        if (taskObj != null)
-                            break;
-                    }
+            var castTarget = Expression.Convert(target, t);
+            var member = Expression.PropertyOrField(castTarget, name);
 
-                    if (pType.IsArray)
-                    {
-                        taskObj = gm.Invoke(_db, new object?[] { sql, parameters.ToArray() });
-                        if (taskObj != null)
-                            break;
-                    }
-                }
-            }
-            catch
-            {
-                // try next
-            }
-        }
+            var castValue = Expression.Convert(value, member.Type);
+            var assign = Expression.Assign(member, castValue);
 
-        if (taskObj is null)
-            throw new InvalidOperationException("Could not invoke QueryAsync<T> with supported parameter shapes.");
-
-        var task = (Task)taskObj;
-        await task.ConfigureAwait(false);
-
-        var resultProp = taskObj.GetType().GetProperty("Result")
-            ?? throw new InvalidOperationException("QueryAsync Task has no Result.");
-
-        var enumerable = (System.Collections.IEnumerable)resultProp.GetValue(taskObj)!;
-
-        var outList = new List<object>();
-        foreach (var it in enumerable)
-            outList.Add(it!);
-
-        return outList;
+            return Expression.Lambda<Action<object, object?>>(assign, target, value).Compile();
+        });
     }
 
-    private static string QualifiedTable(Type modelType, VaultDocument doc)
+    private static Func<IList> GetListFactory(Type elementType)
     {
-        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
-        var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
+        return _listFactoryCache.GetOrAdd(elementType, static t =>
+        {
+            var listType = typeof(List<>).MakeGenericType(t);
+
+            var ctor = listType.GetConstructor(Type.EmptyTypes)
+                ?? throw new InvalidOperationException($"Missing parameterless ctor for {listType.Name}.");
+
+            var newExpr = Expression.New(ctor);
+            var cast = Expression.Convert(newExpr, typeof(IList));
+
+            return Expression.Lambda<Func<IList>>(cast).Compile();
+        });
+    }
+
+    private static string QualifiedTable(VaultDocument doc)
+    {
+        var schema = string.IsNullOrWhiteSpace(doc.Header.Keyspace) ? "public" : doc.Header.Keyspace.Trim();
         return $"{Quote(schema)}.{Quote(doc.Name)}";
     }
 
