@@ -43,7 +43,22 @@ public sealed class PrefabComponentRefAttribute : Attribute
 
     public PrefabComponentRefAttribute(string principal, string foreignKey)
     {
-        Principal = principal ?? throw new ArgumentNullException(nameof(principal));
-        ForeignKey = foreignKey ?? throw new ArgumentNullException(nameof(foreignKey));
     }
+}
+
+[AttributeUsage(AttributeTargets.Property)]
+public sealed class PrefabComponentAttribute : Attribute
+{
+    /// <summary>
+    /// Name of the prefab component this component should auto-load after.
+    /// For example: AutoLoadOn = nameof(Character).
+    /// </summary>
+    public string? AutoLoadOn { get; set; }
+
+    /// <summary>
+    /// Name of the relation key used to tie this component to the AutoLoadOn component.
+    /// Required when AutoLoadOn is specified (enforced at metadata registration time).
+    /// For now this is validated but not deeply used; it’s reserved for richer relations.
+    /// </summary>
+    public string? RelationKey { get; set; }
 }

@@ -15,109 +15,10 @@ using Microsoft.EntityFrameworkCore.Query;
 
 namespace Altruist.Persistence.Postgres;
 
-public enum QueryPosition
-{
-    SELECT,
-    FROM,
-    WHERE,
-    ORDER_BY,
-    LIMIT,
-    OFFSET,
-    UPDATE,
-    SET
-}
 
-public sealed class QueryState
-{
-    public readonly Dictionary<QueryPosition, HashSet<string>> Parts;
-    public readonly Dictionary<QueryPosition, List<object?>> Parameters;
-
-    public QueryState()
-    {
-        Parts = new Dictionary<QueryPosition, HashSet<string>>
-        {
-            { QueryPosition.SELECT,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.FROM,     new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.WHERE,    new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.ORDER_BY, new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.LIMIT,    new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.OFFSET,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.UPDATE,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.SET,      new HashSet<string>(StringComparer.Ordinal) }
-        };
-
-        Parameters = new Dictionary<QueryPosition, List<object?>>
-        {
-            { QueryPosition.SELECT,   new List<object?>() },
-            { QueryPosition.FROM,     new List<object?>() },
-            { QueryPosition.WHERE,    new List<object?>() },
-            { QueryPosition.ORDER_BY, new List<object?>() },
-            { QueryPosition.LIMIT,    new List<object?>() },
-            { QueryPosition.OFFSET,   new List<object?>() },
-            { QueryPosition.UPDATE,   new List<object?>() },
-            { QueryPosition.SET,      new List<object?>() }
-        };
-    }
-
-    private QueryState(
-        Dictionary<QueryPosition, HashSet<string>> parts,
-        Dictionary<QueryPosition, List<object?>> parameters)
-    {
-        Parts = parts;
-        Parameters = parameters;
-    }
-
-    public QueryState With(QueryPosition pos, string part, object? parameter = null)
-    {
-        var newParts = new Dictionary<QueryPosition, HashSet<string>>(Parts.Count);
-        foreach (var kv in Parts)
-        {
-            if (kv.Key == pos)
-            {
-                var copy = new HashSet<string>(kv.Value, StringComparer.Ordinal);
-                copy.Add(part);
-                newParts[kv.Key] = copy;
-            }
-            else
-            {
-                newParts[kv.Key] = kv.Value;
-            }
-        }
-
-        var newParams = new Dictionary<QueryPosition, List<object?>>(Parameters.Count);
-        foreach (var kv in Parameters)
-        {
-            if (kv.Key == pos && parameter is not null)
-            {
-                var copy = new List<object?>(kv.Value);
-                copy.Add(parameter);
-                newParams[kv.Key] = copy;
-            }
-            else
-            {
-                newParams[kv.Key] = kv.Value;
-            }
-        }
-
-        return new QueryState(newParts, newParams);
-    }
-
-    public bool HasAny(QueryPosition pos) => Parts[pos].Count > 0;
-
-    public QueryState EnsureProjectionSelected(Document doc)
-    {
-        if (HasAny(QueryPosition.SELECT))
-            return this;
-
-        var projection = string.Join(", ",
-            doc.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
-
-        return With(QueryPosition.SELECT, projection);
-    }
-
-    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
-}
-
+/// <summary>
+/// PostgreSQL vault with a fluent API similar to the CQL vault.
+/// </summary>
 public class PgVault<TVaultModel> : IVault<TVaultModel>
     where TVaultModel : class, IVaultModel
 {
@@ -157,7 +58,6 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         QueryState state)
     {
         _databaseProvider = databaseProvider;
-
         VaultDocument = document;
         Keyspace = schema;
         _state = state;
@@ -169,6 +69,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, state);
 
     protected PgVault<TVaultModel> New(QueryState state) => Create(state);
+
+    // ------------------------ Fluent query ops (return NEW instance) ------------------------
 
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
     {
@@ -208,39 +110,72 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         return New(next);
     }
 
-    public virtual async Task<List<TVaultModel>> ToListAsync()
+    // ------------------------ Terminal ops (use current state) ------------------------
+
+    public virtual async Task<List<TVaultModel>> ToListAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var st = _state.EnsureProjectionSelected(VaultDocument);
         var query = BuildSelectQuery(st);
-        return (await _databaseProvider.QueryAsync<TVaultModel>(query, parameters: null)).ToList();
+
+        var rows = await _databaseProvider.QueryAsync<TVaultModel>(
+            query,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
+        return rows.ToList();
     }
 
-    public virtual async Task<TVaultModel?> FirstOrDefaultAsync()
+    public virtual async Task<TVaultModel?> FirstOrDefaultAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         var query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, parameters: null);
+
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(
+            query,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
         return result.FirstOrDefault();
     }
 
-    public virtual async Task<TVaultModel?> FirstAsync()
+    public virtual async Task<TVaultModel?> FirstAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var st = _state.EnsureProjectionSelected(VaultDocument)
                        .With(QueryPosition.LIMIT, "LIMIT 1");
         var query = BuildSelectQuery(st);
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(query, parameters: null);
+
+        var result = await _databaseProvider.QueryAsync<TVaultModel>(
+            query,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
         return result.First();
     }
 
-    public virtual async Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate)
+    public virtual async Task<List<TVaultModel>> ToListAsync(
+        Expression<Func<TVaultModel, bool>> predicate,
+        CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var next = (PgVault<TVaultModel>)Where(predicate);
-        return await next.ToListAsync();
+        return await next.ToListAsync(ct).ConfigureAwait(false);
     }
 
-    public virtual async Task<long> CountAsync()
+    public virtual async Task<long> CountAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
         var from = QualifiedTableName();
 
@@ -248,54 +183,22 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             ? $"SELECT COUNT(*) FROM {from}"
             : $"SELECT COUNT(*) FROM {from} WHERE {whereClause}";
 
-        return await _databaseProvider.ExecuteCountAsync(sql, parameters: null);
+        var count = await _databaseProvider.ExecuteCountAsync(
+            sql,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
+        return count;
     }
-
-    public virtual async Task<long> UpdateAsync(
-        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls)
-    {
-        var sql = PgQueryTranslator.BuildUpdate(
-            setPropertyCalls,
-            _state,
-            VaultDocument,
-            QualifiedTableName());
-
-        return await _databaseProvider.ExecuteAsync(sql, parameters: null);
-    }
-
-    public virtual async Task UpdateAsync(
-        IReadOnlyDictionary<string, object?> primaryKey,
-        IReadOnlyDictionary<string, object?> changes)
-    {
-        var sql = PgQueryTranslator.BuildUpdate(
-            primaryKey,
-            changes,
-            VaultDocument,
-            QualifiedTableName());
-
-        await _databaseProvider.ExecuteAsync(sql, parameters: null);
-    }
-
-    public virtual async Task<bool> DeleteAsync()
-    {
-        var from = QualifiedTableName();
-        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-
-        var sql = string.IsNullOrEmpty(whereClause)
-            ? $"DELETE FROM {from}"
-            : $"DELETE FROM {from} WHERE {whereClause}";
-
-        var affected = await _databaseProvider.ExecuteAsync(sql, parameters: null);
-        return affected > 0;
-    }
-
-    public virtual Task<ICursor<TVaultModel>> ToCursorAsync()
-        => throw new NotImplementedException();
 
     public virtual async Task<IEnumerable<TResult>> SelectAsync<TResult>(
-        Expression<Func<TVaultModel, TResult>> selector)
+        Expression<Func<TVaultModel, TResult>> selector,
+        CancellationToken ct = default)
         where TResult : class, IVaultModel
     {
+        ct.ThrowIfCancellationRequested();
+
         if (_state.Parts[QueryPosition.SELECT].Contains("*"))
             throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
 
@@ -304,11 +207,22 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             st = st.With(QueryPosition.SELECT, column);
 
         var query = BuildSelectQuery(st);
-        return await _databaseProvider.QueryAsync<TResult>(query, parameters: null);
+
+        var result = await _databaseProvider.QueryAsync<TResult>(
+            query,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
+        return result;
     }
 
-    public virtual async Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate)
+    public virtual async Task<bool> AnyAsync(
+        Expression<Func<TVaultModel, bool>> predicate,
+        CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var next = (PgVault<TVaultModel>)Where(predicate);
         var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
         var from = next.QualifiedTableName();
@@ -317,17 +231,92 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             ? $"SELECT COUNT(*) FROM {from}"
             : $"SELECT COUNT(*) FROM {from} WHERE {where}";
 
-        var count = await _databaseProvider.ExecuteCountAsync(query, parameters: null);
+        var count = await _databaseProvider.ExecuteCountAsync(
+            query,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
         return count > 0;
     }
 
-    public virtual async Task SaveAsync(TVaultModel entity, bool? saveHistory = false)
+    // ------------------------ Update / Delete ------------------------
+
+    public virtual async Task<long> UpdateAsync(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
+        CancellationToken ct = default)
     {
-        await SaveEntityAsync(entity, saveHistory);
+        ct.ThrowIfCancellationRequested();
+
+        var sql = PgQueryTranslator.BuildUpdate(
+            setPropertyCalls,
+            _state,
+            VaultDocument,
+            QualifiedTableName());
+
+        var affected = await _databaseProvider.ExecuteAsync(
+            sql,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
+        return affected;
     }
 
-    public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false) =>
-        SaveEntitiesAsync(entities, saveHistory);
+    public virtual async Task UpdateAsync(
+        IReadOnlyDictionary<string, object?> primaryKey,
+        IReadOnlyDictionary<string, object?> changes,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var sql = PgQueryTranslator.BuildUpdate(
+            primaryKey,
+            changes,
+            VaultDocument,
+            QualifiedTableName());
+
+        await _databaseProvider.ExecuteAsync(
+            sql,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
+    }
+
+    public virtual async Task<bool> DeleteAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var from = QualifiedTableName();
+        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
+
+        var sql = string.IsNullOrEmpty(whereClause)
+            ? $"DELETE FROM {from}"
+            : $"DELETE FROM {from} WHERE {whereClause}";
+
+        var affected = await _databaseProvider.ExecuteAsync(
+            sql,
+            parameters: null,
+            ct).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
+        return affected > 0;
+    }
+
+    // Cursor
+    public virtual Task<ICursor<TVaultModel>> ToCursorAsync(CancellationToken ct = default)
+        => throw new NotImplementedException();
+
+    // ------------------------ Save ------------------------
+
+    public virtual Task SaveAsync(TVaultModel entity, bool? saveHistory = false, CancellationToken ct = default)
+        => SaveEntityAsync(entity, saveHistory, ct);
+
+    public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false, CancellationToken ct = default)
+        => SaveEntitiesAsync(entities, saveHistory, ct);
+
+    // ------------------------ Query building helpers ------------------------
 
     public virtual string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
         => PgQueryTranslator.Where(predicate, VaultDocument);
@@ -372,8 +361,12 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     private string QualifiedTableName()
         => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
 
-    private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory = false)
+    // ------------------------ Save helpers ------------------------
+
+    private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         if (entity is null)
             throw new ArgumentNullException(nameof(entity));
 
@@ -413,11 +406,17 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         }
 
         var batchQuery = string.Join(";", queries) + ";";
-        await _databaseProvider.ExecuteAsync(batchQuery, parameters!);
+
+        await _databaseProvider.ExecuteAsync(
+            batchQuery,
+            parameters,
+            ct).ConfigureAwait(false);
     }
 
-    private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false)
+    private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         if (entities is null)
             throw new ArgumentNullException(nameof(entities));
 
@@ -426,7 +425,10 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             throw new ArgumentException("Entities cannot be empty.", nameof(entities));
 
         foreach (var e in list)
+        {
+            ct.ThrowIfCancellationRequested();
             e.OnSave();
+        }
 
         var fields = VaultDocument.Fields.ToArray();
         var columns = fields.Select(f => VaultDocument.Columns[f]).ToArray();
@@ -458,6 +460,8 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
 
         foreach (var e in list)
         {
+            ct.ThrowIfCancellationRequested();
+
             queries.Add(upsertQuery);
             allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
 
@@ -473,7 +477,11 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
             return;
 
         var batchQuery = string.Join(";", queries) + ";";
-        await _databaseProvider.ExecuteAsync(batchQuery, allParams!);
+
+        await _databaseProvider.ExecuteAsync(
+            batchQuery,
+            allParams,
+            ct).ConfigureAwait(false);
     }
 
     private static string BuildUpsertQuery(

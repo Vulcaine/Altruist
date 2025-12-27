@@ -17,7 +17,6 @@ limitations under the License.
 using System.Linq.Expressions;
 
 using Altruist.Contracts;
-using Altruist.Persistence;
 using Altruist.UORM;
 
 using Microsoft.EntityFrameworkCore;
@@ -98,70 +97,90 @@ public abstract class VaultModel : StoredModel, IVaultModel
     }
 }
 
-public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
-{
-
-}
-
-// public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
-// {
-//     IDatabaseServiceToken Token { get; }
-//     IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-// }
-
 public interface IGeneralDatabaseProvider : IConnectable
 {
     IDatabaseServiceToken Token { get; }
     string GetConnectionString();
-    Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null);
-    Task ChangeKeyspaceAsync(string keyspace);
+    Task CreateKeySpaceAsync(string keyspace, CancellationToken ct = default);
+    Task ChangeKeyspaceAsync(string keyspace, CancellationToken ct = default);
 }
+
+
 public interface ILinqDatabaseProvider : IGeneralDatabaseProvider
 {
     DbContext Context { get; }
-    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(Expression<Func<TVaultModel, bool>> filter) where TVaultModel : class, IVaultModel;
-    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(Expression<Func<TVaultModel, bool>> filter) where TVaultModel : class, IVaultModel;
-    Task<int> UpdateAsync<TVaultModel>(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteAsync<TVaultModel>(Expression<Func<TVaultModel, bool>> filter) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteSingleAsync<TVaultModel>(TVaultModel model) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteMultipleAsync<TVaultModel>(TVaultModel model) where TVaultModel : class, IVaultModel;
-}
 
-public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
-{
-    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
-    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
-    Task<long> ExecuteAsync(string cqlQuery, List<object>? parameters = null);
-    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
-    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
-    Task<long> ExecuteCountAsync(string cqlQuery, List<object>? parameters = null);
-}
+    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
+        Expression<Func<TVaultModel, bool>> filter,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
 
-public interface IVault<TVaultModel> where TVaultModel : class, IVaultModel
+    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
+        Expression<Func<TVaultModel, bool>> filter,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> UpdateAsync<TVaultModel>(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> DeleteAsync<TVaultModel>(
+        Expression<Func<TVaultModel, bool>> filter,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> DeleteSingleAsync<TVaultModel>(TVaultModel model, CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> DeleteMultipleAsync<TVaultModel>(TVaultModel model, CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+}
+public interface IVault<TVaultModel>
+    where TVaultModel : class, IVaultModel
 {
     IKeyspace Keyspace { get; }
     IHistoricalVault<TVaultModel> History { get; }
+
+    // Fluent query ops
     IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
     IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     IVault<TVaultModel> Take(int count);
-    Task<List<TVaultModel>> ToListAsync();
-    Task<ICursor<TVaultModel>> ToCursorAsync();
-    Task<TVaultModel?> FirstOrDefaultAsync();
-    Task<TVaultModel?> FirstAsync();
-    Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate);
-    Task SaveAsync(TVaultModel entity, bool? saveHistory = false);
-    Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false);
-    Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
+    IVault<TVaultModel> Skip(int count);
+
+    // Terminal query ops
+    Task<List<TVaultModel>> ToListAsync(CancellationToken ct = default);
+    Task<TVaultModel?> FirstOrDefaultAsync(CancellationToken ct = default);
+    Task<TVaultModel?> FirstAsync(CancellationToken ct = default);
+    Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate, CancellationToken ct = default);
+    Task<long> CountAsync(CancellationToken ct = default);
+
+    Task<IEnumerable<TResult>> SelectAsync<TResult>(
+        Expression<Func<TVaultModel, TResult>> selector,
+        CancellationToken ct = default)
+        where TResult : class, IVaultModel;
+
+    Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate, CancellationToken ct = default);
+
+    // Update / Delete
+    Task<long> UpdateAsync(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
+        CancellationToken ct = default);
+
     Task UpdateAsync(
         IReadOnlyDictionary<string, object?> primaryKey,
-        IReadOnlyDictionary<string, object?> changes);
-    Task<long> CountAsync();
-    Task<bool> DeleteAsync();
-    Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate);
-    IVault<TVaultModel> Skip(int count);
-    Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel;
+        IReadOnlyDictionary<string, object?> changes,
+        CancellationToken ct = default);
 
+    Task<bool> DeleteAsync(CancellationToken ct = default);
+
+    // Cursor
+    Task<ICursor<TVaultModel>> ToCursorAsync(CancellationToken ct = default);
+
+    // Save
+    Task SaveAsync(TVaultModel entity, bool? saveHistory = false, CancellationToken ct = default);
+    Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false, CancellationToken ct = default);
 }
 
 public interface IHistoricalVault<TVaultModel> where TVaultModel : class, IVaultModel
@@ -173,41 +192,5 @@ public interface IHistoricalVault<TVaultModel> where TVaultModel : class, IVault
     IHistoricalVault<TVaultModel> Take(int count);
     IHistoricalVault<TVaultModel> Skip(int count);
 
-    // Historical range query (inclusive)
-    Task<List<TVaultModel>> ToListAsync(DateTime startTime, DateTime endTime);
-}
-
-public interface ICqlVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
-{
-
-}
-
-// /// <summary>
-// /// Resolve typed repositories by compile-time keyspace type or at runtime by keyspace name.
-// /// </summary>
-// public interface IRepositoryFactory
-// {
-//     /// <summary>
-//     /// Return a strongly-typed repository for the given keyspace type.
-//     /// </summary>
-//     IVaultRepository<TKeyspace> Make<TKeyspace>() where TKeyspace : class, IKeyspace;
-
-//     /// <summary>
-//     /// Return a repository for the keyspace instance whose <see cref="IKeyspace.Name"/> matches.
-//     /// Since the keyspace type is only known at runtime, this returns a non-generic
-//     /// adapter that still supports <c>Select&lt;TModel&gt;()</c> and <c>Select(Type)</c>.
-//     /// </summary>
-//     IAnyVaultRepository Make(string keyspaceName);
-// }
-
-/// <summary>
-/// Non-generic repository surface so callers that only have a keyspace name can still call
-/// <c>Select&lt;TModel&gt;()</c> and <c>Select(Type)</c>.
-/// </summary>
-public interface IAnyVaultRepository
-{
-    IDatabaseServiceToken Token { get; }
-    IKeyspace Keyspace { get; }
-
-    IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
+    Task<List<TVaultModel>> ToListAsync(DateTime startTime, DateTime endTime, CancellationToken ct = default);
 }

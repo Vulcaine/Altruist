@@ -20,17 +20,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence;
 
-public class ReplicationOptions
-{
-    public int ReplicationFactor { get; set; } = 1;
-
-    /// <summary>
-    /// Defines replication per data center (Only used for NetworkTopologyStrategy).
-    /// The key is the Data Center name (configured in ScyllaDB).
-    /// </summary>
-    public Dictionary<string, int>? DataCenters { get; set; }
-}
-
 public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace : class, IKeyspace
 {
     protected readonly IServiceCollection Services;
@@ -62,22 +51,37 @@ public interface IKeyspaceSetup
 /// </summary>
 public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
 {
-    Task ConnectAsync(int maxRetries, int delayMilliseconds);
-    Task ShutdownAsync(Exception? ex = null);
+    Task ConnectAsync(int maxRetries, int delayMilliseconds, CancellationToken ct = default);
+    Task ShutdownAsync(Exception? ex = null, CancellationToken ct = default);
 
-    // Allow projecting to any reference type (DTO/record/class/anonymous types etc.)
-    Task<IEnumerable<T>> QueryAsync<T>(string sql, List<object>? parameters = null)
-        where T : class;
+    // Query APIs (parameter list aligns with Vaults using "?" placeholders)
+    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
 
-    Task<T?> QuerySingleAsync<T>(string sql, List<object>? parameters = null)
-        where T : class;
+    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
 
-    Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null);
-    Task<long> ExecuteAsync(string sql, List<object>? parameters = null);
+    Task<long> ExecuteCountAsync(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default);
 
-    // Keep these constrained because they are “vault model” operations
-    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
-    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
+    /// <summary>Executes INSERT/UPDATE/DELETE or batched statements; returns affected rows (driver-dependent).</summary>
+    Task<long> ExecuteAsync(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default);
 
-    Task CreateSchemaAsync(string schema, ReplicationOptions? options = null);
+    // Optional POCO-based ops (no-ops in current SqlDbProvider; kept for parity with Scylla provider)
+    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default) where TVaultModel : class, IVaultModel;
+    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default) where TVaultModel : class, IVaultModel;
+
+    // Bootstrap / DDL
+    Task CreateSchemaAsync(string schema, CancellationToken ct = default);
 }

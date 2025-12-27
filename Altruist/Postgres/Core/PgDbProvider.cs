@@ -71,7 +71,8 @@ public class SqlDbProvider : ISqlDatabaseProvider
             Password = _password,     // do NOT lowercase passwords
             Database = _database,
             Pooling = _pooling,
-            SslMode = ParseSslMode(_sslModeRaw)
+            SslMode = ParseSslMode(_sslModeRaw),
+            TrustServerCertificate = _trustServerCertificate
         };
 
         return csb.ConnectionString;
@@ -121,26 +122,39 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     #region Connection lifecycle
 
-    private async Task EnsureConnectedAsync()
+    private async Task EnsureConnectedAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         IsConnected = _conn?.State == ConnectionState.Open;
         if (!IsConnected)
-            await ConnectAsync();
+            await ConnectAsync(30, 2000, ct).ConfigureAwait(false);
     }
 
-    public async Task ConnectAsync(int maxRetries = 30, int delayMilliseconds = 2000)
+    // Backward-compatible signature (older callers / older interface)
+    public Task ConnectAsync(int maxRetries, int delayMilliseconds)
+        => ConnectAsync(maxRetries, delayMilliseconds, CancellationToken.None);
+
+    // New overload with CancellationToken (preferred)
+    public async Task ConnectAsync(int maxRetries, int delayMilliseconds, CancellationToken ct = default)
     {
         Exception? last = null;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
+            ct.ThrowIfCancellationRequested();
+
             try
             {
                 _conn = new NpgsqlConnection(BuildConnectionString());
-                await _conn.OpenAsync().ConfigureAwait(false);
+                await _conn.OpenAsync(ct).ConfigureAwait(false);
                 RaiseConnectedEvent();
                 StartHealthChecks();
                 return;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -148,16 +162,27 @@ public class SqlDbProvider : ISqlDatabaseProvider
                     RaiseFailedEvent(ex);
                 last = ex;
                 IsConnected = false;
+
                 if (attempt < maxRetries)
-                    await Task.Delay(delayMilliseconds).ConfigureAwait(false);
+                    await Task.Delay(delayMilliseconds, ct).ConfigureAwait(false);
             }
         }
 
         RaiseOnRetryExhaustedEvent(last!);
     }
 
-    // IConnectable-style overload: protocol/host/port-based connect with retries
-    public async Task ConnectAsync(string protocol, string host, int port, int maxRetries, int delayMilliseconds)
+    // IConnectable-style overload: protocol/host/port-based connect with retries (existing signature)
+    public Task ConnectAsync(string protocol, string host, int port, int maxRetries, int delayMilliseconds)
+        => ConnectAsync(protocol, host, port, maxRetries, delayMilliseconds, CancellationToken.None);
+
+    // New overload with cancellation token (doesn't break existing callers)
+    public async Task ConnectAsync(
+        string protocol,
+        string host,
+        int port,
+        int maxRetries,
+        int delayMilliseconds,
+        CancellationToken ct = default)
     {
         Exception? last = null;
 
@@ -166,14 +191,20 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
+            ct.ThrowIfCancellationRequested();
+
             try
             {
                 // Protocol is ignored by Npgsql; SSL is controlled by SslMode.
                 _conn = new NpgsqlConnection(BuildConnectionString(overrideHost: hostLower, overridePort: port));
-                await _conn.OpenAsync().ConfigureAwait(false);
+                await _conn.OpenAsync(ct).ConfigureAwait(false);
                 RaiseConnectedEvent();
                 StartHealthChecks();
                 return;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -181,23 +212,34 @@ public class SqlDbProvider : ISqlDatabaseProvider
                     RaiseFailedEvent(ex);
                 last = ex;
                 IsConnected = false;
+
                 if (attempt < maxRetries)
-                    await Task.Delay(delayMilliseconds).ConfigureAwait(false);
+                    await Task.Delay(delayMilliseconds, ct).ConfigureAwait(false);
             }
         }
 
         RaiseOnRetryExhaustedEvent(last!);
     }
 
-    public Task ConnectAsync() => ConnectAsync(30, 2000);
+    public Task ConnectAsync() => ConnectAsync(30, 2000, CancellationToken.None);
 
-    public async Task ShutdownAsync(Exception? ex = null)
+    // Optional convenience overload
+    public Task ConnectAsync(CancellationToken ct) => ConnectAsync(30, 2000, ct);
+
+    // Backward-compatible signature (older callers / older interface)
+    public Task ShutdownAsync(Exception? ex = null) => ShutdownAsync(ex, CancellationToken.None);
+
+    public async Task ShutdownAsync(Exception? ex = null, CancellationToken ct = default)
     {
         StopHealthChecks();
+
         if (_conn is null)
             return;
+
         try
         {
+            // Npgsql CloseAsync may or may not accept a CancellationToken depending on version;
+            // keep it compatible.
             await _conn.CloseAsync().ConfigureAwait(false);
         }
         finally
@@ -208,12 +250,15 @@ public class SqlDbProvider : ISqlDatabaseProvider
         }
     }
 
-    public async Task ChangeKeyspaceAsync(string schema)
+    // Backward-compatible signature (older callers / older interface)
+    public Task ChangeKeyspaceAsync(string schema) => ChangeKeyspaceAsync(schema, CancellationToken.None);
+
+    public async Task ChangeKeyspaceAsync(string schema, CancellationToken ct = default)
     {
-        await EnsureConnectedAsync();
-        using var cmd = _conn!.CreateCommand();
+        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        await using var cmd = _conn!.CreateCommand();
         cmd.CommandText = $"SET search_path TO \"{NormLower(schema)}\";";
-        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     // IConnectable event-raiser implementations
@@ -239,78 +284,118 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     #region Provider API (Query / Execute)
 
-    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string sql, List<object>? parameters = null)
-        where TVaultModel : class
-        => (await ExecuteFetchAsync<TVaultModel>(sql, parameters).ConfigureAwait(false)).ToList();
+    // Backward-compatible signature (older callers / older interface)
+    public Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string sql, List<object>? parameters = null)
+        where TVaultModel : class, IVaultModel
+        => QueryAsync<TVaultModel>(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
-    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string sql, List<object>? parameters = null)
-        where TVaultModel : class
-        => (await ExecuteFetchAsync<TVaultModel>(sql, parameters).ConfigureAwait(false)).FirstOrDefault();
+    public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel
+        => (await ExecuteFetchAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false)).ToList();
 
-    public async Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null)
+    // Backward-compatible signature (older callers / older interface)
+    public Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string sql, List<object>? parameters = null)
+        where TVaultModel : class, IVaultModel
+        => QuerySingleAsync<TVaultModel>(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
+
+    public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel
+        => (await ExecuteFetchAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false)).FirstOrDefault();
+
+    // Backward-compatible signature (older callers / older interface)
+    public Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null)
+        => ExecuteCountAsync(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
+
+    public async Task<long> ExecuteCountAsync(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default)
     {
-        try
-        {
-            await EnsureConnectedAsync();
-            using var cmd = PrepareCommand(_conn!, sql, parameters);
-            var obj = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
-            if (obj is long l)
-                return l;
-            if (obj is int i)
-                return i;
-            if (obj is decimal d)
-                return (long)d;
-            return obj is null ? 0 : Convert.ToInt64(obj);
-        }
-        catch (Exception)
-        {
-            throw;
-        }
+        ct.ThrowIfCancellationRequested();
+
+        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        await using var cmd = PrepareCommand(_conn!, sql, parameters);
+
+        var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        if (obj is long l)
+            return l;
+        if (obj is int i)
+            return i;
+        if (obj is decimal d)
+            return (long)d;
+        return obj is null ? 0 : Convert.ToInt64(obj);
     }
 
     /// <summary>Executes INSERT/UPDATE/DELETE or batched statements; returns affected rows (driver-dependent).</summary>
-    public async Task<long> ExecuteAsync(string sql, List<object>? parameters = null)
+    // Backward-compatible signature (older callers / older interface)
+    public Task<long> ExecuteAsync(string sql, List<object>? parameters = null)
+        => ExecuteAsync(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
+
+    public async Task<long> ExecuteAsync(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default)
     {
-        try
-        {
-            await EnsureConnectedAsync();
-            using var cmd = PrepareCommand(_conn!, sql, parameters);
-            var affected = await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-            if (!IsConnected)
-                RaiseConnectedEvent();
-            return affected;
-        }
-        catch (Exception)
-        {
-            throw;
-        }
+        ct.ThrowIfCancellationRequested();
+
+        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        await using var cmd = PrepareCommand(_conn!, sql, parameters);
+
+        var affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        if (!IsConnected)
+            RaiseConnectedEvent();
+        return affected;
     }
 
-    public async Task<long> UpdateAsync<TVaultModel>(TVaultModel entity)
+    // Backward-compatible signature (older callers / older interface)
+    public Task<long> UpdateAsync<TVaultModel>(TVaultModel entity)
+        where TVaultModel : class, IVaultModel
+        => UpdateAsync(entity, CancellationToken.None);
+
+    public async Task<long> UpdateAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
         where TVaultModel : class, IVaultModel
     {
         // No POCO-mapper update in this provider (parity with CQL provider surface)
-        await Task.CompletedTask;
+        await Task.CompletedTask.ConfigureAwait(false);
         return 1;
     }
 
-    public async Task<long> DeleteAsync<TVaultModel>(TVaultModel entity)
+    // Backward-compatible signature (older callers / older interface)
+    public Task<long> DeleteAsync<TVaultModel>(TVaultModel entity)
+        where TVaultModel : class, IVaultModel
+        => DeleteAsync(entity, CancellationToken.None);
+
+    public async Task<long> DeleteAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
         where TVaultModel : class, IVaultModel
     {
-        await Task.CompletedTask;
+        await Task.CompletedTask.ConfigureAwait(false);
         return 1;
     }
 
-    private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(string sql, List<object>? parameters)
-    where TVaultModel : class
+    private async Task<IEnumerable<TVaultModel>> ExecuteFetchAsync<TVaultModel>(
+        string sql,
+        List<object?>? parameters,
+        CancellationToken ct)
+        where TVaultModel : class, IVaultModel
     {
+        ct.ThrowIfCancellationRequested();
+
         try
         {
-            await EnsureConnectedAsync();
-            using var cmd = PrepareCommand(_conn!, sql, parameters);
+            await EnsureConnectedAsync(ct).ConfigureAwait(false);
 
-            // Keep SequentialAccess if you want, but then you MUST read in ordinal order.
-            using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess).ConfigureAwait(false);
+            await using var cmd = PrepareCommand(_conn!, sql, parameters);
+
+            // SequentialAccess is fine, but read in ordinal order.
+            await using var reader = await cmd
+                .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
+                .ConfigureAwait(false);
 
             var list = new List<TVaultModel>();
             var type = typeof(TVaultModel);
@@ -331,16 +416,20 @@ public class SqlDbProvider : ISqlDatabaseProvider
                 .OrderBy(x => x.Ord)
                 .ToArray();
 
-            while (await reader.ReadAsync().ConfigureAwait(false))
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
+                ct.ThrowIfCancellationRequested();
+
                 var inst = Activator.CreateInstance<TVaultModel>();
 
                 foreach (var b in bindings)
                 {
+                    ct.ThrowIfCancellationRequested();
+
                     var p = b.Prop;
                     var ord = b.Ord;
 
-                    if (await reader.IsDBNullAsync(ord).ConfigureAwait(false))
+                    if (await reader.IsDBNullAsync(ord, ct).ConfigureAwait(false))
                         continue;
 
                     var val = reader.GetValue(ord);
@@ -359,6 +448,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
         }
         finally
         {
+            // Preserve previous behavior
             if (IsConnected)
                 OnConnected?.Invoke();
         }
@@ -478,7 +568,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
     /// Translates '?' placeholders to PostgreSQL '@p1..@pn' and binds parameters.
     /// Handles single-quoted string literals to avoid replacing '?' inside them.
     /// </summary>
-    private NpgsqlCommand PrepareCommand(NpgsqlConnection conn, string sql, List<object>? parameters)
+    private NpgsqlCommand PrepareCommand(NpgsqlConnection conn, string sql, List<object?>? parameters)
     {
         var cmd = conn.CreateCommand();
 
@@ -580,15 +670,19 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     #region Schema creation (no table DDL here)
 
-    public Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null)
-        => CreateSchemaAsync(keyspace, options);
+    // Backward-compatible signature (older callers / older interface)
+    public Task CreateKeySpaceAsync(string keyspace)
+        => CreateSchemaAsync(keyspace, CancellationToken.None);
 
-    public async Task CreateSchemaAsync(string schema, ReplicationOptions? _ = null)
+    public Task CreateKeySpaceAsync(string keyspace, CancellationToken ct = default)
+        => CreateSchemaAsync(keyspace, ct);
+
+    public async Task CreateSchemaAsync(string schema, CancellationToken ct = default)
     {
-        await EnsureConnectedAsync();
-        using var cmd = _conn!.CreateCommand();
+        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        await using var cmd = _conn!.CreateCommand();
         cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
-        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     #endregion
@@ -606,8 +700,8 @@ public class SqlDbProvider : ISqlDatabaseProvider
             {
                 try
                 {
-                    await HealthCheckAsync();
-                    await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCts.Token);
+                    await HealthCheckAsync().ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { /* ignore */ }
             }
@@ -616,7 +710,7 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     private async Task HealthCheckAsync()
     {
-        if (!await _pingLock.WaitAsync(0))
+        if (!await _pingLock.WaitAsync(0).ConfigureAwait(false))
             return;
 
         try
@@ -624,13 +718,13 @@ public class SqlDbProvider : ISqlDatabaseProvider
             // Use a separate, short-lived connection for the health check to avoid
             // "command already in progress" on the shared _conn.
             await using var pingConn = new NpgsqlConnection(BuildConnectionString());
-            await pingConn.OpenAsync().ConfigureAwait(false);
+            await pingConn.OpenAsync(_healthCts.Token).ConfigureAwait(false);
 
             await using var cmd = pingConn.CreateCommand();
             cmd.CommandText = "SELECT 1";
             cmd.CommandTimeout = 3;
 
-            await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+            await cmd.ExecuteScalarAsync(_healthCts.Token).ConfigureAwait(false);
 
             if (!IsConnected)
             {
@@ -638,10 +732,14 @@ public class SqlDbProvider : ISqlDatabaseProvider
                 OnConnected?.Invoke();
             }
         }
-        catch (Npgsql.NpgsqlOperationInProgressException)
+        catch (NpgsqlOperationInProgressException)
         {
             // If the pool/connection is busy for some reason, just skip this tick.
             // We don't want health checks to interfere with normal operations.
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
         }
         catch (Exception ex)
         {
@@ -661,4 +759,3 @@ public class SqlDbProvider : ISqlDatabaseProvider
 
     #endregion
 }
-
