@@ -42,7 +42,7 @@ namespace Altruist.Gaming.TwoD
         /// By default resolves the archetype from [WorldObject] on the concrete type.
         /// Override if you need something custom.
         /// </summary>
-        public virtual string? Archetype
+        public virtual string? ObjectArchetype
         {
             get;
             set;
@@ -60,7 +60,7 @@ namespace Altruist.Gaming.TwoD
         {
             Transform = transform;
             ZoneId = zoneId ?? string.Empty;
-            Archetype = archetype;
+            ObjectArchetype = archetype;
         }
 
         public virtual Task Step(float dt, IWorldPhysics3D worldPhysics)

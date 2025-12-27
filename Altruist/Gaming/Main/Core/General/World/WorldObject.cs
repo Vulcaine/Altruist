@@ -30,7 +30,7 @@ namespace Altruist.Gaming
         string InstanceId { get; set; }
 
         /// <summary>High-level gameplay category (e.g. "Tree", "Rock", "House").</summary>
-        string? Archetype { get; set; }
+        string? ObjectArchetype { get; set; }
 
         /// <summary>Optional room/zone id for sharding.</summary>
         string ZoneId { get; set; }

@@ -99,7 +99,7 @@ namespace Altruist.Dashboard
                         var wod = new WorldObjectDto
                         {
                             InstanceId = o.InstanceId,
-                            Archetype = o.Archetype ?? string.Empty,
+                            Archetype = o.ObjectArchetype ?? string.Empty,
                             ZoneId = o.ZoneId,
                             ClientId = o.ClientId,
                             Expired = o.Expired,

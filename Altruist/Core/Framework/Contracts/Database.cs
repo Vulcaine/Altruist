@@ -115,6 +115,8 @@ public interface ILinqDatabaseProvider : IGeneralDatabaseProvider
         CancellationToken ct = default)
         where TVaultModel : class, IVaultModel;
 
+    Task<List<object>> QueryAsync(Type modelType, string sql, List<object?>? parameters, CancellationToken ct);
+
     Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
         Expression<Func<TVaultModel, bool>> filter,
         CancellationToken ct = default)
@@ -136,6 +138,7 @@ public interface ILinqDatabaseProvider : IGeneralDatabaseProvider
     Task<int> DeleteMultipleAsync<TVaultModel>(TVaultModel model, CancellationToken ct = default)
         where TVaultModel : class, IVaultModel;
 }
+
 public interface IVault<TVaultModel>
     where TVaultModel : class, IVaultModel
 {

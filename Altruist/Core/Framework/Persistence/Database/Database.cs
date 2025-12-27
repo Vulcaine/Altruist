@@ -61,6 +61,12 @@ public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
         CancellationToken ct = default)
         where TVaultModel : class;
 
+    Task<List<object>> QueryAsync(
+        Type modelType,
+        string sql,
+        List<object?>? parameters,
+        CancellationToken ct);
+
     Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
         string sql,
         List<object?>? parameters = null,

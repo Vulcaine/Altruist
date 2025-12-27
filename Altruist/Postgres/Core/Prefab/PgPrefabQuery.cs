@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -16,6 +17,10 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
 
     private int? _skip;
     private int? _take;
+
+    // Cache: prefab root setter by property name (compiled once)
+    private static readonly ConcurrentDictionary<string, Action<TPrefab, object>> _rootSetterCache =
+        new(StringComparer.Ordinal);
 
     public PgPrefabQuery(ISqlDatabaseProvider db)
     {
@@ -55,7 +60,6 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         var rootDoc = Document.From(prefabMeta.RootComponentType);
         var rootTable = PgDocSql.QualifiedTable(prefabMeta.RootComponentType, rootDoc);
 
-        // Root query: SELECT r.* FROM root r WHERE ...
         var sql = $"SELECT r.* FROM {rootTable} r";
 
         if (_wheres.Count > 0)
@@ -67,26 +71,31 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         if (_take.HasValue)
             sql += $" LIMIT {_take.Value}";
 
-        // Load root rows strongly typed
-        var roots = await QueryTypedList(prefabMeta.RootComponentType, sql, _whereParams).ConfigureAwait(false);
+        var roots = await _db.QueryAsync(
+            prefabMeta.RootComponentType,
+            sql,
+            _whereParams,
+            ct).ConfigureAwait(false);
+
         if (roots.Count == 0)
             return new List<TPrefab>();
 
-        // Construct prefabs
+        var setRoot = GetRootSetter(prefabMeta.RootPropertyName);
         var list = new List<TPrefab>(roots.Count);
         foreach (var root in roots)
         {
+            ct.ThrowIfCancellationRequested();
+
             var p = new TPrefab();
-            SetProperty(p, prefabMeta.RootPropertyName, root);
+            setRoot(p, root);
             list.Add(p);
         }
 
-        // Hydrate includes
         if (_includes.Count == 0)
             return list;
 
         var loader = new PgPrefabEagerLoader(_db, prefabMeta);
-        await loader.HydrateAsync(list, _includes, ct);
+        await loader.HydrateAsync(list, _includes, ct).ConfigureAwait(false);
 
         return list;
     }
@@ -94,7 +103,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
     public async Task<TPrefab?> FirstOrDefaultAsync(CancellationToken ct = default)
     {
         Take(1);
-        var list = await ToListAsync(ct);
+        var list = await ToListAsync(ct).ConfigureAwait(false);
         return list.FirstOrDefault();
     }
 
@@ -107,98 +116,29 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         if (expr is MemberExpression me)
             return me.Member.Name;
 
-        throw new NotSupportedException("Include selector must be a component property, e.g. p => p.Character or p => p.Equipment.");
+        throw new NotSupportedException(
+            "Include selector must be a component property, e.g. p => p.Character or p => p.Equipment.");
     }
 
-    private static void SetProperty(object target, string propertyName, object value)
+    private static Action<TPrefab, object> GetRootSetter(string propertyName)
     {
-        var p = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Property '{propertyName}' not found on {target.GetType().Name}.");
-
-        p.SetValue(target, value);
-    }
-
-    private async Task<List<object>> QueryTypedList(Type modelType, string sql, List<object?>? parameters)
-    {
-        // Support common shapes:
-        // - QueryAsync<T>(string sql)
-        // - QueryAsync<T>(string sql, List<object>? parameters = null)
-        // - QueryAsync<T>(string sql, object?[] parameters)
-        var methods = _db.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public);
-
-        var candidates = methods
-            .Where(m => m.Name == nameof(ISqlDatabaseProvider.QueryAsync) && m.IsGenericMethodDefinition)
-            .ToList();
-
-        if (candidates.Count == 0)
-            throw new InvalidOperationException("No QueryAsync<T> method found on ISqlDatabaseProvider implementation.");
-
-        object? taskObj = null;
-
-        foreach (var m in candidates)
+        return _rootSetterCache.GetOrAdd(propertyName, static name =>
         {
-            var gm = m.MakeGenericMethod(modelType);
-            var ps = gm.GetParameters();
+            var target = Expression.Parameter(typeof(TPrefab), "target");
+            var value = Expression.Parameter(typeof(object), "value");
 
-            try
-            {
-                if (ps.Length == 1)
-                {
-                    taskObj = gm.Invoke(_db, new object?[] { sql });
-                    if (taskObj != null)
-                        break;
-                }
-                else if (ps.Length == 2)
-                {
-                    var pType = ps[1].ParameterType;
+            var member = Expression.PropertyOrField(target, name);
+            var assign = Expression.Assign(member, Expression.Convert(value, member.Type));
 
-                    // List<object>
-                    if (typeof(List<object>).IsAssignableFrom(pType))
-                    {
-                        var list = parameters?.Select(x => x ?? DBNull.Value).Cast<object>().ToList() ?? null;
-                        taskObj = gm.Invoke(_db, new object?[] { sql, list });
-                        if (taskObj != null)
-                            break;
-                    }
-
-                    // object?[]
-                    if (pType.IsArray)
-                    {
-                        var arr = parameters?.ToArray() ?? Array.Empty<object?>();
-                        taskObj = gm.Invoke(_db, new object?[] { sql, arr });
-                        if (taskObj != null)
-                            break;
-                    }
-                }
-            }
-            catch
-            {
-                // try next overload
-            }
-        }
-
-        if (taskObj is null)
-            throw new InvalidOperationException("Could not invoke QueryAsync<T> with supported parameter shapes.");
-
-        var task = (Task)taskObj;
-        await task.ConfigureAwait(false);
-
-        var resultProp = taskObj.GetType().GetProperty("Result")
-            ?? throw new InvalidOperationException("QueryAsync Task has no Result.");
-
-        var enumerable = (System.Collections.IEnumerable)resultProp.GetValue(taskObj)!;
-
-        var listOut = new List<object>();
-        foreach (var it in enumerable)
-            listOut.Add(it!);
-
-        return listOut;
+            return Expression.Lambda<Action<TPrefab, object>>(assign, target, value).Compile();
+        });
     }
 
     private static class PgDocSql
     {
         public static string QualifiedTable(Type modelType, Document doc)
         {
+            // Allowed: attribute discovery
             var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
             var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
             return $"{Quote(schema)}.{Quote(doc.Name)}";

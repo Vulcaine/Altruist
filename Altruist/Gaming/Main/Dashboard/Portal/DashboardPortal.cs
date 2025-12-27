@@ -77,7 +77,7 @@ namespace Altruist.Dashboard
                         var current = new DashboardWorldObjectStateDto
                         {
                             InstanceId = obj.InstanceId,
-                            Archetype = obj.Archetype ?? string.Empty,
+                            Archetype = obj.ObjectArchetype ?? string.Empty,
                             Position = new Vector3Dto
                             {
                                 X = t.Position.X,

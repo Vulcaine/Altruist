@@ -9,8 +9,10 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 */
 
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -29,6 +31,17 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     private DbConnection? _conn;
 
     protected readonly JsonSerializerOptions JsonOptions;
+
+    private static readonly ConcurrentDictionary<Type, UntypedMaterializer> _untypedMaterializers = new();
+
+
+    private sealed record UntypedProp(string Name, Type PropType, Action<object, object?> Setter);
+
+    private sealed class UntypedMaterializer
+    {
+        public required Func<object> Factory { get; init; }
+        public required UntypedProp[] Props { get; init; }
+    }
 
     protected GeneralSqlDatabaseProvider(JsonSerializerOptions jsonOptions)
     {
@@ -145,6 +158,122 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             maxRetries: maxRetries,
             delayMilliseconds: delayMilliseconds,
             ct: ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Untyped query entrypoint: materializes rows into instances of <paramref name="modelType"/>.
+    /// </summary>
+    public async Task<List<object>> QueryAsync(
+        Type modelType,
+        string sql,
+        List<object?>? parameters,
+        CancellationToken ct)
+    {
+        if (modelType is null)
+            throw new ArgumentNullException(nameof(modelType));
+
+        ct.ThrowIfCancellationRequested();
+
+        var mat = _untypedMaterializers.GetOrAdd(modelType, static t => BuildUntypedMaterializer(t));
+
+        try
+        {
+            await EnsureConnectedAsync(ct).ConfigureAwait(false);
+
+            await using var cmd = PrepareCommand(_conn!, sql, parameters);
+
+            await using var reader = await cmd
+                .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
+                .ConfigureAwait(false);
+
+            // Map column name -> ordinal
+            var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < reader.FieldCount; i++)
+                ordinals[reader.GetName(i)] = i;
+
+            // Bind properties that exist in the result-set, ordered by ordinal (important for SequentialAccess)
+            var bindings = mat.Props
+                .Select(p => (Prop: p, HasOrd: ordinals.TryGetValue(p.Name, out var ord), Ord: ord))
+                .Where(x => x.HasOrd)
+                .OrderBy(x => x.Ord)
+                .ToArray();
+
+            var list = new List<object>();
+
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var inst = mat.Factory();
+
+                foreach (var b in bindings)
+                {
+                    if (await reader.IsDBNullAsync(b.Ord, ct).ConfigureAwait(false))
+                        continue;
+
+                    var val = reader.GetValue(b.Ord);
+                    if (val is null)
+                        continue;
+
+                    var targetType = Nullable.GetUnderlyingType(b.Prop.PropType) ?? b.Prop.PropType;
+                    var converted = ConvertValue(val, targetType);
+
+                    // Setter expects exact property type
+                    b.Prop.Setter(inst, converted);
+                }
+
+                list.Add(inst);
+            }
+
+            return list;
+        }
+        finally
+        {
+            if (IsConnected)
+                OnConnected?.Invoke();
+        }
+    }
+
+    private static UntypedMaterializer BuildUntypedMaterializer(Type modelType)
+    {
+        // Create instance factory (compiled)
+        var ctor =
+            modelType.GetConstructor(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+
+        if (ctor is null)
+            throw new InvalidOperationException(
+                $"Type '{modelType.FullName}' must have a parameterless constructor to be materialized.");
+
+        var newExpr = Expression.New(ctor);
+        var factory = Expression
+            .Lambda<Func<object>>(Expression.Convert(newExpr, typeof(object)))
+            .Compile();
+
+        // Build setters (compiled)
+        var props = modelType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite)
+            .Select(p =>
+            {
+                var target = Expression.Parameter(typeof(object), "target");
+                var value = Expression.Parameter(typeof(object), "value");
+
+                var castTarget = Expression.Convert(target, modelType);
+                var member = Expression.Property(castTarget, p);
+                var castValue = Expression.Convert(value, p.PropertyType);
+
+                var assign = Expression.Assign(member, castValue);
+                var setter = Expression.Lambda<Action<object, object?>>(assign, target, value).Compile();
+
+                return new UntypedProp(p.Name, p.PropertyType, setter);
+            })
+            .ToArray();
+
+        return new UntypedMaterializer { Factory = factory, Props = props };
     }
 
     private async Task ConnectInternalAsync(

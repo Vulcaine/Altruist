@@ -33,7 +33,7 @@ namespace Altruist.Gaming.ThreeD
         /// Override only if you need something special.
         /// </summary>
         [VaultColumn("archetype")]
-        public string? Archetype { get; set; } = null;
+        public string? ObjectArchetype { get; set; } = null;
 
         /// <summary>
         /// Transform in world space. Prefab3D already has this property.
@@ -115,7 +115,7 @@ namespace Altruist.Gaming.ThreeD
         /// Override if you need something custom.
         /// </summary>
         [VaultColumn("archetype")]
-        public virtual string? Archetype
+        public virtual string? ObjectArchetype
         {
             get;
             set;
@@ -152,7 +152,7 @@ namespace Altruist.Gaming.ThreeD
         {
             Transform = transform;
             ZoneId = zoneId;
-            Archetype = archetype;
+            ObjectArchetype = archetype;
             ColliderDescriptors = Enumerable.Empty<PhysxCollider3DDesc>();
             Colliders = Enumerable.Empty<IPhysxCollider3D>();
         }
@@ -168,7 +168,7 @@ namespace Altruist.Gaming.ThreeD
             return
                 $"{GetType().Name}(" +
                 $"Id={InstanceId}, " +
-                $"Archetype={Archetype ?? "<none>"}, " +
+                $"Archetype={ObjectArchetype ?? "<none>"}, " +
                 $"ZoneId={ZoneId}, " +
                 $"Pos=({p.X},{p.Y},{p.Z}), " +
                 $"Size=({sz.X:0.##},{sz.Y:0.##},{sz.Z:0.##}), " +

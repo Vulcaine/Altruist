@@ -149,8 +149,8 @@ namespace Altruist.Gaming.ThreeD
             if (obj is null)
                 return null;
 
-            obj.Archetype = obj is AnonymousWorldObject3D
-                ? obj.Archetype
+            obj.ObjectArchetype = obj is AnonymousWorldObject3D
+                ? obj.ObjectArchetype
                 : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
 
             var engine3D = PhysxWorld.Engine;
