@@ -19,7 +19,7 @@ internal static class PgQueryTranslator
 
     public static string Where<T>(
         Expression<Func<T, bool>> predicate,
-        Document document)
+        VaultDocument document)
         where T : class
     {
         return VisitWhere(predicate.Body, predicate.Parameters[0], document);
@@ -28,7 +28,7 @@ internal static class PgQueryTranslator
     private static string VisitWhere(
         Expression expr,
         ParameterExpression root,
-        Document doc)
+        VaultDocument doc)
     {
         if (expr is UnaryExpression ue &&
             ue.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked)
@@ -64,7 +64,7 @@ internal static class PgQueryTranslator
 
     public static string OrderBy<T, TKey>(
         Expression<Func<T, TKey>> selector,
-        Document doc)
+        VaultDocument doc)
         where T : class
     {
         if (selector.Body is not MemberExpression me)
@@ -78,7 +78,7 @@ internal static class PgQueryTranslator
 
     public static IEnumerable<string> Select<T, TResult>(
         Expression<Func<T, TResult>> selector,
-        Document doc)
+        VaultDocument doc)
         where T : class
     {
         if (selector.Body is not NewExpression ne || ne.Members is null)
@@ -97,7 +97,7 @@ internal static class PgQueryTranslator
     public static string BuildUpdate<T>(
         Expression<Func<SetPropertyCalls<T>, SetPropertyCalls<T>>> setExpression,
         QueryState state,
-        Document doc,
+        VaultDocument doc,
         string qualifiedTable)
         where T : class
     {
@@ -128,7 +128,7 @@ internal static class PgQueryTranslator
     public static string BuildUpdate(
         IReadOnlyDictionary<string, object?> primaryKey,
         IReadOnlyDictionary<string, object?> changes,
-        Document doc,
+        VaultDocument doc,
         string qualifiedTable)
     {
         var sets = changes.Select(kv =>
@@ -156,7 +156,7 @@ internal static class PgQueryTranslator
     private static bool TryColumn(
         Expression expr,
         ParameterExpression root,
-        Document doc,
+        VaultDocument doc,
         out string column)
     {
         while (expr is UnaryExpression ue)
@@ -217,8 +217,8 @@ internal static class PgQueryTranslator
         _ => throw new NotSupportedException()
     };
 
-    private static string ResolveColumn(string prop, Document doc) =>
-        doc.Columns.TryGetValue(prop, out var c) ? c : Document.ToCamelCase(prop);
+    private static string ResolveColumn(string prop, VaultDocument doc) =>
+        doc.Columns.TryGetValue(prop, out var c) ? c : VaultDocument.ToCamelCase(prop);
 
     private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 

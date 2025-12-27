@@ -58,11 +58,11 @@ internal sealed class PgPrefabWhereTranslator
                 throw new NotSupportedException($"Any() is only supported on collection components. '{compName}' is {comp.Kind}.");
 
             // EXISTS (SELECT 1 FROM dep d WHERE d.fk = r.storage_id AND <predicate>)
-            var depDoc = Document.From(comp.ComponentType);
+            var depDoc = VaultDocument.From(comp.ComponentType);
             var depTable = QualifiedTable(comp.ComponentType, depDoc);
 
             var fkCol = Col(depDoc, comp.ForeignKeyPropertyName);
-            var rootPkCol = Col(Document.From(_prefab.RootComponentType), nameof(IVaultModel.StorageId));
+            var rootPkCol = Col(VaultDocument.From(_prefab.RootComponentType), nameof(IVaultModel.StorageId));
 
             var sql = $"EXISTS (SELECT 1 FROM {depTable} d WHERE d.{Q(fkCol)} = r.{Q(rootPkCol)}";
             var args = new List<object?>();
@@ -118,7 +118,7 @@ internal sealed class PgPrefabWhereTranslator
         // Root member: r."<col>" = ?
         if (comp.Kind == PrefabComponentKind.Root)
         {
-            var rootDoc = Document.From(_prefab.RootComponentType);
+            var rootDoc = VaultDocument.From(_prefab.RootComponentType);
             var col = Col(rootDoc, memberLogical);
 
             if (value is null)
@@ -131,10 +131,10 @@ internal sealed class PgPrefabWhereTranslator
         if (comp.Kind == PrefabComponentKind.Single)
         {
             // root FK (on root) -> dependent PK
-            var rootDoc = Document.From(_prefab.RootComponentType);
+            var rootDoc = VaultDocument.From(_prefab.RootComponentType);
             var rootFkCol = Col(rootDoc, comp.ForeignKeyPropertyName);
 
-            var depDoc = Document.From(comp.ComponentType);
+            var depDoc = VaultDocument.From(comp.ComponentType);
             var depTable = QualifiedTable(comp.ComponentType, depDoc);
 
             var depPkCol = Col(depDoc, comp.PrincipalKeyPropertyName);
@@ -157,13 +157,13 @@ internal sealed class PgPrefabWhereTranslator
         throw new NotSupportedException($"Direct comparison against collection component '{comp.Name}' is not supported. Use Any(...).");
     }
 
-    private SqlFragment VisitDependentPredicate(Document depDoc, LambdaExpression predicate)
+    private SqlFragment VisitDependentPredicate(VaultDocument depDoc, LambdaExpression predicate)
     {
         // Supports simple comparisons + AND/OR on dependent row parameter.
         return VisitDependentExpr(depDoc, predicate.Body);
     }
 
-    private SqlFragment VisitDependentExpr(Document depDoc, Expression expr)
+    private SqlFragment VisitDependentExpr(VaultDocument depDoc, Expression expr)
     {
         return expr switch
         {
@@ -183,7 +183,7 @@ internal sealed class PgPrefabWhereTranslator
         };
     }
 
-    private SqlFragment VisitDependentComparison(Document depDoc, BinaryExpression b)
+    private SqlFragment VisitDependentComparison(VaultDocument depDoc, BinaryExpression b)
     {
         if (b.Left is MemberExpression me && TryEvaluate(b.Right, out var value))
         {
@@ -308,15 +308,15 @@ internal sealed class PgPrefabWhereTranslator
         return new SqlFragment(sql, args);
     }
 
-    private static string QualifiedTable(Type modelType, Document doc)
+    private static string QualifiedTable(Type modelType, VaultDocument doc)
     {
         var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
         var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
         return $"{Q(schema)}.{Q(doc.Name)}";
     }
 
-    private static string Col(Document doc, string logical)
-        => doc.Columns.TryGetValue(logical, out var physical) ? physical : Document.ToCamelCase(logical);
+    private static string Col(VaultDocument doc, string logical)
+        => doc.Columns.TryGetValue(logical, out var physical) ? physical : VaultDocument.ToCamelCase(logical);
 
     private static string Q(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 }

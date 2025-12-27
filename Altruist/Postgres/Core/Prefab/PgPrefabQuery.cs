@@ -57,7 +57,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
 
         var prefabMeta = PrefabDocument.Get(typeof(TPrefab));
 
-        var rootDoc = Document.From(prefabMeta.RootComponentType);
+        var rootDoc = VaultDocument.From(prefabMeta.RootComponentType);
         var rootTable = PgDocSql.QualifiedTable(prefabMeta.RootComponentType, rootDoc);
 
         var sql = $"SELECT r.* FROM {rootTable} r";
@@ -136,7 +136,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
 
     private static class PgDocSql
     {
-        public static string QualifiedTable(Type modelType, Document doc)
+        public static string QualifiedTable(Type modelType, VaultDocument doc)
         {
             // Allowed: attribute discovery
             var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);

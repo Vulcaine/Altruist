@@ -34,8 +34,16 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     private static readonly ConcurrentDictionary<Type, UntypedMaterializer> _untypedMaterializers = new();
 
+    private static VaultDocument? TryGetDocument(Type t)
+    {
+        return VaultDocument.From(t);
+    }
 
-    private sealed record UntypedProp(string Name, Type PropType, Action<object, object?> Setter);
+    private sealed record UntypedProp(
+        string LogicalName,
+        Type PropType,
+        Action<object, object?> Setter,
+        string[] CandidateColumns);
 
     private sealed class UntypedMaterializer
     {
@@ -160,14 +168,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             ct: ct).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Untyped query entrypoint: materializes rows into instances of <paramref name="modelType"/>.
-    /// </summary>
     public async Task<List<object>> QueryAsync(
-        Type modelType,
-        string sql,
-        List<object?>? parameters,
-        CancellationToken ct)
+     Type modelType,
+     string sql,
+     List<object?>? parameters,
+     CancellationToken ct)
     {
         if (modelType is null)
             throw new ArgumentNullException(nameof(modelType));
@@ -186,14 +191,28 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
                 .ConfigureAwait(false);
 
-            // Map column name -> ordinal
+            // column name -> ordinal (physical names, unless SQL aliases them)
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < reader.FieldCount; i++)
                 ordinals[reader.GetName(i)] = i;
 
-            // Bind properties that exist in the result-set, ordered by ordinal (important for SequentialAccess)
+            static bool TryFindOrdinal(
+                Dictionary<string, int> ords,
+                string[] names,
+                out int ord)
+            {
+                foreach (var n in names)
+                {
+                    if (!string.IsNullOrWhiteSpace(n) && ords.TryGetValue(n, out ord))
+                        return true;
+                }
+
+                ord = -1;
+                return false;
+            }
+
             var bindings = mat.Props
-                .Select(p => (Prop: p, HasOrd: ordinals.TryGetValue(p.Name, out var ord), Ord: ord))
+                .Select(p => (Prop: p, HasOrd: TryFindOrdinal(ordinals, p.CandidateColumns, out var o), Ord: o))
                 .Where(x => x.HasOrd)
                 .OrderBy(x => x.Ord)
                 .ToArray();
@@ -218,7 +237,6 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                     var targetType = Nullable.GetUnderlyingType(b.Prop.PropType) ?? b.Prop.PropType;
                     var converted = ConvertValue(val, targetType);
 
-                    // Setter expects exact property type
                     b.Prop.Setter(inst, converted);
                 }
 
@@ -236,41 +254,76 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     private static UntypedMaterializer BuildUntypedMaterializer(Type modelType)
     {
-        // Create instance factory (compiled)
-        var ctor =
-            modelType.GetConstructor(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                types: Type.EmptyTypes,
-                modifiers: null);
+        var doc = TryGetDocument(modelType);
+
+        // factory
+        var ctor = modelType.GetConstructor(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
 
         if (ctor is null)
             throw new InvalidOperationException(
                 $"Type '{modelType.FullName}' must have a parameterless constructor to be materialized.");
 
-        var newExpr = Expression.New(ctor);
         var factory = Expression
-            .Lambda<Func<object>>(Expression.Convert(newExpr, typeof(object)))
+            .Lambda<Func<object>>(Expression.Convert(Expression.New(ctor), typeof(object)))
             .Compile();
 
-        // Build setters (compiled)
+        // setters
         var props = modelType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanWrite)
             .Select(p =>
             {
-                var target = Expression.Parameter(typeof(object), "target");
-                var value = Expression.Parameter(typeof(object), "value");
+                var setMethod = p.GetSetMethod(nonPublic: true);
+                if (setMethod is null)
+                    return null; // skip read-only
 
-                var castTarget = Expression.Convert(target, modelType);
-                var member = Expression.Property(castTarget, p);
-                var castValue = Expression.Convert(value, p.PropertyType);
+                // candidate DB column names for this CLR property
+                var names = new List<string>(capacity: 3) { p.Name };
 
-                var assign = Expression.Assign(member, castValue);
-                var setter = Expression.Lambda<Action<object, object?>>(assign, target, value).Compile();
+                // Document mapping: logical CLR name -> physical DB column name
+                if (doc is not null && doc.Columns.TryGetValue(p.Name, out var physical))
+                    names.Add(physical);
 
-                return new UntypedProp(p.Name, p.PropertyType, setter);
+                // extra cheap fallback for common PK naming mismatches
+                // (helps if base model uses StorageId/Id but DB column is "id")
+                if (p.Name.Equals("StorageId", StringComparison.OrdinalIgnoreCase) ||
+                    p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!names.Contains("id", StringComparer.OrdinalIgnoreCase))
+                        names.Add("id");
+                }
+
+                Action<object, object?> setter;
+
+                // Prefer compiled call to setter; if it fails (visibility), fall back to cached reflection setter.
+                try
+                {
+                    var target = Expression.Parameter(typeof(object), "target");
+                    var value = Expression.Parameter(typeof(object), "value");
+
+                    var castTarget = Expression.Convert(target, modelType);
+                    var castValue = Expression.Convert(value, p.PropertyType);
+
+                    var call = Expression.Call(castTarget, setMethod, castValue);
+                    setter = Expression.Lambda<Action<object, object?>>(call, target, value).Compile();
+                }
+                catch
+                {
+                    // still cached (PropertyInfo captured once), but uses reflection per invocation
+                    setter = (obj, val) => p.SetValue(obj, val);
+                }
+
+                return new UntypedProp(
+                    LogicalName: p.Name,
+                    PropType: p.PropertyType,
+                    Setter: setter,
+                    CandidateColumns: names.ToArray());
             })
+            .Where(x => x is not null)
+            .Select(x => x!)
             .ToArray();
 
         return new UntypedMaterializer { Factory = factory, Props = props };
@@ -542,6 +595,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         if (val is null)
             return null;
+
+        if (targetType == typeof(string))
+            return val.ToString();
 
         var valType = val.GetType();
         if (targetType.IsAssignableFrom(valType))

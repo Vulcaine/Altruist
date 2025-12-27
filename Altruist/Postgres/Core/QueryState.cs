@@ -94,7 +94,7 @@ public sealed class QueryState
 
     public bool HasAny(QueryPosition pos) => Parts[pos].Count > 0;
 
-    public QueryState EnsureProjectionSelected(Document doc)
+    public QueryState EnsureProjectionSelected(VaultDocument doc)
     {
         if (HasAny(QueryPosition.SELECT))
             return this;

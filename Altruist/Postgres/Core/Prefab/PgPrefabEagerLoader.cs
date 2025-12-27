@@ -48,7 +48,7 @@ internal sealed class PgPrefabEagerLoader
             return;
 
         var depType = comp.ComponentType;
-        var depDoc = Document.From(depType);
+        var depDoc = VaultDocument.From(depType);
 
         var depTable = QualifiedTable(depType, depDoc);
         var fkCol = Col(depDoc, comp.ForeignKeyPropertyName);
@@ -82,7 +82,7 @@ internal sealed class PgPrefabEagerLoader
         // Single ref:
         // root has FK property (comp.ForeignKeyPropertyName) that points to dependent PK.
         var rootType = _prefab.RootComponentType;
-        var rootDoc = Document.From(rootType);
+        var rootDoc = VaultDocument.From(rootType);
 
         var rootFkProp = rootType.GetProperty(comp.ForeignKeyPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException($"{rootType.Name} missing FK property {comp.ForeignKeyPropertyName}");
@@ -99,7 +99,7 @@ internal sealed class PgPrefabEagerLoader
             return;
 
         var depType = comp.ComponentType;
-        var depDoc = Document.From(depType);
+        var depDoc = VaultDocument.From(depType);
 
         var depTable = QualifiedTable(depType, depDoc);
         var pkCol = Col(depDoc, comp.PrincipalKeyPropertyName);
@@ -225,15 +225,15 @@ internal sealed class PgPrefabEagerLoader
         return outList;
     }
 
-    private static string QualifiedTable(Type modelType, Document doc)
+    private static string QualifiedTable(Type modelType, VaultDocument doc)
     {
         var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
         var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
         return $"{Quote(schema)}.{Quote(doc.Name)}";
     }
 
-    private static string Col(Document doc, string logical)
-        => doc.Columns.TryGetValue(logical, out var physical) ? physical : Document.ToCamelCase(logical);
+    private static string Col(VaultDocument doc, string logical)
+        => doc.Columns.TryGetValue(logical, out var physical) ? physical : VaultDocument.ToCamelCase(logical);
 
     private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 }

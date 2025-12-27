@@ -96,7 +96,7 @@ public sealed class VaultDashboardController : ControllerBase
 
     private static VaultDefinitionDto BuildDefinition(VaultMetadata md)
     {
-        var doc = Document.From(md.ClrType);
+        var doc = VaultDocument.From(md.ClrType);
 
         var pkFieldNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (doc.PrimaryKey?.Keys is { Length: > 0 })
@@ -155,7 +155,7 @@ public sealed class VaultDashboardController : ControllerBase
         };
     }
 
-    private static Dictionary<string, object?> BuildRow(Document doc, object entity)
+    private static Dictionary<string, object?> BuildRow(VaultDocument doc, object entity)
     {
         var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
@@ -182,7 +182,7 @@ public sealed class VaultDashboardController : ControllerBase
             return Ok(new VaultBatchUpdateResultDto { Updated = 0 });
 
         var md = VaultRegistry.GetByTypeKey(typeKey);
-        var doc = Document.From(md.ClrType);
+        var doc = VaultDocument.From(md.ClrType);
 
         var pkFields = doc.PrimaryKey?.Keys
             ?? throw new InvalidOperationException("Vault has no primary key.");
@@ -302,7 +302,7 @@ public sealed class VaultDashboardController : ControllerBase
             skip = 0;
 
         var md = VaultRegistry.GetByTypeKey(typeKey);
-        var doc = Document.From(md.ClrType);
+        var doc = VaultDocument.From(md.ClrType);
 
         var (total, items) = await QueryVaultAsync(md.ClrType, skip, take);
 

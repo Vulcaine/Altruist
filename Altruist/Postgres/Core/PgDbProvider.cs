@@ -29,8 +29,6 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
 
     protected override string ParameterPrefix => "@";
 
-    private static string NormLower(string? s) => (s ?? string.Empty).Trim().ToLowerInvariant();
-
     private static SslMode ParseSslMode(string rawLower) => rawLower switch
     {
         "" or "disable" => SslMode.Disable,

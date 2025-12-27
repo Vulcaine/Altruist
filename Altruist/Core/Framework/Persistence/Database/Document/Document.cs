@@ -4,12 +4,32 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using System.Collections.Concurrent;
+
 using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
-public sealed class Document
+public sealed class VaultDocument
 {
+    // ----------------- Cache -----------------
+
+    // Lazy prevents duplicate builds under concurrency and ensures only one builder runs.
+    private static readonly ConcurrentDictionary<Type, Lazy<VaultDocument>> _cache = new();
+
+    /// <summary>
+    /// Clears the cached Documents. Useful for tests / hot reload scenarios.
+    /// </summary>
+    public static void ClearCache() => _cache.Clear();
+
+    /// <summary>
+    /// Removes a single type from the cache. Useful for tests.
+    /// </summary>
+    public static bool RemoveFromCache(Type type)
+        => type is not null && _cache.TryRemove(type, out _);
+
+    // ----------------- Instance -----------------
+
     public Type Type { get; }
     public VaultAttribute Header { get; }
     public string Name { get; }
@@ -41,7 +61,7 @@ public sealed class Document
     // kept for compatibility (was in older version); not used in this refactor
     public string TypePropertyName { get; set; } = "";
 
-    public Document(
+    public VaultDocument(
         VaultAttribute header,
         Type type,
         string name,
@@ -71,13 +91,32 @@ public sealed class Document
 
         ForeignKeys = foreignKeys ?? new();
 
-        Validate(); // keeps old behavior: Document is always validated on creation
+        Validate(); // Document is always validated on creation
     }
 
     /// <summary>
     /// The single entry point: builds a Document for any type that has a [Vault] (or derived) attribute.
+    /// Cached per type.
     /// </summary>
-    public static Document From(Type type) => DocumentBuilder.Build(type);
+    public static VaultDocument From(Type type)
+    {
+        if (type is null)
+            throw new ArgumentNullException(nameof(type));
+
+        // ExecutionAndPublication: only one build runs, others wait and reuse the result.
+        var lazy = _cache.GetOrAdd(
+            type,
+            static t => new Lazy<VaultDocument>(
+                () => DocumentBuilder.Build(t),
+                System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
+
+        return lazy.Value;
+    }
+
+    /// <summary>
+    /// Convenience generic version.
+    /// </summary>
+    public static VaultDocument From<T>() => From(typeof(T));
 
     public void Validate() => DocumentValidator.Validate(this);
 

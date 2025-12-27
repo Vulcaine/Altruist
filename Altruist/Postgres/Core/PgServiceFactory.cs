@@ -49,7 +49,7 @@ public sealed class PostgresServiceFactory : IServiceFactory
                          .FirstOrDefault(k => k.Name == schemaName)
                   ?? new DefaultSchema(schemaName);
 
-        var doc = Document.From(modelType);
+        var doc = VaultDocument.From(modelType);
 
         var vaultType = typeof(PgVault<>).MakeGenericType(modelType);
         return Activator.CreateInstance(vaultType, sqlProvider, keyspace, doc)!;

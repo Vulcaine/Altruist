@@ -55,7 +55,7 @@ namespace Altruist.Migrations
 
             // 1) desired model from vault models
             var initialDocs = modelTypes
-                .Select(Document.From)
+                .Select(VaultDocument.From)
                 .ToArray();
 
             // FIX: expand docs with FK principal docs so planner can resolve principal schema/table/column
@@ -103,10 +103,10 @@ namespace Altruist.Migrations
                 operations.Count);
         }
 
-        private static Document[] ExpandWithForeignKeyPrincipals(IReadOnlyList<Document> docs)
+        private static VaultDocument[] ExpandWithForeignKeyPrincipals(IReadOnlyList<VaultDocument> docs)
         {
-            var byType = new Dictionary<Type, Document>();
-            var queue = new Queue<Document>();
+            var byType = new Dictionary<Type, VaultDocument>();
+            var queue = new Queue<VaultDocument>();
 
             foreach (var d in docs)
             {
@@ -129,7 +129,7 @@ namespace Altruist.Migrations
                         continue;
 
                     // Will throw if principal type lacks [Vault]/[Prefab] – that’s good feedback.
-                    var principalDoc = Document.From(principalType);
+                    var principalDoc = VaultDocument.From(principalType);
                     byType[principalType] = principalDoc;
                     queue.Enqueue(principalDoc);
                 }
@@ -159,7 +159,7 @@ namespace Altruist.Migrations
         /// - Ignores self-FKs for ordering (they don't affect table creation order).
         /// - Throws if there is a circular dependency between different documents.
         /// </summary>
-        private static IReadOnlyList<Document> OrderDocumentsByDependencies(IReadOnlyList<Document> docs)
+        private static IReadOnlyList<VaultDocument> OrderDocumentsByDependencies(IReadOnlyList<VaultDocument> docs)
         {
             if (docs.Count <= 1)
                 return docs;
@@ -170,12 +170,12 @@ namespace Altruist.Migrations
                 .ToDictionary(g => g.Key, g => g.First());
 
             // Graph: principalDoc -> dependents
-            var adjacency = new Dictionary<Document, HashSet<Document>>();
-            var inDegree = new Dictionary<Document, int>();
+            var adjacency = new Dictionary<VaultDocument, HashSet<VaultDocument>>();
+            var inDegree = new Dictionary<VaultDocument, int>();
 
             foreach (var doc in docs)
             {
-                adjacency[doc] = new HashSet<Document>();
+                adjacency[doc] = new HashSet<VaultDocument>();
                 inDegree[doc] = 0;
             }
 
@@ -196,7 +196,7 @@ namespace Altruist.Migrations
 
                     if (!adjacency.TryGetValue(principalDoc, out var deps))
                     {
-                        deps = new HashSet<Document>();
+                        deps = new HashSet<VaultDocument>();
                         adjacency[principalDoc] = deps;
                     }
 
@@ -209,8 +209,8 @@ namespace Altruist.Migrations
             }
 
             // Kahn's algorithm for topological sort
-            var queue = new Queue<Document>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
-            var sorted = new List<Document>(docs.Count);
+            var queue = new Queue<VaultDocument>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
+            var sorted = new List<VaultDocument>(docs.Count);
 
             while (queue.Count > 0)
             {

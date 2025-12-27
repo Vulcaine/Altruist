@@ -110,7 +110,7 @@ internal static class PgJoinExpressionTranslator
         var doc = GetDocument(vault);
         var col = doc.Columns.TryGetValue(me.Member.Name, out var c)
             ? c
-            : Document.ToCamelCase(me.Member.Name);
+            : VaultDocument.ToCamelCase(me.Member.Name);
 
         return $"{QualifiedTable(vault)}.\"{col}\"";
     }
@@ -132,7 +132,7 @@ internal static class PgJoinExpressionTranslator
         return $"\"{v.Keyspace.Name}\".\"{v.VaultDocument.Name}\"";
     }
 
-    private static Document GetDocument(object vault)
+    private static VaultDocument GetDocument(object vault)
     {
         dynamic v = vault;
         return v.VaultDocument;

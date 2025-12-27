@@ -96,7 +96,7 @@ public static class ReflectionUtils
     /// If no sorting is specified, returns <c>null</c>. If specified, returns the actual column name,
     /// honoring <see cref="VaultColumnAttribute.Name"/> or falling back to lower-cased property name.
     /// </summary>
-    public static string? ResolveSortingColumnName(Document document, Type entityType)
+    public static string? ResolveSortingColumnName(VaultDocument document, Type entityType)
     {
         var sorting = document.SortingBy;
         if (sorting is null || string.IsNullOrWhiteSpace(sorting.Name))

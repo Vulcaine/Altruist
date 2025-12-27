@@ -26,7 +26,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     protected readonly QueryState _state;
 
     public IKeyspace Keyspace { get; }
-    public readonly Document VaultDocument;
+    public readonly VaultDocument VaultDocument;
 
     internal ISqlDatabaseProvider DatabaseProvider => _databaseProvider;
 
@@ -46,7 +46,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     public PgVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
-        Document document)
+        VaultDocument document)
         : this(databaseProvider, schema, document, new QueryState())
     {
     }
@@ -54,7 +54,7 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
     protected PgVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
-        Document document,
+        VaultDocument document,
         QueryState state)
     {
         _databaseProvider = databaseProvider;

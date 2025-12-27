@@ -8,7 +8,7 @@ namespace Altruist.Persistence;
 
 internal static class DocumentBuilder
 {
-    public static Document Build(Type type)
+    public static VaultDocument Build(Type type)
     {
         if (type is null)
             throw new ArgumentNullException(nameof(type));
@@ -31,8 +31,8 @@ internal static class DocumentBuilder
         var fields = new List<string>();
         var columns = new Dictionary<string, string>(StringComparer.Ordinal);
         var indexes = new List<string>();
-        var uniqueKeys = new List<Document.UniqueKeyDefinition>();
-        var foreignKeys = new List<Document.VaultForeignKeyDefinition>();
+        var uniqueKeys = new List<VaultDocument.UniqueKeyDefinition>();
+        var foreignKeys = new List<VaultDocument.VaultForeignKeyDefinition>();
         var accessors = new Dictionary<string, Func<object, object?>>(StringComparer.Ordinal);
 
         var fieldTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
@@ -41,7 +41,7 @@ internal static class DocumentBuilder
         ScanColumns(type, fields, columns, indexes, foreignKeys, accessors, fieldTypes, nullablePhysical);
         ScanUniqueKeys(type, columns, uniqueKeys);
 
-        var doc = new Document(
+        var doc = new VaultDocument(
             header: header,
             type: type,
             name: tableName,
@@ -66,7 +66,7 @@ internal static class DocumentBuilder
         List<string> fields,
         Dictionary<string, string> columns,
         List<string> indexes,
-        List<Document.VaultForeignKeyDefinition> foreignKeys,
+        List<VaultDocument.VaultForeignKeyDefinition> foreignKeys,
         Dictionary<string, Func<object, object?>> accessors,
         Dictionary<string, Type> fieldTypes,
         List<string> nullablePhysical)
@@ -95,7 +95,7 @@ internal static class DocumentBuilder
             var fkAttr = prop.GetCustomAttribute<VaultForeignKeyAttribute>(inherit: true);
             if (fkAttr is not null)
             {
-                foreignKeys.Add(new Document.VaultForeignKeyDefinition(
+                foreignKeys.Add(new VaultDocument.VaultForeignKeyDefinition(
                     propertyName: logical,
                     columnName: physical,
                     principalType: fkAttr.PrincipalType,
@@ -111,7 +111,7 @@ internal static class DocumentBuilder
     private static void ScanUniqueKeys(
         Type type,
         Dictionary<string, string> columns,
-        List<Document.UniqueKeyDefinition> uniqueKeys)
+        List<VaultDocument.UniqueKeyDefinition> uniqueKeys)
     {
         var uniqueKeyAttrs = type.GetCustomAttributes<VaultUniqueKeyAttribute>(inherit: true).ToArray();
         if (uniqueKeyAttrs.Length == 0)
@@ -154,7 +154,7 @@ internal static class DocumentBuilder
                 throw new InvalidOperationException(
                     $"[VaultUniqueKey] on '{type.FullName}' did not resolve any valid columns.");
 
-            uniqueKeys.Add(new Document.UniqueKeyDefinition(physicalCols));
+            uniqueKeys.Add(new VaultDocument.UniqueKeyDefinition(physicalCols));
         }
     }
 

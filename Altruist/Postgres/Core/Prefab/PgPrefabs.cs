@@ -98,7 +98,7 @@ public sealed class PgPrefabs : IPrefabs
         {
             ct.ThrowIfCancellationRequested();
 
-            var doc = Document.From(model.GetType());
+            var doc = VaultDocument.From(model.GetType());
             var sql = PgDocSql.BuildUpsertSql(model.GetType(), doc);
             var args = PgDocSql.GetUpsertParameters(doc, model);
 
@@ -106,7 +106,7 @@ public sealed class PgPrefabs : IPrefabs
         }
 
         var (sqlAll, parameters) = batch.Build();
-        await _db.ExecuteAsync(sqlAll, parameters);
+        await _db.ExecuteAsync(sqlAll, parameters!);
 
         foreach (var model in dirty)
             AcceptChangesIfPossible(model);
@@ -178,7 +178,7 @@ public sealed class PgPrefabs : IPrefabs
     {
         private const string DefaultPkLogical = nameof(IVaultModel.StorageId);
 
-        public static string BuildUpsertSql(Type modelType, Document doc)
+        public static string BuildUpsertSql(Type modelType, VaultDocument doc)
         {
             var table = QualifiedTable(modelType, doc);
 
@@ -213,7 +213,7 @@ public sealed class PgPrefabs : IPrefabs
                    $"ON CONFLICT ({pkCol}) DO UPDATE SET {updateSql}";
         }
 
-        public static IReadOnlyList<object?> GetUpsertParameters(Document doc, object model)
+        public static IReadOnlyList<object?> GetUpsertParameters(VaultDocument doc, object model)
         {
             var logicalFields = doc.Fields;
             var accessors = doc.PropertyAccessors;
@@ -237,17 +237,17 @@ public sealed class PgPrefabs : IPrefabs
             return args;
         }
 
-        public static string QualifiedTable(Type modelType, Document doc)
+        public static string QualifiedTable(Type modelType, VaultDocument doc)
         {
             var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
             var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
             return $"{Quote(schema)}.{Quote(doc.Name)}";
         }
 
-        public static string Col(Document doc, string logical)
+        public static string Col(VaultDocument doc, string logical)
             => doc.Columns.TryGetValue(logical, out var physical)
                 ? physical
-                : Document.ToCamelCase(logical);
+                : VaultDocument.ToCamelCase(logical);
 
         private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
     }

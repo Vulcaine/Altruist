@@ -144,7 +144,7 @@ public interface IMigrationPlanner
 {
     IReadOnlyList<MigrationOperation> Plan(
         IReadOnlyDictionary<string, DatabaseModel> currentBySchema,
-        IReadOnlyList<Document> desiredDocuments);
+        IReadOnlyList<VaultDocument> desiredDocuments);
 }
 
 public abstract class AbstractMigrationPlanner : IMigrationPlanner
@@ -153,7 +153,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
     public IReadOnlyList<MigrationOperation> Plan(
         IReadOnlyDictionary<string, DatabaseModel> currentBySchema,
-        IReadOnlyList<Document> desiredDocuments)
+        IReadOnlyList<VaultDocument> desiredDocuments)
     {
         var ops = new List<MigrationOperation>();
 
@@ -247,7 +247,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     /// <summary>
     /// Computes the schema name for a Document from its [Vault(Keyspace = ...)] header.
     /// </summary>
-    protected string GetSchemaForDocument(Document d)
+    protected string GetSchemaForDocument(VaultDocument d)
     {
         var keyspace = d.Header.Keyspace;
         if (string.IsNullOrWhiteSpace(keyspace))
@@ -279,8 +279,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected void PlanNewTable(
         List<MigrationOperation> ops,
         string schema,
-        Document doc,
-        IReadOnlyList<Document> allDocs)
+        VaultDocument doc,
+        IReadOnlyList<VaultDocument> allDocs)
     {
         var pkCols = ResolvePrimaryKeyColumns(doc);
         if (pkCols.Count == 0)
@@ -365,8 +365,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected void PlanForeignKeysForNewTable(
     List<MigrationOperation> ops,
     string schema,
-    Document doc,
-    IReadOnlyList<Document> allDocs)
+    VaultDocument doc,
+    IReadOnlyList<VaultDocument> allDocs)
     {
         foreach (var fk in doc.ForeignKeys)
         {
@@ -397,9 +397,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected void PlanForeignKeyDiff(
     List<MigrationOperation> ops,
     string schema,
-    Document doc,
+    VaultDocument doc,
     TableModel existing,
-    IReadOnlyList<Document> allDocs)
+    IReadOnlyList<VaultDocument> allDocs)
     {
         var desired = new List<(string Column,
                                 string PrincipalSchema,
@@ -476,9 +476,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     /// Important: schema comes from the **principal vault's keyspace**, not the dependent.
     /// </summary>
     protected (string PrincipalSchema, string PrincipalTable, string PrincipalColumn) ResolveForeignKeyTarget(
-        Document doc,
-        Document.VaultForeignKeyDefinition fk,
-        IReadOnlyList<Document> allDocs)
+        VaultDocument doc,
+        VaultDocument.VaultForeignKeyDefinition fk,
+        IReadOnlyList<VaultDocument> allDocs)
     {
         // We search across ALL documents (all keyspaces) so cross-schema FKs work.
         var principalDoc = allDocs.FirstOrDefault(d => d.Type == fk.PrincipalType)
@@ -493,7 +493,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         if (!principalDoc.Columns.TryGetValue(fk.PrincipalPropertyName, out var principalColumn))
         {
             // Fallback to camelCase if explicit column mapping not found
-            principalColumn = Document.ToCamelCase(fk.PrincipalPropertyName);
+            principalColumn = VaultDocument.ToCamelCase(fk.PrincipalPropertyName);
         }
 
         // principalDoc.Name is the physical table name; principalSchema is its schema.
@@ -503,7 +503,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected void PlanHistoryTableForNew(
         List<MigrationOperation> ops,
         string schema,
-        Document doc)
+        VaultDocument doc)
     {
         if (!doc.StoreHistory)
             return;
@@ -560,9 +560,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected void PlanExistingTableDiff(
         List<MigrationOperation> ops,
         string schema,
-        Document doc,
+        VaultDocument doc,
         TableModel existing,
-        IReadOnlyList<Document> allDocs)
+        IReadOnlyList<VaultDocument> allDocs)
     {
         var tableName = doc.Name;
         var schemaName = schema;
@@ -616,7 +616,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         // ---------- UNIQUE constraints diff (single + composite) ----------
 
         // desired unique constraints from Document
-        var desiredUniqueByKey = new Dictionary<string, Document.UniqueKeyDefinition>(StringComparer.OrdinalIgnoreCase);
+        var desiredUniqueByKey = new Dictionary<string, VaultDocument.UniqueKeyDefinition>(StringComparer.OrdinalIgnoreCase);
         foreach (var uk in doc.UniqueKeys)
         {
             var key = NormalizeColumnSet(uk.Columns);
@@ -715,7 +715,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected void PlanHistoryTableDiff(
         List<MigrationOperation> ops,
         string schema,
-        Document doc,
+        VaultDocument doc,
         DatabaseModel current)
     {
         if (!doc.StoreHistory)
@@ -797,7 +797,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
     // ---------- helpers ----------
 
-    protected static List<string> ResolvePrimaryKeyColumns(Document doc)
+    protected static List<string> ResolvePrimaryKeyColumns(VaultDocument doc)
     {
         var result = new List<string>();
         var keys = doc.PrimaryKey?.Keys ?? Array.Empty<string>();
@@ -806,12 +806,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             if (doc.Columns.TryGetValue(keyProp, out var col))
                 result.Add(col);
             else
-                result.Add(Document.ToCamelCase(keyProp));
+                result.Add(VaultDocument.ToCamelCase(keyProp));
         }
         return result;
     }
 
-    protected static string? ResolveSortingColumn(Document doc)
+    protected static string? ResolveSortingColumn(VaultDocument doc)
     {
         var sortProp = doc.SortingBy?.Name;
         if (string.IsNullOrWhiteSpace(sortProp))
@@ -819,7 +819,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
         return doc.Columns.TryGetValue(sortProp, out var col)
             ? col
-            : Document.ToCamelCase(sortProp);
+            : VaultDocument.ToCamelCase(sortProp);
     }
 
     protected static string ConstructConstraintName(string prefix, params string[] parts)

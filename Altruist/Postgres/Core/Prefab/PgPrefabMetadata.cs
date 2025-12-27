@@ -14,7 +14,7 @@ public interface IPgModelSqlMetadataProvider
 public sealed class PgModelSqlMetadata
 {
     public required Type ModelType { get; init; }
-    public required Document Document { get; init; }
+    public required VaultDocument Document { get; init; }
     public required string QualifiedTable { get; init; }
 
     public required string PrimaryKeyProperty { get; init; } // e.g. "StorageId"
