@@ -22,6 +22,30 @@ using MessagePack;
 
 namespace Altruist
 {
+    /// <summary>
+    /// Reserved message codes for built-in framework packets.
+    /// User-defined packets are recommended to start from 1000+.
+    /// </summary>
+    public static class PacketCodes
+    {
+        // 0 reserved / invalid
+        public const uint Text = 1;
+        public const uint Interprocess = 2;
+        public const uint Sync = 3;
+        public const uint Altruist = 4;
+
+        public const uint Success = 5;
+        public const uint Failed = 6;
+
+        public const uint HandshakeRequest = 7;
+        public const uint HandshakeResponse = 8;
+
+        public const uint JoinGame = 9;
+        public const uint LeaveGame = 10;
+
+        public const uint Room = 11;
+    }
+
     public static class PacketHeaders
     {
         // Framework can later overwrite timestamp/receiver/etc as needed
@@ -37,9 +61,15 @@ namespace Altruist
     {
     }
 
+    /// <summary>
+    /// Base packet interface. All packets MUST serialize MessageCode at Key(0),
+    /// and shift their own fields to start at Key(1).
+    /// </summary>
     [MessagePackFormatter(typeof(PacketBaseFormatter))]
     public interface IPacketBase : IPacket
     {
+        // NOTE: Do NOT put [Key] here; Key indices are defined by the concrete packet types.
+        uint MessageCode { get; set; }
     }
 
     // === Common Header Struct (used only on envelope) ===
@@ -117,17 +147,22 @@ namespace Altruist
     [MessagePackObject]
     public struct TextPacket : IPacketBase
     {
-        [JsonPropertyName("text")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("text")]
+        [Key(1)]
         public string Text { get; set; }
 
         public TextPacket()
         {
+            MessageCode = PacketCodes.Text;
             Text = string.Empty;
         }
 
         public TextPacket(string text)
         {
+            MessageCode = PacketCodes.Text;
             Text = text;
         }
     }
@@ -136,29 +171,30 @@ namespace Altruist
     [MessagePackObject]
     public struct InterprocessPacket : IPacketBase
     {
-        [JsonPropertyName("processId")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("processId")]
+        [Key(1)]
         public string ProcessId { get; set; }
 
         [JsonPropertyName("message")]
-        [Key(1)]
+        [Key(2)]
         public IPacketBase Message { get; set; }
 
         public InterprocessPacket()
         {
+            MessageCode = PacketCodes.Interprocess;
             ProcessId = string.Empty;
             Message = default!;
         }
 
         public InterprocessPacket(string processId, IPacketBase message)
         {
+            MessageCode = PacketCodes.Interprocess;
             ProcessId = processId;
             Message = message;
         }
-    }
-
-    public interface IMovementPacket : IPacketBase
-    {
     }
 
     // === Generic sync payload ===
@@ -166,22 +202,27 @@ namespace Altruist
     [MessagePackObject]
     public struct SyncPacket : IPacketBase
     {
-        [JsonPropertyName("entityType")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("entityType")]
+        [Key(1)]
         public string EntityType { get; set; }
 
         [JsonPropertyName("data")]
-        [Key(1)]
+        [Key(2)]
         public Dictionary<string, object?> Data { get; set; }
 
         public SyncPacket()
         {
+            MessageCode = PacketCodes.Sync;
             EntityType = string.Empty;
             Data = new Dictionary<string, object?>();
         }
 
         public SyncPacket(string entityType, Dictionary<string, object?> data)
         {
+            MessageCode = PacketCodes.Sync;
             EntityType = entityType;
             Data = data ?? new Dictionary<string, object?>();
         }
@@ -190,17 +231,22 @@ namespace Altruist
     [MessagePackObject]
     public struct AltruistPacket : IPacketBase
     {
-        [JsonPropertyName("event")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("event")]
+        [Key(1)]
         public string Event { get; set; }
 
         public AltruistPacket()
         {
+            MessageCode = PacketCodes.Altruist;
             Event = string.Empty;
         }
 
         public AltruistPacket(string eventName)
         {
+            MessageCode = PacketCodes.Altruist;
             Event = eventName;
         }
     }
@@ -222,22 +268,27 @@ namespace Altruist
     [MessagePackObject]
     public struct SuccessPacket : IPacketBase, IResultPacketWithPayload
     {
-        [JsonPropertyName("code")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("code")]
+        [Key(1)]
         public int Code { get; set; }
 
         [JsonPropertyName("payload")]
-        [Key(1)]
+        [Key(2)]
         public IPacketBase? Payload { get; set; }
 
         public SuccessPacket()
         {
+            MessageCode = PacketCodes.Success;
             Code = 0;
             Payload = default!;
         }
 
         public SuccessPacket(int code, IPacketBase? payload = null)
         {
+            MessageCode = PacketCodes.Success;
             Code = code;
             Payload = payload;
         }
@@ -249,93 +300,29 @@ namespace Altruist
     [MessagePackObject]
     public struct FailedPacket : IPacketBase, IResultPacket
     {
-        [JsonPropertyName("code")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("code")]
+        [Key(1)]
         public int Code { get; set; }
 
         [JsonPropertyName("reason")]
-        [Key(1)]
+        [Key(2)]
         public string Reason { get; set; }
 
         public FailedPacket()
         {
+            MessageCode = PacketCodes.Failed;
             Code = 0;
             Reason = string.Empty;
         }
 
         public FailedPacket(int code, string reason)
         {
+            MessageCode = PacketCodes.Failed;
             Code = code;
             Reason = reason;
-        }
-    }
-
-    // === Game payloads (no header/type here; envelope carries those) ===
-
-    [MessagePackObject]
-    public struct ShootingPacket : IPacketBase
-    {
-        // Add shooting-specific fields when needed
-    }
-
-    [MessagePackObject]
-    public struct ForwardMovementPacket : IMovementPacket
-    {
-        [JsonPropertyName("moveUp")]
-        [Key(0)]
-        public bool MoveUp { get; set; }
-
-        [JsonPropertyName("rotateLeft")]
-        [Key(1)]
-        public bool RotateLeft { get; set; }
-
-        [JsonPropertyName("rotateRight")]
-        [Key(2)]
-        public bool RotateRight { get; set; }
-
-        [JsonPropertyName("turbo")]
-        [Key(3)]
-        public bool Turbo { get; set; }
-
-        public ForwardMovementPacket(bool moveUp, bool rotateLeft, bool rotateRight, bool turbo)
-        {
-            MoveUp = moveUp;
-            RotateLeft = rotateLeft;
-            RotateRight = rotateRight;
-            Turbo = turbo;
-        }
-    }
-
-    [MessagePackObject]
-    public struct EightDirectionMovementPacket : IMovementPacket
-    {
-        [JsonPropertyName("moveUp")]
-        [Key(0)]
-        public bool MoveUp { get; set; }
-
-        [JsonPropertyName("moveDown")]
-        [Key(1)]
-        public bool MoveDown { get; set; }
-
-        [JsonPropertyName("moveLeft")]
-        [Key(2)]
-        public bool MoveLeft { get; set; }
-
-        [JsonPropertyName("moveRight")]
-        [Key(3)]
-        public bool MoveRight { get; set; }
-
-        [JsonPropertyName("turbo")]
-        [Key(4)]
-        public bool Turbo { get; set; }
-
-        public EightDirectionMovementPacket(bool moveUp, bool moveDown, bool moveLeft, bool moveRight, bool turbo)
-        {
-            MoveUp = moveUp;
-            MoveDown = moveDown;
-            MoveLeft = moveLeft;
-            MoveRight = moveRight;
-            Turbo = turbo;
         }
     }
 
@@ -368,17 +355,22 @@ namespace Altruist
     [MessagePackObject]
     public struct HandshakeRequestPacket : IPacketBase
     {
-        [JsonPropertyName("token")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("token")]
+        [Key(1)]
         public string Token { get; set; }
 
         public HandshakeRequestPacket()
         {
+            MessageCode = PacketCodes.HandshakeRequest;
             Token = string.Empty;
         }
 
         public HandshakeRequestPacket(string? token)
         {
+            MessageCode = PacketCodes.HandshakeRequest;
             Token = token ?? string.Empty;
         }
     }
@@ -386,17 +378,22 @@ namespace Altruist
     [MessagePackObject]
     public struct HandshakeResponsePacket : IPacketBase
     {
-        [JsonPropertyName("rooms")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("rooms")]
+        [Key(1)]
         public RoomPacket[] Rooms { get; set; }
 
         public HandshakeResponsePacket()
         {
+            MessageCode = PacketCodes.HandshakeResponse;
             Rooms = Array.Empty<RoomPacket>();
         }
 
         public HandshakeResponsePacket(RoomPacket[] rooms)
         {
+            MessageCode = PacketCodes.HandshakeResponse;
             Rooms = rooms ?? Array.Empty<RoomPacket>();
         }
     }
@@ -404,35 +401,40 @@ namespace Altruist
     [MessagePackObject]
     public struct JoinGamePacket : IPacketBase
     {
-        [JsonPropertyName("name")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("name")]
+        [Key(1)]
         public string Name { get; set; }
 
         [JsonPropertyName("roomId")]
-        [Key(1)]
+        [Key(2)]
         public string? RoomId { get; set; }
 
         [JsonPropertyName("world")]
-        [Key(2)]
+        [Key(3)]
         public int? WorldIndex { get; set; }
 
         [JsonPropertyName("position")]
-        [Key(3)]
+        [Key(4)]
         public float[]? Position { get; set; }
 
         public JoinGamePacket()
         {
+            MessageCode = PacketCodes.JoinGame;
             Name = string.Empty;
             RoomId = string.Empty;
-            Position = [0f, 0f];
+            Position = new[] { 0f, 0f };
             WorldIndex = 0;
         }
 
         public JoinGamePacket(string name, string? roomId = null, int? worldIndex = 0, float[]? position = null)
         {
+            MessageCode = PacketCodes.JoinGame;
             Name = name;
             RoomId = roomId;
-            Position = position ?? [0f, 0f];
+            Position = position ?? new[] { 0f, 0f };
             WorldIndex = worldIndex;
         }
     }
@@ -440,17 +442,22 @@ namespace Altruist
     [MessagePackObject]
     public struct LeaveGamePacket : IPacketBase
     {
-        [JsonPropertyName("clientId")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("clientId")]
+        [Key(1)]
         public string ClientId { get; set; }
 
         public LeaveGamePacket()
         {
+            MessageCode = PacketCodes.LeaveGame;
             ClientId = string.Empty;
         }
 
         public LeaveGamePacket(string clientId)
         {
+            MessageCode = PacketCodes.LeaveGame;
             ClientId = clientId;
         }
     }
@@ -458,16 +465,19 @@ namespace Altruist
     [MessagePackObject]
     public class RoomPacket : IPacketBase
     {
-        [JsonPropertyName("id")]
         [Key(0)]
+        public uint MessageCode { get; set; } = PacketCodes.Room;
+
+        [JsonPropertyName("id")]
+        [Key(1)]
         public string Id { get; set; }
 
         [JsonPropertyName("maxCapacity")]
-        [Key(1)]
+        [Key(2)]
         public uint MaxCapactiy { get; set; }
 
         [JsonPropertyName("connectionIds")]
-        [Key(2)]
+        [Key(3)]
         public HashSet<string> ConnectionIds { get; set; }
 
         [IgnoreMember]
@@ -475,6 +485,7 @@ namespace Altruist
 
         public RoomPacket()
         {
+            MessageCode = PacketCodes.Room;
             Id = string.Empty;
             MaxCapactiy = 100;
             ConnectionIds = new HashSet<string>();
@@ -482,6 +493,7 @@ namespace Altruist
 
         public RoomPacket(string roomId, uint maxCapacity = 100)
         {
+            MessageCode = PacketCodes.Room;
             Id = roomId;
             MaxCapactiy = maxCapacity;
             ConnectionIds = new HashSet<string>();
@@ -498,16 +510,16 @@ namespace Altruist
 
         public RoomPacket AddConnection(string connectionId)
         {
-            var newRoomPacket = this;
-            newRoomPacket.ConnectionIds.Add(connectionId);
-            return newRoomPacket;
+            // NOTE: RoomPacket is a class; this mutates the same instance.
+            ConnectionIds.Add(connectionId);
+            return this;
         }
 
         public RoomPacket RemoveConnection(string connectionId)
         {
-            var newRoomPacket = this;
-            newRoomPacket.ConnectionIds.Remove(connectionId);
-            return newRoomPacket;
+            // NOTE: RoomPacket is a class; this mutates the same instance.
+            ConnectionIds.Remove(connectionId);
+            return this;
         }
 
         public override string ToString()
