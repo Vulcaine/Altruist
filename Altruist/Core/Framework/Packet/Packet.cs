@@ -105,8 +105,8 @@ namespace Altruist
     public struct MessageEnvelope
     {
         [Key(0)]
-        [JsonPropertyName("type")]
-        public string Type { get; set; }
+        [JsonPropertyName("messageCode")]
+        public uint MessageCode { get; set; }
 
         [Key(1)]
         [JsonPropertyName("header")]
@@ -120,7 +120,7 @@ namespace Altruist
         {
             Header = header;
             Message = message;
-            Type = message.GetType().Name;
+            MessageCode = message.MessageCode;
         }
 
         public MessageEnvelope(IPacketBase message, string receiver)
@@ -131,7 +131,7 @@ namespace Altruist
                 Receiver = receiver
             };
             Message = message;
-            Type = message.GetType().Name;
+            MessageCode = message.MessageCode;
         }
 
         public void Stamp(string sender, string receiver, DateTime receivedAt)
