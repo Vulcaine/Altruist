@@ -14,26 +14,37 @@ namespace Altruist.Dashboard
     [MessagePackObject]
     public sealed class DashboardWorldObjectStatePacket : IPacketBase
     {
-        [JsonPropertyName("worldIndex")]
+        [JsonPropertyName("messageCode")]
         [Key(0)]
+        public uint MessageCode { get; set; }
+
+        [JsonPropertyName("worldIndex")]
+        [Key(1)]
         public int WorldIndex { get; set; }
 
         [JsonPropertyName("timestampUtc")]
-        [Key(1)]
+        [Key(2)]
         public DateTime TimestampUtc { get; set; }
 
         [JsonPropertyName("partitions")]
-        [Key(2)]
-        public IReadOnlyList<DashboardPartitionStateDto> Partitions { get; set; }
+        [Key(3)]
+        public DashboardPartitionStateDto[] Partitions { get; set; }
+
+        public DashboardWorldObjectStatePacket()
+        {
+            MessageCode = PacketCodes.DashboardWorldObjectState;
+            Partitions = Array.Empty<DashboardPartitionStateDto>();
+        }
 
         public DashboardWorldObjectStatePacket(
             int worldIndex,
             DateTime timestampUtc,
-            IReadOnlyList<DashboardPartitionStateDto> partitions)
+            DashboardPartitionStateDto[] partitions)
         {
+            MessageCode = PacketCodes.DashboardWorldObjectState;
             WorldIndex = worldIndex;
             TimestampUtc = timestampUtc;
-            Partitions = partitions;
+            Partitions = partitions ?? Array.Empty<DashboardPartitionStateDto>();
         }
     }
 

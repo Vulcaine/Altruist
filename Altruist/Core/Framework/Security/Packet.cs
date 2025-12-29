@@ -66,20 +66,25 @@ public interface ISessionAuthContext : IPacketBase
 [MessagePackObject]
 public struct SessionAuthContext : ISessionAuthContext
 {
-    [JsonPropertyName("header")]
+    [JsonPropertyName("messageCode")]
     [Key(0)]
+    public uint MessageCode { get; set; }
+
+    [JsonPropertyName("header")]
+    [Key(1)]
     public PacketHeader Header { get; set; }
 
     [JsonPropertyName("type")]
-    [Key(1)]
+    [Key(2)]
     public string Type { get; set; }
 
     [JsonPropertyName("token")]
-    [Key(2)]
+    [Key(3)]
     public string Token { get; set; } = string.Empty;
 
     public SessionAuthContext()
     {
+        MessageCode = PacketCodes.SessionAuth;
         Header = default;
         Type = nameof(SessionAuthContext);
     }

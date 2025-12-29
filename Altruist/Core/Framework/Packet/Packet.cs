@@ -44,6 +44,8 @@ namespace Altruist
         public const uint LeaveGame = 10;
 
         public const uint Room = 11;
+        public const uint SessionAuth = 12;
+        public const uint DashboardWorldObjectState = 13;
     }
 
     public static class PacketHeaders

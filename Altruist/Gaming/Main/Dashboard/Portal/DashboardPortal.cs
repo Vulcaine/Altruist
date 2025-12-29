@@ -112,7 +112,7 @@ namespace Altruist.Dashboard
                 var packet = new DashboardWorldObjectStatePacket(
                     worldIndex,
                     now,
-                    partitionDtos
+                    partitionDtos.ToArray()
                 );
 
                 foreach (var conn in _connections)
