@@ -100,12 +100,33 @@ public class ClientSender : IAltruistRouterSender
         }
     }
 
-    public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
+    public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
+    where TPacketBase : IPacketBase
     {
         var envelope = new MessageEnvelope(message, clientId);
         envelope.Stamp("server", clientId, DateTime.UtcNow);
-        var encodedMessage = _codec.Encoder.Encode(envelope);
-        await SendAsync(clientId, encodedMessage);
+
+        // Encode the envelope using your encoder (this produces the envelope bytes)
+        var encodedEnvelope = _codec.Encoder.Encode(envelope) ?? Array.Empty<byte>();
+
+        // Prefix first 4 bytes with the message code
+        uint code = envelope.MessageCode;
+
+        var framed = new byte[4 + encodedEnvelope.Length];
+        WriteU32BE(framed, 0, code);
+
+        if (encodedEnvelope.Length > 0)
+            Buffer.BlockCopy(encodedEnvelope, 0, framed, 4, encodedEnvelope.Length);
+
+        await SendAsync(clientId, framed);
+    }
+
+    static void WriteU32BE(byte[] dst, int offset, uint value)
+    {
+        dst[offset + 0] = (byte)((value >> 24) & 0xFF);
+        dst[offset + 1] = (byte)((value >> 16) & 0xFF);
+        dst[offset + 2] = (byte)((value >> 8) & 0xFF);
+        dst[offset + 3] = (byte)(value & 0xFF);
     }
 }
 
