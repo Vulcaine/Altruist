@@ -32,11 +32,15 @@ public sealed class MovementDriver3D
         var pitch = Quaternion.CreateFromAxisAngle(Vector3.UnitX, result.AngularDeltaEuler.X);
         var roll = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, result.AngularDeltaEuler.Z);
         var delta = Quaternion.Normalize(roll * pitch * yaw);
+        var orientation = Quaternion.Normalize(delta * State.Orientation);
 
-        State = State with
+        if (orientation.Y != float.NaN && orientation.X != float.NaN && orientation.Z != float.NaN)
         {
-            Velocity = result.LinearVelocity,
-            Orientation = Quaternion.Normalize(delta * State.Orientation)
-        };
+            State = State with
+            {
+                Velocity = result.LinearVelocity,
+                Orientation = Quaternion.Normalize(delta * State.Orientation)
+            };
+        }
     }
 }

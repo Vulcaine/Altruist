@@ -44,6 +44,17 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         return this;
     }
 
+    public IPrefabQuery<TPrefab> IncludeAll()
+    {
+        // No reflection here: we rely on PrefabMeta which is already constructed elsewhere.
+        var meta = PrefabDocument.Get(typeof(TPrefab));
+
+        foreach (var name in meta.ComponentsByName.Keys)
+            _includes.Add(name);
+
+        return this;
+    }
+
     // Keep these private (as you requested)
     private PgPrefabQuery<TPrefab> Skip(int count) { _skip = count; return this; }
     private PgPrefabQuery<TPrefab> Take(int count) { _take = count; return this; }
@@ -130,5 +141,4 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
             return Expression.Lambda<Action<TPrefab, object>>(assign, target, value).Compile();
         });
     }
-
 }

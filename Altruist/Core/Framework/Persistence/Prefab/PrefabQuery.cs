@@ -17,6 +17,8 @@ public interface IPrefabQuery<TPrefab>
 
     IPrefabQuery<TPrefab> Include<TProp>(Expression<Func<TPrefab, TProp>> selector);
 
+    IPrefabQuery<TPrefab> IncludeAll();
+
     Task<List<TPrefab>> ToListAsync(CancellationToken ct = default);
     Task<TPrefab?> FirstOrDefaultAsync(CancellationToken ct = default);
 }
