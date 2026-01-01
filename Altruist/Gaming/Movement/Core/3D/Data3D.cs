@@ -1,5 +1,7 @@
 using System.Numerics;
 
+using Altruist.Physx.ThreeD;
+
 namespace Altruist.Gaming.Movement.ThreeD
 {
     [Flags] public enum Planar3DFlags { None = 0, GroundPlane = 1 << 0, FreeFlight = 1 << 1 }

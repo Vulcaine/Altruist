@@ -119,10 +119,4 @@ namespace Altruist.Gaming.Movement.ThreeD
             return new MovementResult3D(ctx.Velocity, ctx.AngularDelta, ctx.Force);
         }
     }
-
-    // ------------------------------------------------------------
-    // PhysX-facing contracts for 3D bodies (parallel to 2D)
-    // ------------------------------------------------------------
-
-    public interface IPhysxBody3D { /* marker/type owned by your PhysX layer */ }
 }
