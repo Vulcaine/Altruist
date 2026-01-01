@@ -319,6 +319,28 @@ public class AltruistEngine : IAltruistEngine
         Enabled = false;
     }
 
+    public void SyncCommit(Action commit)
+    {
+        if (commit == null)
+            throw new ArgumentNullException(nameof(commit));
+        WaitForNextTick(commit);
+    }
+
+    public Task<T> SyncCommit<T>(Func<T> commit)
+    {
+        if (commit == null)
+            throw new ArgumentNullException(nameof(commit));
+
+        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        WaitForNextTick(() =>
+        {
+            try
+            { tcs.TrySetResult(commit()); }
+            catch (Exception ex) { tcs.TrySetException(ex); }
+        });
+        return tcs.Task;
+    }
+
     public void WaitForNextTick(Delegate task)
     {
         if (task == null)
@@ -723,6 +745,9 @@ public class EngineWithoutDiagnostics : IAltruistEngine
         _core.WaitForNextTick(task);
     }
 
+    public void SyncCommit(Action commit) => throw new NotImplementedException();
+    public Task<T> SyncCommit<T>(Func<T> commit) => throw new NotImplementedException();
+
     [Service(typeof(IAltruistEngine))]
     [ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
     public class EngineWithDiagnostics : IAltruistEngine
@@ -910,6 +935,15 @@ public class EngineWithoutDiagnostics : IAltruistEngine
         public void WaitForNextTick(Func<Task> task)
         {
             _wrappedEngine.WaitForNextTick(task);
+        }
+
+        public void SyncCommit(Action commit)
+        {
+            _wrappedEngine.SyncCommit(commit);
+        }
+        public Task<T> SyncCommit<T>(Func<T> commit)
+        {
+            return _wrappedEngine.SyncCommit(commit);
         }
     }
 

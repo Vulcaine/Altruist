@@ -66,6 +66,8 @@ public interface IEngineCore
     void WaitForNextTick(Delegate task);
     void WaitForNextTick(Action task);
     void WaitForNextTick(Func<Task> task);
+    void SyncCommit(Action commit);
+    Task<T> SyncCommit<T>(Func<T> commit);
     TaskIdentifier ScheduleEffect(
          CycleRate cycleRate,
          DateTime expiresAtUtc,
