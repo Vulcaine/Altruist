@@ -88,10 +88,10 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
     }
 
     protected override string BuildBatchUpsertSql_VersionedReturning(
-        string qualifiedTable,
-        IReadOnlyList<string> columns,
-        IReadOnlyList<string> primaryKeyColumns,
-        int rowCount)
+     string qualifiedTable,
+     IReadOnlyList<string> columns,
+     IReadOnlyList<string> primaryKeyColumns,
+     int rowCount)
     {
         if (rowCount <= 0)
             throw new ArgumentOutOfRangeException(nameof(rowCount));
@@ -99,42 +99,75 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
             throw new ArgumentException("At least one primary key column must be specified.", nameof(primaryKeyColumns));
 
         var alias = "t";
+        var inputAlias = "v";
+
         var versionCol = VersionColumn();
         var storageIdCol = StorageIdColumn();
 
-        var colListSql = string.Join(", ", columns.Select(c => $"\"{c}\""));
-        var pkSql = string.Join(", ", primaryKeyColumns.Select(pk => $"\"{pk}\""));
-
+        // (?,?,...) repeated rowCount times
         var rowPlaceholders = "(" + string.Join(", ", columns.Select(_ => "?")) + ")";
         var valuesSql = string.Join(", ", Enumerable.Repeat(rowPlaceholders, rowCount));
 
-        var setSql = BuildSetClauses(columns, primaryKeyColumns, versionCol, alias);
+        // column list used for VALUES alias AND for INSERT/SELECT
+        var colListSql = string.Join(", ", columns.Select(c => $"\"{c}\""));
+        var pkListSql = string.Join(", ", primaryKeyColumns.Select(pk => $"\"{pk}\""));
 
-        // Atomicity: if any row hits version mismatch, it won’t be updated -> upserted count < input count.
-        // We force statement failure using (1/0) so caller gets one exception and no partial writes.
+        // join condition t.pk = v.pk (supports composite keys)
+        var pkJoin = string.Join(" AND ",
+            primaryKeyColumns.Select(pk => $"{alias}.\"{pk}\" = {inputAlias}.\"{pk}\""));
+
+        // SET clauses for non-PK, non-version columns, plus version bump
+        var pkSet = new HashSet<string>(primaryKeyColumns, StringComparer.OrdinalIgnoreCase);
+
+        var setClauses = new List<string>();
+        foreach (var c in columns)
+        {
+            if (pkSet.Contains(c))
+                continue;
+
+            if (string.Equals(c, versionCol, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            setClauses.Add($"\"{c}\" = EXCLUDED.\"{c}\"");
+        }
+
+        setClauses.Add($"\"{versionCol}\" = {alias}.\"{versionCol}\" + 1");
+        var setSql = string.Join(", ", setClauses);
+
+        // Atomic strategy:
+        // - lock existing rows
+        // - if ANY mismatch -> mismatch has row -> INSERT is skipped -> upserted returns 0 rows
+        // - caller detects count != rowCount and throws OptimisticConcurrencyException
         return
-$@"
+    $@"
 WITH input AS (
-    SELECT * FROM (VALUES {valuesSql}) AS v({colListSql})
+    SELECT * FROM (VALUES {valuesSql}) AS {inputAlias}({colListSql})
+),
+locked AS (
+    SELECT {alias}.""{versionCol}""
+    FROM {qualifiedTable} AS {alias}
+    JOIN input AS {inputAlias} ON {pkJoin}
+    FOR UPDATE
+),
+mismatch AS (
+    SELECT 1
+    FROM {qualifiedTable} AS {alias}
+    JOIN input AS {inputAlias} ON {pkJoin}
+    WHERE {alias}.""{versionCol}"" <> {inputAlias}.""{versionCol}""
+    LIMIT 1
 ),
 upserted AS (
     INSERT INTO {qualifiedTable} AS {alias} ({colListSql})
-    SELECT {colListSql} FROM input
-    ON CONFLICT ({pkSql}) DO UPDATE
+    SELECT {colListSql}
+    FROM input
+    WHERE NOT EXISTS (SELECT 1 FROM mismatch)
+    ON CONFLICT ({pkListSql}) DO UPDATE
         SET {setSql}
         WHERE {alias}.""{versionCol}"" = EXCLUDED.""{versionCol}""
     RETURNING {alias}.""{storageIdCol}"" AS ""{StorageIdLogical}"",
               {alias}.""{versionCol}"" AS ""{VersionLogical}""
-),
-chk AS (
-    SELECT (SELECT COUNT(*) FROM input) AS expected,
-           (SELECT COUNT(*) FROM upserted) AS actual
 )
-SELECT u.""{StorageIdLogical}"" AS ""{StorageIdLogical}"",
-       u.""{VersionLogical}"" AS ""{VersionLogical}""
-FROM upserted u
-CROSS JOIN chk
-WHERE (CASE WHEN chk.expected = chk.actual THEN 1 ELSE (1/0) END) = 1
+SELECT ""{StorageIdLogical}"", ""{VersionLogical}"" FROM upserted
 ;";
     }
 
