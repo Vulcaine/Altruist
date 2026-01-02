@@ -106,40 +106,51 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
 
 internal static class PgJoinQuerySql
 {
-    public static string ExtractOrderBySql(LambdaExpression keySelector, IReadOnlyDictionary<ParameterExpression, object> map)
+    public static string ExtractOrderBySql(
+     LambdaExpression keySelector,
+     IReadOnlyDictionary<ParameterExpression, object> map)
     {
-        Expression body = keySelector.Body;
+        static Expression Strip(Expression e)
+        {
+            while (e is UnaryExpression u &&
+                   (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
+                e = u.Operand;
+            return e;
+        }
 
-        if (body is UnaryExpression u && u.NodeType == ExpressionType.Convert)
-            body = u.Operand;
+        static string QualifiedTable(object vault)
+        {
+            dynamic v = vault;
+            return $"\"{v.Keyspace.Name}\".\"{v.VaultDocument.Name}\"";
+        }
+
+        static VaultDocument GetDoc(object vault)
+        {
+            dynamic v = vault;
+            return (VaultDocument)v.VaultDocument;
+        }
+
+        var body = Strip(keySelector.Body);
 
         if (body is not MemberExpression m)
-        {
             throw new NotSupportedException(
-                $"OrderBy expression '{keySelector}' is not supported. Use simple member access like (a, b) => a.SomeColumn or (a, b) => b.SomeColumn.");
-        }
+                $"OrderBy expression '{keySelector}' is not supported. Use simple member access like (a,b)=>a.Prop or (a,b)=>b.Prop.");
 
-        Expression target = m.Expression!;
-        if (target is UnaryExpression u2 && u2.NodeType == ExpressionType.Convert)
-            target = u2.Operand;
+        var target = Strip(m.Expression!);
 
         if (target is not ParameterExpression p)
-        {
             throw new NotSupportedException(
                 $"OrderBy expression '{keySelector}' is not supported. Use direct member access on a query parameter.");
-        }
 
-        var col = m.Member.Name;
+        if (!map.TryGetValue(p, out var vault))
+            throw new NotSupportedException("OrderBy parameter must be one of the query parameters.");
 
-        if (map.TryGetValue(p, out var vault))
-        {
-            var alias = TryGetAlias(vault);
-            if (!string.IsNullOrWhiteSpace(alias))
-                return $"{alias}.{col}";
-        }
+        var doc = GetDoc(vault);
+        var col = doc.Columns.TryGetValue(m.Member.Name, out var c)
+            ? c
+            : VaultDocument.ToCamelCase(m.Member.Name);
 
-        // Fallback: keep old behavior (unqualified column)
-        return col;
+        return $"{QualifiedTable(vault)}.\"{col}\"";
     }
 
     private static string? TryGetAlias(object vault)
