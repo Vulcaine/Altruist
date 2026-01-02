@@ -1,3 +1,5 @@
+// PgPrefabs.cs (updates only)
+
 using System.Collections;
 using System.ComponentModel;
 using System.Reflection;
@@ -12,16 +14,19 @@ public sealed class PgPrefabs : IPrefabs
 {
     private readonly ISqlDatabaseProvider _db;
 
-    public PgPrefabs(ISqlDatabaseProvider db)
-    {
-        _db = db;
-    }
+    public PgPrefabs(ISqlDatabaseProvider db) => _db = db;
 
     public IPrefabQuery<TPrefab> Query<TPrefab>()
         where TPrefab : PrefabModel, new()
         => new PgPrefabQuery<TPrefab>(_db);
 
-    public async Task SaveAsync(PrefabModel prefab, CancellationToken ct = default)
+    public Task SaveComponentAsync(PrefabModel prefab, string componentName, CancellationToken ct = default)
+        => SaveInternalAsync(prefab, componentName, ct);
+
+    public Task SaveAsync(PrefabModel prefab, CancellationToken ct = default)
+        => SaveInternalAsync(prefab, componentName: null, ct);
+
+    private async Task SaveInternalAsync(PrefabModel prefab, string? componentName, CancellationToken ct)
     {
         if (prefab is null)
             throw new ArgumentNullException(nameof(prefab));
@@ -29,8 +34,6 @@ public sealed class PgPrefabs : IPrefabs
         ct.ThrowIfCancellationRequested();
 
         var meta = PrefabDocument.Get(prefab.GetType());
-
-        // Dedupe by (Type, StorageId)
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var candidates = new List<IVaultModel>(capacity: 32);
 
@@ -47,40 +50,47 @@ public sealed class PgPrefabs : IPrefabs
                 candidates.Add(m);
         }
 
-        // Root (required)
-        var rootObj = meta.ComponentsByName[meta.RootPropertyName].Property.GetValue(prefab) as IVaultModel
+        // Root is always validated (must exist), but only saved when:
+        // - saving all components (componentName == null), OR
+        // - caller explicitly requests the root component
+        var root = meta.ComponentsByName[meta.RootPropertyName].Property.GetValue(prefab) as IVaultModel
             ?? throw new InvalidOperationException(
                 $"Prefab root '{meta.RootPropertyName}' is null (or not IVaultModel) on {prefab.GetType().Name}.");
 
-        Add(rootObj);
-
-        // Refs currently present on the prefab (if you didn't Include/hydrate, they may be null, that's fine)
-        foreach (var comp in meta.ComponentsByName.Values)
+        if (componentName is null ||
+            string.Equals(componentName, meta.RootPropertyName, StringComparison.Ordinal))
         {
-            if (comp.Kind == PrefabComponentKind.Root)
-                continue;
+            Add(root);
+        }
 
-            var value = comp.Property.GetValue(prefab);
-            if (value is null)
-                continue;
-
-            if (comp.Kind == PrefabComponentKind.Single)
+        if (componentName is null)
+        {
+            // Save ALL hydrated components currently on the prefab
+            foreach (var comp in meta.ComponentsByName.Values)
             {
-                if (value is IVaultModel vm)
-                    Add(vm);
-                continue;
+                if (comp.Kind == PrefabComponentKind.Root)
+                    continue;
+
+                var value = comp.Property.GetValue(prefab);
+                if (value is null)
+                    continue;
+
+                AddComponentValue(value);
             }
+        }
+        else
+        {
+            if (!meta.ComponentsByName.TryGetValue(componentName, out var comp))
+                throw new InvalidOperationException(
+                    $"Prefab component '{componentName}' not found on {prefab.GetType().Name}.");
 
-            if (comp.Kind == PrefabComponentKind.Collection)
+            if (comp.Kind != PrefabComponentKind.Root)
             {
-                if (value is IEnumerable en)
-                {
-                    foreach (var it in en)
-                    {
-                        if (it is IVaultModel vm)
-                            Add(vm);
-                    }
-                }
+                var value = comp.Property.GetValue(prefab);
+                if (value is null)
+                    return;
+
+                AddComponentValue(value);
             }
         }
 
@@ -94,22 +104,50 @@ public sealed class PgPrefabs : IPrefabs
 
         var batch = new SqlBatch();
 
-        foreach (var model in dirty)
+        foreach (var group in dirty.GroupBy(x => x.GetType()))
         {
             ct.ThrowIfCancellationRequested();
 
-            var doc = VaultDocument.From(model.GetType());
-            var sql = PgDocSql.BuildUpsertSql(model.GetType(), doc);
-            var args = PgDocSql.GetUpsertParameters(doc, model);
+            var modelType = group.Key;
+            var models = group.ToList();
+            if (models.Count == 0)
+                continue;
+
+            var doc = VaultDocument.From(modelType);
+
+            var sql = PgDocSql.BuildUpsertSqlMany(modelType, doc, models.Count);
+            var args = PgDocSql.GetUpsertParametersMany(doc, models);
 
             batch.Add(sql, args);
         }
 
         var (sqlAll, parameters) = batch.Build();
-        await _db.ExecuteAsync(sqlAll, parameters!);
+        await _db.ExecuteAsync(sqlAll, parameters!).ConfigureAwait(false);
 
         foreach (var model in dirty)
             AcceptChangesIfPossible(model);
+
+        // ---------------- local helpers ----------------
+
+        void AddComponentValue(object value)
+        {
+            // Single
+            if (value is IVaultModel vmSingle)
+            {
+                Add(vmSingle);
+                return;
+            }
+
+            // Collection
+            if (value is IEnumerable en)
+            {
+                foreach (var it in en)
+                {
+                    if (it is IVaultModel vm)
+                        Add(vm);
+                }
+            }
+        }
     }
 
     private static bool IsDirtyOrUnknown(IVaultModel model)
@@ -178,22 +216,27 @@ public sealed class PgPrefabs : IPrefabs
     {
         private const string DefaultPkLogical = nameof(IVaultModel.StorageId);
 
-        public static string BuildUpsertSql(Type modelType, VaultDocument doc)
+        public static string BuildUpsertSqlMany(Type modelType, VaultDocument doc, int rowCount)
         {
+            if (rowCount <= 0)
+                throw new ArgumentOutOfRangeException(nameof(rowCount));
+
             var table = QualifiedTable(modelType, doc);
 
-            // We rely on DocumentBuilder having fields/columns/accessors correct.
-            // Use StorageId as the conflict target (your framework identity).
+            // conflict target: StorageId column
             var pkCol = Quote(Col(doc, DefaultPkLogical));
 
-            var logicalFields = doc.Fields; // logical
+            var logicalFields = doc.Fields;
             if (logicalFields is null || logicalFields.Count == 0)
                 throw new InvalidOperationException($"{modelType.Name} Document has no fields.");
 
             var physicalCols = logicalFields.Select(f => Quote(Col(doc, f))).ToList();
 
             var colsCsv = string.Join(", ", physicalCols);
-            var valsCsv = string.Join(", ", Enumerable.Repeat("?", physicalCols.Count));
+
+            // VALUES (...), (...), ...
+            var tuple = "(" + string.Join(", ", Enumerable.Repeat("?", physicalCols.Count)) + ")";
+            var valuesCsv = string.Join(", ", Enumerable.Repeat(tuple, rowCount));
 
             // Update all except PK
             var updates = new List<string>();
@@ -209,8 +252,20 @@ public sealed class PgPrefabs : IPrefabs
 
             var updateSql = updates.Count == 0 ? "NOTHING" : string.Join(", ", updates);
 
-            return $"INSERT INTO {table} ({colsCsv}) VALUES ({valsCsv}) " +
+            return $"INSERT INTO {table} ({colsCsv}) VALUES {valuesCsv} " +
                    $"ON CONFLICT ({pkCol}) DO UPDATE SET {updateSql}";
+        }
+
+        public static IReadOnlyList<object?> GetUpsertParametersMany(VaultDocument doc, IReadOnlyList<IVaultModel> models)
+        {
+            var all = new List<object?>(capacity: doc.Fields.Count * models.Count);
+            foreach (var m in models)
+            {
+                var row = GetUpsertParameters(doc, m);
+                for (int i = 0; i < row.Count; i++)
+                    all.Add(row[i]);
+            }
+            return all;
         }
 
         public static IReadOnlyList<object?> GetUpsertParameters(VaultDocument doc, object model)
@@ -228,7 +283,6 @@ public sealed class PgPrefabs : IPrefabs
                     args[i] = acc(model);
                 else
                 {
-                    // fallback: reflection (should rarely happen if DocumentBuilder is correct)
                     var p = model.GetType().GetProperty(logical, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     args[i] = p?.GetValue(model);
                 }
