@@ -176,13 +176,27 @@ internal static class PgJoinExpressionTranslator
     {
         var body = StripConvert(selector.Body);
 
+        // (a,b,...) => a   ==> expand columns with aliases to CLR property names
         if (body is ParameterExpression pe)
         {
             if (!paramMap.TryGetValue(pe, out var vault))
                 throw new NotSupportedException("Projection parameter must be one of the query parameters.");
 
-            // Postgres supports: "schema"."table".*
-            return $"{QualifiedTable(vault)}.*";
+            var doc = GetDocument(vault);
+
+            static string QuoteIdent(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
+
+            // Emit: "schema"."table"."character-id" AS "CharacterId", ...
+            var cols = new List<string>(doc.Columns.Count);
+            foreach (var kvp in doc.Columns) // kvp.Key = CLR property name, kvp.Value = SQL column name
+            {
+                var propName = kvp.Key;
+                var colName = kvp.Value;
+
+                cols.Add($"{QualifiedTable(vault)}.{QuoteIdent(colName)} AS {QuoteIdent(propName)}");
+            }
+
+            return string.Join(", ", cols);
         }
 
         // anonymous type: new { A = x.Prop, B = y.Prop2 }
@@ -214,7 +228,8 @@ internal static class PgJoinExpressionTranslator
             return string.Join(", ", cols);
         }
 
-        throw new NotSupportedException("Projection must be 'new { ... }' or 'new T { ... }' or a direct parameter (e.g. (a,b)=>a).");
+        throw new NotSupportedException(
+            "Projection must be 'new { ... }' or 'new T { ... }' or a direct parameter (e.g. (a,b)=>a).");
     }
 
     private static string SelectValue(Expression expr, IReadOnlyDictionary<ParameterExpression, object> paramMap)
