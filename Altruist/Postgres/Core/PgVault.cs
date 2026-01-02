@@ -11,38 +11,15 @@ You may obtain a copy of the License at
 
 using System.Linq.Expressions;
 
-using Microsoft.EntityFrameworkCore.Query;
-
 namespace Altruist.Persistence.Postgres;
-
 
 /// <summary>
 /// PostgreSQL vault with a fluent API similar to the CQL vault.
+/// SQL-generic behavior lives in SqlVault; PgVault provides translation + Postgres dialect SQL.
 /// </summary>
-public class PgVault<TVaultModel> : IVault<TVaultModel>
+public class PgVault<TVaultModel> : SqlVault<TVaultModel>
     where TVaultModel : class, IVaultModel
 {
-    protected readonly ISqlDatabaseProvider _databaseProvider;
-    protected readonly QueryState _state;
-
-    public IKeyspace Keyspace { get; }
-    public readonly VaultDocument VaultDocument;
-
-    internal ISqlDatabaseProvider DatabaseProvider => _databaseProvider;
-
-    private readonly IHistoricalVault<TVaultModel> _history;
-
-    public IHistoricalVault<TVaultModel> History
-    {
-        get
-        {
-            if (!VaultDocument.StoreHistory)
-                throw new InvalidOperationException("History is not enabled for this document.");
-
-            return _history;
-        }
-    }
-
     public PgVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
@@ -56,479 +33,133 @@ public class PgVault<TVaultModel> : IVault<TVaultModel>
         IKeyspace schema,
         VaultDocument document,
         QueryState state)
+        : base(databaseProvider, schema, document, state)
     {
-        _databaseProvider = databaseProvider;
-        VaultDocument = document;
-        Keyspace = schema;
-        _state = state;
-
-        _history = new PgHistoricalVault<TVaultModel>(this);
     }
 
-    protected virtual PgVault<TVaultModel> Create(QueryState state)
+    protected override SqlVault<TVaultModel> Create(QueryState state)
         => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, state);
 
-    protected PgVault<TVaultModel> New(QueryState state) => Create(state);
+    protected override IHistoricalVault<TVaultModel> CreateHistoryVault()
+        => new PgHistoricalVault<TVaultModel>(this);
 
-    // ------------------------ Fluent query ops (return NEW instance) ------------------------
+    // ------------------------ Translation ------------------------
 
-    public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
-    {
-        var whereClause = ConvertWherePredicateToString(predicate);
-        var next = _state.With(QueryPosition.WHERE, whereClause)
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
-    }
-
-    public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        var orderByClause = ConvertOrderByToString(keySelector);
-        var next = _state.With(QueryPosition.ORDER_BY, orderByClause)
-                         .With(QueryPosition.SELECT, orderByClause);
-        return New(next);
-    }
-
-    public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
-    {
-        var orderByClause = ConvertOrderByDescendingToString(keySelector);
-        var next = _state.With(QueryPosition.ORDER_BY, orderByClause + " DESC")
-                         .With(QueryPosition.SELECT, orderByClause);
-        return New(next);
-    }
-
-    public IVault<TVaultModel> Take(int count)
-    {
-        var next = _state.With(QueryPosition.LIMIT, $"LIMIT {count}")
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
-    }
-
-    public IVault<TVaultModel> Skip(int count)
-    {
-        var next = _state.With(QueryPosition.OFFSET, $"OFFSET {count}")
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
-    }
-
-    // ------------------------ Terminal ops (use current state) ------------------------
-
-    public virtual async Task<List<TVaultModel>> ToListAsync(CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var st = _state.EnsureProjectionSelected(VaultDocument);
-        var query = BuildSelectQuery(st);
-
-        var rows = await _databaseProvider.QueryAsync<TVaultModel>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return rows.ToList();
-    }
-
-    public virtual async Task<TVaultModel?> FirstOrDefaultAsync(CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var st = _state.EnsureProjectionSelected(VaultDocument)
-                       .With(QueryPosition.LIMIT, "LIMIT 1");
-        var query = BuildSelectQuery(st);
-
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return result.FirstOrDefault();
-    }
-
-    public virtual async Task<TVaultModel?> FirstAsync(CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var st = _state.EnsureProjectionSelected(VaultDocument)
-                       .With(QueryPosition.LIMIT, "LIMIT 1");
-        var query = BuildSelectQuery(st);
-
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return result.First();
-    }
-
-    public virtual async Task<List<TVaultModel>> ToListAsync(
-        Expression<Func<TVaultModel, bool>> predicate,
-        CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var next = (PgVault<TVaultModel>)Where(predicate);
-        return await next.ToListAsync(ct).ConfigureAwait(false);
-    }
-
-    public virtual async Task<long> CountAsync(CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-        var from = QualifiedTableName();
-
-        var sql = string.IsNullOrEmpty(whereClause)
-            ? $"SELECT COUNT(*) FROM {from}"
-            : $"SELECT COUNT(*) FROM {from} WHERE {whereClause}";
-
-        var count = await _databaseProvider.ExecuteCountAsync(
-            sql,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return count;
-    }
-
-    public virtual async Task<IEnumerable<TResult>> SelectAsync<TResult>(
-        Expression<Func<TVaultModel, TResult>> selector,
-        CancellationToken ct = default)
-        where TResult : class, IVaultModel
-    {
-        ct.ThrowIfCancellationRequested();
-
-        if (_state.Parts[QueryPosition.SELECT].Contains("*"))
-            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
-
-        var st = _state;
-        foreach (var column in PgQueryTranslator.Select(selector, VaultDocument))
-            st = st.With(QueryPosition.SELECT, column);
-
-        var query = BuildSelectQuery(st);
-
-        var result = await _databaseProvider.QueryAsync<TResult>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return result;
-    }
-
-    public virtual async Task<bool> AnyAsync(
-        Expression<Func<TVaultModel, bool>> predicate,
-        CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var next = (PgVault<TVaultModel>)Where(predicate);
-        var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
-        var from = next.QualifiedTableName();
-
-        var query = string.IsNullOrEmpty(where)
-            ? $"SELECT COUNT(*) FROM {from}"
-            : $"SELECT COUNT(*) FROM {from} WHERE {where}";
-
-        var count = await _databaseProvider.ExecuteCountAsync(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return count > 0;
-    }
-
-    // ------------------------ Update / Delete ------------------------
-
-    public virtual async Task<long> UpdateAsync(
-        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
-        CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var sql = PgQueryTranslator.BuildUpdate(
-            setPropertyCalls,
-            _state,
-            VaultDocument,
-            QualifiedTableName());
-
-        var affected = await _databaseProvider.ExecuteAsync(
-            sql,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return affected;
-    }
-
-    public virtual async Task UpdateAsync(
-        IReadOnlyDictionary<string, object?> primaryKey,
-        IReadOnlyDictionary<string, object?> changes,
-        CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var sql = PgQueryTranslator.BuildUpdate(
-            primaryKey,
-            changes,
-            VaultDocument,
-            QualifiedTableName());
-
-        await _databaseProvider.ExecuteAsync(
-            sql,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-    }
-
-    public virtual async Task<bool> DeleteAsync(CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var from = QualifiedTableName();
-        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-
-        var sql = string.IsNullOrEmpty(whereClause)
-            ? $"DELETE FROM {from}"
-            : $"DELETE FROM {from} WHERE {whereClause}";
-
-        var affected = await _databaseProvider.ExecuteAsync(
-            sql,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return affected > 0;
-    }
-
-    // Cursor
-    public virtual Task<ICursor<TVaultModel>> ToCursorAsync(CancellationToken ct = default)
-        => throw new NotImplementedException();
-
-    // ------------------------ Save ------------------------
-
-    public virtual Task SaveAsync(TVaultModel entity, bool? saveHistory = false, CancellationToken ct = default)
-        => SaveEntityAsync(entity, saveHistory, ct);
-
-    public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false, CancellationToken ct = default)
-        => SaveEntitiesAsync(entities, saveHistory, ct);
-
-    // ------------------------ Query building helpers ------------------------
-
-    public virtual string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
+    protected override string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
         => PgQueryTranslator.Where(predicate, VaultDocument);
 
-    internal virtual string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    protected override string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
         => PgQueryTranslator.OrderBy(keySelector, VaultDocument);
 
-    internal virtual string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
+    protected override string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
         => PgQueryTranslator.OrderBy(keySelector, VaultDocument);
 
-    private string BuildSelectQuery(QueryState st)
-    {
-        var select =
-            st.Parts[QueryPosition.SELECT].Count == 0
-                ? string.Join(", ",
-                    VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
-                : string.Join(", ", st.Parts[QueryPosition.SELECT]);
+    protected override IEnumerable<string> TranslateSelect<TResult>(Expression<Func<TVaultModel, TResult>> selector)
+        => PgQueryTranslator.Select(selector, VaultDocument);
 
-        var sql = $"SELECT {select} FROM {QualifiedTableName()}";
+    protected override string QuoteIdent(string ident)
+        => $"\"{ident.Replace("\"", "\"\"")}\"";
 
-        var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where))
-            sql += $" WHERE {where}";
+    // ------------------------ Upsert dialect (Versioned) ------------------------
 
-        var orderBy = string.Join(", ", st.Parts[QueryPosition.ORDER_BY]);
-        if (!string.IsNullOrEmpty(orderBy))
-            sql += $" ORDER BY {orderBy}";
-
-        var limit = string.Join(" ", st.Parts[QueryPosition.LIMIT]);
-        if (!string.IsNullOrEmpty(limit))
-            sql += $" {limit}";
-
-        var offset = string.Join(" ", st.Parts[QueryPosition.OFFSET]);
-        if (!string.IsNullOrEmpty(offset))
-            sql += $" {offset}";
-
-        return sql;
-    }
-
-    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
-
-    private string QualifiedTableName()
-        => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
-
-    // ------------------------ Save helpers ------------------------
-
-    private async Task SaveEntityAsync(TVaultModel entity, bool? saveHistory, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        if (entity is null)
-            throw new ArgumentNullException(nameof(entity));
-
-        entity.OnSave();
-
-        var fields = VaultDocument.Fields.ToArray();
-        var columns = fields.Select(f => VaultDocument.Columns[f]).ToArray();
-
-        var pkKeys = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
-        var primaryKeyColumns = pkKeys
-            .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
-            .ToArray();
-
-        var upsertQuery = BuildUpsertQuery(
-            QualifiedTableName(),
-            columns,
-            primaryKeyColumns);
-
-        var parameters = GetParameterValues(entity, fields, includeTimestamp: false).ToList();
-        var queries = new List<string> { upsertQuery };
-
-        if (VaultDocument.StoreHistory == true)
-        {
-            if (saveHistory == true)
-            {
-                var historyQuery = BuildHistoryQuery(VaultDocument.Name, columns);
-                queries.Add(historyQuery);
-
-                var historyParams = GetParameterValues(entity, fields, includeTimestamp: true);
-                parameters.AddRange(historyParams.Skip(fields.Length));
-            }
-        }
-        else if (saveHistory == true)
-        {
-            throw new InvalidOperationException(
-                $"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
-        }
-
-        var batchQuery = string.Join(";", queries) + ";";
-
-        await _databaseProvider.ExecuteAsync(
-            batchQuery,
-            parameters,
-            ct).ConfigureAwait(false);
-    }
-
-    private async Task SaveEntitiesAsync(IEnumerable<TVaultModel> entities, bool? saveHistory, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        if (entities is null)
-            throw new ArgumentNullException(nameof(entities));
-
-        var list = entities as IList<TVaultModel> ?? entities.ToList();
-        if (list.Count == 0)
-            throw new ArgumentException("Entities cannot be empty.", nameof(entities));
-
-        foreach (var e in list)
-        {
-            ct.ThrowIfCancellationRequested();
-            e.OnSave();
-        }
-
-        var fields = VaultDocument.Fields.ToArray();
-        var columns = fields.Select(f => VaultDocument.Columns[f]).ToArray();
-
-        var pkKeys = VaultDocument.PrimaryKey?.Keys ?? Array.Empty<string>();
-        var primaryKeyColumns = pkKeys
-            .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
-            .ToArray();
-
-        var upsertQuery = BuildUpsertQuery(
-            QualifiedTableName(),
-            columns,
-            primaryKeyColumns);
-
-        string? historyQuery = null;
-        if (VaultDocument.StoreHistory == true)
-        {
-            if (saveHistory == true)
-                historyQuery = BuildHistoryQuery(VaultDocument.Name, columns);
-        }
-        else if (saveHistory == true)
-        {
-            throw new InvalidOperationException(
-                $"History is not enabled for the table {VaultDocument.Name}. Consider enabling StoreHistory=true.");
-        }
-
-        var queries = new List<string>();
-        var allParams = new List<object?>();
-
-        foreach (var e in list)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            queries.Add(upsertQuery);
-            allParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
-
-            if (historyQuery is not null)
-            {
-                queries.Add(historyQuery);
-                var historyParams = GetParameterValues(e, fields, includeTimestamp: true);
-                allParams.AddRange(historyParams.Skip(fields.Length));
-            }
-        }
-
-        if (queries.Count == 0)
-            return;
-
-        var batchQuery = string.Join(";", queries) + ";";
-
-        await _databaseProvider.ExecuteAsync(
-            batchQuery,
-            allParams,
-            ct).ConfigureAwait(false);
-    }
-
-    private static string BuildUpsertQuery(
-        string tableName,
+    protected override string BuildUpsertSql_VersionedReturning(
+        string qualifiedTable,
         IReadOnlyList<string> columns,
-        IReadOnlyList<string> primaryKeyNames)
+        IReadOnlyList<string> primaryKeyColumns)
     {
-        if (primaryKeyNames is null || primaryKeyNames.Count == 0)
-            throw new ArgumentException("At least one primary key column must be specified.", nameof(primaryKeyNames));
+        if (primaryKeyColumns.Count == 0)
+            throw new ArgumentException("At least one primary key column must be specified.", nameof(primaryKeyColumns));
 
-        var columnNames = columns.Select(c => $"\"{c}\"").ToArray();
-        var placeholders = columns.Select(_ => "?").ToArray();
+        var alias = "t";
+        var versionCol = VersionColumn();
+        var storageIdCol = StorageIdColumn();
 
-        var insert =
-            $"INSERT INTO {tableName} ({string.Join(", ", columnNames)}) " +
-            $"VALUES ({string.Join(", ", placeholders)})";
+        var colSql = string.Join(", ", columns.Select(c => $"\"{c}\""));
+        var valsSql = string.Join(", ", columns.Select(_ => "?"));
 
-        var pkList = string.Join(", ", primaryKeyNames.Select(pk => $"\"{pk}\""));
-        var pkSet = new HashSet<string>(primaryKeyNames, StringComparer.OrdinalIgnoreCase);
+        var pkSql = string.Join(", ", primaryKeyColumns.Select(pk => $"\"{pk}\""));
+        var setSql = BuildSetClauses(columns, primaryKeyColumns, versionCol, alias);
 
-        var setClauses = columns
-            .Where(c => !pkSet.Contains(c))
-            .Select(c => $"\"{c}\" = EXCLUDED.\"{c}\"");
-
-        return $"{insert} ON CONFLICT ({pkList}) DO UPDATE SET {string.Join(", ", setClauses)}";
+        return
+            $"INSERT INTO {qualifiedTable} AS {alias} ({colSql}) VALUES ({valsSql}) " +
+            $"ON CONFLICT ({pkSql}) DO UPDATE SET {setSql} " +
+            $"WHERE {alias}.\"{versionCol}\" = EXCLUDED.\"{versionCol}\" " +
+            $"RETURNING {alias}.\"{storageIdCol}\" AS \"{StorageIdLogical}\", {alias}.\"{versionCol}\" AS \"{VersionLogical}\"";
     }
 
-    private string BuildHistoryQuery(string tableNameIgnored, IEnumerable<string> columns)
+    protected override string BuildBatchUpsertSql_VersionedReturning(
+        string qualifiedTable,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<string> primaryKeyColumns,
+        int rowCount)
     {
-        var histQualified =
-            $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name + "_history")}";
+        if (rowCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(rowCount));
+        if (primaryKeyColumns.Count == 0)
+            throw new ArgumentException("At least one primary key column must be specified.", nameof(primaryKeyColumns));
 
-        var cols = string.Join(", ", columns.Select(QuoteIdent));
-        var vals = string.Join(", ", columns.Select(_ => "?"));
-        return $"INSERT INTO {histQualified} ({cols}, {QuoteIdent("timestamp")}) VALUES ({vals}, ?)";
+        var alias = "t";
+        var versionCol = VersionColumn();
+        var storageIdCol = StorageIdColumn();
+
+        var colListSql = string.Join(", ", columns.Select(c => $"\"{c}\""));
+        var pkSql = string.Join(", ", primaryKeyColumns.Select(pk => $"\"{pk}\""));
+
+        var rowPlaceholders = "(" + string.Join(", ", columns.Select(_ => "?")) + ")";
+        var valuesSql = string.Join(", ", Enumerable.Repeat(rowPlaceholders, rowCount));
+
+        var setSql = BuildSetClauses(columns, primaryKeyColumns, versionCol, alias);
+
+        // Atomicity: if any row hits version mismatch, it won’t be updated -> upserted count < input count.
+        // We force statement failure using (1/0) so caller gets one exception and no partial writes.
+        return
+$@"
+WITH input AS (
+    SELECT * FROM (VALUES {valuesSql}) AS v({colListSql})
+),
+upserted AS (
+    INSERT INTO {qualifiedTable} AS {alias} ({colListSql})
+    SELECT {colListSql} FROM input
+    ON CONFLICT ({pkSql}) DO UPDATE
+        SET {setSql}
+        WHERE {alias}.""{versionCol}"" = EXCLUDED.""{versionCol}""
+    RETURNING {alias}.""{storageIdCol}"" AS ""{StorageIdLogical}"",
+              {alias}.""{versionCol}"" AS ""{VersionLogical}""
+),
+chk AS (
+    SELECT (SELECT COUNT(*) FROM input) AS expected,
+           (SELECT COUNT(*) FROM upserted) AS actual
+)
+SELECT u.""{StorageIdLogical}"" AS ""{StorageIdLogical}"",
+       u.""{VersionLogical}"" AS ""{VersionLogical}""
+FROM upserted u
+CROSS JOIN chk
+WHERE (CASE WHEN chk.expected = chk.actual THEN 1 ELSE (1/0) END) = 1
+;";
     }
 
-    private object?[] GetParameterValues(TVaultModel entity, IEnumerable<string> fields, bool includeTimestamp)
+    private static string BuildSetClauses(
+        IReadOnlyList<string> columns,
+        IReadOnlyList<string> primaryKeyColumns,
+        string versionCol,
+        string tableAlias)
     {
-        var values = fields.Select(field => VaultDocument.PropertyAccessors[field](entity)).ToList();
+        var pkSet = new HashSet<string>(primaryKeyColumns, StringComparer.OrdinalIgnoreCase);
 
-        if (includeTimestamp)
+        // update all non-PK, non-version columns from EXCLUDED, then bump version
+        var sets = new List<string>(columns.Count);
+        foreach (var c in columns)
         {
-            var now = DateTime.UtcNow;
-            values.Add(now);
+            if (pkSet.Contains(c))
+                continue;
+
+            if (string.Equals(c, versionCol, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            sets.Add($"\"{c}\" = EXCLUDED.\"{c}\"");
         }
 
-        return values.ToArray();
+        sets.Add($"\"{versionCol}\" = {tableAlias}.\"{versionCol}\" + 1");
+        return string.Join(", ", sets);
     }
 }

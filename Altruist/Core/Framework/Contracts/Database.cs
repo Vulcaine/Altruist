@@ -73,6 +73,7 @@ public interface IPrefabModel : IVaultModel
 public interface IVaultModel : IStoredModel
 {
     DateTime Timestamp { get; set; }
+    long Version { get; set; }
 
     void OnSave();
 }
@@ -82,6 +83,9 @@ public abstract class VaultModel : StoredModel, IVaultModel
 {
     [VaultColumn("created-at")]
     public virtual DateTime Timestamp { get; set; } = default!;
+
+    [VaultColumn("version")]
+    public virtual long Version { get; set; } = default!;
 
     [VaultColumn("id")]
     public override string StorageId { get; set; } = default!;
@@ -169,11 +173,6 @@ public interface IVault<TVaultModel>
     // Update / Delete
     Task<long> UpdateAsync(
         Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
-        CancellationToken ct = default);
-
-    Task UpdateAsync(
-        IReadOnlyDictionary<string, object?> primaryKey,
-        IReadOnlyDictionary<string, object?> changes,
         CancellationToken ct = default);
 
     Task<bool> DeleteAsync(CancellationToken ct = default);

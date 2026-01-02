@@ -1,4 +1,4 @@
-namespace Altruist.Persistence.Postgres;
+namespace Altruist.Persistence;
 
 public enum QueryPosition
 {
