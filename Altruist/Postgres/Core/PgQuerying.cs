@@ -83,6 +83,9 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
     public Task SaveAsync(T entity, bool? saveHistory = false)
         => Vault.SaveAsync(entity, saveHistory);
 
+    public Task SaveBatchAsync(IEnumerable<T> entities, bool? saveHistory = false)
+        => Vault.SaveBatchAsync(entities, saveHistory);
+
     private static PgVault<TV> ResolvePgVault<TV>() where TV : class, IVaultModel
     {
         var vault = Dependencies.Inject<IVault<TV>>();

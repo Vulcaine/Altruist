@@ -37,6 +37,7 @@ public interface IVaultQuery<T> where T : class, IVaultModel
     Task<long> CountAsync();
 
     Task SaveAsync(T entity, bool? saveHistory = false);
+    Task SaveBatchAsync(IEnumerable<T> entities, bool? saveHistory = false);
 }
 
 // ---------------- 1 join (2 tables) ----------------
