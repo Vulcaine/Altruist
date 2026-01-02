@@ -176,6 +176,15 @@ internal static class PgJoinExpressionTranslator
     {
         var body = StripConvert(selector.Body);
 
+        if (body is ParameterExpression pe)
+        {
+            if (!paramMap.TryGetValue(pe, out var vault))
+                throw new NotSupportedException("Projection parameter must be one of the query parameters.");
+
+            // Postgres supports: "schema"."table".*
+            return $"{QualifiedTable(vault)}.*";
+        }
+
         // anonymous type: new { A = x.Prop, B = y.Prop2 }
         if (body is NewExpression ne && ne.Members is not null)
         {
@@ -205,7 +214,7 @@ internal static class PgJoinExpressionTranslator
             return string.Join(", ", cols);
         }
 
-        throw new NotSupportedException("Projection must be 'new { ... }' or 'new T { ... }'.");
+        throw new NotSupportedException("Projection must be 'new { ... }' or 'new T { ... }' or a direct parameter (e.g. (a,b)=>a).");
     }
 
     private static string SelectValue(Expression expr, IReadOnlyDictionary<ParameterExpression, object> paramMap)
