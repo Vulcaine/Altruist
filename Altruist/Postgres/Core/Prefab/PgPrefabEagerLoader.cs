@@ -53,7 +53,7 @@ internal sealed class PgPrefabEagerLoader
     }
 
     private async Task HydrateCollectionAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
-        where TPrefab : PrefabModel, new()
+    where TPrefab : PrefabModel, new()
     {
         // Root ids (StorageId)
         var rootGetter = GetGetter(typeof(TPrefab), _prefab.RootPropertyName);
@@ -85,27 +85,27 @@ internal sealed class PgPrefabEagerLoader
         var depTable = depDoc.QualifiedTable();
         var fkCol = depDoc.Col(comp.ForeignKeyPropertyName);
 
+        // Explicit SELECT with aliases so mapping is stable
+        var select = BuildSelectAllAliased(depDoc, "d");
+
         string sql;
         List<object?> parameters;
 
-        // If you truly only ever have one root id in practice, this is the fast path.
         if (rootIds.Count == 1)
         {
-            sql = $"SELECT * FROM {depTable} d WHERE d.{VaultDocument.Quote(fkCol)} = ?";
+            sql = $"SELECT {select} FROM {depTable} d WHERE d.{VaultDocument.Quote(fkCol)} = ?";
             parameters = new List<object?>(1) { rootIds[0] };
         }
         else
         {
             var inSql = string.Join(", ", Enumerable.Repeat("?", rootIds.Count));
-            sql = $"SELECT * FROM {depTable} d WHERE d.{VaultDocument.Quote(fkCol)} IN ({inSql})";
+            sql = $"SELECT {select} FROM {depTable} d WHERE d.{VaultDocument.Quote(fkCol)} IN ({inSql})";
             parameters = rootIds.Cast<object?>().ToList();
         }
 
-        // Materialize dependent rows as objects (instances are of depType)
         var depRows = await _db.QueryAsync(depType, sql, parameters, ct).ConfigureAwait(false);
         if (depRows.Count == 0)
         {
-            // still set empty lists on each prefab
             SetEmptyCollections(prefabs, comp, depType);
             return;
         }
@@ -131,7 +131,6 @@ internal sealed class PgPrefabEagerLoader
             list.Add(row);
         }
 
-        // prefab.<CollectionProp> = new List<depType>(...)
         var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
         var listFactory = GetListFactory(depType);
 
@@ -155,6 +154,22 @@ internal sealed class PgPrefabEagerLoader
         }
     }
 
+    private static string BuildSelectAllAliased(VaultDocument doc, string alias)
+    {
+        static string QuoteIdent(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
+
+        var cols = new List<string>(doc.Columns.Count);
+        foreach (var kvp in doc.Columns)
+        {
+            var clrProp = kvp.Key;
+            var sqlCol = kvp.Value;
+
+            cols.Add($"{alias}.{VaultDocument.Quote(sqlCol)} AS {QuoteIdent(clrProp)}");
+        }
+
+        return string.Join(", ", cols);
+    }
+
     private void SetEmptyCollections<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, Type elementType)
         where TPrefab : PrefabModel, new()
     {
@@ -169,7 +184,7 @@ internal sealed class PgPrefabEagerLoader
     }
 
     private async Task HydrateSingleAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
-        where TPrefab : PrefabModel, new()
+    where TPrefab : PrefabModel, new()
     {
         var rootType = _prefab.RootComponentType;
         var rootFkGetter = GetGetter(rootType, comp.ForeignKeyPropertyName);
@@ -203,18 +218,21 @@ internal sealed class PgPrefabEagerLoader
         var depTable = depDoc.QualifiedTable();
         var pkCol = depDoc.Col(comp.PrincipalKeyPropertyName);
 
+        // Explicit SELECT with aliases
+        var select = BuildSelectAllAliased(depDoc, "c");
+
         string sql;
         List<object?> parameters;
 
         if (fkValues.Count == 1)
         {
-            sql = $"SELECT * FROM {depTable} c WHERE c.{VaultDocument.Quote(pkCol)} = ?";
+            sql = $"SELECT {select} FROM {depTable} c WHERE c.{VaultDocument.Quote(pkCol)} = ?";
             parameters = new List<object?>(1) { fkValues[0] };
         }
         else
         {
             var inSql = string.Join(", ", Enumerable.Repeat("?", fkValues.Count));
-            sql = $"SELECT * FROM {depTable} c WHERE c.{VaultDocument.Quote(pkCol)} IN ({inSql})";
+            sql = $"SELECT {select} FROM {depTable} c WHERE c.{VaultDocument.Quote(pkCol)} IN ({inSql})";
             parameters = fkValues.Cast<object?>().ToList();
         }
 
@@ -236,7 +254,6 @@ internal sealed class PgPrefabEagerLoader
             byPk[pk!] = row;
         }
 
-        // prefab.<SingleProp> = depObj
         var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
 
         foreach (var p in prefabs)

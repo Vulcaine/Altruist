@@ -68,7 +68,9 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         var rootDoc = VaultDocument.From(prefabMeta.RootComponentType);
         var rootTable = rootDoc.QualifiedTable();
 
-        var sql = $"SELECT r.* FROM {rootTable} r";
+        // Explicit SELECT: r."db-col" AS "ClrProp"
+        var select = BuildSelectAllAliased(rootDoc, "r");
+        var sql = $"SELECT {select} FROM {rootTable} r";
 
         if (_wheres.Count > 0)
             sql += " WHERE " + string.Join(" AND ", _wheres.Select(w => $"({w})"));
@@ -90,6 +92,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
 
         var setRoot = GetRootSetter(prefabMeta.RootPropertyName);
         var list = new List<TPrefab>(roots.Count);
+
         foreach (var root in roots)
         {
             ct.ThrowIfCancellationRequested();
@@ -106,6 +109,23 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         await loader.HydrateAsync(list, _includes, ct).ConfigureAwait(false);
 
         return list;
+    }
+
+    private static string BuildSelectAllAliased(VaultDocument doc, string alias)
+    {
+        static string QuoteIdent(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
+
+        // doc.Columns: CLR property name -> SQL column name
+        var cols = new List<string>(doc.Columns.Count);
+        foreach (var kvp in doc.Columns)
+        {
+            var clrProp = kvp.Key;
+            var sqlCol = kvp.Value;
+
+            cols.Add($"{alias}.{VaultDocument.Quote(sqlCol)} AS {QuoteIdent(clrProp)}");
+        }
+
+        return string.Join(", ", cols);
     }
 
     public async Task<TPrefab?> FirstOrDefaultAsync(CancellationToken ct = default)
