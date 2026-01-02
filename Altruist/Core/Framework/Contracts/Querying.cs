@@ -1,3 +1,4 @@
+// JoinQueries.cs
 using System.Linq.Expressions;
 
 namespace Altruist.Querying;
@@ -43,11 +44,9 @@ public interface IVaultJoinQuery<T1, T2>
     where T1 : class, IVaultModel
     where T2 : class, IVaultModel
 {
-    // order by any side
-    IVaultJoinQuery<T1, T2> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector);
+    // order by any side via (t1, t2) => ...
+    IVaultJoinQuery<T1, T2> OrderBy<TKey>(Expression<Func<T1, T2, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2> OrderByDescending<TKey>(Expression<Func<T1, T2, TKey>> keySelector);
 
     IVaultJoinQuery<T1, T2> Skip(int count);
     IVaultJoinQuery<T1, T2> Take(int count);
@@ -88,12 +87,8 @@ public interface IVaultJoinQuery<T1, T2, T3>
     where T2 : class, IVaultModel
     where T3 : class, IVaultModel
 {
-    IVaultJoinQuery<T1, T2, T3> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3> OrderBy<TKey>(Expression<Func<T1, T2, T3, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, TKey>> keySelector);
 
     IVaultJoinQuery<T1, T2, T3> Skip(int count);
     IVaultJoinQuery<T1, T2, T3> Take(int count);
@@ -135,14 +130,8 @@ public interface IVaultJoinQuery<T1, T2, T3, T4>
     where T3 : class, IVaultModel
     where T4 : class, IVaultModel
 {
-    IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T4, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T4, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T1, T2, T3, T4, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, T4, TKey>> keySelector);
 
     IVaultJoinQuery<T1, T2, T3, T4> Skip(int count);
     IVaultJoinQuery<T1, T2, T3, T4> Take(int count);
@@ -185,16 +174,8 @@ public interface IVaultJoinQuery<T1, T2, T3, T4, T5>
     where T4 : class, IVaultModel
     where T5 : class, IVaultModel
 {
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T4, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T4, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T5, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T5, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T1, T2, T3, T4, T5, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, T4, T5, TKey>> keySelector);
 
     IVaultJoinQuery<T1, T2, T3, T4, T5> Skip(int count);
     IVaultJoinQuery<T1, T2, T3, T4, T5> Take(int count);
@@ -238,18 +219,8 @@ public interface IVaultJoinQuery<T1, T2, T3, T4, T5, T6>
     where T5 : class, IVaultModel
     where T6 : class, IVaultModel
 {
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T4, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T4, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T5, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T5, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T6, TKey>> keySelector);
-    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T6, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T1, T2, T3, T4, T5, T6, TKey>> keySelector);
+    IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, T4, T5, T6, TKey>> keySelector);
 
     IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Skip(int count);
     IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Take(int count);
