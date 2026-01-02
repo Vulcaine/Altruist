@@ -58,8 +58,7 @@ public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
     Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
         string sql,
         List<object?>? parameters = null,
-        CancellationToken ct = default)
-        where TVaultModel : class;
+        CancellationToken ct = default);
 
     Task<List<object>> QueryAsync(
         Type modelType,

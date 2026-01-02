@@ -68,12 +68,15 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
             root: Vault,
             t2: rightVault,
             joins: joins,
-            wheres: new List<string>(),
+            wheres: [],
             vaults: new Dictionary<Type, object>
             {
                 { typeof(T), Vault },
                 { typeof(T2), rightVault }
-            });
+            },
+            orderBys: [],
+            skip: null,
+            take: null);
     }
 
     public Task<List<T>> ToListAsync() => Vault.ToListAsync();
@@ -99,6 +102,55 @@ internal sealed class PgVaultQuery<T> : IVaultQuery<T>
     }
 }
 
+internal static class PgJoinQuerySql
+{
+    public static string ExtractColumnName(LambdaExpression keySelector)
+    {
+        Expression body = keySelector.Body;
+
+        if (body is UnaryExpression u && u.NodeType == ExpressionType.Convert)
+            body = u.Operand;
+
+        if (body is MemberExpression m)
+            return m.Member.Name;
+
+        throw new NotSupportedException(
+            $"OrderBy expression '{keySelector}' is not supported. Use simple member access like x => x.SomeColumn.");
+    }
+
+    public static string ApplyOrderSkipTake(string sql, List<string> orderBys, int? skip, int? take)
+    {
+        if (orderBys.Count > 0)
+            sql += " ORDER BY " + string.Join(", ", orderBys);
+
+        // Postgres: LIMIT then OFFSET (or OFFSET alone)
+        if (take is not null)
+            sql += $" LIMIT {take.Value}";
+
+        if (skip is not null && skip.Value > 0)
+            sql += $" OFFSET {skip.Value}";
+
+        return sql;
+    }
+
+    public static async Task<long> ExecCountAsync<T>(PgVault<T> root, string baseSelectSql)
+        where T : class, IVaultModel
+    {
+        var countSql = $"SELECT COUNT(*) FROM ({baseSelectSql}) AS q";
+        var res = await root.DatabaseProvider.QueryAsync<long>(countSql).ConfigureAwait(false);
+        return res.FirstOrDefault();
+    }
+
+    public static string AddOrder(List<string> current, string column, bool desc)
+    {
+        var next = new List<string>(current)
+        {
+            $"{column} {(desc ? "DESC" : "ASC")}"
+        };
+        return string.Join("\n", next);
+    }
+}
+
 // ---------------- Join query: 1 join ----------------
 
 internal sealed class PgVaultJoinQuery<T1, T2> : IVaultJoinQuery<T1, T2>
@@ -112,18 +164,107 @@ internal sealed class PgVaultJoinQuery<T1, T2> : IVaultJoinQuery<T1, T2>
     private readonly List<string> _wheres;
     private readonly Dictionary<Type, object> _vaults;
 
+    private readonly List<string> _orderBys;
+    private readonly int? _skip;
+    private readonly int? _take;
+
     public PgVaultJoinQuery(
         PgVault<T1> root,
         PgVault<T2> t2,
         List<string> joins,
         List<string> wheres,
-        Dictionary<Type, object> vaults)
+        Dictionary<Type, object> vaults,
+        List<string> orderBys,
+        int? skip,
+        int? take)
     {
         _root = root;
         _t2 = t2;
         _joins = joins;
         _wheres = wheres;
         _vaults = vaults;
+        _orderBys = orderBys;
+        _skip = skip;
+        _take = take;
+    }
+
+    public IVaultJoinQuery<T1, T2> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector)
+        => OrderByInternal(keySelector, desc: false);
+
+    public IVaultJoinQuery<T1, T2> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector)
+        => OrderByInternal(keySelector, desc: true);
+
+    public IVaultJoinQuery<T1, T2> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector)
+        => OrderByInternal(keySelector, desc: false);
+
+    public IVaultJoinQuery<T1, T2> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector)
+        => OrderByInternal(keySelector, desc: true);
+
+    private IVaultJoinQuery<T1, T2> OrderByInternal(LambdaExpression keySelector, bool desc)
+    {
+        var col = PgJoinQuerySql.ExtractColumnName(keySelector);
+        var order = new List<string>(_orderBys) { $"{col} {(desc ? "DESC" : "ASC")}" };
+        return new PgVaultJoinQuery<T1, T2>(
+            _root, _t2,
+            new List<string>(_joins),
+            new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults),
+            order, _skip, _take);
+    }
+
+    public IVaultJoinQuery<T1, T2> Skip(int count)
+        => new PgVaultJoinQuery<T1, T2>(_root, _t2, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), Math.Max(0, count), _take);
+
+    public IVaultJoinQuery<T1, T2> Take(int count)
+        => new PgVaultJoinQuery<T1, T2>(_root, _t2, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, Math.Max(0, count));
+
+    public async Task<List<T1>> ToListAsync()
+    {
+        Expression<Func<T1, T2, T1>> selector = (a, b) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false)).ToList();
+    }
+
+    public async Task<T1?> FirstOrDefaultAsync()
+    {
+        Expression<Func<T1, T2, T1>> selector = (a, b) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, take: 1);
+
+        var res = await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false);
+        return res.FirstOrDefault();
+    }
+
+    public async Task<long> CountAsync()
+    {
+        Expression<Func<T1, T2, T1>> selector = (a, b) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 }
+        };
+
+        var baseSql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        return await PgJoinQuerySql.ExecCountAsync(_root, baseSql).ConfigureAwait(false);
     }
 
     public IVaultJoinQuery<T1, T2, T3> Join<T3>(
@@ -144,7 +285,7 @@ internal sealed class PgVaultJoinQuery<T1, T2> : IVaultJoinQuery<T1, T2>
             { typeof(T3), t3 }
         };
 
-        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, t3, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, t3, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3> JoinFromLeft<T3>(
@@ -165,7 +306,7 @@ internal sealed class PgVaultJoinQuery<T1, T2> : IVaultJoinQuery<T1, T2>
             { typeof(T3), t3 }
         };
 
-        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, t3, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, t3, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3> JoinFrom<TFrom, T3>(
@@ -188,7 +329,7 @@ internal sealed class PgVaultJoinQuery<T1, T2> : IVaultJoinQuery<T1, T2>
             { typeof(T3), t3 }
         };
 
-        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, t3, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, t3, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2> Where(Expression<Func<T1, T2, bool>> predicate)
@@ -200,7 +341,7 @@ internal sealed class PgVaultJoinQuery<T1, T2> : IVaultJoinQuery<T1, T2>
         };
 
         var wheres = new List<string>(_wheres) { PgJoinExpressionTranslator.Translate(predicate, map) };
-        return new PgVaultJoinQuery<T1, T2>(_root, _t2, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults));
+        return new PgVaultJoinQuery<T1, T2>(_root, _t2, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, _take);
     }
 
     public async Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, TResult>> selector)
@@ -213,7 +354,9 @@ internal sealed class PgVaultJoinQuery<T1, T2> : IVaultJoinQuery<T1, T2>
         };
 
         var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
-        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql)).ToList();
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql).ConfigureAwait(false)).ToList();
     }
 
     private object GetVault<TV>() where TV : class, IVaultModel
@@ -247,13 +390,20 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3> : IVaultJoinQuery<T1, T2, T3>
     private readonly List<string> _wheres;
     private readonly Dictionary<Type, object> _vaults;
 
+    private readonly List<string> _orderBys;
+    private readonly int? _skip;
+    private readonly int? _take;
+
     public PgVaultJoinQuery(
         PgVault<T1> root,
         PgVault<T2> t2,
         PgVault<T3> t3,
         List<string> joins,
         List<string> wheres,
-        Dictionary<Type, object> vaults)
+        Dictionary<Type, object> vaults,
+        List<string> orderBys,
+        int? skip,
+        int? take)
     {
         _root = root;
         _t2 = t2;
@@ -261,6 +411,83 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3> : IVaultJoinQuery<T1, T2, T3>
         _joins = joins;
         _wheres = wheres;
         _vaults = vaults;
+        _orderBys = orderBys;
+        _skip = skip;
+        _take = take;
+    }
+
+    public IVaultJoinQuery<T1, T2, T3> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    private IVaultJoinQuery<T1, T2, T3> OrderByInternal(LambdaExpression keySelector, bool desc)
+    {
+        var col = PgJoinQuerySql.ExtractColumnName(keySelector);
+        var order = new List<string>(_orderBys) { $"{col} {(desc ? "DESC" : "ASC")}" };
+        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, _t3, new List<string>(_joins), new List<string>(_wheres), new Dictionary<Type, object>(_vaults), order, _skip, _take);
+    }
+
+    public IVaultJoinQuery<T1, T2, T3> Skip(int count)
+        => new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, _t3, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), Math.Max(0, count), _take);
+
+    public IVaultJoinQuery<T1, T2, T3> Take(int count)
+        => new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, _t3, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, Math.Max(0, count));
+
+    public async Task<List<T1>> ToListAsync()
+    {
+        Expression<Func<T1, T2, T3, T1>> selector = (a, b, c) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false)).ToList();
+    }
+
+    public async Task<T1?> FirstOrDefaultAsync()
+    {
+        Expression<Func<T1, T2, T3, T1>> selector = (a, b, c) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, take: 1);
+
+        var res = await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false);
+        return res.FirstOrDefault();
+    }
+
+    public async Task<long> CountAsync()
+    {
+        Expression<Func<T1, T2, T3, T1>> selector = (a, b, c) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 }
+        };
+
+        var baseSql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        return await PgJoinQuerySql.ExecCountAsync(_root, baseSql).ConfigureAwait(false);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4> Join<T4>(
@@ -281,7 +508,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3> : IVaultJoinQuery<T1, T2, T3>
             { typeof(T4), t4 }
         };
 
-        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, t4, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, t4, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4> JoinFromLeft<T4>(
@@ -302,7 +529,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3> : IVaultJoinQuery<T1, T2, T3>
             { typeof(T4), t4 }
         };
 
-        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, t4, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, t4, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4> JoinFrom<TFrom, T4>(
@@ -325,7 +552,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3> : IVaultJoinQuery<T1, T2, T3>
             { typeof(T4), t4 }
         };
 
-        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, t4, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, t4, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3> Where(Expression<Func<T1, T2, T3, bool>> predicate)
@@ -338,7 +565,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3> : IVaultJoinQuery<T1, T2, T3>
         };
 
         var wheres = new List<string>(_wheres) { PgJoinExpressionTranslator.Translate(predicate, map) };
-        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, _t3, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults));
+        return new PgVaultJoinQuery<T1, T2, T3>(_root, _t2, _t3, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, _take);
     }
 
     public async Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, TResult>> selector)
@@ -352,7 +579,9 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3> : IVaultJoinQuery<T1, T2, T3>
         };
 
         var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
-        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql)).ToList();
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql).ConfigureAwait(false)).ToList();
     }
 
     private object GetVault<TV>() where TV : class, IVaultModel
@@ -388,9 +617,21 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4> : IVaultJoinQuery<T1, T2,
     private readonly List<string> _wheres;
     private readonly Dictionary<Type, object> _vaults;
 
+    private readonly List<string> _orderBys;
+    private readonly int? _skip;
+    private readonly int? _take;
+
     public PgVaultJoinQuery(
-        PgVault<T1> root, PgVault<T2> t2, PgVault<T3> t3, PgVault<T4> t4,
-        List<string> joins, List<string> wheres, Dictionary<Type, object> vaults)
+        PgVault<T1> root,
+        PgVault<T2> t2,
+        PgVault<T3> t3,
+        PgVault<T4> t4,
+        List<string> joins,
+        List<string> wheres,
+        Dictionary<Type, object> vaults,
+        List<string> orderBys,
+        int? skip,
+        int? take)
     {
         _root = root;
         _t2 = t2;
@@ -399,6 +640,94 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4> : IVaultJoinQuery<T1, T2,
         _joins = joins;
         _wheres = wheres;
         _vaults = vaults;
+        _orderBys = orderBys;
+        _skip = skip;
+        _take = take;
+    }
+
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderBy<TKey>(Expression<Func<T4, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T4, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    private IVaultJoinQuery<T1, T2, T3, T4> OrderByInternal(LambdaExpression keySelector, bool desc)
+    {
+        var col = PgJoinQuerySql.ExtractColumnName(keySelector);
+        var order = new List<string>(_orderBys) { $"{col} {(desc ? "DESC" : "ASC")}" };
+        return new PgVaultJoinQuery<T1, T2, T3, T4>(
+            _root, _t2, _t3, _t4,
+            new List<string>(_joins),
+            new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults),
+            order, _skip, _take);
+    }
+
+    public IVaultJoinQuery<T1, T2, T3, T4> Skip(int count)
+        => new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, _t4, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), Math.Max(0, count), _take);
+
+    public IVaultJoinQuery<T1, T2, T3, T4> Take(int count)
+        => new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, _t4, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, Math.Max(0, count));
+
+    public async Task<List<T1>> ToListAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T1>> selector = (a, b, c, d) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false)).ToList();
+    }
+
+    public async Task<T1?> FirstOrDefaultAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T1>> selector = (a, b, c, d) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, take: 1);
+
+        var res = await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false);
+        return res.FirstOrDefault();
+    }
+
+    public async Task<long> CountAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T1>> selector = (a, b, c, d) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 }
+        };
+
+        var baseSql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        return await PgJoinQuerySql.ExecCountAsync(_root, baseSql).ConfigureAwait(false);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5> Join<T5>(
@@ -410,7 +739,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4> : IVaultJoinQuery<T1, T2,
         var t5 = ResolvePgVault<T5>();
         var joins = new List<string>(_joins) { PgJoinExpressionTranslator.BuildJoinDynamic(_t4, t5, leftKey, rightKey, joinType) };
         var vaults = new Dictionary<Type, object>(_vaults) { { typeof(T5), t5 } };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, t5, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, t5, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5> JoinFromLeft<T5>(
@@ -422,7 +751,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4> : IVaultJoinQuery<T1, T2,
         var t5 = ResolvePgVault<T5>();
         var joins = new List<string>(_joins) { PgJoinExpressionTranslator.BuildJoinDynamic(_root, t5, leftKey, rightKey, joinType) };
         var vaults = new Dictionary<Type, object>(_vaults) { { typeof(T5), t5 } };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, t5, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, t5, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5> JoinFrom<TFrom, T5>(
@@ -436,7 +765,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4> : IVaultJoinQuery<T1, T2,
         var t5 = ResolvePgVault<T5>();
         var joins = new List<string>(_joins) { PgJoinExpressionTranslator.BuildJoinDynamic(from, t5, leftKey, rightKey, joinType) };
         var vaults = new Dictionary<Type, object>(_vaults) { { typeof(T5), t5 } };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, t5, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, t5, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4> Where(Expression<Func<T1, T2, T3, T4, bool>> predicate)
@@ -450,7 +779,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4> : IVaultJoinQuery<T1, T2,
         };
 
         var wheres = new List<string>(_wheres) { PgJoinExpressionTranslator.Translate(predicate, map) };
-        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, _t4, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults));
+        return new PgVaultJoinQuery<T1, T2, T3, T4>(_root, _t2, _t3, _t4, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, _take);
     }
 
     public async Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, TResult>> selector)
@@ -465,7 +794,9 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4> : IVaultJoinQuery<T1, T2,
         };
 
         var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
-        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql)).ToList();
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql).ConfigureAwait(false)).ToList();
     }
 
     private object GetVault<TV>() where TV : class, IVaultModel
@@ -503,9 +834,22 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5> : IVaultJoinQuery<T1,
     private readonly List<string> _wheres;
     private readonly Dictionary<Type, object> _vaults;
 
+    private readonly List<string> _orderBys;
+    private readonly int? _skip;
+    private readonly int? _take;
+
     public PgVaultJoinQuery(
-        PgVault<T1> root, PgVault<T2> t2, PgVault<T3> t3, PgVault<T4> t4, PgVault<T5> t5,
-        List<string> joins, List<string> wheres, Dictionary<Type, object> vaults)
+        PgVault<T1> root,
+        PgVault<T2> t2,
+        PgVault<T3> t3,
+        PgVault<T4> t4,
+        PgVault<T5> t5,
+        List<string> joins,
+        List<string> wheres,
+        Dictionary<Type, object> vaults,
+        List<string> orderBys,
+        int? skip,
+        int? take)
     {
         _root = root;
         _t2 = t2;
@@ -515,6 +859,100 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5> : IVaultJoinQuery<T1,
         _joins = joins;
         _wheres = wheres;
         _vaults = vaults;
+        _orderBys = orderBys;
+        _skip = skip;
+        _take = take;
+    }
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T4, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T4, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderBy<TKey>(Expression<Func<T5, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T5, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    private IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByInternal(LambdaExpression keySelector, bool desc)
+    {
+        var col = PgJoinQuerySql.ExtractColumnName(keySelector);
+        var order = new List<string>(_orderBys) { $"{col} {(desc ? "DESC" : "ASC")}" };
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(
+            _root, _t2, _t3, _t4, _t5,
+            new List<string>(_joins),
+            new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults),
+            order, _skip, _take);
+    }
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> Skip(int count)
+        => new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, _t5, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), Math.Max(0, count), _take);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5> Take(int count)
+        => new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, _t5, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, Math.Max(0, count));
+
+    public async Task<List<T1>> ToListAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T5, T1>> selector = (a, b, c, d, e) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 },
+            { selector.Parameters[4], _t5 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false)).ToList();
+    }
+
+    public async Task<T1?> FirstOrDefaultAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T5, T1>> selector = (a, b, c, d, e) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 },
+            { selector.Parameters[4], _t5 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, take: 1);
+
+        var res = await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false);
+        return res.FirstOrDefault();
+    }
+
+    public async Task<long> CountAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T5, T1>> selector = (a, b, c, d, e) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 },
+            { selector.Parameters[4], _t5 }
+        };
+
+        var baseSql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        return await PgJoinQuerySql.ExecCountAsync(_root, baseSql).ConfigureAwait(false);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Join<T6>(
@@ -526,7 +964,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5> : IVaultJoinQuery<T1,
         var t6 = ResolvePgVault<T6>();
         var joins = new List<string>(_joins) { PgJoinExpressionTranslator.BuildJoinDynamic(_t5, t6, leftKey, rightKey, joinType) };
         var vaults = new Dictionary<Type, object>(_vaults) { { typeof(T6), t6 } };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, t6, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, t6, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> JoinFromLeft<T6>(
@@ -538,7 +976,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5> : IVaultJoinQuery<T1,
         var t6 = ResolvePgVault<T6>();
         var joins = new List<string>(_joins) { PgJoinExpressionTranslator.BuildJoinDynamic(_root, t6, leftKey, rightKey, joinType) };
         var vaults = new Dictionary<Type, object>(_vaults) { { typeof(T6), t6 } };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, t6, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, t6, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> JoinFrom<TFrom, T6>(
@@ -552,7 +990,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5> : IVaultJoinQuery<T1,
         var t6 = ResolvePgVault<T6>();
         var joins = new List<string>(_joins) { PgJoinExpressionTranslator.BuildJoinDynamic(from, t6, leftKey, rightKey, joinType) };
         var vaults = new Dictionary<Type, object>(_vaults) { { typeof(T6), t6 } };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, t6, joins, new List<string>(_wheres), vaults);
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, t6, joins, new List<string>(_wheres), vaults, new List<string>(_orderBys), _skip, _take);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5> Where(Expression<Func<T1, T2, T3, T4, T5, bool>> predicate)
@@ -567,7 +1005,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5> : IVaultJoinQuery<T1,
         };
 
         var wheres = new List<string>(_wheres) { PgJoinExpressionTranslator.Translate(predicate, map) };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, _t5, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults));
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5>(_root, _t2, _t3, _t4, _t5, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, _take);
     }
 
     public async Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, T5, TResult>> selector)
@@ -583,7 +1021,9 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5> : IVaultJoinQuery<T1,
         };
 
         var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
-        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql)).ToList();
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql).ConfigureAwait(false)).ToList();
     }
 
     private object GetVault<TV>() where TV : class, IVaultModel
@@ -623,9 +1063,23 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5, T6> : IVaultJoinQuery
     private readonly List<string> _wheres;
     private readonly Dictionary<Type, object> _vaults;
 
+    private readonly List<string> _orderBys;
+    private readonly int? _skip;
+    private readonly int? _take;
+
     public PgVaultJoinQuery(
-        PgVault<T1> root, PgVault<T2> t2, PgVault<T3> t3, PgVault<T4> t4, PgVault<T5> t5, PgVault<T6> t6,
-        List<string> joins, List<string> wheres, Dictionary<Type, object> vaults)
+        PgVault<T1> root,
+        PgVault<T2> t2,
+        PgVault<T3> t3,
+        PgVault<T4> t4,
+        PgVault<T5> t5,
+        PgVault<T6> t6,
+        List<string> joins,
+        List<string> wheres,
+        Dictionary<Type, object> vaults,
+        List<string> orderBys,
+        int? skip,
+        int? take)
     {
         _root = root;
         _t2 = t2;
@@ -636,6 +1090,106 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5, T6> : IVaultJoinQuery
         _joins = joins;
         _wheres = wheres;
         _vaults = vaults;
+        _orderBys = orderBys;
+        _skip = skip;
+        _take = take;
+    }
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T1, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T2, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T3, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T4, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T4, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T5, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T5, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderBy<TKey>(Expression<Func<T6, TKey>> keySelector) => OrderByInternal(keySelector, false);
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T6, TKey>> keySelector) => OrderByInternal(keySelector, true);
+
+    private IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByInternal(LambdaExpression keySelector, bool desc)
+    {
+        var col = PgJoinQuerySql.ExtractColumnName(keySelector);
+        var order = new List<string>(_orderBys) { $"{col} {(desc ? "DESC" : "ASC")}" };
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(
+            _root, _t2, _t3, _t4, _t5, _t6,
+            new List<string>(_joins),
+            new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults),
+            order, _skip, _take);
+    }
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Skip(int count)
+        => new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, _t6, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), Math.Max(0, count), _take);
+
+    public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Take(int count)
+        => new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, _t6, new List<string>(_joins), new List<string>(_wheres),
+            new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, Math.Max(0, count));
+
+    public async Task<List<T1>> ToListAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T5, T6, T1>> selector = (a, b, c, d, e, f) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 },
+            { selector.Parameters[4], _t5 },
+            { selector.Parameters[5], _t6 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false)).ToList();
+    }
+
+    public async Task<T1?> FirstOrDefaultAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T5, T6, T1>> selector = (a, b, c, d, e, f) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 },
+            { selector.Parameters[4], _t5 },
+            { selector.Parameters[5], _t6 }
+        };
+
+        var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, take: 1);
+
+        var res = await _root.DatabaseProvider.QueryAsync<T1>(sql).ConfigureAwait(false);
+        return res.FirstOrDefault();
+    }
+
+    public async Task<long> CountAsync()
+    {
+        Expression<Func<T1, T2, T3, T4, T5, T6, T1>> selector = (a, b, c, d, e, f) => a;
+
+        var map = new Dictionary<ParameterExpression, object>
+        {
+            { selector.Parameters[0], _root },
+            { selector.Parameters[1], _t2 },
+            { selector.Parameters[2], _t3 },
+            { selector.Parameters[3], _t4 },
+            { selector.Parameters[4], _t5 },
+            { selector.Parameters[5], _t6 }
+        };
+
+        var baseSql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
+        return await PgJoinQuerySql.ExecCountAsync(_root, baseSql).ConfigureAwait(false);
     }
 
     public IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Where(Expression<Func<T1, T2, T3, T4, T5, T6, bool>> predicate)
@@ -651,7 +1205,7 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5, T6> : IVaultJoinQuery
         };
 
         var wheres = new List<string>(_wheres) { PgJoinExpressionTranslator.Translate(predicate, map) };
-        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, _t6, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults));
+        return new PgVaultJoinQuery<T1, T2, T3, T4, T5, T6>(_root, _t2, _t3, _t4, _t5, _t6, new List<string>(_joins), wheres, new Dictionary<Type, object>(_vaults), new List<string>(_orderBys), _skip, _take);
     }
 
     public async Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, T5, T6, TResult>> selector)
@@ -668,6 +1222,8 @@ internal sealed class PgVaultJoinQuery<T1, T2, T3, T4, T5, T6> : IVaultJoinQuery
         };
 
         var sql = PgJoinExpressionTranslator.BuildSelect(selector, _root, _joins, _wheres, map);
-        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql)).ToList();
+        sql = PgJoinQuerySql.ApplyOrderSkipTake(sql, _orderBys, _skip, _take);
+
+        return (await _root.DatabaseProvider.QueryAsync<TResult>(sql).ConfigureAwait(false)).ToList();
     }
 }

@@ -434,7 +434,6 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         string sql,
         List<object?>? parameters = null,
         CancellationToken ct = default)
-        where TVaultModel : class
         => (await ExecuteFetchAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false)).ToList();
 
     // Backward compatible signature
@@ -528,7 +527,6 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         string sql,
         List<object?>? parameters,
         CancellationToken ct)
-        where TVaultModel : class
     {
         ct.ThrowIfCancellationRequested();
 
