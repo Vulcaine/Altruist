@@ -15,10 +15,14 @@ public class AltruistEngine : IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;
 
+    private readonly int _engineHz;
+    private TimeSpan EngineTickPeriod => TimeSpan.FromSeconds(1.0 / _engineHz);
+
     private readonly IServiceProvider _serviceProvider;
     private readonly IServerStatus _appStatus;
     private readonly IGameWorldOrganizer _worldCoordinator;
 
+    // Keep Rate for external visibility, but DO NOT use it to build the engine timer when Unit==Ticks.
     private readonly CycleRate _engineRate;
     public CycleRate Rate => _engineRate;
 
@@ -42,25 +46,25 @@ public class AltruistEngine : IAltruistEngine
 
     // -------- Static tasks (registered once, run on cadence, never overlap per task) --------
     private readonly List<EngineStaticTask> _staticTasks = new();
-    private readonly Dictionary<TaskIdentifier, long> _staticLastRunTicks = new();
+    private readonly Dictionary<TaskIdentifier, long> _staticLastRunStopwatch = new(); // for time-based
+    private readonly Dictionary<TaskIdentifier, long> _staticLastRunFrame = new();     // for frame-based
     private readonly Dictionary<TaskIdentifier, Task> _staticInFlight = new();
 
-    // Cache only for building the static delegates (startup-time). Keep it, but name it clearly.
+    // Cache only for building the static delegates (startup-time).
     private readonly Dictionary<string, Action> _staticDelegateCache = new();
 
+    // -------- Effects --------
     private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effects = new();
 
     // -------- Dynamic tasks (requested at runtime; each request must run at least once; never overlap per id) --------
     private sealed class DynamicTaskState
     {
         public Delegate Delegate = default!;
-        public int Pending;               // how many executions are owed
-        public Task? InFlight;            // running execution (if any)
+        public int Pending;               // executions owed
+        public Task? InFlight;            // currently running
     }
 
     private readonly ConcurrentDictionary<TaskIdentifier, DynamicTaskState> _dynamic = new();
-
-    // Optional cap for how many dynamic tasks you start per tick (prevents stampedes)
     private const int MaxDynamicStartsPerTick = 128;
 
     public AltruistEngine(
@@ -75,7 +79,9 @@ public class AltruistEngine : IAltruistEngine
         _appStatus = serverStatus;
         _worldCoordinator = worldCoordinator;
 
-        _engineRate = new CycleRate(engineFrequencyHz, unit);
+        _engineHz = Math.Max(1, engineFrequencyHz);
+        _engineRate = new CycleRate(engineFrequencyHz, unit); // visibility/config only
+
         Throttle = throttle ?? (int)(1_000_000_000 / (_engineRate.Value + 1));
     }
 
@@ -127,35 +133,44 @@ public class AltruistEngine : IAltruistEngine
         return tcs.Task;
     }
 
+    // ---------------- Effects ----------------
+
     public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
     {
         if (step is null)
             throw new ArgumentNullException(nameof(step));
 
         var id = new TaskIdentifier("Effect_" + Guid.NewGuid());
-        long now = FrameTime.NowTicks;
+
+        long nowStopwatch = FrameTime.NowTicks;
 
         var effect = new DynamicEffectTask(
             id: id,
             rate: cycleRate,
             expiresAtUtc: expiresAtUtc,
             step: step,
-            startTime: now
+            startTime: nowStopwatch
         );
+
+        if (cycleRate.Unit == CycleUnit.Ticks)
+        {
+            effect.NextExecuteFrame = CurrentTick + Math.Max(1, cycleRate.Value);
+            effect.NextExecuteTimeTicks = 0;
+        }
+        else
+        {
+            effect.NextExecuteTimeTicks = nowStopwatch + ToStopwatchTickInterval(cycleRate);
+            effect.NextExecuteFrame = 0;
+        }
 
         _effects[id] = effect;
         return id;
     }
 
-    public bool CancelEffect(TaskIdentifier id)
-    {
-        return _effects.TryRemove(id, out _);
-    }
+    public bool CancelEffect(TaskIdentifier id) => _effects.TryRemove(id, out _);
 
-    /// <summary>
-    /// Dynamic tasks: every call must result in at least one execution.
-    /// If triggered N times while still running, it will run N additional times later (sequentially, no overlap per id).
-    /// </summary>
+    // ---------------- Dynamic tasks ----------------
+
     public void SendTask(TaskIdentifier id, Delegate taskDelegate)
     {
         if (taskDelegate is null)
@@ -163,16 +178,17 @@ public class AltruistEngine : IAltruistEngine
 
         _dynamic.AddOrUpdate(
             id,
-            addValueFactory: _ => new DynamicTaskState { Delegate = taskDelegate, Pending = 1 },
-            updateValueFactory: (_, state) =>
+            _ => new DynamicTaskState { Delegate = taskDelegate, Pending = 1, InFlight = null },
+            (_, state) =>
             {
-                state.Delegate = taskDelegate;               // latest delegate wins (change if you want "first wins")
-                Interlocked.Increment(ref state.Pending);    // never drop triggers
+                state.Delegate = taskDelegate;              // latest delegate wins
+                Interlocked.Increment(ref state.Pending);   // never drop triggers
                 return state;
             });
     }
 
-    // ---------------- Cron (unchanged, but FYI this is fire-and-forget) ----------------
+    // ---------------- Cron (unchanged, fire-and-forget) ----------------
+
     public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
     {
         var cron = CronExpression.Parse(cronExpression);
@@ -204,7 +220,7 @@ public class AltruistEngine : IAltruistEngine
         _cts = new CancellationTokenSource();
         var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
 
-        // Physics worker runs as a Task (no OS thread required)
+        // Physics worker runs as a Task
         _ = Task.Run(() => RunPhysicsWorkerAsync(linkedCts.Token), linkedCts.Token);
 
         _engineThread = new Thread(() =>
@@ -216,9 +232,7 @@ public class AltruistEngine : IAltruistEngine
                 if (_appStatus.Status == ReadyState.Alive)
                 {
                     try
-                    {
-                        RunEngineLoopAsync(linkedCts.Token).GetAwaiter().GetResult();
-                    }
+                    { RunEngineLoopAsync(linkedCts.Token).GetAwaiter().GetResult(); }
                     catch (OperationCanceledException) { }
                     catch { /* log */ }
                     return;
@@ -246,9 +260,9 @@ public class AltruistEngine : IAltruistEngine
 
     private async Task RunEngineLoopAsync(CancellationToken token)
     {
-        using var timer = new PeriodicTimer(ToPeriod(_engineRate));
+        using var timer = new PeriodicTimer(EngineTickPeriod);
 
-        long lastTick = FrameTime.NowTicks;
+        long lastTickStopwatch = FrameTime.NowTicks;
 
         try
         {
@@ -259,17 +273,17 @@ public class AltruistEngine : IAltruistEngine
 
                 CurrentTick++;
 
-                long nowTicks = FrameTime.NowTicks;
-                long elapsedTicks = nowTicks - lastTick;
-                lastTick = nowTicks;
+                long nowStopwatch = FrameTime.NowTicks;
+                long elapsedStopwatch = nowStopwatch - lastTickStopwatch;
+                lastTickStopwatch = nowStopwatch;
 
-                float dt = FrameTime.TicksToDeltaSeconds(elapsedTicks);
+                float dt = FrameTime.TicksToDeltaSeconds(elapsedStopwatch);
 
                 await RunNextTickQueueAsync().ConfigureAwait(false);
-                RunStaticTasks(nowTicks);
+                RunStaticTasks(nowStopwatch);
                 StartDynamicTasksBudgeted();
+                RunEffects(nowStopwatch, dt);
 
-                // Signal physics (latest only)
                 _physicsTicks.Writer.TryWrite(dt);
             }
         }
@@ -293,7 +307,6 @@ public class AltruistEngine : IAltruistEngine
                 while (_physicsTicks.Reader.TryRead(out var v))
                     dt = v;
 
-                // You made this sync now; if it becomes async again, await it here.
                 _worldCoordinator.Step(dt);
             }
         }
@@ -311,26 +324,38 @@ public class AltruistEngine : IAltruistEngine
             await ExecuteDelegateAsync(del).ConfigureAwait(false);
     }
 
-    private void RunStaticTasks(long nowTicks)
+    private void RunStaticTasks(long nowStopwatch)
     {
         foreach (var task in _staticTasks)
         {
-            long intervalTicks = ToStopwatchTickInterval(task.CycleRate);
+            bool due;
 
-            _staticLastRunTicks.TryGetValue(task.Id, out var lastRun);
-            bool due = lastRun == 0 || (nowTicks - lastRun) >= intervalTicks;
+            if (task.CycleRate.Unit == CycleUnit.Ticks)
+            {
+                _staticLastRunFrame.TryGetValue(task.Id, out var lastFrame);
+                due = lastFrame == 0 || (CurrentTick - lastFrame) >= Math.Max(1, task.CycleRate.Value);
+            }
+            else
+            {
+                long interval = ToStopwatchTickInterval(task.CycleRate);
+                _staticLastRunStopwatch.TryGetValue(task.Id, out var lastRun);
+                due = lastRun == 0 || (nowStopwatch - lastRun) >= interval;
+            }
+
             if (!due)
                 continue;
 
-            // If still running, skip this tick (do not start another)
             if (_staticInFlight.TryGetValue(task.Id, out var running) && !running.IsCompleted)
                 continue;
 
-            _staticLastRunTicks[task.Id] = nowTicks;
+            if (task.CycleRate.Unit == CycleUnit.Ticks)
+                _staticLastRunFrame[task.Id] = CurrentTick;
+            else
+                _staticLastRunStopwatch[task.Id] = nowStopwatch;
+
             _staticInFlight[task.Id] = ExecuteDelegateAsync(task.Delegate);
         }
 
-        // cleanup completed (cheap)
         if (_staticInFlight.Count > 0)
         {
             var done = new List<TaskIdentifier>();
@@ -339,6 +364,46 @@ public class AltruistEngine : IAltruistEngine
                     done.Add(kv.Key);
             foreach (var id in done)
                 _staticInFlight.Remove(id);
+        }
+    }
+
+    private void RunEffects(long nowStopwatch, float dt)
+    {
+        if (_effects.IsEmpty)
+            return;
+
+        var nowUtc = DateTime.UtcNow;
+
+        foreach (var (id, effect) in _effects)
+        {
+            if (nowUtc >= effect.ExpiresAtUtc)
+            {
+                _effects.TryRemove(id, out _);
+                continue;
+            }
+
+            bool due = effect.Rate.Unit switch
+            {
+                CycleUnit.Ticks => CurrentTick >= effect.NextExecuteFrame,
+                _ => nowStopwatch >= effect.NextExecuteTimeTicks
+            };
+
+            if (!due)
+                continue;
+
+            try
+            {
+                effect.Step(dt);
+
+                if (effect.Rate.Unit == CycleUnit.Ticks)
+                    effect.NextExecuteFrame = CurrentTick + Math.Max(1, effect.Rate.Value);
+                else
+                    effect.NextExecuteTimeTicks = nowStopwatch + ToStopwatchTickInterval(effect.Rate);
+            }
+            catch
+            {
+                _effects.TryRemove(id, out _);
+            }
         }
     }
 
@@ -354,31 +419,35 @@ public class AltruistEngine : IAltruistEngine
             var id = kv.Key;
             var state = kv.Value;
 
-            // Never overlap per id
             var inFlight = Volatile.Read(ref state.InFlight);
             if (inFlight != null && !inFlight.IsCompleted)
                 continue;
 
-            // If nothing pending, try to remove the entry (optional cleanup)
             if (Volatile.Read(ref state.Pending) <= 0)
             {
                 _dynamic.TryRemove(id, out _);
                 continue;
             }
 
-            // Claim exactly one pending execution
-            if (Interlocked.Decrement(ref state.Pending) < 0)
-            {
-                // someone else consumed; restore to 0
-                Interlocked.Exchange(ref state.Pending, 0);
+            if (!TryClaimOnePending(state))
                 continue;
-            }
 
-            // Start it and record as in-flight
-            var t = ExecuteDelegateAsync(state.Delegate);
-            Volatile.Write(ref state.InFlight, t);
-
+            var task = ExecuteDelegateAsync(state.Delegate);
+            Volatile.Write(ref state.InFlight, task);
             started++;
+        }
+    }
+
+    private static bool TryClaimOnePending(DynamicTaskState state)
+    {
+        while (true)
+        {
+            int current = Volatile.Read(ref state.Pending);
+            if (current <= 0)
+                return false;
+
+            if (Interlocked.CompareExchange(ref state.Pending, current - 1, current) == current)
+                return true;
         }
     }
 
@@ -388,8 +457,8 @@ public class AltruistEngine : IAltruistEngine
     {
         var actualRate = rate ?? _engineRate;
 
-        if (actualRate.Value > _engineRate.Value)
-            throw new ArgumentException($"Frequency {actualRate} must be <= engine frequency {_engineRate}.", nameof(rate));
+        if (actualRate.Unit == CycleUnit.Hz && actualRate.Value > _engineHz)
+            throw new ArgumentException($"Frequency {actualRate} must be <= engine frequency {_engineHz}Hz.", nameof(rate));
 
         var methodInfo = taskDelegate.Method;
         var parameters = methodInfo.GetParameters();
@@ -399,7 +468,8 @@ public class AltruistEngine : IAltruistEngine
         {
             var paramType = parameters[i].ParameterType;
             resolvedParameters[i] = _serviceProvider.GetService(paramType)
-                ?? throw new InvalidOperationException($"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
+                ?? throw new InvalidOperationException(
+                    $"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
         }
 
         var cacheKey = GenerateCacheKey(methodInfo, resolvedParameters);
@@ -446,17 +516,14 @@ public class AltruistEngine : IAltruistEngine
     {
         return rate.Unit switch
         {
-            CycleUnit.Hz => Math.Max(1, Stopwatch.Frequency / rate.Value),
-            CycleUnit.Ticks => Math.Max(1, rate.Value),
-            CycleUnit.Milliseconds => Math.Max(1, Stopwatch.Frequency * rate.Value / 1000),
-            CycleUnit.Seconds => Math.Max(1, Stopwatch.Frequency * rate.Value),
+            CycleUnit.Hz => Math.Max(1, Stopwatch.Frequency / Math.Max(1, rate.Value)),
+            CycleUnit.Milliseconds => Math.Max(1, (Stopwatch.Frequency * Math.Max(1, rate.Value)) / 1000),
+            CycleUnit.Seconds => Math.Max(1, Stopwatch.Frequency * Math.Max(1, rate.Value)),
+
+            // IMPORTANT: Ticks are frames; do not convert to stopwatch ticks here.
+            CycleUnit.Ticks => throw new InvalidOperationException("CycleUnit.Ticks represents frames; use frame-based scheduling."),
+
             _ => Math.Max(1, rate.Value)
         };
-    }
-
-    private static TimeSpan ToPeriod(CycleRate rate)
-    {
-        long tickInterval = ToStopwatchTickInterval(rate);
-        return TimeSpan.FromSeconds((double)tickInterval / Stopwatch.Frequency);
     }
 }

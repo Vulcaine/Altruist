@@ -14,6 +14,8 @@ public sealed class DynamicEffectTask
     public long NextExecuteTimeTicks { get; set; }
     public Action<float> Step { get; }
 
+    public long NextExecuteFrame { get; set; }
+
     public DynamicEffectTask(TaskIdentifier id, CycleRate rate, DateTime expiresAtUtc, Action<float> step, long startTime)
     {
         Id = id;
