@@ -69,7 +69,7 @@ namespace Altruist.Gaming.TwoD
         /// </summary>
         public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 
-        public void Step(float deltaTime)
+        public Task StepAsync(float deltaTime)
         {
             foreach (var world in _worlds.Values)
             {
@@ -82,6 +82,8 @@ namespace Altruist.Gaming.TwoD
 
                 }
             }
+
+            return Task.CompletedTask;
         }
 
         public bool Empty() => _worlds.Count == 0;

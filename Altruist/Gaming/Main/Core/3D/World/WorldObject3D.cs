@@ -67,7 +67,7 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public bool Expired { get; set; }
 
-        public virtual Task Step(float dt, IWorldPhysics3D worldPhysics) { return Task.CompletedTask; }
+        public virtual Task StepAsync(float dt, IWorldPhysics3D worldPhysics) { return Task.CompletedTask; }
     }
 
     /// <summary>
@@ -176,7 +176,7 @@ namespace Altruist.Gaming.ThreeD
                 $"Colliders=[{collidersStr}])";
         }
 
-        public virtual Task Step(float dt, IWorldPhysics3D worldPhysics) { return Task.CompletedTask; }
+        public virtual Task StepAsync(float dt, IWorldPhysics3D worldPhysics) { return Task.CompletedTask; }
     }
 
     public class AnonymousWorldObject3D : WorldObject3D

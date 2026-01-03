@@ -22,7 +22,7 @@ namespace Altruist;
 public interface IServerStatus
 {
     ReadyState Status { get; }
-    void SignalState(IEngineCore engine, ReadyState state);
+    void SignalState(IEngineCore engine, ReadyState state, CancellationToken token);
 }
 
 

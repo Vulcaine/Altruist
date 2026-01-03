@@ -67,7 +67,7 @@ public sealed class ServerStatus : IServerStatus
     /// Called automatically during startup via the [Configuration] mechanism.
     /// </summary>
     [PostConstruct]
-    public async Task Configure(IEngineCore? engine = null)
+    public async Task Configure(IEngineCore? engine = null, CancellationToken token = default)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -76,7 +76,7 @@ public sealed class ServerStatus : IServerStatus
 
         foreach (var service in _connectables)
         {
-            SubscribeToServiceEvents(service, tcs, engine);
+            SubscribeToServiceEvents(service, tcs, engine, token);
 
             if (service.IsConnected)
             {
@@ -89,15 +89,15 @@ public sealed class ServerStatus : IServerStatus
             }
         }
 
-        await CheckAllConnectedAsync(tcs, engine);
+        await CheckAllConnectedAsync(tcs, engine, token);
     }
 
-    public void SignalState(IEngineCore? engine, ReadyState state)
+    public void SignalState(IEngineCore? engine, ReadyState state, CancellationToken token)
     {
         if (state == ReadyState.Failed)
             engine?.Stop();
         else if (state == ReadyState.Alive)
-            engine?.Start();
+            engine?.Start(token);
 
         Status = state;
     }
@@ -118,7 +118,7 @@ public sealed class ServerStatus : IServerStatus
         }, null, TimeSpan.FromMinutes(1), Timeout.InfiniteTimeSpan);
     }
 
-    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs, IEngineCore? engine)
+    private void SubscribeToServiceEvents(IConnectable service, TaskCompletionSource<bool> tcs, IEngineCore? engine, CancellationToken token)
     {
         service.OnConnected += () =>
         {
@@ -133,12 +133,12 @@ public sealed class ServerStatus : IServerStatus
                 if (_connected.Count == _connectables.Count && !_startup && Status != ReadyState.Alive)
                 {
                     _startup = true;
-                    _ = RunStartupActionsAsync(tcs, engine);
+                    _ = RunStartupActionsAsync(tcs, engine, token);
                 }
                 else if (_connected.Count == _connectables.Count && Status != ReadyState.Alive)
                 {
                     _startupTimeoutTimer?.Dispose();
-                    SignalState(engine, ReadyState.Alive);
+                    SignalState(engine, ReadyState.Alive, token);
                     _logger.LogInformation("🚀 Altruist is now live again and ready to serve requests.");
                 }
 
@@ -154,42 +154,42 @@ public sealed class ServerStatus : IServerStatus
                 _connected.Remove(service);
 
             StartTimeoutTimer(engine);
-            SignalState(engine, ReadyState.Failed);
+            SignalState(engine, ReadyState.Failed, token);
             LogStatus();
         };
 
         service.OnRetryExhausted += ex =>
         {
-            Shutdown(engine, $"{service.ServiceName} failed to connect after all retries.", ex);
+            Shutdown(engine, $"{service.ServiceName} failed to connect after all retries.", ex, token);
         };
     }
 
-    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs, IEngineCore? engine)
+    private async Task CheckAllConnectedAsync(TaskCompletionSource<bool> tcs, IEngineCore? engine, CancellationToken token)
     {
         lock (_connected)
         {
             if (_connected.Count == _connectables.Count && !_startup)
             {
                 _startup = true;
-                _ = RunStartupActionsAsync(tcs, engine);
+                _ = RunStartupActionsAsync(tcs, engine, token);
             }
         }
 
         await tcs.Task;
     }
 
-    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs, IEngineCore? engine)
+    private async Task RunStartupActionsAsync(TaskCompletionSource<bool> tcs, IEngineCore? engine, CancellationToken token)
     {
         _startupTimeoutTimer?.Dispose();
 
-        SignalState(engine, ReadyState.Alive);
+        SignalState(engine, ReadyState.Alive, token);
         _logger.LogInformation("🚀 Altruist is now live and ready to serve requests.");
         tcs.TrySetResult(true);
 
         await Task.CompletedTask;
     }
 
-    private void Shutdown(IEngineCore? engine, string reason, Exception? ex = null)
+    private void Shutdown(IEngineCore? engine, string reason, Exception? ex = null, CancellationToken token = default)
     {
         if (ex is not null)
             _logger.LogCritical(ex, "{Reason}", reason);
@@ -206,7 +206,7 @@ public sealed class ServerStatus : IServerStatus
             Environment.Exit(1);
         }
 
-        SignalState(engine, ReadyState.Failed);
+        SignalState(engine, ReadyState.Failed, token);
     }
 
     private void LogStatus() => Console.WriteLine(ToString());

@@ -3,6 +3,9 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+
+using System.Runtime.CompilerServices;
+
 namespace Altruist.Gaming.ThreeD
 {
     public interface IGameWorldOrganizer3D : IGameWorldOrganizer
@@ -24,6 +27,13 @@ namespace Altruist.Gaming.ThreeD
     [ConditionalOnConfig("altruist:game")]
     public class GameWorldOrganizer3D : IGameWorldOrganizer3D
     {
+        private sealed class StepGate
+        {
+            public int Running;
+        }
+
+        private readonly ConditionalWeakTable<IWorldObject3D, StepGate> _stepGates = new();
+
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
         private readonly IWorldPhysics3D _worldPhysx;
@@ -94,31 +104,42 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 
-        public void Step(float deltaTime)
+        public async Task StepAsync(float deltaTime)
         {
             var steppedEngines = new HashSet<object>();
+
             foreach (var world in _worlds.Values)
             {
                 try
                 {
-                    foreach (var obj in world.FindAllObjects<IWorldObject3D>())
+                    // Snapshot to avoid collection changing while we step in parallel
+                    var objects = world.FindAllObjects<IWorldObject3D>().ToList();
+
+                    var expired = new List<IWorldObject3D>(capacity: 8);
+                    var tasks = new List<Task>(capacity: objects.Count);
+
+                    foreach (var obj in objects)
                     {
                         if (obj.Expired)
                         {
-                            world.DestroyObject(obj);
+                            expired.Add(obj);
                             continue;
                         }
 
-                        try
-                        {
-                            obj.Step(deltaTime, _worldPhysx);
-                        }
-                        catch
-                        {
-                            // Swallow per-object step exceptions
-                        }
+                        tasks.Add(StepObjectOnceAsync(obj, deltaTime));
                     }
 
+                    // Apply destroys outside parallel step execution
+                    foreach (var obj in expired)
+                    {
+                        world.DestroyObject(obj);
+                    }
+
+                    // Run all object steps in parallel (each object is gated)
+                    if (tasks.Count > 0)
+                        await Task.WhenAll(tasks).ConfigureAwait(false);
+
+                    // Step PhysX after object updates
                     var engine = world.PhysxWorld.Engine;
                     if (engine != null && steppedEngines.Add(engine))
                     {
@@ -127,8 +148,30 @@ namespace Altruist.Gaming.ThreeD
                 }
                 catch
                 {
-                    // Swallow per-world step exceptions
+                    // Swallow per-world exceptions
                 }
+            }
+        }
+
+        private async Task StepObjectOnceAsync(IWorldObject3D obj, float dt)
+        {
+            var gate = _stepGates.GetOrCreateValue(obj);
+
+            // If already running, skip this tick
+            if (Interlocked.Exchange(ref gate.Running, 1) == 1)
+                return;
+
+            try
+            {
+                await obj.StepAsync(dt, _worldPhysx).ConfigureAwait(false);
+            }
+            catch
+            {
+                // swallow per-object exceptions
+            }
+            finally
+            {
+                Volatile.Write(ref gate.Running, 0);
             }
         }
 

@@ -59,7 +59,7 @@ public interface IEngineCore
     void Enable();
     void Disable();
     void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
-    void Start();
+    void Start(CancellationToken token);
     void Stop();
     void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
     void SendTask(TaskIdentifier taskId, Delegate taskDelegate);

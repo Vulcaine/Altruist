@@ -1,4 +1,4 @@
-using Altruist.Gaming.Engine;
+using Altruist.Engine;
 using Altruist.Networking;
 
 namespace Altruist.Gaming;

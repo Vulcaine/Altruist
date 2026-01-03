@@ -36,13 +36,14 @@ public class EngineStartupConfiguration : IAltruistConfiguration
         var serviceProvider = services.BuildServiceProvider();
         var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
         var settings = serviceProvider.GetRequiredService<IAltruistContext>();
+        CancellationToken token = default; // TODO: create one cancellationtoken in the services
         if (settings.EngineEnabled)
         {
             logger.LogInformation("🚀 Starting engine...");
             var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
             var methods = scheduler!.RegisterMethods(serviceProvider);
             var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
-            engine!.Start();
+            engine!.Start(token);
             logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
 
             if (methods.Any())
