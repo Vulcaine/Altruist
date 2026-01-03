@@ -323,32 +323,32 @@ public class EngineWithoutDiagnostics : IAltruistEngine
         private readonly int _taskTrackCount = 100;
 
 
-        public EngineWithDiagnostics(IEngineCore wrappedEngine, ILoggerFactory loggerFactory, int engineHz)
+        public EngineWithDiagnostics(IEngineCore wrappedEngine, ILoggerFactory loggerFactory)
         {
             _wrappedEngine = wrappedEngine;
             _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();
+            var unit = _wrappedEngine.Rate.Unit;
 
-            _taskTrackCount = 1_000;
-            var rate = _wrappedEngine.Rate;
-
-            _engineFrequencyHz = rate.Unit switch
+            if (unit == CycleUnit.Seconds)
             {
-                CycleUnit.Hz => rate.Value,
-                CycleUnit.Seconds => 1.0 / Math.Max(1, rate.Value),
-                CycleUnit.Milliseconds => 1000.0 / Math.Max(1, rate.Value),
-                CycleUnit.Ticks => (double)engineHz / Math.Max(1, rate.Value),
-
-                _ => throw new InvalidOperationException($"Unsupported CycleUnit: {rate.Unit}")
-            };
-
-            if (rate.Unit == CycleUnit.Milliseconds)
+                // Value = ticks per cycle => Hz = ticks per second / ticks per cycle
+                _engineFrequencyHz = (double)TimeSpan.TicksPerSecond / _wrappedEngine.Rate.Value;
+            }
+            else if (unit == CycleUnit.Milliseconds)
+            {
+                // Value = ticks per cycle => Hz = ticks per millisecond / ticks per cycle
                 _taskTrackCount = 1_000;
-            else if (rate.Unit == CycleUnit.Ticks)
-                _taskTrackCount = 1_000;
+                _engineFrequencyHz = (double)(TimeSpan.TicksPerSecond / 1000) / _wrappedEngine.Rate.Value;
+            }
             else
-                _taskTrackCount = 1_000;
+            {
+                // Value = frequency in Hz directly (per TICK-based scheduling, i.e., "X times per tick")
+                // In this case, the higher the number, the **slower** it is.
+                // So to get Hz as "X times per second", we need Stopwatch.Frequency / Value
+                _taskTrackCount = 1_000_000;
+                _engineFrequencyHz = (double)Stopwatch.Frequency / _wrappedEngine.Rate.Value;
+            }
         }
-
 
         public CycleRate Rate => _wrappedEngine.Rate;
 
