@@ -577,7 +577,6 @@ public class AltruistEngine : IAltruistEngine
                         }
                         else
                         {
-                            // fallback: grow if overflown (should be rare)
                             await ExecuteTaskAsync(task);
                         }
                     }

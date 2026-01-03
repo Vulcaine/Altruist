@@ -102,20 +102,20 @@ namespace Altruist.Gaming.ThreeD
 
         /// <summary>
         /// Recalculate which partitions contain the given object, based on its bounds.
+        /// IMPORTANT: this must NOT remove the PhysX body, only detach from partitions/cache.
         /// </summary>
         public async Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj)
         {
             if (obj is null)
                 return Enumerable.Empty<WorldPartitionManager3D>();
 
-            // Remove from all old partitions / caches
-            DestroyObject(obj);
+            // Detach from partitions + caches ONLY (do not remove from PhysX)
+            DetachObjectInternal(obj.InstanceId, removeFromPhysx: false);
 
             var partitions = FindPartitionsForObject(obj);
             AddObjectToPartitions(obj, partitions);
 
-            // NOTE: previously this method did not re-add to _flatInstanceCache either;
-            // preserving that behavior for now.
+            // Preserve old behavior: do not re-add to _flatInstanceCache here.
             return await Task.FromResult(partitions.ToList());
         }
 
@@ -210,31 +210,56 @@ namespace Altruist.Gaming.ThreeD
             if (string.IsNullOrWhiteSpace(instanceId))
                 return null;
 
-            // Let all partitions try to destroy the object.
+            // Destroy = detach + remove from PhysX engine
+            return DetachObjectInternal(instanceId, removeFromPhysx: true);
+        }
+
+        public IWorldObject3D? DestroyObject(IWorldObject3D obj)
+            => obj is null ? null : DestroyObject(obj.InstanceId);
+
+        /// <summary>
+        /// Internal removal logic used by both UpdateObjectPosition (detach only)
+        /// and DestroyObject (detach + physx removal).
+        /// </summary>
+        private IWorldObject3D? DetachObjectInternal(string instanceId, bool removeFromPhysx)
+        {
             var removedFromPartitions = _partitions
                 .Select(p => p.DestroyObject(instanceId))
                 .FirstOrDefault(o => o != null);
 
+            IWorldObject3D? removedFromCache = null;
+
             if (_flatInstanceCache.TryGetValue(instanceId, out var cachedByKey))
             {
+                removedFromCache = cachedByKey;
                 _flatInstanceCache.Remove(instanceId);
-                return removedFromPartitions ?? cachedByKey;
             }
-
-            var kvp = _flatInstanceCache
-                .FirstOrDefault(x => x.Value.InstanceId == instanceId);
-
-            if (!string.IsNullOrEmpty(kvp.Key))
+            else
             {
-                _flatInstanceCache.Remove(kvp.Key);
-                return removedFromPartitions ?? kvp.Value;
+                var kvp = _flatInstanceCache.FirstOrDefault(x => x.Value != null && x.Value.InstanceId == instanceId);
+                if (!string.IsNullOrEmpty(kvp.Key))
+                {
+                    removedFromCache = kvp.Value;
+                    _flatInstanceCache.Remove(kvp.Key);
+                }
             }
 
-            return removedFromPartitions;
+            var obj = removedFromPartitions ?? removedFromCache;
+
+            if (removeFromPhysx && obj != null)
+                RemoveFromPhysxEngine(obj);
+
+            return obj;
         }
 
-        public IWorldObject3D? DestroyObject(IWorldObject3D obj)
-            => DestroyObject(obj.InstanceId);
+        private void RemoveFromPhysxEngine(IWorldObject3D obj)
+        {
+            var body = obj.Body;
+            if (body != null)
+            {
+                _physx3D.Engine.RemoveBody(body);
+            }
+        }
 
         public IEnumerable<IWorldObject3D> GetNearbyObjectsInRoom(
             string archetype,
