@@ -69,6 +69,8 @@ public class CycleRate
             // 30 Hz → Direct mapping to ticks → Higher Hz means fewer cycles per tick (slower)
             CycleUnit.Ticks => frequencyHz,
 
+            CycleUnit.Hz => frequencyHz,
+
             _ => throw new ArgumentOutOfRangeException(nameof(unit), "Invalid cycle unit.")
         };
     }
