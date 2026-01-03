@@ -14,80 +14,107 @@ namespace Altruist.Engine;
 public class AltruistEngine : IAltruistEngine
 {
     public static long CurrentTick { get; private set; } = 0;
+
     private readonly IServiceProvider _serviceProvider;
-    private readonly LinkedList<EngineStaticTask> _staticTasks;
-    private readonly ConcurrentDictionary<TaskIdentifier, Task> _scheduledDynamicTasks = new();
-    private readonly ConcurrentDictionary<TaskIdentifier, Delegate> _dynamicTasks;
-    private readonly Dictionary<string, Action> _precompiledDelegatesCache = new();
+    private readonly IServerStatus _appStatus;
+    private readonly IGameWorldOrganizer _worldCoordinator;
 
-    private readonly ConcurrentQueue<Delegate> _nextTickTasks = new();
-
-    private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effectTasks =
-        new ConcurrentDictionary<TaskIdentifier, DynamicEffectTask>();
-
-    private CancellationTokenSource _cancellationTokenSource;
     private readonly CycleRate _engineRate;
-    private Thread? _engineThread;
-
     public CycleRate Rate => _engineRate;
 
     public bool Enabled { get; private set; }
+    public int Throttle = 1_000_000;
 
-    public int Throttle = 1000000;
+    private CancellationTokenSource _cts = new();
+    private Thread? _engineThread;
 
-    private IServerStatus _appStatus;
+    // -------- Next-tick (run once next tick, sequential) --------
+    private readonly ConcurrentQueue<Delegate> _nextTickQueue = new();
 
-    private readonly IGameWorldOrganizer _worldCoordinator;
-
+    // -------- Physics dt (latest only) --------
     private readonly Channel<float> _physicsTicks = Channel.CreateBounded<float>(
-    new BoundedChannelOptions(1)
+        new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+
+    // -------- Static tasks (registered once, run on cadence, never overlap per task) --------
+    private readonly List<EngineStaticTask> _staticTasks = new();
+    private readonly Dictionary<TaskIdentifier, long> _staticLastRunTicks = new();
+    private readonly Dictionary<TaskIdentifier, Task> _staticInFlight = new();
+
+    // Cache only for building the static delegates (startup-time). Keep it, but name it clearly.
+    private readonly Dictionary<string, Action> _staticDelegateCache = new();
+
+    private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effects = new();
+
+    // -------- Dynamic tasks (requested at runtime; each request must run at least once; never overlap per id) --------
+    private sealed class DynamicTaskState
     {
-        SingleReader = true,
-        SingleWriter = true,
-        FullMode = BoundedChannelFullMode.DropOldest
-    });
+        public Delegate Delegate = default!;
+        public int Pending;               // how many executions are owed
+        public Task? InFlight;            // running execution (if any)
+    }
+
+    private readonly ConcurrentDictionary<TaskIdentifier, DynamicTaskState> _dynamic = new();
+
+    // Optional cap for how many dynamic tasks you start per tick (prevents stampedes)
+    private const int MaxDynamicStartsPerTick = 128;
 
     public AltruistEngine(
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
         IGameWorldOrganizer worldCoordinator,
-        [AppConfigValue("altruist:game:engine:framerateHz", "30")]
-        int engineFrequencyHz = 30,
-        [AppConfigValue("altruist:game:engine:unit")]
-        CycleUnit unit = CycleUnit.Ticks,
-        [AppConfigValue("altruist:game:engine:throttle")]
-        int? throttle = null)
+        [AppConfigValue("altruist:game:engine:framerateHz", "30")] int engineFrequencyHz = 30,
+        [AppConfigValue("altruist:game:engine:unit")] CycleUnit unit = CycleUnit.Ticks,
+        [AppConfigValue("altruist:game:engine:throttle")] int? throttle = null)
     {
-        _staticTasks = new LinkedList<EngineStaticTask>();
-        _dynamicTasks = new ConcurrentDictionary<TaskIdentifier, Delegate>();
-        _engineRate = new CycleRate(engineFrequencyHz, unit);
-        Throttle = throttle ?? (int)(1_000_000_000 / (_engineRate.Value + 1));
-        _cancellationTokenSource = new CancellationTokenSource();
         _serviceProvider = serviceProvider;
         _appStatus = serverStatus;
         _worldCoordinator = worldCoordinator;
+
+        _engineRate = new CycleRate(engineFrequencyHz, unit);
+        Throttle = throttle ?? (int)(1_000_000_000 / (_engineRate.Value + 1));
     }
 
-    public void Enable()
+    public void Enable() => Enabled = true;
+    public void Disable() => Enabled = false;
+
+    // ---------------- Public scheduling APIs ----------------
+
+    public void WaitForNextTick(Delegate task)
     {
-        Enabled = true;
+        if (task is null)
+            throw new ArgumentNullException(nameof(task));
+        _nextTickQueue.Enqueue(task);
     }
 
-    public void Disable()
+    public void WaitForNextTick(Action task)
     {
-        Enabled = false;
+        if (task is null)
+            throw new ArgumentNullException(nameof(task));
+        _nextTickQueue.Enqueue(task);
+    }
+
+    public void WaitForNextTick(Func<Task> task)
+    {
+        if (task is null)
+            throw new ArgumentNullException(nameof(task));
+        _nextTickQueue.Enqueue(task);
     }
 
     public void SyncCommit(Action commit)
     {
-        if (commit == null)
+        if (commit is null)
             throw new ArgumentNullException(nameof(commit));
         WaitForNextTick(commit);
     }
 
     public Task<T> SyncCommit<T>(Func<T> commit)
     {
-        if (commit == null)
+        if (commit is null)
             throw new ArgumentNullException(nameof(commit));
 
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -100,32 +127,52 @@ public class AltruistEngine : IAltruistEngine
         return tcs.Task;
     }
 
-    public void WaitForNextTick(Delegate task)
+    public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
     {
-        if (task == null)
-            throw new ArgumentNullException(nameof(task));
-        _nextTickTasks.Enqueue(task);
+        if (step is null)
+            throw new ArgumentNullException(nameof(step));
+
+        var id = new TaskIdentifier("Effect_" + Guid.NewGuid());
+        long now = FrameTime.NowTicks;
+
+        var effect = new DynamicEffectTask(
+            id: id,
+            rate: cycleRate,
+            expiresAtUtc: expiresAtUtc,
+            step: step,
+            startTime: now
+        );
+
+        _effects[id] = effect;
+        return id;
     }
 
-    public void WaitForNextTick(Action task)
+    public bool CancelEffect(TaskIdentifier id)
     {
-        if (task == null)
-            throw new ArgumentNullException(nameof(task));
-        EnqueueNextTick(task);
+        return _effects.TryRemove(id, out _);
     }
 
-    private void EnqueueNextTick(Delegate task)
+    /// <summary>
+    /// Dynamic tasks: every call must result in at least one execution.
+    /// If triggered N times while still running, it will run N additional times later (sequentially, no overlap per id).
+    /// </summary>
+    public void SendTask(TaskIdentifier id, Delegate taskDelegate)
     {
-        _nextTickTasks.Enqueue(task);
+        if (taskDelegate is null)
+            throw new ArgumentNullException(nameof(taskDelegate));
+
+        _dynamic.AddOrUpdate(
+            id,
+            addValueFactory: _ => new DynamicTaskState { Delegate = taskDelegate, Pending = 1 },
+            updateValueFactory: (_, state) =>
+            {
+                state.Delegate = taskDelegate;               // latest delegate wins (change if you want "first wins")
+                Interlocked.Increment(ref state.Pending);    // never drop triggers
+                return state;
+            });
     }
 
-    public void WaitForNextTick(Func<Task> task)
-    {
-        if (task == null)
-            throw new ArgumentNullException(nameof(task));
-        EnqueueNextTick(task);
-    }
-
+    // ---------------- Cron (unchanged, but FYI this is fire-and-forget) ----------------
     public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
     {
         var cron = CronExpression.Parse(cronExpression);
@@ -134,73 +181,30 @@ public class AltruistEngine : IAltruistEngine
         {
             var now = DateTime.UtcNow;
             var nextRunTime = cron.GetNextOccurrence(now, TimeZoneInfo.Utc);
+            if (!nextRunTime.HasValue)
+                return;
 
-            if (nextRunTime.HasValue)
-            {
-                var delay = nextRunTime.Value - now;
-                await Task.Delay(delay);
-                jobDelegate.DynamicInvoke();
+            var delay = nextRunTime.Value - now;
+            await Task.Delay(delay).ConfigureAwait(false);
 
-                ScheduleNextRun();
-            }
+            jobDelegate.DynamicInvoke();
+            ScheduleNextRun();
         }
 
         ScheduleNextRun();
     }
 
-    public TaskIdentifier ScheduleEffect(
-        CycleRate cycleRate,
-        DateTime expiresAtUtc,
-        Action<float> step)
-    {
-        var id = new TaskIdentifier("Effect_" + Guid.NewGuid());
-        long now = FrameTime.NowTicks;
-
-        var task = new DynamicEffectTask(
-            id: id,
-            rate: cycleRate,
-            expiresAtUtc: expiresAtUtc,
-            step: step,
-            startTime: now
-        );
-
-        _effectTasks[id] = task;
-        return id;
-    }
-
-    public bool CancelEffect(TaskIdentifier id)
-    {
-        return _effectTasks.TryRemove(id, out _);
-    }
-
-    public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
-    {
-        var existing = _scheduledDynamicTasks.TryGetValue(taskId, out var existingTask);
-        if (existingTask != null && !existingTask.IsCompleted)
-        {
-            // TODO: Currently, if a task is triggered while an existing one with the same ID is still running,
-            // the new trigger is ignored. This can lead to missed executions if the task isn't scheduled again.
-            //
-            // Consider implementing a trigger queue or flag-based requeue system:
-            // - If a task is already running, queue a "pending" flag or count.
-            // - After the running task completes, check the queue and re-schedule the task if it was triggered again.
-            //
-            // This ensures high-frequency tasks are never silently dropped and are executed at least once per trigger.
-            return;
-        }
-
-        _scheduledDynamicTasks.TryRemove(taskId, out _);
-        _dynamicTasks.AddOrUpdate(taskId, taskDelegate, (_, _) => taskDelegate);
-    }
+    // ---------------- Start/Stop ----------------
 
     public void Start(CancellationToken token)
     {
         if (Enabled)
             return;
 
-        _cancellationTokenSource = new CancellationTokenSource();
-        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, _cancellationTokenSource.Token);
+        _cts = new CancellationTokenSource();
+        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
 
+        // Physics worker runs as a Task (no OS thread required)
         _ = Task.Run(() => RunPhysicsWorkerAsync(linkedCts.Token), linkedCts.Token);
 
         _engineThread = new Thread(() =>
@@ -232,37 +236,17 @@ public class AltruistEngine : IAltruistEngine
         Enable();
     }
 
-    private async Task RunPhysicsWorkerAsync(CancellationToken token)
+    public void Stop()
     {
-        try
-        {
-            while (await _physicsTicks.Reader.WaitToReadAsync(token).ConfigureAwait(false))
-            {
-                float dt = 0f;
-                while (_physicsTicks.Reader.TryRead(out var v))
-                    dt = v;
-
-                await _worldCoordinator.StepAsync(dt).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // normal shutdown
-        }
+        Disable();
+        _cts.Cancel();
     }
 
-    // Pre-sized buffer for dynamic tasks
-    private readonly Task[] _taskBuffer = new Task[128];
-    private int _taskCount = 0;
+    // ---------------- Core loops ----------------
 
     private async Task RunEngineLoopAsync(CancellationToken token)
     {
-        // If _engineRate.Value is Hz:
-        var period = TimeSpan.FromSeconds(1.0 / _engineRate.Value);
-        using var timer = new PeriodicTimer(period);
-
-        var staticInFlight = new Dictionary<TaskIdentifier, Task>();
-        var staticLastRunTicks = new Dictionary<TaskIdentifier, long>();
+        using var timer = new PeriodicTimer(ToPeriod(_engineRate));
 
         long lastTick = FrameTime.NowTicks;
 
@@ -281,94 +265,11 @@ public class AltruistEngine : IAltruistEngine
 
                 float dt = FrameTime.TicksToDeltaSeconds(elapsedTicks);
 
-                // 1) Next-tick tasks
-                while (_nextTickTasks.TryDequeue(out var nextTickDelegate))
-                {
-                    await ExecuteTaskAsync(nextTickDelegate).ConfigureAwait(false);
-                }
+                await RunNextTickQueueAsync().ConfigureAwait(false);
+                RunStaticTasks(nowTicks);
+                StartDynamicTasksBudgeted();
 
-                // 2) Static tasks (same logic you had, but safe)
-                foreach (var task in _staticTasks)
-                {
-                    staticLastRunTicks.TryGetValue(task.Id, out var lastRun);
-                    bool due = lastRun == 0 || (nowTicks - lastRun) >= task.CycleRate.Value;
-                    if (!due)
-                        continue;
-
-                    if (!staticInFlight.TryGetValue(task.Id, out var running) || running.IsCompleted)
-                    {
-                        staticLastRunTicks[task.Id] = nowTicks;
-                        staticInFlight[task.Id] = ExecuteTaskAsync(task.Delegate);
-                    }
-                }
-
-                if (staticInFlight.Count > 50)
-                {
-                    var toRemove = new List<TaskIdentifier>();
-                    foreach (var kv in staticInFlight)
-                        if (kv.Value.IsCompleted)
-                            toRemove.Add(kv.Key);
-
-                    foreach (var id in toRemove)
-                        staticInFlight.Remove(id);
-                }
-
-                // 3) Dynamic tasks
-                if (_dynamicTasks.Count > 0)
-                {
-                    _taskCount = 0;
-
-                    foreach (var (key, task) in _dynamicTasks)
-                    {
-                        _scheduledDynamicTasks.TryGetValue(key, out var existingTask);
-                        if (existingTask != null && !existingTask.IsCompleted)
-                            continue;
-
-                        _dynamicTasks.TryRemove(key, out _);
-                        _scheduledDynamicTasks.TryRemove(key, out _);
-
-                        var asyncTask = ExecuteTaskAsync(task);
-
-                        if (_taskCount < _taskBuffer.Length)
-                        {
-                            _taskBuffer[_taskCount++] = asyncTask;
-                            _scheduledDynamicTasks[key] = asyncTask;
-                        }
-                        else
-                        {
-                            await asyncTask.ConfigureAwait(false);
-                        }
-                    }
-                }
-
-                // 4) Effects (dt is correct now)
-                if (_effectTasks.Count > 0)
-                {
-                    var nowUtc = DateTime.UtcNow;
-
-                    foreach (var (id, effect) in _effectTasks)
-                    {
-                        if (nowUtc >= effect.ExpiresAtUtc)
-                        {
-                            _effectTasks.TryRemove(id, out _);
-                            continue;
-                        }
-
-                        if (nowTicks < effect.NextExecuteTimeTicks)
-                            continue;
-
-                        try
-                        {
-                            effect.Step(dt);
-                            effect.NextExecuteTimeTicks = nowTicks + effect.Rate.Value;
-                        }
-                        catch
-                        {
-                            _effectTasks.TryRemove(id, out _);
-                        }
-                    }
-                }
-
+                // Signal physics (latest only)
                 _physicsTicks.Writer.TryWrite(dt);
             }
         }
@@ -382,82 +283,167 @@ public class AltruistEngine : IAltruistEngine
         }
     }
 
-    /// <summary>
-    /// Schedules a task to be executed at a specific frequency. The task is resolved and its dependencies
-    /// are injected from the provided service provider. If the task has been scheduled before with the same
-    /// method signature and parameters, the previously created delegate will be reused to avoid redundant work.
-    /// </summary>
-    /// <param name="taskDelegate">The delegate representing the task to be scheduled.</param>
-    /// <param name="rate">The cycle rate (frequency) at which the task should be executed. If not specified,
-    /// it defaults to the engine's rate. The frequency must not exceed the engine's frequency rate.</param>
-    /// <exception cref="ArgumentException">Thrown if the provided rate exceeds the engine's rate.</exception>
-    /// <exception cref="InvalidOperationException">Thrown if a required dependency cannot be resolved or if
-    /// a precompiled delegate cannot be created.</exception>
+    private async Task RunPhysicsWorkerAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await _physicsTicks.Reader.WaitToReadAsync(token).ConfigureAwait(false))
+            {
+                float dt = 0f;
+                while (_physicsTicks.Reader.TryRead(out var v))
+                    dt = v;
+
+                // You made this sync now; if it becomes async again, await it here.
+                _worldCoordinator.Step(dt);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // normal shutdown
+        }
+    }
+
+    // ---------------- Tick subroutines ----------------
+
+    private async Task RunNextTickQueueAsync()
+    {
+        while (_nextTickQueue.TryDequeue(out var del))
+            await ExecuteDelegateAsync(del).ConfigureAwait(false);
+    }
+
+    private void RunStaticTasks(long nowTicks)
+    {
+        foreach (var task in _staticTasks)
+        {
+            long intervalTicks = ToStopwatchTickInterval(task.CycleRate);
+
+            _staticLastRunTicks.TryGetValue(task.Id, out var lastRun);
+            bool due = lastRun == 0 || (nowTicks - lastRun) >= intervalTicks;
+            if (!due)
+                continue;
+
+            // If still running, skip this tick (do not start another)
+            if (_staticInFlight.TryGetValue(task.Id, out var running) && !running.IsCompleted)
+                continue;
+
+            _staticLastRunTicks[task.Id] = nowTicks;
+            _staticInFlight[task.Id] = ExecuteDelegateAsync(task.Delegate);
+        }
+
+        // cleanup completed (cheap)
+        if (_staticInFlight.Count > 0)
+        {
+            var done = new List<TaskIdentifier>();
+            foreach (var kv in _staticInFlight)
+                if (kv.Value.IsCompleted)
+                    done.Add(kv.Key);
+            foreach (var id in done)
+                _staticInFlight.Remove(id);
+        }
+    }
+
+    private void StartDynamicTasksBudgeted()
+    {
+        int started = 0;
+
+        foreach (var kv in _dynamic)
+        {
+            if (started >= MaxDynamicStartsPerTick)
+                break;
+
+            var id = kv.Key;
+            var state = kv.Value;
+
+            // Never overlap per id
+            var inFlight = Volatile.Read(ref state.InFlight);
+            if (inFlight != null && !inFlight.IsCompleted)
+                continue;
+
+            // If nothing pending, try to remove the entry (optional cleanup)
+            if (Volatile.Read(ref state.Pending) <= 0)
+            {
+                _dynamic.TryRemove(id, out _);
+                continue;
+            }
+
+            // Claim exactly one pending execution
+            if (Interlocked.Decrement(ref state.Pending) < 0)
+            {
+                // someone else consumed; restore to 0
+                Interlocked.Exchange(ref state.Pending, 0);
+                continue;
+            }
+
+            // Start it and record as in-flight
+            var t = ExecuteDelegateAsync(state.Delegate);
+            Volatile.Write(ref state.InFlight, t);
+
+            started++;
+        }
+    }
+
+    // ---------------- Static task scheduling (startup-time) ----------------
+
     public void ScheduleTask(Delegate taskDelegate, CycleRate? rate = null)
     {
-        var actualFrequency = rate ?? _engineRate;
+        var actualRate = rate ?? _engineRate;
 
-        if (actualFrequency.Value > _engineRate.Value)
-        {
-            throw new ArgumentException($"Frequency {actualFrequency} must be less than or equal to the engine frequency ${_engineRate}.", nameof(actualFrequency));
-        }
+        if (actualRate.Value > _engineRate.Value)
+            throw new ArgumentException($"Frequency {actualRate} must be <= engine frequency {_engineRate}.", nameof(rate));
 
         var methodInfo = taskDelegate.Method;
         var parameters = methodInfo.GetParameters();
+
         var resolvedParameters = new object[parameters.Length];
         for (int i = 0; i < parameters.Length; i++)
         {
             var paramType = parameters[i].ParameterType;
             resolvedParameters[i] = _serviceProvider.GetService(paramType)
-                                    ?? throw new InvalidOperationException($"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
+                ?? throw new InvalidOperationException($"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
         }
 
         var cacheKey = GenerateCacheKey(methodInfo, resolvedParameters);
-        if (!_precompiledDelegatesCache.TryGetValue(cacheKey, out var precompiledDelegate))
+
+        if (!_staticDelegateCache.TryGetValue(cacheKey, out var precompiled))
         {
-            precompiledDelegate = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
-            _precompiledDelegatesCache[cacheKey] = precompiledDelegate;
+            precompiled = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
+            _staticDelegateCache[cacheKey] = precompiled;
         }
 
-        _staticTasks.AddLast(new EngineStaticTask(precompiledDelegate, actualFrequency, Stopwatch.GetTimestamp()));
+        _staticTasks.Add(new EngineStaticTask(precompiled, actualRate, Stopwatch.GetTimestamp()));
     }
 
-    private string GenerateCacheKey(MethodInfo methodInfo, object[] resolvedParameters)
+    private static string GenerateCacheKey(MethodInfo methodInfo, object[] resolvedParameters)
     {
         var paramTypes = string.Join(",", resolvedParameters.Select(p => p?.GetType().FullName));
         return $"{methodInfo.DeclaringType!.FullName}.{methodInfo.Name}({paramTypes})";
     }
 
-    private Action CreateDelegateWithResolvedParameters(Delegate taskDelegate, object[] resolvedParameters)
+    private static Action CreateDelegateWithResolvedParameters(Delegate taskDelegate, object[] resolvedParameters)
+        => () => taskDelegate.DynamicInvoke(resolvedParameters);
+
+    // ---------------- Delegate runner ----------------
+
+    private static async Task ExecuteDelegateAsync(Delegate del)
     {
-        return () =>
+        switch (del)
         {
-            taskDelegate.DynamicInvoke(resolvedParameters);
-        };
+            case Func<Task> f:
+                await f().ConfigureAwait(false);
+                break;
+            case Action a:
+                a();
+                break;
+            default:
+                del.DynamicInvoke();
+                break;
+        }
     }
 
-    private async Task ExecuteTaskAsync(Delegate taskDelegate)
-    {
-        if (taskDelegate is Func<Task> asyncDelegate)
-        {
-            await asyncDelegate();
-        }
-        else if (taskDelegate is Action syncDelegate)
-        {
-            syncDelegate();
-        }
-    }
-
-    public void Stop()
-    {
-        Disable();
-        _cancellationTokenSource?.Cancel();
-    }
+    // ---------------- Timing helpers ----------------
 
     private static long ToStopwatchTickInterval(CycleRate rate)
     {
-        // Assumes FrameTime.NowTicks uses Stopwatch.GetTimestamp() (same tick base).
-        // Adjust if your FrameTime uses a different clock.
         return rate.Unit switch
         {
             CycleUnit.Hz => Math.Max(1, Stopwatch.Frequency / rate.Value),
@@ -473,5 +459,4 @@ public class AltruistEngine : IAltruistEngine
         long tickInterval = ToStopwatchTickInterval(rate);
         return TimeSpan.FromSeconds((double)tickInterval / Stopwatch.Frequency);
     }
-
 }

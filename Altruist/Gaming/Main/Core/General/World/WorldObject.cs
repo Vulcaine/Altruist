@@ -11,7 +11,7 @@ namespace Altruist.Gaming
 
     public interface ISteppable3D
     {
-        Task StepAsync(float dt, IWorldPhysics3D worldPhysics);
+        void Step(float dt, IWorldPhysics3D worldPhysics);
     }
 
     /// <summary>
