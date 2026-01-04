@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -14,34 +15,52 @@ using BepuUtilities.Memory;
 
 namespace Altruist.Physx.ThreeD
 {
-
     public struct WorldEngineCacheKey
     {
         public Vector3 Gravity;
         public float FixedDeltaTime;
 
-        public WorldEngineCacheKey(Vector3 gravity, float fixedDeltaTime) { Gravity = gravity; FixedDeltaTime = fixedDeltaTime; }
+        public WorldEngineCacheKey(Vector3 gravity, float fixedDeltaTime)
+        {
+            Gravity = gravity;
+            FixedDeltaTime = fixedDeltaTime;
+        }
     }
 
     [Service(typeof(IPhysxWorldEngineFactory3D))]
     public sealed class BepuWorldEngineFactory3D : IPhysxWorldEngineFactory3D
     {
-        private Dictionary<WorldEngineCacheKey, IPhysxWorldEngine3D> _cache = new();
+        private readonly Dictionary<WorldEngineCacheKey, IPhysxWorldEngine3D> _cache = new();
+
         public IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
-            if (_cache.TryGetValue(new WorldEngineCacheKey(gravity, fixedDeltaTime), out var existing))
-            {
+            var key = new WorldEngineCacheKey(gravity, fixedDeltaTime);
+            if (_cache.TryGetValue(key, out var existing))
                 return existing;
-            }
 
-            return new BepuWorldEngine3D(gravity, fixedDeltaTime);
+            // NOTE: Your original code never cached the created instance.
+            var created = new BepuWorldEngine3D(gravity, fixedDeltaTime);
+            _cache[key] = created;
+            return created;
         }
     }
 
     public class BepuWorldEngine3D : IPhysxWorldEngine3D
     {
         public float FixedDeltaTime { get; }
-        public IReadOnlyCollection<IPhysxBody3D> Bodies => _bodies.Values.Cast<IPhysxBody3D>().ToList();
+
+        // Thread-safe snapshot:
+        public IReadOnlyCollection<IPhysxBody3D> Bodies
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    // snapshot avoids exposing live collection
+                    return _bodies.Values.Cast<IPhysxBody3D>().ToArray();
+                }
+            }
+        }
 
         internal Simulation Simulation => _simulation;
 
@@ -49,8 +68,15 @@ namespace Altruist.Physx.ThreeD
         private readonly BufferPool _pool = new();
         private readonly Dictionary<string, Body3DAdapter> _bodies = new();
 
-        public BepuWorldEngine3D(
-            Vector3 gravity, float fixedDeltaTime = 1f / 60f)
+        // Single lock protecting ALL simulation + dictionary access:
+        private readonly object _sync = new();
+
+        // Any operation that touches BEPU must run under _sync and never inside Timestep concurrently.
+        private readonly ConcurrentQueue<Action> _pending = new();
+
+        private volatile bool _disposed;
+
+        public BepuWorldEngine3D(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
             FixedDeltaTime = fixedDeltaTime;
 
@@ -62,47 +88,110 @@ namespace Altruist.Physx.ThreeD
             _simulation = Simulation.Create(_pool, narrow, pose, solve, stepper);
         }
 
-        public void Step(float deltaTime) => _simulation.Timestep(deltaTime);
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(BepuWorldEngine3D));
+        }
+
+        private void Enqueue(Action action)
+        {
+            ThrowIfDisposed();
+            _pending.Enqueue(action);
+        }
+
+        private void DrainPending_NoLock()
+        {
+            // Caller must hold _sync.
+            while (_pending.TryDequeue(out var action))
+                action();
+        }
+
+        public void Step(float deltaTime)
+        {
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+
+                // Apply any add/remove/etc requested since last frame:
+                DrainPending_NoLock();
+
+                _simulation.Timestep(deltaTime);
+
+                // Apply anything requested during the timestep (other threads may enqueue while we're stepping):
+                DrainPending_NoLock();
+            }
+        }
 
         public void AddBody(IPhysxBody3D body)
         {
             if (body is not Body3DAdapter adapter)
                 throw new InvalidOperationException("This engine can only add bodies created by the BEPU provider.");
 
-            // Body is already in the simulation (created by provider). Just register it locally.
-            _bodies[adapter.Id] = adapter;
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                // Body already exists in simulation (created by provider). Just register locally.
+                _bodies[adapter.Id] = adapter;
+            }
         }
 
         public void RemoveBody(IPhysxBody3D body)
         {
-            if (body is Body3DAdapter b && _bodies.Remove(b.Id))
-                _simulation.Bodies.Remove(b.Handle);
+            if (body is not Body3DAdapter b)
+                return;
+
+            // Don't touch simulation here; queue it and let Step apply it safely.
+            Enqueue(() =>
+            {
+                // This runs under lock in Step().
+                if (_bodies.Remove(b.Id))
+                {
+                    b.MarkRemoved();               // prevents later handle deref
+                    _simulation.Bodies.Remove(b.Handle);
+                }
+            });
         }
 
         public IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1)
         {
-            var d = ray.To - ray.From;
-            var maxT = d.Length();
-            if (maxT <= 0f)
-                return Array.Empty<PhysxRaycastHit3D>();
-            d /= maxT;
+            lock (_sync)
+            {
+                ThrowIfDisposed();
 
-            var collector = new ClosestHitCollector();
-            _simulation.RayCast(ray.From, d, maxT, ref collector);
-            if (!collector.Hit)
-                return Array.Empty<PhysxRaycastHit3D>();
+                var d = ray.To - ray.From;
+                var maxT = d.Length();
+                if (maxT <= 0f)
+                    return Array.Empty<PhysxRaycastHit3D>();
+                d /= maxT;
 
-            var found = _bodies.Values.FirstOrDefault(b => b.Handle.Equals(collector.Body));
-            if (found == null)
-                return Array.Empty<PhysxRaycastHit3D>();
+                var collector = new ClosestHitCollector();
+                _simulation.RayCast(ray.From, d, maxT, ref collector);
+                if (!collector.Hit)
+                    return Array.Empty<PhysxRaycastHit3D>();
 
-            return new[] { new PhysxRaycastHit3D(found, collector.Point, collector.Normal, collector.T) };
+                var found = _bodies.Values.FirstOrDefault(b => b.Handle.Equals(collector.Body));
+                if (found == null)
+                    return Array.Empty<PhysxRaycastHit3D>();
+
+                return new[] { new PhysxRaycastHit3D(found, collector.Point, collector.Normal, collector.T) };
+            }
         }
 
         public void Dispose()
         {
-            _simulation.Dispose();
-            _pool.Clear();
+            lock (_sync)
+            {
+                if (_disposed)
+                    return;
+                _disposed = true;
+
+                DrainPending_NoLock();
+                _bodies.Clear();
+
+                _simulation.Dispose();
+                _pool.Clear();
+            }
         }
 
         public sealed class Body3DAdapter : IPhysxBody3D
@@ -112,36 +201,48 @@ namespace Altruist.Physx.ThreeD
             public float Mass { get => _mass; set => _mass = value; }
             public object? UserData { get; set; }
 
-            public Vector3 Position
-            {
-                get => _engine.Simulation.Bodies.GetBodyReference(_handle).Pose.Position;
-                set { var br = _engine.Simulation.Bodies.GetBodyReference(_handle); br.Pose.Position = value; }
-            }
-
-            public Quaternion Rotation
-            {
-                get => _engine.Simulation.Bodies.GetBodyReference(_handle).Pose.Orientation;
-                set { var br = _engine.Simulation.Bodies.GetBodyReference(_handle); br.Pose.Orientation = value; }
-            }
-
-            public Vector3 LinearVelocity
-            {
-                get => _engine.Simulation.Bodies.GetBodyReference(_handle).Velocity.Linear;
-                set { var br = _engine.Simulation.Bodies.GetBodyReference(_handle); br.Velocity.Linear = value; }
-            }
-
-            public Vector3 AngularVelocity
-            {
-                get => _engine.Simulation.Bodies.GetBodyReference(_handle).Velocity.Angular;
-                set { var br = _engine.Simulation.Bodies.GetBodyReference(_handle); br.Velocity.Angular = value; }
-            }
-
             public BodyHandle Handle => _handle;
 
             private readonly BepuWorldEngine3D _engine;
             private readonly BodyHandle _handle;
             private readonly List<IPhysxCollider> _colliders = new();
             private float _mass;
+
+            // If someone keeps this adapter after removal, we *must not* dereference the handle.
+            private volatile bool _removed;
+
+            internal void MarkRemoved() => _removed = true;
+
+            private void ThrowIfRemovedOrDisposed()
+            {
+                _engine.ThrowIfDisposed();
+                if (_removed)
+                    throw new InvalidOperationException($"Body '{Id}' has been removed from the simulation.");
+            }
+
+            public Vector3 Position
+            {
+                get { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); return _engine._simulation.Bodies.GetBodyReference(_handle).Pose.Position; } }
+                set { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); var br = _engine._simulation.Bodies.GetBodyReference(_handle); br.Pose.Position = value; } }
+            }
+
+            public Quaternion Rotation
+            {
+                get { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); return _engine._simulation.Bodies.GetBodyReference(_handle).Pose.Orientation; } }
+                set { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); var br = _engine._simulation.Bodies.GetBodyReference(_handle); br.Pose.Orientation = value; } }
+            }
+
+            public Vector3 LinearVelocity
+            {
+                get { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); return _engine._simulation.Bodies.GetBodyReference(_handle).Velocity.Linear; } }
+                set { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); var br = _engine._simulation.Bodies.GetBodyReference(_handle); br.Velocity.Linear = value; } }
+            }
+
+            public Vector3 AngularVelocity
+            {
+                get { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); return _engine._simulation.Bodies.GetBodyReference(_handle).Velocity.Angular; } }
+                set { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); var br = _engine._simulation.Bodies.GetBodyReference(_handle); br.Velocity.Angular = value; } }
+            }
 
             public Body3DAdapter(string id, BepuWorldEngine3D engine, BodyHandle handle, PhysxBodyType type, float mass)
             {
@@ -158,24 +259,29 @@ namespace Altruist.Physx.ThreeD
 
             public void ApplyForce(in PhysxForce force)
             {
-                var br = _engine.Simulation.Bodies.GetBodyReference(_handle);
-                switch (force.Type)
+                lock (_engine._sync)
                 {
-                    case PhysxForce.Kind.AddForce3D:
-                        br.ApplyLinearImpulse(force.Vector * _engine.FixedDeltaTime);
-                        break;
-                    case PhysxForce.Kind.AddImpulse3D:
-                        br.ApplyLinearImpulse(force.Vector);
-                        break;
-                    case PhysxForce.Kind.AddTorque3D:
-                        br.ApplyAngularImpulse(force.Vector);
-                        break;
-                    case PhysxForce.Kind.SetLinearVelocity3D:
-                        br.Velocity.Linear = force.Vector;
-                        break;
-                    case PhysxForce.Kind.SetAngularVelocity3D:
-                        br.Velocity.Angular = force.Vector;
-                        break;
+                    ThrowIfRemovedOrDisposed();
+
+                    var br = _engine._simulation.Bodies.GetBodyReference(_handle);
+                    switch (force.Type)
+                    {
+                        case PhysxForce.Kind.AddForce3D:
+                            br.ApplyLinearImpulse(force.Vector * _engine.FixedDeltaTime);
+                            break;
+                        case PhysxForce.Kind.AddImpulse3D:
+                            br.ApplyLinearImpulse(force.Vector);
+                            break;
+                        case PhysxForce.Kind.AddTorque3D:
+                            br.ApplyAngularImpulse(force.Vector);
+                            break;
+                        case PhysxForce.Kind.SetLinearVelocity3D:
+                            br.Velocity.Linear = force.Vector;
+                            break;
+                        case PhysxForce.Kind.SetAngularVelocity3D:
+                            br.Velocity.Angular = force.Vector;
+                            break;
+                    }
                 }
             }
 
@@ -189,7 +295,6 @@ namespace Altruist.Physx.ThreeD
 
                 foreach (var c in _colliders)
                 {
-                    // If the concrete collider type exposes an Id (common for adapters), use it.
                     var idProp = c.GetType().GetProperty(
                         "Id",
                         System.Reflection.BindingFlags.Instance |
@@ -214,7 +319,6 @@ namespace Altruist.Physx.ThreeD
                     return _colliders[index];
                 return null;
             }
-
         }
 
         private struct ClosestHitCollector : IRayHitHandler
@@ -245,9 +349,7 @@ namespace Altruist.Physx.ThreeD
         private readonly struct NarrowPhaseCallbacks : INarrowPhaseCallbacks
         {
             public void Initialize(Simulation simulation) { }
-
             public bool AllowContactGeneration(int workerIndex, CollidableReference a, CollidableReference b, ref float speculativeMargin) => true;
-
             public bool AllowContactGeneration(int workerIndex, CollidablePair pair, int childIndexA, int childIndexB) => true;
 
             public bool ConfigureContactManifold<TManifold>(int workerIndex, CollidablePair pair, ref TManifold manifold, out PairMaterialProperties material)
@@ -263,7 +365,6 @@ namespace Altruist.Physx.ThreeD
             }
 
             public bool ConfigureContactManifold(int workerIndex, CollidablePair pair, int childIndexA, int childIndexB, ref ConvexContactManifold manifold) => true;
-
             public void Dispose() { }
         }
 
@@ -278,7 +379,6 @@ namespace Altruist.Physx.ThreeD
             public PoseIntegratorCallbacks(Vector3 gravity) { Gravity = gravity; }
 
             public void Initialize(Simulation simulation) { }
-
             public void PrepareForIntegration(float dt) { }
 
             public void IntegrateVelocity(
