@@ -1,4 +1,3 @@
-// SqlVault.cs
 /*
 Copyright 2025 Aron Gere
 
@@ -66,6 +65,16 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         var current = GetVersionValue(entity);
         if (current <= 0)
             SetVersionValue(entity, 1);
+    }
+
+    protected static void SetStorageIdValue(object entity, string storageId)
+    {
+        var p = entity.GetType().GetProperty(StorageIdLogical);
+        if (p is null || !p.CanWrite)
+            return;
+
+        if (p.PropertyType == typeof(string))
+            p.SetValue(entity, storageId);
     }
 
     protected sealed class UpsertReturnRow
@@ -141,11 +150,19 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     /// - set version = version+1 on update
     /// - only update if current version == excluded version
     /// - RETURN StorageId + Version
+    ///
+    /// conflictKeyColumns:
+    /// - either PK columns (default)
+    /// - OR unique key columns if present
+    ///
+    /// conflictConstraintName:
+    /// - if not null, provider should use ON CONFLICT ON CONSTRAINT
     /// </summary>
     protected abstract string BuildUpsertSql_VersionedReturning(
         string qualifiedTable,
         IReadOnlyList<string> columns,
-        IReadOnlyList<string> primaryKeyColumns);
+        IReadOnlyList<string> conflictKeyColumns,
+        string? conflictConstraintName);
 
     /// <summary>
     /// Versioned batch upsert for N rows. MUST be atomic (no partial writes) and RETURN StorageId + Version
@@ -154,7 +171,8 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     protected abstract string BuildBatchUpsertSql_VersionedReturning(
         string qualifiedTable,
         IReadOnlyList<string> columns,
-        IReadOnlyList<string> primaryKeyColumns,
+        IReadOnlyList<string> conflictKeyColumns,
+        string? conflictConstraintName,
         int rowCount);
 
     protected abstract string QuoteIdent(string ident);
@@ -331,12 +349,6 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
     // ------------------------ Update / Delete ------------------------
 
-    /// <summary>
-    /// Version-safe update:
-    /// - loads targets matching current query state
-    /// - applies SetPropertyCalls assignments in memory
-    /// - persists via SaveBatchAsync (optimistic concurrency + version bump)
-    /// </summary>
     public virtual async Task<long> UpdateAsync(
         Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
         CancellationToken ct = default)
@@ -443,7 +455,21 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
             .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
             .ToArray();
 
-        var upsertV = BuildUpsertSql_VersionedReturning(QualifiedTableName(), columns, primaryKeyColumns);
+        IReadOnlyList<string> conflictColumns = primaryKeyColumns;
+        string? conflictConstraintName = null;
+
+        if (VaultDocument.UniqueKeys is not null && VaultDocument.UniqueKeys.Count > 0)
+        {
+            conflictColumns = VaultDocument.UniqueKeys[0].Columns.ToArray();
+            conflictConstraintName = ConstraintUtil.GetUniqueConstraintName(VaultDocument.Name, conflictColumns);
+        }
+
+        var upsertV = BuildUpsertSql_VersionedReturning(
+            QualifiedTableName(),
+            columns,
+            conflictColumns,
+            conflictConstraintName);
+
         var parmsV = GetParameterValues(entity, fields, includeTimestamp: false);
 
         var returned = await _databaseProvider.QueryAsync<UpsertReturnRow>(
@@ -459,6 +485,11 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
                 entity.StorageId,
                 $"Optimistic concurrency failure saving {typeof(TVaultModel).Name} (StorageId={entity.StorageId}). Version mismatch.");
         }
+
+        // If conflict is a UNIQUE constraint, the row's StorageId may not match the entity's StorageId.
+        // Always sync StorageId + Version back.
+        if (!string.IsNullOrWhiteSpace(row.StorageId))
+            SetStorageIdValue(entity, row.StorageId);
 
         SetVersionValue(entity, row.Version);
 
@@ -500,10 +531,20 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
             .Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k)
             .ToArray();
 
+        IReadOnlyList<string> conflictColumns = primaryKeyColumns;
+        string? conflictConstraintName = null;
+
+        if (VaultDocument.UniqueKeys is not null && VaultDocument.UniqueKeys.Count > 0)
+        {
+            conflictColumns = VaultDocument.UniqueKeys[0].Columns.ToArray();
+            conflictConstraintName = ConstraintUtil.GetUniqueConstraintName(VaultDocument.Name, conflictColumns);
+        }
+
         var batchSqlV = BuildBatchUpsertSql_VersionedReturning(
             QualifiedTableName(),
             columns,
-            primaryKeyColumns,
+            conflictColumns,
+            conflictConstraintName,
             list.Count);
 
         var batchParams = new List<object?>(capacity: list.Count * fields.Length);
@@ -539,6 +580,8 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
                 actualAffected: returnedRows.Count);
         }
 
+        // Best-effort: sync versions back by StorageId (works for PK-based saves and for UNIQUE-based saves
+        // only if the entity StorageId matches the stored StorageId).
         var byId = returnedRows
             .Where(r => !string.IsNullOrWhiteSpace(r.StorageId))
             .ToDictionary(r => r.StorageId, r => r.Version, StringComparer.Ordinal);
@@ -596,9 +639,6 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     private static List<Assignment> ParseSetPropertyCalls(
         Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> expr)
     {
-        // EF Core-style update is a chain of method calls:
-        // calls = calls.SetProperty(e => e.Prop, e => <value>)
-        // Walk method-call chain collecting (propSelector, valueSelector).
         var assigns = new List<Assignment>();
         Expression? cur = expr.Body;
 
@@ -649,7 +689,6 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
     private static void ApplyAssignments(TVaultModel entity, List<Assignment> assigns)
     {
-        // Compile value selectors per assignment (assign lists are usually small).
         for (int i = 0; i < assigns.Count; i++)
         {
             var a = assigns[i];
