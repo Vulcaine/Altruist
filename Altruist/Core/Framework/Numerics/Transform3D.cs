@@ -6,21 +6,21 @@ namespace Altruist.ThreeD.Numerics
 {
     public readonly struct Position3D
     {
-        private readonly IntVector3 _v;
-        public int X => _v.X;
-        public int Y => _v.Y;
-        public int Z => _v.Z;
+        private readonly Vector3 _v;
+        public float X => _v.X;
+        public float Y => _v.Y;
+        public float Z => _v.Z;
 
-        public Position3D(int x, int y, int z) => _v = new IntVector3(x, y, z);
-        public Position3D(float x, float y, float z) => _v = new IntVector3((int)x, (int)y, (int)z);
-        private Position3D(IntVector3 v) => _v = v;
+        public Position3D(int x, int y, int z) => _v = new Vector3(x, y, z);
+        public Position3D(float x, float y, float z) => _v = new Vector3((int)x, (int)y, (int)z);
+        private Position3D(Vector3 v) => _v = v;
 
-        public static Position3D Zero => new(new IntVector3(0, 0, 0));
-        public static Position3D One => new(new IntVector3(1, 1, 1));
-        public static Position3D Of(int x, int y, int z) => new(x, y, z);
-        public static Position3D From(IntVector3 v) => new(v);
-        public static Position3D From(Vector3 v) => new((int)v.X, (int)v.Y, (int)v.Z);
-        public IntVector3 ToVector3() => _v;
+        public static Position3D Zero => new(new Vector3(0, 0, 0));
+        public static Position3D One => new(new Vector3(1, 1, 1));
+        public static Position3D Of(float x, float y, float z) => new(x, y, z);
+        public static Position3D From(IntVector3 v) => new(v.X, v.Y, (float)v.Z);
+        public static Position3D From(Vector3 v) => new(v);
+        public Vector3 ToVector3() => _v;
     }
 
     public readonly struct Size3D
