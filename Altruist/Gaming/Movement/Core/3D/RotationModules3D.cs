@@ -7,7 +7,9 @@ namespace Altruist.Gaming.Movement.ThreeD
         public void Execute(in MovementIntent3D intent, in MovementState3D state, MovementProfile3D profile, float dt, MoveContext3D ctx)
         {
             // Only yaw about up-axis; pitch/roll handled by other modules if used
-            ctx.AngularDelta += new Vector3(0f, intent.TurnYaw * profile.YawRate * dt, 0f);
+            ctx.AngularDelta += new Vector3(intent.TurnPitch * profile.PitchRate * dt,
+                                 intent.TurnYaw * profile.YawRate * dt,
+                                 0f);
         }
     }
     // Rotation

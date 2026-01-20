@@ -13,19 +13,16 @@ namespace Altruist.Gaming.Movement.ThreeD
     /// Server-friendly intent: world move vec, signed yaw turn, optional aim direction, and jump.
     /// </summary>
     public sealed record MovementIntent3D(
-        Vector3 Move,               // normalized [-1..1] (X=right, Y=up, Z=forward)
-        float TurnYaw,              // -1..+1 yaw turn input (no camera required)
-        bool Jump = false,
-        Vector3 AimDirection = default, // optional if using aim-based modules
-        bool Boost = false,
-        bool Dash = false,
-        Vector3 Knockback = default
-    )
+    Vector3 Move,                   // normalized [-1..1] (X=right, Y=up, Z=forward)
+    float TurnYaw,                  // -1..+1 yaw turn input
+    float TurnPitch = 0f,           // -1..+1 pitch turn input (optional)
+    bool Jump = false,
+    Vector3 AimDirection = default, // optional if using aim-based modules
+    bool Boost = false,
+    bool Dash = false,
+    Vector3 Knockback = default
+)
     {
-        /// <summary>
-        /// Create intent from digital buttons (Forward/Back/Left/Right [+ optional FlyUp/FlyDown]).
-        /// Z is forward (Forward=+1), X is right (Right=+1), Y is up (FlyUp=+1).
-        /// </summary>
         public static MovementIntent3D FromButtons(
             bool forward = false,
             bool back = false,
@@ -33,7 +30,8 @@ namespace Altruist.Gaming.Movement.ThreeD
             bool right = false,
             bool flyUp = false,
             bool flyDown = false,
-            float turnYaw = 0f,              // -1..+1 (Left=-1, Right=+1) if you prefer buttons map it before
+            float turnYaw = 0f,          // -1..+1
+            float turnPitch = 0f,        // -1..+1
             bool jump = false,
             bool boost = false,
             bool dash = false,
@@ -48,6 +46,7 @@ namespace Altruist.Gaming.Movement.ThreeD
             return new MovementIntent3D(
                 move,
                 Clamp01Signed(turnYaw),
+                Clamp01Signed(turnPitch),
                 jump,
                 aimDirection ?? default,
                 boost,
@@ -56,14 +55,12 @@ namespace Altruist.Gaming.Movement.ThreeD
             );
         }
 
-        public static MovementIntent3D Zero => new MovementIntent3D(Vector3.Zero, 0f);
+        public static MovementIntent3D Zero => new(Vector3.Zero, 0f, 0f);
 
-        /// <summary>
-        /// Create intent from analog axes: x=right, z=forward, y=up (for flight); turnYaw in [-1..+1].
-        /// </summary>
         public static MovementIntent3D FromAxes(
             float x, float z, float y = 0f,
             float turnYaw = 0f,
+            float turnPitch = 0f,
             bool jump = false,
             bool boost = false,
             bool dash = false,
@@ -74,6 +71,7 @@ namespace Altruist.Gaming.Movement.ThreeD
             return new MovementIntent3D(
                 move,
                 Clamp01Signed(turnYaw),
+                Clamp01Signed(turnPitch),
                 jump,
                 aimDirection ?? default,
                 boost,
