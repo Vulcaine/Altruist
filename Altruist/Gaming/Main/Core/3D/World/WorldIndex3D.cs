@@ -63,7 +63,7 @@ namespace Altruist.Gaming
             liveSize.BindTo(v => Size = v);
             liveDelta.BindTo(v => FixedDeltaTime = v);
 
-            liveGravity.BindTo(v => Gravity = v ?? new Vector3(0f, 9.81f, 0f));
+            liveGravity.BindTo(v => Gravity = v ?? new Vector3(0f, -9.81f, 0f));
             livePosition.BindTo(v => Position = v ?? Vector3.Zero);
         }
 

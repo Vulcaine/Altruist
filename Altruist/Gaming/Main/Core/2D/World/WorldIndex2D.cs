@@ -48,7 +48,7 @@ namespace Altruist.Gaming
             Index = index;
             Size = size;
             FixedDeltaTime = fixedDeltaTime;
-            Gravity = gravity ?? new Vector2(0f, 9.81f);
+            Gravity = gravity ?? new Vector2(0f, -9.81f);
             Position = position ?? Vector2.Zero;
             DataPath = data;
             Name = name;
