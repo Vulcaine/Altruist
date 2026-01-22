@@ -5,7 +5,7 @@ namespace Altruist.Dashboard
     [Portal("dashboard")]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     [ConditionalOnAssembly("Altruist.Dashboard")]
-    public sealed class DashboardPortal : Portal
+    public sealed class DashboardPortal : Portal, OnConnectedAsync
     {
         private readonly IGameWorldOrganizer3D _gameWorldOrganizer;
         private readonly IAltruistRouter _router;
@@ -30,12 +30,11 @@ namespace Altruist.Dashboard
             _connectionManager = connectionManager;
         }
 
-        public override async Task OnConnectedAsync(
+        public async Task OnConnectedAsync(
             string clientId,
             ConnectionManager connectionManager,
             AltruistConnection connection)
         {
-            await base.OnConnectedAsync(clientId, connectionManager, connection);
             _connections = await _connectionManager.GetConnectionsForPortal(this);
         }
 

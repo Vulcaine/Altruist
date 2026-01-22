@@ -1,7 +1,7 @@
 
 namespace Altruist.Gaming;
 
-public abstract class AltruistGameSessionPortal : Portal
+public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDisconnectedAsync
 {
     protected readonly IGameSessionService _gameSessionService;
     protected readonly IAltruistRouter _router;
@@ -58,11 +58,13 @@ public abstract class AltruistGameSessionPortal : Portal
         await PublishResultAsync(clientId, finalResult);
     }
 
-    public override Task OnDisconnectedAsync(string clientId, Exception? exception)
+    public virtual Task OnDisconnectedAsync(string clientId, Exception? exception)
     {
         _gameSessionService.ClearSession(clientId);
         return Task.CompletedTask;
     }
+
+    public virtual Task OnConnectedAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection) => Task.CompletedTask;
 
     public async Task Cleanup()
     {

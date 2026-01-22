@@ -128,7 +128,10 @@ namespace Altruist
 
                 try
                 {
-                    await portal.OnConnectedAsync(clientId, this, connection);
+                    if (portal is OnConnectedAsync connectedAsync)
+                    {
+                        await connectedAsync.OnConnectedAsync(clientId, this, connection);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -222,7 +225,10 @@ namespace Altruist
             {
                 try
                 {
-                    await portal.OnDisconnectedAsync(clientId, failureException);
+                    if (portal is OnDisconnectedAsync onDisconnectedAsync)
+                    {
+                        await onDisconnectedAsync.OnDisconnectedAsync(clientId, failureException);
+                    }
                 }
                 catch (Exception ex)
                 {
