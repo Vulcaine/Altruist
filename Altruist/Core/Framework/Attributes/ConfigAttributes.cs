@@ -72,17 +72,17 @@ public interface IConfigConverter<T> : IConfigConverter
 
 public interface ILiveConfigValue<T>
 {
-    T Current { get; }
-    event Action<T> OnChange;
+    T? Current { get; }
+    event Action<T?> OnChange;
 }
 
 public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
 {
-    readonly IConfiguration config;
-    readonly string key;
+    private readonly IConfiguration config;
+    private readonly string key;
 
-    public T Current { get; private set; }
-    public event Action<T>? OnChange;
+    public T? Current { get; private set; }
+    public event Action<T?>? OnChange;
 
     public LiveConfigValue(IConfiguration config, string key)
     {
@@ -91,14 +91,51 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
 
         LiveConfigRegistry.Register(key);
 
-        Current = config.GetValue<T>(key)!;
+        Current = Read();
         ChangeToken.OnChange(config.GetReloadToken, Reload);
     }
 
-    void Reload()
+    private void Reload()
     {
-        Current = config.GetValue<T>(key)!;
+        Current = Read();
         OnChange?.Invoke(Current);
+    }
+
+    private T? Read()
+    {
+        var section = config.GetSection(key);
+
+        // Missing section -> default(T)
+        if (!section.Exists())
+            return default!;
+
+        // Scalars (string/int/float/etc) can use GetValue safely
+        // For objects (Vector3/IntVector3/etc) you MUST use Get<T>()
+        if (IsScalar(typeof(T)))
+        {
+            var value = section.Value;
+            if (value is null)
+                return default!;
+
+            return section.GetValue<T>(key);
+        }
+
+        // Complex object bind
+        var bound = section.Get<T>();
+        return bound!;
+    }
+
+    private static bool IsScalar(Type t)
+    {
+        t = Nullable.GetUnderlyingType(t) ?? t;
+        return t.IsPrimitive
+            || t.IsEnum
+            || t == typeof(string)
+            || t == typeof(decimal)
+            || t == typeof(DateTime)
+            || t == typeof(DateTimeOffset)
+            || t == typeof(TimeSpan)
+            || t == typeof(Guid);
     }
 }
 
@@ -107,7 +144,7 @@ public static class LiveConfigSugarExtensions
 
     public static void BindTo<T>(
         this ILiveConfigValue<T> live,
-        Action<T> setter)
+        Action<T?> setter)
     {
         setter(live.Current);
         live.OnChange += setter;
