@@ -1,4 +1,6 @@
 // Altruist/ConfigValueAttribute.cs
+using System.Numerics;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
@@ -81,8 +83,8 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
     private readonly IConfiguration config;
     private readonly string key;
 
-    public T? Current { get; private set; }
-    public event Action<T?>? OnChange;
+    public T Current { get; private set; }
+    public event Action<T>? OnChange;
 
     public LiveConfigValue(IConfiguration config, string key)
     {
@@ -101,41 +103,53 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
         OnChange?.Invoke(Current);
     }
 
-    private T? Read()
+    private T Read()
     {
         var section = config.GetSection(key);
-
-        // Missing section -> default(T)
         if (!section.Exists())
             return default!;
 
-        // Scalars (string/int/float/etc) can use GetValue safely
-        // For objects (Vector3/IntVector3/etc) you MUST use Get<T>()
-        if (IsScalar(typeof(T)))
+        if (typeof(T) == typeof(Vector2))
         {
-            var value = section.Value;
-            if (value is null)
-                return default!;
-
-            return section.GetValue<T>(key);
+            var v = ReadVector2(section);
+            return (T)(object)v;
         }
 
-        // Complex object bind
+        if (typeof(T) == typeof(Vector2?))
+        {
+            var v = ReadVector2(section);
+            return (T)(object)(Vector2?)v;
+        }
+
+        if (typeof(T) == typeof(Vector3))
+        {
+            var v = ReadVector3(section);
+            return (T)(object)v;
+        }
+
+        if (typeof(T) == typeof(Vector3?))
+        {
+            var v = ReadVector3(section);
+            return (T)(object)(Vector3?)v;
+        }
+
         var bound = section.Get<T>();
         return bound!;
     }
 
-    private static bool IsScalar(Type t)
+    private static Vector2 ReadVector2(IConfigurationSection section)
     {
-        t = Nullable.GetUnderlyingType(t) ?? t;
-        return t.IsPrimitive
-            || t.IsEnum
-            || t == typeof(string)
-            || t == typeof(decimal)
-            || t == typeof(DateTime)
-            || t == typeof(DateTimeOffset)
-            || t == typeof(TimeSpan)
-            || t == typeof(Guid);
+        float x = section.GetValue<float>("x");
+        float y = section.GetValue<float>("y");
+        return new Vector2(x, y);
+    }
+
+    private static Vector3 ReadVector3(IConfigurationSection section)
+    {
+        float x = section.GetValue<float>("x");
+        float y = section.GetValue<float>("y");
+        float z = section.GetValue<float>("z");
+        return new Vector3(x, y, z);
     }
 }
 
