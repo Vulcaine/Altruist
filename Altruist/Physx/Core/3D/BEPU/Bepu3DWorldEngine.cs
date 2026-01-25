@@ -234,8 +234,24 @@ namespace Altruist.Physx.ThreeD
 
             public Vector3 LinearVelocity
             {
-                get { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); return _engine._simulation.Bodies.GetBodyReference(_handle).Velocity.Linear; } }
-                set { lock (_engine._sync) { ThrowIfRemovedOrDisposed(); var br = _engine._simulation.Bodies.GetBodyReference(_handle); br.Velocity.Linear = value; } }
+                get
+                {
+                    lock (_engine._sync)
+                    {
+                        ThrowIfRemovedOrDisposed();
+                        return _engine._simulation.Bodies.GetBodyReference(_handle).Velocity.Linear;
+                    }
+                }
+                set
+                {
+                    lock (_engine._sync)
+                    {
+                        ThrowIfRemovedOrDisposed();
+                        var br = _engine._simulation.Bodies.GetBodyReference(_handle);
+                        br.Velocity.Linear = value;
+                        _engine._simulation.Awakener.AwakenBody(_handle);
+                    }
+                }
             }
 
             public Vector3 AngularVelocity

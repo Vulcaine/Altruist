@@ -748,7 +748,7 @@ namespace Altruist
 
             // -------------------------------------------------------------------
             // Missing required config for *non-nullable* value type → fatal
-            // -------------------------------------------------------------------
+            // F-------------------------------------------------------------------
             var rootPath = (cfg as IConfigurationSection)?.Path ?? "<root>";
             string hint;
 
