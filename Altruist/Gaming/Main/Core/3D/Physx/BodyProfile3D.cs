@@ -7,8 +7,8 @@ namespace Altruist.Gaming.ThreeD;
 public interface IBodyProfile3D
 {
     PhysxBody3DDesc CreateBody(Transform3D transform);
+    IEnumerable<PhysxCollider3DDesc> CreateColliders(Transform3D transform);
 }
-
 
 public sealed class HumanoidCapsuleBodyProfile : IBodyProfile3D
 {
@@ -28,4 +28,11 @@ public sealed class HumanoidCapsuleBodyProfile : IBodyProfile3D
         var sized = transform.WithSize(Size3D.Of(Radius, HalfLength, 0f));
         return PhysxBody3D.Create(PhysxBodyType.Dynamic, Mass, sized);
     }
+
+    public IEnumerable<PhysxCollider3DDesc> CreateColliders(Transform3D transform)
+    {
+        var sized = transform.WithSize(Size3D.Of(Radius, HalfLength, 0f));
+        yield return PhysxCollider3D.Create(PhysxColliderShape3D.Capsule3D, sized, isTrigger: false);
+    }
 }
+
