@@ -709,10 +709,9 @@ namespace Altruist
                 target.GetGenericTypeDefinition() == typeof(ILiveConfigValue<>))
             {
                 var genArg = target.GetGenericArguments()[0];
-                var fullPath = ExpandWildcardPath(cfg, a.Path!);
-
+                var relativeKey = ExtractWildcardRelativeKey(a.Path);
                 var wrapperType = typeof(LiveConfigValue<>).MakeGenericType(genArg);
-                return Activator.CreateInstance(wrapperType, cfg, fullPath);
+                return Activator.CreateInstance(wrapperType, cfg, relativeKey);
             }
             // -------------------------------------------------------------------
 
@@ -796,6 +795,16 @@ namespace Altruist
             return $"{root}:{after}";
         }
 
+        private static string ExtractWildcardRelativeKey(string path)
+        {
+            var star = path.IndexOf('*');
+            if (star < 0)
+                return path;
+
+            return (star + 1 < path.Length)
+                ? path[(star + 1)..].TrimStart(':')
+                : string.Empty;
+        }
 
         private static object? BindOrConvert(IConfigurationSection s, Type target)
         {
