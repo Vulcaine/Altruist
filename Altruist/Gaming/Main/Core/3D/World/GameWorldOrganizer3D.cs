@@ -3,13 +3,13 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Physx.ThreeD;
+using Altruist.ThreeD.Numerics;
+
 namespace Altruist.Gaming.ThreeD
 {
     public interface IGameWorldOrganizer3D : IGameWorldOrganizer
     {
-        /// <summary>
-        /// Directly registers an already constructed game world manager.
-        /// </summary>
         IGameWorldManager3D AddWorld(IGameWorldManager3D manager);
         void RemoveWorld(int index);
         IGameWorldManager3D? GetWorld(int index);
@@ -32,7 +32,7 @@ namespace Altruist.Gaming.ThreeD
             IWorldLoader3D worldLoader,
             IWorldPhysics3D worldPhysics3D,
             IEnumerable<IWorldIndex3D> gameWorlds
-            )
+        )
         {
             _worldLoader = worldLoader;
             _worldPhysx = worldPhysics3D;
@@ -52,9 +52,6 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
-        /// <summary>
-        /// Registers an existing GameWorldManager3D.
-        /// </summary>
         public IGameWorldManager3D AddWorld(IGameWorldManager3D manager)
         {
             if (manager is null)
@@ -68,17 +65,11 @@ namespace Altruist.Gaming.ThreeD
             return manager;
         }
 
-        /// <summary>
-        /// Removes the specified world by index.
-        /// </summary>
         public virtual void RemoveWorld(int index)
         {
             _worlds.Remove(index);
         }
 
-        /// <summary>
-        /// Gets the GameWorldManager for a given world index.
-        /// </summary>
         public virtual IGameWorldManager3D? GetWorld(int index)
         {
             return _worlds.TryGetValue(index, out var manager) ? manager : null;
@@ -86,17 +77,20 @@ namespace Altruist.Gaming.ThreeD
 
         public virtual IGameWorldManager3D? GetWorld(string name)
         {
-            return _worlds.Where(x => x.Value.Index.Name == name).Select(x => x.Value).FirstOrDefault();
+            return _worlds
+                .Where(x => x.Value.Index.Name == name)
+                .Select(x => x.Value)
+                .FirstOrDefault();
         }
 
-        /// <summary>
-        /// Lists all currently loaded world indices.
-        /// </summary>
         public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 
         public void Step(float deltaTime)
         {
             var steppedEngines = new HashSet<object>();
+            var enginesToStep = new List<IPhysxWorld3D>();
+            var objectsToSync = new List<IWorldObject3D>();
+
             foreach (var world in _worlds.Values)
             {
                 try
@@ -109,30 +103,83 @@ namespace Altruist.Gaming.ThreeD
                             continue;
                         }
 
+                        objectsToSync.Add(obj);
+
                         try
                         {
                             obj.Step(deltaTime, _worldPhysx);
                         }
                         catch
                         {
-                            // Swallow per-object step exceptions
                         }
                     }
 
-                    var engine = world.PhysxWorld.Engine;
+                    var physWorld = world.PhysxWorld;
+                    var engine = physWorld.Engine;
                     if (engine != null && steppedEngines.Add(engine))
                     {
-                        world.PhysxWorld.Step(deltaTime);
+                        enginesToStep.Add(physWorld);
                     }
                 }
                 catch
                 {
-                    // Swallow per-world step exceptions
+                }
+            }
+
+            foreach (var physWorld in enginesToStep)
+            {
+                try
+                {
+                    physWorld.Step(deltaTime);
+                }
+                catch
+                {
+                }
+            }
+
+            foreach (var obj in objectsToSync)
+            {
+                try
+                {
+                    SyncObjectFromPhysics(obj);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static void SyncObjectFromPhysics(IWorldObject3D obj)
+        {
+            if (obj.Body is not IPhysxBody3D body)
+                return;
+
+            var newPos = Position3D.From(body.Position);
+            var newRot = Rotation3D.FromQuaternion(body.Rotation);
+
+            obj.Transform = obj.Transform
+                .WithPosition(newPos)
+                .WithRotation(newRot);
+
+            if (obj.Colliders != null)
+            {
+                foreach (var col in obj.Colliders)
+                {
+                    try
+                    {
+                        col.Transform = col.Transform
+                            .WithPosition(newPos)
+                            .WithRotation(newRot);
+                    }
+                    catch
+                    {
+                    }
                 }
             }
         }
 
         public bool Empty() => _worlds.Count == 0;
+
         public IEnumerable<IGameWorldManager3D> GetAllWorlds()
         {
             return _worlds.Values;

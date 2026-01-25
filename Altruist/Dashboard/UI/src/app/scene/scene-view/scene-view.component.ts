@@ -33,7 +33,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
   selectedObject: WorldObjectDto | null = null;
   lastWorldUpdate: Date | null = null;
 
-  /** ✅ ONLY for the very first load */
   isInitialLoading = false;
 
   isLoadingWorlds = false;
@@ -46,6 +45,8 @@ export class SceneViewComponent implements OnInit, OnDestroy {
 
   private autoUpdateSub?: Subscription;
 
+  private isSnapshotInFlight = false;
+
   constructor(private readonly worldService: WorldDashboardService) {}
 
   ngOnInit(): void {
@@ -56,10 +57,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
     this.stopAutoUpdate();
   }
 
-  // ---------------------------
-  // Worlds loading
-  // ---------------------------
-
   private loadWorlds(): void {
     this.isLoadingWorlds = true;
 
@@ -68,7 +65,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
         this.worlds = worlds;
         this.isLoadingWorlds = false;
 
-        // If previously selected world disappeared, pick first
         if (this.selectedWorld) {
           const stillExists = worlds.some(
             (w) => w.index === this.selectedWorld!.index,
@@ -96,22 +92,18 @@ export class SceneViewComponent implements OnInit, OnDestroy {
     this.selectedWorld = world;
     this.worldCollapsed = false;
 
-    // Reset selection on world switch
     this.selectedPartition = null;
     this.selectedObject = null;
     this.partitions = [];
     this.hasData = false;
     this.lastWorldUpdate = null;
 
-    // ✅ Only show globe on first load
     this.isInitialLoading = true;
 
-    // Stop auto-update while switching worlds (we’ll restart if it was on)
     const wasAuto = this.autoUpdate;
     this.stopAutoUpdate();
 
     this.refreshSnapshot(false, () => {
-      // If auto-update was enabled, resume it after first load finishes
       if (wasAuto) {
         this.autoUpdate = true;
         this.startAutoUpdate();
@@ -125,26 +117,21 @@ export class SceneViewComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // ✅ seamless refresh - do NOT wipe the scene
     this.refreshSnapshot(true);
   }
 
-  // ---------------------------
-  // Seamless snapshot refresh
-  // ---------------------------
-
-  /**
-   * Pull a full snapshot and merge into the existing arrays
-   * so that:
-   * - camera doesn’t reset (WorldScene stays mounted)
-   * - selection stays stable
-   * - collapsed state stays stable
-   */
   private refreshSnapshot(
     preserveSelection: boolean,
     onDone?: () => void,
   ): void {
     if (!this.selectedWorld) return;
+
+    if (this.isSnapshotInFlight) {
+      onDone?.();
+      return;
+    }
+
+    this.isSnapshotInFlight = true;
 
     const worldIndex = this.selectedWorld.index;
 
@@ -160,7 +147,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
 
     this.worldService.getWorldObjectsSnapshot(worldIndex).subscribe({
       next: (snapshot) => {
-        // snapshot expected: { partitions: WorldPartitionDto[] }
         const incoming: WorldPartitionDto[] = snapshot.partitions ?? [];
 
         this.mergePartitions(incoming);
@@ -168,12 +154,7 @@ export class SceneViewComponent implements OnInit, OnDestroy {
         this.hasData = this.partitions.length > 0;
         this.lastWorldUpdate = new Date();
 
-        // ✅ only stop showing globe after first snapshot received
         this.isInitialLoading = false;
-
-        // ---------------------------
-        // Restore / validate selection
-        // ---------------------------
 
         if (prevSelectedPartitionKey) {
           const foundPartition = this.partitions.find(
@@ -188,7 +169,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
             foundPartition.collapsed = false;
           }
         } else {
-          // keep existing selection if it still exists
           if (this.selectedPartition) {
             const key = `${this.selectedPartition.indexX}:${this.selectedPartition.indexY}:${this.selectedPartition.indexZ}`;
             const stillExists = this.partitions.some(
@@ -205,7 +185,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
           );
           this.selectedObject = foundObj ?? null;
         } else {
-          // if current selected object disappeared, clear it
           if (this.selectedObject) {
             const allObjects = this.partitions.flatMap((p) => p.objects ?? []);
             const stillExists = allObjects.some(
@@ -215,34 +194,21 @@ export class SceneViewComponent implements OnInit, OnDestroy {
           }
         }
 
-        // If after refresh selection is invalid, pick a reasonable fallback
         if (!this.selectedPartition && this.partitions.length > 0) {
           this.selectedPartition = this.partitions[0];
         }
 
-        if (!this.selectedObject && this.selectedPartition?.objects?.length) {
-          // Keep object unselected by default. If you want auto-select:
-          // this.selectedObject = this.selectedPartition.objects[0];
-        }
-
+        this.isSnapshotInFlight = false;
         onDone?.();
       },
       error: () => {
-        // Do NOT wipe the scene harshly; just mark no data if snapshot fails
         this.isInitialLoading = false;
+        this.isSnapshotInFlight = false;
         onDone?.();
       },
     });
   }
 
-  /**
-   * Merge incoming partition/object arrays into existing arrays
-   * WITHOUT replacing everything.
-   *
-   * This preserves:
-   * - object references (helps selection stability)
-   * - partition collapsed state
-   */
   private mergePartitions(incoming: WorldPartitionDto[]): void {
     const existingPartitionMap = new Map<string, PartitionUI>();
     for (const p of this.partitions) {
@@ -256,7 +222,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
       const existing = existingPartitionMap.get(key);
 
       if (!existing) {
-        // new partition → add
         nextPartitions.push({
           ...incomingPartition,
           collapsed: true,
@@ -264,29 +229,19 @@ export class SceneViewComponent implements OnInit, OnDestroy {
         continue;
       }
 
-      // merge partition objects in place
-      this.mergeObjects(existing.objects, incomingPartition.objects);
-
-      // keep collapsed state
-      existing.objects = existing.objects ?? [];
-
+      this.mergeObjects(existing, incomingPartition);
       nextPartitions.push(existing);
     }
 
-    // replace partitions array with stable references
     this.partitions = nextPartitions;
   }
 
-  /**
-   * Merge objects in-place by instanceId.
-   * We prefer to mutate existing objects so reference stays stable.
-   */
   private mergeObjects(
-    existing: WorldObjectDto[],
-    incoming: WorldObjectDto[],
+    existingPartition: PartitionUI,
+    incomingPartition: WorldPartitionDto,
   ): void {
-    if (!existing) existing = [];
-    if (!incoming) incoming = [];
+    const existing = existingPartition.objects ?? [];
+    const incoming = incomingPartition.objects ?? [];
 
     const byId = new Map<string, WorldObjectDto>();
     for (const obj of existing) {
@@ -299,34 +254,22 @@ export class SceneViewComponent implements OnInit, OnDestroy {
       const ex = byId.get(inObj.instanceId);
 
       if (!ex) {
-        // brand new object
         next.push(inObj);
         continue;
       }
 
-      // ✅ mutate existing object in-place
       ex.archetype = inObj.archetype;
       ex.zoneId = inObj.zoneId;
       ex.clientId = inObj.clientId;
       ex.expired = inObj.expired;
-
-      // update transform
       ex.transform = inObj.transform;
-
-      // update colliders (replace is fine, renderer rebuild uses it)
       ex.colliders = inObj.colliders;
 
       next.push(ex);
     }
 
-    // swap array contents without changing identity too harshly
-    existing.length = 0;
-    existing.push(...next);
+    existingPartition.objects = next;
   }
-
-  // ---------------------------
-  // Auto update (1s)
-  // ---------------------------
 
   toggleAutoUpdate(): void {
     this.autoUpdate = !this.autoUpdate;
@@ -356,10 +299,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ---------------------------
-  // Sidebar interaction
-  // ---------------------------
-
   get visibleObjects(): WorldObjectDto[] {
     if (this.selectedPartition) {
       return this.selectedPartition.objects ?? [];
@@ -385,10 +324,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
     p.collapsed = !p.collapsed;
   }
 
-  // ---------------------------
-  // Renderer callbacks
-  // ---------------------------
-
   onCameraChanged(info: CameraInfo): void {
     this.cameraInfo = info;
   }
@@ -396,10 +331,6 @@ export class SceneViewComponent implements OnInit, OnDestroy {
   onWorldLastUpdate(ts: Date): void {
     this.lastWorldUpdate = ts;
   }
-
-  // ---------------------------
-  // UI hint
-  // ---------------------------
 
   get statusHint(): string {
     if (!this.selectedWorld) return 'Select a world';

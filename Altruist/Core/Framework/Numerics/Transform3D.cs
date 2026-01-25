@@ -132,6 +132,8 @@ namespace Altruist.ThreeD.Numerics
 
         public static Transform3D Zero => new(Position3D.Zero, Size3D.Zero, Scale3D.One, Rotation3D.Identity);
 
+        public static Transform3D Identity => new(Position3D.One, Size3D.One, Scale3D.One, Rotation3D.Identity);
+
         public Transform3D WithPosition(Position3D p) => new(p, Size, Scale, Rotation);
         public Transform3D WithSize(Size3D s) => new(Position, s, Scale, Rotation);
         public Transform3D WithScale(Scale3D s) => new(Position, Size, s, Rotation);

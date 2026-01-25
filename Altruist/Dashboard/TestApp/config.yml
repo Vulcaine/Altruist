@@ -35,5 +35,5 @@ altruist:
           id: "world1"
           data-path: "Resources/world.json"
           size: { x: 100, y: 100, z: 100 }
-          gravity: { x: 0, y: -9.81 }
+          gravity: { x: 0, y: -0.5, z: 0 }
           position: { x: 0, y: 0, z: 0 }

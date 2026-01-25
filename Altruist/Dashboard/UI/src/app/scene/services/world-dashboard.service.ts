@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
@@ -6,7 +6,10 @@ import {
   WorldSummary,
 } from '../world-scene/models/world.model';
 
-export interface WorldSnapshotDto {
+export interface WorldObjectsSnapshotDto {
+  worldIndex: number;
+  worldName: string;
+  generatedAtUtc: string;
   partitions: WorldPartitionDto[];
 }
 
@@ -16,37 +19,43 @@ export class WorldDashboardService {
   private readonly baseUrl = '/dashboard/v1/worlds';
 
   getWorlds(): Observable<WorldSummary[]> {
-    return this.http.get<WorldSummary[]>(this.baseUrl);
+    return this.http.get<WorldSummary[]>(this.baseUrl, {
+      headers: new HttpHeaders({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        Expires: '0',
+      }),
+    });
   }
 
-  /**
-   * ✅ Snapshot (non-stream) world objects.
-   * Used for seamless refresh + auto-update polling.
-   *
-   * Backend endpoint expected:
-   *   GET /dashboard/v1/worlds/{worldIndex}/objects
-   *
-   * Response:
-   *   { partitions: WorldPartitionDto[] }
-   */
-  getWorldObjectsSnapshot(worldIndex: number): Observable<WorldSnapshotDto> {
-    return this.http.get<WorldSnapshotDto>(
+  getWorldObjectsSnapshot(
+    worldIndex: number,
+  ): Observable<WorldObjectsSnapshotDto> {
+    const headers = new HttpHeaders({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
+
+    const params = new HttpParams().set('_', Date.now().toString());
+
+    return this.http.get<WorldObjectsSnapshotDto>(
       `${this.baseUrl}/${worldIndex}/objects`,
+      { headers, params },
     );
   }
 
-  /**
-   * NDJSON stream of partitions.
-   * Useful for large worlds / incremental load.
-   *
-   * Backend endpoint:
-   *   GET /dashboard/v1/worlds/{worldIndex}/objects/stream
-   */
   streamWorldObjects(worldIndex: number): Observable<WorldPartitionDto> {
     return new Observable<WorldPartitionDto>((observer) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('GET', `${this.baseUrl}/${worldIndex}/objects/stream`);
+      xhr.open(
+        'GET',
+        `${this.baseUrl}/${worldIndex}/objects/stream?_=${Date.now()}`,
+      );
       xhr.responseType = 'text';
+
+      xhr.setRequestHeader('Cache-Control', 'no-cache');
+      xhr.setRequestHeader('Pragma', 'no-cache');
 
       let lastIndex = 0;
       let buffer = '';

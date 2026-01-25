@@ -1,10 +1,11 @@
 /*
 Copyright 2025 Aron Gere
+
 Licensed under the Apache License, Version 2.0
 */
 
 using System.Numerics;
-using System.Runtime.InteropServices;
+using System.Reflection;
 
 using Altruist.Physx.Contracts;
 
@@ -15,17 +16,11 @@ using BepuUtilities.Memory;
 
 namespace Altruist.Physx.ThreeD
 {
-    /// <summary>
-    /// BEPU-backed body API provider (3D).
-    /// </summary>
     [Service(typeof(IPhysxBodyApiProvider3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     public sealed class BepuPhysxBodyApiProvider3D : IPhysxBodyApiProvider3D
     {
-        // Dynamic body original shapes (restore on detach)
         private readonly Dictionary<BodyHandle, TypedIndex> _originalShapeByBody = new();
-
-        // Static body original shapes (restore on detach)
         private readonly Dictionary<StaticHandle, TypedIndex> _originalShapeByStatic = new();
 
         private readonly struct Attachment
@@ -56,78 +51,70 @@ namespace Altruist.Physx.ThreeD
 
         public BepuPhysxBodyApiProvider3D() { }
 
-        /// <summary>
-        /// Create a BEPU-backed IPhysxBody3D for the given engine from a body descriptor.
-        /// </summary>
         public IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, in PhysxBody3DDesc desc)
         {
             if (engine is not BepuWorldEngine3D engine3D)
                 throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
 
-            var transform = desc.Transform;
-            var pos = transform.Position.ToVector3();
-            var ori = transform.Rotation.ToQuaternion();
-            var halfExtents = transform.Size.ToVector3();
-
-            // Default placeholder box shape (gets replaced by colliders you attach)
-            var box = new Box(halfExtents.X * 2f, halfExtents.Y * 2f, halfExtents.Z * 2f);
-            var shapeIndex = engine3D.Simulation.Shapes.Add(box);
-
-            // ✅ REAL STATIC -> Simulation.Statics
-            if (desc.Type == PhysxBodyType.Static)
+            lock (engine3D._sync)
             {
-                var staticDesc = new StaticDescription(
+                var transform = desc.Transform;
+                var pos = transform.Position.ToVector3();
+                var ori = transform.Rotation.ToQuaternion();
+                var halfExtents = transform.Size.ToVector3();
+
+                var box = new Box(halfExtents.X * 2f, halfExtents.Y * 2f, halfExtents.Z * 2f);
+                var shapeIndex = engine3D.Simulation.Shapes.Add(box);
+
+                if (desc.Type == PhysxBodyType.Static)
+                {
+                    var staticDesc = new StaticDescription(
+                        new System.Numerics.Vector3(pos.X, pos.Y, pos.Z),
+                        ori,
+                        shapeIndex
+                    );
+
+                    var staticHandle = engine3D.Simulation.Statics.Add(staticDesc);
+                    return new BepuWorldEngine3D.StaticBody3DAdapter(desc.Id, engine3D, staticHandle);
+                }
+
+                var pose = new RigidPose(
                     new System.Numerics.Vector3(pos.X, pos.Y, pos.Z),
-                    ori,
-                    shapeIndex
+                    ori
                 );
 
-                var staticHandle = engine3D.Simulation.Statics.Add(staticDesc);
-                return new Static3DAdapter(desc.Id, engine3D, staticHandle);
+                BodyInertia inertia = default;
+                if (desc.Type == PhysxBodyType.Dynamic)
+                {
+                    var useMass = desc.Mass > 0f ? desc.Mass : 1f;
+                    inertia = box.ComputeInertia(useMass);
+                }
+
+                var collidable = new CollidableDescription(shapeIndex, 0.1f);
+                var activity = new BodyActivityDescription(0.01f);
+
+                BodyDescription bodyDesc = desc.Type switch
+                {
+                    PhysxBodyType.Dynamic => BodyDescription.CreateDynamic(pose, inertia, collidable, activity),
+                    PhysxBodyType.Kinematic => BodyDescription.CreateKinematic(pose, collidable, activity),
+                    _ => BodyDescription.CreateKinematic(pose, collidable, activity)
+                };
+
+                if (desc.Type != PhysxBodyType.Dynamic)
+                    bodyDesc.LocalInertia = default;
+
+                var handle = engine3D.Simulation.Bodies.Add(bodyDesc);
+
+                return new BepuWorldEngine3D.DynamicBody3DAdapter(
+                    desc.Id,
+                    engine3D,
+                    handle,
+                    desc.Type,
+                    desc.Mass > 0f ? desc.Mass : 0f
+                );
             }
-
-            // Dynamic / Kinematic -> Simulation.Bodies
-            var pose = new RigidPose(
-                new System.Numerics.Vector3(pos.X, pos.Y, pos.Z),
-                ori
-            );
-
-            BodyInertia inertia = default;
-            if (desc.Type == PhysxBodyType.Dynamic)
-            {
-                var useMass = desc.Mass > 0f ? desc.Mass : 1f;
-                inertia = box.ComputeInertia(useMass);
-            }
-
-            var collidable = new CollidableDescription(shapeIndex, 0.1f);
-            var activity = new BodyActivityDescription(0.01f);
-
-            BodyDescription bodyDesc = desc.Type switch
-            {
-                PhysxBodyType.Dynamic => BodyDescription.CreateDynamic(pose, inertia, collidable, activity),
-                PhysxBodyType.Kinematic => BodyDescription.CreateKinematic(pose, collidable, activity),
-                _ => BodyDescription.CreateKinematic(pose, collidable, activity)
-            };
-
-            if (desc.Type != PhysxBodyType.Dynamic)
-                bodyDesc.LocalInertia = default;
-
-            var handle = engine3D.Simulation.Bodies.Add(bodyDesc);
-
-            return new BepuWorldEngine3D.Body3DAdapter(
-                desc.Id,
-                engine3D,
-                handle,
-                desc.Type,
-                desc.Mass > 0f ? desc.Mass : 0f
-            );
         }
 
-        /// <summary>
-        /// Attach a collider to a body.
-        /// For dynamics: swap Collidable.Shape.
-        /// For statics: rebuild the static because StaticReference.Shape is read-only in your BEPU version.
-        /// </summary>
         public void AddCollider(IPhysxWorldEngine3D engine, IPhysxBody3D body, IPhysxCollider3D collider)
         {
             if (_attachments.ContainsKey(collider))
@@ -136,99 +123,78 @@ namespace Altruist.Physx.ThreeD
             if (engine is not BepuWorldEngine3D engine3D)
                 throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
 
-            // ✅ STATIC handling (rebuild static)
-            if (body is Static3DAdapter staticOwner)
+            lock (engine3D._sync)
             {
-                var statics = engine3D.Simulation.Statics;
+                if (body is BepuWorldEngine3D.StaticBody3DAdapter staticOwner)
+                {
+                    var statics = engine3D.Simulation.Statics;
+                    var staticRef = statics.GetStaticReference(staticOwner.Handle);
 
-                var staticRef = statics.GetStaticReference(staticOwner.Handle);
+                    if (!_originalShapeByStatic.ContainsKey(staticOwner.Handle))
+                        _originalShapeByStatic[staticOwner.Handle] = staticRef.Shape;
 
-                // Save original shape the first time
-                if (!_originalShapeByStatic.ContainsKey(staticOwner.Handle))
-                    _originalShapeByStatic[staticOwner.Handle] = staticRef.Shape;
+                    var newShape = CreateBepuShapeIndexFromCollider(engine3D, collider);
+                    var newHandle = RebuildStatic(engine3D, staticOwner.Handle, staticRef.Pose, newShape);
 
-                // New shape
-                var newShape = CreateBepuShapeIndexFromCollider(engine3D, collider);
+                    SetStaticHandle(staticOwner, newHandle);
 
-                // Rebuild static with same pose but different shape
-                var newHandle = RebuildStatic(
-                    engine3D,
-                    oldHandle: staticOwner.Handle,
-                    pose: staticRef.Pose,
-                    newShape: newShape
-                );
+                    _attachments[collider] = new Attachment(newHandle, newShape);
+                    staticOwner.AddCollider(collider);
+                    return;
+                }
 
-                // Update adapter + bookkeeping
-                staticOwner.ReplaceHandle(newHandle);
+                if (body is not BepuWorldEngine3D.DynamicBody3DAdapter owner)
+                    throw new InvalidOperationException("Body must be a BEPU DynamicBody3DAdapter or StaticBody3DAdapter.");
 
-                _attachments[collider] = new Attachment(newHandle, newShape);
-                staticOwner.AddCollider(collider);
-                return;
+                var bodies = engine3D.Simulation.Bodies;
+                var bodyRef = bodies.GetBodyReference(owner.Handle);
+
+                if (!_originalShapeByBody.ContainsKey(owner.Handle))
+                    _originalShapeByBody[owner.Handle] = bodyRef.Collidable.Shape;
+
+                var newShapeIndex = CreateBepuShapeIndexFromCollider(engine3D, collider);
+                bodyRef.Collidable.Shape = newShapeIndex;
+
+                _attachments[collider] = new Attachment(owner.Handle, newShapeIndex);
+                owner.AddCollider(collider);
             }
-
-            // ✅ DYNAMIC / KINEMATIC handling (swap body collidable shape)
-            if (body is not BepuWorldEngine3D.Body3DAdapter owner)
-                throw new InvalidOperationException("Body must be a BEPU Body3DAdapter or Static3DAdapter.");
-
-            var bodies = engine3D.Simulation.Bodies;
-            var bodyRef = bodies.GetBodyReference(owner.Handle);
-
-            if (!_originalShapeByBody.ContainsKey(owner.Handle))
-                _originalShapeByBody[owner.Handle] = bodyRef.Collidable.Shape;
-
-            var newShapeIndex = CreateBepuShapeIndexFromCollider(engine3D, collider);
-            bodyRef.Collidable.Shape = newShapeIndex;
-
-            _attachments[collider] = new Attachment(owner.Handle, newShapeIndex);
-            owner.AddCollider(collider);
         }
 
-        /// <summary>
-        /// Remove collider and restore original shape.
-        /// </summary>
         public void RemoveCollider(IPhysxWorldEngine3D engine, IPhysxCollider3D collider)
         {
             if (engine is not BepuWorldEngine3D engine3D)
                 throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
 
-            if (!_attachments.TryGetValue(collider, out var rec))
-                return;
-
-            if (rec.IsStatic)
+            lock (engine3D._sync)
             {
-                var statics = engine3D.Simulation.Statics;
-                var staticRef = statics.GetStaticReference(rec.Static);
+                if (!_attachments.TryGetValue(collider, out var rec))
+                    return;
 
-                if (_originalShapeByStatic.TryGetValue(rec.Static, out var original))
+                if (rec.IsStatic)
                 {
-                    // Rebuild static back to original shape
-                    var newHandle = RebuildStatic(
-                        engine3D,
-                        oldHandle: rec.Static,
-                        pose: staticRef.Pose,
-                        newShape: original
-                    );
+                    var statics = engine3D.Simulation.Statics;
+                    var staticRef = statics.GetStaticReference(rec.Static);
 
-                    // Update stored original-shape dictionary to follow new handle
-                    _originalShapeByStatic.Remove(rec.Static);
-                    _originalShapeByStatic[newHandle] = original;
+                    if (_originalShapeByStatic.TryGetValue(rec.Static, out var original))
+                    {
+                        var newHandle = RebuildStatic(engine3D, rec.Static, staticRef.Pose, original);
 
-                    // Also update attachment record to new handle (if needed)
+                        _originalShapeByStatic.Remove(rec.Static);
+                        _originalShapeByStatic[newHandle] = original;
+
+                        _attachments.Remove(collider);
+                        return;
+                    }
+
                     _attachments.Remove(collider);
                     return;
                 }
 
-                _attachments.Remove(collider);
-                return;
-            }
-
-            // Dynamic restore
-            {
                 var bodies = engine3D.Simulation.Bodies;
                 var bodyRef = bodies.GetBodyReference(rec.Body);
 
-                if (_originalShapeByBody.TryGetValue(rec.Body, out var original))
-                    bodyRef.Collidable.Shape = original;
+                if (_originalShapeByBody.TryGetValue(rec.Body, out var originalBodyShape))
+                    bodyRef.Collidable.Shape = originalBodyShape;
 
                 _attachments.Remove(collider);
             }
@@ -240,15 +206,19 @@ namespace Altruist.Physx.ThreeD
             in RigidPose pose,
             TypedIndex newShape)
         {
-            // Remove old
             engine.Simulation.Statics.Remove(oldHandle);
-
-            // Add new
             var newDesc = new StaticDescription(pose.Position, pose.Orientation, newShape);
             return engine.Simulation.Statics.Add(newDesc);
         }
 
-        // -------------------- helpers --------------------
+        private static void SetStaticHandle(BepuWorldEngine3D.StaticBody3DAdapter adapter, StaticHandle newHandle)
+        {
+            var t = adapter.GetType();
+            var field = t.GetField("_handle", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+                throw new InvalidOperationException("StaticBody3DAdapter does not expose a writable handle field.");
+            field.SetValue(adapter, newHandle);
+        }
 
         private TypedIndex CreateBepuShapeIndexFromCollider(BepuWorldEngine3D engine, IPhysxCollider3D c)
         {
@@ -335,121 +305,6 @@ namespace Altruist.Physx.ThreeD
             }
 
             return new Mesh(triangles, new Vector3(1f, 1f, 1f), pool);
-        }
-    }
-
-    /// <summary>
-    /// Adapter that represents a BEPU Static in your IPhysxBody3D abstraction.
-    /// </summary>
-    internal sealed class Static3DAdapter : IPhysxBody3D
-    {
-        public string Id { get; }
-        public PhysxBodyType Type { get; set; }
-        public float Mass { get => 0f; set { } }
-        public object? UserData { get; set; }
-
-        public StaticHandle Handle => _handle;
-
-        private readonly BepuWorldEngine3D _engine;
-        private StaticHandle _handle;
-        private readonly List<IPhysxCollider> _colliders = new();
-
-        public Static3DAdapter(string id, BepuWorldEngine3D engine, StaticHandle handle)
-        {
-            Id = id;
-            _engine = engine;
-            _handle = handle;
-            Type = PhysxBodyType.Static;
-        }
-
-        public void ReplaceHandle(StaticHandle newHandle) => _handle = newHandle;
-
-        public Vector3 Position
-        {
-            get
-            {
-                var s = _engine.Simulation.Statics.GetStaticReference(_handle);
-                return s.Pose.Position;
-            }
-            set
-            {
-                // Statics aren't meant to move often; if you really want moving terrain,
-                // you should rebuild the static. But we allow pose mutation anyway.
-                var s = _engine.Simulation.Statics.GetStaticReference(_handle);
-                s.Pose.Position = value;
-            }
-        }
-
-        public Quaternion Rotation
-        {
-            get
-            {
-                var s = _engine.Simulation.Statics.GetStaticReference(_handle);
-                return s.Pose.Orientation;
-            }
-            set
-            {
-                var s = _engine.Simulation.Statics.GetStaticReference(_handle);
-                s.Pose.Orientation = value;
-            }
-        }
-
-        public Vector3 LinearVelocity
-        {
-            get => Vector3.Zero;
-            set { /* statics don't move */ }
-        }
-
-        public Vector3 AngularVelocity
-        {
-            get => Vector3.Zero;
-            set { /* statics don't rotate via velocity */ }
-        }
-
-        public void AddCollider(IPhysxCollider collider) => _colliders.Add(collider);
-        public bool RemoveCollider(IPhysxCollider collider) => _colliders.Remove(collider);
-        public ReadOnlySpan<IPhysxCollider> GetColliders() => CollectionsMarshal.AsSpan(_colliders);
-
-        // ✅ required by your interface
-        public bool TryGetColliderById(string colliderId, out IPhysxCollider collider)
-        {
-            if (string.IsNullOrEmpty(colliderId))
-            {
-                collider = default!;
-                return false;
-            }
-
-            foreach (var c in _colliders)
-            {
-                var idProp = c.GetType().GetProperty(
-                    "Id",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.Public |
-                    System.Reflection.BindingFlags.NonPublic);
-
-                if (idProp != null && idProp.GetValue(c) is string id &&
-                    string.Equals(id, colliderId, StringComparison.Ordinal))
-                {
-                    collider = c;
-                    return true;
-                }
-            }
-
-            collider = default!;
-            return false;
-        }
-
-        // ✅ required by your interface
-        public IPhysxCollider? GetColliderAt(int index)
-        {
-            if ((uint)index < (uint)_colliders.Count)
-                return _colliders[index];
-            return null;
-        }
-
-        public void ApplyForce(in PhysxForce force)
-        {
-            // Static bodies ignore forces.
         }
     }
 }

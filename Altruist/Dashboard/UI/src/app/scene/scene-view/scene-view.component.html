@@ -20,7 +20,6 @@
   </header>
 
   <section class="scene-layout">
-    <!-- SIDEBAR -->
     <aside class="scene-sidebar">
       <h2>Worlds</h2>
 
@@ -116,7 +115,6 @@
       }
     </aside>
 
-    <!-- CANVAS -->
     <section class="scene-canvas">
       <div class="canvas-toolbar">
         <span class="canvas-title">3D Scene</span>
@@ -124,11 +122,9 @@
       </div>
 
       <div class="canvas-body">
-        <!-- ✅ Globe ONLY on first load -->
         @if (!selectedWorld || (isInitialLoading && !hasData)) {
           <app-globe-scene></app-globe-scene>
         } @else {
-          <!-- ✅ Never unmount after first load -->
           <app-world-scene
             [world]="selectedWorld"
             [objects]="visibleObjects"
@@ -155,6 +151,25 @@
                 {{ cameraInfo.rotation.pitch | number: "1.0-1" }}° R
                 {{ cameraInfo.rotation.roll | number: "1.0-1" }}°
               </div>
+
+              @if (selectedObject) {
+                <div class="camera-hud-divider"></div>
+
+                <div class="camera-hud-title">Selected</div>
+
+                <div class="camera-hud-sub">
+                  {{ selectedObject.archetype || "Object" }} · #{{
+                    selectedObject.instanceId.slice(0, 6)
+                  }}
+                </div>
+
+                <div>
+                  Pos:
+                  {{ selectedObject.transform.position.x | number: "1.1-2" }},
+                  {{ selectedObject.transform.position.y | number: "1.1-2" }},
+                  {{ selectedObject.transform.position.z | number: "1.1-2" }}
+                </div>
+              }
             </div>
           }
         }

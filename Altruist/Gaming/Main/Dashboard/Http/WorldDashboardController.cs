@@ -13,13 +13,10 @@ using Microsoft.AspNetCore.Mvc;
 
 using Altruist.Gaming.ThreeD;
 using Altruist.Physx.ThreeD;
+using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Dashboard
 {
-    /// <summary>
-    /// Dashboard controller exposing basic world & object info
-    /// for the 3D environment, to be consumed by the Angular UI.
-    /// </summary>
     [ApiController]
     [Route("/dashboard/v1/worlds")]
     [ConditionalOnConfig("altruist:game")]
@@ -38,9 +35,6 @@ namespace Altruist.Dashboard
             _jsonOptions = jsonOptions;
         }
 
-        /// <summary>
-        /// List all loaded worlds.
-        /// </summary>
         [HttpGet]
         public ActionResult<IEnumerable<WorldSummaryDto>> GetWorlds()
         {
@@ -59,14 +53,6 @@ namespace Altruist.Dashboard
             return Ok(worlds);
         }
 
-        // --------------------------------------------------------------------
-        // ✅ NEW: Non-stream snapshot endpoint (single JSON response)
-        // --------------------------------------------------------------------
-
-        /// <summary>
-        /// Return ALL world objects grouped by partition as a single JSON snapshot.
-        /// This is the non-stream version (good for polling / auto-refresh).
-        /// </summary>
         [HttpGet("{worldIndex:int}/objects")]
         public ActionResult<WorldObjectsSnapshotDto> GetWorldObjectsSnapshot(int worldIndex)
         {
@@ -93,7 +79,6 @@ namespace Altruist.Dashboard
                     Objects = objs.Select(BuildWorldObjectDto).ToList()
                 };
 
-                // Optional: skip empty partitions to reduce payload size
                 if (dto.Objects.Count == 0)
                     continue;
 
@@ -111,15 +96,6 @@ namespace Altruist.Dashboard
             return Ok(snapshot);
         }
 
-        // --------------------------------------------------------------------
-        // Existing Stream endpoint (NDJSON)
-        // --------------------------------------------------------------------
-
-        /// <summary>
-        /// Stream all world objects, grouped by world partition, as NDJSON.
-        /// Each line is:
-        ///   { indexX, indexY, indexZ, objects: [ ... ] }
-        /// </summary>
         [HttpGet("{worldIndex:int}/objects/stream")]
         public async Task StreamWorldObjects(int worldIndex, CancellationToken ct)
         {
@@ -135,7 +111,6 @@ namespace Altruist.Dashboard
             Response.StatusCode = StatusCodes.Status200OK;
             Response.ContentType = "application/x-ndjson";
 
-            // Get all partitions that intersect the whole world.
             var partitions = world
                 .FindPartitionsForPosition(0, 0, 0, float.MaxValue)
                 .OfType<WorldPartitionManager3D>()
@@ -155,7 +130,6 @@ namespace Altruist.Dashboard
                     Objects = objs.Select(BuildWorldObjectDto).ToList()
                 };
 
-                // Skip empty partitions if you don't want them on the wire
                 if (dto.Objects.Count == 0)
                     continue;
 
@@ -165,12 +139,17 @@ namespace Altruist.Dashboard
             }
         }
 
-        // --------------------------------------------------------------------
-        // Shared DTO builder
-        // --------------------------------------------------------------------
-
         private static WorldObjectDto BuildWorldObjectDto(IWorldObject3D o)
         {
+            var effectiveTransform = o.Transform;
+
+            if (o.Body is IPhysxBody3D body)
+            {
+                effectiveTransform = effectiveTransform
+                    .WithPosition(Position3D.From(body.Position))
+                    .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
+            }
+
             var wod = new WorldObjectDto
             {
                 InstanceId = o.InstanceId,
@@ -178,26 +157,47 @@ namespace Altruist.Dashboard
                 ZoneId = o.ZoneId,
                 ClientId = o.ClientId,
                 Expired = o.Expired,
-                Transform = TransformDto.FromTransform(o.Transform),
+                Transform = TransformDto.FromTransform(effectiveTransform),
                 Colliders = new List<ColliderDto>()
             };
 
-            foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
+            var runtimeColliders = o.Colliders ?? Enumerable.Empty<IPhysxCollider3D>();
+            bool anyRuntime = false;
+
+            foreach (var c in runtimeColliders)
             {
-                wod.Colliders.Add(ColliderDto.FromCollider(c));
+                anyRuntime = true;
+                wod.Colliders.Add(BuildRuntimeColliderDto(c, effectiveTransform));
+            }
+
+            if (!anyRuntime)
+            {
+                foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
+                {
+                    wod.Colliders.Add(ColliderDto.FromCollider(c));
+                }
             }
 
             return wod;
         }
+
+        private static ColliderDto BuildRuntimeColliderDto(IPhysxCollider3D c, Transform3D fallbackWorldTransform)
+        {
+            var t = c.Transform;
+            if (t.Equals(Transform3D.Identity))
+                t = fallbackWorldTransform;
+
+            return new ColliderDto
+            {
+                Id = c.Id,
+                Shape = c.Shape,
+                Transform = TransformDto.FromTransform(t),
+                IsTrigger = c.IsTrigger,
+                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield)
+            };
+        }
     }
 
-    // ------------------------------------------------------------------------
-    // DTOs
-    // ------------------------------------------------------------------------
-
-    /// <summary>
-    /// Full snapshot response for non-stream endpoint.
-    /// </summary>
     public sealed class WorldObjectsSnapshotDto
     {
         public int WorldIndex { get; set; }
@@ -207,10 +207,6 @@ namespace Altruist.Dashboard
         public List<WorldPartitionObjectsDto> Partitions { get; set; } = new();
     }
 
-    /// <summary>
-    /// DTO for streaming a single partition and its objects.
-    /// One instance of this is written per NDJSON line.
-    /// </summary>
     public sealed class WorldPartitionObjectsDto
     {
         public int IndexX { get; set; }
