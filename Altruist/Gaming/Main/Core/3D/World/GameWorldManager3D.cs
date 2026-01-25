@@ -169,7 +169,7 @@ namespace Altruist.Gaming.ThreeD
                 [
                     PhysxCollider3D.Create(
                         PhysxColliderShape3D.Box3D,
-                        bodyDesc.Transform,
+                        obj.Transform,
                         isTrigger: false)
                 ];
             }
