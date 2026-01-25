@@ -4,11 +4,6 @@ import { HeightfieldDto, WorldObjectDto } from './models/world.model';
 import { WorldInputController } from './world-input.controller';
 
 // Mirror of backend PhysxColliderShape3D enum
-// C#:
-//   Sphere3D = 0,
-//   Box3D = 1,
-//   Capsule3D = 2,
-//   Heightfield3D = 3
 enum PhysxColliderShape3D {
   Sphere3D = 0,
   Box3D = 1,
@@ -25,6 +20,7 @@ export class WorldRenderer {
   scene?: THREE.Scene;
   camera?: THREE.PerspectiveCamera;
   renderer?: THREE.WebGLRenderer;
+
   private collidersGroup: THREE.Group | null = null;
 
   private frameId: number | null = null;
@@ -34,9 +30,12 @@ export class WorldRenderer {
   private followSelection = true;
   private lastSelectedId: string | null = null;
 
+  /** ✅ meshes created for each object instanceId (for accurate zoom/focus) */
+  private meshesByObjectId = new Map<string, THREE.Object3D[]>();
+
   constructor(
     private readonly input: WorldInputController,
-    private readonly onCameraInfo?: (info: CameraInfo) => void
+    private readonly onCameraInfo?: (info: CameraInfo) => void,
   ) {}
 
   init(container: HTMLDivElement): void {
@@ -46,7 +45,7 @@ export class WorldRenderer {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x020617);
 
-    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
+    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100000);
     this.camera.position.set(0, 0, 0);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.4);
@@ -77,6 +76,7 @@ export class WorldRenderer {
     window.addEventListener('resize', this.resizeHandler);
 
     this.input.onUserMove = () => {
+      // user moved the camera manually -> stop auto-follow until they click a selection again
       this.followSelection = false;
     };
 
@@ -93,10 +93,11 @@ export class WorldRenderer {
       this.lastFrameTime = now;
 
       this.input.updateCamera(this.camera!, dt);
+
       if (this.onCameraInfo && this.camera) {
         const euler = new THREE.Euler().setFromQuaternion(
           this.camera.quaternion,
-          'YXZ'
+          'YXZ',
         );
 
         this.onCameraInfo({
@@ -112,8 +113,8 @@ export class WorldRenderer {
           },
         });
       }
-      this.renderer!.render(this.scene!, this.camera!);
 
+      this.renderer!.render(this.scene!, this.camera!);
       this.frameId = requestAnimationFrame(animate);
     };
 
@@ -133,15 +134,7 @@ export class WorldRenderer {
 
     if (this.collidersGroup && this.scene) {
       this.scene.remove(this.collidersGroup);
-      this.collidersGroup.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((m) => m.dispose());
-        } else if (mesh.material) {
-          mesh.material.dispose();
-        }
-      });
+      this.disposeGroupMeshes(this.collidersGroup);
       this.collidersGroup = null;
     }
 
@@ -151,11 +144,24 @@ export class WorldRenderer {
     }
 
     this.input.detach();
+    this.meshesByObjectId.clear();
+  }
+
+  private disposeGroupMeshes(group: THREE.Object3D) {
+    group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if ((mesh as any).geometry) {
+        (mesh as any).geometry.dispose?.();
+      }
+      const mat = (mesh as any).material;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
+      else mat?.dispose?.();
+    });
   }
 
   rebuildColliders(
     objects: WorldObjectDto[],
-    selected?: WorldObjectDto | null
+    selected?: WorldObjectDto | null,
   ): void {
     if (!this.scene) return;
 
@@ -166,35 +172,31 @@ export class WorldRenderer {
       camera.position.y === 0 &&
       camera.position.z === 0;
 
-    // Detect selection changes (by instanceId) so we can
-    // re-enable follow when the user clicks a new object.
+    // Detect selection change
     const selectedId = selected?.instanceId ?? null;
     const selectionChanged = selectedId !== this.lastSelectedId;
     this.lastSelectedId = selectedId;
 
-    // If selection changed in the UI, resume following it.
+    // If selection changed -> resume following it
     if (selectionChanged && selectedId !== null) {
       this.followSelection = true;
     }
 
-    // Clear previous colliders
+    // Remove old group
     if (this.collidersGroup) {
       this.scene.remove(this.collidersGroup);
-      this.collidersGroup.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((m) => m.dispose());
-        } else if (mesh.material) {
-          mesh.material.dispose();
-        }
-      });
+      this.disposeGroupMeshes(this.collidersGroup);
       this.collidersGroup = null;
     }
+
+    // ✅ rebuild maps each refresh
+    this.meshesByObjectId.clear();
 
     const group = new THREE.Group();
 
     for (const obj of objects) {
+      const objMeshes: THREE.Object3D[] = [];
+
       if (obj.colliders && obj.colliders.length > 0) {
         for (const col of obj.colliders) {
           const t = col.transform ?? obj.transform;
@@ -203,10 +205,13 @@ export class WorldRenderer {
             const mesh = this.createHeightfieldMesh(col.heightfield);
             mesh.position.set(t.position.x, t.position.y, t.position.z);
             mesh.scale.set(t.scale.x || 1, t.scale.y || 1, t.scale.z || 1);
+
             group.add(mesh);
+            objMeshes.push(mesh);
           } else {
             const mesh = this.createColliderMesh(col, t);
             group.add(mesh);
+            objMeshes.push(mesh);
           }
         }
       } else {
@@ -225,8 +230,12 @@ export class WorldRenderer {
 
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.set(t.position.x, t.position.y, t.position.z);
+
         group.add(mesh);
+        objMeshes.push(mesh);
       }
+
+      this.meshesByObjectId.set(obj.instanceId, objMeshes);
     }
 
     this.scene.add(group);
@@ -234,14 +243,13 @@ export class WorldRenderer {
 
     if (!camera) return;
 
-    // 1) If we have a selected object AND we're in followSelection mode,
-    //    always zoom camera to it (even on live updates).
+    // ✅ Always focus to selection when clicked (even on refresh)
     if (selected && this.followSelection) {
       this.focusOnObject(selected);
       return;
     }
 
-    // 2) Otherwise, only auto-frame the world once, when camera is still at origin.
+    // only auto-frame once
     if (isCameraAtOrigin) {
       if (objects.length > 0) {
         this.focusOnObject(objects[0]);
@@ -251,13 +259,9 @@ export class WorldRenderer {
     }
   }
 
-  /**
-   * Create a THREE.Mesh for a non-heightfield collider,
-   * using its shape from the backend.
-   */
   private createColliderMesh(
     col: { shape: PhysxColliderShape3D | number; transform?: any },
-    t: any
+    t: any,
   ): THREE.Mesh {
     const shape = col.shape as number;
 
@@ -269,24 +273,20 @@ export class WorldRenderer {
 
     switch (shape) {
       case PhysxColliderShape3D.Sphere3D: {
-        // Size.X stores radius for sphere (per PhysxCollider3D.CreateSphere).
         const radius = Math.max(0.05, sx);
         geom = new THREE.SphereGeometry(radius, 16, 12);
         break;
       }
 
       case PhysxColliderShape3D.Capsule3D: {
-        // Capsule: Size.X = radius, Size.Y = halfLength (world-loader side)
         const radius = Math.max(0.05, sx);
         const halfLength = Math.max(0, sy);
         const cylLength = Math.max(0.05, halfLength * 2);
 
-        // Use CapsuleGeometry if available, otherwise approximate with a cylinder
         const CapsuleGeomCtor = (THREE as any).CapsuleGeometry;
         if (typeof CapsuleGeomCtor === 'function') {
           geom = new CapsuleGeomCtor(radius, cylLength, 8, 16);
         } else {
-          // Fallback: cylinder approximation
           const height = cylLength + 2 * radius;
           geom = new THREE.CylinderGeometry(radius, radius, height, 8, 1, true);
         }
@@ -295,8 +295,6 @@ export class WorldRenderer {
 
       case PhysxColliderShape3D.Box3D:
       default: {
-        // Box collider uses half extents in Size (see BuildColliderTransform),
-        // so multiply by 2 to get full dimensions.
         const fullX = Math.max(0.1, sx * 2);
         const fullY = Math.max(0.1, sy * 2);
         const fullZ = Math.max(0.1, sz * 2);
@@ -312,7 +310,6 @@ export class WorldRenderer {
 
     const mesh = new THREE.Mesh(geom, mat);
     mesh.position.set(t.position.x, t.position.y, t.position.z);
-
     return mesh;
   }
 
@@ -329,7 +326,6 @@ export class WorldRenderer {
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
         const h = hf.heights[x][z];
-
         positions[idx++] = x * cellSizeX;
         positions[idx++] = h;
         positions[idx++] = z * cellSizeZ;
@@ -362,32 +358,59 @@ export class WorldRenderer {
     return new THREE.Mesh(geom, mat);
   }
 
+  /**
+   * ✅ Accurate focus using the meshes created for THIS object.
+   * Avoids terrain-sized offsets and wrong transform sizes.
+   */
   private focusOnObject(obj: WorldObjectDto): void {
     if (!this.camera) return;
 
-    const t = obj.transform;
+    const meshes = this.meshesByObjectId.get(obj.instanceId) ?? [];
 
-    const center = new THREE.Vector3(t.position.x, t.position.y, t.position.z);
-
-    const size = new THREE.Vector3(
-      t.size.x * t.scale.x,
-      t.size.y * t.scale.y,
-      t.size.z * t.scale.z
+    let center = new THREE.Vector3(
+      obj.transform.position.x,
+      obj.transform.position.y,
+      obj.transform.position.z,
     );
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const offset = maxDim * 3 || 50;
+    let maxDim = 1;
+
+    if (meshes.length > 0) {
+      const box = new THREE.Box3();
+
+      for (const m of meshes) {
+        const b = new THREE.Box3().setFromObject(m);
+        box.union(b);
+      }
+
+      const size = box.getSize(new THREE.Vector3());
+      center = box.getCenter(new THREE.Vector3());
+
+      maxDim = Math.max(size.x, size.y, size.z);
+      if (!isFinite(maxDim) || maxDim <= 0) maxDim = 1;
+    }
+
+    // compute a good distance based on FOV (zoom *in*, not far away)
+    const fov = (this.camera.fov * Math.PI) / 180;
+    let distance = maxDim / (2 * Math.tan(fov / 2));
+
+    // some padding so it isn’t inside the object
+    distance = distance * 1.6 + 2;
+
+    // clamp
+    distance = THREE.MathUtils.clamp(distance, 2, 400);
+
+    // nicer viewing direction (diagonal + slightly above)
+    const viewDir = new THREE.Vector3(1, 0.65, 1).normalize();
 
     this.camera.position.set(
-      center.x + offset,
-      center.y + offset * 0.5,
-      center.z + offset
+      center.x + viewDir.x * distance,
+      center.y + viewDir.y * distance,
+      center.z + viewDir.z * distance,
     );
 
     const dir = new THREE.Vector3()
       .subVectors(center, this.camera.position)
       .normalize();
-
-    // Sync camera controller yaw/pitch with this new view direction
     this.input.setOrientationFromDirection(dir);
 
     this.camera.lookAt(center);
@@ -407,9 +430,9 @@ export class WorldRenderer {
     const distance = maxDim / (2 * Math.tan(fov / 2)) + maxDim;
 
     this.camera.position.set(
-      center.x + distance * 0.5,
-      center.y + distance * 0.5,
-      center.z + distance
+      center.x + distance * 0.6,
+      center.y + distance * 0.4,
+      center.z + distance,
     );
 
     const forward = new THREE.Vector3()

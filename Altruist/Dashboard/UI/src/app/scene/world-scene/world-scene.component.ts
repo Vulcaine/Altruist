@@ -5,6 +5,7 @@ import {
   ElementRef,
   EventEmitter,
   Input,
+  NgZone,
   OnChanges,
   OnDestroy,
   Output,
@@ -36,7 +37,7 @@ export class WorldSceneComponent
   /** Emitted whenever a live world state packet is applied. */
   @Output() lastUpdateChanged = new EventEmitter<Date>();
 
-  /** 🔴 Emitted every frame with camera position/rotation. */
+  /** Emitted every frame with camera position/rotation. */
   @Output() cameraChanged = new EventEmitter<CameraInfo>();
 
   @ViewChild('viewport')
@@ -50,11 +51,16 @@ export class WorldSceneComponent
   private readonly inputController = new WorldInputController();
   private readonly renderer: WorldRenderer;
 
-  constructor(private readonly worldService: WorldService) {
-    // Wire renderer callback -> Angular output
-    this.renderer = new WorldRenderer(this.inputController, (info) =>
-      this.cameraChanged.emit(info)
-    );
+  constructor(
+    private readonly worldService: WorldService,
+    private readonly zone: NgZone,
+  ) {
+    // ✅ Ensure RAF callback updates Angular template properly
+    this.renderer = new WorldRenderer(this.inputController, (info) => {
+      this.zone.run(() => {
+        this.cameraChanged.emit(info);
+      });
+    });
   }
 
   ngAfterViewInit(): void {
@@ -78,7 +84,6 @@ export class WorldSceneComponent
     }
 
     if (changes['selectedObject'] && this.selectedObject) {
-      // Rebuild to ensure focus uses latest selection
       this.renderer.rebuildColliders(this.objects, this.selectedObject);
     }
   }
@@ -136,6 +141,7 @@ export class WorldSceneComponent
     } else {
       ts = new Date();
     }
+
     this.lastUpdateChanged.emit(ts);
   }
 
@@ -149,9 +155,11 @@ export class WorldSceneComponent
     if (!this.viewportRef) return;
 
     const container = this.viewportRef.nativeElement;
+
     this.renderer.init(container);
     this.renderer.rebuildColliders(this.objects, this.selectedObject);
     this.renderer.startLoop();
+
     this.hasThreeInitialized = true;
   }
 }

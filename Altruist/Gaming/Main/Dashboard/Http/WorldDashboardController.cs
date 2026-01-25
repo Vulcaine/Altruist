@@ -1,14 +1,18 @@
 /*
 Copyright 2025 Aron Gere
-Licensed under the Apache License, Version 2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+You may not use this file except in compliance with the License.
+You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 */
 
+using System.Text.Json;
+
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 using Altruist.Gaming.ThreeD;
 using Altruist.Physx.ThreeD;
-using System.Text.Json;
-using Microsoft.AspNetCore.Http;
 
 namespace Altruist.Dashboard
 {
@@ -27,8 +31,8 @@ namespace Altruist.Dashboard
         private readonly JsonSerializerOptions _jsonOptions;
 
         public WorldDashboardController(
-             IGameWorldOrganizer3D worldOrganizer,
-             JsonSerializerOptions jsonOptions)
+            IGameWorldOrganizer3D worldOrganizer,
+            JsonSerializerOptions jsonOptions)
         {
             _worldOrganizer = worldOrganizer;
             _jsonOptions = jsonOptions;
@@ -55,6 +59,62 @@ namespace Altruist.Dashboard
             return Ok(worlds);
         }
 
+        // --------------------------------------------------------------------
+        // ✅ NEW: Non-stream snapshot endpoint (single JSON response)
+        // --------------------------------------------------------------------
+
+        /// <summary>
+        /// Return ALL world objects grouped by partition as a single JSON snapshot.
+        /// This is the non-stream version (good for polling / auto-refresh).
+        /// </summary>
+        [HttpGet("{worldIndex:int}/objects")]
+        public ActionResult<WorldObjectsSnapshotDto> GetWorldObjectsSnapshot(int worldIndex)
+        {
+            var world = _worldOrganizer.GetWorld(worldIndex);
+            if (world is null)
+                return NotFound(new { message = $"World {worldIndex} not found." });
+
+            var partitions = world
+                .FindPartitionsForPosition(0, 0, 0, float.MaxValue)
+                .OfType<WorldPartitionManager3D>()
+                .ToList();
+
+            var partitionDtos = new List<WorldPartitionObjectsDto>();
+
+            foreach (var partition in partitions)
+            {
+                var objs = partition.GetAllObjects<IWorldObject3D>();
+
+                var dto = new WorldPartitionObjectsDto
+                {
+                    IndexX = partition.Index.X,
+                    IndexY = partition.Index.Y,
+                    IndexZ = partition.Index.Z,
+                    Objects = objs.Select(BuildWorldObjectDto).ToList()
+                };
+
+                // Optional: skip empty partitions to reduce payload size
+                if (dto.Objects.Count == 0)
+                    continue;
+
+                partitionDtos.Add(dto);
+            }
+
+            var snapshot = new WorldObjectsSnapshotDto
+            {
+                WorldIndex = world.Index.Index,
+                WorldName = world.Index.Name ?? string.Empty,
+                GeneratedAtUtc = DateTime.UtcNow,
+                Partitions = partitionDtos
+            };
+
+            return Ok(snapshot);
+        }
+
+        // --------------------------------------------------------------------
+        // Existing Stream endpoint (NDJSON)
+        // --------------------------------------------------------------------
+
         /// <summary>
         /// Stream all world objects, grouped by world partition, as NDJSON.
         /// Each line is:
@@ -76,7 +136,6 @@ namespace Altruist.Dashboard
             Response.ContentType = "application/x-ndjson";
 
             // Get all partitions that intersect the whole world.
-            // (This matches how PartitionCount is computed above.)
             var partitions = world
                 .FindPartitionsForPosition(0, 0, 0, float.MaxValue)
                 .OfType<WorldPartitionManager3D>()
@@ -86,7 +145,6 @@ namespace Altruist.Dashboard
             {
                 ct.ThrowIfCancellationRequested();
 
-                // Get all objects in this partition (any archetype)
                 var objs = partition.GetAllObjects<IWorldObject3D>();
 
                 var dto = new WorldPartitionObjectsDto
@@ -94,30 +152,10 @@ namespace Altruist.Dashboard
                     IndexX = partition.Index.X,
                     IndexY = partition.Index.Y,
                     IndexZ = partition.Index.Z,
-                    Objects = objs.Select(o =>
-                    {
-                        var wod = new WorldObjectDto
-                        {
-                            InstanceId = o.InstanceId,
-                            Archetype = o.ObjectArchetype ?? string.Empty,
-                            ZoneId = o.ZoneId,
-                            ClientId = o.ClientId,
-                            Expired = o.Expired,
-                            Transform = TransformDto.FromTransform(o.Transform),
-                            Colliders = new List<ColliderDto>()
-                        };
-
-                        foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
-                        {
-                            wod.Colliders.Add(ColliderDto.FromCollider(c));
-                        }
-
-                        return wod;
-                    }).ToList()
+                    Objects = objs.Select(BuildWorldObjectDto).ToList()
                 };
 
                 // Skip empty partitions if you don't want them on the wire
-                // (comment this out if you *do* want empty partitions)
                 if (dto.Objects.Count == 0)
                     continue;
 
@@ -126,6 +164,47 @@ namespace Altruist.Dashboard
                 await Response.Body.FlushAsync(ct);
             }
         }
+
+        // --------------------------------------------------------------------
+        // Shared DTO builder
+        // --------------------------------------------------------------------
+
+        private static WorldObjectDto BuildWorldObjectDto(IWorldObject3D o)
+        {
+            var wod = new WorldObjectDto
+            {
+                InstanceId = o.InstanceId,
+                Archetype = o.ObjectArchetype ?? string.Empty,
+                ZoneId = o.ZoneId,
+                ClientId = o.ClientId,
+                Expired = o.Expired,
+                Transform = TransformDto.FromTransform(o.Transform),
+                Colliders = new List<ColliderDto>()
+            };
+
+            foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
+            {
+                wod.Colliders.Add(ColliderDto.FromCollider(c));
+            }
+
+            return wod;
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // DTOs
+    // ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Full snapshot response for non-stream endpoint.
+    /// </summary>
+    public sealed class WorldObjectsSnapshotDto
+    {
+        public int WorldIndex { get; set; }
+        public string WorldName { get; set; } = string.Empty;
+        public DateTime GeneratedAtUtc { get; set; }
+
+        public List<WorldPartitionObjectsDto> Partitions { get; set; } = new();
     }
 
     /// <summary>

@@ -28,7 +28,7 @@ namespace Altruist.Migrations
     }
 
     [Service(typeof(IVaultSchemaMigrator))]
-    [ConditionalOnConfig("altruist:persistence")]
+    [ConditionalOnConfig("altruist:persistence:database")]
     public sealed class VaultSchemaMigrator : IVaultSchemaMigrator
     {
         private readonly ISchemaInspector _inspector;

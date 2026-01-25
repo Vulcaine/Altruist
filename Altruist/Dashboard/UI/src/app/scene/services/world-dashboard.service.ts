@@ -6,6 +6,10 @@ import {
   WorldSummary,
 } from '../world-scene/models/world.model';
 
+export interface WorldSnapshotDto {
+  partitions: WorldPartitionDto[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class WorldDashboardService {
   private readonly http = inject(HttpClient);
@@ -15,7 +19,29 @@ export class WorldDashboardService {
     return this.http.get<WorldSummary[]>(this.baseUrl);
   }
 
-  /** NDJSON stream of WorldPartitionDto */
+  /**
+   * ✅ Snapshot (non-stream) world objects.
+   * Used for seamless refresh + auto-update polling.
+   *
+   * Backend endpoint expected:
+   *   GET /dashboard/v1/worlds/{worldIndex}/objects
+   *
+   * Response:
+   *   { partitions: WorldPartitionDto[] }
+   */
+  getWorldObjectsSnapshot(worldIndex: number): Observable<WorldSnapshotDto> {
+    return this.http.get<WorldSnapshotDto>(
+      `${this.baseUrl}/${worldIndex}/objects`,
+    );
+  }
+
+  /**
+   * NDJSON stream of partitions.
+   * Useful for large worlds / incremental load.
+   *
+   * Backend endpoint:
+   *   GET /dashboard/v1/worlds/{worldIndex}/objects/stream
+   */
   streamWorldObjects(worldIndex: number): Observable<WorldPartitionDto> {
     return new Observable<WorldPartitionDto>((observer) => {
       const xhr = new XMLHttpRequest();
