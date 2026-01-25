@@ -4,15 +4,10 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using System.Numerics;
-using System.Reflection;
-
 using Altruist.Physx.Contracts;
 
 using BepuPhysics;
 using BepuPhysics.Collidables;
-
-using BepuUtilities.Memory;
 
 namespace Altruist.Physx.ThreeD
 {
@@ -20,35 +15,6 @@ namespace Altruist.Physx.ThreeD
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     public sealed class BepuPhysxBodyApiProvider3D : IPhysxBodyApiProvider3D
     {
-        private readonly Dictionary<BodyHandle, TypedIndex> _originalShapeByBody = new();
-        private readonly Dictionary<StaticHandle, TypedIndex> _originalShapeByStatic = new();
-
-        private readonly struct Attachment
-        {
-            public readonly bool IsStatic;
-            public readonly BodyHandle Body;
-            public readonly StaticHandle Static;
-            public readonly TypedIndex Shape;
-
-            public Attachment(BodyHandle body, TypedIndex shape)
-            {
-                IsStatic = false;
-                Body = body;
-                Static = default;
-                Shape = shape;
-            }
-
-            public Attachment(StaticHandle stat, TypedIndex shape)
-            {
-                IsStatic = true;
-                Body = default;
-                Static = stat;
-                Shape = shape;
-            }
-        }
-
-        private readonly Dictionary<IPhysxCollider3D, Attachment> _attachments = new();
-
         public BepuPhysxBodyApiProvider3D() { }
 
         public IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, in PhysxBody3DDesc desc)
@@ -75,7 +41,12 @@ namespace Altruist.Physx.ThreeD
                     );
 
                     var staticHandle = engine3D.Simulation.Statics.Add(staticDesc);
-                    return new BepuWorldEngine3D.StaticBody3DAdapter(desc.Id, engine3D, staticHandle);
+
+                    return new BepuWorldEngine3D.StaticBody3DAdapter(
+                        desc.Id,
+                        engine3D,
+                        staticHandle
+                    );
                 }
 
                 var pose = new RigidPose(
@@ -117,47 +88,13 @@ namespace Altruist.Physx.ThreeD
 
         public void AddCollider(IPhysxWorldEngine3D engine, IPhysxBody3D body, IPhysxCollider3D collider)
         {
-            if (_attachments.ContainsKey(collider))
-                throw new InvalidOperationException("This collider is already attached.");
-
-            if (engine is not BepuWorldEngine3D engine3D)
+            if (engine is not BepuWorldEngine3D)
                 throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
 
-            lock (engine3D._sync)
-            {
-                if (body is BepuWorldEngine3D.StaticBody3DAdapter staticOwner)
-                {
-                    var statics = engine3D.Simulation.Statics;
-                    var staticRef = statics.GetStaticReference(staticOwner.Handle);
+            if (body is not BepuWorldEngine3D.Body3DAdapterBase adapter)
+                throw new InvalidOperationException("Body must be a BEPU-backed body adapter.");
 
-                    if (!_originalShapeByStatic.ContainsKey(staticOwner.Handle))
-                        _originalShapeByStatic[staticOwner.Handle] = staticRef.Shape;
-
-                    var newShape = CreateBepuShapeIndexFromCollider(engine3D, collider);
-                    var newHandle = RebuildStatic(engine3D, staticOwner.Handle, staticRef.Pose, newShape);
-
-                    SetStaticHandle(staticOwner, newHandle);
-
-                    _attachments[collider] = new Attachment(newHandle, newShape);
-                    staticOwner.AddCollider(collider);
-                    return;
-                }
-
-                if (body is not BepuWorldEngine3D.DynamicBody3DAdapter owner)
-                    throw new InvalidOperationException("Body must be a BEPU DynamicBody3DAdapter or StaticBody3DAdapter.");
-
-                var bodies = engine3D.Simulation.Bodies;
-                var bodyRef = bodies.GetBodyReference(owner.Handle);
-
-                if (!_originalShapeByBody.ContainsKey(owner.Handle))
-                    _originalShapeByBody[owner.Handle] = bodyRef.Collidable.Shape;
-
-                var newShapeIndex = CreateBepuShapeIndexFromCollider(engine3D, collider);
-                bodyRef.Collidable.Shape = newShapeIndex;
-
-                _attachments[collider] = new Attachment(owner.Handle, newShapeIndex);
-                owner.AddCollider(collider);
-            }
+            adapter.AddCollider(collider);
         }
 
         public void RemoveCollider(IPhysxWorldEngine3D engine, IPhysxCollider3D collider)
@@ -165,146 +102,17 @@ namespace Altruist.Physx.ThreeD
             if (engine is not BepuWorldEngine3D engine3D)
                 throw new InvalidOperationException("Engine must be a BEPU-backed engine.");
 
-            lock (engine3D._sync)
+            foreach (var b in engine3D.Bodies)
             {
-                if (!_attachments.TryGetValue(collider, out var rec))
-                    return;
+                if (b is not BepuWorldEngine3D.Body3DAdapterBase adapter)
+                    continue;
 
-                if (rec.IsStatic)
+                if (adapter.TryGetColliderById(collider.Id, out var found) && ReferenceEquals(found, collider))
                 {
-                    var statics = engine3D.Simulation.Statics;
-                    var staticRef = statics.GetStaticReference(rec.Static);
-
-                    if (_originalShapeByStatic.TryGetValue(rec.Static, out var original))
-                    {
-                        var newHandle = RebuildStatic(engine3D, rec.Static, staticRef.Pose, original);
-
-                        _originalShapeByStatic.Remove(rec.Static);
-                        _originalShapeByStatic[newHandle] = original;
-
-                        _attachments.Remove(collider);
-                        return;
-                    }
-
-                    _attachments.Remove(collider);
+                    adapter.RemoveCollider(collider);
                     return;
                 }
-
-                var bodies = engine3D.Simulation.Bodies;
-                var bodyRef = bodies.GetBodyReference(rec.Body);
-
-                if (_originalShapeByBody.TryGetValue(rec.Body, out var originalBodyShape))
-                    bodyRef.Collidable.Shape = originalBodyShape;
-
-                _attachments.Remove(collider);
             }
-        }
-
-        private static StaticHandle RebuildStatic(
-            BepuWorldEngine3D engine,
-            StaticHandle oldHandle,
-            in RigidPose pose,
-            TypedIndex newShape)
-        {
-            engine.Simulation.Statics.Remove(oldHandle);
-            var newDesc = new StaticDescription(pose.Position, pose.Orientation, newShape);
-            return engine.Simulation.Statics.Add(newDesc);
-        }
-
-        private static void SetStaticHandle(BepuWorldEngine3D.StaticBody3DAdapter adapter, StaticHandle newHandle)
-        {
-            var t = adapter.GetType();
-            var field = t.GetField("_handle", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (field == null)
-                throw new InvalidOperationException("StaticBody3DAdapter does not expose a writable handle field.");
-            field.SetValue(adapter, newHandle);
-        }
-
-        private TypedIndex CreateBepuShapeIndexFromCollider(BepuWorldEngine3D engine, IPhysxCollider3D c)
-        {
-            var t = c.Transform;
-
-            switch (c.Shape)
-            {
-                case PhysxColliderShape3D.Sphere3D:
-                    {
-                        var radius = t.Size.X;
-                        return engine.Simulation.Shapes.Add(new Sphere(radius));
-                    }
-
-                case PhysxColliderShape3D.Box3D:
-                    {
-                        var fullX = t.Size.X * 2f;
-                        var fullY = t.Size.Y * 2f;
-                        var fullZ = t.Size.Z * 2f;
-                        return engine.Simulation.Shapes.Add(new Box(fullX, fullY, fullZ));
-                    }
-
-                case PhysxColliderShape3D.Capsule3D:
-                    {
-                        var radius = t.Size.X;
-                        var length = t.Size.Y * 2f;
-                        return engine.Simulation.Shapes.Add(new Capsule(radius, length));
-                    }
-
-                case PhysxColliderShape3D.Heightfield3D:
-                    {
-                        if (c.Heightfield is { } hf)
-                        {
-                            var mesh = BuildMeshFromHeightfield(hf, engine.Simulation.BufferPool);
-                            return engine.Simulation.Shapes.Add(mesh);
-                        }
-
-                        throw new InvalidOperationException("Heightmap collider has no HeightfieldData.");
-                    }
-
-                default:
-                    throw new NotSupportedException($"Unsupported collider shape: {c.Shape}");
-            }
-        }
-
-        private static Mesh BuildMeshFromHeightfield(HeightfieldData hf, BufferPool pool)
-        {
-            int width = hf.Width;
-            int length = hf.Height;
-
-            float cellSizeX = hf.CellSizeX;
-            float cellSizeZ = hf.CellSizeZ;
-
-            int quadCount = (width - 1) * (length - 1);
-            int triangleCount = quadCount * 2;
-
-            pool.Take(triangleCount, out Buffer<Triangle> triangles);
-
-            int triIndex = 0;
-
-            for (int z = 0; z < length - 1; z++)
-            {
-                for (int x = 0; x < width - 1; x++)
-                {
-                    float h00 = hf.Heights[x, z];
-                    float h10 = hf.Heights[x + 1, z];
-                    float h01 = hf.Heights[x, z + 1];
-                    float h11 = hf.Heights[x + 1, z + 1];
-
-                    var v00 = new Vector3(x * cellSizeX, h00, z * cellSizeZ);
-                    var v10 = new Vector3((x + 1) * cellSizeX, h10, z * cellSizeZ);
-                    var v01 = new Vector3(x * cellSizeX, h01, (z + 1) * cellSizeZ);
-                    var v11 = new Vector3((x + 1) * cellSizeX, h11, (z + 1) * cellSizeZ);
-
-                    ref var t0 = ref triangles[triIndex++];
-                    t0.A = v00;
-                    t0.B = v01;
-                    t0.C = v10;
-
-                    ref var t1 = ref triangles[triIndex++];
-                    t1.A = v10;
-                    t1.B = v01;
-                    t1.C = v11;
-                }
-            }
-
-            return new Mesh(triangles, new Vector3(1f, 1f, 1f), pool);
         }
     }
 }
