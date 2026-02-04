@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD;
@@ -112,6 +113,8 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     public float SkinWidth { get; set; } = 0.03f;
     public float MaxSlopeAngleDeg { get; set; } = 60f;
     public float GroundSnapSpeed { get; set; } = 2f; // tiny downward velocity when grounded
+
+    public PhysxLayer GroundMask { get; set; } = PhysxLayer.World;
 
     // Rotation
     public bool FaceMoveDirection { get; set; } = true;
@@ -309,19 +312,29 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         var origin = body.Position + new Vector3(0f, -(bottomOffset - SkinWidth), 0f);
         var target = origin + new Vector3(0f, -(GroundProbeDistance + SkinWidth), 0f);
 
-        // Avoid LINQ; take first hit if any.
-        var hits = world.PhysxWorld.Engine.RayCast(new PhysxRay3D(origin, target), maxHits: 1);
+        var hits = world.PhysxWorld.Engine.RayCast(
+            new PhysxRay3D(origin, target),
+            maxHits: 4,
+            layerMask: (uint)GroundMask
+        );
 
         bool gotHit = false;
-        PhysxRaycastHit3D hit = default;
+        PhysxRaycastHit3D best = default;
+
         foreach (var h in hits)
         {
-            hit = h;
+            if (h.Body == null)
+                continue;
+
+            if (ReferenceEquals(h.Body, body))
+                continue;
+
+            best = h;
             gotHit = true;
             break;
         }
 
-        if (!gotHit || hit.Body == null)
+        if (!gotHit)
         {
             grounded = false;
             normal = Vector3.UnitY;
@@ -332,8 +345,8 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         float maxSlopeRad = MathF.Abs(MaxSlopeAngleDeg) * (MathF.PI / 180f);
         float minNy = MathF.Cos(maxSlopeRad);
 
-        grounded = hit.Normal.Y >= minNy;
-        normal = hit.Normal;
+        grounded = best.Normal.Y >= minNy;
+        normal = best.Normal;
     }
 
     private static Vector3 CalculateForward(float yaw)

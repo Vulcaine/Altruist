@@ -15,7 +15,7 @@ namespace Altruist.Physx.ThreeD
 
         void AddBody(IPhysxBody3D body);
 
-        IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1);
+        IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1, uint layerMask = 0xFFFFFFFFu);
     }
 
     public interface IPhysxWorldEngineFactory3D

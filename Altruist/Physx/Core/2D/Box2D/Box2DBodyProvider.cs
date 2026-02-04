@@ -16,7 +16,7 @@ namespace Altruist.Physx.TwoD
         public string Id { get; }
         public PhysxBodyType Type { get; set; }
         public float Mass { get => (float)_body.Mass; set { /* Box2D mass from fixtures; ignore set */ } }
-        public object? UserData { get => _body.UserData; set => _body.UserData = value; }
+        public PhysxTag? PhysxTag { get; set; }
 
         public Vector2 Position
         {

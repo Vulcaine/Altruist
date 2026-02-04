@@ -15,7 +15,8 @@ public sealed class Terrain : WorldObject3D
         BodyDescriptor = PhysxBody3D.Create(
             PhysxBodyType.Static,
             mass: 0f,
-            transform: transform);
+            transform: transform,
+            physxTag: new PhysxTag((uint)PhysxLayer.Terrain));
 
         ColliderDescriptors =
         [

@@ -29,7 +29,7 @@ public sealed class HumanoidCapsuleBodyProfile : IBodyProfile3D
     public PhysxBody3DDesc CreateBody(Transform3D transform)
     {
         var sized = transform.WithSize(Size3D.Of(Radius, HalfLength, 0f));
-        return PhysxBody3D.Create(PhysxBodyType.Dynamic, Mass, sized, isKinematic: IsKinematic);
+        return PhysxBody3D.Create(PhysxBodyType.Dynamic, Mass, sized, isKinematic: IsKinematic, physxTag: new PhysxTag((uint)PhysxLayer.Character));
     }
 
     public IEnumerable<PhysxCollider3DDesc> CreateColliders(Transform3D transform)

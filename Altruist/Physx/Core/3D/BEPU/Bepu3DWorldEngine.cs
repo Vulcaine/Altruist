@@ -186,7 +186,7 @@ namespace Altruist.Physx.ThreeD
             });
         }
 
-        public IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1)
+        public IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1, uint layerMask = 0xFFFFFFFFu)
         {
             lock (_sync)
             {
@@ -194,49 +194,126 @@ namespace Altruist.Physx.ThreeD
 
                 var d = ray.To - ray.From;
                 var maxT = d.Length();
-                if (maxT <= 0f)
+                if (maxT <= 0f || maxHits <= 0)
                     return Array.Empty<PhysxRaycastHit3D>();
 
                 d /= maxT;
 
-                var collector = new ClosestHitCollector();
+                // Collect ALL raw hits first (then filter by tags)
+                var collector = new AllHitsCollector();
                 _simulation.RayCast(ray.From, d, maxT, ref collector);
 
-                if (!collector.Hit)
+                if (collector.Count == 0)
                     return Array.Empty<PhysxRaycastHit3D>();
 
-                IPhysxBody3D? found = null;
+                collector.SortByT();
 
-                if (collector.IsStatic)
+                var results = new List<PhysxRaycastHit3D>(Math.Min(maxHits, collector.Count));
+
+                for (int i = 0; i < collector.Count && results.Count < maxHits; i++)
                 {
-                    foreach (var b in _bodies.Values)
+                    // List<T> indexer is NOT ref-returning => no "ref readonly" here.
+                    var h = collector.Hits[i];
+
+                    // Resolve collidable -> body adapter
+                    IPhysxBody3D? found = null;
+
+                    if (h.IsStatic)
                     {
-                        if (b is StaticBody3DAdapter stat && stat.Handle.Equals(collector.Static))
+                        foreach (var b in _bodies.Values)
                         {
-                            found = stat;
-                            break;
+                            if (b is StaticBody3DAdapter stat && stat.Handle.Equals(h.Static))
+                            {
+                                found = stat;
+                                break;
+                            }
                         }
                     }
+                    else
+                    {
+                        foreach (var b in _bodies.Values)
+                        {
+                            if (b is DynamicBody3DAdapter dyn && dyn.Handle.Equals(h.Body))
+                            {
+                                found = dyn;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (found is not Body3DAdapterBase adapter)
+                        continue;
+
+                    uint bodyMask = adapter.PhysxTag?.Layer ?? (uint)PhysxLayer.All;
+
+                    if ((bodyMask & layerMask) == 0u)
+                        continue;
+
+                    results.Add(new PhysxRaycastHit3D(found, h.Point, h.Normal, h.T));
+                }
+
+                return results.Count == 0 ? Array.Empty<PhysxRaycastHit3D>() : results;
+            }
+        }
+
+        private struct AllHitsCollector : IRayHitHandler
+        {
+            public struct Hit
+            {
+                public float T;
+                public Vector3 Point;
+                public Vector3 Normal;
+
+                public bool IsStatic;
+                public BodyHandle Body;
+                public StaticHandle Static;
+            }
+
+            public List<Hit> Hits;
+            public int Count => Hits?.Count ?? 0;
+
+            public bool AllowTest(CollidableReference collidable) => true;
+            public bool AllowTest(CollidableReference collidable, int childIndex) => true;
+
+            public void OnRayHit(in RayData ray, ref float maximumT, float t, in Vector3 normal, CollidableReference collidable, int childIndex)
+            {
+                // Collect everything <= maximumT
+                Hits ??= new List<Hit>(8);
+
+                var point = ray.Origin + ray.Direction * t;
+
+                if (collidable.Mobility == CollidableMobility.Static)
+                {
+                    Hits.Add(new Hit
+                    {
+                        T = t,
+                        Point = point,
+                        Normal = normal,
+                        IsStatic = true,
+                        Static = collidable.StaticHandle,
+                        Body = default
+                    });
                 }
                 else
                 {
-                    foreach (var b in _bodies.Values)
+                    Hits.Add(new Hit
                     {
-                        if (b is DynamicBody3DAdapter dyn && dyn.Handle.Equals(collector.Body))
-                        {
-                            found = dyn;
-                            break;
-                        }
-                    }
+                        T = t,
+                        Point = point,
+                        Normal = normal,
+                        IsStatic = false,
+                        Body = collidable.BodyHandle,
+                        Static = default
+                    });
                 }
+            }
 
-                if (found == null)
-                    return Array.Empty<PhysxRaycastHit3D>();
+            public void SortByT()
+            {
+                if (Hits is null || Hits.Count <= 1)
+                    return;
 
-                return new[]
-                {
-                    new PhysxRaycastHit3D(found, collector.Point, collector.Normal, collector.T)
-                };
+                Hits.Sort(static (a, b) => a.T.CompareTo(b.T));
             }
         }
 
@@ -305,7 +382,7 @@ namespace Altruist.Physx.ThreeD
             public string Id { get; }
             public abstract PhysxBodyType Type { get; set; }
             public abstract float Mass { get; set; }
-            public object? UserData { get; set; }
+            public PhysxTag? PhysxTag { get; set; }
 
             protected readonly BepuWorldEngine3D Engine;
 

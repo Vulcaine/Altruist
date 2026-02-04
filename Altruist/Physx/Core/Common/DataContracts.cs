@@ -43,6 +43,26 @@ namespace Altruist.Physx.Contracts
         public static PhysxForce AngularVelocity3D(Vector3 w) => new(Kind.SetAngularVelocity3D, w);
     }
 
+    [Flags]
+    public enum PhysxLayer : uint
+    {
+        None = 0,
+        Terrain = 1u << 0,
+        StaticWorld = 1u << 1,
+        Dynamic = 1u << 2,
+        Character = 1u << 3,
+        Trigger = 1u << 4,
+
+        World = Terrain | StaticWorld,
+        All = 0xFFFFFFFFu
+    }
+
+    public readonly struct PhysxTag
+    {
+        public uint Layer { get; }
+        public PhysxTag(uint layer) => Layer = layer;
+    }
+
     public interface IPhysxBody
     {
         string Id { get; }
@@ -53,7 +73,7 @@ namespace Altruist.Physx.Contracts
         bool RemoveCollider(IPhysxCollider collider);
         ReadOnlySpan<IPhysxCollider> GetColliders();
         void ApplyForce(in PhysxForce force);
-        object? UserData { get; set; }
+        PhysxTag? PhysxTag { get; set; }
 
         bool TryGetColliderById(string colliderId, out IPhysxCollider collider);
 

@@ -20,6 +20,8 @@ namespace Altruist.Physx.ThreeD
         public PhysxBodyType Type { get; }
         public float Mass { get; }
 
+        public PhysxTag? PhysxTag { get; }
+
         /// <summary>
         /// If true, body should be created as kinematic (driven by user code, not forces).
         /// In BEPU this typically means inverse mass/inertia are zero and the game sets pose/velocity.
@@ -28,13 +30,14 @@ namespace Altruist.Physx.ThreeD
 
         public Transform3D Transform { get; }
 
-        public PhysxBody3DDesc(string id, PhysxBodyType type, float mass, bool isKinematic, Transform3D transform)
+        public PhysxBody3DDesc(string id, PhysxBodyType type, float mass, bool isKinematic, Transform3D transform, PhysxTag? physxTag = null)
         {
             Id = id;
             Type = type;
             Mass = mass;
             IsKinematic = isKinematic;
             Transform = transform;
+            PhysxTag = physxTag;
         }
     }
 
@@ -44,14 +47,14 @@ namespace Altruist.Physx.ThreeD
     /// </summary>
     public static class PhysxBody3D
     {
-        public static PhysxBody3DDesc Create(float mass, Size3D size, Position3D position, bool isKinematic = false)
+        public static PhysxBody3DDesc Create(float mass, Size3D size, Position3D position, bool isKinematic = false, PhysxTag? physxTag = null)
         {
             var type = mass > 0 ? PhysxBodyType.Dynamic : PhysxBodyType.Static;
             var transform = new Transform3D(position, size, Scale3D.One, Rotation3D.Identity);
-            return Create(type, mass, transform, isKinematic);
+            return Create(type, mass, transform, isKinematic, physxTag);
         }
 
-        public static PhysxBody3DDesc Create(PhysxBodyType type, float mass, Transform3D transform, bool isKinematic = false)
+        public static PhysxBody3DDesc Create(PhysxBodyType type, float mass, Transform3D transform, bool isKinematic = false, PhysxTag? physxTag = null)
         {
             // If explicitly kinematic, treat as kinematic regardless of mass.
             // (Engine/provider can still validate.)
@@ -59,7 +62,7 @@ namespace Altruist.Physx.ThreeD
                 type = PhysxBodyType.Kinematic;
 
             var id = Guid.NewGuid().ToString("N");
-            return new PhysxBody3DDesc(id, type, mass, isKinematic, transform);
+            return new PhysxBody3DDesc(id, type, mass, isKinematic, transform, physxTag: physxTag);
         }
     }
 

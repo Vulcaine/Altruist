@@ -186,6 +186,7 @@ namespace Altruist.Gaming.ThreeD
 
             obj.BodyDescriptor = bodyDesc;
             obj.Body = body;
+            obj.Body.PhysxTag = bodyDesc.PhysxTag ?? new PhysxTag((uint)PhysxLayer.All);
             obj.ColliderDescriptors = colliderDescs;
             obj.Colliders = createdColliders;
 
