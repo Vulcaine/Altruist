@@ -56,8 +56,8 @@ namespace Altruist.Physx.ThreeD
         public IPhysxBody3D Body { get; }
         public Vector3 Point { get; }
         public Vector3 Normal { get; }
-        public float Fraction { get; }
-        public PhysxRaycastHit3D(IPhysxBody3D body, Vector3 point, Vector3 normal, float fraction) { Body = body; Point = point; Normal = normal; Fraction = fraction; }
+        public float T { get; }
+        public PhysxRaycastHit3D(IPhysxBody3D body, Vector3 point, Vector3 normal, float t) { Body = body; Point = point; Normal = normal; T = t; }
     }
 
     public readonly struct PhysxRay3D

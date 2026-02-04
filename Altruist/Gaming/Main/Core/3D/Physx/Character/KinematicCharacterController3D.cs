@@ -115,6 +115,20 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     public float GroundSnapSpeed { get; set; } = 2f; // tiny downward velocity when grounded
 
     public PhysxLayer GroundMask { get; set; } = PhysxLayer.World;
+    // Collision / sweeps
+    public bool UseCapsuleSweeps { get; set; } = true;
+    public int MaxSlideIterations { get; set; } = 3;
+
+    // For movement sweeps, you typically want to collide with World + Dynamic, but not Character/Trigger.
+    public PhysxLayer CollisionMask { get; set; } = PhysxLayer.World | PhysxLayer.Dynamic;
+
+    // Depenetration
+    public bool UseDepenetration { get; set; } = true;
+    public int DepenetrationIterations { get; set; } = 3;
+
+    // How far we push out per depenetration step when overlap is detected.
+    // Typically <= SkinWidth.
+    public float DepenetrationPushDistance { get; set; } = 0.03f;
 
     // Rotation
     public bool FaceMoveDirection { get; set; } = true;
@@ -178,6 +192,16 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         var body = _body;
         if (body == null)
             return;
+
+        // 0) Depenetrate first (handles spawn/teleport/streaming into geometry)
+        if (UseDepenetration && UseCapsuleSweeps)
+        {
+            if (TryDepenetrate(body, world, out var depenNormal))
+            {
+                // If we pushed out of something, kill velocity INTO that normal
+                _velocity -= depenNormal * MathF.Min(0f, Vector3.Dot(_velocity, depenNormal));
+            }
+        }
 
         // 1) Ground probe (start-of-step)
         ProbeGround(body, world, out _isGrounded, out _groundNormal);
@@ -277,20 +301,33 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
 
         Vector3 newVH;
         if (targetVH.LengthSquared() < 1e-10f)
-        {
-            // no input => decelerate to 0
             newVH = MoveToward(vH, Vector3.Zero, decel * dt);
-        }
         else
-        {
-            // input => accelerate toward target
             newVH = MoveToward(vH, targetVH, accel * dt);
-        }
 
         ctx.Velocity = new Vector3(newVH.X, ctx.Velocity.Y, newVH.Z);
 
-        // 7) Apply kinematic motion (baseline: no sweep yet)
-        body.Position += ctx.Velocity * dt;
+        // 7) Apply kinematic motion (sweep + slide)
+        var displacement = ctx.Velocity * dt;
+
+        if (UseCapsuleSweeps && displacement.LengthSquared() > 1e-12f)
+        {
+            body.Position = MoveWithSweepsAndSlide(body, world, displacement, ref ctx.Velocity);
+        }
+        else
+        {
+            body.Position += displacement;
+        }
+
+        // Optional: post-move depenetration (handles numerical issues & dynamic pushes)
+        if (UseDepenetration && UseCapsuleSweeps)
+        {
+            if (TryDepenetrate(body, world, out var depenNormal))
+            {
+                // Remove velocity into the push direction (prevents re-penetration jitter)
+                ctx.Velocity -= depenNormal * MathF.Min(0f, Vector3.Dot(ctx.Velocity, depenNormal));
+            }
+        }
 
         // For replication / gameplay reads
         body.LinearVelocity = ctx.Velocity;
@@ -299,24 +336,233 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         // 8) Store state
         _velocity = ctx.Velocity;
 
-        // Optional: refresh grounded after move
+        // Refresh grounded after move
         ProbeGround(body, world, out _isGrounded, out _groundNormal);
+    }
+
+    private Vector3 MoveWithSweepsAndSlide(IPhysxBody3D body, IGameWorldManager3D world, Vector3 displacement, ref Vector3 velocity)
+    {
+        float halfLength = MathF.Max(0f, (Height * 0.5f) - Radius);
+
+        var pos = body.Position;
+        var remaining = displacement;
+
+        int iters = Math.Clamp(MaxSlideIterations, 1, 8);
+
+        for (int iter = 0; iter < iters; iter++)
+        {
+            float dist = remaining.Length();
+            if (dist <= 1e-6f)
+                break;
+
+            var dir = remaining / dist;
+
+            // Cast slightly farther to preserve SkinWidth separation
+            float castDist = dist + SkinWidth;
+
+            var hits = world.PhysxWorld.Engine.CapsuleCast(
+                center: pos,
+                radius: Radius,
+                halfLength: halfLength,
+                direction: dir,
+                maxDistance: castDist,
+                maxHits: 8,
+                layerMask: (uint)CollisionMask
+            );
+
+            bool gotHit = false;
+            PhysxRaycastHit3D best = default;
+
+            foreach (var h in hits)
+            {
+                if (h.Body == null)
+                    continue;
+                if (ReferenceEquals(h.Body, body))
+                    continue;
+
+                best = h;
+                gotHit = true;
+                break;
+            }
+
+            if (!gotHit)
+            {
+                pos += remaining;
+                break;
+            }
+
+            // Normalize normal defensively
+            var n = best.Normal;
+            if (n.LengthSquared() > 1e-10f)
+                n = Vector3.Normalize(n);
+            else
+                n = Vector3.UnitY;
+
+            // If we are blocked immediately (T <= 0), treat as overlap / initial penetration.
+            // Push out a small amount and continue.
+            if (UseDepenetration && best.T <= 1e-6f)
+            {
+                float push = MathF.Max(1e-4f, MathF.Min(DepenetrationPushDistance, MathF.Max(SkinWidth, DepenetrationPushDistance)));
+                pos += n * push;
+
+                // Remove velocity into the normal to prevent vibrating into it
+                float vn = Vector3.Dot(velocity, n);
+                if (vn < 0f)
+                    velocity -= n * vn;
+
+                // Try next iteration with same remaining displacement
+                continue;
+            }
+
+            // Move up to impact, leaving SkinWidth
+            float travel = MathF.Max(0f, best.T - SkinWidth);
+            travel = MathF.Min(travel, dist);
+
+            pos += dir * travel;
+
+            float leftover = dist - travel;
+            if (leftover <= 1e-6f)
+                break;
+
+            // Slide: remove component into the hit normal
+            var leftoverVec = dir * leftover;
+            var slid = leftoverVec - n * Vector3.Dot(leftoverVec, n);
+
+            // Also remove velocity component into the normal (prevents "sticking" acceleration into wall)
+            float vInto = Vector3.Dot(velocity, n);
+            if (vInto < 0f)
+                velocity -= n * vInto;
+
+            if (slid.LengthSquared() <= 1e-12f)
+                break;
+
+            remaining = slid;
+        }
+
+        return pos;
+    }
+
+    private bool TryDepenetrate(IPhysxBody3D body, IGameWorldManager3D world, out Vector3 depenNormal)
+    {
+        depenNormal = Vector3.Zero;
+
+        float halfLength = MathF.Max(0f, (Height * 0.5f) - Radius);
+        int iters = Math.Clamp(DepenetrationIterations, 1, 16);
+
+        var pos = body.Position;
+        bool moved = false;
+
+        for (int i = 0; i < iters; i++)
+        {
+            // We use a tiny sweep in multiple directions to find “blocking” normals at T==0-ish.
+            // Direction set: up/down + 4 cardinals. Cheap and effective.
+            Span<Vector3> dirs =
+            [
+                Vector3.UnitY,
+                -Vector3.UnitY,
+                Vector3.UnitX,
+                -Vector3.UnitX,
+                Vector3.UnitZ,
+                -Vector3.UnitZ
+            ];
+
+            bool pushedThisIter = false;
+
+            for (int d = 0; d < dirs.Length; d++)
+            {
+                var dir = dirs[d];
+
+                var hits = world.PhysxWorld.Engine.CapsuleCast(
+                    center: pos,
+                    radius: Radius,
+                    halfLength: halfLength,
+                    direction: dir,
+                    maxDistance: MathF.Max(SkinWidth, DepenetrationPushDistance),
+                    maxHits: 4,
+                    layerMask: (uint)CollisionMask
+                );
+
+                foreach (var h in hits)
+                {
+                    if (h.Body == null)
+                        continue;
+                    if (ReferenceEquals(h.Body, body))
+                        continue;
+
+                    // Only treat near-zero hits as overlap-like.
+                    if (h.T > 1e-4f)
+                        continue;
+
+                    var n = h.Normal;
+                    if (n.LengthSquared() > 1e-10f)
+                        n = Vector3.Normalize(n);
+                    else
+                        n = Vector3.UnitY;
+
+                    float push = MathF.Max(1e-4f, MathF.Min(DepenetrationPushDistance, MathF.Max(SkinWidth, DepenetrationPushDistance)));
+                    pos += n * push;
+
+                    depenNormal = n;
+                    pushedThisIter = true;
+                    moved = true;
+                    break;
+                }
+
+                if (pushedThisIter)
+                    break;
+            }
+
+            if (!pushedThisIter)
+                break;
+        }
+
+        if (moved)
+            body.Position = pos;
+
+        return moved;
     }
 
     private void ProbeGround(IPhysxBody3D body, IGameWorldManager3D world, out bool grounded, out Vector3 normal)
     {
-        // Ray origin: just above bottom hemisphere (inside skin)
-        float halfHeight = Height * 0.5f;
-        float bottomOffset = MathF.Max(0f, halfHeight - Radius);
+        // Capsule geometry:
+        // Your body.Position is the capsule center (BEPU body center).
+        // halfLength matches your "capsule segment half length" (height*0.5 - radius).
+        float halfLength = MathF.Max(0f, (Height * 0.5f) - Radius);
 
-        var origin = body.Position + new Vector3(0f, -(bottomOffset - SkinWidth), 0f);
-        var target = origin + new Vector3(0f, -(GroundProbeDistance + SkinWidth), 0f);
+        // Sweep distance: skin + probe
+        float maxDist = MathF.Max(0f, GroundProbeDistance + SkinWidth);
 
-        var hits = world.PhysxWorld.Engine.RayCast(
-            new PhysxRay3D(origin, target),
-            maxHits: 4,
-            layerMask: (uint)GroundMask
-        );
+        // Down direction
+        var dir = -Vector3.UnitY;
+
+        // Get hits
+        IEnumerable<PhysxRaycastHit3D> hits;
+
+        if (UseCapsuleSweeps)
+        {
+            hits = world.PhysxWorld.Engine.CapsuleCast(
+                center: body.Position,
+                radius: Radius,
+                halfLength: halfLength,
+                direction: dir,
+                maxDistance: maxDist,
+                maxHits: 4,
+                layerMask: (uint)GroundMask
+            );
+        }
+        else
+        {
+            // Fallback to ray if you want
+            float bottomOffset = MathF.Max(0f, (Height * 0.5f) - Radius);
+            var origin = body.Position + new Vector3(0f, -(bottomOffset - SkinWidth), 0f);
+            var target = origin + new Vector3(0f, -(GroundProbeDistance + SkinWidth), 0f);
+
+            hits = world.PhysxWorld.Engine.RayCast(
+                new PhysxRay3D(origin, target),
+                maxHits: 4,
+                layerMask: (uint)GroundMask
+            );
+        }
 
         bool gotHit = false;
         PhysxRaycastHit3D best = default;
@@ -331,7 +577,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
 
             best = h;
             gotHit = true;
-            break;
+            break; // hits are already sorted by T in engine
         }
 
         if (!gotHit)
@@ -341,7 +587,6 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             return;
         }
 
-        // Slope test
         float maxSlopeRad = MathF.Abs(MaxSlopeAngleDeg) * (MathF.PI / 180f);
         float minNy = MathF.Cos(maxSlopeRad);
 

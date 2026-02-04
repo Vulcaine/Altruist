@@ -199,64 +199,122 @@ namespace Altruist.Physx.ThreeD
 
                 d /= maxT;
 
-                // Collect ALL raw hits first (then filter by tags)
-                var collector = new AllHitsCollector();
+                var collector = new QueryHitsCollector();
                 _simulation.RayCast(ray.From, d, maxT, ref collector);
 
-                if (collector.Count == 0)
-                    return Array.Empty<PhysxRaycastHit3D>();
-
-                collector.SortByT();
-
-                var results = new List<PhysxRaycastHit3D>(Math.Min(maxHits, collector.Count));
-
-                for (int i = 0; i < collector.Count && results.Count < maxHits; i++)
-                {
-                    // List<T> indexer is NOT ref-returning => no "ref readonly" here.
-                    var h = collector.Hits[i];
-
-                    // Resolve collidable -> body adapter
-                    IPhysxBody3D? found = null;
-
-                    if (h.IsStatic)
-                    {
-                        foreach (var b in _bodies.Values)
-                        {
-                            if (b is StaticBody3DAdapter stat && stat.Handle.Equals(h.Static))
-                            {
-                                found = stat;
-                                break;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        foreach (var b in _bodies.Values)
-                        {
-                            if (b is DynamicBody3DAdapter dyn && dyn.Handle.Equals(h.Body))
-                            {
-                                found = dyn;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (found is not Body3DAdapterBase adapter)
-                        continue;
-
-                    uint bodyMask = adapter.PhysxTag?.Layer ?? (uint)PhysxLayer.All;
-
-                    if ((bodyMask & layerMask) == 0u)
-                        continue;
-
-                    results.Add(new PhysxRaycastHit3D(found, h.Point, h.Normal, h.T));
-                }
-
-                return results.Count == 0 ? Array.Empty<PhysxRaycastHit3D>() : results;
+                return BuildFilteredResults(collector, maxHits, layerMask);
             }
         }
 
-        private struct AllHitsCollector : IRayHitHandler
+        public IEnumerable<PhysxRaycastHit3D> CapsuleCast(
+            Vector3 center,
+            float radius,
+            float halfLength,
+            Vector3 direction,
+            float maxDistance,
+            int maxHits = 1,
+            uint layerMask = 0xFFFFFFFFu)
+        {
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+
+                if (maxHits <= 0)
+                    return Array.Empty<PhysxRaycastHit3D>();
+
+                if (maxDistance <= 0f || float.IsNaN(maxDistance) || float.IsInfinity(maxDistance))
+                    return Array.Empty<PhysxRaycastHit3D>();
+
+                float dirLen = direction.Length();
+                if (dirLen <= 1e-10f)
+                    return Array.Empty<PhysxRaycastHit3D>();
+
+                var dir = direction / dirLen;
+
+                // BEPU capsule length parameter = distance between hemisphere centers
+                float segmentLength = MathF.Max(0f, halfLength * 2f);
+                var capsule = new Capsule(MathF.Max(0f, radius), segmentLength);
+
+                // Upright capsule (Y axis)
+                var pose = new RigidPose(center, Quaternion.Identity);
+
+                // Sweep uses BodyVelocity; we use a *unit* velocity so maximumT is in distance units.
+                var velocity = new BodyVelocity(dir, Vector3.Zero);
+
+                var collector = new QueryHitsCollector();
+
+                // Tuning knobs (stable defaults)
+                const float minimumProgression = 1e-4f;
+                const float convergenceThreshold = 1e-4f;
+                const int maximumIterationCount = 16;
+
+                _simulation.Sweep(
+                    capsule,
+                    pose,
+                    velocity,
+                    maxDistance,
+                    _pool,              // BufferPool required by this overload
+                    ref collector,
+                    minimumProgression,
+                    convergenceThreshold,
+                    maximumIterationCount);
+
+                return BuildFilteredResults(collector, maxHits, layerMask);
+            }
+        }
+
+        private IEnumerable<PhysxRaycastHit3D> BuildFilteredResults(QueryHitsCollector collector, int maxHits, uint layerMask)
+        {
+            if (collector.Count == 0)
+                return Array.Empty<PhysxRaycastHit3D>();
+
+            collector.SortByT();
+
+            var results = new List<PhysxRaycastHit3D>(Math.Min(maxHits, collector.Count));
+
+            for (int i = 0; i < collector.Count && results.Count < maxHits; i++)
+            {
+                var h = collector.Hits[i];
+
+                IPhysxBody3D? found = null;
+
+                if (h.IsStatic)
+                {
+                    foreach (var b in _bodies.Values)
+                    {
+                        if (b is StaticBody3DAdapter stat && stat.Handle.Equals(h.Static))
+                        {
+                            found = stat;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (var b in _bodies.Values)
+                    {
+                        if (b is DynamicBody3DAdapter dyn && dyn.Handle.Equals(h.Body))
+                        {
+                            found = dyn;
+                            break;
+                        }
+                    }
+                }
+
+                if (found is not Body3DAdapterBase adapter)
+                    continue;
+
+                uint bodyMask = adapter.PhysxTag?.Layer ?? (uint)PhysxLayer.All;
+                if ((bodyMask & layerMask) == 0u)
+                    continue;
+
+                results.Add(new PhysxRaycastHit3D(found, h.Point, h.Normal, h.T));
+            }
+
+            return results.Count == 0 ? Array.Empty<PhysxRaycastHit3D>() : results;
+        }
+
+        private struct QueryHitsCollector : IRayHitHandler, ISweepHitHandler
         {
             public struct Hit
             {
@@ -267,17 +325,22 @@ namespace Altruist.Physx.ThreeD
                 public bool IsStatic;
                 public BodyHandle Body;
                 public StaticHandle Static;
+
+                public bool IsZeroT;
             }
 
             public List<Hit> Hits;
             public int Count => Hits?.Count ?? 0;
 
+            // Shared "allow" filters (you can add child filtering later if needed)
             public bool AllowTest(CollidableReference collidable) => true;
             public bool AllowTest(CollidableReference collidable, int childIndex) => true;
 
+            // ----------------------------
+            // Ray hits
+            // ----------------------------
             public void OnRayHit(in RayData ray, ref float maximumT, float t, in Vector3 normal, CollidableReference collidable, int childIndex)
             {
-                // Collect everything <= maximumT
                 Hits ??= new List<Hit>(8);
 
                 var point = ray.Origin + ray.Direction * t;
@@ -291,7 +354,8 @@ namespace Altruist.Physx.ThreeD
                         Normal = normal,
                         IsStatic = true,
                         Static = collidable.StaticHandle,
-                        Body = default
+                        Body = default,
+                        IsZeroT = false
                     });
                 }
                 else
@@ -303,9 +367,81 @@ namespace Altruist.Physx.ThreeD
                         Normal = normal,
                         IsStatic = false,
                         Body = collidable.BodyHandle,
-                        Static = default
+                        Static = default,
+                        IsZeroT = false
                     });
                 }
+            }
+
+            // ----------------------------
+            // Sweep hits
+            // ----------------------------
+            public void OnHit(ref float maximumT, float t, in Vector3 normal, in Vector3 hitLocation, CollidableReference collidable)
+            {
+                Hits ??= new List<Hit>(8);
+
+                if (collidable.Mobility == CollidableMobility.Static)
+                {
+                    Hits.Add(new Hit
+                    {
+                        T = t,
+                        Point = hitLocation,
+                        Normal = normal,
+                        IsStatic = true,
+                        Static = collidable.StaticHandle,
+                        Body = default,
+                        IsZeroT = false
+                    });
+                }
+                else
+                {
+                    Hits.Add(new Hit
+                    {
+                        T = t,
+                        Point = hitLocation,
+                        Normal = normal,
+                        IsStatic = false,
+                        Body = collidable.BodyHandle,
+                        Static = default,
+                        IsZeroT = false
+                    });
+                }
+            }
+
+            public void OnHitAtZeroT(ref float maximumT, CollidableReference collidable)
+            {
+                // This means: we started overlapping something.
+                // Still record it (useful for depenetration logic later), and clamp maximumT to 0 to early out.
+                Hits ??= new List<Hit>(4);
+
+                if (collidable.Mobility == CollidableMobility.Static)
+                {
+                    Hits.Add(new Hit
+                    {
+                        T = 0f,
+                        Point = Vector3.Zero,
+                        Normal = Vector3.Zero,
+                        IsStatic = true,
+                        Static = collidable.StaticHandle,
+                        Body = default,
+                        IsZeroT = true
+                    });
+                }
+                else
+                {
+                    Hits.Add(new Hit
+                    {
+                        T = 0f,
+                        Point = Vector3.Zero,
+                        Normal = Vector3.Zero,
+                        IsStatic = false,
+                        Body = collidable.BodyHandle,
+                        Static = default,
+                        IsZeroT = true
+                    });
+                }
+
+                maximumT = 0f;
             }
 
             public void SortByT()
