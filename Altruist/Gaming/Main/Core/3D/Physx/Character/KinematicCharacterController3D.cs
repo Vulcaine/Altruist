@@ -15,7 +15,7 @@ public interface IKinematicCharacterController3D
     void JumpIntent(bool jumpPressed);
 
     // Simulation tick (called by prefab/world Step)
-    void Step(float dt, IPhysxWorldEngine3D world);
+    void Step(float dt, IGameWorldManager3D world);
 
     // State outputs (for replication)
     Vector3 Position { get; }
@@ -33,7 +33,7 @@ public interface ICharacterAbility3D
 public struct CharacterMotorContext
 {
     public IPhysxBody3D Body;
-    public IPhysxWorldEngine3D World;
+    public IGameWorldManager3D World;
 
     public Vector3 DesiredMoveWorld;
     public float DesiredSpeed;
@@ -45,7 +45,7 @@ public struct CharacterMotorContext
     public bool JumpPressed;
     public bool SprintHeld;
 
-    public CharacterMotorContext(IPhysxBody3D body, IPhysxWorldEngine3D world)
+    public CharacterMotorContext(IPhysxBody3D body, IGameWorldManager3D world)
     {
         Body = body;
         World = world;
@@ -142,7 +142,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         _cameraPitch = Math.Clamp(pitch, -1.55f, 1.55f);
     }
 
-    public void Step(float dt, IPhysxWorldEngine3D world)
+    public void Step(float dt, IGameWorldManager3D world)
     {
         if (dt <= 0f)
             return;
@@ -230,7 +230,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         ProbeGround(body, world, out _isGrounded, out _groundNormal);
     }
 
-    private void ProbeGround(IPhysxBody3D body, IPhysxWorldEngine3D world, out bool grounded, out Vector3 normal)
+    private void ProbeGround(IPhysxBody3D body, IGameWorldManager3D world, out bool grounded, out Vector3 normal)
     {
         // Ray origin: just above bottom hemisphere (inside skin)
         float halfHeight = Height * 0.5f;
@@ -239,7 +239,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         var origin = body.Position + new Vector3(0f, -(bottomOffset - SkinWidth), 0f);
         var target = origin + new Vector3(0f, -(GroundProbeDistance + SkinWidth), 0f);
 
-        var hits = world.RayCast(new PhysxRay3D(origin, target), maxHits: 1);
+        var hits = world.PhysxWorld.Engine.RayCast(new PhysxRay3D(origin, target), maxHits: 1);
         var hit = hits.FirstOrDefault();
 
         if (hit.Body == null)
