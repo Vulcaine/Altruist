@@ -43,66 +43,63 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
     /// This matches the layout used by the RAW/PNG/TIFF/JPEG loaders:
     /// Heights[x, z] with cell sizes in X/Z and height scaled by <see cref="HeightfieldData.HeightScale"/>.
     /// </summary>
-    public Mesh LoadHeightmapMesh(HeightfieldData data, BufferPool pool)
+    public Mesh LoadHeightmapMesh(HeightfieldData hf, BufferPool pool)
     {
-        if (data is null)
-            throw new ArgumentNullException(nameof(data));
+        int width = hf.Width;
+        int length = hf.Height;
 
-        if (pool is null)
-            throw new ArgumentNullException(nameof(pool));
+        float cellSizeX = hf.CellSizeX;
+        float cellSizeZ = hf.CellSizeZ;
 
-        int width = data.Width;
-        int height = data.Height;
+        int quadCount = (width - 1) * (length - 1);
 
-        if (width < 2 || height < 2)
-            throw new ArgumentException("Heightmap must be at least 2x2 to build a mesh.", nameof(data));
+        // 2 triangles per quad, and we add both windings => 4 triangles per quad
+        int triangleCount = quadCount * 4;
 
-        int quadWidth = width - 1;
-        int quadHeight = height - 1;
-        int triangleCount = quadWidth * quadHeight * 2;
+        pool.Take(triangleCount, out Buffer<Triangle> triangles);
 
-        // Allocate only triangle buffer; we’ll compute vertex positions inline.
-        pool.Take<Triangle>(triangleCount, out var triangles);
+        int triIndex = 0;
 
-        for (int z = 0; z < quadHeight; z++)
+        for (int z = 0; z < length - 1; z++)
         {
-            for (int x = 0; x < quadWidth; x++)
+            for (int x = 0; x < width - 1; x++)
             {
-                int triIndex = (z * quadWidth + x) * 2;
+                float h00 = hf.Heights[x, z];
+                float h10 = hf.Heights[x + 1, z];
+                float h01 = hf.Heights[x, z + 1];
+                float h11 = hf.Heights[x + 1, z + 1];
 
-                // Precompute world positions for the quad corners
-                float x0 = x * data.CellSizeX;
-                float x1 = (x + 1) * data.CellSizeX;
-                float z0 = z * data.CellSizeZ;
-                float z1 = (z + 1) * data.CellSizeZ;
+                var v00 = new Vector3(x * cellSizeX, h00, z * cellSizeZ);
+                var v10 = new Vector3((x + 1) * cellSizeX, h10, z * cellSizeZ);
+                var v01 = new Vector3(x * cellSizeX, h01, (z + 1) * cellSizeZ);
+                var v11 = new Vector3((x + 1) * cellSizeX, h11, (z + 1) * cellSizeZ);
 
-                // Heights[x, z] are in "height units" before HeightScale,
-                // multiply by HeightScale to get world-space Y.
-                float y00 = data.Heights[x, z] * data.HeightScale;
-                float y10 = data.Heights[x, z + 1] * data.HeightScale;
-                float y01 = data.Heights[x + 1, z] * data.HeightScale;
-                float y11 = data.Heights[x + 1, z + 1] * data.HeightScale;
+                // Triangle 0 (one winding)
+                // ref var t0 = ref triangles[triIndex++];
+                // t0.A = v00;
+                // t0.B = v01;
+                // t0.C = v10;
 
-                var v00 = new Vector3(x0, y00, z0);
-                var v10 = new Vector3(x0, y10, z1);
-                var v01 = new Vector3(x1, y01, z0);
-                var v11 = new Vector3(x1, y11, z1);
+                // Triangle 0 (reverse winding)
+                ref var t0r = ref triangles[triIndex++];
+                t0r.A = v00;
+                t0r.B = v10;
+                t0r.C = v01;
 
-                // Two triangles per quad; choose consistent winding (here: v00 -> v10 -> v11, etc.)
-                ref var t0 = ref triangles[triIndex];
-                t0.A = v00;
-                t0.B = v10;
-                t0.C = v11;
+                // Triangle 1 (one winding)
+                // ref var t1 = ref triangles[triIndex++];
+                // t1.A = v10;
+                // t1.B = v01;
+                // t1.C = v11;
 
-                ref var t1 = ref triangles[triIndex + 1];
-                t1.A = v00;
-                t1.B = v11;
-                t1.C = v01;
+                // Triangle 1 (reverse winding)
+                ref var t1r = ref triangles[triIndex++];
+                t1r.A = v10;
+                t1r.B = v11;
+                t1r.C = v01;
             }
         }
 
-        // Mesh takes ownership of the triangles buffer.
-        var mesh = new Mesh(triangles, Vector3.One, pool);
-        return mesh;
+        return new Mesh(triangles, new Vector3(1f, 1f, 1f), pool);
     }
 }
