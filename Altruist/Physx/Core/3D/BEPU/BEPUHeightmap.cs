@@ -4,7 +4,7 @@ using BepuPhysics.Collidables;
 
 using BepuUtilities.Memory;
 
-namespace Altruist.Gaming.ThreeD;
+namespace Altruist.Physx.ThreeD;
 
 /// <summary>
 /// BEPU-specific extension: can both use all the 2D heightmap loaders (RAW/PNG/TIFF/JPEG)

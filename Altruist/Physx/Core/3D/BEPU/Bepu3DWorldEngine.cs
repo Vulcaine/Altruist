@@ -38,13 +38,20 @@ namespace Altruist.Physx.ThreeD
     {
         private readonly Dictionary<WorldEngineCacheKey, IPhysxWorldEngine3D> _cache = new();
 
+        private readonly BepuHeightmapLoader _heightmapLoader;
+
+        public BepuWorldEngineFactory3D(BepuHeightmapLoader heightmapLoader)
+        {
+            this._heightmapLoader = heightmapLoader;
+        }
+
         public IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
             var key = new WorldEngineCacheKey(gravity, fixedDeltaTime);
             if (_cache.TryGetValue(key, out var existing))
                 return existing;
 
-            var created = new BepuWorldEngine3D(gravity, fixedDeltaTime);
+            var created = new BepuWorldEngine3D(_heightmapLoader, gravity, fixedDeltaTime);
             _cache[key] = created;
             return created;
         }
@@ -65,6 +72,8 @@ namespace Altruist.Physx.ThreeD
             }
         }
 
+        private readonly BepuHeightmapLoader _heightmapLoader;
+
         internal Simulation Simulation => _simulation;
 
         private readonly Simulation _simulation;
@@ -78,8 +87,11 @@ namespace Altruist.Physx.ThreeD
 
         private volatile bool _disposed;
 
-        public BepuWorldEngine3D(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
+        public BepuWorldEngine3D(
+            BepuHeightmapLoader heightmapLoader,
+            Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
+            this._heightmapLoader = heightmapLoader;
             FixedDeltaTime = fixedDeltaTime;
 
             var narrow = new NarrowPhaseCallbacks();
@@ -259,7 +271,7 @@ namespace Altruist.Physx.ThreeD
                     {
                         if (c.Heightfield is { } hf)
                         {
-                            var mesh = BuildMeshFromHeightfield(hf, _simulation.BufferPool);
+                            var mesh = _heightmapLoader.LoadHeightmapMesh(hf, _simulation.BufferPool);
                             return _simulation.Shapes.Add(mesh);
                         }
 
@@ -269,66 +281,6 @@ namespace Altruist.Physx.ThreeD
                 default:
                     throw new NotSupportedException($"Unsupported collider shape: {c.Shape}");
             }
-        }
-
-        private static Mesh BuildMeshFromHeightfield(HeightfieldData hf, BufferPool pool)
-        {
-            int width = hf.Width;
-            int length = hf.Height;
-
-            float cellSizeX = hf.CellSizeX;
-            float cellSizeZ = hf.CellSizeZ;
-
-            int quadCount = (width - 1) * (length - 1);
-
-            // 2 triangles per quad, and we add both windings => 4 triangles per quad
-            int triangleCount = quadCount * 4;
-
-            pool.Take(triangleCount, out Buffer<Triangle> triangles);
-
-            int triIndex = 0;
-
-            for (int z = 0; z < length - 1; z++)
-            {
-                for (int x = 0; x < width - 1; x++)
-                {
-                    float h00 = hf.Heights[x, z];
-                    float h10 = hf.Heights[x + 1, z];
-                    float h01 = hf.Heights[x, z + 1];
-                    float h11 = hf.Heights[x + 1, z + 1];
-
-                    var v00 = new Vector3(x * cellSizeX, h00, z * cellSizeZ);
-                    var v10 = new Vector3((x + 1) * cellSizeX, h10, z * cellSizeZ);
-                    var v01 = new Vector3(x * cellSizeX, h01, (z + 1) * cellSizeZ);
-                    var v11 = new Vector3((x + 1) * cellSizeX, h11, (z + 1) * cellSizeZ);
-
-                    // // Triangle 0 (one winding)
-                    // ref var t0 = ref triangles[triIndex++];
-                    // t0.A = v00;
-                    // t0.B = v01;
-                    // t0.C = v10;
-
-                    // Triangle 0 (reverse winding)
-                    ref var t0r = ref triangles[triIndex++];
-                    t0r.A = v00;
-                    t0r.B = v10;
-                    t0r.C = v01;
-
-                    // // Triangle 1 (one winding)
-                    // ref var t1 = ref triangles[triIndex++];
-                    // t1.A = v10;
-                    // t1.B = v01;
-                    // t1.C = v11;
-
-                    // Triangle 1 (reverse winding)
-                    ref var t1r = ref triangles[triIndex++];
-                    t1r.A = v10;
-                    t1r.B = v11;
-                    t1r.C = v01;
-                }
-            }
-
-            return new Mesh(triangles, new Vector3(1f, 1f, 1f), pool);
         }
 
         public abstract class Body3DAdapterBase : IPhysxBody3D
