@@ -54,7 +54,7 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
         int quadCount = (width - 1) * (length - 1);
 
         // 2 triangles per quad, and we add both windings => 4 triangles per quad
-        int triangleCount = quadCount * 4;
+        int triangleCount = quadCount * 2;
 
         pool.Take(triangleCount, out Buffer<Triangle> triangles);
 
