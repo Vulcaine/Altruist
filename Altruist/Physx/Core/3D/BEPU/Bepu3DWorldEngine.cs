@@ -42,11 +42,14 @@ namespace Altruist.Physx.ThreeD
 
         public BepuWorldEngineFactory3D(BepuHeightmapLoader heightmapLoader)
         {
-            _heightmapLoader = heightmapLoader;
+            this._heightmapLoader = heightmapLoader;
         }
 
         public IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
+            if (fixedDeltaTime <= 0f || float.IsNaN(fixedDeltaTime) || float.IsInfinity(fixedDeltaTime))
+                fixedDeltaTime = 1f / 60f;
+
             var key = new WorldEngineCacheKey(gravity, fixedDeltaTime);
             if (_cache.TryGetValue(key, out var existing))
                 return existing;
@@ -92,11 +95,14 @@ namespace Altruist.Physx.ThreeD
             Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
             this._heightmapLoader = heightmapLoader;
+            if (fixedDeltaTime <= 0f || float.IsNaN(fixedDeltaTime) || float.IsInfinity(fixedDeltaTime))
+                fixedDeltaTime = 1f / 60f;
+
             FixedDeltaTime = fixedDeltaTime;
 
             var narrow = new NarrowPhaseCallbacks();
             var pose = new PoseIntegratorCallbacks(gravity);
-            var solve = new SolveDescription(8, 1);
+            var solve = new SolveDescription(16, 1);
             var stepper = new DefaultTimestepper();
 
             _simulation = Simulation.Create(_pool, narrow, pose, solve, stepper);
@@ -120,6 +126,8 @@ namespace Altruist.Physx.ThreeD
                 action();
         }
 
+        private float _accumulator;
+
         public void Step(float deltaTime)
         {
             lock (_sync)
@@ -127,7 +135,16 @@ namespace Altruist.Physx.ThreeD
                 ThrowIfDisposed();
 
                 DrainPending_NoLock();
-                _simulation.Timestep(deltaTime);
+
+                deltaTime = MathF.Min(deltaTime, 0.25f);
+                _accumulator += deltaTime;
+
+                while (_accumulator >= FixedDeltaTime)
+                {
+                    _simulation.Timestep(FixedDeltaTime);
+                    _accumulator -= FixedDeltaTime;
+                }
+
                 DrainPending_NoLock();
             }
         }
@@ -772,8 +789,8 @@ namespace Altruist.Physx.ThreeD
             {
                 material = new PairMaterialProperties
                 {
-                    FrictionCoefficient = 0.5f,
-                    MaximumRecoveryVelocity = 2f,
+                    FrictionCoefficient = 0.8f,
+                    MaximumRecoveryVelocity = 2.0f,
                     SpringSettings = new SpringSettings(30f, 1f)
                 };
                 return true;
