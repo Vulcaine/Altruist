@@ -16,17 +16,20 @@ public sealed class HumanoidCapsuleBodyProfile : IBodyProfile3D
     public float HalfLength { get; }
     public float Mass { get; }
 
-    public HumanoidCapsuleBodyProfile(float radius, float halfLength, float mass)
+    public bool IsKinematic { get; }
+
+    public HumanoidCapsuleBodyProfile(float radius, float halfLength, float mass, bool isKinematic = false)
     {
         Radius = radius;
         HalfLength = halfLength;
         Mass = mass;
+        IsKinematic = isKinematic;
     }
 
     public PhysxBody3DDesc CreateBody(Transform3D transform)
     {
         var sized = transform.WithSize(Size3D.Of(Radius, HalfLength, 0f));
-        return PhysxBody3D.Create(PhysxBodyType.Dynamic, Mass, sized);
+        return PhysxBody3D.Create(PhysxBodyType.Dynamic, Mass, sized, isKinematic: IsKinematic);
     }
 
     public IEnumerable<PhysxCollider3DDesc> CreateColliders(Transform3D transform)

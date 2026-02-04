@@ -15,7 +15,7 @@ namespace Altruist.Gaming.TwoD
     /// Contract for a 2D world entity that can live in partitions
     /// and be associated with a physics body.
     /// </summary>
-    public interface IWorldObject2D : IWorldObject
+    public interface IWorldObject2D : IWorldObject<IGameWorldManager2D>
     {
         /// <summary>Transform in world space.</summary>
         Transform2D Transform { get; set; }
@@ -62,7 +62,7 @@ namespace Altruist.Gaming.TwoD
             ObjectArchetype = archetype;
         }
 
-        public virtual void Step(float dt)
+        public virtual void Step(float dt, IGameWorldManager2D world)
         {
             return;
         }

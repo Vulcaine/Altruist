@@ -353,7 +353,7 @@ namespace Altruist.Gaming.ThreeD
             worldObj.ColliderDescriptors = colliderDescs;
 
             // Best-effort: ensure ZoneId is initialized (if the object also implements IWorldObject).
-            if (worldObj is IWorldObject wo)
+            if (worldObj is ITypelessWorldObject wo)
             {
                 wo.ZoneId = string.Empty;
             }

@@ -104,7 +104,7 @@ namespace Altruist.Gaming.ThreeD
 
                         try
                         {
-                            obj.Step(deltaTime);
+                            obj.Step(deltaTime, world);
                         }
                         catch
                         {

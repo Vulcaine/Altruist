@@ -67,14 +67,14 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public bool Expired { get; set; }
 
-        public virtual void Step(float dt) { return; }
+        public virtual void Step(float dt, IGameWorldManager3D world) { return; }
     }
 
     /// <summary>
     /// Contract for a 3D world entity that can live in partitions
     /// and be associated with a physics body descriptor.
     /// </summary>
-    public interface IWorldObject3D : IWorldObject
+    public interface IWorldObject3D : IWorldObject<IGameWorldManager3D>
     {
         [VaultIgnore]
         public string ClientId { get; set; }
@@ -176,7 +176,7 @@ namespace Altruist.Gaming.ThreeD
                 $"Colliders=[{collidersStr}])";
         }
 
-        public virtual void Step(float dt) { return; }
+        public virtual void Step(float dt, IGameWorldManager3D world) { return; }
     }
 
     public class AnonymousWorldObject3D : WorldObject3D

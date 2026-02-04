@@ -8,16 +8,7 @@ using Altruist.UORM;
 namespace Altruist.Gaming
 {
 
-    public interface ISteppable3D
-    {
-        void Step(float dt);
-    }
-
-    /// <summary>
-    /// Dimension-agnostic world object contract.
-    /// Shared by 2D and 3D world objects.
-    /// </summary>
-    public interface IWorldObject : ISteppable3D
+    public interface ITypelessWorldObject
     {
         /// <summary>
         ///  Indicates whether the object has expired and should be removed from the world.
@@ -33,6 +24,20 @@ namespace Altruist.Gaming
 
         /// <summary>Optional room/zone id for sharding.</summary>
         string ZoneId { get; set; }
+    }
+
+    public interface ISteppable3D<GameWorldManagerType> where GameWorldManagerType : IGameWorldManager
+    {
+        void Step(float dt, GameWorldManagerType world);
+    }
+
+    /// <summary>
+    /// Dimension-agnostic world object contract.
+    /// Shared by 2D and 3D world objects.
+    /// </summary>
+    public interface IWorldObject<GameWorldManagerType> : ITypelessWorldObject, ISteppable3D<GameWorldManagerType> where GameWorldManagerType : IGameWorldManager
+    {
+
 
     }
 }
