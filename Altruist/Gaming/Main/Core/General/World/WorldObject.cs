@@ -3,7 +3,6 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using Altruist.Gaming.ThreeD;
 using Altruist.UORM;
 
 namespace Altruist.Gaming
@@ -11,7 +10,7 @@ namespace Altruist.Gaming
 
     public interface ISteppable3D
     {
-        void Step(float dt, IWorldPhysics3D worldPhysics);
+        void Step(float dt);
     }
 
     /// <summary>

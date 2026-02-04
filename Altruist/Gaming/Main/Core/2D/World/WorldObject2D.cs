@@ -9,7 +9,6 @@ using Altruist.TwoD.Numerics;
 namespace Altruist.Gaming.TwoD
 {
     using Altruist.Gaming;
-    using Altruist.Gaming.ThreeD;
     using Altruist.UORM;
 
     /// <summary>
@@ -63,7 +62,7 @@ namespace Altruist.Gaming.TwoD
             ObjectArchetype = archetype;
         }
 
-        public virtual void Step(float dt, IWorldPhysics3D worldPhysics)
+        public virtual void Step(float dt)
         {
             return;
         }

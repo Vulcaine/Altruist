@@ -67,7 +67,7 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public bool Expired { get; set; }
 
-        public virtual void Step(float dt, IWorldPhysics3D worldPhysics) { return; }
+        public virtual void Step(float dt) { return; }
     }
 
     /// <summary>
@@ -176,7 +176,7 @@ namespace Altruist.Gaming.ThreeD
                 $"Colliders=[{collidersStr}])";
         }
 
-        public virtual void Step(float dt, IWorldPhysics3D worldPhysics) { return; }
+        public virtual void Step(float dt) { return; }
     }
 
     public class AnonymousWorldObject3D : WorldObject3D

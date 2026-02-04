@@ -26,16 +26,13 @@ namespace Altruist.Gaming.ThreeD
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
-        private readonly IWorldPhysics3D _worldPhysx;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
-            IWorldPhysics3D worldPhysics3D,
             IEnumerable<IWorldIndex3D> gameWorlds
         )
         {
             _worldLoader = worldLoader;
-            _worldPhysx = worldPhysics3D;
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
@@ -107,7 +104,7 @@ namespace Altruist.Gaming.ThreeD
 
                         try
                         {
-                            obj.Step(deltaTime, _worldPhysx);
+                            obj.Step(deltaTime);
                         }
                         catch
                         {

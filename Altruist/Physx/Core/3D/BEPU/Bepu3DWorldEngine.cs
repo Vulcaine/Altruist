@@ -42,7 +42,7 @@ namespace Altruist.Physx.ThreeD
 
         public BepuWorldEngineFactory3D(BepuHeightmapLoader heightmapLoader)
         {
-            this._heightmapLoader = heightmapLoader;
+            _heightmapLoader = heightmapLoader;
         }
 
         public IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f)

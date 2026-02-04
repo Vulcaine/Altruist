@@ -29,9 +29,12 @@ namespace Altruist.Physx.ThreeD
                 var ori = transform.Rotation.ToQuaternion();
                 var halfExtents = transform.Size.ToVector3();
 
+                // Default shape for the body descriptor is a box based on desc.Transform.Size.
+                // (Colliders may later overwrite the shape via AddCollider.)
                 var box = new Box(halfExtents.X * 2f, halfExtents.Y * 2f, halfExtents.Z * 2f);
                 var shapeIndex = engine3D.Simulation.Shapes.Add(box);
 
+                // Statics use the statics set.
                 if (desc.Type == PhysxBodyType.Static)
                 {
                     var staticDesc = new StaticDescription(
@@ -49,39 +52,46 @@ namespace Altruist.Physx.ThreeD
                     );
                 }
 
+                // Everything else is a body in the Bodies set.
                 var pose = new RigidPose(
                     new System.Numerics.Vector3(pos.X, pos.Y, pos.Z),
                     ori
                 );
 
-                BodyInertia inertia = default;
-                if (desc.Type == PhysxBodyType.Dynamic)
-                {
-                    var useMass = desc.Mass > 0f ? desc.Mass : 1f;
-                    inertia = box.ComputeInertia(useMass);
-                }
-
                 var collidable = new CollidableDescription(shapeIndex, 0.1f);
                 var activity = new BodyActivityDescription(0.01f);
 
-                BodyDescription bodyDesc = desc.Type switch
-                {
-                    PhysxBodyType.Dynamic => BodyDescription.CreateDynamic(pose, inertia, collidable, activity),
-                    PhysxBodyType.Kinematic => BodyDescription.CreateKinematic(pose, collidable, activity),
-                    _ => BodyDescription.CreateKinematic(pose, collidable, activity)
-                };
+                // Decide kinematic vs dynamic:
+                // - Explicit flag wins
+                // - Or explicit PhysxBodyType.Kinematic
+                bool isKinematic = desc.IsKinematic || desc.Type == PhysxBodyType.Kinematic;
 
-                if (desc.Type != PhysxBodyType.Dynamic)
+                BodyDescription bodyDesc;
+
+                if (isKinematic)
+                {
+                    // Kinematic: infinite mass / no inertia. Driven by setting pose/velocity.
+                    bodyDesc = BodyDescription.CreateKinematic(pose, collidable, activity);
                     bodyDesc.LocalInertia = default;
+                }
+                else
+                {
+                    // Dynamic: finite mass/inertia.
+                    var useMass = desc.Mass > 0f ? desc.Mass : 1f;
+                    var inertia = box.ComputeInertia(useMass);
+                    bodyDesc = BodyDescription.CreateDynamic(pose, inertia, collidable, activity);
+                }
 
                 var handle = engine3D.Simulation.Bodies.Add(bodyDesc);
 
+                // NOTE: You currently use DynamicBody3DAdapter for both dynamic and kinematic bodies.
+                // That's fine as long as your engine logic respects Type and you don't apply gravity to kinematics.
                 return new BepuWorldEngine3D.DynamicBody3DAdapter(
                     desc.Id,
                     engine3D,
                     handle,
-                    desc.Type,
-                    desc.Mass > 0f ? desc.Mass : 0f
+                    isKinematic ? PhysxBodyType.Kinematic : PhysxBodyType.Dynamic,
+                    isKinematic ? 0f : (desc.Mass > 0f ? desc.Mass : 1f)
                 );
             }
         }
