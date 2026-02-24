@@ -23,6 +23,8 @@ namespace Altruist.Physx.TwoD
 
     public interface IPhysxWorld2D : IPhysxWorld
     {
+        void AddBody(IPhysxBody2D body);
+        void RemoveBody(IPhysxBody body);
         IEnumerable<PhysxRaycastHit2D> RayCast(PhysxRay2D ray, int maxHits = 1);
     }
 

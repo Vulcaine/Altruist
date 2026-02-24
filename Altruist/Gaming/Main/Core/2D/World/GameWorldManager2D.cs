@@ -15,10 +15,20 @@ namespace Altruist.Gaming.TwoD
         void Initialize();
         Task SaveAsync();
 
-        Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IWorldObject2D obj);
-        Task AddDynamicObject(IWorldObject2D obj);
+        IWorldObject2D? FindObject(string id);
+        IEnumerable<T> FindAllObjects<T>() where T : IWorldObject2D;
+        IEnumerable<IWorldObject2D> GetAllObjects();
 
+        Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IWorldObject2D obj);
+
+        Task<IPhysxBody2D?> SpawnDynamicObject(IWorldObject2D obj, string? withId = null);
+        IWorldPartitionManager? SpawnStaticObject(IWorldObject2D obj, string? withId = null);
+
+        /// <summary>Legacy alias for <see cref="SpawnDynamicObject"/>.</summary>
+        Task AddDynamicObject(IWorldObject2D obj);
+        /// <summary>Legacy alias for <see cref="SpawnStaticObject"/>.</summary>
         IWorldPartitionManager? AddStaticObject(IWorldObject2D obj);
+
         IWorldObject2D? DestroyObject(string instanceId);
         IWorldObject2D? DestroyObject(IWorldObject2D obj);
 
@@ -30,30 +40,46 @@ namespace Altruist.Gaming.TwoD
 
         IEnumerable<IWorldPartitionManager> FindPartitionsForPosition(int x, int y, float radius);
         IWorldPartitionManager? FindPartitionForPosition(int x, int y);
+
+        /// <summary>Find all partitions whose AABB intersects the provided bounds.</summary>
+        IEnumerable<IWorldPartitionManager> FindPartitionsForBounds(
+            float minX, float minY,
+            float maxX, float maxY);
+
+        /// <summary>Find all partitions that intersect the bounds of the given object.</summary>
+        IEnumerable<IWorldPartitionManager> FindPartitionsForObject(IWorldObject2D obj);
     }
 
     public sealed class GameWorldManager2D : IGameWorldManager2D
     {
         private readonly IWorldIndex2D _index;
         private readonly IWorldPartitioner2D _worldPartitioner;
-        private readonly ICacheProvider _cache;
+        private readonly ICacheProvider? _cache;
         private readonly Dictionary<PartitionIndex2D, IWorldPartitionManager> _partitionMap = new();
 
         private readonly List<WorldPartition2D> _partitions;
         private readonly IPhysxWorld2D _physx2D;
 
+        private readonly IPhysxBodyApiProvider2D? _bodyApi;
+        private readonly IPhysxColliderApiProvider2D? _colliderApi;
+
+        private readonly Dictionary<string, IWorldObject2D> _flatInstanceCache = new();
+
         public GameWorldManager2D(
             IWorldIndex2D world,
             IPhysxWorld2D physx2D,
             IWorldPartitioner2D worldPartitioner,
-            ICacheProvider cacheProvider
+            ICacheProvider? cacheProvider = null,
+            IPhysxBodyApiProvider2D? bodyApi = null,
+            IPhysxColliderApiProvider2D? colliderApi = null
         )
         {
             _index = world ?? throw new ArgumentNullException(nameof(world));
             _worldPartitioner = worldPartitioner ?? throw new ArgumentNullException(nameof(worldPartitioner));
-            _cache = cacheProvider ?? throw new ArgumentNullException(nameof(cacheProvider));
-
+            _cache = cacheProvider;
             _physx2D = physx2D ?? throw new ArgumentNullException(nameof(physx2D));
+            _bodyApi = bodyApi;
+            _colliderApi = colliderApi;
             _partitions = new List<WorldPartition2D>();
         }
 
@@ -74,66 +100,163 @@ namespace Altruist.Gaming.TwoD
 
         public async Task SaveAsync()
         {
+            if (_cache is null)
+                return;
             var saveTasks = _partitions.Select(p => _cache.SaveAsync(p.StorageId, p));
             await Task.WhenAll(saveTasks);
         }
 
-        public async Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IWorldObject2D obj)
-        {
-            if (obj is null)
-                return Enumerable.Empty<IWorldPartitionManager>();
+        // ── Lookup ──────────────────────────────────────────────────────────────
 
-            DestroyObject(obj);
+        public IWorldObject2D? FindObject(string id)
+            => _flatInstanceCache.TryGetValue(id, out var obj) ? obj : null;
 
-            var radius = ComputePartitionRadius(obj);
+        public IEnumerable<T> FindAllObjects<T>() where T : IWorldObject2D
+            => _flatInstanceCache.Values.OfType<T>();
 
-            var partitions = FindPartitionsForPosition(
-                obj.Transform.Position.X,
-                obj.Transform.Position.Y,
-                radius);
+        public IEnumerable<IWorldObject2D> GetAllObjects()
+            => _flatInstanceCache.Values;
 
-            AddObjectToPartitions(obj, partitions);
-            return await Task.FromResult(partitions.ToList());
-        }
+        // ── Spawn ───────────────────────────────────────────────────────────────
 
-        public async Task AddDynamicObject(IWorldObject2D obj)
-        {
-            if (obj is null)
-                return;
-
-            var radius = ComputePartitionRadius(obj);
-
-            var partitions = FindPartitionsForPosition(
-                obj.Transform.Position.X,
-                obj.Transform.Position.Y,
-                radius);
-
-            AddObjectToPartitions(obj, partitions);
-            await Task.CompletedTask;
-        }
-
-        public IWorldPartitionManager? AddStaticObject(IWorldObject2D obj)
+        public async Task<IPhysxBody2D?> SpawnDynamicObject(IWorldObject2D obj, string? withId = null)
         {
             if (obj is null)
                 return null;
+
+            obj.ObjectArchetype = obj is AnonymousWorldObject2D
+                ? obj.ObjectArchetype
+                : WorldObjectArchetypeHelper2D.ResolveArchetype(obj.GetType());
+
+            IPhysxBody2D? body = null;
+
+            if (_bodyApi != null)
+            {
+                body = _bodyApi.CreateBody(PhysxBodyType.Dynamic, mass: 1f, obj.Transform);
+
+                if (_colliderApi != null)
+                {
+                    var collider = _colliderApi.CreateCollider(
+                        new PhysxCollider2DParams(PhysxColliderShape2D.Box2D, obj.Transform, isTrigger: false));
+                    _bodyApi.AddCollider(body, collider);
+                }
+
+                obj.Body = body;
+                _physx2D.AddBody(body);
+            }
+
+            var partitions = FindPartitionsForObject(obj);
+            foreach (var p in partitions)
+                if (p is WorldPartition2D p2d) p2d.AddObject(obj);
+
+            _flatInstanceCache[withId ?? obj.InstanceId] = obj;
+
+            await Task.CompletedTask;
+            return body;
+        }
+
+        public IWorldPartitionManager? SpawnStaticObject(IWorldObject2D obj, string? withId = null)
+        {
+            if (obj is null)
+                return null;
+
+            obj.ObjectArchetype = obj is AnonymousWorldObject2D
+                ? obj.ObjectArchetype
+                : WorldObjectArchetypeHelper2D.ResolveArchetype(obj.GetType());
+
+            IPhysxBody2D? body = null;
+
+            if (_bodyApi != null)
+            {
+                body = _bodyApi.CreateBody(PhysxBodyType.Static, mass: 0f, obj.Transform);
+
+                if (_colliderApi != null)
+                {
+                    var collider = _colliderApi.CreateCollider(
+                        new PhysxCollider2DParams(PhysxColliderShape2D.Box2D, obj.Transform, isTrigger: false));
+                    _bodyApi.AddCollider(body, collider);
+                }
+
+                obj.Body = body;
+                _physx2D.AddBody(body);
+            }
 
             var partition = FindPartitionForPosition(
                 obj.Transform.Position.X,
                 obj.Transform.Position.Y);
 
             if (partition is WorldPartition2D p2d)
-            {
                 p2d.AddObject(obj);
-            }
+
+            _flatInstanceCache[withId ?? obj.InstanceId] = obj;
 
             return partition;
         }
 
+        // ── Legacy aliases ──────────────────────────────────────────────────────
+
+        public async Task AddDynamicObject(IWorldObject2D obj)
+            => await SpawnDynamicObject(obj);
+
+        public IWorldPartitionManager? AddStaticObject(IWorldObject2D obj)
+            => SpawnStaticObject(obj);
+
+        // ── Destroy ─────────────────────────────────────────────────────────────
+
         public IWorldObject2D? DestroyObject(string instanceId)
-            => _partitions.Select(p => p.DestroyObject(instanceId)).FirstOrDefault(m => m != null);
+        {
+            if (string.IsNullOrWhiteSpace(instanceId))
+                return null;
+
+            var removedFromPartitions = _partitions
+                .Select(p => p.DestroyObject(instanceId))
+                .FirstOrDefault(o => o != null);
+
+            IWorldObject2D? removedFromCache = null;
+
+            if (_flatInstanceCache.TryGetValue(instanceId, out var cachedByKey))
+            {
+                removedFromCache = cachedByKey;
+                _flatInstanceCache.Remove(instanceId);
+            }
+            else
+            {
+                var kvp = _flatInstanceCache.FirstOrDefault(x => x.Value?.InstanceId == instanceId);
+                if (!string.IsNullOrEmpty(kvp.Key))
+                {
+                    removedFromCache = kvp.Value;
+                    _flatInstanceCache.Remove(kvp.Key);
+                }
+            }
+
+            var obj = removedFromPartitions ?? removedFromCache;
+
+            if (obj?.Body != null)
+                _physx2D.RemoveBody(obj.Body);
+
+            return obj;
+        }
 
         public IWorldObject2D? DestroyObject(IWorldObject2D obj)
-            => DestroyObject(obj.InstanceId);
+            => obj is null ? null : DestroyObject(obj.InstanceId);
+
+        // ── Position update ─────────────────────────────────────────────────────
+
+        public async Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IWorldObject2D obj)
+        {
+            if (obj is null)
+                return Enumerable.Empty<IWorldPartitionManager>();
+
+            // Remove from partitions only (keep in flat cache and physx)
+            foreach (var p in _partitions)
+                p.DestroyObject(obj.InstanceId);
+
+            var partitions = FindPartitionsForObject(obj);
+            AddObjectToPartitions(obj, partitions);
+            return await Task.FromResult(partitions.ToList());
+        }
+
+        // ── Nearby queries ──────────────────────────────────────────────────────
 
         public IEnumerable<IWorldObject2D> GetNearbyObjectsInRoom(
             string archetype,
@@ -147,13 +270,13 @@ namespace Altruist.Gaming.TwoD
             foreach (var partition in partitions)
             {
                 if (partition is WorldPartition2D p2d)
-                {
                     result.AddRange(p2d.GetObjectsByTypeInRadius(archetype, x, y, radius, roomId));
-                }
             }
 
             return result.Distinct();
         }
+
+        // ── Partition queries ───────────────────────────────────────────────────
 
         public IWorldPartitionManager? FindPartitionForPosition(int x, int y)
         {
@@ -170,6 +293,13 @@ namespace Altruist.Gaming.TwoD
             float minY = y - radius;
             float maxY = y + radius;
 
+            return FindPartitionsForBounds(minX, minY, maxX, maxY);
+        }
+
+        public IEnumerable<IWorldPartitionManager> FindPartitionsForBounds(
+            float minX, float minY,
+            float maxX, float maxY)
+        {
             return _partitions.Where(p =>
                 maxX >= p.Position.X &&
                 minX <= p.Position.X + p.Size.X &&
@@ -178,35 +308,44 @@ namespace Altruist.Gaming.TwoD
             );
         }
 
-        private IEnumerable<IWorldPartitionManager> AddObjectToPartitions(
+        public IEnumerable<IWorldPartitionManager> FindPartitionsForObject(IWorldObject2D obj)
+        {
+            if (obj is null)
+                return Enumerable.Empty<IWorldPartitionManager>();
+
+            var (minX, minY, maxX, maxY) = GetObjectBounds(obj);
+            return FindPartitionsForBounds(minX, minY, maxX, maxY);
+        }
+
+        // ── Helpers ─────────────────────────────────────────────────────────────
+
+        private static (float minX, float minY, float maxX, float maxY) GetObjectBounds(IWorldObject2D obj)
+        {
+            var pos = obj.Transform.Position;
+            var size = obj.Transform.Size;
+
+            bool degenerate =
+                size.X == 0f && size.Y == 0f ||
+                float.IsNaN(size.X) || float.IsNaN(size.Y) ||
+                float.IsInfinity(size.X) || float.IsInfinity(size.Y);
+
+            float halfX = degenerate ? 0.5f : size.X * 0.5f;
+            float halfY = degenerate ? 0.5f : size.Y * 0.5f;
+
+            return (pos.X - halfX, pos.Y - halfY, pos.X + halfX, pos.Y + halfY);
+        }
+
+        private static IEnumerable<IWorldPartitionManager> AddObjectToPartitions(
             IWorldObject2D obj,
-            IEnumerable<IWorldPartitionManager> partitions
-        )
+            IEnumerable<IWorldPartitionManager> partitions)
         {
             foreach (var partition in partitions)
             {
                 if (partition is WorldPartition2D p2d)
-                {
                     p2d.AddObject(obj);
-                }
             }
 
             return partitions;
-        }
-
-        /// <summary>
-        /// Compute a partition search radius from the object's transform size.
-        /// Uses half of the largest dimension; minimal floor if degenerate.
-        /// </summary>
-        private static float ComputePartitionRadius(IWorldObject2D obj)
-        {
-            var sz = obj.Transform.Size;
-            var r = MathF.Max(sz.X, sz.Y) * 0.5f;
-
-            if (r <= 0f || float.IsNaN(r) || float.IsInfinity(r))
-                r = 0.5f; // minimal sensible radius
-
-            return r;
         }
     }
 }

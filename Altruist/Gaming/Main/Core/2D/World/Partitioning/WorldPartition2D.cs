@@ -2,7 +2,20 @@ using Altruist.Numerics;
 
 namespace Altruist.Gaming.TwoD
 {
-    public class WorldPartition2D : StoredModel, IWorldPartitionManager
+    /// <summary>
+    /// Typed partition manager interface for 2D worlds, mirroring IWorldPartitionManager3D.
+    /// </summary>
+    public interface IWorldPartitionManager2D : IWorldPartitionManager
+    {
+        void AddObject(IWorldObject2D obj);
+        IWorldObject2D? DestroyObject(string instanceId);
+        HashSet<IWorldObject2D> GetObjectsByArchetype(string archetype);
+        IEnumerable<T> GetAllObjects<T>() where T : IWorldObject2D;
+        HashSet<IWorldObject2D> GetObjectsByTypeInRoom(string archetype, string roomId);
+        IEnumerable<IWorldObject2D> GetObjectsByTypeInRadius(string archetype, int x, int y, float radius, string roomId);
+    }
+
+    public class WorldPartition2D : StoredModel, IWorldPartitionManager2D
     {
         private readonly SpatialGridIndex2D _spatialIndex = new(cellSize: 16);
         public override string StorageId { get; set; } = Guid.NewGuid().ToString();
@@ -42,8 +55,14 @@ namespace Altruist.Gaming.TwoD
         public virtual HashSet<IWorldObject2D> GetObjectsByType(string prefabId) =>
             _spatialIndex.GetAllByType(prefabId);
 
+        public virtual HashSet<IWorldObject2D> GetObjectsByArchetype(string archetype) =>
+            _spatialIndex.GetAllByType(archetype);
+
         public virtual HashSet<IWorldObject2D> GetObjectsByTypeInRoom(string prefabId, string roomId) =>
             _spatialIndex.GetAllByType(prefabId).Where(x => x.ZoneId == roomId).ToHashSet();
+
+        public virtual IEnumerable<T> GetAllObjects<T>() where T : IWorldObject2D =>
+            _spatialIndex.InstanceMap.Values.OfType<T>();
     }
 
     public interface IWorldPartitioner2D : IWorldPartitioner
