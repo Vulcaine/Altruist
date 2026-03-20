@@ -26,13 +26,16 @@ namespace Altruist.Gaming.ThreeD
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
+        private readonly IVisibilityTracker? _visibilityTracker;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
-            IEnumerable<IWorldIndex3D> gameWorlds
+            IEnumerable<IWorldIndex3D> gameWorlds,
+            IVisibilityTracker? visibilityTracker = null
         )
         {
             _worldLoader = worldLoader;
+            _visibilityTracker = visibilityTracker;
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
@@ -139,6 +142,18 @@ namespace Altruist.Gaming.ThreeD
                 try
                 {
                     SyncObjectFromPhysics(obj);
+                }
+                catch
+                {
+                }
+            }
+
+            // Compute visibility diffs after all positions are final
+            if (_visibilityTracker is VisibilityTracker3D tracker)
+            {
+                try
+                {
+                    tracker.Tick();
                 }
                 catch
                 {

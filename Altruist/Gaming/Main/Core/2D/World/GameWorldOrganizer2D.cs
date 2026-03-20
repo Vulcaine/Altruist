@@ -29,6 +29,7 @@ namespace Altruist.Gaming.TwoD
         private readonly IPhysxWorldEngineFactory2D _physxWorldEngineFactory;
         private readonly IPhysxBodyApiProvider2D? _bodyApi;
         private readonly IPhysxColliderApiProvider2D? _colliderApi;
+        private readonly IVisibilityTracker? _visibilityTracker;
 
         public GameWorldOrganizer2D(
             IWorldPartitioner2D partitioner,
@@ -36,13 +37,15 @@ namespace Altruist.Gaming.TwoD
             IPhysxWorldEngineFactory2D physxWorldEngineFactory,
             IEnumerable<IWorldIndex2D> gameWorlds,
             IPhysxBodyApiProvider2D? bodyApi = null,
-            IPhysxColliderApiProvider2D? colliderApi = null)
+            IPhysxColliderApiProvider2D? colliderApi = null,
+            IVisibilityTracker? visibilityTracker = null)
         {
             _partitioner = partitioner;
             _cache = cache;
             _physxWorldEngineFactory = physxWorldEngineFactory;
             _bodyApi = bodyApi;
             _colliderApi = colliderApi;
+            _visibilityTracker = visibilityTracker;
             _worlds = gameWorlds
                 .Select(index2d => AddWorld(
                     index2d,
@@ -135,6 +138,18 @@ namespace Altruist.Gaming.TwoD
                 try
                 {
                     SyncObjectFromPhysics(obj);
+                }
+                catch
+                {
+                }
+            }
+
+            // Compute visibility diffs after all positions are final
+            if (_visibilityTracker is VisibilityTracker2D tracker)
+            {
+                try
+                {
+                    tracker.Tick();
                 }
                 catch
                 {
