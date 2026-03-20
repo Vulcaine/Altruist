@@ -75,35 +75,26 @@ public sealed class TcpTransport : ITransport
     private async Task HandleClient(TcpClient client, IConnectionManager connectionManager, IServiceProvider serviceProvider)
     {
         var networkStream = client.GetStream();
-        var buffer = new byte[1024];
-        var errorMessage = Encoding.UTF8.GetBytes("Authentication failed.");
-
-        var shieldAttribute = connectionManager.GetType().GetCustomAttribute<ShieldAttribute>();
-        AuthDetails? authDetails = null;
-
-        var handshakeMessage = _codec.Decoder.Decode<HandshakeRequestPacket>(buffer);
         var clientIp = client.Client.RemoteEndPoint as IPEndPoint;
 
         var authContext = new SocketAuthContext
         {
             Token = "",
             ClientId = Guid.NewGuid().ToString(),
-            ClientIp = clientIp!.Address,
+            ClientIp = clientIp?.Address ?? IPAddress.Loopback,
             ConnectionTimestamp = DateTime.UtcNow
         };
 
+        AuthDetails? authDetails = null;
+        var shieldAttribute = connectionManager.GetType().GetCustomAttribute<ShieldAttribute>();
+
         if (shieldAttribute != null)
         {
-            if (clientIp == null || string.IsNullOrEmpty(""))
-            {
-                await networkStream.WriteAsync(errorMessage, 0, errorMessage.Length);
-                client.Close();
-            }
-
             authDetails = await shieldAttribute.AuthenticateNonHttpAsync(serviceProvider, authContext);
 
             if (authDetails == null)
             {
+                var errorMessage = Encoding.UTF8.GetBytes("Authentication failed.");
                 await networkStream.WriteAsync(errorMessage, 0, errorMessage.Length);
                 client.Close();
                 return;
@@ -128,12 +119,14 @@ public sealed class CachedTcpConnection : AltruistConnection
 
     public new string Type { get; } = "tcp";
 
-    public CachedTcpConnection(TcpConnection udpConnection)
+    public CachedTcpConnection(TcpConnection tcpConnection)
     {
-        _connection = udpConnection;
-        ConnectionId = udpConnection.ConnectionId;
-        AuthDetails = udpConnection.AuthDetails;
-        LastActivity = udpConnection.LastActivity;
+        _connection = tcpConnection;
+        ConnectionId = tcpConnection.ConnectionId;
+        AuthDetails = tcpConnection.AuthDetails;
+        LastActivity = tcpConnection.LastActivity;
+        RemoteAddress = tcpConnection.RemoteAddress;
+        ConnectedAt = tcpConnection.ConnectedAt;
     }
 
     public CachedTcpConnection(AltruistConnection connection)
@@ -144,13 +137,14 @@ public sealed class CachedTcpConnection : AltruistConnection
     }
 
     [JsonIgnore]
-    public new bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
+    public new bool IsConnected => _connection?.IsConnected ?? false;
 
     public override async Task SendAsync(byte[] data)
     {
         if (_connection != null)
         {
             await _connection.SendAsync(data);
+            LastActivity = DateTime.UtcNow;
         }
     }
 
@@ -158,64 +152,82 @@ public sealed class CachedTcpConnection : AltruistConnection
     {
         if (_connection != null)
         {
-            return await _connection.ReceiveAsync(cancellationToken);
+            var data = await _connection.ReceiveAsync(cancellationToken);
+            if (data.Length > 0) LastActivity = DateTime.UtcNow;
+            return data;
         }
-        else
-        {
-            return Array.Empty<byte>();
-        }
+        return Array.Empty<byte>();
+    }
+
+    public override Task CloseOutputAsync()
+    {
+        return _connection?.CloseOutputAsync() ?? Task.CompletedTask;
     }
 
     public override Task CloseAsync()
     {
-        if (_connection != null)
-        {
-            return _connection.CloseAsync();
-        }
-        else
-        {
-            return Task.CompletedTask;
-        }
+        return _connection?.CloseAsync() ?? Task.CompletedTask;
     }
 }
 
 public sealed class TcpConnection : AltruistConnection
 {
+    public const int DefaultBufferSize = 8192;
+
     [JsonIgnore]
     private readonly TcpClient _client;
 
     [JsonIgnore]
     private readonly NetworkStream _networkStream;
 
+    [JsonIgnore]
+    private readonly int _bufferSize;
+
     public new string Type { get; } = "tcp";
 
-    public TcpConnection(TcpClient client, string connectionId, AuthDetails? authDetails)
+    [JsonIgnore]
+    public new bool IsConnected => _client.Connected;
+
+    public TcpConnection(TcpClient client, string connectionId, AuthDetails? authDetails, int bufferSize = DefaultBufferSize)
     {
         _client = client;
         _networkStream = client.GetStream();
+        _bufferSize = bufferSize;
         ConnectionId = connectionId;
         AuthDetails = authDetails;
+        RemoteAddress = client.Client.RemoteEndPoint?.ToString() ?? "";
+        ConnectedAt = DateTime.UtcNow;
     }
 
     public override async Task SendAsync(byte[] data)
     {
-        if (IsConnected)
+        if (_client.Connected)
         {
-            await _networkStream.WriteAsync(data, 0, data.Length);
+            await _networkStream.WriteAsync(data.AsMemory(0, data.Length), CancellationToken.None);
         }
     }
 
     public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
-        var buffer = new byte[1024];
-        int bytesRead = await _networkStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
-        return buffer.Take(bytesRead).ToArray();
+        var buffer = new byte[_bufferSize];
+        int bytesRead = await _networkStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+
+        if (bytesRead == 0)
+            return Array.Empty<byte>();
+
+        return buffer.AsSpan(0, bytesRead).ToArray();
+    }
+
+    public override Task CloseOutputAsync()
+    {
+        try { _client.Client.Shutdown(SocketShutdown.Send); } catch { }
+        return Task.CompletedTask;
     }
 
     public override Task CloseAsync()
     {
-        _networkStream.Close();
-        _client.Close();
+        try { _networkStream.Close(); } catch { }
+        try { _client.Close(); } catch { }
         return Task.CompletedTask;
     }
 }

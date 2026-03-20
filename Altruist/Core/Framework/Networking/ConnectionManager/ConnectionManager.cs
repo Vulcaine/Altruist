@@ -144,35 +144,17 @@ namespace Altruist
 
             try
             {
-                while (true)
-                {
-                    byte[] packetData;
-
-                    try
-                    {
-                        using var cts = new CancellationTokenSource(idleTimeout);
-                        packetData = await connection.ReceiveAsync(cts.Token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _logger.LogInformation(
-                            "Closing idle connection for client {ClientId} after {Timeout} inactivity.",
-                            clientId, idleTimeout);
-
-                        failureException = new TimeoutException(
-                            $"Connection idle for {idleTimeout.TotalSeconds} seconds.");
-                        break;
-                    }
-
-                    if (packetData.Length == 0)
-                    {
-                        break;
-                    }
-
-                    var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
-                    if (!await ProcessPacket(packet, packetData, @event, clientId))
-                        break;
-                }
+                if (_codec is IFramedCodec framedCodec)
+                    await RunFramedReadLoop(connection, framedCodec.Framer, @event, clientId, idleTimeout);
+                else
+                    await RunStandardReadLoop(connection, @event, clientId, idleTimeout);
+            }
+            catch (TimeoutException tex)
+            {
+                failureException = tex;
+                _logger.LogInformation(
+                    "Closing idle connection for client {ClientId} after {Timeout} inactivity.",
+                    clientId, idleTimeout);
             }
             catch (Exception ex)
             {
@@ -188,6 +170,96 @@ namespace Altruist
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "OnDisconnectedAsync handler threw for client {ClientId}.", clientId);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Standard read loop for message-framed transports (WebSocket, MessagePack).
+        /// Each ReceiveAsync call returns exactly one complete message.
+        /// </summary>
+        private async Task RunStandardReadLoop(
+            AltruistConnection connection, string @event, string clientId, TimeSpan idleTimeout)
+        {
+            while (true)
+            {
+                byte[] packetData;
+
+                using var cts = new CancellationTokenSource(idleTimeout);
+                try
+                {
+                    packetData = await connection.ReceiveAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw new TimeoutException($"Connection idle for {idleTimeout.TotalSeconds} seconds.");
+                }
+
+                if (packetData.Length == 0)
+                    break;
+
+                var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+                if (!await ProcessPacket(packet, packetData, @event, clientId))
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Framed read loop for raw stream protocols (e.g. binary TCP).
+        /// Buffers incoming bytes and uses the IPacketFramer to extract complete packets.
+        /// Multiple packets per read are processed; partial packets are carried over.
+        /// </summary>
+        private async Task RunFramedReadLoop(
+            AltruistConnection connection, IPacketFramer framer, string @event, string clientId, TimeSpan idleTimeout)
+        {
+            byte[] accumulator = Array.Empty<byte>();
+
+            while (true)
+            {
+                byte[] received;
+
+                using var cts = new CancellationTokenSource(idleTimeout);
+                try
+                {
+                    received = await connection.ReceiveAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw new TimeoutException($"Connection idle for {idleTimeout.TotalSeconds} seconds.");
+                }
+
+                if (received.Length == 0)
+                    break;
+
+                // Append received data to accumulator
+                if (accumulator.Length == 0)
+                {
+                    accumulator = received;
+                }
+                else
+                {
+                    var combined = new byte[accumulator.Length + received.Length];
+                    accumulator.CopyTo(combined, 0);
+                    received.CopyTo(combined, accumulator.Length);
+                    accumulator = combined;
+                }
+
+                // Extract and process all complete packets from the buffer
+                while (accumulator.Length > 0)
+                {
+                    var packetData = framer.TryFrame(accumulator, out int consumed);
+                    if (packetData == null)
+                        break; // Not enough data yet, wait for more
+
+                    // Advance the buffer past the consumed bytes
+                    if (consumed >= accumulator.Length)
+                        accumulator = Array.Empty<byte>();
+                    else
+                        accumulator = accumulator[consumed..];
+
+                    var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+                    if (!await ProcessPacket(packet, packetData, @event, clientId))
+                        return;
                 }
             }
         }
