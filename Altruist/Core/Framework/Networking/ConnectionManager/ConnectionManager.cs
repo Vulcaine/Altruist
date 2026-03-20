@@ -95,16 +95,24 @@ namespace Altruist
                     .Select(interceptor => interceptor.Intercept(context, message));
                 var interceptorExecution = Task.WhenAll(interceptorTasks);
 
-                Task? handlerTask = data != null
-                    ? (Task?)@delegate.DynamicInvoke(message, clientId)
-                    : null;
-
-                if (handlerTask != null)
+                PacketContext.Set(data);
+                try
                 {
-                    await handlerTask;
-                }
+                    Task? handlerTask = data != null
+                        ? (Task?)@delegate.DynamicInvoke(message, clientId)
+                        : null;
 
-                await interceptorExecution;
+                    if (handlerTask != null)
+                    {
+                        await handlerTask;
+                    }
+
+                    await interceptorExecution;
+                }
+                finally
+                {
+                    PacketContext.Clear();
+                }
             }
             else
             {

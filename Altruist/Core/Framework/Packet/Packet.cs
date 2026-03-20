@@ -240,16 +240,27 @@ namespace Altruist
         [Key(1)]
         public string Event { get; set; }
 
+        /// <summary>
+        /// Raw packet bytes from the transport layer. Available for protocols that need
+        /// access to variable-length data beyond the fixed struct header (e.g. chat messages).
+        /// Null for protocols that don't set it.
+        /// </summary>
+        [IgnoreMember]
+        [JsonIgnore]
+        public byte[]? RawData { get; set; }
+
         public AltruistPacket()
         {
             MessageCode = PacketCodes.Altruist;
             Event = string.Empty;
+            RawData = null;
         }
 
         public AltruistPacket(string eventName)
         {
             MessageCode = PacketCodes.Altruist;
             Event = eventName;
+            RawData = null;
         }
     }
 
