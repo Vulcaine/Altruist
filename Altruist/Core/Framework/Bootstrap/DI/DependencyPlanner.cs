@@ -73,6 +73,12 @@ public static class DependencyPlanner
     {
         return _graphCache.GetOrAdd(impl, t =>
         {
+            var ctors = t.GetConstructors(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (ctors.Length == 0)
+            {
+                log.LogWarning("Skipping type {Type} — no public constructors", t.FullName);
+                return new Node(t, new HashSet<Type>());
+            }
             var ctor = DependencyResolver.SelectCtor(t);
             var deps = new HashSet<Type>();
 

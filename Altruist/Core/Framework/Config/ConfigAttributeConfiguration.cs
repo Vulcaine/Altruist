@@ -30,6 +30,10 @@ namespace Altruist
                 .ThenBy(x => x.Type.FullName)
                 .ToArray();
 
+            Console.Error.WriteLine($"[CONFIG-DISCOVERY] Found {candidates.Length} ServiceConfiguration types from {assemblies.Length} assemblies:");
+            foreach (var c in candidates)
+                Console.Error.WriteLine($"[CONFIG-DISCOVERY]   {c.Type.FullName} (order={c.Attr.Order})");
+
             var cfg = AppConfigLoader.Load();
 
             using var tmp = services.BuildServiceProvider();
@@ -252,7 +256,18 @@ namespace Altruist
             using var sp = services.BuildServiceProvider();
             var instanceObj = sp.GetService(serviceType);
             if (instanceObj is null)
+            {
+                Console.Error.WriteLine($"[CONFIG-CONFIGURE] {type.Name}: GetService returned null (serviceType={serviceType.Name})");
+                // Debug: check if it was filtered by ConditionalOnConfig
+                var cond = type.GetCustomAttributes(typeof(ConditionalOnConfigAttribute), false);
+                foreach (ConditionalOnConfigAttribute c in cond)
+                {
+                    var val = cfg[c.Path];
+                    Console.Error.WriteLine($"[CONFIG-CONFIGURE]   Condition: path={c.Path} expected={c.HavingValue} actual={val ?? "NULL"}");
+                }
                 return;
+            }
+            Console.Error.WriteLine($"[CONFIG-CONFIGURE] {type.Name}: configuring...");
 
             if (instanceObj is not IAltruistConfiguration configInstance)
                 return;

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Altruist.Persistence.Postgres;
 
-[ServiceConfiguration]
+[ServiceConfiguration(order: -100)]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, IDatabaseConfiguration
 {
@@ -39,12 +39,17 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
             .Distinct()
             .ToArray();
 
+        Console.Error.WriteLine($"[PG-BOOTSTRAP] Bootstrapping {allModelTypes.Length} model types...");
+        foreach (var mt in allModelTypes)
+            Console.Error.WriteLine($"[PG-BOOTSTRAP]   {mt.Name}");
+
         await BootstrapOnceAsync(
             services,
             allModelTypes,
             initializerTypes,
             logPrefix: "Postgres").ConfigureAwait(false);
 
+        Console.WriteLine("[PG-BOOTSTRAP] Done.");
         IsConfigured = true;
     }
 

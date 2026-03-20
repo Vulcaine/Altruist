@@ -11,6 +11,9 @@ internal static class PostgresVaultSetup
     public static Type[] Configure(IServiceCollection services, Assembly[] assemblies)
     {
         var vaultTypes = FindVaultModelTypes(assemblies).ToArray();
+        Console.Error.WriteLine($"[VAULT-SETUP] Found {vaultTypes.Length} vault models in {assemblies.Length} assemblies");
+        foreach (var vt in vaultTypes)
+            Console.Error.WriteLine($"[VAULT-SETUP]   {vt.FullName}");
         RegisterVaultsViaServiceFactory(services, vaultTypes);
         return vaultTypes;
     }

@@ -137,6 +137,9 @@ namespace Altruist
             path.Push(impl);
             try
             {
+                var ctors = impl.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+                if (ctors.Length == 0)
+                    throw new InvalidOperationException($"Type '{impl.FullName}' has no public constructors. Cannot resolve for DI.");
                 var ctor = SelectCtor(impl);
                 var args = ctor.GetParameters().Select(p => Arg(sp, cfg, p, log)).ToArray();
                 var obj = ctor.Invoke(args);
@@ -255,11 +258,16 @@ namespace Altruist
         ///  - prefer the one marked with [ActivatorUtilitiesConstructor] if present,
         ///  - otherwise the widest (most parameters) public ctor.
         /// </summary>
-        internal static ConstructorInfo SelectCtor(Type t) =>
-            t.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-             .OrderByDescending(c => c.GetCustomAttribute<ActivatorUtilitiesConstructorAttribute>() is not null)
-             .ThenByDescending(c => c.GetParameters().Length)
-             .First();
+        internal static ConstructorInfo SelectCtor(Type t)
+        {
+            var ctors = t.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+            if (ctors.Length == 0)
+                throw new InvalidOperationException($"Type '{t.FullName}' has no public constructors. Cannot resolve for DI.");
+            return ctors
+                .OrderByDescending(c => c.GetCustomAttribute<ActivatorUtilitiesConstructorAttribute>() is not null)
+                .ThenByDescending(c => c.GetParameters().Length)
+                .First();
+        }
 
         /// <summary>
         /// "Simple" types that must be provided by config or default values, not by DI.

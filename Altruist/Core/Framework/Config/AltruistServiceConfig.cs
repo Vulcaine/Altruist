@@ -68,6 +68,13 @@ public class AltruistServiceConfig : IAltruistConfiguration
         if (!DependencyResolver.ShouldRegister(implType, cfg, log))
             return;
 
+        // Skip types with no public constructors (e.g. singleton tokens)
+        if (implType.GetConstructors(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance).Length == 0)
+        {
+            log.LogDebug("Skipping {Type} — no public constructors", implType.Name);
+            return;
+        }
+
         var conds = implType.GetCustomAttributes<ConditionalOnConfigAttribute>(false).ToArray();
         var listConds = conds.Where(c => !string.IsNullOrEmpty(c.KeyField)).ToArray();
 
