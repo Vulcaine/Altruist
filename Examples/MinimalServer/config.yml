@@ -1,0 +1,14 @@
+altruist:
+  server:
+    http:
+      host: "0.0.0.0"
+      port: 8080
+      path: "/"
+    transport:
+      mode: websocket
+      codec:
+        provider: messagepack
+
+  persistence:
+    cache:
+      provider: inmemory
