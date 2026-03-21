@@ -267,7 +267,7 @@ namespace Altruist
                 }
                 return;
             }
-            Console.Error.WriteLine($"[CONFIG-CONFIGURE] {type.Name}: configuring...");
+            Console.WriteLine($"[CONFIG-CONFIGURE] {type.Name}: configuring...");
 
             if (instanceObj is not IAltruistConfiguration configInstance)
                 return;

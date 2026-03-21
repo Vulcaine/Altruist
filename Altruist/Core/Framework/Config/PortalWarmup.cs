@@ -31,7 +31,12 @@ internal sealed class PortalWarmup
         {
             _ctx.AddEndpoint(d.Path);
 
-            var instance = _sp.GetRequiredService(d.PortalType);
+            var instance = _sp.GetService(d.PortalType);
+            if (instance is null)
+            {
+                _log.LogWarning("⚠️ Portal {PortalType} discovered but not registered in DI. Skipping.", d.PortalType.FullName);
+                continue;
+            }
 
             if (instance is IPortal portal)
                 PortalGateRegistry<IPortal>.RegisterInstance(portal);

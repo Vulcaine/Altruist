@@ -33,35 +33,47 @@ public class EngineStartupConfiguration : IAltruistConfiguration
 
     public Task Configure(IServiceCollection services)
     {
-        var serviceProvider = services.BuildServiceProvider();
-        var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
-        var settings = serviceProvider.GetRequiredService<IAltruistContext>();
-        CancellationToken token = default; // TODO: create one cancellationtoken in the services
-        if (settings.EngineEnabled)
+        // Defer engine start to avoid blocking the bootstrap pipeline.
+        // The engine resolves many services which can deadlock during config phase.
+        _ = Task.Run(() =>
         {
-            logger.LogInformation("🚀 Starting engine...");
-            var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
-            var methods = scheduler!.RegisterMethods(serviceProvider);
-            var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
-            engine!.Start(token);
-            logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
-
-            if (methods.Any())
+            try
             {
-                var methodsDisplay = string.Join("\n", methods.Select(m =>
+                var serviceProvider = services.BuildServiceProvider();
+                var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
+                var settings = serviceProvider.GetRequiredService<IAltruistContext>();
+                CancellationToken token = default;
+                if (settings.EngineEnabled)
                 {
-                    var regen = m.GetCustomAttribute<CycleAttribute>();
-                    var frequency = regen!.ToString();
-                    return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
-                }));
+                    logger.LogInformation("🚀 Starting engine...");
+                    var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
+                    var methods = scheduler!.RegisterMethods(serviceProvider);
+                    var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
+                    engine!.Start(token);
+                    logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
 
-                logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
+                    if (methods.Any())
+                    {
+                        var methodsDisplay = string.Join("\n", methods.Select(m =>
+                        {
+                            var regen = m.GetCustomAttribute<CycleAttribute>();
+                            var frequency = regen!.ToString();
+                            return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
+                        }));
+
+                        logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
+                    }
+                    else
+                    {
+                        logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
+                    }
+                }
             }
-            else
+            catch (Exception ex)
             {
-                logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
+                Console.Error.WriteLine($"[ENGINE] Failed to start: {ex}");
             }
-        }
+        });
 
         return Task.CompletedTask;
     }

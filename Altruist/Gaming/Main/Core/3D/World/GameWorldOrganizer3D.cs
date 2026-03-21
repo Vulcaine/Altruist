@@ -26,21 +26,25 @@ namespace Altruist.Gaming.ThreeD
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
-        private readonly IVisibilityTracker? _visibilityTracker;
+        private readonly Lazy<IVisibilityTracker?> _lazyVisibilityTracker;
+
+        private IVisibilityTracker? _visibilityTracker => _lazyVisibilityTracker.Value;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
             IEnumerable<IWorldIndex3D> gameWorlds,
-            IVisibilityTracker? visibilityTracker = null
+            IServiceProvider serviceProvider
         )
         {
             _worldLoader = worldLoader;
-            _visibilityTracker = visibilityTracker;
+            // Break circular dep: resolve IVisibilityTracker lazily
+            _lazyVisibilityTracker = new Lazy<IVisibilityTracker?>(
+                () => serviceProvider.GetService(typeof(IVisibilityTracker)) as IVisibilityTracker);
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
 
-            InitializeWorlds(gameWorlds).GetAwaiter();
+            InitializeWorlds(gameWorlds).GetAwaiter().GetResult();
         }
 
         private async Task InitializeWorlds(IEnumerable<IWorldIndex3D> worlds)

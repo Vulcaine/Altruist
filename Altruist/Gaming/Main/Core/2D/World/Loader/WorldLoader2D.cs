@@ -31,6 +31,7 @@ namespace Altruist.Gaming.TwoD
 
     [Service(typeof(IWorldLoader2D))]
     [ConditionalOnConfig("altruist:game")]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public sealed class WorldLoader2D : IWorldLoader2D
     {
         private readonly IPhysxWorldEngineFactory2D _engineFactory;

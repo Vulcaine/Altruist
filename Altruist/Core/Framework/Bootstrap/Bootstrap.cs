@@ -28,9 +28,10 @@ public static class AltruistBootstrap
 
         using var provider = Services.BuildServiceProvider();
         Dependencies.UseRootProvider(provider);
-
         await RunPostConstructsAsync(provider);
+        Console.Error.WriteLine("[BOOTSTRAP] Running Modules...");
         await AltruistModuleConfig.RunModulesAsync(provider);
+        Console.Error.WriteLine("[BOOTSTRAP] Starting HTTP...");
 
         var startup = provider.GetService<AltruistStartupConfiguration>();
         if (startup is not null)
@@ -82,10 +83,25 @@ public static class AltruistBootstrap
             object? instance;
             try
             {
-                instance = provider.GetService(serviceType);
+                // Detect circular dependency / deadlock with timeout
+                var resolveTask = Task.Run(() => provider.GetService(serviceType));
+                if (!resolveTask.Wait(TimeSpan.FromSeconds(10)))
+                {
+                    Console.Error.WriteLine(
+                        $"[ALTRUIST] ⚠️ Circular dependency detected: resolving '{serviceType.Name}' " +
+                        $"timed out after 10s. Check constructor dependencies for cycles. Skipping.");
+                    continue;
+                }
+                instance = resolveTask.Result;
             }
-            catch
+            catch (AggregateException ae) when (ae.InnerException is not null)
             {
+                Console.Error.WriteLine($"[ALTRUIST] ❌ Failed to resolve '{serviceType.Name}': {ae.InnerException.Message}");
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[ALTRUIST] ❌ Failed to resolve '{serviceType.Name}': {ex.Message}");
                 continue;
             }
 
@@ -99,8 +115,10 @@ public static class AltruistBootstrap
             if (!HasPostConstruct(implType))
                 continue;
 
+            Console.WriteLine($"[POSTCONSTRUCT] {implType.Name}...");
             var log = loggerFactory.CreateLogger(implType);
             await DependencyResolver.InvokePostConstructAsync(instance, provider, cfg, log);
+            Console.WriteLine($"[POSTCONSTRUCT] {implType.Name} done.");
         }
     }
 
