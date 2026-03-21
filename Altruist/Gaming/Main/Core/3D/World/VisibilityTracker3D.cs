@@ -13,8 +13,12 @@ namespace Altruist.Gaming.ThreeD
     public class VisibilityTracker3D : IVisibilityTracker
     {
         private IGameWorldOrganizer3D? _organizer;
+        private readonly IEntityHibernationService? _hibernation;
         private readonly ConcurrentDictionary<string, HashSet<string>> _visibleSets = new();
         private readonly ConcurrentDictionary<string, IWorldObject3D> _observers = new();
+
+        // Tracks how many observers see each non-player entity
+        private readonly ConcurrentDictionary<string, int> _observerCounts = new();
 
         public float ViewRange { get; set; } = 5000f;
 
@@ -22,36 +26,115 @@ namespace Altruist.Gaming.ThreeD
         public event Action<VisibilityChange>? OnEntityInvisible;
 
         public VisibilityTracker3D(
-            [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f)
+            [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f,
+            IEntityHibernationService? hibernation = null)
         {
             ViewRange = viewRange;
+            _hibernation = hibernation;
         }
 
-        /// <summary>
-        /// Called after DI to wire the circular dependency.
-        /// </summary>
         public void SetOrganizer(IGameWorldOrganizer3D organizer) => _organizer = organizer;
 
-        /// <summary>
-        /// Called each tick by the world organizer after all objects have stepped.
-        /// Computes visibility diffs for every observer.
-        /// </summary>
         public void Tick()
         {
             if (_organizer is null) return;
+
             foreach (var world in _organizer.GetAllWorlds())
             {
                 var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();
                 var worldIndex = world.Index.Index;
 
+                // Reset observer counts for this tick
+                _observerCounts.Clear();
+
+                // Phase 1: Wake hibernated entities near any observer
+                if (_hibernation != null)
+                {
+                    WakeNearbyHibernated(world, allObjects);
+                }
+
+                // Phase 2: Compute visibility for each observer (player)
                 foreach (var obj in allObjects)
                 {
                     if (string.IsNullOrEmpty(obj.ClientId))
                         continue;
 
-                    // This is an observer (has a client connection)
                     _observers[obj.ClientId] = obj;
                     UpdateVisibilityFor(obj, world, worldIndex, allObjects);
+                }
+
+                // Phase 3: Hibernate entities with zero observers
+                if (_hibernation != null)
+                {
+                    HibernateUnobserved(world, allObjects);
+                }
+            }
+        }
+
+        private void WakeNearbyHibernated(IGameWorldManager3D world, List<IWorldObject3D> allObjects)
+        {
+            if (_hibernation == null || _hibernation.Count == 0) return;
+
+            // Collect all observer positions
+            var observers = allObjects.Where(o => !string.IsNullOrEmpty(o.ClientId)).ToList();
+            if (observers.Count == 0) return;
+
+            var woken = new HashSet<string>();
+
+            foreach (var observer in observers)
+            {
+                var pos = observer.Transform.Position;
+                var nearby = _hibernation.FindNearby(pos.X, pos.Y, pos.Z, ViewRange);
+
+                foreach (var hibernated in nearby)
+                {
+                    if (woken.Contains(hibernated.InstanceId)) continue;
+
+                    var entry = _hibernation.Wake(hibernated.InstanceId);
+                    if (entry?.Entity is IWorldObject3D worldObj)
+                    {
+                        // Re-insert into world
+                        try
+                        {
+                            world.SpawnDynamicObject(worldObj).GetAwaiter().GetResult();
+                            allObjects.Add(worldObj);
+                            woken.Add(hibernated.InstanceId);
+                        }
+                        catch { /* entity may already exist */ }
+                    }
+                }
+            }
+        }
+
+        private void HibernateUnobserved(IGameWorldManager3D world, List<IWorldObject3D> allObjects)
+        {
+            if (_hibernation == null) return;
+
+            foreach (var obj in allObjects)
+            {
+                // Skip players (observers) — only hibernate non-player entities
+                if (!string.IsNullOrEmpty(obj.ClientId)) continue;
+                if (obj is not IHibernatable hibernatable) continue;
+                if (hibernatable.IsHibernated || !hibernatable.CanHibernate) continue;
+
+                // Check if any observer sees this entity
+                var count = _observerCounts.GetValueOrDefault(obj.InstanceId, 0);
+                if (count == 0)
+                {
+                    // No one sees this entity — hibernate it
+                    var pos = obj.Transform.Position;
+                    var vnum = 0; // Game layer can store vnum in the entity
+                    if (obj is IWorldObject3D { } wo && wo.GetType().GetProperty("Vnum") is { } vnumProp)
+                    {
+                        var val = vnumProp.GetValue(wo);
+                        if (val is uint uv) vnum = (int)uv;
+                        else if (val is int iv) vnum = iv;
+                    }
+
+                    var zoneName = obj.ZoneId ?? "";
+
+                    world.DestroyObject(obj);
+                    _hibernation.Hibernate(obj.InstanceId, zoneName, pos.X, pos.Y, pos.Z, vnum, hibernatable);
                 }
             }
         }
@@ -80,6 +163,9 @@ namespace Altruist.Gaming.ThreeD
                 if (dx * dx + dy * dy <= rangeSq)
                 {
                     currentlyVisible.Add(target.InstanceId);
+
+                    // Track observer count for hibernation
+                    _observerCounts.AddOrUpdate(target.InstanceId, 1, (_, c) => c + 1);
                 }
             }
 
@@ -127,9 +213,13 @@ namespace Altruist.Gaming.ThreeD
                 previouslyVisible.Remove(id);
         }
 
+        public IReadOnlySet<string>? GetVisibleEntities(string clientId)
+        {
+            return _visibleSets.TryGetValue(clientId, out var set) ? set : null;
+        }
+
         public void RefreshObserver(string clientId)
         {
-            // Clear known set so next tick sends all nearby as "visible"
             _visibleSets.TryRemove(clientId, out _);
         }
 
@@ -137,7 +227,6 @@ namespace Altruist.Gaming.ThreeD
         {
             if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0)
             {
-                // Fire invisible events for all previously visible entities
                 if (_organizer is null) { _observers.TryRemove(clientId, out _); return; }
                 foreach (var world in _organizer.GetAllWorlds())
                 {
@@ -159,11 +248,6 @@ namespace Altruist.Gaming.ThreeD
             }
 
             _observers.TryRemove(clientId, out _);
-        }
-
-        public IReadOnlySet<string>? GetVisibleEntities(string clientId)
-        {
-            return _visibleSets.TryGetValue(clientId, out var set) ? set : null;
         }
     }
 }
