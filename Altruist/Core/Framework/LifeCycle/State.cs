@@ -168,7 +168,16 @@ public sealed class ServerStatus : IServerStatus
     {
         lock (_connected)
         {
-            if (_connected.Count == _connectables.Count && !_startup)
+            _logger.LogDebug("CheckAllConnected: {Connected}/{Total} connectables, startup={Startup}",
+                _connected.Count, _connectables.Count, _startup);
+
+            if (_connectables.Count == 0)
+            {
+                // No connectables at all — go alive immediately
+                _startup = true;
+                _ = RunStartupActionsAsync(tcs, engine, token);
+            }
+            else if (_connected.Count == _connectables.Count && !_startup)
             {
                 _startup = true;
                 _ = RunStartupActionsAsync(tcs, engine, token);

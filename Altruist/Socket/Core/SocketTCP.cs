@@ -152,7 +152,7 @@ public sealed class CachedTcpConnection : AltruistConnection
     }
 
     [JsonIgnore]
-    public new bool IsConnected => _connection?.IsConnected ?? false;
+    public override bool IsConnected { get => _connection?.IsConnected ?? false; set { } }
 
     public override async Task SendAsync(byte[] data)
     {
@@ -212,7 +212,7 @@ public sealed class TcpConnection : AltruistConnection
     public new string Type { get; } = "tcp";
 
     [JsonIgnore]
-    public new bool IsConnected => _client.Connected;
+    public override bool IsConnected { get => _client.Connected; set { } }
 
     public TcpConnection(TcpClient client, string connectionId, AuthDetails? authDetails,
                           int bufferSize = DefaultBufferSize, bool lengthPrefixed = false)

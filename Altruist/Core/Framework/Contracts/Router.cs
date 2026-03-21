@@ -98,6 +98,10 @@ public class ClientSender : IAltruistRouterSender
         {
             await socket.SendAsync(message);
         }
+        else
+        {
+            Console.Error.WriteLine($"[SEND] Connection not found for clientId={clientId} (socket={socket?.GetType().Name ?? "null"}, connected={socket?.IsConnected})");
+        }
     }
 
     public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
