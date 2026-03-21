@@ -22,6 +22,7 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
     private readonly string _database;
 
     private readonly bool _pooling;
+    private readonly int _maxPoolSize;
     private readonly string _sslModeRaw;
 
     public override string ServiceName { get; } = "PostgreSQL";
@@ -48,9 +49,11 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
         [AppConfigValue("altruist:persistence:database:password")] string password,
         [AppConfigValue("altruist:persistence:database:database")] string database,
         [AppConfigValue("altruist:persistence:database:pooling", "true")] bool pooling = true,
+        [AppConfigValue("altruist:persistence:database:max-pool-size", "300")] int maxPoolSize = 300,
         [AppConfigValue("altruist:persistence:database:ssl-mode", "disable")] string sslMode = "disable")
         : base(jsonOptions)
     {
+        _maxPoolSize = maxPoolSize;
         var hostLower = NormLower(host);
         var userLower = NormLower(username);
         var dbLower = NormLower(database);
@@ -77,6 +80,7 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
             Password = _password,
             Database = _database,
             Pooling = _pooling,
+            MaxPoolSize = _maxPoolSize,
             SslMode = ParseSslMode(_sslModeRaw),
         };
 

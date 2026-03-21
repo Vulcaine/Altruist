@@ -68,55 +68,42 @@ public abstract class JwtAuthController : AuthController
     {
         var clientId = context.ClientId ?? HttpContext.Connection.Id ?? Guid.NewGuid().ToString("N");
 
-        try
+        const int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            context = OnUpgrade(context, clientId);
+            try
+            {
+                context = OnUpgrade(context, clientId);
 
-            var issue = await _authService.Upgrade(context);
+                var issue = await _authService.Upgrade(context);
 
-            if (issue is null)
+                if (issue is null)
+                {
+                    await OnUpgradeFailed(context, clientId);
+                    return Unauthorized(new { code = HttpStatusCode.Unauthorized, reason = "Invalid or expired token" });
+                }
+
+                await OnUpgradeSuccess(context, clientId, issue);
+                return Ok(issue);
+            }
+            catch (SecurityTokenExpiredException)
             {
                 await OnUpgradeFailed(context, clientId);
-
-                var payload = new
-                {
-                    code = HttpStatusCode.Unauthorized,
-                    reason = "Invalid or expired token"
-                };
-
-                return Unauthorized(payload);
+                return Unauthorized(new { code = StatusCodes.Status401Unauthorized, reason = "Invalid or expired token" });
             }
-
-            await OnUpgradeSuccess(context, clientId, issue);
-            return Ok(issue);
-        }
-        catch (SecurityTokenExpiredException)
-        {
-            await OnUpgradeFailed(context, clientId);
-
-            var payload = new
+            catch (Exception ex) when (ex.Message.Contains("concurrency", StringComparison.OrdinalIgnoreCase) && attempt < maxRetries)
             {
-                code = StatusCodes.Status401Unauthorized,
-                reason = "Invalid or expired token"
-            };
-
-            return Unauthorized(payload);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[upgrade] Authentication upgrade failed: {ExType}: {ExMessage}", ex.GetType().Name, ex.Message);
-            Console.Error.WriteLine($"[upgrade] EXCEPTION: {ex}");
-
-            await OnUpgradeFailed(context, clientId);
-
-            var payload = new
+                await Task.Delay(10 * attempt);
+            }
+            catch (Exception ex)
             {
-                code = TransportCode.InternalServerError,
-                reason = "Authentication upgrade failed due to an internal error."
-            };
-
-            return StatusCode(StatusCodes.Status500InternalServerError, payload);
+                _logger.LogError(ex, "[upgrade] Authentication upgrade failed: {ExType}: {ExMessage}", ex.GetType().Name, ex.Message);
+                await OnUpgradeFailed(context, clientId);
+                return StatusCode(StatusCodes.Status500InternalServerError, new { code = TransportCode.InternalServerError, reason = "Authentication upgrade failed." });
+            }
         }
+
+        return StatusCode(StatusCodes.Status500InternalServerError, new { reason = "Upgrade failed after retries." });
     }
 
     [HttpPost("signup")]
