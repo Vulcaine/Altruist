@@ -66,6 +66,7 @@ public sealed class TcpTransport : ITransport
     {
         _listener = new TcpListener(IPAddress.Any, _port);
         _listener.Start();
+        Console.WriteLine($"[TCP] Listening on port {_port}");
         Task.Run(async () =>
         {
             while (true)

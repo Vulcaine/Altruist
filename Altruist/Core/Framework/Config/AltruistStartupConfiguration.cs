@@ -233,7 +233,15 @@ namespace Altruist
                 _transport.RouteTraffic(app);
             }
 
-            // Prefer “ws” scheme if WS enabled, otherwise “http”
+            // Start TCP transport if configured (non-WebSocket mode)
+            var useTcp = string.Equals(_packetTransport, "tcp", StringComparison.OrdinalIgnoreCase);
+            if (useTcp && _transport is not null)
+            {
+                _transport.UseTransportEndpoints(app, typeof(IConnectionManager), "/game");
+                logger.LogInformation("TCP transport started.");
+            }
+
+            // Prefer "ws" scheme if WS enabled, otherwise "http"
             if (!int.TryParse(_httpPort, out var portNum))
                 portNum = 8080;
 
