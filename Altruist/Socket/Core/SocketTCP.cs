@@ -116,6 +116,7 @@ public sealed class TcpTransport : ITransport
 
         var useFraming = _codec is not IFramedCodec;
         var connection = new CachedTcpConnection(new TcpConnection(client, authContext.ClientId, authDetails, lengthPrefixed: useFraming));
+        connection.Route = _endpoint;
 
         await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
     }
