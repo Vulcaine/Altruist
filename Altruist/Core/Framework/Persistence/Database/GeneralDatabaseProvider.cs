@@ -466,8 +466,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         ct.ThrowIfCancellationRequested();
 
-        await EnsureConnectedAsync(ct).ConfigureAwait(false);
-        await using var cmd = PrepareCommand(_conn!, sql, parameters);
+        await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+        await using var cmd = PrepareCommand(conn, sql, parameters);
 
         var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
         if (obj is long l)
@@ -487,8 +487,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         ct.ThrowIfCancellationRequested();
 
-        await EnsureConnectedAsync(ct).ConfigureAwait(false);
-        await using var cmd = PrepareCommand(_conn!, sql, parameters);
+        await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+        await using var cmd = PrepareCommand(conn, sql, parameters);
 
         var affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         if (!IsConnected)
@@ -524,9 +524,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     public virtual async Task CreateSchemaAsync(string schema, CancellationToken ct = default)
     {
-        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
 
-        await using var cmd = _conn!.CreateCommand();
+        await using var cmd = conn.CreateCommand();
         cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }

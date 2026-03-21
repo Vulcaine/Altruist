@@ -104,7 +104,8 @@ public abstract class JwtAuthController : AuthController
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[upgrade] Authentication upgrade failed due to an internal error.");
+            _logger.LogError(ex, "[upgrade] Authentication upgrade failed: {ExType}: {ExMessage}", ex.GetType().Name, ex.Message);
+            Console.Error.WriteLine($"[upgrade] EXCEPTION: {ex}");
 
             await OnUpgradeFailed(context, clientId);
 
