@@ -56,7 +56,11 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
     public int Height { get; }
     public int CellScale { get; }
 
-    public WalkabilityGrid(int width, int height, int cellScale, byte[] cells)
+    /// <summary>World-space origin of this grid. Cell (0,0) maps to (BaseX, BaseY) in world coords.</summary>
+    public float BaseX { get; }
+    public float BaseY { get; }
+
+    public WalkabilityGrid(int width, int height, int cellScale, byte[] cells, float baseX = 0, float baseY = 0)
     {
         if (cells.Length < width * height)
             throw new ArgumentException($"Cell data too small: {cells.Length} < {width * height}");
@@ -64,6 +68,8 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
         Width = width;
         Height = height;
         CellScale = cellScale;
+        BaseX = baseX;
+        BaseY = baseY;
         _cells = cells;
     }
 
@@ -81,18 +87,18 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
 
     public bool IsPositionWalkable(float worldX, float worldY)
     {
-        int cellX = (int)(worldX / CellScale);
-        int cellY = (int)(worldY / CellScale);
+        int cellX = (int)((worldX - BaseX) / CellScale);
+        int cellY = (int)((worldY - BaseY) / CellScale);
         return IsWalkable(cellX, cellY);
     }
 
     public bool CanMoveTo(float fromX, float fromY, float toX, float toY)
     {
         // Simple Bresenham line check — every cell along the path must be walkable
-        int x0 = (int)(fromX / CellScale);
-        int y0 = (int)(fromY / CellScale);
-        int x1 = (int)(toX / CellScale);
-        int y1 = (int)(toY / CellScale);
+        int x0 = (int)((fromX - BaseX) / CellScale);
+        int y0 = (int)((fromY - BaseY) / CellScale);
+        int x1 = (int)((toX - BaseX) / CellScale);
+        int y1 = (int)((toY - BaseY) / CellScale);
 
         int dx = Math.Abs(x1 - x0);
         int dy = Math.Abs(y1 - y0);

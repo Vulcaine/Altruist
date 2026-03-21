@@ -96,9 +96,9 @@ namespace Altruist
                         ? _codec.Decoder.Decode<IPacket>(data, parameterType)
                         : (IPacket?)Activator.CreateInstance(parameterType);
                 }
-                catch
+                catch (Exception decodeEx)
                 {
-                    // Payload doesn't match expected type — create default instance
+                    _logger.LogWarning("Failed to decode {Len} bytes as {Type}: {Error}", data.Length, parameterType.Name, decodeEx.Message);
                     message = (IPacket?)Activator.CreateInstance(parameterType);
                 }
 

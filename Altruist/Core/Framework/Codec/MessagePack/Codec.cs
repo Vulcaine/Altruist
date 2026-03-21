@@ -27,6 +27,7 @@ public class MessagePackMessageDecoder : IDecoder
 {
     private MessagePackSerializerOptions options = MessagePackSerializerOptions.Standard.WithResolver(
            CompositeResolver.Create(
+               StandardResolverAllowPrivate.Instance,
                TypelessContractlessStandardResolver.Instance
            )
        );
