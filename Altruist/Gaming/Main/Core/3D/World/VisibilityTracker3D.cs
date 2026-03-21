@@ -12,7 +12,7 @@ namespace Altruist.Gaming.ThreeD
     [ConditionalOnConfig("altruist:game")]
     public class VisibilityTracker3D : IVisibilityTracker
     {
-        private readonly IGameWorldOrganizer3D _organizer;
+        private IGameWorldOrganizer3D? _organizer;
         private readonly ConcurrentDictionary<string, HashSet<string>> _visibleSets = new();
         private readonly ConcurrentDictionary<string, IWorldObject3D> _observers = new();
 
@@ -22,12 +22,15 @@ namespace Altruist.Gaming.ThreeD
         public event Action<VisibilityChange>? OnEntityInvisible;
 
         public VisibilityTracker3D(
-            IGameWorldOrganizer3D organizer,
             [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f)
         {
-            _organizer = organizer;
             ViewRange = viewRange;
         }
+
+        /// <summary>
+        /// Called after DI to wire the circular dependency.
+        /// </summary>
+        public void SetOrganizer(IGameWorldOrganizer3D organizer) => _organizer = organizer;
 
         /// <summary>
         /// Called each tick by the world organizer after all objects have stepped.
@@ -35,6 +38,7 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         public void Tick()
         {
+            if (_organizer is null) return;
             foreach (var world in _organizer.GetAllWorlds())
             {
                 var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();
@@ -134,6 +138,7 @@ namespace Altruist.Gaming.ThreeD
             if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0)
             {
                 // Fire invisible events for all previously visible entities
+                if (_organizer is null) { _observers.TryRemove(clientId, out _); return; }
                 foreach (var world in _organizer.GetAllWorlds())
                 {
                     var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();

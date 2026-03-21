@@ -19,6 +19,7 @@ using System.Reflection;
 
 using Altruist.Contracts;
 using Altruist.Engine;
+using Altruist.Gaming.ThreeD;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -33,47 +34,45 @@ public class EngineStartupConfiguration : IAltruistConfiguration
 
     public Task Configure(IServiceCollection services)
     {
-        // Defer engine start to avoid blocking the bootstrap pipeline.
-        // The engine resolves many services which can deadlock during config phase.
-        _ = Task.Run(() =>
+        var serviceProvider = services.BuildServiceProvider();
+        var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
+        var settings = serviceProvider.GetRequiredService<IAltruistContext>();
+        CancellationToken token = default;
+        if (settings.EngineEnabled)
         {
-            try
+            // Wire circular dependency: organizer <-> visibility tracker
+            var organizer = serviceProvider.GetService<IGameWorldOrganizer3D>();
+            var tracker = serviceProvider.GetService<IVisibilityTracker>();
+            if (organizer != null && tracker != null)
             {
-                var serviceProvider = services.BuildServiceProvider();
-                var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
-                var settings = serviceProvider.GetRequiredService<IAltruistContext>();
-                CancellationToken token = default;
-                if (settings.EngineEnabled)
+                organizer.SetVisibilityTracker(tracker);
+                if (tracker is Gaming.ThreeD.VisibilityTracker3D vt3d)
+                    vt3d.SetOrganizer(organizer);
+            }
+
+            logger.LogInformation("🚀 Starting engine...");
+            var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
+            var methods = scheduler!.RegisterMethods(serviceProvider);
+            var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
+            engine!.Start(token);
+            logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
+
+            if (methods.Any())
+            {
+                var methodsDisplay = string.Join("\n", methods.Select(m =>
                 {
-                    logger.LogInformation("🚀 Starting engine...");
-                    var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
-                    var methods = scheduler!.RegisterMethods(serviceProvider);
-                    var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
-                    engine!.Start(token);
-                    logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
+                    var regen = m.GetCustomAttribute<CycleAttribute>();
+                    var frequency = regen!.ToString();
+                    return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
+                }));
 
-                    if (methods.Any())
-                    {
-                        var methodsDisplay = string.Join("\n", methods.Select(m =>
-                        {
-                            var regen = m.GetCustomAttribute<CycleAttribute>();
-                            var frequency = regen!.ToString();
-                            return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
-                        }));
-
-                        logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
-                    }
-                    else
-                    {
-                        logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
-                    }
-                }
+                logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
             }
-            catch (Exception ex)
+            else
             {
-                Console.Error.WriteLine($"[ENGINE] Failed to start: {ex}");
+                logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
             }
-        });
+        }
 
         return Task.CompletedTask;
     }

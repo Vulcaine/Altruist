@@ -149,6 +149,8 @@ namespace Altruist
             var app = builder.Build();
             var logger = app.Logger;
 
+            app.UseDeveloperExceptionPage();
+
             if (_httpContextPath != "/" && !string.IsNullOrWhiteSpace(_httpContextPath))
             {
                 app.UsePathBase(_httpContextPath);
@@ -165,6 +167,8 @@ namespace Altruist
             }
 
             app.UseRouting();
+            app.UseAuthentication();
+            app.UseAuthorization();
             app.MapControllers();
             app.UseMiddleware<ReadinessMiddleware>();
 

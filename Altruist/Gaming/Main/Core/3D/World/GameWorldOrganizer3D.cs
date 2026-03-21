@@ -16,6 +16,7 @@ namespace Altruist.Gaming.ThreeD
         IGameWorldManager3D? GetWorld(string name);
 
         IEnumerable<IGameWorldManager3D> GetAllWorlds();
+        void SetVisibilityTracker(IVisibilityTracker? tracker);
     }
 
     [Service(typeof(IGameWorldOrganizer))]
@@ -26,25 +27,30 @@ namespace Altruist.Gaming.ThreeD
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
-        private readonly Lazy<IVisibilityTracker?> _lazyVisibilityTracker;
-
-        private IVisibilityTracker? _visibilityTracker => _lazyVisibilityTracker.Value;
+        private IVisibilityTracker? _visibilityTracker;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
-            IEnumerable<IWorldIndex3D> gameWorlds,
-            IServiceProvider serviceProvider
+            IEnumerable<IWorldIndex3D> gameWorlds
         )
         {
             _worldLoader = worldLoader;
-            // Break circular dep: resolve IVisibilityTracker lazily
-            _lazyVisibilityTracker = new Lazy<IVisibilityTracker?>(
-                () => serviceProvider.GetService(typeof(IVisibilityTracker)) as IVisibilityTracker);
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
 
-            InitializeWorlds(gameWorlds).GetAwaiter().GetResult();
+            // Initialize worlds synchronously — LoadFromIndex returns immediately
+            // for worlds without a DataPath (creates empty physics world).
+            foreach (var index in gameWorlds)
+            {
+                var manager = _worldLoader.LoadFromIndex(index).GetAwaiter().GetResult();
+                AddWorld(manager);
+            }
+        }
+
+        public void SetVisibilityTracker(IVisibilityTracker? tracker)
+        {
+            _visibilityTracker = tracker;
         }
 
         private async Task InitializeWorlds(IEnumerable<IWorldIndex3D> worlds)
