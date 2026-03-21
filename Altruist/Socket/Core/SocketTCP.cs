@@ -90,6 +90,14 @@ public sealed class TcpTransport : ITransport
             ConnectionTimestamp = DateTime.UtcNow
         };
 
+        // Send clientId to the client as the first message (length-prefixed UTF-8)
+        // so the client can use it in the HTTP session upgrade request.
+        var clientIdBytes = Encoding.UTF8.GetBytes(authContext.ClientId);
+        var lenBytes = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(lenBytes, clientIdBytes.Length);
+        await networkStream.WriteAsync(lenBytes);
+        await networkStream.WriteAsync(clientIdBytes);
+
         AuthDetails? authDetails = null;
         var shieldAttribute = connectionManager.GetType().GetCustomAttribute<ShieldAttribute>();
 
@@ -106,8 +114,6 @@ public sealed class TcpTransport : ITransport
             }
         }
 
-        // Use length-prefixed framing for non-framed codecs (e.g. MessagePack)
-        // IFramedCodec (binary structs) handles its own framing via PacketFramer
         var useFraming = _codec is not IFramedCodec;
         var connection = new CachedTcpConnection(new TcpConnection(client, authContext.ClientId, authDetails, lengthPrefixed: useFraming));
 

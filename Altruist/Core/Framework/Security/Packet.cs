@@ -96,6 +96,10 @@ public struct UpgradeAuthRequest
     [Key(2)]
     public string Token { get; set; } = string.Empty;
 
+    [JsonPropertyName("clientId")]
+    [Key(3)]
+    public string? ClientId { get; set; }
+
     public UpgradeAuthRequest()
     {
 

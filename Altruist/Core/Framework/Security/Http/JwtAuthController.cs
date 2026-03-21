@@ -66,7 +66,7 @@ public abstract class JwtAuthController : AuthController
     [HttpPost("upgrade")]
     public async Task<IActionResult> Upgrade([FromBody] UpgradeAuthRequest context)
     {
-        var clientId = HttpContext.Connection.Id ?? Guid.NewGuid().ToString("N");
+        var clientId = context.ClientId ?? HttpContext.Connection.Id ?? Guid.NewGuid().ToString("N");
 
         try
         {
