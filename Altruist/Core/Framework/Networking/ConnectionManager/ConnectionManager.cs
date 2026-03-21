@@ -89,7 +89,18 @@ namespace Altruist
                 var handlerMethod = @delegate.Method;
                 var parameterType = handlerMethod.GetParameters()[0].ParameterType;
 
-                IPacket? message = _codec.Decoder.Decode<IPacket>(data, parameterType);
+                IPacket? message;
+                try
+                {
+                    message = (data.Length > 0)
+                        ? _codec.Decoder.Decode<IPacket>(data, parameterType)
+                        : (IPacket?)Activator.CreateInstance(parameterType);
+                }
+                catch
+                {
+                    // Payload doesn't match expected type — create default instance
+                    message = (IPacket?)Activator.CreateInstance(parameterType);
+                }
 
                 var interceptorTasks = _interceptors
                     .Select(interceptor => interceptor.Intercept(context, message));
@@ -206,8 +217,34 @@ namespace Altruist
                 if (packetData.Length == 0)
                     break;
 
-                var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
-                if (!await ProcessPacket(packet, packetData, @event, clientId))
+                // Frame format: [1-byte eventLen][eventName UTF8][payload]
+                // If first byte looks like a valid event length (1-127), use event-prefixed framing.
+                // Otherwise fall back to AltruistPacket decode for backward compat.
+                AltruistPacket packet;
+                byte[] payloadBytes;
+
+                if (packetData.Length > 2 && packetData[0] > 0 && packetData[0] < 128)
+                {
+                    int eventLen = packetData[0];
+                    if (eventLen + 1 <= packetData.Length)
+                    {
+                        var eventName = System.Text.Encoding.UTF8.GetString(packetData, 1, eventLen);
+                        payloadBytes = packetData.AsSpan(1 + eventLen).ToArray();
+                        packet = new AltruistPacket { Event = eventName, MessageCode = PacketCodes.Altruist };
+                    }
+                    else
+                    {
+                        packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+                        payloadBytes = packetData;
+                    }
+                }
+                else
+                {
+                    packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+                    payloadBytes = packetData;
+                }
+
+                if (!await ProcessPacket(packet, payloadBytes, @event, clientId))
                     break;
             }
         }
