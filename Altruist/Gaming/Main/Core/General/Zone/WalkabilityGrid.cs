@@ -76,7 +76,7 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
     public byte GetCell(int cellX, int cellY)
     {
         if (cellX < 0 || cellX >= Width || cellY < 0 || cellY >= Height)
-            return (byte)CellAttribute.Blocked;
+            return (byte)CellAttribute.None; // Out of grid bounds = walkable (grid may not cover full map)
         return _cells[cellY * Width + cellX];
     }
 

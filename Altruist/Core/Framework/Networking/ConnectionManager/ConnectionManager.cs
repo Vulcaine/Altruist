@@ -92,9 +92,16 @@ namespace Altruist
                 IPacket? message;
                 try
                 {
-                    message = (data.Length > 0)
-                        ? _codec.Decoder.Decode<IPacket>(data, parameterType)
-                        : (IPacket?)Activator.CreateInstance(parameterType);
+                    if (data.Length > 0)
+                    {
+                        message = _codec.Decoder.Decode<IPacket>(data, parameterType);
+                        _logger.LogInformation("Decoded {Len} bytes as {Type} OK", data.Length, parameterType.Name);
+                    }
+                    else
+                    {
+                        message = (IPacket?)Activator.CreateInstance(parameterType);
+                        _logger.LogInformation("Empty payload, created default {Type}", parameterType.Name);
+                    }
                 }
                 catch (Exception decodeEx)
                 {
