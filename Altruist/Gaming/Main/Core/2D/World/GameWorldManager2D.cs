@@ -12,6 +12,7 @@ namespace Altruist.Gaming.TwoD
     {
         IWorldIndex2D Index { get; }
         IPhysxWorld PhysxWorld { get; }
+        IZoneManager2D Zones { get; }
         void Initialize();
         Task SaveAsync();
 
@@ -64,6 +65,7 @@ namespace Altruist.Gaming.TwoD
         private readonly IPhysxColliderApiProvider2D? _colliderApi;
 
         private readonly Dictionary<string, IWorldObject2D> _flatInstanceCache = new();
+        private ZoneManager2D? _zoneManager;
 
         public GameWorldManager2D(
             IWorldIndex2D world,
@@ -85,6 +87,7 @@ namespace Altruist.Gaming.TwoD
 
         public IPhysxWorld PhysxWorld => _physx2D;
         public IWorldIndex2D Index => _index;
+        public IZoneManager2D Zones => _zoneManager ??= new ZoneManager2D(_worldPartitioner, _partitions);
 
         public void Initialize()
         {

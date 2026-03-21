@@ -14,6 +14,7 @@ namespace Altruist.Gaming.ThreeD
     {
         IWorldIndex3D Index { get; }
         IPhysxWorld3D PhysxWorld { get; }
+        IZoneManager3D Zones { get; }
 
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
 
@@ -68,6 +69,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IPhysxColliderApiProvider3D _colliderApi;
 
         private readonly Dictionary<string, IWorldObject3D> _flatInstanceCache = new();
+        private ZoneManager3D? _zoneManager;
 
         public GameWorldManager3D(
             IWorldIndex3D world,
@@ -89,6 +91,7 @@ namespace Altruist.Gaming.ThreeD
 
         public IPhysxWorld3D PhysxWorld => _physx3D;
         public IWorldIndex3D Index => _index;
+        public IZoneManager3D Zones => _zoneManager ??= new ZoneManager3D(_worldPartitioner, _partitions);
 
         public void Initialize()
         {
