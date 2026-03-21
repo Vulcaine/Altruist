@@ -65,13 +65,17 @@ public sealed class TcpTransport : ITransport
     private void StartTcpServer(IConnectionManager connectionManager, IServiceProvider serviceProvider)
     {
         _listener = new TcpListener(IPAddress.Any, _port);
-        _listener.Start();
+        _listener.Server.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, System.Net.Sockets.SocketOptionName.ReuseAddress, true);
+        _listener.Start(backlog: 512);
         Console.WriteLine($"[TCP] Listening on port {_port}");
         Task.Run(async () =>
         {
             while (true)
             {
                 var client = await _listener.AcceptTcpClientAsync();
+                client.NoDelay = true; // Disable Nagle's algorithm for low-latency
+                client.ReceiveBufferSize = 16384;
+                client.SendBufferSize = 16384;
                 _ = HandleClient(client, connectionManager, serviceProvider);
             }
         });
@@ -233,11 +237,11 @@ public sealed class TcpConnection : AltruistConnection
 
         if (_lengthPrefixed)
         {
-            // Write 4-byte little-endian length prefix, then payload
-            var header = new byte[4];
-            BinaryPrimitives.WriteInt32LittleEndian(header, data.Length);
-            await _networkStream.WriteAsync(header.AsMemory(), CancellationToken.None);
-            await _networkStream.WriteAsync(data.AsMemory(), CancellationToken.None);
+            // Combine header + payload into single write to avoid small-packet overhead
+            var frame = new byte[4 + data.Length];
+            BinaryPrimitives.WriteInt32LittleEndian(frame, data.Length);
+            data.CopyTo(frame.AsSpan(4));
+            await _networkStream.WriteAsync(frame.AsMemory(), CancellationToken.None);
         }
         else
         {

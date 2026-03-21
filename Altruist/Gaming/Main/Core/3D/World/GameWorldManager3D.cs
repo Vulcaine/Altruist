@@ -13,7 +13,7 @@ namespace Altruist.Gaming.ThreeD
     public interface IGameWorldManager3D : IGameWorldManager
     {
         IWorldIndex3D Index { get; }
-        IPhysxWorld3D PhysxWorld { get; }
+        IPhysxWorld3D? PhysxWorld { get; }
 
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
 
@@ -22,6 +22,14 @@ namespace Altruist.Gaming.ThreeD
         IEnumerable<IWorldObject3D> GetAllObjects();
         Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
+
+        /// <summary>
+        /// Spawn an object into the world without creating a physics body.
+        /// The object is tracked in partitions for spatial queries and visibility,
+        /// but has no collision or physics simulation. Ideal for distance-based
+        /// combat entities that only need position tracking.
+        /// </summary>
+        void SpawnLightweight(IWorldObject3D obj);
         IWorldObject3D? DestroyObject(string instanceId);
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
 
@@ -62,10 +70,11 @@ namespace Altruist.Gaming.ThreeD
         private readonly Dictionary<PartitionIndex3D, WorldPartitionManager3D> _partitionMap = new();
 
         private readonly List<WorldPartitionManager3D> _partitions;
-        private readonly IPhysxWorld3D _physx3D;
+        private readonly IPhysxWorld3D? _physx3D;
+        private readonly bool _physicsEnabled;
 
-        private readonly IPhysxBodyApiProvider3D _bodyApi;
-        private readonly IPhysxColliderApiProvider3D _colliderApi;
+        private readonly IPhysxBodyApiProvider3D? _bodyApi;
+        private readonly IPhysxColliderApiProvider3D? _colliderApi;
 
         private static uint _nextVirtualId = 1;
 
@@ -73,23 +82,24 @@ namespace Altruist.Gaming.ThreeD
 
         public GameWorldManager3D(
             IWorldIndex3D world,
-            IPhysxWorld3D physx3D,
+            IPhysxWorld3D? physx3D,
             IWorldPartitioner3D worldPartitioner,
-            IPhysxBodyApiProvider3D bodyApi,
-            IPhysxColliderApiProvider3D colliderApi
+            IPhysxBodyApiProvider3D? bodyApi = null,
+            IPhysxColliderApiProvider3D? colliderApi = null
         )
         {
             _index = world;
             _bodyApi = bodyApi;
             _colliderApi = colliderApi;
             _worldPartitioner = worldPartitioner;
+            _physicsEnabled = physx3D != null;
 
             _physx3D = physx3D;
             _partitions = new List<WorldPartitionManager3D>();
             Initialize();
         }
 
-        public IPhysxWorld3D PhysxWorld => _physx3D;
+        public IPhysxWorld3D? PhysxWorld => _physx3D;
         public IWorldIndex3D Index => _index;
 
         public void Initialize()
@@ -139,6 +149,22 @@ namespace Altruist.Gaming.ThreeD
                 withId: withId);
         }
 
+        public void SpawnLightweight(IWorldObject3D obj)
+        {
+            if (obj is null) return;
+
+            if (obj.VirtualId == 0)
+                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
+
+            obj.ObjectArchetype = obj is AnonymousWorldObject3D
+                ? obj.ObjectArchetype
+                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
+
+            // Add to partitions for spatial queries — no physics body
+            var partitions = FindPartitionsForObject(obj);
+            AddObjectToPartitions(obj, partitions);
+        }
+
         /// <summary>
         /// Core spawn logic shared by dynamic & static world objects.
         /// </summary>
@@ -151,7 +177,6 @@ namespace Altruist.Gaming.ThreeD
             if (obj is null)
                 return null;
 
-            // Auto-assign VirtualId if not already set (preserved during hibernation wake)
             if (obj.VirtualId == 0)
                 obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
 
@@ -159,45 +184,49 @@ namespace Altruist.Gaming.ThreeD
                 ? obj.ObjectArchetype
                 : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
 
-            var engine3D = PhysxWorld.Engine;
-            var mass = isStatic ? 0f : 1f;
+            IPhysxBody3D? body = null;
 
-            var bodyDesc = obj.BodyDescriptor ?? PhysxBody3D.Create(
-                bodyType,
-                mass: mass,
-                transform: obj.Transform);
-
-            // Use existing collider descriptors if present, otherwise create a default box.
-            var colliderDescs = obj.ColliderDescriptors;
-            if (colliderDescs == null || !colliderDescs.Any())
+            // Only create physics bodies when physics is enabled
+            if (_physicsEnabled && _physx3D != null && _bodyApi != null && _colliderApi != null)
             {
-                colliderDescs =
-                [
-                    PhysxCollider3D.Create(
-                        PhysxColliderShape3D.Box3D,
-                        obj.Transform,
-                        isTrigger: false)
-                ];
+                var engine3D = _physx3D.Engine;
+                var mass = isStatic ? 0f : 1f;
+
+                var bodyDesc = obj.BodyDescriptor ?? PhysxBody3D.Create(
+                    bodyType, mass: mass, transform: obj.Transform);
+
+                var colliderDescs = obj.ColliderDescriptors;
+                if (colliderDescs == null || !colliderDescs.Any())
+                {
+                    colliderDescs =
+                    [
+                        PhysxCollider3D.Create(
+                            PhysxColliderShape3D.Box3D,
+                            obj.Transform,
+                            isTrigger: false)
+                    ];
+                }
+
+                body = _bodyApi.CreateBody(engine3D, bodyDesc);
+
+                var createdColliders = new List<IPhysxCollider3D>();
+                foreach (var cd in colliderDescs)
+                {
+                    var collider = _colliderApi.CreateCollider(cd);
+                    _bodyApi.AddCollider(engine3D, body, collider);
+                    createdColliders.Add(collider);
+                }
+
+                obj.BodyDescriptor = bodyDesc;
+                obj.Body = body;
+                obj.Body.PhysxTag = bodyDesc.PhysxTag ?? new PhysxTag((uint)PhysxLayer.All);
+                obj.ColliderDescriptors = colliderDescs;
+                obj.Colliders = createdColliders;
+
+                _physx3D.AddBody(body);
             }
 
-            var body = _bodyApi.CreateBody(engine3D, bodyDesc);
-
-            var createdColliders = new List<IPhysxCollider3D>();
-            foreach (var cd in colliderDescs)
-            {
-                var collider = _colliderApi.CreateCollider(cd);
-                _bodyApi.AddCollider(engine3D, body, collider);
-                createdColliders.Add(collider);
-            }
-
-            obj.BodyDescriptor = bodyDesc;
-            obj.Body = body;
-            obj.Body.PhysxTag = bodyDesc.PhysxTag ?? new PhysxTag((uint)PhysxLayer.All);
-            obj.ColliderDescriptors = colliderDescs;
-            obj.Colliders = createdColliders;
-
-            // Bounds-based partition registration: big objects (e.g. landscape)
-            // get added to every partition their collider bounds touch.
+            // Always register in partitions for spatial queries
             var partitions = FindPartitionsForObject(obj);
             foreach (var p in partitions)
                 p.AddObject(obj);
@@ -207,7 +236,6 @@ namespace Altruist.Gaming.ThreeD
             else
                 _flatInstanceCache[obj.InstanceId] = obj;
 
-            PhysxWorld.AddBody(body);
             await Task.CompletedTask;
             return body;
         }
@@ -261,6 +289,7 @@ namespace Altruist.Gaming.ThreeD
 
         private void RemoveFromPhysxEngine(IWorldObject3D obj)
         {
+            if (!_physicsEnabled || _physx3D == null) return;
             var body = obj.Body;
             if (body != null)
             {

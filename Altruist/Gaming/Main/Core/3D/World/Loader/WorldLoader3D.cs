@@ -60,12 +60,12 @@ namespace Altruist.Gaming.ThreeD
     [ConditionalOnConfig("altruist:game")]
     public sealed class WorldLoader3D : IWorldLoader3D
     {
-        private readonly IPhysxWorldEngineFactory3D _engineFactory;
-        private readonly IPhysxBodyApiProvider3D _bodyApi;
-        private readonly IPhysxColliderApiProvider3D _colliderApi;
+        private readonly IPhysxWorldEngineFactory3D? _engineFactory;
+        private readonly IPhysxBodyApiProvider3D? _bodyApi;
+        private readonly IPhysxColliderApiProvider3D? _colliderApi;
         private readonly IWorldPartitioner3D _worldPartitioner;
+        private readonly bool _physicsEnabled;
 
-        // archetype name (case-insensitive) -> world object CLR type
         private readonly Dictionary<string, Type> _archetypeMap;
 
         private readonly List<IWorldObject3D> _spawnedWorldObjects = new();
@@ -74,17 +74,19 @@ namespace Altruist.Gaming.ThreeD
         private readonly JsonSerializerOptions _options;
 
         public WorldLoader3D(
-            IPhysxWorldEngineFactory3D engineFactory,
-            IPhysxBodyApiProvider3D bodyApi,
-            IPhysxColliderApiProvider3D colliderApi,
             IWorldPartitioner3D worldPartitioner,
-            JsonSerializerOptions options)
+            JsonSerializerOptions options,
+            IPhysxWorldEngineFactory3D? engineFactory = null,
+            IPhysxBodyApiProvider3D? bodyApi = null,
+            IPhysxColliderApiProvider3D? colliderApi = null,
+            [AppConfigValue("altruist:game:physics:enabled", "true")] bool physicsEnabled = true)
         {
             _engineFactory = engineFactory;
             _options = options;
             _bodyApi = bodyApi;
             _colliderApi = colliderApi;
             _worldPartitioner = worldPartitioner;
+            _physicsEnabled = physicsEnabled;
 
             _archetypeMap = BuildArchetypeMap();
         }
@@ -119,8 +121,12 @@ namespace Altruist.Gaming.ThreeD
             {
                 _spawnedWorldObjects.Clear();
 
-                var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
-                var physxWorld = new PhysxWorld3D(engine);
+                PhysxWorld3D? physxWorld = null;
+                if (_physicsEnabled && _engineFactory != null)
+                {
+                    var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
+                    physxWorld = new PhysxWorld3D(engine);
+                }
 
                 var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _bodyApi, _colliderApi);
                 return manager;
@@ -144,11 +150,13 @@ namespace Altruist.Gaming.ThreeD
 
             _spawnedWorldObjects.Clear();
 
-            // 1) Create engine + PhysX world
-            var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
-            var physxWorld = new PhysxWorld3D(engine);
+            PhysxWorld3D? physxWorld = null;
+            if (_physicsEnabled && _engineFactory != null)
+            {
+                var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
+                physxWorld = new PhysxWorld3D(engine);
+            }
 
-            // 2) Create the game world manager (this will own the PhysX world & partitioning)
             var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _bodyApi, _colliderApi);
 
             // 3) Root "world" transform from exported landscape

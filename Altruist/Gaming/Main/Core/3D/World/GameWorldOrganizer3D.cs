@@ -125,7 +125,7 @@ namespace Altruist.Gaming.ThreeD
                     }
 
                     var physWorld = world.PhysxWorld;
-                    var engine = physWorld.Engine;
+                    var engine = physWorld?.Engine;
                     if (engine != null && steppedEngines.Add(engine))
                     {
                         enginesToStep.Add(physWorld);

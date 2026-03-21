@@ -15,9 +15,6 @@ limitations under the License.
 */
 
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
-
-using MessagePack;
 
 namespace Altruist.Engine;
 
@@ -53,39 +50,24 @@ public class EngineClientSender : ClientSender
         _engine = engine;
     }
 
+    private static long _sendCounter;
+
     public override Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
     {
         if (message == null)
             return Task.CompletedTask;
 
-        var type = message.GetType();
-        var hash = ComputeContentHash(type, message);
-        var key = $"{clientId}:{type.Name}:{hash:x16}";
-        if (!_inFlight.TryAdd(key, 0))
-            return Task.CompletedTask;
-
+        // Use monotonic counter for unique task ID — no expensive hash needed
+        var id = Interlocked.Increment(ref _sendCounter);
+        var key = $"send:{id}";
         var identifier = new TaskIdentifier(key);
 
         _engine.SendTask(identifier, async () =>
         {
-            try
-            {
-                await base.SendAsync(clientId, message).ConfigureAwait(false);
-            }
-            finally
-            {
-                _inFlight.TryRemove(key, out _);
-            }
+            await base.SendAsync(clientId, message).ConfigureAwait(false);
         });
 
         return Task.CompletedTask;
-    }
-
-    private static ulong ComputeContentHash(Type type, object message)
-    {
-        byte[] bytes = MessagePackSerializer.Serialize(type, message);
-        var sha = SHA256.HashData(bytes);
-        return BitConverter.ToUInt64(sha, 0);
     }
 }
 

@@ -139,18 +139,26 @@ public abstract class JwtAuthController : AuthController
             return BadRequest("Password is required.");
         }
 
-        var signupResult = await _loginService.SignupAsync(request);
-        var account = signupResult.Model;
+        try
+        {
+            var signupResult = await _loginService.SignupAsync(request);
+            var account = signupResult.Model;
 
-        if (account != null)
-        {
-            _logger.LogInformation($"[signup][{request.Email}] ✅ Signup succeeded – user ID: {account.StorageId}");
-            return Ok();
+            if (account != null)
+            {
+                _logger.LogInformation($"[signup][{request.Email}] ✅ Signup succeeded – user ID: {account.StorageId}");
+                return Ok();
+            }
+            else
+            {
+                _logger.LogWarning($"[signup][{request.Email}] ❌ Signup failed – {signupResult.Error}");
+                return BadRequest(signupResult.Error);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _logger.LogWarning($"[signup][{request.Email}] ❌ Signup failed");
-            return BadRequest(signupResult.Error);
+            _logger.LogError(ex, $"[signup][{request.Email}] ❌ Signup exception");
+            return StatusCode(StatusCodes.Status500InternalServerError, "Signup failed. Please try again.");
         }
     }
 

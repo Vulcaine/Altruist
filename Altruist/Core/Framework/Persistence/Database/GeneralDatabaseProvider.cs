@@ -110,6 +110,16 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     public event Action<Exception>? OnFailed;
     public event Action<Exception>? OnRetryExhausted;
 
+    /// <summary>
+    /// Creates and opens a fresh pooled connection for thread-safe per-operation use.
+    /// </summary>
+    protected async Task<DbConnection> GetPooledConnectionAsync(CancellationToken ct = default)
+    {
+        var conn = CreateConnection(BuildConnectionString());
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+        return conn;
+    }
+
     // ---------- Connection lifecycle ----------
 
     protected async Task EnsureConnectedAsync(CancellationToken ct = default)
@@ -183,9 +193,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         try
         {
-            await EnsureConnectedAsync(ct).ConfigureAwait(false);
+            await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
 
-            await using var cmd = PrepareCommand(_conn!, sql, parameters);
+            await using var cmd = PrepareCommand(conn, sql, parameters);
 
             await using var reader = await cmd
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
@@ -532,9 +542,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         try
         {
-            await EnsureConnectedAsync(ct).ConfigureAwait(false);
+            await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
 
-            await using var cmd = PrepareCommand(_conn!, sql, parameters);
+            await using var cmd = PrepareCommand(conn, sql, parameters);
 
             await using var reader = await cmd
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
