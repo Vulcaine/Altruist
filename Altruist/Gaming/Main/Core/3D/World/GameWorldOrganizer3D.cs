@@ -97,78 +97,65 @@ namespace Altruist.Gaming.ThreeD
 
         public void Step(float deltaTime)
         {
-            var steppedEngines = new HashSet<object>();
-            var enginesToStep = new List<IPhysxWorld3D>();
-            var objectsToSync = new List<IWorldObject3D>();
+            var worlds = _worlds.Values.ToArray();
 
-            foreach (var world in _worlds.Values)
+            if (worlds.Length <= 1)
             {
-                try
-                {
-                    foreach (var obj in world.FindAllObjects<IWorldObject3D>())
-                    {
-                        if (obj.Expired)
-                        {
-                            world.DestroyObject(obj);
-                            continue;
-                        }
-
-                        objectsToSync.Add(obj);
-
-                        try
-                        {
-                            obj.Step(deltaTime, world);
-                        }
-                        catch
-                        {
-                        }
-                    }
-
-                    var physWorld = world.PhysxWorld;
-                    var engine = physWorld?.Engine;
-                    if (engine != null && steppedEngines.Add(engine))
-                    {
-                        enginesToStep.Add(physWorld);
-                    }
-                }
-                catch
-                {
-                }
+                // Single world: tick sequentially (no thread overhead)
+                foreach (var world in worlds)
+                    StepWorld(world, deltaTime);
+            }
+            else
+            {
+                // Multiple worlds: tick in parallel (one thread per world)
+                Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                    world => StepWorld(world, deltaTime));
             }
 
-            foreach (var physWorld in enginesToStep)
-            {
-                try
-                {
-                    physWorld.Step(deltaTime);
-                }
-                catch
-                {
-                }
-            }
-
-            foreach (var obj in objectsToSync)
-            {
-                try
-                {
-                    SyncObjectFromPhysics(obj);
-                }
-                catch
-                {
-                }
-            }
-
-            // Compute visibility diffs after all positions are final
+            // Visibility must be computed after all positions are final (single-threaded)
             if (_visibilityTracker is VisibilityTracker3D tracker)
             {
-                try
+                try { tracker.Tick(); }
+                catch { }
+            }
+        }
+
+        private static void StepWorld(IGameWorldManager3D world, float deltaTime)
+        {
+            try
+            {
+                var objectsToSync = new List<IWorldObject3D>();
+
+                foreach (var obj in world.FindAllObjects<IWorldObject3D>())
                 {
-                    tracker.Tick();
+                    if (obj.Expired)
+                    {
+                        world.DestroyObject(obj);
+                        continue;
+                    }
+
+                    try { obj.Step(deltaTime, world); }
+                    catch { }
+
+                    objectsToSync.Add(obj);
                 }
-                catch
+
+                // Physics step (if enabled)
+                var physWorld = world.PhysxWorld;
+                if (physWorld?.Engine != null)
                 {
+                    try { physWorld.Step(deltaTime); }
+                    catch { }
+                }
+
+                // Sync physics -> transform
+                foreach (var obj in objectsToSync)
+                {
+                    try { SyncObjectFromPhysics(obj); }
+                    catch { }
                 }
             }
+            catch { }
         }
 
         private static void SyncObjectFromPhysics(IWorldObject3D obj)
