@@ -28,6 +28,9 @@ namespace Altruist.Gaming.ThreeD
         [VaultIgnore]
         public string InstanceId { get; set; } = Guid.NewGuid().ToString();
 
+        [VaultIgnore]
+        public uint VirtualId { get; set; }
+
         /// <summary>
         /// Archetype is resolved from [WorldObject] attribute by default.
         /// Override only if you need something special.
@@ -78,6 +81,10 @@ namespace Altruist.Gaming.ThreeD
     {
         [VaultIgnore]
         public string ClientId { get; set; }
+
+        /// <summary>Network-friendly sequential ID. Auto-assigned by the world manager on spawn.</summary>
+        uint VirtualId { get; set; }
+
         /// <summary>Transform in world space.</summary>
         [VaultIgnore]
         Transform3D Transform { get; set; }
@@ -109,6 +116,14 @@ namespace Altruist.Gaming.ThreeD
     {
         [VaultIgnore]
         public string InstanceId { get; set; } = Guid.NewGuid().ToString("N");
+
+        /// <summary>
+        /// Network-friendly sequential ID. Auto-assigned by the world manager on spawn.
+        /// Used for compact wire protocol references. Preserved during hibernation.
+        /// Freed when the entity is destroyed.
+        /// </summary>
+        [VaultIgnore]
+        public uint VirtualId { get; set; }
 
         /// <summary>
         /// By default resolves the archetype from [WorldObject] on the concrete type.

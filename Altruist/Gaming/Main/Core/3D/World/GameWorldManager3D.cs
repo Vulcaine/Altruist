@@ -67,6 +67,8 @@ namespace Altruist.Gaming.ThreeD
         private readonly IPhysxBodyApiProvider3D _bodyApi;
         private readonly IPhysxColliderApiProvider3D _colliderApi;
 
+        private static uint _nextVirtualId = 1;
+
         private readonly Dictionary<string, IWorldObject3D> _flatInstanceCache = new();
 
         public GameWorldManager3D(
@@ -148,6 +150,10 @@ namespace Altruist.Gaming.ThreeD
         {
             if (obj is null)
                 return null;
+
+            // Auto-assign VirtualId if not already set (preserved during hibernation wake)
+            if (obj.VirtualId == 0)
+                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
 
             obj.ObjectArchetype = obj is AnonymousWorldObject3D
                 ? obj.ObjectArchetype
