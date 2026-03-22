@@ -91,6 +91,10 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
                 if (!CollisionHandlerRegistry.HasHandlers(objA.GetType(), objB.GetType()))
                     continue;
 
+                // Layer filtering: entities only collide if their layers overlap
+                if ((objA.CollisionLayer & objB.CollisionLayer) == 0)
+                    continue;
+
                 var radiusB = GetColliderRadius(objB, collisionRadius);
                 var totalRadius = MathF.Max(radiusA, radiusB);
 
