@@ -22,8 +22,14 @@ public sealed class AutosaveServiceFactory : IServiceFactory
     /// <summary>Config key for the global default autosave interval.</summary>
     public const string DefaultIntervalConfigKey = "altruist:game:autosave:default-interval";
 
+    /// <summary>Config key for the global default batch size.</summary>
+    public const string DefaultBatchSizeConfigKey = "altruist:game:autosave:default-batch-size";
+
     /// <summary>Fallback when neither attribute nor config specifies an interval.</summary>
     public const string FallbackInterval = "*/5 * * * *";
+
+    /// <summary>Fallback batch size.</summary>
+    public const int FallbackBatchSize = 100;
 
     public bool CanCreate(Type serviceType)
     {
@@ -52,8 +58,8 @@ public sealed class AutosaveServiceFactory : IServiceFactory
         var vaultType = typeof(IVault<>).MakeGenericType(modelType);
         var vault = sp.GetService(vaultType);
 
-        // Resolve the effective interval for [Autosave] with no args
-        var batchSize = autosaveAttr.BatchSize;
+        var config = sp.GetService<IConfiguration>();
+        var batchSize = ResolveBatchSize(autosaveAttr, config);
 
         var implType = typeof(AutosaveService<>).MakeGenericType(modelType);
         return Activator.CreateInstance(implType, cache, coordinator, loggerFactory, vault, batchSize)!;
@@ -81,5 +87,20 @@ public sealed class AutosaveServiceFactory : IServiceFactory
 
         // Ultimate fallback
         return FallbackInterval;
+    }
+
+    /// <summary>
+    /// Resolve the effective batch size, considering attribute and config defaults.
+    /// </summary>
+    public static int ResolveBatchSize(AutosaveAttribute attr, IConfiguration? config)
+    {
+        // Config can override the default (100)
+        var configValue = config?.GetSection(DefaultBatchSizeConfigKey)?.Value;
+        var configBatchSize = !string.IsNullOrEmpty(configValue) && int.TryParse(configValue, out var parsed) && parsed > 0
+            ? parsed
+            : FallbackBatchSize;
+
+        // Attribute value wins if explicitly changed from default
+        return attr.BatchSize != FallbackBatchSize ? attr.BatchSize : configBatchSize;
     }
 }

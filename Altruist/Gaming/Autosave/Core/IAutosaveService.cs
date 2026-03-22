@@ -28,7 +28,10 @@ public class AutosaveAttribute : Attribute
     /// <summary>Unit for the numeric interval.</summary>
     public AutosaveCycle Unit { get; }
 
-    /// <summary>Batch size for DB writes. Default: 100.</summary>
+    /// <summary>
+    /// Batch size for DB writes. Default: 100. Overridable via config
+    /// (altruist:game:autosave:default-batch-size) or per-attribute.
+    /// </summary>
     public int BatchSize { get; set; } = 100;
 
     /// <summary>
