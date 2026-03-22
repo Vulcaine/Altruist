@@ -20,6 +20,7 @@ public class CombatService : ICombatService
 {
     private readonly IDamageCalculator _calculator;
     private readonly IGameWorldOrganizer3D? _worldOrganizer;
+    private readonly ISpatialCollisionDispatcher? _collisionDispatcher;
     private readonly ILogger _logger;
 
     public event Action<HitEvent>? OnHit;
@@ -29,10 +30,12 @@ public class CombatService : ICombatService
     public CombatService(
         IDamageCalculator calculator,
         ILoggerFactory loggerFactory,
-        IGameWorldOrganizer3D? worldOrganizer = null)
+        IGameWorldOrganizer3D? worldOrganizer = null,
+        ISpatialCollisionDispatcher? collisionDispatcher = null)
     {
         _calculator = calculator;
         _worldOrganizer = worldOrganizer;
+        _collisionDispatcher = collisionDispatcher;
         _logger = loggerFactory.CreateLogger<CombatService>();
     }
 
@@ -52,6 +55,9 @@ public class CombatService : ICombatService
 
         target.Health = Math.Max(0, target.Health - damage);
         bool killed = target.Health <= 0;
+
+        // Fire collision handlers (same API as physics collision events)
+        _collisionDispatcher?.DispatchHit(source, target);
 
         OnHit?.Invoke(new HitEvent(source, target, damage, flags));
 
