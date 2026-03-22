@@ -54,20 +54,34 @@ namespace Altruist.Physx
         }
 
         /// <summary>
-        /// Returns registered handlers for the concrete type pair (aType, bType).
-        /// This is intended for use in the collision dispatch path.
+        /// Returns ALL registered handlers for the type pair (any event type).
         /// </summary>
         public static IReadOnlyList<HandlerDescriptor> GetHandlers(Type aType, Type bType)
         {
-            if (aType is null)
-                throw new ArgumentNullException(nameof(aType));
-            if (bType is null)
-                throw new ArgumentNullException(nameof(bType));
+            if (aType is null) throw new ArgumentNullException(nameof(aType));
+            if (bType is null) throw new ArgumentNullException(nameof(bType));
 
             var key = new HandlerKey(aType, bType);
             return _handlers.TryGetValue(key, out var list)
                 ? list
                 : Array.Empty<HandlerDescriptor>();
+        }
+
+        /// <summary>
+        /// Returns handlers filtered by event type (CollisionEnter, CollisionExit, CollisionHit, etc.).
+        /// </summary>
+        public static IReadOnlyList<HandlerDescriptor> GetHandlers(Type aType, Type bType, Type eventType)
+        {
+            var all = GetHandlers(aType, bType);
+            if (all.Count == 0) return all;
+            return all.Where(h => h.EventType == eventType).ToList();
+        }
+
+        /// <summary>Check if any handlers exist for this type pair (fast check, no allocation).</summary>
+        public static bool HasHandlers(Type aType, Type bType)
+        {
+            var key = new HandlerKey(aType, bType);
+            return _handlers.TryGetValue(key, out var list) && list.Count > 0;
         }
 
         public static int TotalHandlerCount => _handlers.Values.Sum(l => l.Count);

@@ -11,22 +11,22 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Gaming;
 
 /// <summary>
-/// Distance-based collision detection that works WITHOUT physics.
-/// Uses spatial partitions to find nearby entity pairs and invokes
-/// the same [CollisionHandler]/[CollisionEvent] handlers as the physics system.
-///
-/// When physics is enabled, BEPU handles collisions. When physics is disabled,
-/// this dispatcher provides the same API via distance checks.
+/// Physics-less collision detection with full lifecycle:
+/// Enter (first overlap), Stay (continuous), Exit (end overlap), Hit (one-shot).
+/// Works for entity-entity, entity-zone, entity-partition.
+/// Uses the same [CollisionHandler]/[CollisionEvent] API as the physics system.
 /// </summary>
 public interface ISpatialCollisionDispatcher
 {
-    /// <summary>Check a specific pair of entities for collision and invoke handlers if overlapping.</summary>
-    void CheckCollision(object entityA, object entityB);
-
-    /// <summary>Fire all registered handlers for a type pair. Used by CombatService on hit.</summary>
+    /// <summary>One-shot hit dispatch (combat). No enter/stay/exit tracking.</summary>
     void DispatchHit(object entityA, object entityB);
 
-    /// <summary>Get the number of registered collision handler pairs.</summary>
+    /// <summary>Dispatch a specific event phase between two objects.</summary>
+    void Dispatch(object entityA, object entityB, Type eventType);
+
+    /// <summary>Run full overlap detection tick (enter/stay/exit) for a world.</summary>
+    void Tick(IGameWorldManager3D world, float collisionRadius = 200f);
+
     int HandlerCount { get; }
 }
 
@@ -35,6 +35,12 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
 {
     private readonly ILogger _logger;
 
+    // Active entity-entity overlaps: ordered (idA, idB) -> (objA, objB)
+    private readonly ConcurrentDictionary<(string, string), (object, object)> _activeOverlaps = new();
+
+    // Entity -> current zone name + zone object (for zone enter/exit)
+    private readonly ConcurrentDictionary<string, (string ZoneName, object ZoneObj)> _entityZones = new();
+
     public int HandlerCount => CollisionHandlerRegistry.TotalHandlerCount;
 
     public SpatialCollisionDispatcher(ILoggerFactory loggerFactory)
@@ -42,15 +48,15 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         _logger = loggerFactory.CreateLogger<SpatialCollisionDispatcher>();
     }
 
-    public void CheckCollision(object entityA, object entityB)
+    public void DispatchHit(object entityA, object entityB)
     {
-        if (entityA == entityB) return;
+        Dispatch(entityA, entityB, typeof(CollisionHit));
+    }
 
-        var typeA = entityA.GetType();
-        var typeB = entityB.GetType();
-
-        var handlers = CollisionHandlerRegistry.GetHandlers(typeA, typeB);
-        if (handlers == null || handlers.Count == 0) return;
+    public void Dispatch(object entityA, object entityB, Type eventType)
+    {
+        var handlers = CollisionHandlerRegistry.GetHandlers(
+            entityA.GetType(), entityB.GetType(), eventType);
 
         foreach (var handler in handlers)
         {
@@ -60,14 +66,118 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Collision handler {Handler} failed for ({A}, {B})",
-                    handler.HandlerType.Name, typeA.Name, typeB.Name);
+                _logger.LogError(ex, "Collision handler {Handler} failed for {Event}({A}, {B})",
+                    handler.HandlerType.Name, eventType.Name,
+                    entityA.GetType().Name, entityB.GetType().Name);
             }
         }
     }
 
-    public void DispatchHit(object entityA, object entityB)
+    public void Tick(IGameWorldManager3D world, float collisionRadius = 200f)
     {
-        CheckCollision(entityA, entityB);
+        var currentOverlaps = new HashSet<(string, string)>();
+        var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();
+        var radiusSq = collisionRadius * collisionRadius;
+
+        // -- Entity <-> Entity overlap detection --
+        for (int i = 0; i < allObjects.Count; i++)
+        {
+            var objA = allObjects[i];
+            var posA = objA.Transform.Position;
+
+            for (int j = i + 1; j < allObjects.Count; j++)
+            {
+                var objB = allObjects[j];
+
+                if (!CollisionHandlerRegistry.HasHandlers(objA.GetType(), objB.GetType()))
+                    continue;
+
+                var posB = objB.Transform.Position;
+                var dx = posA.X - posB.X;
+                var dy = posA.Y - posB.Y;
+                var dz = posA.Z - posB.Z;
+
+                if (dx * dx + dy * dy + dz * dz > radiusSq)
+                    continue;
+
+                var pair = OrderPair(objA.InstanceId, objB.InstanceId);
+                currentOverlaps.Add(pair);
+
+                if (!_activeOverlaps.ContainsKey(pair))
+                {
+                    _activeOverlaps[pair] = (objA, objB);
+                    Dispatch(objA, objB, typeof(CollisionEnter));
+                }
+                else
+                {
+                    Dispatch(objA, objB, typeof(CollisionStay));
+                }
+            }
+        }
+
+        // Fire Exit for pairs no longer overlapping
+        var toRemove = new List<(string, string)>();
+        foreach (var kvp in _activeOverlaps)
+        {
+            if (!currentOverlaps.Contains(kvp.Key))
+            {
+                var (objA, objB) = kvp.Value;
+                Dispatch(objA, objB, typeof(CollisionExit));
+                toRemove.Add(kvp.Key);
+            }
+        }
+        foreach (var key in toRemove)
+            _activeOverlaps.TryRemove(key, out _);
+
+        // -- Entity <-> Zone detection --
+        TickZoneOverlaps(world, allObjects);
     }
+
+    private void TickZoneOverlaps(IGameWorldManager3D world, List<IWorldObject3D> allObjects)
+    {
+        // Zone detection requires ZoneManager3D with FindZoneAt
+        if (world is not GameWorldManager3D gw) return;
+
+        var zones = gw.Zones as ZoneManager3D;
+        if (zones == null) return;
+
+        foreach (var obj in allObjects)
+        {
+            var pos = obj.Transform.Position;
+            var currentZone = zones.FindZoneAt((int)pos.X, (int)pos.Y, (int)pos.Z);
+            var currentZoneName = (currentZone as IZone)?.Name;
+
+            _entityZones.TryGetValue(obj.InstanceId, out var prev);
+
+            if (currentZoneName != prev.ZoneName)
+            {
+                // Zone changed
+                if (prev.ZoneObj != null)
+                    Dispatch(obj, prev.ZoneObj, typeof(CollisionExit));
+
+                if (currentZone != null)
+                {
+                    Dispatch(obj, currentZone, typeof(CollisionEnter));
+                    _entityZones[obj.InstanceId] = (currentZoneName!, currentZone);
+                }
+                else
+                {
+                    _entityZones.TryRemove(obj.InstanceId, out _);
+                }
+            }
+        }
+    }
+
+    /// <summary>Remove tracking for a destroyed entity.</summary>
+    public void RemoveEntity(string instanceId)
+    {
+        _entityZones.TryRemove(instanceId, out _);
+
+        var toRemove = _activeOverlaps.Keys.Where(k => k.Item1 == instanceId || k.Item2 == instanceId).ToList();
+        foreach (var key in toRemove)
+            _activeOverlaps.TryRemove(key, out _);
+    }
+
+    private static (string, string) OrderPair(string a, string b)
+        => string.CompareOrdinal(a, b) <= 0 ? (a, b) : (b, a);
 }
