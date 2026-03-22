@@ -44,4 +44,12 @@ namespace Altruist.Physx
 
     /// <summary>One-shot hit (combat damage, projectile impact). No tracking.</summary>
     public class CollisionHit { }
+
+    // ── Visibility events (bridged from VisibilityTracker) ───────────
+
+    /// <summary>Entity entered an observer's view range.</summary>
+    public class EntityVisible { }
+
+    /// <summary>Entity left an observer's view range.</summary>
+    public class EntityInvisible { }
 }
