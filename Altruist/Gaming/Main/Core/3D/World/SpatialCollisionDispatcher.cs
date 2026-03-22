@@ -77,13 +77,12 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
     {
         var currentOverlaps = new HashSet<(string, string)>();
         var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();
-        var radiusSq = collisionRadius * collisionRadius;
-
         // -- Entity <-> Entity overlap detection --
         for (int i = 0; i < allObjects.Count; i++)
         {
             var objA = allObjects[i];
             var posA = objA.Transform.Position;
+            var radiusA = GetColliderRadius(objA, collisionRadius);
 
             for (int j = i + 1; j < allObjects.Count; j++)
             {
@@ -92,12 +91,15 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
                 if (!CollisionHandlerRegistry.HasHandlers(objA.GetType(), objB.GetType()))
                     continue;
 
+                var radiusB = GetColliderRadius(objB, collisionRadius);
+                var totalRadius = MathF.Max(radiusA, radiusB);
+
                 var posB = objB.Transform.Position;
                 var dx = posA.X - posB.X;
                 var dy = posA.Y - posB.Y;
                 var dz = posA.Z - posB.Z;
 
-                if (dx * dx + dy * dy + dz * dz > radiusSq)
+                if (dx * dx + dy * dy + dz * dz > totalRadius * totalRadius)
                     continue;
 
                 var pair = OrderPair(objA.InstanceId, objB.InstanceId);
@@ -176,6 +178,27 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         var toRemove = _activeOverlaps.Keys.Where(k => k.Item1 == instanceId || k.Item2 == instanceId).ToList();
         foreach (var key in toRemove)
             _activeOverlaps.TryRemove(key, out _);
+    }
+
+    /// <summary>
+    /// Extract collision radius from entity's ColliderDescriptors.
+    /// Uses the first collider's size. Falls back to defaultRadius if no colliders.
+    /// Same shape data used by physics when enabled.
+    /// </summary>
+    private static float GetColliderRadius(IWorldObject3D obj, float defaultRadius)
+    {
+        var colliders = obj.ColliderDescriptors;
+        if (colliders == null) return defaultRadius;
+
+        foreach (var collider in colliders)
+        {
+            var size = collider.Transform.Size;
+            // Sphere: X = radius. Box: max dimension. Capsule: X = radius.
+            var maxExtent = MathF.Max(MathF.Max(size.X, size.Y), size.Z);
+            if (maxExtent > 0) return maxExtent;
+        }
+
+        return defaultRadius;
     }
 
     private static (string, string) OrderPair(string a, string b)
