@@ -30,4 +30,18 @@ namespace Altruist.Physx
             EventType = eventType ?? throw new ArgumentNullException(nameof(eventType));
         }
     }
+
+    // ── Built-in collision event phases ──────────────────────────────
+
+    /// <summary>First frame two entities begin overlapping.</summary>
+    public class CollisionEnter { }
+
+    /// <summary>Every tick while two entities remain overlapping.</summary>
+    public class CollisionStay { }
+
+    /// <summary>First frame after two entities stop overlapping.</summary>
+    public class CollisionExit { }
+
+    /// <summary>One-shot hit (combat damage, projectile impact). No tracking.</summary>
+    public class CollisionHit { }
 }
