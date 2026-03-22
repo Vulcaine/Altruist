@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -31,6 +32,94 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Socket;
 
+/// <summary>
+/// Tracks TCP connection count, max limit, and login queue.
+/// Registered as a singleton service so HTTP controllers can query it.
+/// </summary>
+public interface IConnectionGate
+{
+    int ActiveConnections { get; }
+    int MaxConnections { get; }
+    int QueueLength { get; }
+    bool IsFull { get; }
+    int GetQueuePosition(string userId);
+    int EstimatedWaitSeconds(string userId);
+}
+
+[Service(typeof(IConnectionGate))]
+public sealed class ConnectionGate : IConnectionGate
+{
+    private int _active;
+    private readonly int _max;
+    private readonly ConcurrentQueue<QueueEntry> _queue = new();
+    private readonly ConcurrentDictionary<string, int> _queuePositions = new();
+
+    public int ActiveConnections => _active;
+    public int MaxConnections => _max;
+    public int QueueLength => _queue.Count;
+    public bool IsFull => _active >= _max;
+
+    public ConnectionGate(
+        [AppConfigValue("altruist:server:transport:max_connections", "1000")] int maxConnections = 1000)
+    {
+        _max = maxConnections;
+    }
+
+    public bool TryAdmit()
+    {
+        var current = Interlocked.Increment(ref _active);
+        if (current <= _max) return true;
+        Interlocked.Decrement(ref _active);
+        return false;
+    }
+
+    public void Release() => Interlocked.Decrement(ref _active);
+
+    public void Enqueue(string userId)
+    {
+        _queue.Enqueue(new QueueEntry(userId, DateTime.UtcNow));
+        RebuildPositions();
+    }
+
+    public string? TryDequeue()
+    {
+        if (_queue.TryDequeue(out var entry))
+        {
+            _queuePositions.TryRemove(entry.UserId, out _);
+            RebuildPositions();
+            return entry.UserId;
+        }
+        return null;
+    }
+
+    public void RemoveFromQueue(string userId)
+    {
+        // ConcurrentQueue doesn't support removal, but we track positions
+        _queuePositions.TryRemove(userId, out _);
+    }
+
+    public int GetQueuePosition(string userId)
+    {
+        return _queuePositions.TryGetValue(userId, out var pos) ? pos : -1;
+    }
+
+    public int EstimatedWaitSeconds(string userId)
+    {
+        var pos = GetQueuePosition(userId);
+        return pos <= 0 ? 0 : pos * 6; // ~6 seconds per player based on throughput
+    }
+
+    private void RebuildPositions()
+    {
+        _queuePositions.Clear();
+        int i = 1;
+        foreach (var entry in _queue)
+            _queuePositions[entry.UserId] = i++;
+    }
+
+    private record QueueEntry(string UserId, DateTime EnqueuedAt);
+}
+
 [Service(typeof(ITransport))]
 [ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
 public sealed class TcpTransport : ITransport
@@ -41,11 +130,12 @@ public sealed class TcpTransport : ITransport
     private readonly string _endpoint;
 
     private readonly ICodec _codec;
+    private ConnectionGate? _gate;
 
     public TcpTransport(
         ICodec codec,
-        [AppConfigValue("altruist:server:transport:config:event", "/game")] string @event,
-        [AppConfigValue("altruist:server:transport:config:port", "13000")] int port = 5000)
+        [AppConfigValue("altruist:server:transport:event", "/game")] string @event,
+        [AppConfigValue("altruist:server:transport:port", "13000")] int port = 5000)
     {
         _port = port;
         _codec = codec;
@@ -64,18 +154,38 @@ public sealed class TcpTransport : ITransport
 
     private void StartTcpServer(IConnectionManager connectionManager, IServiceProvider serviceProvider)
     {
+        _gate = serviceProvider.GetService<IConnectionGate>() as ConnectionGate;
+
         _listener = new TcpListener(IPAddress.Any, _port);
         _listener.Server.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, System.Net.Sockets.SocketOptionName.ReuseAddress, true);
         _listener.Start(backlog: 512);
-        Console.WriteLine($"[TCP] Listening on port {_port}");
+        var max = _gate?.MaxConnections ?? 1000;
+        Console.WriteLine($"[TCP] Listening on port {_port} (max {max} connections)");
         Task.Run(async () =>
         {
             while (true)
             {
                 var client = await _listener.AcceptTcpClientAsync();
-                client.NoDelay = true; // Disable Nagle's algorithm for low-latency
+                client.NoDelay = true;
                 client.ReceiveBufferSize = 16384;
                 client.SendBufferSize = 16384;
+
+                if (_gate != null && !_gate.TryAdmit())
+                {
+                    // Server full — send rejection and close
+                    try
+                    {
+                        var msg = Encoding.UTF8.GetBytes("SERVER_FULL");
+                        var len = new byte[4];
+                        BinaryPrimitives.WriteInt32LittleEndian(len, msg.Length);
+                        await client.GetStream().WriteAsync(len);
+                        await client.GetStream().WriteAsync(msg);
+                    }
+                    catch { }
+                    client.Close();
+                    continue;
+                }
+
                 _ = HandleClient(client, connectionManager, serviceProvider);
             }
         });
@@ -122,7 +232,14 @@ public sealed class TcpTransport : ITransport
         var connection = new CachedTcpConnection(new TcpConnection(client, authContext.ClientId, authDetails, lengthPrefixed: useFraming));
         connection.Route = _endpoint;
 
-        await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
+        try
+        {
+            await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
+        }
+        finally
+        {
+            _gate?.Release();
+        }
     }
 
     public void RouteTraffic(IApplicationBuilder app)
