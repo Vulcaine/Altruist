@@ -68,6 +68,9 @@ namespace Altruist.Gaming.ThreeD
         public string ZoneId { get; set; } = "";
 
         [VaultIgnore]
+        public uint CollisionLayer { get; set; } = 0xFFFFFFFFu;
+
+        [VaultIgnore]
         public bool Expired { get; set; }
 
         public virtual void Step(float dt, IGameWorldManager3D world) { return; }
@@ -104,6 +107,15 @@ namespace Altruist.Gaming.ThreeD
 
         [VaultIgnore]
         public IPhysxBody3D? Body { get; set; }
+
+        /// <summary>
+        /// Collision layer bitmask for this entity. Used by SpatialCollisionDispatcher
+        /// to filter which entities can collide with each other.
+        /// Default: PhysxLayer.All (collides with everything).
+        /// Set to a specific layer to control interactions.
+        /// </summary>
+        [VaultIgnore]
+        uint CollisionLayer { get; set; }
     }
 
     /// <summary>
@@ -141,6 +153,9 @@ namespace Altruist.Gaming.ThreeD
 
         [VaultIgnore]
         public string ZoneId { get; set; } = string.Empty;
+
+        [VaultIgnore]
+        public uint CollisionLayer { get; set; } = 0xFFFFFFFFu; // PhysxLayer.All
 
         /// <summary>
         /// Engine-agnostic body descriptor associated with this world object, if any.
