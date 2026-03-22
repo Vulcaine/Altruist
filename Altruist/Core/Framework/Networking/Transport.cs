@@ -20,6 +20,9 @@ namespace Altruist.Transport;
 
 public interface ITransport
 {
+    /// <summary>Identifies this transport type: "tcp", "udp", "websocket".</summary>
+    string TransportType { get; }
+
     void RouteTraffic(IApplicationBuilder app);
     void UseTransportEndpoints<TType>(IApplicationBuilder app, string path) where TType : class;
     void UseTransportEndpoints(IApplicationBuilder app, Type type, string path);
