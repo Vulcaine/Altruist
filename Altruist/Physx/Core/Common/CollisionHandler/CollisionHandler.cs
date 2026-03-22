@@ -69,5 +69,7 @@ namespace Altruist.Physx
                 ? list
                 : Array.Empty<HandlerDescriptor>();
         }
+
+        public static int TotalHandlerCount => _handlers.Values.Sum(l => l.Count);
     }
 }
