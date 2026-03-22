@@ -14,6 +14,7 @@ namespace Altruist.Gaming.ThreeD
     {
         private IGameWorldOrganizer3D? _organizer;
         private readonly IEntityHibernationService? _hibernation;
+        private readonly ISpatialCollisionDispatcher? _collisionDispatcher;
         private readonly ConcurrentDictionary<string, HashSet<string>> _visibleSets = new();
         private readonly ConcurrentDictionary<string, IWorldObject3D> _observers = new();
 
@@ -27,10 +28,12 @@ namespace Altruist.Gaming.ThreeD
 
         public VisibilityTracker3D(
             [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f,
-            IEntityHibernationService? hibernation = null)
+            IEntityHibernationService? hibernation = null,
+            ISpatialCollisionDispatcher? collisionDispatcher = null)
         {
             ViewRange = viewRange;
             _hibernation = hibernation;
+            _collisionDispatcher = collisionDispatcher;
         }
 
         public void SetOrganizer(IGameWorldOrganizer3D organizer) => _organizer = organizer;
@@ -185,6 +188,9 @@ namespace Altruist.Gaming.ThreeD
                             Target = target,
                             WorldIndex = worldIndex,
                         });
+
+                        // Bridge to collision handler system
+                        _collisionDispatcher?.Dispatch(observer, target, typeof(Physx.EntityVisible));
                     }
                 }
             }
@@ -205,6 +211,8 @@ namespace Altruist.Gaming.ThreeD
                             Target = target,
                             WorldIndex = worldIndex,
                         });
+
+                        _collisionDispatcher?.Dispatch(observer, target, typeof(Physx.EntityInvisible));
                     }
                 }
             }
@@ -242,6 +250,9 @@ namespace Altruist.Gaming.ThreeD
                                 Target = target,
                                 WorldIndex = world.Index.Index,
                             });
+
+                            if (_observers.TryGetValue(clientId, out var observer))
+                                _collisionDispatcher?.Dispatch(observer, target, typeof(Physx.EntityInvisible));
                         }
                     }
                 }
