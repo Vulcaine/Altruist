@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 namespace Altruist.Gaming.Autosave;
 
-public enum CycleUnit
+public enum AutosaveCycle
 {
     Seconds,
     Minutes,
@@ -26,16 +26,16 @@ public class AutosaveAttribute : Attribute
     public int IntervalValue { get; }
 
     /// <summary>Unit for the numeric interval.</summary>
-    public CycleUnit Unit { get; }
+    public AutosaveCycle Unit { get; }
 
     /// <summary>Batch size for DB writes. Default: 100.</summary>
     public int BatchSize { get; set; } = 100;
 
     /// <summary>
     /// Time-based autosave interval.
-    /// Example: [Autosave(120, CycleUnit.Seconds)] — flushes every 120 seconds.
+    /// Example: [Autosave(120, AutosaveCycle.Seconds)] — flushes every 120 seconds.
     /// </summary>
-    public AutosaveAttribute(int interval, CycleUnit unit = CycleUnit.Seconds)
+    public AutosaveAttribute(int interval, AutosaveCycle unit = AutosaveCycle.Seconds)
     {
         IntervalValue = interval;
         Unit = unit;
@@ -50,7 +50,7 @@ public class AutosaveAttribute : Attribute
     {
         CronExpression = cronExpression;
         IntervalValue = 0;
-        Unit = CycleUnit.Seconds;
+        Unit = AutosaveCycle.Seconds;
     }
 
     /// <summary>
@@ -60,7 +60,7 @@ public class AutosaveAttribute : Attribute
     {
         CronExpression = "*/5 * * * *";
         IntervalValue = 0;
-        Unit = CycleUnit.Seconds;
+        Unit = AutosaveCycle.Seconds;
     }
 
     /// <summary>Get the interval as TimeSpan (for time-based), or null (for cron-based).</summary>
@@ -69,9 +69,9 @@ public class AutosaveAttribute : Attribute
         if (IntervalValue <= 0) return null;
         return Unit switch
         {
-            CycleUnit.Seconds => TimeSpan.FromSeconds(IntervalValue),
-            CycleUnit.Minutes => TimeSpan.FromMinutes(IntervalValue),
-            CycleUnit.Hours => TimeSpan.FromHours(IntervalValue),
+            AutosaveCycle.Seconds => TimeSpan.FromSeconds(IntervalValue),
+            AutosaveCycle.Minutes => TimeSpan.FromMinutes(IntervalValue),
+            AutosaveCycle.Hours => TimeSpan.FromHours(IntervalValue),
             _ => TimeSpan.FromSeconds(IntervalValue)
         };
     }
