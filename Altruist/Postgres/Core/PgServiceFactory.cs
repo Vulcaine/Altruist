@@ -20,7 +20,6 @@ public sealed class PostgresServiceFactory : IServiceFactory
 
         var genDef = serviceType.GetGenericTypeDefinition();
 
-        // Prefabs are NOT vault-backed anymore.
         if (genDef != typeof(IVault<>))
             return false;
 
@@ -29,7 +28,6 @@ public sealed class PostgresServiceFactory : IServiceFactory
         if (!typeof(IVaultModel).IsAssignableFrom(modelType))
             return false;
 
-        // Only models with [Vault] (or derived) are supported by PgVault<T>.
         return modelType.GetCustomAttribute<VaultAttribute>() != null;
     }
 
@@ -39,9 +37,23 @@ public sealed class PostgresServiceFactory : IServiceFactory
             throw new InvalidOperationException($"PostgresServiceFactory cannot create {serviceType}.");
 
         var modelType = serviceType.GetGenericArguments()[0];
-
-        var sqlProvider = sp.GetRequiredService<ISqlDatabaseProvider>();
         var loggerFactory = sp.GetService<ILoggerFactory>();
+
+        var va = modelType.GetCustomAttribute<VaultAttribute>()!;
+        var dbInstance = va.DbInstance;
+
+        // Resolve the correct ISqlDatabaseProvider based on DbInstance
+        ISqlDatabaseProvider sqlProvider;
+        if (!string.IsNullOrWhiteSpace(dbInstance))
+        {
+            // Try keyed resolution for named instance
+            var keyed = sp.GetKeyedService<ISqlDatabaseProvider>(dbInstance);
+            sqlProvider = keyed ?? sp.GetRequiredService<ISqlDatabaseProvider>();
+        }
+        else
+        {
+            sqlProvider = sp.GetRequiredService<ISqlDatabaseProvider>();
+        }
 
         var schemaName = GetSchemaName(modelType);
 
@@ -65,7 +77,7 @@ public sealed class PostgresServiceFactory : IServiceFactory
 public sealed class PostgresDBToken : IDatabaseServiceToken
 {
     public static PostgresDBToken Instance { get; } = new();
-    public string Description => "💾 Database: PostgreSQL";
+    public string Description => "Database: PostgreSQL";
 }
 
 public sealed class DefaultSchema : IKeyspace

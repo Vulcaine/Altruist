@@ -34,7 +34,6 @@
     <Compile Remove="Altruist/Gaming/Movement/MovementPortalTests.cs" />
     <Compile Remove="Altruist/Gaming/Movement/SpaceshipMovementServiceTest.cs" />
     <Compile Remove="Altruist/Persistance/Cache/InMemory/Store.cs" />
-    <Compile Remove="Altruist/Persistance/Cache/Redis/StoreTests.cs" />
     <Compile Remove="Altruist/Persistance/Database/ScyllaDB/ScyllaTests.cs" />
     <Compile Remove="Altruist/Persistance/Database/VaultTests.cs" />
     <Compile Remove="Altruist/Physx/Movement/Forward/ForwardMovementTest.cs" />

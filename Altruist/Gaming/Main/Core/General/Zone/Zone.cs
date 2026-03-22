@@ -32,10 +32,8 @@ public class ZoneSpawnDefinition
 /// When active, its spawn definitions are materialized into world objects.
 /// When inactive, all spawned objects are removed to save resources.
 /// </summary>
-public interface IZone
+public interface IManagedZone : IZone
 {
-    string Name { get; }
-    bool IsActive { get; }
     int PlayerCount { get; }
     IReadOnlyList<ZoneSpawnDefinition> SpawnDefinitions { get; }
     IReadOnlyCollection<string> SpawnedInstanceIds { get; }
@@ -48,10 +46,10 @@ public interface IZone
 public interface IZoneSpawnHandler
 {
     /// <summary>Spawn entities for this zone. Return instance IDs of spawned objects.</summary>
-    Task<List<string>> SpawnZone(IZone zone);
+    Task<List<string>> SpawnZone(IManagedZone zone);
 
     /// <summary>Despawn all entities for this zone.</summary>
-    Task DespawnZone(IZone zone, IReadOnlyCollection<string> instanceIds);
+    Task DespawnZone(IManagedZone zone, IReadOnlyCollection<string> instanceIds);
 }
 
 /// <summary>
@@ -70,13 +68,13 @@ public interface IZoneManager
     Task PlayerLeftZone(string zoneName, string playerId);
 
     /// <summary>Get zone by name.</summary>
-    IZone? GetZone(string name);
+    IManagedZone? GetZone(string name);
 
     /// <summary>Get all registered zone names.</summary>
     IEnumerable<string> GetAllZoneNames();
 
     /// <summary>Get all currently active zones.</summary>
-    IEnumerable<IZone> GetActiveZones();
+    IEnumerable<IManagedZone> GetActiveZones();
 
     /// <summary>Total spawned entities across all active zones.</summary>
     int TotalSpawnedEntities { get; }
@@ -141,13 +139,13 @@ public sealed class ZoneManager : IZoneManager
         }
     }
 
-    public IZone? GetZone(string name) => _zones.GetValueOrDefault(name);
+    public IManagedZone? GetZone(string name) => _zones.GetValueOrDefault(name);
 
     public IEnumerable<string> GetAllZoneNames() => _zones.Keys;
 
-    public IEnumerable<IZone> GetActiveZones() => _zones.Values.Where(z => z.IsActive);
+    public IEnumerable<IManagedZone> GetActiveZones() => _zones.Values.Where(z => z.IsActive);
 
-    private sealed class Zone : IZone
+    private sealed class Zone : IManagedZone
     {
         public string Name { get; }
         public bool IsActive { get; set; }
