@@ -49,6 +49,7 @@ public class MessagePackMessageDecoder : IDecoder
 }
 
 [Service(typeof(ICodec))]
+[CodecProvider("messagepack")]
 [ConditionalOnConfig("altruist:server:transport:codec:provider", havingValue: "messagepack")]
 public class MessagePackCodec : ICodec
 {

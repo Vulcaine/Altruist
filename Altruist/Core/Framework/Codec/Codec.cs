@@ -65,6 +65,7 @@ public class JsonMessageDecoder : IDecoder
 }
 
 [Service(typeof(ICodec))]
+[CodecProvider("json")]
 [ConditionalOnConfig("altruist:server:transport:codec:provider", havingValue: "json")]
 public class JsonCodec : ICodec
 {

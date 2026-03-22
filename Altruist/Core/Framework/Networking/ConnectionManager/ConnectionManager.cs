@@ -30,7 +30,8 @@ namespace Altruist
     [ConditionalOnConfig("altruist:server:transport")]
     public class ConnectionManager : IConnectionManager
     {
-        private readonly ICodec _codec;
+        private readonly ICodecResolver _codecResolver;
+        private readonly ICodec _defaultCodec;
         private readonly List<IInterceptor> _interceptors = new();
         private readonly ISocketManager _socketManager;
         private readonly IEngineCore? _engine;
@@ -40,13 +41,14 @@ namespace Altruist
 
         public ConnectionManager(
             ISocketManager socketManager,
-            ICodec codec,
+            ICodecResolver codecResolver,
             ILoggerFactory loggerFactory, IEngineCore? engineCore = null,
             [AppConfigValue("altruist:server:transport:timeout", "10")] int timeout = 10
          )
         {
             _socketManager = socketManager;
-            _codec = codec;
+            _codecResolver = codecResolver;
+            _defaultCodec = codecResolver.Resolve();
             _engine = engineCore;
             _logger = loggerFactory.CreateLogger(GetType());
             _idleTimeout = timeout;
@@ -94,13 +96,11 @@ namespace Altruist
                 {
                     if (data.Length > 0)
                     {
-                        message = _codec.Decoder.Decode<IPacket>(data, parameterType);
-                        _logger.LogInformation("Decoded {Len} bytes as {Type} OK", data.Length, parameterType.Name);
+                        message = _defaultCodec.Decoder.Decode<IPacket>(data, parameterType);
                     }
                     else
                     {
                         message = (IPacket?)Activator.CreateInstance(parameterType);
-                        _logger.LogInformation("Empty payload, created default {Type}", parameterType.Name);
                     }
                 }
                 catch (Exception decodeEx)
@@ -170,7 +170,7 @@ namespace Altruist
 
             try
             {
-                if (_codec is IFramedCodec framedCodec)
+                if (_defaultCodec is IFramedCodec framedCodec)
                     await RunFramedReadLoop(connection, framedCodec.Framer, @event, clientId, idleTimeout);
                 else
                     await RunStandardReadLoop(connection, @event, clientId, idleTimeout);
@@ -241,13 +241,13 @@ namespace Altruist
                     }
                     else
                     {
-                        packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+                        packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
                         payloadBytes = packetData;
                     }
                 }
                 else
                 {
-                    packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+                    packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
                     payloadBytes = packetData;
                 }
 
@@ -309,7 +309,7 @@ namespace Altruist
                     else
                         accumulator = accumulator[consumed..];
 
-                    var packet = _codec.Decoder.Decode<AltruistPacket>(packetData);
+                    var packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
                     if (!await ProcessPacket(packet, packetData, @event, clientId))
                         return;
                 }
@@ -401,7 +401,8 @@ namespace Altruist
             if (connections.TryGetValue(clientId, out var connection))
             {
                 var data = await connection.ReceiveAsync(CancellationToken.None);
-                return _codec.Decoder.Decode<TPacketBase>(data);
+                var codec = _codecResolver.ResolveForConnection(connection);
+                return codec.Decoder.Decode<TPacketBase>(data);
             }
 
             return default!;
