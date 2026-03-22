@@ -8,13 +8,19 @@ using Altruist.Numerics;
 namespace Altruist.Gaming.Inventory;
 
 /// <summary>
-/// Immutable item definition/prototype. Shared by all instances of the same item type.
-/// Users create templates at startup via IItemTemplateProvider.
+/// Base item template. Users extend this with their own properties and override
+/// CreateInstance() to produce their GameItem type.
+///
+/// Templates can be registered programmatically or loaded from JSON files
+/// (deserialized directly into the user's subclass).
 /// </summary>
-public class ItemTemplate
+public abstract class ItemTemplate
 {
     /// <summary>Unique numeric ID for this template.</summary>
     public long ItemId { get; set; }
+
+    /// <summary>String key for this template (e.g. "iron_sword").</summary>
+    public string Key { get; set; } = "";
 
     /// <summary>Display name.</summary>
     public string Name { get; set; } = "";
@@ -35,13 +41,8 @@ public class ItemTemplate
     public string? EquipmentSlotType { get; set; }
 
     /// <summary>
-    /// Factory method to create an item instance from this template.
-    /// Override in subclasses to create custom GameItem types.
+    /// Create a GameItem instance from this template.
+    /// Users must override this in their template subclass.
     /// </summary>
-    public virtual GameItem CreateInstance(short count = 1)
-    {
-        throw new InvalidOperationException(
-            $"ItemTemplate '{Name}' (ID={ItemId}) does not override CreateInstance(). " +
-            $"Provide a concrete GameItem subclass or override this method.");
-    }
+    public abstract GameItem CreateInstance(short count = 1);
 }
