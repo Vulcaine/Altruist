@@ -55,5 +55,11 @@ namespace Altruist.Gaming
         /// Returns the set of instance IDs currently visible to an observer.
         /// </summary>
         IReadOnlySet<string>? GetVisibleEntities(string clientId);
+
+        /// <summary>
+        /// Returns the client IDs of all observers (players) who can see
+        /// the given entity. Used for spatial sync broadcasting.
+        /// </summary>
+        IEnumerable<string> GetObserversOf(string entityInstanceId);
     }
 }

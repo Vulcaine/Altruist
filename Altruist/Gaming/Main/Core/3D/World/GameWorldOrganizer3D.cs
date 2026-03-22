@@ -28,17 +28,20 @@ namespace Altruist.Gaming.ThreeD
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
         private readonly IEntitySyncService? _entitySyncService;
+        private readonly IAIBehaviorService? _aiBehaviorService;
         private IVisibilityTracker? _visibilityTracker;
         private float _engineFrequencyHz = 25f;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
             IEnumerable<IWorldIndex3D> gameWorlds,
-            IEntitySyncService? entitySyncService = null
+            IEntitySyncService? entitySyncService = null,
+            IAIBehaviorService? aiBehaviorService = null
         )
         {
             _worldLoader = worldLoader;
             _entitySyncService = entitySyncService;
+            _aiBehaviorService = aiBehaviorService;
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
@@ -114,6 +117,13 @@ namespace Altruist.Gaming.ThreeD
                 // Multiple worlds: tick in parallel (one thread per world)
                 Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
                     world => StepWorld(world, deltaTime));
+            }
+
+            // AI behaviors tick (after physics, before visibility/sync)
+            if (_aiBehaviorService != null)
+            {
+                try { _aiBehaviorService.Tick(worlds, deltaTime); }
+                catch { }
             }
 
             // Visibility must be computed after all positions are final (single-threaded)

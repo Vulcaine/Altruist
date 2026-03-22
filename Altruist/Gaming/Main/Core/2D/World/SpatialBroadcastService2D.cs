@@ -17,6 +17,7 @@ namespace Altruist.Gaming.TwoD
     }
 
     [Service(typeof(ISpatialBroadcastService2D))]
+    [Service(typeof(ISpatialBroadcastService))]
     [ConditionalOnConfig("altruist:game")]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public class SpatialBroadcastService2D : ISpatialBroadcastService2D
@@ -24,15 +25,28 @@ namespace Altruist.Gaming.TwoD
         private readonly IGameWorldOrganizer2D _gameWorldOrganizer;
         private readonly IAltruistRouter _router;
         private readonly ISocketManager _socketManager;
+        private readonly IVisibilityTracker? _visibilityTracker;
 
         public SpatialBroadcastService2D(
             IGameWorldOrganizer2D gameWorldOrganizer,
             IAltruistRouter router,
-            ISocketManager socketManager)
+            ISocketManager socketManager,
+            IVisibilityTracker? visibilityTracker = null)
         {
             _gameWorldOrganizer = gameWorldOrganizer;
             _router = router;
             _socketManager = socketManager;
+            _visibilityTracker = visibilityTracker;
+        }
+
+        public async Task SendToObserversAsync(string entityInstanceId, IPacketBase packet)
+        {
+            if (_visibilityTracker == null) return;
+
+            foreach (var observerClientId in _visibilityTracker.GetObserversOf(entityInstanceId))
+            {
+                await _router.Client.SendAsync(observerClientId, packet);
+            }
         }
 
         /// <summary>
