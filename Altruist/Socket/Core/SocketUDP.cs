@@ -32,7 +32,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Socket;
 
 [Service(typeof(ITransport))]
-[ConditionalOnConfig("altruist:server:transport:mode", havingValue: "udp")]
+[ConditionalOnConfig("altruist:server:transport:udp:enabled", havingValue: "true")]
 public sealed class UdpTransport : ITransport
 {
     private readonly int _port;
@@ -44,7 +44,13 @@ public sealed class UdpTransport : ITransport
 
     private static readonly IMurmurHash3 _hasher = MurmurHash3Factory.Instance.Create();
 
-    public UdpTransport(IConnectionStore store, ICodec codec, string @event, int port = 5000)
+    public string TransportType => "udp";
+
+    public UdpTransport(
+        IConnectionStore store,
+        ICodec codec,
+        [AppConfigValue("altruist:server:transport:udp:event", "/game")] string @event,
+        [AppConfigValue("altruist:server:transport:udp:port", "13001")] int port = 13001)
     {
         _port = port;
         _codec = codec;
@@ -130,10 +136,7 @@ public sealed class UdpTransport : ITransport
         await connectionManager.HandleConnection(connection, _endpoint, clientId);
     }
 
-    public void RouteTraffic(IApplicationBuilder app)
-    {
-        throw new NotImplementedException();
-    }
+    public void RouteTraffic(IApplicationBuilder app) { }
 }
 
 public sealed class CachedUdpConnection : AltruistConnection
@@ -266,7 +269,7 @@ public sealed class UdpTransportToken : ITransportServiceToken
 }
 
 [Service(typeof(ITransportConfiguration))]
-[ConditionalOnConfig("altruist:server:transport:mode", "udp")]
+[ConditionalOnConfig("altruist:server:transport:udp:enabled", "true")]
 public sealed class UdpSocketConfiguration : ITransportConfiguration
 {
     public bool IsConfigured { get; set; }

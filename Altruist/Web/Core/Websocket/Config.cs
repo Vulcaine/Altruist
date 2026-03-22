@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Web;
 
 [Service(typeof(ITransportServiceToken))]
-[ConditionalOnConfig("altruist:server:transport:mode", havingValue: "websocket")]
+[ConditionalOnConfig("altruist:server:transport:websocket:enabled", havingValue: "true")]
 public sealed class WebSocketTransportToken : ITransportServiceToken
 {
     public static WebSocketTransportToken Instance = new WebSocketTransportToken();
@@ -16,7 +16,7 @@ public sealed class WebSocketTransportToken : ITransportServiceToken
 
 
 [Service(typeof(ITransportConfiguration))]
-[ConditionalOnConfig("altruist:server:transport:mode", havingValue: "websocket")]
+[ConditionalOnConfig("altruist:server:transport:websocket:enabled", havingValue: "true")]
 public sealed class WebSocketConfiguration : ITransportConfiguration
 {
     public bool IsConfigured { get; set; }
@@ -25,7 +25,7 @@ public sealed class WebSocketConfiguration : ITransportConfiguration
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
         ILogger logger = factory.CreateLogger("WebsocketSupport");
-        logger.LogInformation("⚡ WebSocket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
+        logger.LogInformation("WebSocket support activated.");
         return Task.CompletedTask;
     }
 }

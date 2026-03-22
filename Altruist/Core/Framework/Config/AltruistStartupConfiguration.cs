@@ -28,31 +28,28 @@ namespace Altruist
         private readonly string _httpContextPath;
 
         // Packet transport (optional)
-        private readonly string? _packetTransport;
+        // Removed: _packetTransport — replaced by _transports collection
         private readonly string _wsContextPath;
 
         // Dependencies we need at runtime
         private readonly ILoggerFactory _loggerFactory;
         private readonly IAltruistContext _settings;
         private readonly IServerStatus _appStatus;
-        private readonly ITransport? _transport;
+        private readonly IEnumerable<ITransport> _transports;
 
         public AltruistStartupConfiguration(
             ApplicationArgs args,
 
-            // HTTP: present => we host controllers on same server
             [AppConfigValue("altruist:server:http:host", null)] string? httpHost,
             [AppConfigValue("altruist:server:http:port", null)] string? httpPort,
             [AppConfigValue("altruist:server:http:path", "/")] string httpPath,
 
-            // Transport: if mode == websocket => mount WS endpoints on same HTTP server
-            [AppConfigValue("altruist:server:transport:mode", null)] string? transportMode,
-            [AppConfigValue("altruist:server:transport:config:path", "/ws")] string transportPath,
+            [AppConfigValue("altruist:server:transport:websocket:path", "/ws")] string wsPath,
 
             ILoggerFactory loggerFactory,
             IAltruistContext settings,
             IServerStatus appStatus,
-            ITransport? transport = null
+            IEnumerable<ITransport>? transports = null
         )
         {
             _args = args;
@@ -61,13 +58,12 @@ namespace Altruist
             _httpPort = NormalizeEmpty(httpPort);
             _httpContextPath = NormalizePath(httpPath, defaultIfEmpty: "/");
 
-            _packetTransport = NormalizeEmpty(transportMode);
-            _wsContextPath = NormalizePath(transportPath, defaultIfEmpty: "/ws");
+            _wsContextPath = NormalizePath(wsPath, defaultIfEmpty: "/ws");
 
             _loggerFactory = loggerFactory;
             _settings = settings;
             _appStatus = appStatus;
-            _transport = transport;
+            _transports = transports ?? [];
         }
 
         /// <summary>
@@ -156,14 +152,13 @@ namespace Altruist
                 app.UsePathBase(_httpContextPath);
             }
 
-            var useWebSocket = string.Equals(_packetTransport, "websocket", StringComparison.OrdinalIgnoreCase);
-            if (useWebSocket)
+            var hasWebSocket = _transports.Any(t => t.TransportType == "websocket");
+            if (hasWebSocket)
             {
-                var webSocketOptions = new WebSocketOptions
+                app.UseWebSockets(new WebSocketOptions
                 {
                     KeepAliveInterval = TimeSpan.FromMinutes(2)
-                };
-                app.UseWebSockets(webSocketOptions);
+                });
             }
 
             app.UseRouting();
@@ -172,84 +167,36 @@ namespace Altruist
             app.MapControllers();
             app.UseMiddleware<ReadinessMiddleware>();
 
-            if (useWebSocket && _transport is not null)
+            // Discover portals once — shared across all transports
+            var portals = PortalDiscovery.Discover().Distinct().ToArray();
+
+            // Register portals on every active transport
+            foreach (var transport in _transports)
             {
-                var portals = PortalDiscovery.Discover().Distinct().ToArray();
-
-                var groupedByPath = portals
-                    .Select(p => new
-                    {
-                        PortalType = p.PortalType,
-                        WsPath = CombinePaths(_wsContextPath, p.Path)
-                    })
-                    .GroupBy(x => x.WsPath, StringComparer.Ordinal);
-
-                foreach (var group in groupedByPath)
+                if (transport.TransportType == "websocket")
                 {
-                    Type? expectedShieldType = null;
-                    Type? firstPortalType = null;
-
-                    foreach (var item in group)
+                    // WebSocket: prefix paths, validate shields, register routes
+                    ValidateWebSocketShields(portals, logger);
+                    foreach (var (type, path) in portals)
                     {
-                        var shieldAttr = item.PortalType
-                            .GetCustomAttributes(inherit: true)
-                            .OfType<ShieldAttribute>()
-                            .FirstOrDefault();
-
-                        var currentShieldType = shieldAttr?.GetType();
-
-                        if (expectedShieldType is null)
-                        {
-                            expectedShieldType = currentShieldType;
-                            firstPortalType = item.PortalType;
-                            continue;
-                        }
-
-                        if (!Equals(expectedShieldType, currentShieldType))
-                        {
-                            var msg =
-                                $"❌ Conflicting Shield configuration for WebSocket route '{group.Key}'.\n" +
-                                $"   • First portal: {DependencyResolver.GetCleanName(firstPortalType!)} " +
-                                $"      → shield: {expectedShieldType?.Name ?? "<none>"}\n" +
-                                $"   • Portal: {DependencyResolver.GetCleanName(item.PortalType)} " +
-                                $"      → shield: {currentShieldType?.Name ?? "<none>"}\n\n" +
-                                "All portals mapped to the same WebSocket path must either:\n" +
-                                "  - all be unshielded, OR\n" +
-                                "  - all use the same ShieldAttribute type.\n";
-
-                            DependencyResolver.FailAndExit(logger, msg);
-                            throw new InvalidOperationException(msg);
-                        }
+                        var wsMappedPath = CombinePaths(_wsContextPath, path);
+                        transport.UseTransportEndpoints(app, type, wsMappedPath);
                     }
+                    transport.RouteTraffic(app);
                 }
-
-                // ─────────────────────────────────────────────────────────────
-                // 2) AFTER VALIDATION, REGISTER ROUTES ON THE TRANSPORT
-                // ─────────────────────────────────────────────────────────────
-                foreach (var (type, path) in portals)
+                else
                 {
-                    // Prefix each discovered path with transport path
-                    var wsMappedPath = CombinePaths(_wsContextPath, path);
-                    _transport.UseTransportEndpoints(app, type, wsMappedPath);
+                    // TCP/UDP: register with connection manager
+                    transport.UseTransportEndpoints(app, typeof(IConnectionManager), "/game");
                 }
 
-                // Let transport do any final routing hooks it needs
-                _transport.RouteTraffic(app);
+                logger.LogInformation("{Transport} transport started.", transport.TransportType.ToUpper());
             }
 
-            // Start TCP transport if configured (non-WebSocket mode)
-            var useTcp = string.Equals(_packetTransport, "tcp", StringComparison.OrdinalIgnoreCase);
-            if (useTcp && _transport is not null)
-            {
-                _transport.UseTransportEndpoints(app, typeof(IConnectionManager), "/game");
-                logger.LogInformation("TCP transport started.");
-            }
-
-            // Prefer "ws" scheme if WS enabled, otherwise "http"
             if (!int.TryParse(_httpPort, out var portNum))
                 portNum = 8080;
 
-            var scheme = useWebSocket ? "ws" : "http";
+            var scheme = hasWebSocket ? "ws" : "http";
             _settings.ServerInfo = new ServerInfo("Altruist Server", scheme, _httpHost!, portNum);
 
             var logBuilder = BuildStartupLog(_settings);
@@ -281,6 +228,47 @@ namespace Altruist
             if (p.Length > 1 && p.EndsWith("/"))
                 p = p.TrimEnd('/');
             return p;
+        }
+
+        private static void ValidateWebSocketShields(
+            IEnumerable<PortalDiscovery.Descriptor> portals, ILogger logger)
+        {
+            var grouped = portals
+                .GroupBy(p => p.Path, StringComparer.Ordinal);
+
+            foreach (var group in grouped)
+            {
+                Type? expectedShieldType = null;
+                Type? firstPortalType = null;
+
+                foreach (var descriptor in group)
+                {
+                    var portalType = descriptor.PortalType;
+                    var shieldAttr = portalType
+                        .GetCustomAttributes(inherit: true)
+                        .OfType<ShieldAttribute>()
+                        .FirstOrDefault();
+
+                    var currentShieldType = shieldAttr?.GetType();
+
+                    if (expectedShieldType is null)
+                    {
+                        expectedShieldType = currentShieldType;
+                        firstPortalType = portalType;
+                        continue;
+                    }
+
+                    if (!Equals(expectedShieldType, currentShieldType))
+                    {
+                        var msg =
+                            $"Conflicting Shield for WebSocket route '{group.Key}'.\n" +
+                            $"  {DependencyResolver.GetCleanName(firstPortalType!)} -> {expectedShieldType?.Name ?? "none"}\n" +
+                            $"  {DependencyResolver.GetCleanName(portalType)} -> {currentShieldType?.Name ?? "none"}";
+                        DependencyResolver.FailAndExit(logger, msg);
+                        throw new InvalidOperationException(msg);
+                    }
+                }
+            }
         }
 
         private static string CombinePaths(string basePath, string child)

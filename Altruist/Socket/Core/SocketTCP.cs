@@ -121,7 +121,7 @@ public sealed class ConnectionGate : IConnectionGate
 }
 
 [Service(typeof(ITransport))]
-[ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
+[ConditionalOnConfig("altruist:server:transport:tcp:enabled", "true")]
 public sealed class TcpTransport : ITransport
 {
     private readonly int _port;
@@ -132,10 +132,12 @@ public sealed class TcpTransport : ITransport
     private readonly ICodec _codec;
     private ConnectionGate? _gate;
 
+    public string TransportType => "tcp";
+
     public TcpTransport(
         ICodec codec,
-        [AppConfigValue("altruist:server:transport:event", "/game")] string @event,
-        [AppConfigValue("altruist:server:transport:port", "13000")] int port = 5000)
+        [AppConfigValue("altruist:server:transport:tcp:event", "/game")] string @event,
+        [AppConfigValue("altruist:server:transport:tcp:port", "13000")] int port = 13000)
     {
         _port = port;
         _codec = codec;
@@ -242,10 +244,7 @@ public sealed class TcpTransport : ITransport
         }
     }
 
-    public void RouteTraffic(IApplicationBuilder app)
-    {
-        throw new NotImplementedException();
-    }
+    public void RouteTraffic(IApplicationBuilder app) { }
 }
 
 public sealed class CachedTcpConnection : AltruistConnection
@@ -423,7 +422,7 @@ public sealed class TcpConnection : AltruistConnection
 }
 
 [Service(typeof(ITransportServiceToken))]
-[ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
+[ConditionalOnConfig("altruist:server:transport:tcp:enabled", "true")]
 public sealed class TcpTransportToken : ITransportServiceToken
 {
     public static TcpTransportToken Instance = new TcpTransportToken();
@@ -432,7 +431,7 @@ public sealed class TcpTransportToken : ITransportServiceToken
 }
 
 [Service(typeof(ITransportConfiguration))]
-[ConditionalOnConfig("altruist:server:transport:mode", "tcp")]
+[ConditionalOnConfig("altruist:server:transport:tcp:enabled", "true")]
 public sealed class TcpSocketConfiguration : ITransportConfiguration
 {
     public bool IsConfigured { get; set; }

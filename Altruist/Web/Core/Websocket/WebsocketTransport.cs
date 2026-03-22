@@ -18,13 +18,14 @@ namespace Altruist.Web;
 /// an optional ShieldAttribute (authorization) which is enforced per-route.
 /// </summary>
 [Service(typeof(ITransport))]
-[ConditionalOnConfig("altruist:server:transport:mode", havingValue: "websocket")]
+[ConditionalOnConfig("altruist:server:transport:websocket:enabled", havingValue: "true")]
 public sealed class WebSocketTransport : ITransport
 {
     private sealed record RouteInfo(string Path, Type? ShieldType);
 
-    // path -> route meta (single manager, per-route shield)
     private readonly Dictionary<string, RouteInfo> _routes = new(StringComparer.Ordinal);
+
+    public string TransportType => "websocket";
 
     public WebSocketTransport()
     {
