@@ -11,13 +11,14 @@ namespace Altruist.Gaming.Autosave;
 
 /// <summary>
 /// Generic autosave service. Tracks dirty entities by owner, saves to cache immediately,
-/// and batch-flushes to vault (DB) on interval or on demand.
+/// batch-flushes to vault (DB) on interval, and optionally writes to a WAL for crash recovery.
 /// </summary>
-public class AutosaveService<T> : IAutosaveService<T> where T : class, IVaultModel
+public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : class, IVaultModel
 {
     private readonly ConcurrentDictionary<string, string> _dirtyMap = new(); // storageId → ownerId
     private readonly ICacheProvider _cache;
     private readonly IVault<T>? _vault;
+    private readonly WriteAheadLog<T>? _wal;
     private readonly ILogger _logger;
     private readonly int _batchSize;
 
@@ -28,12 +29,18 @@ public class AutosaveService<T> : IAutosaveService<T> where T : class, IVaultMod
         IAutosaveCoordinator coordinator,
         ILoggerFactory loggerFactory,
         IVault<T>? vault = null,
-        int batchSize = 100)
+        int batchSize = 100,
+        bool walEnabled = true,
+        string walDirectory = "data/wal",
+        int walFlushIntervalSeconds = 10)
     {
         _cache = cache;
         _vault = vault;
         _batchSize = batchSize;
         _logger = loggerFactory.CreateLogger($"Autosave<{typeof(T).Name}>");
+
+        if (walEnabled)
+            _wal = new WriteAheadLog<T>(walDirectory, walFlushIntervalSeconds, loggerFactory);
 
         coordinator.Register(this);
     }
@@ -42,6 +49,7 @@ public class AutosaveService<T> : IAutosaveService<T> where T : class, IVaultMod
     {
         _dirtyMap[entity.StorageId] = ownerId;
         _ = _cache.SaveAsync(entity.StorageId, entity);
+        _wal?.Append(entity, ownerId);
     }
 
     public async Task SaveAsync(T entity)
@@ -84,13 +92,67 @@ public class AutosaveService<T> : IAutosaveService<T> where T : class, IVaultMod
         var ids = _dirtyMap.Keys.ToList();
         if (ids.Count > 0)
             await FlushIdsAsync(ids);
+
+        // Truncate WAL after successful full flush — data is now safe in DB
+        if (_wal != null)
+            await _wal.TruncateAsync();
+    }
+
+    /// <summary>
+    /// Recover unflushed data from WAL file (called on startup).
+    /// Returns the number of recovered entities.
+    /// </summary>
+    public async Task<int> RecoverFromWalAsync()
+    {
+        if (_wal == null) return 0;
+
+        var entries = await _wal.RecoverAsync();
+        if (entries.Count == 0) return 0;
+
+        _logger.LogInformation("Recovering {Count} {Type} entities from WAL...", entries.Count, typeof(T).Name);
+
+        if (_vault != null)
+        {
+            var entities = new List<T>();
+            foreach (var entry in entries)
+            {
+                try
+                {
+                    var entity = System.Text.Json.JsonSerializer.Deserialize<T>(entry.Data);
+                    if (entity != null) entities.Add(entity);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to deserialize WAL entry {Id}", entry.StorageId);
+                }
+            }
+
+            if (entities.Count > 0)
+            {
+                try
+                {
+                    await _vault.SaveBatchAsync(entities);
+                    _logger.LogInformation("WAL recovery: saved {Count} {Type} entities to DB", entities.Count, typeof(T).Name);
+                }
+                catch
+                {
+                    foreach (var entity in entities)
+                    {
+                        try { await _vault.SaveAsync(entity); }
+                        catch (Exception ex) { _logger.LogError(ex, "WAL recovery failed for {Id}", entity.StorageId); }
+                    }
+                }
+            }
+        }
+
+        await _wal.TruncateAsync();
+        return entries.Count;
     }
 
     private async Task FlushIdsAsync(List<string> ids)
     {
         if (_vault == null)
         {
-            // No vault configured — just clear dirty flags (cache-only mode)
             foreach (var id in ids) _dirtyMap.TryRemove(id, out _);
             return;
         }
@@ -131,5 +193,10 @@ public class AutosaveService<T> : IAutosaveService<T> where T : class, IVaultMod
                 }
             }
         }
+    }
+
+    public void Dispose()
+    {
+        _wal?.Dispose();
     }
 }

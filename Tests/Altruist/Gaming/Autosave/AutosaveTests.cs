@@ -166,3 +166,100 @@ public class AutosaveCoordinatorTests
         Assert.Equal(2, coordinator.TotalDirtyCount);
     }
 }
+
+public class WriteAheadLogTests : IDisposable
+{
+    private readonly string _walDir;
+
+    public WriteAheadLogTests()
+    {
+        _walDir = Path.Combine(Path.GetTempPath(), $"altruist_wal_test_{Guid.NewGuid():N}");
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_walDir))
+            Directory.Delete(_walDir, true);
+    }
+
+    [Fact]
+    public void Append_ShouldBufferEntry()
+    {
+        using var wal = new WriteAheadLog<TestPlayerVault>(_walDir, 9999, NullLoggerFactory.Instance);
+        var player = new TestPlayerVault { StorageId = "p1", Name = "Alice", Gold = 100 };
+
+        wal.Append(player, "owner1");
+
+        Assert.Equal(1, wal.BufferCount);
+    }
+
+    [Fact]
+    public async Task FlushBufferToDisk_ShouldCreateWalFile()
+    {
+        using var wal = new WriteAheadLog<TestPlayerVault>(_walDir, 9999, NullLoggerFactory.Instance);
+        var player = new TestPlayerVault { StorageId = "p1", Name = "Alice" };
+
+        wal.Append(player, "owner1");
+        await wal.FlushBufferToDiskAsync();
+
+        Assert.True(File.Exists(wal.FilePath));
+        var lines = await File.ReadAllLinesAsync(wal.FilePath);
+        Assert.Single(lines);
+        Assert.Contains("\"p1\"", lines[0]);
+    }
+
+    [Fact]
+    public async Task Truncate_ShouldDeleteWalFile()
+    {
+        using var wal = new WriteAheadLog<TestPlayerVault>(_walDir, 9999, NullLoggerFactory.Instance);
+        wal.Append(new TestPlayerVault { StorageId = "p1" }, "owner1");
+        await wal.FlushBufferToDiskAsync();
+        Assert.True(File.Exists(wal.FilePath));
+
+        await wal.TruncateAsync();
+
+        Assert.False(File.Exists(wal.FilePath));
+    }
+
+    [Fact]
+    public async Task Recover_ShouldReturnEntries_AndDeduplicateByStorageId()
+    {
+        using var wal = new WriteAheadLog<TestPlayerVault>(_walDir, 9999, NullLoggerFactory.Instance);
+
+        // Write same entity twice (simulating two MarkDirty calls)
+        wal.Append(new TestPlayerVault { StorageId = "p1", Name = "Alice", Gold = 100 }, "o1");
+        wal.Append(new TestPlayerVault { StorageId = "p1", Name = "Alice", Gold = 200 }, "o1");
+        wal.Append(new TestPlayerVault { StorageId = "p2", Name = "Bob" }, "o2");
+        await wal.FlushBufferToDiskAsync();
+
+        var entries = await wal.RecoverAsync();
+
+        Assert.Equal(2, entries.Count); // p1 deduplicated, p2 separate
+        var p1Entry = entries.First(e => e.StorageId == "p1");
+        Assert.Contains("200", p1Entry.Data); // Last write wins
+    }
+
+    [Fact]
+    public async Task Recover_ShouldReturnEmpty_WhenNoWalFile()
+    {
+        using var wal = new WriteAheadLog<TestPlayerVault>(_walDir, 9999, NullLoggerFactory.Instance);
+
+        var entries = await wal.RecoverAsync();
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task FlushThenTruncate_ShouldClearBuffer()
+    {
+        using var wal = new WriteAheadLog<TestPlayerVault>(_walDir, 9999, NullLoggerFactory.Instance);
+        wal.Append(new TestPlayerVault { StorageId = "p1" }, "o1");
+        wal.Append(new TestPlayerVault { StorageId = "p2" }, "o2");
+
+        await wal.FlushBufferToDiskAsync();
+        await wal.TruncateAsync();
+
+        Assert.Equal(0, wal.BufferCount);
+        Assert.False(File.Exists(wal.FilePath));
+    }
+}

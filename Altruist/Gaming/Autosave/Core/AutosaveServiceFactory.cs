@@ -61,8 +61,15 @@ public sealed class AutosaveServiceFactory : IServiceFactory
         var config = sp.GetService<IConfiguration>();
         var batchSize = ResolveBatchSize(autosaveAttr, config);
 
+        // WAL config
+        var walEnabled = autosaveAttr.Wal && ResolveWalEnabled(config);
+        var walDirectory = config?.GetSection("altruist:game:autosave:wal:directory")?.Value ?? "data/wal";
+        var walFlushStr = config?.GetSection("altruist:game:autosave:wal:flush-interval-seconds")?.Value;
+        var walFlushInterval = !string.IsNullOrEmpty(walFlushStr) && int.TryParse(walFlushStr, out var wf) ? wf : 10;
+
         var implType = typeof(AutosaveService<>).MakeGenericType(modelType);
-        return Activator.CreateInstance(implType, cache, coordinator, loggerFactory, vault, batchSize)!;
+        return Activator.CreateInstance(implType, cache, coordinator, loggerFactory, vault,
+            batchSize, walEnabled, walDirectory, walFlushInterval)!;
     }
 
     /// <summary>
@@ -102,5 +109,13 @@ public sealed class AutosaveServiceFactory : IServiceFactory
 
         // Attribute value wins if explicitly changed from default
         return attr.BatchSize != FallbackBatchSize ? attr.BatchSize : configBatchSize;
+    }
+
+    public static bool ResolveWalEnabled(IConfiguration? config)
+    {
+        var configValue = config?.GetSection("altruist:game:autosave:wal:enabled")?.Value;
+        if (!string.IsNullOrEmpty(configValue) && bool.TryParse(configValue, out var enabled))
+            return enabled;
+        return true; // Default: WAL enabled
     }
 }
