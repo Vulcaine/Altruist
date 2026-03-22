@@ -167,9 +167,7 @@ public class EfficientConcurrentCache<T> : IEnumerable<T>
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
-[Service(typeof(ICacheProvider))]
 [Service(typeof(IMemoryCacheProvider))]
-[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public class InMemoryCache : IMemoryCacheProvider
 {
     private readonly ConcurrentDictionary<Type, GroupCache> _cacheSource = new();
@@ -318,10 +316,35 @@ public class InMemoryCache : IMemoryCacheProvider
 
 
 [Service(typeof(IConnectionStore))]
-[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public class InMemoryConnectionStore : AbstractConnectionStore
 {
     public InMemoryConnectionStore(IMemoryCacheProvider memoryCache, ILoggerFactory loggerFactory) : base(memoryCache, loggerFactory)
     {
     }
+}
+
+/// <summary>
+/// Registers InMemoryCache as ICacheProvider when cache provider is set to inmemory.
+/// InMemoryCache itself is always available as IMemoryCacheProvider (used by connection stores).
+/// </summary>
+[Service(typeof(ICacheProvider))]
+[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
+public class InMemoryCacheProviderAdapter : ICacheProvider
+{
+    private readonly IMemoryCacheProvider _inner;
+
+    public InMemoryCacheProviderAdapter(IMemoryCacheProvider inner) => _inner = inner;
+
+    public ICacheServiceToken Token => _inner.Token;
+    public Task<bool> ContainsAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.ContainsAsync<T>(key, cacheGroupId);
+    public Task<T?> GetAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.GetAsync<T>(key, cacheGroupId);
+    public Task<ICursor<T>> GetAllAsync<T>(string cacheGroupId = "") where T : notnull => _inner.GetAllAsync<T>(cacheGroupId);
+    public Task<ICursor<object>> GetAllAsync(Type type, string cacheGroupId = "") => _inner.GetAllAsync(type, cacheGroupId);
+    public Task SaveAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull => _inner.SaveAsync(key, entity, cacheGroupId);
+    public Task SaveBatchAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull => _inner.SaveBatchAsync(entities, cacheGroupId);
+    public Task<T?> RemoveAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.RemoveAsync<T>(key, cacheGroupId);
+    public Task RemoveAndForgetAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.RemoveAndForgetAsync<T>(key, cacheGroupId);
+    public Task ClearAsync<T>(string cacheGroupId = "") where T : notnull => _inner.ClearAsync<T>(cacheGroupId);
+    public Task ClearAllAsync() => _inner.ClearAllAsync();
+    public IEnumerable<CacheEntrySnapshot> GetSnapshot() => _inner.GetSnapshot();
 }

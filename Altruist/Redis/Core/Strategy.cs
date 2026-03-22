@@ -1,18 +1,9 @@
 /*
 Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0
 */
+
+using System.Reflection;
 
 using Altruist.Contracts;
 
@@ -25,10 +16,38 @@ public sealed class RedisServiceConfiguration : ICacheConfiguration
     public bool IsConfigured { get; set; }
 
     public readonly List<Type> Documents = new List<Type>();
-    public void Configure(IServiceCollection services)
+
+    public Task Configure(IServiceCollection services)
     {
-        // services.AddSingleton<RedisConnectionSetup>();
-        // services.AddSingleton<ICacheConnectionSetupBase>(sp => sp.GetRequiredService<RedisConnectionSetup>());
+        // Auto-discover all IStoredModel types for Redis document mapping
+        if (!IsConfigured)
+        {
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName));
+
+            foreach (var assembly in assemblies)
+            {
+                try
+                {
+                    foreach (var type in assembly.GetTypes())
+                    {
+                        if (!type.IsAbstract && !type.IsInterface &&
+                            typeof(IStoredModel).IsAssignableFrom(type))
+                        {
+                            AddDocument(type);
+                        }
+                    }
+                }
+                catch (ReflectionTypeLoadException)
+                {
+                    // Skip assemblies that can't be loaded
+                }
+            }
+
+            IsConfigured = true;
+        }
+
+        return Task.CompletedTask;
     }
 
     public void AddDocument<T>() where T : IStoredModel
@@ -38,15 +57,10 @@ public sealed class RedisServiceConfiguration : ICacheConfiguration
 
     public void AddDocument(Type type)
     {
-        if (typeof(IStoredModel).IsAssignableFrom(type))
+        if (typeof(IStoredModel).IsAssignableFrom(type) && !Documents.Contains(type))
         {
             Documents.Add(type);
         }
-    }
-
-    Task IAltruistConfiguration.Configure(IServiceCollection services)
-    {
-        throw new NotImplementedException();
     }
 }
 
@@ -62,5 +76,5 @@ public sealed class RedisCacheServiceToken : ICacheServiceToken
         Configuration = new RedisServiceConfiguration();
     }
 
-    public string Description => "💾 Cache: Redis";
+    public string Description => "Cache: Redis";
 }
