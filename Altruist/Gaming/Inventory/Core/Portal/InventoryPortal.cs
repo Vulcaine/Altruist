@@ -35,7 +35,7 @@ public abstract class AltruistInventoryPortal : Portal
     protected abstract Task<string> ResolvePlayerIdAsync(string clientId);
 
     [Gate("move-item")]
-    public virtual async Task OnMoveItem(CMoveItem packet, string clientId)
+    public virtual async Task OnMoveItem(MoveItemPacket packet, string clientId)
     {
         var playerId = await ResolvePlayerIdAsync(clientId);
         var result = await InventoryService.MoveItemAsync(packet.FromSlot, packet.ToSlot, packet.Count);
@@ -44,7 +44,7 @@ public abstract class AltruistInventoryPortal : Portal
     }
 
     [Gate("pickup-item")]
-    public virtual async Task OnPickupItem(CPickupItem packet, string clientId)
+    public virtual async Task OnPickupItem(PickupItemPacket packet, string clientId)
     {
         var playerId = await ResolvePlayerIdAsync(clientId);
         var result = await InventoryService.PickupItemAsync(playerId, packet.ItemInstanceId);
@@ -53,7 +53,7 @@ public abstract class AltruistInventoryPortal : Portal
     }
 
     [Gate("drop-item")]
-    public virtual async Task OnDropItem(CDropItem packet, string clientId)
+    public virtual async Task OnDropItem(DropItemPacket packet, string clientId)
     {
         var playerId = await ResolvePlayerIdAsync(clientId);
         var result = await InventoryService.DropItemAsync(playerId, packet.FromSlot);
@@ -62,7 +62,7 @@ public abstract class AltruistInventoryPortal : Portal
     }
 
     [Gate("equip-item")]
-    public virtual async Task OnEquipItem(CEquipItem packet, string clientId)
+    public virtual async Task OnEquipItem(EquipItemPacket packet, string clientId)
     {
         var playerId = await ResolvePlayerIdAsync(clientId);
         var player = await ResolvePlayerAsync(clientId);
@@ -79,7 +79,7 @@ public abstract class AltruistInventoryPortal : Portal
     }
 
     [Gate("unequip-item")]
-    public virtual async Task OnUnequipItem(CUnequipItem packet, string clientId)
+    public virtual async Task OnUnequipItem(UnequipItemPacket packet, string clientId)
     {
         var playerId = await ResolvePlayerIdAsync(clientId);
         var player = await ResolvePlayerAsync(clientId);
@@ -101,7 +101,7 @@ public abstract class AltruistInventoryPortal : Portal
     }
 
     [Gate("use-item")]
-    public virtual async Task OnUseItem(CUseItem packet, string clientId)
+    public virtual async Task OnUseItem(UseItemPacket packet, string clientId)
     {
         var player = await ResolvePlayerAsync(clientId);
         var result = await InventoryService.UseItemAsync(
@@ -116,29 +116,29 @@ public abstract class AltruistInventoryPortal : Portal
 
     // ── Virtual hooks ───────────────────────────────────────────────
 
-    protected virtual Task<MoveItemResult> OnMoveItemCompleted(CMoveItem packet, string clientId, MoveItemResult result)
+    protected virtual Task<MoveItemResult> OnMoveItemCompleted(MoveItemPacket packet, string clientId, MoveItemResult result)
         => Task.FromResult(result);
 
-    protected virtual Task<MoveItemResult> OnPickupCompleted(CPickupItem packet, string clientId, MoveItemResult result)
+    protected virtual Task<MoveItemResult> OnPickupCompleted(PickupItemPacket packet, string clientId, MoveItemResult result)
         => Task.FromResult(result);
 
-    protected virtual Task<MoveItemResult> OnDropCompleted(CDropItem packet, string clientId, MoveItemResult result)
+    protected virtual Task<MoveItemResult> OnDropCompleted(DropItemPacket packet, string clientId, MoveItemResult result)
         => Task.FromResult(result);
 
-    protected virtual Task<MoveItemResult> OnEquipCompleted(CEquipItem packet, string clientId, MoveItemResult result)
+    protected virtual Task<MoveItemResult> OnEquipCompleted(EquipItemPacket packet, string clientId, MoveItemResult result)
         => Task.FromResult(result);
 
-    protected virtual Task<MoveItemResult> OnUnequipCompleted(CUnequipItem packet, string clientId, MoveItemResult result)
+    protected virtual Task<MoveItemResult> OnUnequipCompleted(UnequipItemPacket packet, string clientId, MoveItemResult result)
         => Task.FromResult(result);
 
-    protected virtual Task<UseItemResult> OnUseItemCompleted(CUseItem packet, string clientId, UseItemResult result)
+    protected virtual Task<UseItemResult> OnUseItemCompleted(UseItemPacket packet, string clientId, UseItemResult result)
         => Task.FromResult(result);
 
     // ── Helpers ─────────────────────────────────────────────────────
 
     protected async Task SendResultAsync(string clientId, ItemStatus status)
     {
-        await Router.Client.SendAsync(clientId, new SItemResult
+        await Router.Client.SendAsync(clientId, new ItemResultPacket
         {
             Status = (int)status,
             Message = status.ToString()

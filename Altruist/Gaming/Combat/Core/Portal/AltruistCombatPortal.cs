@@ -11,7 +11,7 @@ namespace Altruist.Gaming.Combat;
 // ── Packets ──────────────────────────────────────────
 
 [MessagePackObject]
-public class CAttackPacket : IPacketBase
+public class AttackPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; }
     [Key(1)] public byte Type { get; set; }
@@ -19,14 +19,14 @@ public class CAttackPacket : IPacketBase
 }
 
 [MessagePackObject]
-public class CTargetPacket : IPacketBase
+public class TargetPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; }
     [Key(1)] public uint VID { get; set; }
 }
 
 [MessagePackObject]
-public class SDamagePacket : IPacketBase
+public class DamagePacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; }
     [Key(1)] public uint VID { get; set; }
@@ -35,14 +35,14 @@ public class SDamagePacket : IPacketBase
 }
 
 [MessagePackObject]
-public class SDeathPacket : IPacketBase
+public class DeathPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; }
     [Key(1)] public uint VID { get; set; }
 }
 
 [MessagePackObject]
-public class STargetPacket : IPacketBase
+public class TargetInfoPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; }
     [Key(1)] public uint VID { get; set; }
@@ -82,7 +82,7 @@ public abstract class AltruistCombatPortal : Portal
     protected abstract IEnumerable<string> GetNearbyClientIds(ICombatEntity center, float range);
 
     [Gate("attack")]
-    public virtual async Task OnAttack(CAttackPacket packet, string clientId)
+    public virtual async Task OnAttack(AttackPacket packet, string clientId)
     {
         var attacker = await ResolveAttacker(clientId);
         var target = FindTarget(packet.TargetVID);
@@ -94,13 +94,13 @@ public abstract class AltruistCombatPortal : Portal
     }
 
     [Gate("target")]
-    public virtual async Task OnTarget(CTargetPacket packet, string clientId)
+    public virtual async Task OnTarget(TargetPacket packet, string clientId)
     {
         var target = FindTarget(packet.VID);
         if (target == null) return;
 
         var hpPct = target.MaxHealth > 0 ? (byte)(target.Health * 100 / target.MaxHealth) : (byte)0;
-        await Router.Client.SendAsync(clientId, new STargetPacket { VID = packet.VID, HPPercent = hpPct });
+        await Router.Client.SendAsync(clientId, new TargetInfoPacket { VID = packet.VID, HPPercent = hpPct });
     }
 
     /// <summary>Override for game-specific post-attack logic.</summary>
@@ -113,7 +113,7 @@ public abstract class AltruistCombatPortal : Portal
 
     protected async Task BroadcastHit(ICombatEntity center, HitResult hit)
     {
-        var packet = new SDamagePacket
+        var packet = new DamagePacket
         {
             VID = hit.Target.VirtualId,
             Flags = (byte)hit.Flags,
@@ -125,7 +125,7 @@ public abstract class AltruistCombatPortal : Portal
 
         if (hit.Killed)
         {
-            var deathPacket = new SDeathPacket { VID = hit.Target.VirtualId };
+            var deathPacket = new DeathPacket { VID = hit.Target.VirtualId };
             foreach (var cid in GetNearbyClientIds(center, 5000f))
                 await Router.Client.SendAsync(cid, deathPacket);
         }

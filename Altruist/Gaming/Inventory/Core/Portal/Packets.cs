@@ -23,7 +23,7 @@ public static class InventoryPacketCodes
 }
 
 [MessagePackObject]
-public class CMoveItem : IPacketBase
+public class MoveItemPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.MoveItem;
     [Key(1)] public SlotKey FromSlot { get; set; }
@@ -32,21 +32,21 @@ public class CMoveItem : IPacketBase
 }
 
 [MessagePackObject]
-public class CPickupItem : IPacketBase
+public class PickupItemPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.PickupItem;
     [Key(1)] public string ItemInstanceId { get; set; } = "";
 }
 
 [MessagePackObject]
-public class CDropItem : IPacketBase
+public class DropItemPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.DropItem;
     [Key(1)] public SlotKey FromSlot { get; set; }
 }
 
 [MessagePackObject]
-public class CEquipItem : IPacketBase
+public class EquipItemPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.EquipItem;
     [Key(1)] public SlotKey FromSlot { get; set; }
@@ -54,21 +54,21 @@ public class CEquipItem : IPacketBase
 }
 
 [MessagePackObject]
-public class CUnequipItem : IPacketBase
+public class UnequipItemPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.UnequipItem;
     [Key(1)] public string EquipSlotName { get; set; } = "";
 }
 
 [MessagePackObject]
-public class CUseItem : IPacketBase
+public class UseItemPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.UseItem;
     [Key(1)] public SlotKey Slot { get; set; }
 }
 
 [MessagePackObject]
-public class CSortInventory : IPacketBase
+public class SortInventoryPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.SortInventory;
     [Key(1)] public string ContainerId { get; set; } = "inventory";
@@ -77,7 +77,7 @@ public class CSortInventory : IPacketBase
 // Server → Client packets
 
 [MessagePackObject]
-public class SSlotUpdate : IPacketBase
+public class SlotUpdatePacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.SlotUpdate;
     [Key(1)] public SlotKey Slot { get; set; }
@@ -87,7 +87,7 @@ public class SSlotUpdate : IPacketBase
 }
 
 [MessagePackObject]
-public class SItemResult : IPacketBase
+public class ItemResultPacket : IPacketBase
 {
     [Key(0)] public uint MessageCode { get; set; } = InventoryPacketCodes.ItemResult;
     [Key(1)] public int Status { get; set; }
