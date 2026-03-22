@@ -54,14 +54,18 @@ public class AutosaveAttribute : Attribute
     }
 
     /// <summary>
-    /// Default: flushes every 5 minutes.
+    /// Default: uses interval from config (altruist:game:autosave:default-interval).
+    /// Falls back to every 5 minutes if not configured.
     /// </summary>
     public AutosaveAttribute()
     {
-        CronExpression = "*/5 * * * *";
+        CronExpression = "";
         IntervalValue = 0;
         Unit = AutosaveCycle.Seconds;
     }
+
+    /// <summary>Whether this attribute uses the global default interval from config.</summary>
+    public bool UsesDefaultInterval => IntervalValue <= 0 && string.IsNullOrEmpty(CronExpression);
 
     /// <summary>Get the interval as TimeSpan (for time-based), or null (for cron-based).</summary>
     public TimeSpan? GetTimeSpan()
