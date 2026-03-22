@@ -154,19 +154,17 @@ public class AltruistServiceConfig : IAltruistConfiguration
 
             if (!listSection.Exists())
             {
-                var msg =
-                    $"❌ ConditionalOnConfig list path '{listCond.Path}' for type '{implType.FullName}' does not exist in configuration.";
-                DependencyResolver.FailAndExit(log, msg);
-                throw new InvalidOperationException(msg);
+                log.LogDebug("ConditionalOnConfig list path '{Path}' not found — skipping {Type}",
+                    listCond.Path, implType.Name);
+                return;
             }
 
             var items = listSection.GetChildren().ToArray();
             if (items.Length == 0)
             {
-                var msg =
-                    $"❌ ConditionalOnConfig list path '{listCond.Path}' for type '{implType.FullName}' exists but has no children.";
-                DependencyResolver.FailAndExit(log, msg);
-                throw new InvalidOperationException(msg);
+                log.LogDebug("ConditionalOnConfig list path '{Path}' empty — skipping {Type}",
+                    listCond.Path, implType.Name);
+                return;
             }
 
             DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
