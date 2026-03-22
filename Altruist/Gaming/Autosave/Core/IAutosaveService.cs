@@ -35,6 +35,12 @@ public class AutosaveAttribute : Attribute
     public int BatchSize { get; set; } = 100;
 
     /// <summary>
+    /// Enable write-ahead log for crash recovery. Default: true.
+    /// Set to false for high-frequency low-value data where losing a few seconds is acceptable.
+    /// </summary>
+    public bool Wal { get; set; } = true;
+
+    /// <summary>
     /// Time-based autosave interval.
     /// Example: [Autosave(120, AutosaveCycle.Seconds)] — flushes every 120 seconds.
     /// </summary>
