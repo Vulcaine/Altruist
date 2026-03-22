@@ -4,10 +4,11 @@
 // namespace Altruist.Gaming;
 
 using Altruist;
+using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
 using Altruist.Numerics;
 
-public interface ISpatialBroadcastService3D
+public interface ISpatialBroadcastService3D : ISpatialBroadcastService
 {
     Task SpatialBroadcast<T>(int worldIndex, IntVector3 position, IPacketBase packet) where T : IWorldObject3D;
 
@@ -15,20 +16,36 @@ public interface ISpatialBroadcastService3D
 }
 
 [Service(typeof(ISpatialBroadcastService3D))]
+[Service(typeof(ISpatialBroadcastService))]
 [ConditionalOnConfig("altruist:game")]
 [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
 public class SpatialBroadcastService3D : ISpatialBroadcastService3D
 {
     private readonly IGameWorldOrganizer3D _gameWorldService;
     private readonly IAltruistRouter _router;
-
     private readonly ISocketManager _socketManager;
+    private readonly IVisibilityTracker? _visibilityTracker;
 
-    public SpatialBroadcastService3D(IGameWorldOrganizer3D gameWorldService, IAltruistRouter router, ISocketManager socketManager)
+    public SpatialBroadcastService3D(
+        IGameWorldOrganizer3D gameWorldService,
+        IAltruistRouter router,
+        ISocketManager socketManager,
+        IVisibilityTracker? visibilityTracker = null)
     {
         _gameWorldService = gameWorldService;
         _router = router;
         _socketManager = socketManager;
+        _visibilityTracker = visibilityTracker;
+    }
+
+    public async Task SendToObserversAsync(string entityInstanceId, IPacketBase packet)
+    {
+        if (_visibilityTracker == null) return;
+
+        foreach (var observerClientId in _visibilityTracker.GetObserversOf(entityInstanceId))
+        {
+            await _router.Client.SendAsync(observerClientId, packet);
+        }
     }
 
     /// <summary>

@@ -184,7 +184,9 @@ public static class Synchronization
                 }
             }
 
-            if (nonSyncAlwaysChanged && syncAlwaysIndices is not null)
+            // SyncAlways properties are always included, even if nothing else changed.
+            // This ensures continuous sync for properties like Name, position, etc.
+            if (syncAlwaysIndices is not null)
             {
                 foreach (var i in syncAlwaysIndices)
                 {

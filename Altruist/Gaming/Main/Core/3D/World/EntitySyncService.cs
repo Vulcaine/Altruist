@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Engine;
 using Altruist.Networking;
 using Microsoft.Extensions.Logging;
 
@@ -11,30 +12,34 @@ namespace Altruist.Gaming.ThreeD;
 /// <summary>
 /// Automatically synchronizes all [Synchronized] ISynchronizedEntity world objects.
 /// Ticked by GameWorldOrganizer3D — no game code needed.
-/// Only broadcasts delta changes (via [Synced] properties).
+/// Uses spatial broadcast for visibility-aware sync — entities only sync to
+/// players who can see them.
 /// </summary>
 [Service(typeof(IEntitySyncService))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class EntitySyncService : IEntitySyncService
 {
-    private readonly IClientSynchronizator? _synchronizer;
+    private readonly IVisibilityTracker? _visibilityTracker;
+    private readonly ClientSender? _clientSender;
+    private readonly BroadcastSender? _broadcastSender;
     private readonly ILogger _logger;
     private uint _tickCounter;
 
     public EntitySyncService(
         ILoggerFactory loggerFactory,
-        IClientSynchronizator? synchronizer = null)
+        IVisibilityTracker? visibilityTracker = null,
+        ClientSender? clientSender = null,
+        BroadcastSender? broadcastSender = null)
     {
-        _synchronizer = synchronizer;
+        _visibilityTracker = visibilityTracker;
+        _clientSender = clientSender;
+        _broadcastSender = broadcastSender;
         _logger = loggerFactory.CreateLogger<EntitySyncService>();
     }
 
-    /// <summary>
-    /// Called each engine tick by the organizer. Receives worlds directly — no circular DI.
-    /// </summary>
     public async Task Tick(IEnumerable<IGameWorldManager3D> worlds, float engineFrequencyHz)
     {
-        if (_synchronizer == null) return;
+        if (_clientSender == null && _broadcastSender == null) return;
 
         _tickCounter++;
 
@@ -54,13 +59,48 @@ public sealed class EntitySyncService : IEntitySyncService
 
                 try
                 {
-                    await _synchronizer.SendAsync(syncEntity);
+                    await SendSyncData(syncEntity, obj);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to sync entity {Id}", syncEntity.ClientId);
+                    _logger.LogWarning(ex, "Sync failed for {Id}", syncEntity.ClientId);
                 }
             }
+        }
+    }
+
+    private async Task SendSyncData(ISynchronizedEntity entity, IWorldObject3D worldObj)
+    {
+        var (changeMasks, changedProperties) = Synchronization.GetChangedData(
+            entity, entity.ClientId, AltruistEngine.CurrentTick);
+
+        bool anyChanges = changeMasks.Any(mask => mask != 0);
+        if (!anyChanges) return;
+
+        var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        var syncData = new SyncPacket(entity.GetType().Name, safeCopy);
+
+        if (_clientSender != null)
+        {
+            // Visibility-aware: send to players who can see this entity
+            if (_visibilityTracker != null)
+            {
+                foreach (var observerClientId in _visibilityTracker.GetObserversOf(worldObj.InstanceId))
+                {
+                    await _clientSender.SendAsync(observerClientId, syncData);
+                }
+            }
+
+            // Player entities: send to their own TCP client (self-sync)
+            // AI entities (monsters/NPCs): only sync via visibility, no self-send
+            if (worldObj is not IAIBehaviorEntity && !string.IsNullOrEmpty(entity.ClientId))
+            {
+                await _clientSender.SendAsync(entity.ClientId, syncData);
+            }
+        }
+        else if (_broadcastSender != null)
+        {
+            await _broadcastSender.SendAsync(syncData);
         }
     }
 

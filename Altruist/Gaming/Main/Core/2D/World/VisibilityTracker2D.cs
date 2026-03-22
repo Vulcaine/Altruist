@@ -153,5 +153,14 @@ namespace Altruist.Gaming.TwoD
         {
             return _visibleSets.TryGetValue(clientId, out var set) ? set : null;
         }
+
+        public IEnumerable<string> GetObserversOf(string entityInstanceId)
+        {
+            foreach (var (clientId, visibleSet) in _visibleSets)
+            {
+                if (visibleSet.Contains(entityInstanceId))
+                    yield return clientId;
+            }
+        }
     }
 }
