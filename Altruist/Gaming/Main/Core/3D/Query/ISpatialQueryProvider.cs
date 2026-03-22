@@ -27,6 +27,22 @@ public struct SpatialHit
 }
 
 /// <summary>
+/// <summary>
+/// Provides terrain/walkability data for the HeightmapSpatialQueryProvider.
+/// Implement in your game to feed walkability grids, heightmaps, etc.
+/// </summary>
+public interface ITerrainProvider
+{
+    /// <summary>Check if a position is walkable.</summary>
+    bool IsWalkable(float x, float y, float z);
+
+    /// <summary>Get terrain height at a position. Returns 0 if no heightmap.</summary>
+    float GetHeight(float x, float z);
+
+    /// <summary>Get terrain normal at a position.</summary>
+    Vector3 GetNormal(float x, float z) => Vector3.UnitY;
+}
+
 /// Abstraction over spatial queries (capsule cast, ray cast).
 /// Two backends auto-selected via DI:
 /// - PhysicsSpatialQueryProvider: wraps BEPU engine (physics ON)

@@ -21,13 +21,16 @@ namespace Altruist.Gaming.ThreeD;
 public sealed class HeightmapSpatialQueryProvider : ISpatialQueryProvider
 {
     private readonly IGameWorldOrganizer3D _worlds;
+    private readonly ITerrainProvider? _terrain;
     private readonly ILogger _logger;
 
     public HeightmapSpatialQueryProvider(
         IGameWorldOrganizer3D worlds,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        ITerrainProvider? terrain = null)
     {
         _worlds = worlds;
+        _terrain = terrain;
         _logger = loggerFactory.CreateLogger<HeightmapSpatialQueryProvider>();
     }
 
@@ -41,6 +44,32 @@ public sealed class HeightmapSpatialQueryProvider : ISpatialQueryProvider
 
         var dest = center + direction * maxDistance;
         var hits = new List<SpatialHit>();
+
+        // 0. Check terrain walkability along the path
+        if (_terrain != null)
+        {
+            // Sample several points along the cast direction
+            int steps = Math.Max(1, (int)(maxDistance / 50f)); // check every ~50 units
+            for (int s = 1; s <= steps; s++)
+            {
+                float t = (float)s / steps;
+                var samplePos = center + direction * (maxDistance * t);
+                if (!_terrain.IsWalkable(samplePos.X, samplePos.Y, samplePos.Z))
+                {
+                    // Blocked — return hit at the last walkable point
+                    var hitT = maxDistance * Math.Max(0, t - (1f / steps));
+                    var hitPoint = center + direction * hitT;
+                    hits.Add(new SpatialHit
+                    {
+                        T = hitT,
+                        Point = hitPoint,
+                        Normal = -direction, // push back along movement direction
+                        HitObject = null, // terrain
+                    });
+                    break;
+                }
+            }
+        }
 
         // 1. Check entity colliders (sphere-capsule intersection)
         foreach (var obj in world.FindAllObjects<IWorldObject3D>())
@@ -100,12 +129,9 @@ public sealed class HeightmapSpatialQueryProvider : ISpatialQueryProvider
         Vector3 origin, Vector3 direction,
         float maxDistance, int maxHits = 4, uint layerMask = uint.MaxValue)
     {
-        // For heightmap-based ray cast, check if the ray hits the ground plane
-        // Simple: if direction is downward, the ground is at Y=0 (or heightmap height)
         if (direction.Y < -0.01f)
         {
-            // Ray hits ground at Y=0 (default ground plane)
-            float groundY = 0f;
+            float groundY = _terrain?.GetHeight(origin.X, origin.Z) ?? 0f;
             float t = (origin.Y - groundY) / -direction.Y;
 
             if (t >= 0 && t <= maxDistance)
