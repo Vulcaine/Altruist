@@ -66,6 +66,7 @@ public struct CharacterMotorContext
 public sealed class KinematicCharacterController3D : IKinematicCharacterController3D
 {
     private IPhysxBody3D? _body;
+    private ISpatialQueryProvider? _queries;
 
     // intents
     private Vector3 _moveLocal;
@@ -163,6 +164,8 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         _body = body ?? throw new ArgumentNullException(nameof(body));
         _yaw = ExtractYaw(body.Rotation);
     }
+
+    public void SetQueryProvider(ISpatialQueryProvider queries) => _queries = queries;
 
     public void MoveIntent(float moveX, float moveZ)
         => _moveLocal = new Vector3(moveX, 0f, moveZ);
@@ -360,7 +363,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             // Cast slightly farther to preserve SkinWidth separation
             float castDist = dist + SkinWidth;
 
-            var hits = world.PhysxWorld.Engine.CapsuleCast(
+            var hits = QueryCapsuleCast(world,
                 center: pos,
                 radius: Radius,
                 halfLength: halfLength,
@@ -472,7 +475,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             {
                 var dir = dirs[d];
 
-                var hits = world.PhysxWorld.Engine.CapsuleCast(
+                var hits = QueryCapsuleCast(world,
                     center: pos,
                     radius: Radius,
                     halfLength: halfLength,
@@ -540,7 +543,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
 
         if (UseCapsuleSweeps)
         {
-            hits = world.PhysxWorld.Engine.CapsuleCast(
+            hits = QueryCapsuleCast(world,
                 center: body.Position,
                 radius: Radius,
                 halfLength: halfLength,
@@ -557,7 +560,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             var origin = body.Position + new Vector3(0f, -(bottomOffset - SkinWidth), 0f);
             var target = origin + new Vector3(0f, -(GroundProbeDistance + SkinWidth), 0f);
 
-            hits = world.PhysxWorld.Engine.RayCast(
+            hits = QueryRayCast(world,
                 new PhysxRay3D(origin, target),
                 maxHits: 4,
                 layerMask: (uint)GroundMask
@@ -632,6 +635,49 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             return WrapAngleRad(target);
 
         return WrapAngleRad(current + MathF.Sign(delta) * maxDeltaRad);
+    }
+
+    // ── Query delegation: ISpatialQueryProvider if set, else direct PhysxWorld ──
+
+    private IEnumerable<PhysxRaycastHit3D> QueryCapsuleCast(
+        IGameWorldManager3D world,
+        Vector3 center, float radius, float halfLength,
+        Vector3 direction, float maxDistance, int maxHits, uint layerMask)
+    {
+        if (_queries != null)
+        {
+            // Convert SpatialHit → PhysxRaycastHit3D for compatibility
+            foreach (var h in _queries.CapsuleCast(center, radius, halfLength, direction, maxDistance, maxHits, layerMask))
+                yield return new PhysxRaycastHit3D(null!, h.Point, h.Normal, h.T);
+            yield break;
+        }
+
+        // Fallback: direct physics engine (backward compat)
+        if (world.PhysxWorld?.Engine != null)
+        {
+            foreach (var h in world.PhysxWorld.Engine.CapsuleCast(center, radius, halfLength, direction, maxDistance, maxHits, layerMask))
+                yield return h;
+        }
+    }
+
+    private IEnumerable<PhysxRaycastHit3D> QueryRayCast(
+        IGameWorldManager3D world,
+        PhysxRay3D ray, int maxHits, uint layerMask)
+    {
+        if (_queries != null)
+        {
+            var dir = Vector3.Normalize(ray.To - ray.From);
+            var dist = Vector3.Distance(ray.From, ray.To);
+            foreach (var h in _queries.RayCast(ray.From, dir, dist, maxHits, layerMask))
+                yield return new PhysxRaycastHit3D(null!, h.Point, h.Normal, h.T);
+            yield break;
+        }
+
+        if (world.PhysxWorld?.Engine != null)
+        {
+            foreach (var h in world.PhysxWorld.Engine.RayCast(ray, maxHits, layerMask))
+                yield return h;
+        }
     }
 
     private static float ExtractYaw(Quaternion q)
