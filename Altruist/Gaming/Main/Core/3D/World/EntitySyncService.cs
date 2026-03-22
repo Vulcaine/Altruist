@@ -10,51 +10,45 @@ namespace Altruist.Gaming.ThreeD;
 
 /// <summary>
 /// Automatically synchronizes all [Synchronized] ISynchronizedEntity world objects.
-/// Discovered and ticked by the engine — no game code needed.
+/// Ticked by GameWorldOrganizer3D — no game code needed.
 /// Only broadcasts delta changes (via [Synced] properties).
 /// </summary>
 [Service(typeof(IEntitySyncService))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class EntitySyncService : IEntitySyncService
 {
-    private readonly IGameWorldOrganizer3D? _worlds;
     private readonly IClientSynchronizator? _synchronizer;
     private readonly ILogger _logger;
     private uint _tickCounter;
 
     public EntitySyncService(
         ILoggerFactory loggerFactory,
-        IGameWorldOrganizer3D? worlds = null,
         IClientSynchronizator? synchronizer = null)
     {
-        _worlds = worlds;
         _synchronizer = synchronizer;
         _logger = loggerFactory.CreateLogger<EntitySyncService>();
     }
 
     /// <summary>
-    /// Called each engine tick. Iterates all worlds, finds [Synchronized] entities,
-    /// and broadcasts delta sync packets.
+    /// Called each engine tick by the organizer. Receives worlds directly — no circular DI.
     /// </summary>
-    public async Task Tick(float engineFrequencyHz)
+    public async Task Tick(IEnumerable<IGameWorldManager3D> worlds, float engineFrequencyHz)
     {
-        if (_worlds == null || _synchronizer == null) return;
+        if (_synchronizer == null) return;
 
         _tickCounter++;
 
-        foreach (var world in _worlds.GetAllWorlds())
+        foreach (var world in worlds)
         {
             foreach (var obj in world.FindAllObjects<IWorldObject3D>())
             {
                 if (obj is not ISynchronizedEntity syncEntity) continue;
                 if (string.IsNullOrEmpty(syncEntity.ClientId)) continue;
 
-                // Check if this entity type has [Synchronized] attribute
                 var syncAttr = obj.GetType().GetCustomAttributes(typeof(SynchronizedAttribute), true)
                     .FirstOrDefault() as SynchronizedAttribute;
                 if (syncAttr == null) continue;
 
-                // Frequency gating
                 if (syncAttr.Frequency > 0 && !ShouldSync(syncAttr, engineFrequencyHz))
                     continue;
 
@@ -86,5 +80,5 @@ public sealed class EntitySyncService : IEntitySyncService
 
 public interface IEntitySyncService
 {
-    Task Tick(float engineFrequencyHz);
+    Task Tick(IEnumerable<IGameWorldManager3D> worlds, float engineFrequencyHz);
 }
