@@ -48,6 +48,47 @@ public interface ISynchronizedEntity
     public string ClientId { get; set; }
 }
 
+/// <summary>
+/// Marks an ISynchronizedEntity class for automatic delta synchronization.
+/// Altruist discovers all world objects with this attribute and broadcasts
+/// [Synced] property changes automatically — no manual code needed.
+///
+/// Default: syncs at engine tick rate (e.g., 25Hz).
+/// Optional: specify a custom frequency.
+///
+/// Usage:
+///   [Synchronized]                     // sync every engine tick
+///   [Synchronized(10)]                 // sync 10 times per second
+///   [Synchronized(1, SyncUnit.Seconds)] // sync once per second
+/// </summary>
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+public class SynchronizedAttribute : Attribute
+{
+    public int Frequency { get; }
+    public SyncUnit Unit { get; }
+
+    /// <summary>Sync at engine tick rate.</summary>
+    public SynchronizedAttribute()
+    {
+        Frequency = 0; // 0 = engine tick rate
+        Unit = SyncUnit.Ticks;
+    }
+
+    /// <summary>Sync at a custom frequency.</summary>
+    public SynchronizedAttribute(int frequency, SyncUnit unit = SyncUnit.Ticks)
+    {
+        Frequency = frequency;
+        Unit = unit;
+    }
+}
+
+public enum SyncUnit
+{
+    Ticks,   // per N engine ticks
+    Hz,      // N times per second
+    Seconds, // every N seconds
+}
+
 public sealed class SyncedProperty
 {
     public string Name { get; }

@@ -28,13 +28,17 @@ namespace Altruist.Gaming.ThreeD
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;
         private IVisibilityTracker? _visibilityTracker;
+        private IEntitySyncService? _entitySyncService;
+        private float _engineFrequencyHz = 25f;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
-            IEnumerable<IWorldIndex3D> gameWorlds
+            IEnumerable<IWorldIndex3D> gameWorlds,
+            IEntitySyncService? entitySyncService = null
         )
         {
             _worldLoader = worldLoader;
+            _entitySyncService = entitySyncService;
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
@@ -116,6 +120,13 @@ namespace Altruist.Gaming.ThreeD
             if (_visibilityTracker is VisibilityTracker3D tracker)
             {
                 try { tracker.Tick(); }
+                catch { }
+            }
+
+            // Auto-sync [Synchronized] entities (delta-based, after visibility)
+            if (_entitySyncService != null)
+            {
+                try { _entitySyncService.Tick(_engineFrequencyHz).GetAwaiter().GetResult(); }
                 catch { }
             }
         }
