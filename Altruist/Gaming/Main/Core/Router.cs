@@ -16,7 +16,7 @@ public class GameClientSynchronizator : IClientSynchronizator
 
     public virtual async Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
     {
-        var (changeMasks, changedProperties) = Synchronization.GetChangedData(entity, entity.ConnectionId, AltruistEngine.CurrentTick, forceAllAsChanged);
+        var (changeMasks, changedProperties) = Synchronization.GetChangedData(entity, entity.ClientId, AltruistEngine.CurrentTick, forceAllAsChanged);
 
         bool anyChanges = changeMasks.Any(mask => mask != 0);
         if (!anyChanges)
