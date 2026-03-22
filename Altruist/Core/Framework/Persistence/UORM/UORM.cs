@@ -23,7 +23,15 @@ public class VaultAttribute : Attribute
     public string Keyspace { get; } = "altruist";
     public string DbToken { get; } = "Postgres";
     public bool StoreHistory { get; }
-    public VaultAttribute(string Name, bool StoreHistory = false, string Keyspace = "altruist", string DbToken = "Postgres") => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken) = (Name, StoreHistory, Keyspace, DbToken);
+
+    /// <summary>
+    /// Target a specific named database instance. Empty means use the default instance.
+    /// Matches the "name" field in altruist:persistence:database:instances config.
+    /// </summary>
+    public string DbInstance { get; } = "";
+
+    public VaultAttribute(string Name, bool StoreHistory = false, string Keyspace = "altruist", string DbToken = "Postgres", string DbInstance = "")
+        => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken, this.DbInstance) = (Name, StoreHistory, Keyspace, DbToken, DbInstance);
 }
 
 [AttributeUsage(AttributeTargets.Class, Inherited = true)]

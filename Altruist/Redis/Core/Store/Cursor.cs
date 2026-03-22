@@ -1,120 +1,100 @@
-// /*
-// Copyright 2025 Aron Gere
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+using System.Text.Json;
 
-//     http://www.apache.org/licenses/LICENSE-2.0
+using Altruist.Persistence;
 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// */
+using StackExchange.Redis;
 
-// using System.Text.Json;
+namespace Altruist.Redis;
 
-// using StackExchange.Redis;
+public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull
+{
+    private int BatchSize { get; }
+    private int CurrentIndex { get; set; }
 
-// namespace Altruist.Redis;
+    private readonly IDatabase _redis;
+    private readonly VaultDocument _document;
+    private readonly string _group;
 
-// public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : notnull
-// {
-//     private int BatchSize { get; }
-//     private int CurrentIndex { get; set; }
+    public bool HasNext { get; private set; } = true;
+    public int Count { get; } = -1;
 
-//     private readonly IDatabase _redis;
-//     private readonly RedisDocument _document;
-//     private readonly string _group;
+    public RedisCacheCursor(IDatabase redis, VaultDocument document, int batchSize, string cacheGroupId = "")
+    {
+        _redis = redis;
+        BatchSize = batchSize;
+        CurrentIndex = 0;
+        _document = document;
+        _group = cacheGroupId;
+    }
 
-//     public bool HasNext { get; private set; } = true;
+    public async Task<IEnumerable<T>> NextBatch()
+    {
+        var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
+        var keys = server.Keys(
+                pattern: $"{_document.Name}{(_group != "" ? $"_{_group}" : "")}:*",
+                pageSize: BatchSize)
+            .Skip(CurrentIndex)
+            .Take(BatchSize)
+            .ToArray();
 
-//     // TODO: implement count correctly
-//     public int Count { get; } = -1;
+        if (keys.Length == 0)
+        {
+            HasNext = false;
+            return Enumerable.Empty<T>();
+        }
 
-//     public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize, string cacheGroupId = "")
-//     {
-//         _redis = redis;
-//         BatchSize = batchSize;
-//         CurrentIndex = 0;
-//         _document = document;
-//         _group = cacheGroupId;
-//     }
+        var values = await _redis.StringGetAsync(keys);
+        var result = new List<T>(keys.Length);
 
-//     public async Task<IEnumerable<T>> NextBatch()
-//     {
-//         // Use SCAN to fetch a batch of keys matching the pattern for the type
-//         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
-//         var keys = server.Keys(pattern: $"{_document.Name}{(_group != "" ? $"_{_group}" : "")}:*", pageSize: BatchSize)
-//                         .Skip(CurrentIndex)
-//                         .Take(BatchSize)
-//                         .ToArray();
+        foreach (var value in values)
+        {
+            if (value.HasValue)
+            {
+                var entity = JsonSerializer.Deserialize<T>(value.ToString());
+                if (entity != null)
+                    result.Add(entity);
+            }
+        }
 
-//         if (keys.Length == 0)
-//         {
-//             HasNext = false;
-//             return Enumerable.Empty<T>();
-//         }
+        CurrentIndex += keys.Length;
+        HasNext = result.Count == BatchSize;
+        return result;
+    }
 
-//         // Fetch values for the keys in batch
-//         var values = await _redis.StringGetAsync(keys);
-//         var result = new List<T>(keys.Length);
+    private IEnumerable<T> FetchAllBatches()
+    {
+        while (true)
+        {
+            if (!HasNext)
+                yield break;
 
-//         foreach (var value in values)
-//         {
-//             if (value.HasValue)
-//             {
-//                 var entity = JsonSerializer.Deserialize<T>(value.ToString());
-//                 if (entity != null)
-//                 {
-//                     result.Add(entity);
-//                 }
-//             }
-//         }
+            var batch = NextBatch().GetAwaiter().GetResult();
+            foreach (var item in batch)
+                yield return item;
+        }
+    }
 
-//         CurrentIndex += keys.Length;
-//         HasNext = result.Count == BatchSize;
-//         return result;
-//     }
+    public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            if (!HasNext)
+                yield break;
 
-//     private IEnumerable<T> FetchAllBatches()
-//     {
-//         while (true)
-//         {
-//             if (!HasNext)
-//                 yield break;
+            var batch = await NextBatch();
+            foreach (var item in batch)
+                yield return item;
+        }
+    }
 
-//             var batch = NextBatch().GetAwaiter().GetResult();
-//             foreach (var item in batch)
-//             {
-//                 yield return item;
-//             }
-//         }
-//     }
+    public IEnumerator<T> GetEnumerator()
+        => FetchAllBatches().GetEnumerator();
 
-//     public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
-//     {
-//         while (true)
-//         {
-//             if (!HasNext)
-//                 yield break;
-
-//             var batch = await NextBatch();
-//             foreach (var item in batch)
-//                 yield return item;
-//         }
-//     }
-
-//     public IEnumerator<T> GetEnumerator()
-//     {
-//         return FetchAllBatches().GetEnumerator();
-//     }
-
-//     IAsyncEnumerator<T> IAsyncEnumerable<T>.GetAsyncEnumerator(CancellationToken cancellationToken)
-//     {
-//         return GetAsyncEnumerator(cancellationToken);
-//     }
-// }
-
+    IAsyncEnumerator<T> IAsyncEnumerable<T>.GetAsyncEnumerator(CancellationToken cancellationToken)
+        => GetAsyncEnumerator(cancellationToken);
+}
