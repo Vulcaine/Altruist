@@ -40,9 +40,9 @@ namespace Altruist.Gaming
 
         [Key(1)]
         [Synced(0, SyncAlways: true)]
-        [JsonPropertyName("connectionId")]
+        [JsonPropertyName("clientId")]
         [VaultColumn]
-        public string ConnectionId { get; set; }
+        public string ClientId { get; set; }
 
         [Key(2)]
         [Synced(1, SyncAlways: true)]
@@ -143,7 +143,7 @@ namespace Altruist.Gaming
         {
             Type = GetType().Name;
             StorageId = Guid.NewGuid().ToString();
-            ConnectionId = "";
+            ClientId = "";
             Name = "Player";
             Level = 1;
             Position = [0, 0];

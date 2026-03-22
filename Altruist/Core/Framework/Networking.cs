@@ -45,7 +45,7 @@ public class SyncedAttribute : Attribute
 
 public interface ISynchronizedEntity
 {
-    public string ConnectionId { get; set; }
+    public string ClientId { get; set; }
 }
 
 public sealed class SyncedProperty
