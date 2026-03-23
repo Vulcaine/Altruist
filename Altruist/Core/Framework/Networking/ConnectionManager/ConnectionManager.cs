@@ -70,7 +70,7 @@ namespace Altruist
 
             foreach (var conn in allConns)
             {
-                if (conn.Route == portal.Route)
+                if (conn.Route.TrimEnd('/') == portal.Route.TrimEnd('/'))
                 {
                     connections.Add(conn);
                 }
@@ -147,7 +147,7 @@ namespace Altruist
             var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
             {
-                if (portal.Route != connection.Route)
+                if (portal.Route.TrimEnd('/') != connection.Route.TrimEnd('/'))
                 {
                     continue;
                 }
