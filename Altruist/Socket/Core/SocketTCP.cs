@@ -358,10 +358,12 @@ public sealed class TcpConnection : AltruistConnection
             BinaryPrimitives.WriteInt32LittleEndian(frame, data.Length);
             data.CopyTo(frame.AsSpan(4));
             await _networkStream.WriteAsync(frame.AsMemory(), CancellationToken.None);
+            await _networkStream.FlushAsync();
         }
         else
         {
             await _networkStream.WriteAsync(data.AsMemory(0, data.Length), CancellationToken.None);
+            await _networkStream.FlushAsync();
         }
     }
 
