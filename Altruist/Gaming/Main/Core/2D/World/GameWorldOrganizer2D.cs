@@ -30,6 +30,9 @@ namespace Altruist.Gaming.TwoD
         private readonly IPhysxBodyApiProvider2D? _bodyApi;
         private readonly IPhysxColliderApiProvider2D? _colliderApi;
         private readonly IVisibilityTracker? _visibilityTracker;
+        private readonly IAIBehaviorService? _aiBehaviorService;
+        private readonly IEntitySyncService? _entitySyncService;
+        private float _engineFrequencyHz = 25f;
 
         public GameWorldOrganizer2D(
             IWorldPartitioner2D partitioner,
@@ -38,7 +41,9 @@ namespace Altruist.Gaming.TwoD
             IEnumerable<IWorldIndex2D> gameWorlds,
             IPhysxBodyApiProvider2D? bodyApi = null,
             IPhysxColliderApiProvider2D? colliderApi = null,
-            IVisibilityTracker? visibilityTracker = null)
+            IVisibilityTracker? visibilityTracker = null,
+            IAIBehaviorService? aiBehaviorService = null,
+            IEntitySyncService? entitySyncService = null)
         {
             _partitioner = partitioner;
             _cache = cache;
@@ -46,6 +51,8 @@ namespace Altruist.Gaming.TwoD
             _bodyApi = bodyApi;
             _colliderApi = colliderApi;
             _visibilityTracker = visibilityTracker;
+            _aiBehaviorService = aiBehaviorService;
+            _entitySyncService = entitySyncService;
             _worlds = gameWorlds
                 .Select(index2d => AddWorld(
                     index2d,
@@ -144,16 +151,35 @@ namespace Altruist.Gaming.TwoD
                 }
             }
 
+            // Build dimension-agnostic snapshots for shared services
+            var worldSnapshots = new WorldSnapshot[_worlds.Count];
+            int snapIdx = 0;
+            foreach (var world in _worlds.Values)
+            {
+                var objs = world.GetAllObjects().Cast<ITypelessWorldObject>().ToList();
+                var lookup = objs.ToDictionary(o => o.InstanceId, o => o);
+                worldSnapshots[snapIdx++] = new WorldSnapshot(world.Index.Index, objs, lookup);
+            }
+
+            // AI behaviors tick (after physics, before visibility/sync)
+            if (_aiBehaviorService != null)
+            {
+                try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
+                catch { }
+            }
+
             // Compute visibility diffs after all positions are final
             if (_visibilityTracker is VisibilityTracker2D tracker)
             {
-                try
-                {
-                    tracker.Tick();
-                }
-                catch
-                {
-                }
+                try { tracker.Tick(); }
+                catch { }
+            }
+
+            // Auto-sync [Synchronized] entities (delta-based, after visibility)
+            if (_entitySyncService != null)
+            {
+                try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
+                catch { }
             }
         }
 

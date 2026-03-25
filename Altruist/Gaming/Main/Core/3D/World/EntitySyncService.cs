@@ -8,7 +8,7 @@ using Altruist.Engine;
 using Altruist.Networking;
 using Microsoft.Extensions.Logging;
 
-namespace Altruist.Gaming.ThreeD;
+namespace Altruist.Gaming;
 
 /// <summary>
 /// Automatically synchronizes all [Synchronized] ISynchronizedEntity world objects.
@@ -75,7 +75,7 @@ public sealed class EntitySyncService : IEntitySyncService
         }
     }
 
-    private async Task SendSyncData(ISynchronizedEntity entity, IWorldObject3D worldObj)
+    private async Task SendSyncData(ISynchronizedEntity entity, ITypelessWorldObject worldObj)
     {
         var (changeMasks, maskCount, changedProperties) = Synchronization.GetChangedData(
             entity, entity.ClientId, AltruistEngine.CurrentTick);
