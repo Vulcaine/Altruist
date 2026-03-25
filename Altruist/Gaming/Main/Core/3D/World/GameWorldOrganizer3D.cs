@@ -8,27 +8,6 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
-    /// <summary>
-    /// Pre-computed, allocation-free snapshot of a world's entity list for a single tick.
-    /// Shared across AI, visibility, and sync subsystems to avoid repeated materialization.
-    /// </summary>
-    public readonly struct WorldSnapshot
-    {
-        public readonly IGameWorldManager3D World;
-        public readonly IReadOnlyList<IWorldObject3D> AllObjects;
-        public readonly IReadOnlyDictionary<string, IWorldObject3D> Lookup;
-
-        public WorldSnapshot(
-            IGameWorldManager3D world,
-            IReadOnlyList<IWorldObject3D> allObjects,
-            IReadOnlyDictionary<string, IWorldObject3D> lookup)
-        {
-            World = world;
-            AllObjects = allObjects;
-            Lookup = lookup;
-        }
-    }
-
     public interface IGameWorldOrganizer3D : IGameWorldOrganizer
     {
         IGameWorldManager3D AddWorld(IGameWorldManager3D manager);
@@ -145,7 +124,10 @@ namespace Altruist.Gaming.ThreeD
             for (int i = 0; i < worlds.Length; i++)
             {
                 var (list, lookup) = worlds[i].GetCachedSnapshot();
-                worldSnapshots[i] = new WorldSnapshot(worlds[i], list, lookup);
+                // Cast IWorldObject3D lists to ITypelessWorldObject for dimension-agnostic services
+                var typelessList = (IReadOnlyList<ITypelessWorldObject>)list;
+                var typelessLookup = (IReadOnlyDictionary<string, ITypelessWorldObject>)(object)lookup;
+                worldSnapshots[i] = new WorldSnapshot(worlds[i].Index.Index, typelessList, typelessLookup);
             }
 
             // AI behaviors tick (after physics, before visibility/sync)

@@ -44,10 +44,11 @@ namespace Altruist.Gaming.ThreeD
 
             foreach (var snapshot in snapshots)
             {
-                var world = snapshot.World;
+                var worldIndex = snapshot.WorldIndex;
+                var world = _organizer!.GetWorld(worldIndex);
+                if (world is null) continue;
                 var allObjects = snapshot.AllObjects;
                 var lookup = snapshot.Lookup;
-                var worldIndex = world.Index.Index;
 
                 // Reset observer counts for this tick
                 _observerCounts.Clear();
@@ -61,12 +62,12 @@ namespace Altruist.Gaming.ThreeD
                 // Phase 2: Compute visibility for each observer (player)
                 for (int i = 0; i < allObjects.Count; i++)
                 {
-                    var obj = allObjects[i];
-                    if (string.IsNullOrEmpty(obj.ClientId))
+                    if (allObjects[i] is not IWorldObject3D obj3d) continue;
+                    if (string.IsNullOrEmpty(obj3d.ClientId))
                         continue;
 
-                    _observers[obj.ClientId] = obj;
-                    UpdateVisibilityFor(obj, world, worldIndex, allObjects, lookup);
+                    _observers[obj3d.ClientId] = obj3d;
+                    UpdateVisibilityFor(obj3d, world, worldIndex, allObjects, lookup);
                 }
 
                 // Phase 3: Hibernate entities with zero observers
@@ -79,7 +80,7 @@ namespace Altruist.Gaming.ThreeD
 
         private readonly HashSet<string> _wokenBuffer = new();
 
-        private void WakeNearbyHibernated(IGameWorldManager3D world, IReadOnlyList<IWorldObject3D> allObjects)
+        private void WakeNearbyHibernated(IGameWorldManager3D world, IReadOnlyList<ITypelessWorldObject> allObjects)
         {
             if (_hibernation == null || _hibernation.Count == 0) return;
 
@@ -87,7 +88,7 @@ namespace Altruist.Gaming.ThreeD
 
             for (int i = 0; i < allObjects.Count; i++)
             {
-                var observer = allObjects[i];
+                if (allObjects[i] is not IWorldObject3D observer) continue;
                 if (string.IsNullOrEmpty(observer.ClientId)) continue;
 
                 var pos = observer.Transform.Position;
@@ -111,13 +112,13 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
-        private void HibernateUnobserved(IGameWorldManager3D world, IReadOnlyList<IWorldObject3D> allObjects)
+        private void HibernateUnobserved(IGameWorldManager3D world, IReadOnlyList<ITypelessWorldObject> allObjects)
         {
             if (_hibernation == null) return;
 
             for (int i = 0; i < allObjects.Count; i++)
             {
-                var obj = allObjects[i];
+                if (allObjects[i] is not IWorldObject3D obj) continue;
                 // Skip players (observers) — only hibernate non-player entities
                 if (!string.IsNullOrEmpty(obj.ClientId)) continue;
                 if (obj is not IHibernatable hibernatable) continue;
@@ -150,8 +151,8 @@ namespace Altruist.Gaming.ThreeD
             IWorldObject3D observer,
             IGameWorldManager3D world,
             int worldIndex,
-            IReadOnlyList<IWorldObject3D> allObjects,
-            IReadOnlyDictionary<string, IWorldObject3D> lookup)
+            IReadOnlyList<ITypelessWorldObject> allObjects,
+            IReadOnlyDictionary<string, ITypelessWorldObject> lookup)
         {
             var clientId = observer.ClientId;
             var pos = observer.Transform.Position;
@@ -171,7 +172,7 @@ namespace Altruist.Gaming.ThreeD
 
             for (int i = 0; i < allObjects.Count; i++)
             {
-                var target = allObjects[i];
+                if (allObjects[i] is not IWorldObject3D target) continue;
                 if (target.InstanceId == observer.InstanceId)
                     continue;
 
