@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
-    <ProjectReference Include="..\..\Altruist\Boot\Boot.csproj" />
-    <ProjectReference Include="..\..\Altruist\Socket\Socket.csproj" />
-    <ProjectReference Include="..\..\Altruist\Gaming\Main\Gaming.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Core\Core.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Boot\Boot.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Socket\Socket.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Gaming\Main\Gaming.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Altruist\Core\Core.csproj" />
-    <ProjectReference Include="..\..\Altruist\Boot\Boot.csproj" />
-    <ProjectReference Include="..\..\Altruist\Web\Web.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Core\Core.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Boot\Boot.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Web\Web.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
