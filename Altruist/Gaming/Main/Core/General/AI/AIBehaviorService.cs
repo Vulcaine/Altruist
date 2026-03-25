@@ -3,7 +3,6 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-using System.Reflection;
 using Altruist.Gaming.ThreeD;
 using Microsoft.Extensions.Logging;
 
@@ -11,7 +10,7 @@ namespace Altruist.Gaming;
 
 public interface IAIBehaviorService
 {
-    void Tick(IEnumerable<IGameWorldManager3D> worlds, float dt);
+    void Tick(WorldSnapshot[] snapshots, float dt);
     AIStateMachine? GetStateMachine(string instanceId);
     int ActiveCount { get; }
 }
@@ -46,15 +45,17 @@ public sealed class AIBehaviorService : IAIBehaviorService
             _logger);
     }
 
-    public void Tick(IEnumerable<IGameWorldManager3D> worlds, float dt)
+    public void Tick(WorldSnapshot[] snapshots, float dt)
     {
         EnsureDiscovered();
         _tickCounter++;
 
-        foreach (var world in worlds)
+        foreach (var snapshot in snapshots)
         {
-            foreach (var obj in world.FindAllObjects<IWorldObject3D>())
+            var allObjects = snapshot.AllObjects;
+            for (int i = 0; i < allObjects.Count; i++)
             {
+                var obj = allObjects[i];
                 if (obj is not IAIBehaviorEntity aiEntity) continue;
                 if (aiEntity.AIContext == null) continue;
 
@@ -85,7 +86,7 @@ public sealed class AIBehaviorService : IAIBehaviorService
 
         // Periodic cleanup of destroyed entities (every ~4 seconds at 25Hz)
         if (_tickCounter % 100 == 0)
-            CleanupDestroyedEntities(worlds);
+            CleanupDestroyedEntities(snapshots);
     }
 
     public AIStateMachine? GetStateMachine(string instanceId)
@@ -99,20 +100,29 @@ public sealed class AIBehaviorService : IAIBehaviorService
         _machines.Remove(instanceId);
     }
 
-    private void CleanupDestroyedEntities(IEnumerable<IGameWorldManager3D> worlds)
+    private readonly HashSet<string> _cleanupActiveIds = new();
+    private readonly List<string> _cleanupToRemove = new();
+
+    private void CleanupDestroyedEntities(WorldSnapshot[] snapshots)
     {
-        var activeIds = new HashSet<string>();
-        foreach (var world in worlds)
+        _cleanupActiveIds.Clear();
+        foreach (var snapshot in snapshots)
         {
-            foreach (var obj in world.FindAllObjects<IWorldObject3D>())
+            var allObjects = snapshot.AllObjects;
+            for (int i = 0; i < allObjects.Count; i++)
             {
-                if (obj is IAIBehaviorEntity)
-                    activeIds.Add(obj.InstanceId);
+                if (allObjects[i] is IAIBehaviorEntity)
+                    _cleanupActiveIds.Add(allObjects[i].InstanceId);
             }
         }
 
-        var toRemove = _machines.Keys.Where(id => !activeIds.Contains(id)).ToList();
-        foreach (var id in toRemove)
+        _cleanupToRemove.Clear();
+        foreach (var id in _machines.Keys)
+        {
+            if (!_cleanupActiveIds.Contains(id))
+                _cleanupToRemove.Add(id);
+        }
+        foreach (var id in _cleanupToRemove)
             _machines.Remove(id);
     }
 }

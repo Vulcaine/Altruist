@@ -41,6 +41,10 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
     // Entity -> current zone name + zone object (for zone enter/exit)
     private readonly ConcurrentDictionary<string, (string ZoneName, object ZoneObj)> _entityZones = new();
 
+    // Reusable per-tick scratch collections
+    private readonly HashSet<(string, string)> _currentOverlaps = new();
+    private readonly List<(string, string)> _exitBuffer = new();
+
     public int HandlerCount => CollisionHandlerRegistry.TotalHandlerCount;
 
     public SpatialCollisionDispatcher(ILoggerFactory loggerFactory)
@@ -75,8 +79,9 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
 
     public void Tick(IGameWorldManager3D world, float collisionRadius = 200f)
     {
-        var currentOverlaps = new HashSet<(string, string)>();
-        var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();
+        _currentOverlaps.Clear();
+        var (allObjects, _) = world.GetCachedSnapshot();
+
         // -- Entity <-> Entity overlap detection --
         for (int i = 0; i < allObjects.Count; i++)
         {
@@ -88,11 +93,11 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
             {
                 var objB = allObjects[j];
 
-                if (!CollisionHandlerRegistry.HasHandlers(objA.GetType(), objB.GetType()))
-                    continue;
-
                 // Layer filtering: entities only collide if their layers overlap
                 if ((objA.CollisionLayer & objB.CollisionLayer) == 0)
+                    continue;
+
+                if (!CollisionHandlerRegistry.HasHandlers(objA.GetType(), objB.GetType()))
                     continue;
 
                 var radiusB = GetColliderRadius(objB, collisionRadius);
@@ -107,7 +112,7 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
                     continue;
 
                 var pair = OrderPair(objA.InstanceId, objB.InstanceId);
-                currentOverlaps.Add(pair);
+                _currentOverlaps.Add(pair);
 
                 if (!_activeOverlaps.ContainsKey(pair))
                 {
@@ -122,24 +127,24 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         }
 
         // Fire Exit for pairs no longer overlapping
-        var toRemove = new List<(string, string)>();
+        _exitBuffer.Clear();
         foreach (var kvp in _activeOverlaps)
         {
-            if (!currentOverlaps.Contains(kvp.Key))
+            if (!_currentOverlaps.Contains(kvp.Key))
             {
                 var (objA, objB) = kvp.Value;
                 Dispatch(objA, objB, typeof(CollisionExit));
-                toRemove.Add(kvp.Key);
+                _exitBuffer.Add(kvp.Key);
             }
         }
-        foreach (var key in toRemove)
-            _activeOverlaps.TryRemove(key, out _);
+        for (int i = 0; i < _exitBuffer.Count; i++)
+            _activeOverlaps.TryRemove(_exitBuffer[i], out _);
 
         // -- Entity <-> Zone detection --
         TickZoneOverlaps(world, allObjects);
     }
 
-    private void TickZoneOverlaps(IGameWorldManager3D world, List<IWorldObject3D> allObjects)
+    private void TickZoneOverlaps(IGameWorldManager3D world, IReadOnlyList<IWorldObject3D> allObjects)
     {
         // Zone detection requires ZoneManager3D with FindZoneAt
         if (world is not GameWorldManager3D gw) return;
@@ -179,9 +184,15 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
     {
         _entityZones.TryRemove(instanceId, out _);
 
-        var toRemove = _activeOverlaps.Keys.Where(k => k.Item1 == instanceId || k.Item2 == instanceId).ToList();
-        foreach (var key in toRemove)
-            _activeOverlaps.TryRemove(key, out _);
+        // Reuse exit buffer for removal
+        _exitBuffer.Clear();
+        foreach (var key in _activeOverlaps.Keys)
+        {
+            if (key.Item1 == instanceId || key.Item2 == instanceId)
+                _exitBuffer.Add(key);
+        }
+        for (int i = 0; i < _exitBuffer.Count; i++)
+            _activeOverlaps.TryRemove(_exitBuffer[i], out _);
     }
 
     /// <summary>

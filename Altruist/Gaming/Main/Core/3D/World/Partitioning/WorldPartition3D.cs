@@ -13,12 +13,12 @@ namespace Altruist.Gaming.ThreeD
         IWorldObject3D? DestroyObject(string instanceId);
 
         /// <summary>Return all objects with the given archetype.</summary>
-        HashSet<IWorldObject3D> GetObjectsByArchetype(string archetype);
+        IEnumerable<IWorldObject3D> GetObjectsByArchetype(string archetype);
 
         HashSet<T> GetAllObjects<T>() where T : IWorldObject3D;
 
         /// <summary>Return all objects with the given archetype within a given room.</summary>
-        HashSet<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId);
+        IEnumerable<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId);
 
         /// <summary>
         /// Query by archetype within a radius in a room. Coordinates are world-space.
@@ -72,13 +72,17 @@ namespace Altruist.Gaming.ThreeD
             return _spatialIndex.Query(archetype, x, y, z, radius, roomId);
         }
 
-        public virtual HashSet<IWorldObject3D> GetObjectsByArchetype(string archetype) =>
+        public virtual IEnumerable<IWorldObject3D> GetObjectsByArchetype(string archetype) =>
             _spatialIndex.GetAllByType(archetype);
 
-        public virtual HashSet<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId) =>
-            _spatialIndex.GetAllByType(archetype)
-                         .Where(x => string.Equals(x.ZoneId, roomId, StringComparison.Ordinal))
-                         .ToHashSet();
+        public virtual IEnumerable<IWorldObject3D> GetObjectsByTypeInRoom(string archetype, string roomId)
+        {
+            foreach (var obj in _spatialIndex.GetAllByType(archetype))
+            {
+                if (string.Equals(obj.ZoneId, roomId, StringComparison.Ordinal))
+                    yield return obj;
+            }
+        }
 
 
         public override string ToString()

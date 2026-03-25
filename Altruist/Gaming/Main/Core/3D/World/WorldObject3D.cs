@@ -77,6 +77,15 @@ namespace Altruist.Gaming.ThreeD
     }
 
     /// <summary>
+    /// Optional interface for world objects that have a vnum (template ID).
+    /// Used by the hibernation system to track entity types.
+    /// </summary>
+    public interface IVnumProvider
+    {
+        int Vnum { get; }
+    }
+
+    /// <summary>
     /// Contract for a 3D world entity that can live in partitions
     /// and be associated with a physics body descriptor.
     /// </summary>

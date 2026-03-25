@@ -38,13 +38,15 @@ namespace Altruist.Gaming.ThreeD
 
         public void SetOrganizer(IGameWorldOrganizer3D organizer) => _organizer = organizer;
 
-        public void Tick()
+        public void Tick(WorldSnapshot[] snapshots)
         {
             if (_organizer is null) return;
 
-            foreach (var world in _organizer.GetAllWorlds())
+            foreach (var snapshot in snapshots)
             {
-                var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();
+                var world = snapshot.World;
+                var allObjects = snapshot.AllObjects;
+                var lookup = snapshot.Lookup;
                 var worldIndex = world.Index.Index;
 
                 // Reset observer counts for this tick
@@ -57,13 +59,14 @@ namespace Altruist.Gaming.ThreeD
                 }
 
                 // Phase 2: Compute visibility for each observer (player)
-                foreach (var obj in allObjects)
+                for (int i = 0; i < allObjects.Count; i++)
                 {
+                    var obj = allObjects[i];
                     if (string.IsNullOrEmpty(obj.ClientId))
                         continue;
 
                     _observers[obj.ClientId] = obj;
-                    UpdateVisibilityFor(obj, world, worldIndex, allObjects);
+                    UpdateVisibilityFor(obj, world, worldIndex, allObjects, lookup);
                 }
 
                 // Phase 3: Hibernate entities with zero observers
@@ -74,34 +77,33 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
-        private void WakeNearbyHibernated(IGameWorldManager3D world, List<IWorldObject3D> allObjects)
+        private readonly HashSet<string> _wokenBuffer = new();
+
+        private void WakeNearbyHibernated(IGameWorldManager3D world, IReadOnlyList<IWorldObject3D> allObjects)
         {
             if (_hibernation == null || _hibernation.Count == 0) return;
 
-            // Collect all observer positions
-            var observers = allObjects.Where(o => !string.IsNullOrEmpty(o.ClientId)).ToList();
-            if (observers.Count == 0) return;
+            _wokenBuffer.Clear();
 
-            var woken = new HashSet<string>();
-
-            foreach (var observer in observers)
+            for (int i = 0; i < allObjects.Count; i++)
             {
+                var observer = allObjects[i];
+                if (string.IsNullOrEmpty(observer.ClientId)) continue;
+
                 var pos = observer.Transform.Position;
                 var nearby = _hibernation.FindNearby(pos.X, pos.Y, pos.Z, ViewRange);
 
                 foreach (var hibernated in nearby)
                 {
-                    if (woken.Contains(hibernated.InstanceId)) continue;
+                    if (_wokenBuffer.Contains(hibernated.InstanceId)) continue;
 
                     var entry = _hibernation.Wake(hibernated.InstanceId);
                     if (entry?.Entity is IWorldObject3D worldObj)
                     {
-                        // Re-insert into world
                         try
                         {
                             world.SpawnDynamicObject(worldObj).GetAwaiter().GetResult();
-                            allObjects.Add(worldObj);
-                            woken.Add(hibernated.InstanceId);
+                            _wokenBuffer.Add(hibernated.InstanceId);
                         }
                         catch { /* entity may already exist */ }
                     }
@@ -109,30 +111,28 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
-        private void HibernateUnobserved(IGameWorldManager3D world, List<IWorldObject3D> allObjects)
+        private void HibernateUnobserved(IGameWorldManager3D world, IReadOnlyList<IWorldObject3D> allObjects)
         {
             if (_hibernation == null) return;
 
-            foreach (var obj in allObjects)
+            for (int i = 0; i < allObjects.Count; i++)
             {
+                var obj = allObjects[i];
                 // Skip players (observers) — only hibernate non-player entities
                 if (!string.IsNullOrEmpty(obj.ClientId)) continue;
                 if (obj is not IHibernatable hibernatable) continue;
                 if (hibernatable.IsHibernated || !hibernatable.CanHibernate) continue;
 
                 // Check if any observer sees this entity
-                var count = _observerCounts.GetValueOrDefault(obj.InstanceId, 0);
+                _observerCounts.TryGetValue(obj.InstanceId, out var count);
                 if (count == 0)
                 {
                     // No one sees this entity — hibernate it
                     var pos = obj.Transform.Position;
-                    var vnum = 0; // Game layer can store vnum in the entity
-                    if (obj is IWorldObject3D { } wo && wo.GetType().GetProperty("Vnum") is { } vnumProp)
-                    {
-                        var val = vnumProp.GetValue(wo);
-                        if (val is uint uv) vnum = (int)uv;
-                        else if (val is int iv) vnum = iv;
-                    }
+                    var vnum = 0;
+                    // Avoid reflection — use interface or known types
+                    if (obj is IVnumProvider vnumProvider)
+                        vnum = vnumProvider.Vnum;
 
                     var zoneName = obj.ZoneId ?? "";
 
@@ -142,20 +142,36 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        // Reusable scratch collections — cleared per observer, never re-allocated
+        private readonly Dictionary<string, HashSet<string>> _scratchVisible = new();
+        private readonly List<string> _removeBuffer = new();
+
         private void UpdateVisibilityFor(
             IWorldObject3D observer,
             IGameWorldManager3D world,
             int worldIndex,
-            List<IWorldObject3D> allObjects)
+            IReadOnlyList<IWorldObject3D> allObjects,
+            IReadOnlyDictionary<string, IWorldObject3D> lookup)
         {
             var clientId = observer.ClientId;
             var pos = observer.Transform.Position;
 
-            var currentlyVisible = new HashSet<string>();
+            // Reuse per-observer scratch set
+            if (!_scratchVisible.TryGetValue(clientId, out var currentlyVisible))
+            {
+                currentlyVisible = new HashSet<string>();
+                _scratchVisible[clientId] = currentlyVisible;
+            }
+            else
+            {
+                currentlyVisible.Clear();
+            }
+
             float rangeSq = ViewRange * ViewRange;
 
-            foreach (var target in allObjects)
+            for (int i = 0; i < allObjects.Count; i++)
             {
+                var target = allObjects[i];
                 if (target.InstanceId == observer.InstanceId)
                     continue;
 
@@ -167,20 +183,22 @@ namespace Altruist.Gaming.ThreeD
                 {
                     currentlyVisible.Add(target.InstanceId);
 
-                    // Track observer count for hibernation
-                    _observerCounts.AddOrUpdate(target.InstanceId, 1, (_, c) => c + 1);
+                    // Track observer count for hibernation — avoid lambda allocation
+                    if (_observerCounts.TryGetValue(target.InstanceId, out var count))
+                        _observerCounts[target.InstanceId] = count + 1;
+                    else
+                        _observerCounts[target.InstanceId] = 1;
                 }
             }
 
-            var previouslyVisible = _visibleSets.GetOrAdd(clientId, _ => new HashSet<string>());
+            var previouslyVisible = _visibleSets.GetOrAdd(clientId, static _ => new HashSet<string>());
 
             // Entities that just became visible
             foreach (var instanceId in currentlyVisible)
             {
                 if (previouslyVisible.Add(instanceId))
                 {
-                    var target = allObjects.Find(o => o.InstanceId == instanceId);
-                    if (target != null)
+                    if (lookup.TryGetValue(instanceId, out var target))
                     {
                         OnEntityVisible?.Invoke(new VisibilityChange
                         {
@@ -189,21 +207,19 @@ namespace Altruist.Gaming.ThreeD
                             WorldIndex = worldIndex,
                         });
 
-                        // Bridge to collision handler system
                         _collisionDispatcher?.Dispatch(observer, target, typeof(Physx.EntityVisible));
                     }
                 }
             }
 
-            // Entities that just became invisible
-            var toRemove = new List<string>();
+            // Entities that just became invisible — reuse removal buffer
+            _removeBuffer.Clear();
             foreach (var instanceId in previouslyVisible)
             {
                 if (!currentlyVisible.Contains(instanceId))
                 {
-                    toRemove.Add(instanceId);
-                    var target = allObjects.Find(o => o.InstanceId == instanceId);
-                    if (target != null)
+                    _removeBuffer.Add(instanceId);
+                    if (lookup.TryGetValue(instanceId, out var target))
                     {
                         OnEntityInvisible?.Invoke(new VisibilityChange
                         {
@@ -217,8 +233,8 @@ namespace Altruist.Gaming.ThreeD
                 }
             }
 
-            foreach (var id in toRemove)
-                previouslyVisible.Remove(id);
+            for (int i = 0; i < _removeBuffer.Count; i++)
+                previouslyVisible.Remove(_removeBuffer[i]);
         }
 
         public IReadOnlySet<string>? GetVisibleEntities(string clientId)
@@ -247,11 +263,10 @@ namespace Altruist.Gaming.ThreeD
                 if (_organizer is null) { _observers.TryRemove(clientId, out _); return; }
                 foreach (var world in _organizer.GetAllWorlds())
                 {
-                    var allObjects = world.FindAllObjects<IWorldObject3D>().ToList();
+                    var (_, lookup) = world.GetCachedSnapshot();
                     foreach (var instanceId in visible)
                     {
-                        var target = allObjects.Find(o => o.InstanceId == instanceId);
-                        if (target != null)
+                        if (lookup.TryGetValue(instanceId, out var target))
                         {
                             OnEntityInvisible?.Invoke(new VisibilityChange
                             {
