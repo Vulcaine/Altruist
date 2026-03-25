@@ -109,9 +109,19 @@ namespace Altruist
                     message = (IPacket?)Activator.CreateInstance(parameterType);
                 }
 
-                var interceptorTasks = _interceptors
-                    .Select(interceptor => interceptor.Intercept(context, message));
-                var interceptorExecution = Task.WhenAll(interceptorTasks);
+                // Avoid LINQ allocation — pre-sized array for interceptor tasks
+                Task interceptorExecution;
+                if (_interceptors.Count == 0)
+                {
+                    interceptorExecution = Task.CompletedTask;
+                }
+                else
+                {
+                    var tasks = new Task[_interceptors.Count];
+                    for (int i = 0; i < _interceptors.Count; i++)
+                        tasks[i] = _interceptors[i].Intercept(context, message);
+                    interceptorExecution = Task.WhenAll(tasks);
+                }
 
                 PacketContext.Set(data);
                 try
@@ -264,55 +274,68 @@ namespace Altruist
         private async Task RunFramedReadLoop(
             AltruistConnection connection, IPacketFramer framer, string @event, string clientId, TimeSpan idleTimeout)
         {
-            byte[] accumulator = Array.Empty<byte>();
+            // Use a growable buffer backed by ArrayPool to avoid per-receive allocations
+            int accLength = 0;
+            byte[] accBuffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
 
-            while (true)
+            try
             {
-                byte[] received;
-
-                using var cts = new CancellationTokenSource(idleTimeout);
-                try
+                while (true)
                 {
-                    received = await connection.ReceiveAsync(cts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw new TimeoutException($"Connection idle for {idleTimeout.TotalSeconds} seconds.");
-                }
+                    byte[] received;
 
-                if (received.Length == 0)
-                    break;
+                    using var cts = new CancellationTokenSource(idleTimeout);
+                    try
+                    {
+                        received = await connection.ReceiveAsync(cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw new TimeoutException($"Connection idle for {idleTimeout.TotalSeconds} seconds.");
+                    }
 
-                // Append received data to accumulator
-                if (accumulator.Length == 0)
-                {
-                    accumulator = received;
+                    if (received.Length == 0)
+                        break;
+
+                    // Append received data to accumulator buffer
+                    int needed = accLength + received.Length;
+                    if (needed > accBuffer.Length)
+                    {
+                        var newBuf = System.Buffers.ArrayPool<byte>.Shared.Rent(needed * 2);
+                        Buffer.BlockCopy(accBuffer, 0, newBuf, 0, accLength);
+                        System.Buffers.ArrayPool<byte>.Shared.Return(accBuffer);
+                        accBuffer = newBuf;
+                    }
+                    Buffer.BlockCopy(received, 0, accBuffer, accLength, received.Length);
+                    accLength += received.Length;
+
+                    // Extract and process all complete packets from the buffer
+                    while (accLength > 0)
+                    {
+                        var packetData = framer.TryFrame(new ReadOnlySpan<byte>(accBuffer, 0, accLength), out int consumed);
+                        if (packetData == null)
+                            break; // Not enough data yet, wait for more
+
+                        // Advance the buffer past the consumed bytes
+                        if (consumed >= accLength)
+                        {
+                            accLength = 0;
+                        }
+                        else
+                        {
+                            Buffer.BlockCopy(accBuffer, consumed, accBuffer, 0, accLength - consumed);
+                            accLength -= consumed;
+                        }
+
+                        var packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
+                        if (!await ProcessPacket(packet, packetData, @event, clientId))
+                            return;
+                    }
                 }
-                else
-                {
-                    var combined = new byte[accumulator.Length + received.Length];
-                    accumulator.CopyTo(combined, 0);
-                    received.CopyTo(combined, accumulator.Length);
-                    accumulator = combined;
-                }
-
-                // Extract and process all complete packets from the buffer
-                while (accumulator.Length > 0)
-                {
-                    var packetData = framer.TryFrame(accumulator, out int consumed);
-                    if (packetData == null)
-                        break; // Not enough data yet, wait for more
-
-                    // Advance the buffer past the consumed bytes
-                    if (consumed >= accumulator.Length)
-                        accumulator = Array.Empty<byte>();
-                    else
-                        accumulator = accumulator[consumed..];
-
-                    var packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
-                    if (!await ProcessPacket(packet, packetData, @event, clientId))
-                        return;
-                }
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(accBuffer);
             }
         }
 

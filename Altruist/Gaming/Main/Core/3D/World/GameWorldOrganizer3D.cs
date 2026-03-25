@@ -8,6 +8,27 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
+    /// <summary>
+    /// Pre-computed, allocation-free snapshot of a world's entity list for a single tick.
+    /// Shared across AI, visibility, and sync subsystems to avoid repeated materialization.
+    /// </summary>
+    public readonly struct WorldSnapshot
+    {
+        public readonly IGameWorldManager3D World;
+        public readonly IReadOnlyList<IWorldObject3D> AllObjects;
+        public readonly IReadOnlyDictionary<string, IWorldObject3D> Lookup;
+
+        public WorldSnapshot(
+            IGameWorldManager3D world,
+            IReadOnlyList<IWorldObject3D> allObjects,
+            IReadOnlyDictionary<string, IWorldObject3D> lookup)
+        {
+            World = world;
+            AllObjects = allObjects;
+            Lookup = lookup;
+        }
+    }
+
     public interface IGameWorldOrganizer3D : IGameWorldOrganizer
     {
         IGameWorldManager3D AddWorld(IGameWorldManager3D manager);
@@ -119,24 +140,32 @@ namespace Altruist.Gaming.ThreeD
                     world => StepWorld(world, deltaTime));
             }
 
+            // Build per-world snapshots once — reused by AI, visibility, and sync
+            var worldSnapshots = new WorldSnapshot[worlds.Length];
+            for (int i = 0; i < worlds.Length; i++)
+            {
+                var (list, lookup) = worlds[i].GetCachedSnapshot();
+                worldSnapshots[i] = new WorldSnapshot(worlds[i], list, lookup);
+            }
+
             // AI behaviors tick (after physics, before visibility/sync)
             if (_aiBehaviorService != null)
             {
-                try { _aiBehaviorService.Tick(worlds, deltaTime); }
+                try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
                 catch { }
             }
 
             // Visibility must be computed after all positions are final (single-threaded)
             if (_visibilityTracker is VisibilityTracker3D tracker)
             {
-                try { tracker.Tick(); }
+                try { tracker.Tick(worldSnapshots); }
                 catch { }
             }
 
             // Auto-sync [Synchronized] entities (delta-based, after visibility)
             if (_entitySyncService != null)
             {
-                try { _entitySyncService.Tick(worlds, _engineFrequencyHz).GetAwaiter().GetResult(); }
+                try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
                 catch { }
             }
         }

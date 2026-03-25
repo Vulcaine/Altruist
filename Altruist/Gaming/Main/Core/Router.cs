@@ -16,14 +16,19 @@ public class GameClientSynchronizator : IClientSynchronizator
 
     public virtual async Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
     {
-        var (changeMasks, changedProperties) = Synchronization.GetChangedData(entity, entity.ClientId, AltruistEngine.CurrentTick, forceAllAsChanged);
+        var (changeMasks, maskCount, changedProperties) = Synchronization.GetChangedData(entity, entity.ClientId, AltruistEngine.CurrentTick, forceAllAsChanged);
 
-        bool anyChanges = changeMasks.Any(mask => mask != 0);
+        bool anyChanges = false;
+        for (int i = 0; i < maskCount; i++)
+        {
+            if (changeMasks[i] != 0) { anyChanges = true; break; }
+        }
+        System.Buffers.ArrayPool<ulong>.Shared.Return(changeMasks);
+
         if (!anyChanges)
             return;
 
-        var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-        var syncData = new SyncPacket(entity.GetType().Name, safeCopy);
+        var syncData = new SyncPacket(entity.GetType().Name, changedProperties);
         await _broadcast.SendAsync(syncData);
     }
 

@@ -92,16 +92,16 @@ namespace Altruist.Gaming.ThreeD
                     for (int cz = minZ; cz <= maxZ; cz++)
                     {
                         string key = GetKey(cx, cy, cz);
-                        if (!Grid.TryGetValue(key, out var list))
+                        if (!Grid.TryGetValue(key, out var cellIds))
                             continue;
 
-                        var instanceList = list
-                            .Select(id => InstanceMap[id])
-                            .Where(e => e.ZoneId == roomId)
-                            .ToList();
-
-                        foreach (var obj in instanceList)
+                        // Iterate directly — no LINQ, no intermediate list
+                        foreach (var id in cellIds)
                         {
+                            if (!InstanceMap.TryGetValue(id, out var obj))
+                                continue;
+                            if (obj.ZoneId != roomId)
+                                continue;
                             if (obj.ObjectArchetype != archetype)
                                 continue;
 
@@ -119,15 +119,28 @@ namespace Altruist.Gaming.ThreeD
             return result;
         }
 
-        public virtual Dictionary<string, IWorldObject3D> GetByType(string archetype)
+        public virtual IEnumerable<KeyValuePair<string, IWorldObject3D>> GetByType(string archetype)
         {
-            return (TypeMap.TryGetValue(archetype, out var set) ? set : new())
-                .ToDictionary(id => id, id => InstanceMap[id]);
+            if (!TypeMap.TryGetValue(archetype, out var set))
+                yield break;
+
+            foreach (var id in set)
+            {
+                if (InstanceMap.TryGetValue(id, out var obj))
+                    yield return new KeyValuePair<string, IWorldObject3D>(id, obj);
+            }
         }
 
-        public virtual HashSet<IWorldObject3D> GetAllByType(string archetype)
+        public virtual IEnumerable<IWorldObject3D> GetAllByType(string archetype)
         {
-            return GetByType(archetype).Values.ToHashSet();
+            if (!TypeMap.TryGetValue(archetype, out var set))
+                yield break;
+
+            foreach (var id in set)
+            {
+                if (InstanceMap.TryGetValue(id, out var obj))
+                    yield return obj;
+            }
         }
     }
 }

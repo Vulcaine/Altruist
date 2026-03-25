@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using System.Collections.Concurrent;
 using Altruist.Engine;
 using Altruist.Networking;
 using Microsoft.Extensions.Logging;
@@ -37,21 +38,26 @@ public sealed class EntitySyncService : IEntitySyncService
         _logger = loggerFactory.CreateLogger<EntitySyncService>();
     }
 
-    public async Task Tick(IEnumerable<IGameWorldManager3D> worlds, float engineFrequencyHz)
+    private static readonly ConcurrentDictionary<Type, SynchronizedAttribute?> _syncAttrCache = new();
+
+    public async Task Tick(WorldSnapshot[] snapshots, float engineFrequencyHz)
     {
         if (_clientSender == null && _broadcastSender == null) return;
 
         _tickCounter++;
 
-        foreach (var world in worlds)
+        foreach (var snapshot in snapshots)
         {
-            foreach (var obj in world.FindAllObjects<IWorldObject3D>())
+            var allObjects = snapshot.AllObjects;
+            for (int i = 0; i < allObjects.Count; i++)
             {
+                var obj = allObjects[i];
                 if (obj is not ISynchronizedEntity syncEntity) continue;
                 if (string.IsNullOrEmpty(syncEntity.ClientId)) continue;
 
-                var syncAttr = obj.GetType().GetCustomAttributes(typeof(SynchronizedAttribute), true)
-                    .FirstOrDefault() as SynchronizedAttribute;
+                var entityType = obj.GetType();
+                var syncAttr = _syncAttrCache.GetOrAdd(entityType, static t =>
+                    (SynchronizedAttribute?)Attribute.GetCustomAttribute(t, typeof(SynchronizedAttribute)));
                 if (syncAttr == null) continue;
 
                 if (syncAttr.Frequency > 0 && !ShouldSync(syncAttr, engineFrequencyHz))
@@ -71,14 +77,22 @@ public sealed class EntitySyncService : IEntitySyncService
 
     private async Task SendSyncData(ISynchronizedEntity entity, IWorldObject3D worldObj)
     {
-        var (changeMasks, changedProperties) = Synchronization.GetChangedData(
+        var (changeMasks, maskCount, changedProperties) = Synchronization.GetChangedData(
             entity, entity.ClientId, AltruistEngine.CurrentTick);
 
-        bool anyChanges = changeMasks.Any(mask => mask != 0);
+        // Check for changes without LINQ
+        bool anyChanges = false;
+        for (int i = 0; i < maskCount; i++)
+        {
+            if (changeMasks[i] != 0) { anyChanges = true; break; }
+        }
+
+        // Return rented array to pool
+        System.Buffers.ArrayPool<ulong>.Shared.Return(changeMasks);
+
         if (!anyChanges) return;
 
-        var safeCopy = changedProperties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-        var syncData = new SyncPacket(entity.GetType().Name, safeCopy);
+        var syncData = new SyncPacket(entity.GetType().Name, changedProperties);
 
         if (_clientSender != null)
         {
@@ -120,5 +134,5 @@ public sealed class EntitySyncService : IEntitySyncService
 
 public interface IEntitySyncService
 {
-    Task Tick(IEnumerable<IGameWorldManager3D> worlds, float engineFrequencyHz);
+    Task Tick(WorldSnapshot[] snapshots, float engineFrequencyHz);
 }

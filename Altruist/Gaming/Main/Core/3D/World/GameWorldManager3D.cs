@@ -21,6 +21,7 @@ namespace Altruist.Gaming.ThreeD
         IWorldObject3D? FindObject(string id);
         IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D;
         IEnumerable<IWorldObject3D> GetAllObjects();
+        (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot();
         Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
 
@@ -81,6 +82,34 @@ namespace Altruist.Gaming.ThreeD
 
         private readonly Dictionary<string, IWorldObject3D> _flatInstanceCache = new();
         private ZoneManager3D? _zoneManager;
+
+        // ── Snapshot caching ─────────────────────────────────────────
+        private readonly List<IWorldObject3D> _snapshotCache = new();
+        private readonly Dictionary<string, IWorldObject3D> _snapshotLookup = new();
+        private bool _snapshotDirty = true;
+
+        /// <summary>
+        /// Returns a cached, reusable list of all world objects. The list is rebuilt
+        /// only when entities have been added or removed since the last call.
+        /// Callers must NOT modify the returned list.
+        /// </summary>
+        public (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot()
+        {
+            if (_snapshotDirty)
+            {
+                _snapshotCache.Clear();
+                _snapshotLookup.Clear();
+                foreach (var kvp in _flatInstanceCache)
+                {
+                    _snapshotCache.Add(kvp.Value);
+                    _snapshotLookup[kvp.Value.InstanceId] = kvp.Value;
+                }
+                _snapshotDirty = false;
+            }
+            return (_snapshotCache, _snapshotLookup);
+        }
+
+        private void MarkSnapshotDirty() => _snapshotDirty = true;
 
         public GameWorldManager3D(
             IWorldIndex3D world,
@@ -166,6 +195,9 @@ namespace Altruist.Gaming.ThreeD
             // Add to partitions for spatial queries — no physics body
             var partitions = FindPartitionsForObject(obj);
             AddObjectToPartitions(obj, partitions);
+
+            _flatInstanceCache[obj.InstanceId] = obj;
+            MarkSnapshotDirty();
         }
 
         /// <summary>
@@ -239,6 +271,7 @@ namespace Altruist.Gaming.ThreeD
             else
                 _flatInstanceCache[obj.InstanceId] = obj;
 
+            MarkSnapshotDirty();
             await Task.CompletedTask;
             return body;
         }
@@ -261,9 +294,14 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         private IWorldObject3D? DetachObjectInternal(string instanceId, bool removeFromPhysx)
         {
-            var removedFromPartitions = _partitions
-                .Select(p => p.DestroyObject(instanceId))
-                .FirstOrDefault(o => o != null);
+            // Remove from partitions — use for-loop instead of LINQ to avoid allocations
+            IWorldObject3D? removedFromPartitions = null;
+            for (int i = 0; i < _partitions.Count; i++)
+            {
+                var removed = _partitions[i].DestroyObject(instanceId);
+                if (removed != null && removedFromPartitions == null)
+                    removedFromPartitions = removed;
+            }
 
             IWorldObject3D? removedFromCache = null;
 
@@ -272,20 +310,15 @@ namespace Altruist.Gaming.ThreeD
                 removedFromCache = cachedByKey;
                 _flatInstanceCache.Remove(instanceId);
             }
-            else
-            {
-                var kvp = _flatInstanceCache.FirstOrDefault(x => x.Value != null && x.Value.InstanceId == instanceId);
-                if (!string.IsNullOrEmpty(kvp.Key))
-                {
-                    removedFromCache = kvp.Value;
-                    _flatInstanceCache.Remove(kvp.Key);
-                }
-            }
 
             var obj = removedFromPartitions ?? removedFromCache;
 
-            if (removeFromPhysx && obj != null)
-                RemoveFromPhysxEngine(obj);
+            if (obj != null)
+            {
+                MarkSnapshotDirty();
+                if (removeFromPhysx)
+                    RemoveFromPhysxEngine(obj);
+            }
 
             return obj;
         }
