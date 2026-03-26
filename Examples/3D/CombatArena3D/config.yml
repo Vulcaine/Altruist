@@ -21,11 +21,15 @@ altruist:
 
   game:
     engine:
+      diagnostics: true
       frequency: 25
       unit: "hz"
 
     visibility:
       range: 5000
+
+    physics:
+      enabled: false
 
     worlds:
       partitioner: { width: 256, height: 256, depth: 256 }

@@ -5,6 +5,7 @@
     <ProjectReference Include="..\..\..\Altruist\Boot\Boot.csproj" />
     <ProjectReference Include="..\..\..\Altruist\Socket\Socket.csproj" />
     <ProjectReference Include="..\..\..\Altruist\Gaming\Main\Gaming.csproj" />
+    <ProjectReference Include="..\..\..\Altruist\Physx\Physx.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
