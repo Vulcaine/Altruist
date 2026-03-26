@@ -142,12 +142,18 @@ namespace Altruist.Physx.TwoD
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public sealed class Box2DPhysxBodyApiProvider2D : IPhysxBodyApiProvider2D
     {
-        private readonly Box2DWorldEngine2D _engine;
+        private Box2DWorldEngine2D? _engine;
 
         // Track created fixtures per high-level collider
         private readonly Dictionary<IPhysxCollider2D, Fixture> _fixtures = new();
 
-        public Box2DPhysxBodyApiProvider2D(IPhysxWorldEngine2D engine)
+        public Box2DPhysxBodyApiProvider2D(IPhysxWorldEngineFactory2D? factory = null)
+        {
+            // Engine is set lazily when the first world is created
+        }
+
+        /// <summary>Bind to a specific engine instance (called by the organizer after world creation).</summary>
+        public void SetEngine(IPhysxWorldEngine2D engine)
         {
             _engine = engine as Box2DWorldEngine2D
                       ?? throw new InvalidOperationException("Engine must be a Box2D-backed engine.");
@@ -201,6 +207,9 @@ namespace Altruist.Physx.TwoD
 
         public IPhysxBody2D CreateBody(PhysxBodyType type, float mass, Transform2D transform)
         {
+            if (_engine == null)
+                throw new InvalidOperationException("Box2D engine not set. Call SetEngine() first.");
+
             var bd = new BodyDef
             {
                 Position = transform.Position.ToFloatVector2(),
