@@ -7,8 +7,6 @@ altruist:
       host: "0.0.0.0"
       port: 8080
       path: "/"
-
-    # Multiple transports active simultaneously
     transport:
       mode: tcp
       timeout: 300
@@ -29,8 +27,12 @@ altruist:
 
   game:
     engine:
+      diagnostics: true
       frequency: 60
       unit: "hz"
+
+    physics:
+      enabled: false
 
     worlds:
       partitioner: { width: 128, height: 128, depth: 128 }

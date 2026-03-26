@@ -4,6 +4,9 @@ altruist:
       host: "0.0.0.0"
       port: 8080
       path: "/"
+    transport:
+      codec:
+        provider: messagepack
 
   persistence:
     cache:

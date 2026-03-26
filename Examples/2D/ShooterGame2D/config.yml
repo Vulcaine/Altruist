@@ -21,6 +21,7 @@ altruist:
 
   game:
     engine:
+      diagnostics: true
       frequency: 30
       unit: "hz"
 
