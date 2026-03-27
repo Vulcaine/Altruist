@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Altruist's core systems are designed for real-time game servers running at 25–60 Hz tick rates. At 25 Hz, each tick budget is **40ms**. The benchmarks below confirm that all systems combined consume well under 1ms per tick for typical game server loads (50 players, 1000 NPCs), leaving over 97% of the tick budget available for game logic.
+Altruist's core systems are designed for real-time game servers running at 20–128 Hz tick rates. At 30 Hz (industry standard for action MMOs), each tick budget is **33ms**. The benchmarks below confirm that all systems combined consume under 1ms per tick for typical game server loads (50 players, 1000 NPCs), leaving over 97% of the tick budget available for game logic.
 
 ---
 
@@ -118,7 +118,7 @@ Foundation operations used by all subsystems every tick.
 
 ## Combined Tick Budget Analysis
 
-Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
+Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 30 Hz):
 
 | System | Cost per tick | % of 40ms budget |
 |--------|-------------|-------------------|
@@ -128,8 +128,8 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 | Combat (average) | ~0.01 ms | 0.0% |
 | Collision (500 entities) | ~0.20 ms | 0.5% |
 | World iteration overhead | ~0.05 ms | 0.1% |
-| **Total framework overhead** | **~0.9 ms** | **2.3%** |
-| **Available for game logic** | **~39.1 ms** | **97.7%** |
+| **Total framework overhead** | **~0.9 ms** | **2.7%** |
+| **Available for game logic** | **~32.1 ms** | **97.3%** |
 
 *All optimizations in v0.9.0-beta:*
 - *Collision: SpatialHashGrid broadphase + long hash keys + reverse index (2.1ms → 0.20ms, 10x faster, 76x less memory)*
@@ -142,12 +142,12 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 
 Based on measured per-player marginal cost of **~10 μs** (visibility with parallel + stagger, post-optimization):
 
-| Tick Rate | Budget | Single-thread | With stagger (2x) | 8-core sharding |
-|-----------|--------|---------------|-------------------|-----------------|
-| 10 Hz | 100 ms | ~10,000 | ~20,000 | **~80,000+** |
-| 20 Hz | 50 ms | ~5,000 | ~10,000 | **~40,000+** |
-| 25 Hz | 40 ms | ~3,900 | ~7,800 | **~31,000+** |
-| 60 Hz | 16.7 ms | ~1,600 | ~3,200 | **~12,000+** |
+| Tick Rate | Budget | Single-thread | With stagger (2x) | 8-core sharding | Use case |
+|-----------|--------|---------------|-------------------|-----------------|----------|
+| 20 Hz | 50 ms | ~5,000 | ~10,000 | **~40,000+** | MMO world sim, slower-paced combat |
+| 30 Hz | 33 ms | ~3,300 | ~6,600 | **~26,000+** | Action MMO (industry standard) |
+| 60 Hz | 16.7 ms | ~1,600 | ~3,200 | **~12,000+** | FPS / fast-paced action |
+| 128 Hz | 7.8 ms | ~780 | ~1,560 | **~6,000+** | Competitive FPS (CS2-tier) |
 
 **Note:** These are CPU-only estimates for full authoritative simulation (AI + combat + collision + visibility + sync every tick). Real-world limits are typically **network bandwidth** — with visibility-aware sync, Altruist only sends data for nearby entities.
 
@@ -168,7 +168,7 @@ Based on measured per-player marginal cost of **~10 μs** (visibility with paral
 > | **Colyseus** | Serializes room state, sends delta patches | ~0.05 ms (schema diff) |
 > | **Altruist** | Runs AI FSM + combat + collision + visibility + delta sync | **~0.017 ms** (full simulation) |
 >
-> A Photon server holding 3,000 connections that forward chat messages uses almost zero CPU per connection. An Altruist server with 7,800 connections is running **5 complete game systems per entity per tick** — AI state evaluation, damage formulas, spatial collision broadphase, O(n) visibility range checks, and bitmask-based property delta detection — all with BenchmarkDotNet-verified nanosecond-level measurements.
+> A Photon server holding 3,000 connections that forward chat messages uses almost zero CPU per connection. An Altruist server with 6,600 connections at 30Hz is running **5 complete game systems per entity per tick** — AI state evaluation, damage formulas, spatial collision broadphase, O(n) visibility range checks, and bitmask-based property delta detection — all with BenchmarkDotNet-verified nanosecond-level measurements.
 >
 > **When other frameworks report higher CCU, they are measuring a lighter workload.** Altruist's numbers represent the cost of a full authoritative game server — the kind of server where cheating is impossible because the server owns all game state. The competitors' CCU numbers would drop dramatically if they had to run equivalent simulation logic.
 
@@ -182,7 +182,7 @@ Photon is the most widely used commercial game server platform. [Published bench
 
 | Metric | Photon Server 5 | Altruist |
 |--------|-----------------|----------|
-| CCU per server | 2,000–3,000 (relay) | **~7,800 at 25Hz** (full simulation, single server) |
+| CCU per server | 2,000–3,000 (relay) | **~6,600 at 30Hz** (full simulation, single server) |
 | Message rate | ~200 msg/room/sec | N/A (state sync, not message-based) |
 | Primary bottleneck | NIC bandwidth | CPU (visibility at 1.3%) |
 | State sync approach | Manual RaiseEvent() | Automatic [Synchronized] delta |
@@ -199,7 +199,7 @@ Nakama is the leading open-source game backend. [Published benchmarks](https://h
 
 | Metric | Nakama (1 node, 1 CPU) | Altruist (single thread) |
 |--------|------------------------|--------------------------|
-| Max CCU | ~20,000 (stateless RPCs) | **~7,800 at 25Hz** (stateful simulation, single server) |
+| Max CCU | ~20,000 (stateless RPCs) | **~6,600 at 30Hz** (stateful simulation, single server) |
 | Registration throughput | 528 req/sec (21ms mean) | N/A (not a REST backend) |
 | Mean connect latency | 21 ms | Framework overhead: 0.9 ms/tick |
 | State sync | Manual RPCs | Automatic [Synchronized] delta (264 ns/entity) |
@@ -215,7 +215,7 @@ Colyseus handles room-based state synchronization in Node.js. [Published data](h
 
 | Metric | Colyseus | Altruist |
 |--------|----------|----------|
-| CCU (cheap server) | ~3,000 (message relay) | **~7,800 at 25Hz** (full simulation, single server) |
+| CCU (cheap server) | ~3,000 (message relay) | **~6,600 at 30Hz** (full simulation, single server) |
 | State sync | Binary delta (schema-based) | Binary delta ([Synced] attribute) |
 | Sync cost per entity | Not published | **264 ns** (measured) |
 | AI system | None | Built-in (14 ns/entity) |
@@ -232,7 +232,7 @@ Fusion is Photon's latest Unity networking SDK. [Published claims](https://blog.
 
 | Metric | Photon Fusion | Altruist |
 |--------|--------------|----------|
-| Max players | 200 at 60Hz (client-side) | **~3,200 at 60Hz, ~7,800 at 25Hz** (server-side simulation) |
+| Max players | 200 at 60Hz (client-side) | **~3,200 at 60Hz, ~6,600 at 30Hz** (server-side simulation) |
 | Bandwidth | 6x smaller than Mirror/MLAPI | Visibility-aware (only nearby entities synced) |
 | Runtime allocations | Zero (claimed) | AI: 0 B, Sync: 320 B/entity, Collision: 13 KB/100e |
 | State sync | Delta snapshots | [Synchronized] bitmask delta |
