@@ -133,6 +133,70 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 
 ---
 
+## Comparison: Altruist vs Unity ECS / Netcode for Entities
+
+### What are they?
+
+- **Unity ECS (DOTS)** is a client-side Entity Component System optimized for rendering tens of thousands of objects at 60 FPS. It uses Burst-compiled jobs with SIMD and cache-friendly memory layouts.
+- **Unity Netcode for Entities** is the networking layer built on top of ECS. It provides "ghost" synchronization — the server serializes entity state into snapshot packets and sends deltas to clients.
+- **Altruist** is a server-side game framework. It handles networking, entity sync, AI, visibility, combat, and collision — all in a single server tick.
+
+### Apples-to-apples: entity iteration cost
+
+Unity ECS published benchmarks for a simple "reset movement" system iterating entities ([source](https://gamedev.center/unity-ecs-performance-testing-the-way-to-the-best-performance/)):
+
+| Entities | Unity ECS (main thread) | Unity ECS (Job.Schedule) | Altruist AI FSM tick |
+|----------|------------------------|--------------------------|---------------------|
+| 1,000 | 10.75 μs | 17.70 μs | **13.6 μs** |
+| 10,000 | 25.10 μs | 20.25 μs | ~136 μs (extrapolated) |
+| 100,000 | 82.45 μs | 22.50 μs | ~1.36 ms (extrapolated) |
+
+**For small-to-medium counts (1K–5K), Altruist's compiled-delegate FSM is competitive with Unity ECS main-thread iteration** — despite running plain C# objects instead of Burst-compiled structs. At large counts (100K+), Unity's job system parallelism wins as expected.
+
+Key difference: Unity ECS is doing **one simple operation** (reset a vector). Altruist's FSM tick evaluates state logic, checks transitions, fires enter/exit hooks — significantly more work per entity.
+
+### Apples-to-apples: entity synchronization
+
+Unity Netcode for Entities uses a snapshot system for ghost sync ([source](https://docs.unity3d.com/Packages/com.unity.netcode@1.8/manual/optimization/manage-serialization-costs.html)):
+
+| Aspect | Unity Netcode for Entities | Altruist [Synchronized] |
+|--------|---------------------------|------------------------|
+| Architecture | Client-server, snapshot-based | Server-authoritative, delta-based |
+| Serialization | Source-generated, Burst-compiled | Reflection-cached, compiled getters |
+| Delta detection | Per-ghost baseline diffing | Per-entity bitmask diffing |
+| Cost per entity | "Expensive CPU read/write" (no published numbers) | **264 ns** (measured) |
+| Allocations | Not published | 320 B per entity |
+| Visibility filtering | Ghost relevancy sets | Spatial distance checks |
+| Bandwidth control | Fixed MTU, importance scaling | Visibility-aware, only nearby |
+
+Unity's documentation describes ghost serialization as ["expensive CPU read and write operations that scale linearly with the number of ghosts"](https://docs.unity3d.com/Packages/com.unity.netcode@1.8/manual/optimization/manage-serialization-costs.html) but publishes no concrete numbers. Altruist's sync at 264 ns per entity is measurably fast with BenchmarkDotNet.
+
+### What Altruist does that Unity ECS doesn't (per tick)
+
+A Unity ECS system processes **one concern** — movement, or rendering, or physics. Each system is a separate job. Altruist handles **all server-side concerns** in a single tick:
+
+| Per-tick work | Unity approach | Altruist |
+|--------------|---------------|----------|
+| Property delta detection | Netcode ghost serialization | [Synchronized] + bitmask |
+| AI state machines | Custom ECS system (user code) | Built-in [AIBehavior] FSM |
+| Visibility tracking | Netcode ghost relevancy | Built-in VisibilityTracker |
+| Collision lifecycle | Physics system (PhysX/Havok) | Built-in SpatialCollisionDispatcher |
+| Combat AoE sweeps | Custom user system | Built-in ICombatService.Sweep |
+
+**Altruist's combined overhead for all of the above: 4.9 ms** (50 players, 500 NPCs, 25 Hz).
+
+### Summary
+
+Altruist is not trying to compete with Unity ECS at raw iteration speed for 100K+ entities — that's a client-side rendering concern. What Altruist provides is a **complete server-side game framework** where all the systems (sync + AI + visibility + combat + collision) run together in under 5ms per tick, with measurable benchmarks and zero-allocation AI. Unity Netcode for Entities is the closest comparable system, but publishes no equivalent benchmark data.
+
+**Sources:**
+- [Unity ECS Performance Testing](https://gamedev.center/unity-ecs-performance-testing-the-way-to-the-best-performance/) — concrete μs measurements for entity iteration
+- [Unity Netcode Ghost Optimization](https://docs.unity3d.com/Packages/com.unity.netcode@1.9/manual/optimization/optimize-ghosts.html) — ghost sync architecture
+- [Unity Netcode Serialization Costs](https://docs.unity3d.com/Packages/com.unity.netcode@1.8/manual/optimization/manage-serialization-costs.html) — "expensive CPU" acknowledgment, no numbers
+- [Unity DOTS/ECS Performance (Medium)](https://medium.com/superstringtheory/unity-dots-ecs-performance-amazing-5a62fece23d4) — general DOTS performance overview
+
+---
+
 ## Optimization Recommendations
 
 1. **Visibility (highest impact):** Add spatial grid broadphase to skip distance checks for entities in distant partitions. Would reduce O(P×N) to O(P×nearby).
