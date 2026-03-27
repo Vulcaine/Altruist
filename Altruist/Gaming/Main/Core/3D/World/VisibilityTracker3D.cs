@@ -21,6 +21,12 @@ namespace Altruist.Gaming.ThreeD
         // Tracks how many observers see each non-player entity
         private readonly ConcurrentDictionary<string, int> _observerCounts = new();
 
+        // Spatial broadphase grid for large worlds — built once per tick, reused by all observers.
+        // Only effective when world is significantly larger than ViewRange.
+        private SpatialHashGrid? _grid;
+        private readonly List<int> _gridQueryBuffer = new(256);
+        private bool _useSpatialGrid;
+
         public float ViewRange { get; set; } = 5000f;
 
         public event Action<VisibilityChange>? OnEntityVisible;
@@ -52,6 +58,17 @@ namespace Altruist.Gaming.ThreeD
 
                 // Reset observer counts for this tick
                 _observerCounts.Clear();
+
+                // Build spatial broadphase grid if world is large enough to benefit.
+                // Only effective when entities are spread across >4x the view range.
+                if (_grid == null)
+                {
+                    _grid = new SpatialHashGrid(cellSize: MathF.Max(ViewRange * 0.5f, 500f));
+                    // Heuristic: grid helps when world area > 4x view area
+                    // For small worlds, brute-force iteration is faster (no grid overhead)
+                }
+                _grid.Build(allObjects);
+                _useSpatialGrid = allObjects.Count > 200; // Grid overhead only worth it for larger entity counts
 
                 // Phase 1: Wake hibernated entities near any observer
                 if (_hibernation != null)
@@ -170,26 +187,46 @@ namespace Altruist.Gaming.ThreeD
 
             float rangeSq = ViewRange * ViewRange;
 
-            for (int i = 0; i < allObjects.Count; i++)
+            if (_useSpatialGrid && _grid != null)
             {
-                if (allObjects[i] is not IWorldObject3D target) continue;
-                if (target.InstanceId == observer.InstanceId)
-                    continue;
-
-                var tp = target.Transform.Position;
-                float dx = tp.X - pos.X;
-                float dy = tp.Y - pos.Y;
-
-                if (dx * dx + dy * dy <= rangeSq)
+                // Spatial broadphase: query only cells within ViewRange
+                _grid.QueryRadius(pos.X, pos.Y, ViewRange, _gridQueryBuffer);
+                for (int q = 0; q < _gridQueryBuffer.Count; q++)
                 {
-                    currentlyVisible.Add(target.InstanceId);
+                    var idx = _gridQueryBuffer[q];
+                    if (allObjects[idx] is not IWorldObject3D target) continue;
+                    if (target.InstanceId == observer.InstanceId) continue;
 
-                    // Track observer count for hibernation — avoid lambda allocation
-                    if (_observerCounts.TryGetValue(target.InstanceId, out var count))
-                        _observerCounts[target.InstanceId] = count + 1;
-                    else
-                        _observerCounts[target.InstanceId] = 1;
+                    var tp = target.Transform.Position;
+                    float dx = tp.X - pos.X;
+                    float dy = tp.Y - pos.Y;
+                    if (dx * dx + dy * dy <= rangeSq)
+                        AddVisible(target, currentlyVisible);
                 }
+            }
+            else
+            {
+                // Brute-force: iterate all objects (faster for small worlds)
+                for (int i = 0; i < allObjects.Count; i++)
+                {
+                    if (allObjects[i] is not IWorldObject3D target) continue;
+                    if (target.InstanceId == observer.InstanceId) continue;
+
+                    var tp = target.Transform.Position;
+                    float dx = tp.X - pos.X;
+                    float dy = tp.Y - pos.Y;
+                    if (dx * dx + dy * dy <= rangeSq)
+                        AddVisible(target, currentlyVisible);
+                }
+            }
+
+            void AddVisible(IWorldObject3D target, HashSet<string> set)
+            {
+                set.Add(target.InstanceId);
+                if (_observerCounts.TryGetValue(target.InstanceId, out var c))
+                    _observerCounts[target.InstanceId] = c + 1;
+                else
+                    _observerCounts[target.InstanceId] = 1;
             }
 
             var previouslyVisible = _visibleSets.GetOrAdd(clientId, static _ => new HashSet<string>());

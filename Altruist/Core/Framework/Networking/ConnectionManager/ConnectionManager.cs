@@ -124,6 +124,11 @@ namespace Altruist
                 }
 
                 PacketContext.Set(data);
+
+                // Auto-detect lag-compensated packets and set client tick
+                if (message is ILagCompensated lagCompensated && lagCompensated.ClientTick > 0)
+                    PacketContext.SetClientTick(lagCompensated.ClientTick);
+
                 try
                 {
                     Task? handlerTask = data != null

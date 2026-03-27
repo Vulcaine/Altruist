@@ -21,6 +21,7 @@ public class CombatService : ICombatService
     private readonly IDamageCalculator _calculator;
     private readonly IGameWorldOrganizer3D? _worldOrganizer;
     private readonly ISpatialCollisionDispatcher? _collisionDispatcher;
+    private readonly ILagCompensationService? _lagCompensation;
     private readonly ILogger _logger;
 
     public event Action<HitEvent>? OnHit;
@@ -31,15 +32,34 @@ public class CombatService : ICombatService
         IDamageCalculator calculator,
         ILoggerFactory loggerFactory,
         IGameWorldOrganizer3D? worldOrganizer = null,
-        ISpatialCollisionDispatcher? collisionDispatcher = null)
+        ISpatialCollisionDispatcher? collisionDispatcher = null,
+        ILagCompensationService? lagCompensation = null)
     {
         _calculator = calculator;
         _worldOrganizer = worldOrganizer;
         _collisionDispatcher = collisionDispatcher;
+        _lagCompensation = lagCompensation;
         _logger = loggerFactory.CreateLogger<CombatService>();
     }
 
     public HitResult Attack(ICombatEntity attacker, ICombatEntity target)
+    {
+        // Transparent lag compensation: if enabled and client sent a tick, rewind
+        if (_lagCompensation != null && !_lagCompensation.IsRewound)
+        {
+            var clientTick = PacketContext.ClientTick;
+            if (clientTick > 0)
+            {
+                HitResult result = default!;
+                _lagCompensation.RewindWorld(clientTick, () =>
+                    result = AttackInternal(attacker, target));
+                return result;
+            }
+        }
+        return AttackInternal(attacker, target);
+    }
+
+    private HitResult AttackInternal(ICombatEntity attacker, ICombatEntity target)
     {
         if (target.IsDead)
             return new HitResult(target, 0, DamageFlags.Miss, false);
@@ -69,6 +89,23 @@ public class CombatService : ICombatService
 
     public SweepResult Sweep(ICombatEntity attacker, SweepQuery query, int? damage = null)
     {
+        // Transparent lag compensation: if enabled and client sent a tick, rewind
+        if (_lagCompensation != null && !_lagCompensation.IsRewound)
+        {
+            var clientTick = PacketContext.ClientTick;
+            if (clientTick > 0)
+            {
+                SweepResult result = default!;
+                _lagCompensation.RewindWorld(clientTick, () =>
+                    result = SweepInternal(attacker, query, damage));
+                return result;
+            }
+        }
+        return SweepInternal(attacker, query, damage);
+    }
+
+    private SweepResult SweepInternal(ICombatEntity attacker, SweepQuery query, int? damage)
+    {
         var targets = FindEntitiesInSweep(query);
         var hits = new List<HitResult>();
 
@@ -81,7 +118,7 @@ public class CombatService : ICombatService
             if (damage.HasValue)
                 hit = ApplyDamage(attacker, target, damage.Value, DamageFlags.Normal);
             else
-                hit = Attack(attacker, target);
+                hit = AttackInternal(attacker, target);
 
             hits.Add(hit);
 
@@ -104,7 +141,6 @@ public class CombatService : ICombatService
     {
         var results = new List<ICombatEntity>();
 
-        // Use world spatial queries if available
         var world = _worldOrganizer?.GetWorld(0);
         if (world != null)
         {
@@ -122,51 +158,54 @@ public class CombatService : ICombatService
         return results;
     }
 
-    private static bool IsInSweep(ICombatEntity entity, SweepQuery query)
+    private bool IsInSweep(ICombatEntity entity, SweepQuery query)
     {
+        // Use compensated positions when rewound
+        var (ex, ey, ez) = _lagCompensation is { IsRewound: true }
+            ? _lagCompensation.GetCompensatedPosition(entity)
+            : (entity.X, entity.Y, entity.Z);
+
         return query.Type switch
         {
-            SweepType.Sphere => IsInSphere(entity, query),
-            SweepType.Cone => IsInCone(entity, query),
-            SweepType.Line => IsInLine(entity, query),
+            SweepType.Sphere => IsInSphere(ex, ey, ez, query),
+            SweepType.Cone => IsInCone(ex, ey, ez, query),
+            SweepType.Line => IsInLine(ex, ey, ez, query),
             _ => false,
         };
     }
 
-    private static bool IsInSphere(ICombatEntity entity, SweepQuery query)
+    private static bool IsInSphere(float ex, float ey, float ez, SweepQuery query)
     {
-        var dx = entity.X - query.CenterX;
-        var dy = entity.Y - query.CenterY;
-        var dz = entity.Z - query.CenterZ;
+        var dx = ex - query.CenterX;
+        var dy = ey - query.CenterY;
+        var dz = ez - query.CenterZ;
         return dx * dx + dy * dy + dz * dz <= query.Range * query.Range;
     }
 
-    private static bool IsInCone(ICombatEntity entity, SweepQuery query)
+    private static bool IsInCone(float ex, float ey, float ez, SweepQuery query)
     {
-        var dx = entity.X - query.CenterX;
-        var dy = entity.Y - query.CenterY;
+        var dx = ex - query.CenterX;
+        var dy = ey - query.CenterY;
         var dist = MathF.Sqrt(dx * dx + dy * dy);
         if (dist > query.Range || dist < 0.001f) return false;
 
         var angleToTarget = MathF.Atan2(dy, dx);
         var angleDiff = NormalizeAngle(angleToTarget - query.Direction);
-        var halfAngle = query.Angle * MathF.PI / 360f; // half angle in radians
+        var halfAngle = query.Angle * MathF.PI / 360f;
         return MathF.Abs(angleDiff) <= halfAngle;
     }
 
-    private static bool IsInLine(ICombatEntity entity, SweepQuery query)
+    private static bool IsInLine(float ex, float ey, float ez, SweepQuery query)
     {
-        var dx = entity.X - query.CenterX;
-        var dy = entity.Y - query.CenterY;
+        var dx = ex - query.CenterX;
+        var dy = ey - query.CenterY;
 
         var dirX = MathF.Cos(query.Direction);
         var dirY = MathF.Sin(query.Direction);
 
-        // Project onto line direction
         var dot = dx * dirX + dy * dirY;
         if (dot < 0 || dot > query.Range) return false;
 
-        // Perpendicular distance (line width = 200 units default)
         var perpDist = MathF.Abs(-dx * dirY + dy * dirX);
         return perpDist <= 200f;
     }

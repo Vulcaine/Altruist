@@ -29,6 +29,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IWorldLoader3D _worldLoader;
         private readonly IEntitySyncService? _entitySyncService;
         private readonly IAIBehaviorService? _aiBehaviorService;
+        private readonly IPositionHistoryRecorder? _positionRecorder;
         private IVisibilityTracker? _visibilityTracker;
         private float _engineFrequencyHz = 25f;
 
@@ -36,12 +37,14 @@ namespace Altruist.Gaming.ThreeD
             IWorldLoader3D worldLoader,
             IEnumerable<IWorldIndex3D> gameWorlds,
             IEntitySyncService? entitySyncService = null,
-            IAIBehaviorService? aiBehaviorService = null
+            IAIBehaviorService? aiBehaviorService = null,
+            IPositionHistoryRecorder? positionRecorder = null
         )
         {
             _worldLoader = worldLoader;
             _entitySyncService = entitySyncService;
             _aiBehaviorService = aiBehaviorService;
+            _positionRecorder = positionRecorder;
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));
@@ -118,6 +121,11 @@ namespace Altruist.Gaming.ThreeD
                 Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
                     world => StepWorld(world, deltaTime));
             }
+
+
+
+            // Record position history for lag compensation (after positions finalized)
+            _positionRecorder?.RecordSnapshot(Altruist.Engine.AltruistEngine.CurrentTick);
 
             // Build per-world snapshots once — reused by AI, visibility, and sync
             var worldSnapshots = new WorldSnapshot[worlds.Length];

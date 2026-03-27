@@ -11,11 +11,12 @@ namespace Altruist.Gaming.Combat;
 // ── Packets ──────────────────────────────────────────
 
 [MessagePackObject]
-public class AttackPacket : IPacketBase
+public class AttackPacket : IPacketBase, ILagCompensated
 {
     [Key(0)] public uint MessageCode { get; set; }
     [Key(1)] public byte Type { get; set; }
     [Key(2)] public uint TargetVID { get; set; }
+    [Key(3)] public long ClientTick { get; set; }
 }
 
 [MessagePackObject]
