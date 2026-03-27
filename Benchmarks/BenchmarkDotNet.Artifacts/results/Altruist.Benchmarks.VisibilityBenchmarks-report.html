@@ -2,7 +2,7 @@
 <html lang='en'>
 <head>
 <meta charset='utf-8' />
-<title>Altruist.Benchmarks.VisibilityBenchmarks-20260327-185103</title>
+<title>Altruist.Benchmarks.VisibilityBenchmarks-20260327-192325</title>
 
 <style type="text/css">
 	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
@@ -17,18 +17,26 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
 Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
 .NET SDK 9.0.304
   [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
-  Job-GXTHQJ : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-ESUBKE : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
 </code></pre>
 <pre><code>IterationCount=20  WarmupCount=5  
 </code></pre>
 
 <table>
-<thead><tr><th>Method                                </th><th>PlayerCount</th><th>NpcCount</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+<thead><tr><th>Method                                </th><th>PlayerCount</th><th>NpcCount</th><th>Mean    </th><th>Error   </th><th>StdDev  </th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
 </tr>
-</thead><tbody><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>10</td><td>100</td><td>107.3 &mu;s</td><td>0.76 &mu;s</td><td>0.84 &mu;s</td><td>3.9063</td><td>0.8545</td><td>36.22 KB</td>
-</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>10</td><td>1000</td><td>429.4 &mu;s</td><td>7.14 &mu;s</td><td>7.94 &mu;s</td><td>17.5781</td><td>3.4180</td><td>170.48 KB</td>
-</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>50</td><td>100</td><td>186.8 &mu;s</td><td>1.37 &mu;s</td><td>1.41 &mu;s</td><td>4.3945</td><td>0.9766</td><td>42.58 KB</td>
-</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>50</td><td>1000</td><td>855.0 &mu;s</td><td>3.84 &mu;s</td><td>3.77 &mu;s</td><td>13.6719</td><td>1.9531</td><td>133.31 KB</td>
+</thead><tbody><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>10</td><td>100</td><td>104,172.196 ns</td><td>3,137.4533 ns</td><td>3,487.2710 ns</td><td>3.5400</td><td>0.8545</td><td>33741 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>10</td><td>100</td><td>5.600 ns</td><td>0.0232 ns</td><td>0.0238 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>10</td><td>100</td><td>154.181 ns</td><td>0.6880 ns</td><td>0.7362 ns</td><td>0.0122</td><td>-</td><td>128 B</td>
+</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>10</td><td>1000</td><td>425,711.945 ns</td><td>4,380.0774 ns</td><td>4,868.4444 ns</td><td>19.5313</td><td>4.3945</td><td>197246 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>10</td><td>1000</td><td>5.591 ns</td><td>0.0106 ns</td><td>0.0114 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>10</td><td>1000</td><td>154.701 ns</td><td>0.8349 ns</td><td>0.8933 ns</td><td>0.0122</td><td>-</td><td>128 B</td>
+</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>50</td><td>100</td><td>192,570.361 ns</td><td>9,166.4918 ns</td><td>10,556.1456 ns</td><td>4.3945</td><td>0.9766</td><td>43168 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>50</td><td>100</td><td>5.699 ns</td><td>0.0743 ns</td><td>0.0855 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>50</td><td>100</td><td>684.914 ns</td><td>4.2550 ns</td><td>4.9001 ns</td><td>0.0114</td><td>-</td><td>128 B</td>
+</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>50</td><td>1000</td><td>908,007.357 ns</td><td>24,754.3671 ns</td><td>26,486.8955 ns</td><td>19.5313</td><td>3.9063</td><td>196269 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>50</td><td>1000</td><td>5.601 ns</td><td>0.0335 ns</td><td>0.0344 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>50</td><td>1000</td><td>712.013 ns</td><td>3.5788 ns</td><td>3.9778 ns</td><td>0.0114</td><td>-</td><td>128 B</td>
 </tr></tbody></table>
 </body>
 </html>
