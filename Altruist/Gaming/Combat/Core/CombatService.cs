@@ -162,7 +162,7 @@ public class CombatService : ICombatService
     {
         // Use compensated positions when rewound
         var (ex, ey, ez) = _lagCompensation is { IsRewound: true }
-            ? _lagCompensation.GetCompensatedPosition(entity)
+            ? _lagCompensation.GetCompensatedPosition(entity.VirtualId, entity.X, entity.Y, entity.Z)
             : (entity.X, entity.Y, entity.Z);
 
         return query.Type switch
