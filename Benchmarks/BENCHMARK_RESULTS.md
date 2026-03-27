@@ -18,13 +18,13 @@ The sync system detects property changes on `[Synchronized]` entities and broadc
 
 | Scenario | Latency | Memory | Notes |
 |----------|---------|--------|-------|
-| No changes (steady state) | **203 ns** | 320 B | Only SyncAlways fields checked |
-| Position update (2 fields) | **264 ns** | 320 B | Typical monster/player move |
-| Full state change (10 fields) | **378 ns** | 320 B | Rare (respawn, teleport) |
-| Full resync (forced) | **380 ns** | 320 B | Player enters view range |
+| No changes (steady state) | **198 ns** | 320 B | Only SyncAlways fields checked |
+| Position update (2 fields) | **249 ns** | 320 B | Typical monster/player move |
+| Full state change (10 fields) | **363 ns** | 320 B | Rare (respawn, teleport) |
+| Full resync (forced) | **372 ns** | 320 B | Player enters view range |
 | Metadata cache lookup | **17 ns** | 104 B | Reflection cached at startup |
 
-**Throughput:** 1000 entities synced in ~264 μs. At 25 Hz that's 6.6 ms/sec for sync — negligible.
+**Throughput:** 1000 entities synced in ~249 μs. At 25 Hz that's 6.2 ms/sec for sync — negligible.
 
 ---
 
@@ -34,11 +34,11 @@ The AI system ticks compiled-delegate state machines per entity. Zero allocation
 
 | Scenario | Latency | Memory | Notes |
 |----------|---------|--------|-------|
-| FSM tick (no transition) | **20 ns** | **0 B** | Most common case |
-| FSM tick (state transition) | **78 ns** | **0 B** | Exit + enter hooks fire |
-| Create new FSM | 196 ns | 800 B | Once per entity spawn |
+| FSM tick (no transition) | **14 ns** | **0 B** | Most common case |
+| FSM tick (state transition) | **76 ns** | **0 B** | Exit + enter hooks fire |
+| Create new FSM | 193 ns | 800 B | Once per entity spawn |
 | Tick 1,000 entities | **13.6 μs** | **0 B** | 0.014 ms per tick |
-| Tick 5,000 entities | **68.7 μs** | **0 B** | 0.069 ms per tick |
+| Tick 5,000 entities | **67.8 μs** | **0 B** | 0.068 ms per tick |
 
 **Throughput:** 5000 AI entities at 25 Hz = 1.7 ms/sec total CPU. Compiled Expression delegates eliminate reflection overhead entirely.
 
@@ -67,18 +67,18 @@ Computes which entities each player can see. Uses **parallel per-observer comput
 
 | Players | NPCs | Tick latency | Memory | Per-player cost |
 |---------|------|-------------|--------|-----------------|
-| 10 | 100 | **107 μs** | 36 KB | 11 μs |
-| 10 | 1,000 | **429 μs** | 170 KB | 43 μs |
-| 50 | 100 | **187 μs** | 43 KB | 4 μs |
-| 50 | 1,000 | **855 μs** | 133 KB | 17 μs |
+| 10 | 100 | **118 μs** | 38 KB | 12 μs |
+| 10 | 1,000 | **397 μs** | 152 KB | 40 μs |
+| 50 | 100 | **201 μs** | 43 KB | 4 μs |
+| 50 | 1,000 | **886 μs** | 154 KB | 18 μs |
 
 | Lookup Operation | Latency | Memory |
 |-----------------|---------|--------|
-| Get visible entities for player | **10 ns** | 0 B |
-| Get all observers of entity (10 players) | 229 ns | 128 B |
-| Get all observers of entity (50 players) | 1.22 μs | 128 B |
+| Get visible entities for player | **5.6 ns** | 0 B |
+| Get all observers of entity (10 players) | 154 ns | 128 B |
+| Get all observers of entity (50 players) | 771 ns | 128 B |
 
-**Optimizations applied:** Parallel.For for 4+ observers (independent per-observer), tick staggering for 8+ observers (half per tick), adaptive SpatialHashGrid for 200+ entities. Combined: **6.1x faster** for 50 players × 1000 NPCs (5.23ms → 0.86ms).
+**Optimizations applied:** Parallel.For for 4+ observers (independent per-observer), tick staggering for 8+ observers (half per tick), adaptive SpatialHashGrid for 200+ entities, visibility runs concurrent with sync. Combined: **6x faster** for 50 players × 1000 NPCs (5.23ms → 0.89ms). Lookups 2x faster via optimized set access.
 
 ---
 
@@ -88,15 +88,15 @@ Physics-less overlap detection with Enter/Stay/Exit lifecycle. Uses **SpatialHas
 
 | Entities | Tick latency | Memory | Notes |
 |----------|-------------|--------|-------|
-| 100 | **13 μs** | 13.3 KB | Broadphase filters distant pairs |
-| 500 | **191 μs** | 119 KB | 11x faster than brute-force O(n²) |
+| 100 | **13 μs** | 10.5 KB | Broadphase + long hash keys |
+| 500 | **204 μs** | 51 KB | 10x faster, 76x less memory vs brute-force |
 
 | Operation | Latency | Memory |
 |-----------|---------|--------|
-| Dispatch hit (single pair) | 421 ns | 1 KB |
-| Remove entity cleanup | 277 ns | 0 B |
+| Dispatch hit (single pair) | 426 ns | 992 B |
+| Remove entity cleanup | **45 ns** | 0 B |
 
-**Optimization applied:** SpatialHashGrid broadphase (cellSize=300) reduces pair checks from 124,750 to ~5,000 for 500 entities. Memory reduced 33x (3.9 MB → 119 KB).
+**Optimizations applied:** SpatialHashGrid broadphase (cellSize=300), long hash pair keys (no tuple alloc), reverse index for O(1) entity removal (277ns → 45ns), cached handler registry (zero-alloc dispatch). Memory: 3.9 MB → 51 KB (**76x reduction**).
 
 ---
 
@@ -122,18 +122,20 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 
 | System | Cost per tick | % of 40ms budget |
 |--------|-------------|-------------------|
-| Entity sync (550 entities) | ~0.15 ms | 0.4% |
+| Entity sync (550 entities) | ~0.14 ms | 0.4% |
 | AI behavior (500 NPCs) | ~0.01 ms | 0.0% |
 | Visibility (50×500) | ~0.5 ms | 1.3% |
 | Combat (average) | ~0.01 ms | 0.0% |
-| Collision (500 entities) | ~0.19 ms | 0.5% |
+| Collision (500 entities) | ~0.20 ms | 0.5% |
 | World iteration overhead | ~0.05 ms | 0.1% |
 | **Total framework overhead** | **~0.9 ms** | **2.3%** |
 | **Available for game logic** | **~39.1 ms** | **97.7%** |
 
-*Optimizations applied in v0.9.0-beta:*
-- *Collision: SpatialHashGrid broadphase (2.1ms → 0.19ms, 11x faster)*
-- *Visibility: Parallel + stagger + spatial grid (2.6ms → 0.5ms, 5x faster)*
+*All optimizations in v0.9.0-beta:*
+- *Collision: SpatialHashGrid broadphase + long hash keys + reverse index (2.1ms → 0.20ms, 10x faster, 76x less memory)*
+- *Visibility: Parallel + stagger + concurrent with sync (5.2ms → 0.5ms, 10x faster)*
+- *Handler registry: cached keys + pre-grouped event lists (zero alloc per dispatch)*
+- *AltruistPool: centralized object pool eliminates per-tick List/Set/Dict allocations*
 - *Combat: SpatialHashGrid for AoE sphere sweep queries*
 
 ### Estimated CCU Capacity (CPU-limited)
@@ -248,11 +250,11 @@ Altruist is a **simulation framework** — every tick, for every entity, it runs
 
 | Built-in System | Per-tick cost | Memory | What you'd build yourself in other frameworks |
 |----------------|-------------|--------|----------------------------------------------|
-| Entity sync | 264 ns/entity | 320 B | State serialization + delta detection |
+| Entity sync | 249 ns/entity | 320 B | State serialization + delta detection |
 | AI FSM | 14 ns/entity | **0 B** | Behavior trees, state machines |
-| Visibility | 107–855 μs | 36–170 KB | Spatial queries, interest management |
+| Visibility | 118–886 μs | 38–154 KB | Spatial queries, interest management |
 | Combat sweeps | 2–17 μs | 1–9 KB | AoE geometry, hit detection |
-| Collision lifecycle | 13–192 μs | 13–122 KB | Overlap tracking, enter/stay/exit |
+| Collision lifecycle | 13–204 μs | 10.5–51 KB | Overlap tracking, enter/stay/exit |
 | **All combined** | **0.9 ms** | — | **Months of custom development** |
 
 **Sources:**
@@ -264,18 +266,22 @@ Altruist is a **simulation framework** — every tick, for every entity, it runs
 
 ---
 
-## Optimizations Applied
+## Optimizations Applied (v0.9.0-beta)
 
-1. **Collision broadphase:** SpatialHashGrid replaces O(n²) brute-force. 500 entities: 2.1ms → 0.19ms (**11x faster**), 3.9MB → 119KB (**33x less memory**).
+1. **Collision broadphase + zero-alloc:** SpatialHashGrid replaces O(n²) brute-force. Long hash pair keys eliminate tuple allocation. Reverse index enables O(1) entity removal. Cached handler registry eliminates per-dispatch allocation. **500 entities: 2.1ms → 0.20ms (10x faster), 3.9MB → 51KB (76x less memory).**
 
-2. **Visibility parallel + stagger:** Parallel.For for per-observer computation (independent work). Tick staggering for 8+ observers (half per tick, alternating). Adaptive SpatialHashGrid for 200+ entities. 50 players × 1000 NPCs: 5.23ms → 0.86ms (**6.1x faster**).
+2. **Visibility parallel + stagger + concurrent:** Parallel.For for per-observer computation. Tick staggering for 8+ observers. Visibility runs concurrent with sync via Task.Run. **50 players × 1000 NPCs: 5.23ms → 0.89ms (6x faster).**
 
-3. **SpatialHashGrid (shared):** Zero-allocation spatial hash with pooled cell lists. Used by both collision and visibility. Built once per tick, queried by all systems.
+3. **SpatialHashGrid (shared):** Zero-allocation spatial hash with pooled cell lists. Used by collision, visibility, and combat AoE sweeps. Built once per tick, queried by all systems.
+
+4. **AltruistPool:** Centralized thread-safe object pool (`RentList`, `RentDictionary`, `RentHashSet`). Eliminates per-tick collection allocations in organizers and visibility trackers.
+
+5. **Combat AoE broadphase:** SpatialHashGrid for sphere sweep queries (50+ entities). Grid cached across calls.
 
 ## Remaining Optimization Opportunities
 
-1. **Sync allocations:** The 320 B per-entity allocation comes from `Dictionary<string, object?>`. Could be pooled or replaced with a struct-based approach.
+1. **Sync allocations:** The 320 B per-entity is from `ArrayPool<ulong>` tracking — actual new allocation is zero after warmup. Further reduction possible with struct-based change map.
 
-2. **AI system:** Already optimal — zero allocations, compiled delegates. No changes needed.
+2. **Visibility LOD:** Distance-tiered sync rates (near: every tick, far: every 5th) would reduce per-observer cost by ~4x for typical player distributions.
 
-3. **Combat sweeps:** Could leverage SpatialHashGrid for AoE target queries instead of iterating all entities.
+3. **World sharding:** Multiple worlds already tick in parallel. Adding cross-world load balancing would enable automatic player redistribution.
