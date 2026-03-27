@@ -13,7 +13,7 @@ namespace Altruist.Benchmarks;
 /// Measures: per-tick visibility computation, observer lookups, event dispatch.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 3, iterationCount: 5)]
+[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class VisibilityBenchmarks
 {
     private VisibilityTracker3D _tracker = null!;

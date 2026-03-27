@@ -9,7 +9,7 @@ namespace Altruist.Benchmarks;
 /// Measures: reflection metadata caching, property change detection, bitmask generation.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 3, iterationCount: 5)]
+[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class SyncBenchmarks
 {
     private SyncEntity _entity = null!;

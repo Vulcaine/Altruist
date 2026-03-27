@@ -13,7 +13,7 @@ namespace Altruist.Benchmarks;
 /// iterates all objects at least once per tick.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 3, iterationCount: 5)]
+[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class WorldBenchmarks
 {
     private List<ITypelessWorldObject> _objects = null!;

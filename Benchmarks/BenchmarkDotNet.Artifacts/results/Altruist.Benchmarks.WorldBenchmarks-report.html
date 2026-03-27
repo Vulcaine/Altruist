@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Altruist.Benchmarks.WorldBenchmarks-20260327-173347</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
+Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
+.NET SDK 9.0.304
+  [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-RQLSLI : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>IterationCount=20  WarmupCount=5  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                              </th><th>ObjectCount</th><th>Mean   </th><th>Error  </th><th>StdDev </th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;WorldSnapshot creation&#39;</td><td>1000</td><td>2.467 ns</td><td>0.0116 ns</td><td>0.0114 ns</td><td>-</td>
+</tr><tr><td>&#39;Iterate all + filter ISynchronizedEntity&#39;</td><td>1000</td><td>1,105.700 ns</td><td>12.6864 ns</td><td>14.1009 ns</td><td>-</td>
+</tr><tr><td>&#39;Iterate all + filter IAIBehaviorEntity&#39;</td><td>1000</td><td>1,158.274 ns</td><td>18.5064 ns</td><td>21.3120 ns</td><td>-</td>
+</tr><tr><td>&#39;Dictionary lookup by InstanceId&#39;</td><td>1000</td><td>14.487 ns</td><td>0.1333 ns</td><td>0.1427 ns</td><td>-</td>
+</tr><tr><td>&#39;Iterate all + distance check (r=2000)&#39;</td><td>1000</td><td>2,887.454 ns</td><td>48.4156 ns</td><td>55.7555 ns</td><td>-</td>
+</tr><tr><td>&#39;WorldSnapshot creation&#39;</td><td>5000</td><td>2.454 ns</td><td>0.0071 ns</td><td>0.0076 ns</td><td>-</td>
+</tr><tr><td>&#39;Iterate all + filter ISynchronizedEntity&#39;</td><td>5000</td><td>12,509.111 ns</td><td>929.4533 ns</td><td>1,070.3598 ns</td><td>-</td>
+</tr><tr><td>&#39;Iterate all + filter IAIBehaviorEntity&#39;</td><td>5000</td><td>13,393.645 ns</td><td>545.4761 ns</td><td>628.1711 ns</td><td>-</td>
+</tr><tr><td>&#39;Dictionary lookup by InstanceId&#39;</td><td>5000</td><td>14.565 ns</td><td>0.1436 ns</td><td>0.1597 ns</td><td>-</td>
+</tr><tr><td>&#39;Iterate all + distance check (r=2000)&#39;</td><td>5000</td><td>22,462.250 ns</td><td>1,425.0955 ns</td><td>1,641.1421 ns</td><td>-</td>
+</tr></tbody></table>
+</body>
+</html>

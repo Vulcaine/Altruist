@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Altruist.Benchmarks.CombatBenchmarks-20260327-173947</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
+Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
+.NET SDK 9.0.304
+  [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-ICAGAI : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>IterationCount=20  WarmupCount=5  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                        </th><th>EntityCount</th><th>Mean    </th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Single Attack (calc + apply)&#39;</td><td>100</td><td>8.1024 ns</td><td>0.1380 ns</td><td>0.1417 ns</td><td>0.0031</td><td>-</td><td>32 B</td>
+</tr><tr><td>DefaultDamageCalculator.Calculate</td><td>100</td><td>0.6894 ns</td><td>0.0109 ns</td><td>0.0112 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Sweep Sphere r=500 (spatial query)&#39;</td><td>100</td><td>2,264.9202 ns</td><td>79.1560 ns</td><td>81.2874 ns</td><td>0.1030</td><td>0.0381</td><td>1104 B</td>
+</tr><tr><td>&#39;Sweep Sphere r=2000 (large AoE)&#39;</td><td>100</td><td>2,694.4110 ns</td><td>74.8482 ns</td><td>80.0868 ns</td><td>0.1907</td><td>0.0496</td><td>2024 B</td>
+</tr><tr><td>&#39;Sweep Cone 90° r=1000&#39;</td><td>100</td><td>2,338.0286 ns</td><td>110.3610 ns</td><td>118.0851 ns</td><td>0.1106</td><td>0.0381</td><td>1192 B</td>
+</tr><tr><td>&#39;Sweep Line r=2000&#39;</td><td>100</td><td>2,978.2170 ns</td><td>162.5176 ns</td><td>180.6379 ns</td><td>0.1144</td><td>0.0305</td><td>1224 B</td>
+</tr><tr><td>&#39;Single Attack (calc + apply)&#39;</td><td>1000</td><td>8.0815 ns</td><td>0.1310 ns</td><td>0.1402 ns</td><td>0.0031</td><td>-</td><td>32 B</td>
+</tr><tr><td>DefaultDamageCalculator.Calculate</td><td>1000</td><td>0.6754 ns</td><td>0.0049 ns</td><td>0.0053 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Sweep Sphere r=500 (spatial query)&#39;</td><td>1000</td><td>10,921.7793 ns</td><td>207.9763 ns</td><td>231.1651 ns</td><td>0.1526</td><td>0.0458</td><td>1744 B</td>
+</tr><tr><td>&#39;Sweep Sphere r=2000 (large AoE)&#39;</td><td>1000</td><td>14,597.0820 ns</td><td>253.3220 ns</td><td>281.5667 ns</td><td>0.8850</td><td>0.1831</td><td>9304 B</td>
+</tr><tr><td>&#39;Sweep Cone 90° r=1000&#39;</td><td>1000</td><td>10,699.4520 ns</td><td>221.9455 ns</td><td>246.6918 ns</td><td>0.1831</td><td>0.0458</td><td>1960 B</td>
+</tr><tr><td>&#39;Sweep Line r=2000&#39;</td><td>1000</td><td>16,986.1427 ns</td><td>347.0010 ns</td><td>385.6907 ns</td><td>0.1831</td><td>0.0610</td><td>1992 B</td>
+</tr></tbody></table>
+</body>
+</html>
