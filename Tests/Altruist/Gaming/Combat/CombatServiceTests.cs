@@ -271,7 +271,11 @@ public class SweepGeometryTests
         // and the world organizer is optional, we need to use Moq.
         var world = new Moq.Mock<Altruist.Gaming.ThreeD.IGameWorldManager3D>();
         var objects = entities.Cast<Altruist.Gaming.ThreeD.IWorldObject3D>().ToList();
+        var lookup = objects.ToDictionary(o => o.InstanceId, o => o);
         world.Setup(w => w.FindAllObjects<Altruist.Gaming.ThreeD.IWorldObject3D>()).Returns(objects);
+        world.Setup(w => w.GetCachedSnapshot())
+            .Returns((objects as IReadOnlyList<Altruist.Gaming.ThreeD.IWorldObject3D>,
+                      lookup as IReadOnlyDictionary<string, Altruist.Gaming.ThreeD.IWorldObject3D>));
 
         var organizer = new Moq.Mock<Altruist.Gaming.ThreeD.IGameWorldOrganizer3D>();
         organizer.Setup(o => o.GetWorld(0)).Returns(world.Object);
