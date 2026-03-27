@@ -137,22 +137,48 @@ public class CombatService : ICombatService
         OnDeath?.Invoke(new DeathEvent(entity, killer, entity.X, entity.Y, entity.Z));
     }
 
+    // Spatial broadphase for AoE sweep queries — avoids iterating all entities
+    private readonly SpatialHashGrid _sweepGrid = new(cellSize: 500f);
+    private readonly List<int> _sweepGridBuffer = new(128);
+    private IReadOnlyList<IWorldObject3D>? _cachedObjects;
+
     private List<ICombatEntity> FindEntitiesInSweep(SweepQuery query)
     {
         var results = new List<ICombatEntity>();
 
         var world = _worldOrganizer?.GetWorld(0);
-        if (world != null)
-        {
-            var allObjects = world.FindAllObjects<IWorldObject3D>();
-            foreach (var obj in allObjects)
-            {
-                if (obj is not ICombatEntity entity || entity.IsDead) continue;
+        if (world == null) return results;
 
+        var (allObjects, _) = world.GetCachedSnapshot();
+
+        // Use spatial grid for sphere queries (most common AoE type)
+        if (query.Type == SweepType.Sphere && allObjects.Count > 50)
+        {
+            // Rebuild grid if object list changed
+            if (_cachedObjects != allObjects)
+            {
+                _sweepGrid.Build(allObjects);
+                _cachedObjects = allObjects;
+            }
+
+            _sweepGrid.QueryRadius(query.CenterX, query.CenterY, query.Range, _sweepGridBuffer);
+            for (int i = 0; i < _sweepGridBuffer.Count; i++)
+            {
+                var obj = allObjects[_sweepGridBuffer[i]];
+                if (obj is not ICombatEntity entity || entity.IsDead) continue;
                 if (IsInSweep(entity, query))
                     results.Add(entity);
             }
-            return results;
+        }
+        else
+        {
+            // Fallback: iterate all for cone/line queries or small worlds
+            foreach (var obj in allObjects)
+            {
+                if (obj is not ICombatEntity entity || entity.IsDead) continue;
+                if (IsInSweep(entity, query))
+                    results.Add(entity);
+            }
         }
 
         return results;
