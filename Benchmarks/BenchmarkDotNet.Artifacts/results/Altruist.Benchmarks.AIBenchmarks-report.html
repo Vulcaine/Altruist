@@ -2,7 +2,7 @@
 <html lang='en'>
 <head>
 <meta charset='utf-8' />
-<title>Altruist.Benchmarks.AIBenchmarks-20260327-173006</title>
+<title>Altruist.Benchmarks.AIBenchmarks-20260327-190831</title>
 
 <style type="text/css">
 	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
@@ -17,19 +17,19 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
 Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
 .NET SDK 9.0.304
   [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
-  Job-RQLSLI : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-ESUBKE : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
 </code></pre>
 <pre><code>IterationCount=20  WarmupCount=5  
 </code></pre>
 
 <table>
-<thead><tr><th>Method                                </th><th>count</th><th>Mean  </th><th>Error</th><th>StdDev</th><th>Median</th><th>Gen0</th><th>Allocated</th>
+<thead><tr><th>Method                                </th><th>count</th><th>Mean  </th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
 </tr>
-</thead><tbody><tr><td>&#39;FSM.Update - stay in state (no transition)&#39;</td><td>?</td><td>20.33 ns</td><td>4.231 ns</td><td>4.872 ns</td><td>23.72 ns</td><td>-</td><td>-</td>
-</tr><tr><td>&#39;FSM.Update - transition (exit+enter hooks)&#39;</td><td>?</td><td>78.17 ns</td><td>2.005 ns</td><td>2.309 ns</td><td>77.64 ns</td><td>-</td><td>-</td>
-</tr><tr><td>&#39;CreateStateMachine (from cached template)&#39;</td><td>?</td><td>195.52 ns</td><td>8.920 ns</td><td>9.914 ns</td><td>197.29 ns</td><td>0.0763</td><td>800 B</td>
-</tr><tr><td>&#39;FSM.Update x1000 entities (simulate tick)&#39;</td><td>1000</td><td>13,604.04 ns</td><td>258.586 ns</td><td>253.966 ns</td><td>13,546.40 ns</td><td>-</td><td>-</td>
-</tr><tr><td>&#39;FSM.Update x1000 entities (simulate tick)&#39;</td><td>5000</td><td>68,691.24 ns</td><td>460.110 ns</td><td>492.313 ns</td><td>68,753.02 ns</td><td>-</td><td>-</td>
+</thead><tbody><tr><td>&#39;FSM.Update - stay in state (no transition)&#39;</td><td>?</td><td>14.20 ns</td><td>0.158 ns</td><td>0.169 ns</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;FSM.Update - transition (exit+enter hooks)&#39;</td><td>?</td><td>74.50 ns</td><td>0.312 ns</td><td>0.347 ns</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;CreateStateMachine (from cached template)&#39;</td><td>?</td><td>188.89 ns</td><td>2.460 ns</td><td>2.735 ns</td><td>0.0763</td><td>800 B</td>
+</tr><tr><td>&#39;FSM.Update x1000 entities (simulate tick)&#39;</td><td>1000</td><td>13,830.50 ns</td><td>80.373 ns</td><td>89.334 ns</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;FSM.Update x1000 entities (simulate tick)&#39;</td><td>5000</td><td>67,827.43 ns</td><td>192.119 ns</td><td>205.565 ns</td><td>-</td><td>-</td>
 </tr></tbody></table>
 </body>
 </html>

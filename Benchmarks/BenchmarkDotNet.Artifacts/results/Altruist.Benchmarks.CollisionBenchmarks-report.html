@@ -2,7 +2,7 @@
 <html lang='en'>
 <head>
 <meta charset='utf-8' />
-<title>Altruist.Benchmarks.CollisionBenchmarks-20260327-184227</title>
+<title>Altruist.Benchmarks.CollisionBenchmarks-20260327-191013</title>
 
 <style type="text/css">
 	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
@@ -17,16 +17,20 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
 Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
 .NET SDK 9.0.304
   [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
-  Job-OQYKXP : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-ESUBKE : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
 </code></pre>
 <pre><code>IterationCount=20  WarmupCount=5  
 </code></pre>
 
 <table>
-<thead><tr><th>Method                                   </th><th>EntityCount</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+<thead><tr><th>Method                                   </th><th>EntityCount</th><th>Mean  </th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
 </tr>
-</thead><tbody><tr><td>&#39;Collision Tick (full O(n²) overlap detection)&#39;</td><td>100</td><td>13.05 &mu;s</td><td>0.425 &mu;s</td><td>0.472 &mu;s</td><td>1.2817</td><td>0.3052</td><td>13.27 KB</td>
-</tr><tr><td>&#39;Collision Tick (full O(n²) overlap detection)&#39;</td><td>500</td><td>190.91 &mu;s</td><td>1.929 &mu;s</td><td>2.144 &mu;s</td><td>11.4746</td><td>0.9766</td><td>118.99 KB</td>
+</thead><tbody><tr><td>&#39;Collision Tick (full O(n²) overlap detection)&#39;</td><td>100</td><td>12,351.0 ns</td><td>125.60 ns</td><td>139.61 ns</td><td>1.2970</td><td>0.3204</td><td>13592 B</td>
+</tr><tr><td>&#39;DispatchHit (single pair, no handlers)&#39;</td><td>100</td><td>418.6 ns</td><td>7.57 ns</td><td>8.72 ns</td><td>0.1001</td><td>-</td><td>1048 B</td>
+</tr><tr><td>RemoveEntity</td><td>100</td><td>276.8 ns</td><td>1.10 ns</td><td>1.26 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Collision Tick (full O(n²) overlap detection)&#39;</td><td>500</td><td>191,589.2 ns</td><td>2,200.34 ns</td><td>2,354.34 ns</td><td>11.4746</td><td>0.9766</td><td>121848 B</td>
+</tr><tr><td>&#39;DispatchHit (single pair, no handlers)&#39;</td><td>500</td><td>423.4 ns</td><td>6.08 ns</td><td>7.00 ns</td><td>0.1001</td><td>-</td><td>1048 B</td>
+</tr><tr><td>RemoveEntity</td><td>500</td><td>279.6 ns</td><td>0.17 ns</td><td>0.18 ns</td><td>-</td><td>-</td><td>-</td>
 </tr></tbody></table>
 </body>
 </html>

@@ -10,11 +10,9 @@ namespace Altruist.Gaming;
 
 /// <summary>
 /// Server-side lag compensation: records per-entity position history and provides
-/// temporal rewind for validation. Opt-in via config. Any module can use this —
-/// combat, movement, interaction, abilities.
+/// temporal rewind. Opt-in via config. Any module can use this.
 ///
 /// Uses an override map during rewind — entity positions are never mutated.
-/// Consumers call GetCompensatedPosition() to read rewound positions.
 /// </summary>
 [Service(typeof(ILagCompensationService))]
 [Service(typeof(IPositionHistoryRecorder))]
@@ -83,24 +81,12 @@ public sealed class LagCompensationService : ILagCompensationService
         }
     }
 
-    public (float X, float Y, float Z)? GetPositionAtTick(uint virtualId, long tick)
-    {
-        if (!_histories.TryGetValue(virtualId, out var history))
-            return null;
-
-        var snapshot = history.GetNearest(tick);
-        if (!snapshot.HasValue)
-            return null;
-
-        return (snapshot.Value.X, snapshot.Value.Y, snapshot.Value.Z);
-    }
-
-    public (float X, float Y, float Z) GetCompensatedPosition(uint virtualId, float currentX, float currentY, float currentZ)
+    public (float X, float Y, float Z) Compensate(uint virtualId, float x, float y, float z)
     {
         if (IsRewound && _overrides.TryGetValue(virtualId, out var snap))
             return (snap.X, snap.Y, snap.Z);
 
-        return (currentX, currentY, currentZ);
+        return (x, y, z);
     }
 
     public void RemoveEntity(uint virtualId)

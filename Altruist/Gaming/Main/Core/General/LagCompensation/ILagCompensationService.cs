@@ -8,36 +8,34 @@ namespace Altruist.Gaming;
 /// <summary>
 /// Server-side lag compensation service.
 /// Records entity position history each tick and provides temporal rewind
-/// for validation against historical positions.
+/// so any module can validate actions against where entities were at the
+/// client's perceived time.
 ///
-/// Any module (combat, movement, interaction, abilities) can use this to
-/// validate actions against where entities were at the client's perceived time.
+/// Usage — any module can wrap its logic in RewindWorld:
+///   _lagCompensation.RewindWorld(clientTick, () =>
+///   {
+///       // All Compensate() calls inside here return historical positions
+///       var (x, y, z) = _lagCompensation.Compensate(entity.VirtualId, entity.X, entity.Y, entity.Z);
+///   });
 ///
 /// Enable: set altruist:game:lag-compensation = true
-/// Configure history depth: altruist:game:lag-compensation:history-ticks (default 64)
+/// Configure: altruist:game:lag-compensation:history-ticks (default 64)
 /// </summary>
 public interface ILagCompensationService : IPositionHistoryRecorder
 {
     /// <summary>
     /// Temporarily rewind all tracked entity positions to the given tick,
-    /// execute the callback, then restore. Uses an override map internally —
-    /// entity positions are never mutated. The callback should contain the
-    /// actual validation/detection logic.
+    /// execute the callback, then restore. Inside the callback, Compensate()
+    /// returns historical positions. Outside, it passes through unchanged.
     /// </summary>
     void RewindWorld(long toTick, Action callback);
 
     /// <summary>
-    /// Query a single entity's historical position at a specific tick.
-    /// Returns null if the entity has no recorded history at that tick.
+    /// Position pass-through transformer. During a RewindWorld callback, returns
+    /// the historical position for the entity. Outside rewind, returns the input
+    /// position unchanged. Use this in distance checks, sweep geometry, etc.
     /// </summary>
-    (float X, float Y, float Z)? GetPositionAtTick(uint virtualId, long tick);
-
-    /// <summary>
-    /// Get the effective position of an entity — returns the rewound position
-    /// if currently inside a RewindWorld callback, otherwise returns the
-    /// provided current position unchanged.
-    /// </summary>
-    (float X, float Y, float Z) GetCompensatedPosition(uint virtualId, float currentX, float currentY, float currentZ);
+    (float X, float Y, float Z) Compensate(uint virtualId, float x, float y, float z);
 
     /// <summary>
     /// Remove all position history for an entity (call on destroy/despawn).

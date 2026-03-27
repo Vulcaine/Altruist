@@ -187,11 +187,11 @@ A Unity ECS system processes **one concern** — movement, or rendering, or phys
 | Collision lifecycle | Physics system (PhysX/Havok) | Built-in SpatialCollisionDispatcher |
 | Combat AoE sweeps | Custom user system | Built-in ICombatService.Sweep |
 
-**Altruist's combined overhead for all of the above: 4.9 ms** (50 players, 500 NPCs, 25 Hz).
+**Altruist's combined overhead for all of the above: 0.9 ms** (50 players, 500 NPCs, 25 Hz) — after SpatialHashGrid broadphase and parallel visibility optimizations.
 
 ### Summary
 
-Altruist is not trying to compete with Unity ECS at raw iteration speed for 100K+ entities — that's a client-side rendering concern. What Altruist provides is a **complete server-side game framework** where all the systems (sync + AI + visibility + combat + collision) run together in under 5ms per tick, with measurable benchmarks and zero-allocation AI. Unity Netcode for Entities is the closest comparable system, but publishes no equivalent benchmark data.
+Altruist is not trying to compete with Unity ECS at raw iteration speed for 100K+ entities — that's a client-side rendering concern. What Altruist provides is a **complete server-side game framework** where all the systems (sync + AI + visibility + combat + collision) run together in under 1ms per tick, leaving 97.7% of the tick budget for game logic. Unity Netcode for Entities is the closest comparable system, but publishes no equivalent benchmark data.
 
 **Sources:**
 - [Unity ECS Performance Testing](https://gamedev.center/unity-ecs-performance-testing-the-way-to-the-best-performance/) — concrete μs measurements for entity iteration
