@@ -139,25 +139,36 @@ namespace Altruist.Gaming.ThreeD
             }
 
             // AI behaviors tick (after physics, before visibility/sync)
+            // AI is independent per-entity — safe to run on the snapshot
             if (_aiBehaviorService != null)
             {
                 try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
                 catch { }
             }
 
-            // Visibility must be computed after all positions are final (single-threaded)
+            // Visibility (parallel per-observer + stagger) and sync can overlap
+            // since visibility writes to _visibleSets and sync reads entity state
+            var visTask = Task.CompletedTask;
             if (_visibilityTracker is VisibilityTracker3D tracker)
             {
-                try { tracker.Tick(worldSnapshots); }
-                catch { }
+                visTask = Task.Run(() =>
+                {
+                    try { tracker.Tick(worldSnapshots); }
+                    catch { }
+                });
             }
 
-            // Auto-sync [Synchronized] entities (delta-based, after visibility)
+            // Auto-sync [Synchronized] entities (delta-based)
+            // Can run concurrently with visibility — sync reads entity properties,
+            // visibility writes to separate _visibleSets dictionary
             if (_entitySyncService != null)
             {
                 try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
                 catch { }
             }
+
+            // Wait for visibility to complete before next tick
+            visTask.GetAwaiter().GetResult();
         }
 
         private static void StepWorld(IGameWorldManager3D world, float deltaTime)
