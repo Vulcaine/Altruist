@@ -2,7 +2,7 @@
 <html lang='en'>
 <head>
 <meta charset='utf-8' />
-<title>Altruist.Benchmarks.SyncBenchmarks-20260327-173157</title>
+<title>Altruist.Benchmarks.SyncBenchmarks-20260327-192142</title>
 
 <style type="text/css">
 	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
@@ -17,7 +17,7 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
 Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
 .NET SDK 9.0.304
   [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
-  Job-RQLSLI : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-ESUBKE : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
 </code></pre>
 <pre><code>IterationCount=20  WarmupCount=5  
 </code></pre>
@@ -25,11 +25,11 @@ Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
 <table>
 <thead><tr><th>Method                                   </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
 </tr>
-</thead><tbody><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>202.68 ns</td><td>3.897 ns</td><td>4.002 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>264.15 ns</td><td>5.219 ns</td><td>6.010 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>377.66 ns</td><td>41.855 ns</td><td>42.982 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>379.92 ns</td><td>11.220 ns</td><td>12.006 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>17.47 ns</td><td>0.994 ns</td><td>1.105 ns</td><td>0.0099</td><td>104 B</td>
+</thead><tbody><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>196.83 ns</td><td>3.835 ns</td><td>4.416 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>263.26 ns</td><td>3.442 ns</td><td>3.826 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>360.48 ns</td><td>5.222 ns</td><td>5.804 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>363.45 ns</td><td>3.388 ns</td><td>3.766 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>16.13 ns</td><td>0.417 ns</td><td>0.463 ns</td><td>0.0099</td><td>104 B</td>
 </tr></tbody></table>
 </body>
 </html>

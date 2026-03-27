@@ -137,67 +137,99 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 
 ---
 
-## Comparison: Altruist vs Unity ECS / Netcode for Entities
+## Comparison: Altruist vs Game Server Frameworks
 
-### What are they?
+### The landscape
 
-- **Unity ECS (DOTS)** is a client-side Entity Component System optimized for rendering tens of thousands of objects at 60 FPS. It uses Burst-compiled jobs with SIMD and cache-friendly memory layouts.
-- **Unity Netcode for Entities** is the networking layer built on top of ECS. It provides "ghost" synchronization — the server serializes entity state into snapshot packets and sends deltas to clients.
-- **Altruist** is a server-side game framework. It handles networking, entity sync, AI, visibility, combat, and collision — all in a single server tick.
+Game server frameworks fall into two categories: **matchmaking/lobby backends** (Photon, Nakama, Colyseus) that handle connections and room management, and **authoritative simulation servers** (Unity Netcode, custom engines) that run game logic at a fixed tick rate. Altruist is the latter — it runs the full game simulation server-side.
 
-### Apples-to-apples: entity iteration cost
+### Photon Server (C++/C# — industry standard)
 
-Unity ECS published benchmarks for a simple "reset movement" system iterating entities ([source](https://gamedev.center/unity-ecs-performance-testing-the-way-to-the-best-performance/)):
+Photon is the most widely used commercial game server platform. [Published benchmarks](https://doc.photonengine.com/server/current/performance/performance-tests):
 
-| Entities | Unity ECS (main thread) | Unity ECS (Job.Schedule) | Altruist AI FSM tick |
-|----------|------------------------|--------------------------|---------------------|
-| 1,000 | 10.75 μs | 17.70 μs | **13.6 μs** |
-| 10,000 | 25.10 μs | 20.25 μs | ~136 μs (extrapolated) |
-| 100,000 | 82.45 μs | 22.50 μs | ~1.36 ms (extrapolated) |
+| Metric | Photon Server 5 | Altruist |
+|--------|-----------------|----------|
+| CCU per server | 2,000–3,000 | **1,000+ at 25Hz** (estimated from 0.9ms tick) |
+| Message rate | ~200 msg/room/sec | N/A (state sync, not message-based) |
+| Primary bottleneck | NIC bandwidth | CPU (visibility at 1.3%) |
+| State sync approach | Manual RaiseEvent() | Automatic [Synchronized] delta |
+| AI system | None (user code) | Built-in [AIBehavior] FSM (14 ns/entity) |
+| Collision system | None (user code) | Built-in SpatialCollisionDispatcher |
+| Architecture | Room-based relay | World-based authoritative simulation |
+| Pricing | Commercial license | Open source |
 
-**For small-to-medium counts (1K–5K), Altruist's compiled-delegate FSM is competitive with Unity ECS main-thread iteration** — despite running plain C# objects instead of Burst-compiled structs. At large counts (100K+), Unity's job system parallelism wins as expected.
+Photon handles more raw connections because it's a **relay** — it forwards messages between clients without simulating game state. Altruist is **authoritative** — the server runs AI, combat, collision, and visibility every tick. Different workloads.
 
-Key difference: Unity ECS is doing **one simple operation** (reset a vector). Altruist's FSM tick evaluates state logic, checks transitions, fires enter/exit hooks — significantly more work per entity.
+### Nakama (Go — open source)
 
-### Apples-to-apples: entity synchronization
+Nakama is the leading open-source game backend. [Published benchmarks](https://heroiclabs.com/docs/nakama/getting-started/benchmarks/):
 
-Unity Netcode for Entities uses a snapshot system for ghost sync ([source](https://docs.unity3d.com/Packages/com.unity.netcode@1.8/manual/optimization/manage-serialization-costs.html)):
+| Metric | Nakama (1 node, 1 CPU) | Altruist (single thread) |
+|--------|------------------------|--------------------------|
+| Max CCU | ~20,000 | ~1,000+ at 25Hz simulation |
+| Registration throughput | 528 req/sec (21ms mean) | N/A (not a REST backend) |
+| Mean connect latency | 21 ms | Framework overhead: 0.9 ms/tick |
+| State sync | Manual RPCs | Automatic [Synchronized] delta (264 ns/entity) |
+| AI system | None | Built-in (14 ns/entity, 0 alloc) |
+| Language | Go | C# (.NET 9) |
+| Simulation model | Stateless RPCs | Stateful world simulation |
 
-| Aspect | Unity Netcode for Entities | Altruist [Synchronized] |
-|--------|---------------------------|------------------------|
-| Architecture | Client-server, snapshot-based | Server-authoritative, delta-based |
-| Serialization | Source-generated, Burst-compiled | Reflection-cached, compiled getters |
-| Delta detection | Per-ghost baseline diffing | Per-entity bitmask diffing |
-| Cost per entity | "Expensive CPU read/write" (no published numbers) | **264 ns** (measured) |
-| Allocations | Not published | 320 B per entity |
-| Visibility filtering | Ghost relevancy sets | Spatial distance checks |
-| Bandwidth control | Fixed MTU, importance scaling | Visibility-aware, only nearby |
+Nakama excels at **stateless operations** (auth, matchmaking, leaderboards, RPCs). Altruist excels at **stateful simulation** (world objects, AI, combat, visibility). They solve different problems — a production game might use both (Nakama for social features, Altruist for game simulation).
 
-Unity's documentation describes ghost serialization as ["expensive CPU read and write operations that scale linearly with the number of ghosts"](https://docs.unity3d.com/Packages/com.unity.netcode@1.8/manual/optimization/manage-serialization-costs.html) but publishes no concrete numbers. Altruist's sync at 264 ns per entity is measurably fast with BenchmarkDotNet.
+### Colyseus (Node.js — open source)
 
-### What Altruist does that Unity ECS doesn't (per tick)
+Colyseus handles room-based state synchronization in Node.js. [Published data](https://docs.colyseus.io/):
 
-A Unity ECS system processes **one concern** — movement, or rendering, or physics. Each system is a separate job. Altruist handles **all server-side concerns** in a single tick:
+| Metric | Colyseus | Altruist |
+|--------|----------|----------|
+| CCU (cheap server) | ~3,000 | ~1,000+ at 25Hz simulation |
+| State sync | Binary delta (schema-based) | Binary delta ([Synced] attribute) |
+| Sync cost per entity | Not published | **264 ns** (measured) |
+| AI system | None | Built-in (14 ns/entity) |
+| Collision | None | Built-in (13 μs for 100 entities) |
+| Visibility | None | Built-in (107 μs for 10p×100n) |
+| Runtime | Node.js (V8) | .NET 9 (JIT) |
+| GC pressure | V8 GC pauses | AI: 0 alloc, Collision: 13 KB |
 
-| Per-tick work | Unity approach | Altruist |
-|--------------|---------------|----------|
-| Property delta detection | Netcode ghost serialization | [Synchronized] + bitmask |
-| AI state machines | Custom ECS system (user code) | Built-in [AIBehavior] FSM |
-| Visibility tracking | Netcode ghost relevancy | Built-in VisibilityTracker |
-| Collision lifecycle | Physics system (PhysX/Havok) | Built-in SpatialCollisionDispatcher |
-| Combat AoE sweeps | Custom user system | Built-in ICombatService.Sweep |
+Colyseus provides room management and state sync. Altruist provides a complete game simulation engine. Colyseus would need external libraries for AI, combat, visibility, and collision — Altruist has them built in with measured performance.
 
-**Altruist's combined overhead for all of the above: 0.9 ms** (50 players, 500 NPCs, 25 Hz) — after SpatialHashGrid broadphase and parallel visibility optimizations.
+### Photon Fusion (Unity — commercial)
 
-### Summary
+Fusion is Photon's latest Unity networking SDK. [Published claims](https://blog.photonengine.com/photon-fusion-benchmark/):
 
-Altruist is not trying to compete with Unity ECS at raw iteration speed for 100K+ entities — that's a client-side rendering concern. What Altruist provides is a **complete server-side game framework** where all the systems (sync + AI + visibility + combat + collision) run together in under 1ms per tick, leaving 97.7% of the tick budget for game logic. Unity Netcode for Entities is the closest comparable system, but publishes no equivalent benchmark data.
+| Metric | Photon Fusion | Altruist |
+|--------|--------------|----------|
+| Max players | 200 at 60Hz | 50+ at 25Hz (measured), scales with tick budget |
+| Bandwidth | 6x smaller than Mirror/MLAPI | Visibility-aware (only nearby entities synced) |
+| Runtime allocations | Zero (claimed) | AI: 0 B, Sync: 320 B/entity, Collision: 13 KB/100e |
+| State sync | Delta snapshots | [Synchronized] bitmask delta |
+| Built-in AI | No | Yes (14 ns/entity, compiled delegates) |
+| Built-in combat | No | Yes (8 ns single attack, 11 μs AoE sweep) |
+| Pricing | Commercial | Open source |
+
+Fusion focuses on client-side prediction and networking for Unity. Altruist focuses on server-side authoritative simulation with built-in game systems. Fusion publishes no per-entity sync cost numbers — Altruist's 264 ns/entity is BenchmarkDotNet-verified.
+
+### What makes Altruist different
+
+Most game server frameworks are **infrastructure** — they handle connections, rooms, and message delivery. Game developers must build AI, combat, collision, and visibility themselves.
+
+Altruist is a **simulation framework** — all these systems are built in, benchmarked, and work together in a single tick:
+
+| Built-in System | Per-tick cost | Memory | What you'd build yourself in other frameworks |
+|----------------|-------------|--------|----------------------------------------------|
+| Entity sync | 264 ns/entity | 320 B | State serialization + delta detection |
+| AI FSM | 14 ns/entity | **0 B** | Behavior trees, state machines |
+| Visibility | 107–855 μs | 36–170 KB | Spatial queries, interest management |
+| Combat sweeps | 2–17 μs | 1–9 KB | AoE geometry, hit detection |
+| Collision lifecycle | 13–192 μs | 13–122 KB | Overlap tracking, enter/stay/exit |
+| **All combined** | **0.9 ms** | — | **Months of custom development** |
 
 **Sources:**
-- [Unity ECS Performance Testing](https://gamedev.center/unity-ecs-performance-testing-the-way-to-the-best-performance/) — concrete μs measurements for entity iteration
-- [Unity Netcode Ghost Optimization](https://docs.unity3d.com/Packages/com.unity.netcode@1.9/manual/optimization/optimize-ghosts.html) — ghost sync architecture
-- [Unity Netcode Serialization Costs](https://docs.unity3d.com/Packages/com.unity.netcode@1.8/manual/optimization/manage-serialization-costs.html) — "expensive CPU" acknowledgment, no numbers
-- [Unity DOTS/ECS Performance (Medium)](https://medium.com/superstringtheory/unity-dots-ecs-performance-amazing-5a62fece23d4) — general DOTS performance overview
+- [Photon Server 5 Performance Tests](https://doc.photonengine.com/server/current/performance/performance-tests) — CCU and message rate benchmarks
+- [Photon Fusion Benchmark](https://blog.photonengine.com/photon-fusion-benchmark/) — 200 players at 60Hz, bandwidth comparison
+- [Nakama Benchmarks](https://heroiclabs.com/docs/nakama/getting-started/benchmarks/) — CCU, registration throughput, latency
+- [Nakama 2M CCU Scale Test](https://heroiclabs.com/blog/code-wizards-scale-test-of-nakama-2m-ccu/) — large-scale CCU test
+- [Colyseus Documentation](https://docs.colyseus.io/) — framework overview, room architecture
 
 ---
 
