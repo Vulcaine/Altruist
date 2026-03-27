@@ -58,7 +58,7 @@ namespace Altruist.Gaming.TwoD
             var clientId = observer.ClientId;
             var pos = observer.Transform.Position;
 
-            var currentlyVisible = new HashSet<string>();
+            var currentlyVisible = AltruistPool.RentHashSet<string>();
             float rangeSq = ViewRange * ViewRange;
 
             foreach (var target in allObjects)
@@ -95,7 +95,7 @@ namespace Altruist.Gaming.TwoD
                 }
             }
 
-            var toRemove = new List<string>();
+            var toRemove = AltruistPool.RentList<string>();
             foreach (var instanceId in previouslyVisible)
             {
                 if (!currentlyVisible.Contains(instanceId))
@@ -116,6 +116,9 @@ namespace Altruist.Gaming.TwoD
 
             foreach (var id in toRemove)
                 previouslyVisible.Remove(id);
+
+            AltruistPool.ReturnHashSet(currentlyVisible);
+            AltruistPool.ReturnList(toRemove);
         }
 
         public void RefreshObserver(string clientId)

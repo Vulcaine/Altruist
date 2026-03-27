@@ -164,7 +164,7 @@ namespace Altruist.Gaming.ThreeD
         {
             try
             {
-                var objectsToSync = new List<IWorldObject3D>();
+                var objectsToSync = AltruistPool.RentList<IWorldObject3D>();
 
                 foreach (var obj in world.FindAllObjects<IWorldObject3D>())
                 {
@@ -194,6 +194,8 @@ namespace Altruist.Gaming.ThreeD
                     try { SyncObjectFromPhysics(obj); }
                     catch { }
                 }
+
+                AltruistPool.ReturnList(objectsToSync);
             }
             catch { }
         }

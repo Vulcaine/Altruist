@@ -94,9 +94,9 @@ namespace Altruist.Gaming.TwoD
 
         public void Step(float deltaTime)
         {
-            var steppedEngines = new HashSet<object>();
-            var enginesToStep = new List<IPhysxWorld2D>();
-            var objectsToSync = new List<IWorldObject2D>();
+            var steppedEngines = AltruistPool.RentHashSet<object>();
+            var enginesToStep = AltruistPool.RentList<IPhysxWorld2D>();
+            var objectsToSync = AltruistPool.RentList<IWorldObject2D>();
 
             foreach (var world in _worlds.Values)
             {
@@ -181,6 +181,10 @@ namespace Altruist.Gaming.TwoD
                 try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
                 catch { }
             }
+
+            AltruistPool.ReturnHashSet(steppedEngines);
+            AltruistPool.ReturnList(enginesToStep);
+            AltruistPool.ReturnList(objectsToSync);
         }
 
         private static void SyncObjectFromPhysics(IWorldObject2D obj)
