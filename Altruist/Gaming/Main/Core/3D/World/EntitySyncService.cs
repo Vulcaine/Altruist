@@ -77,22 +77,12 @@ public sealed class EntitySyncService : IEntitySyncService
 
     private async Task SendSyncData(ISynchronizedEntity entity, ITypelessWorldObject worldObj)
     {
-        var (changeMasks, maskCount, changedProperties) = Synchronization.GetChangedData(
+        using var changes = Synchronization.GetSyncChanges(
             entity, entity.ClientId, AltruistEngine.CurrentTick);
 
-        // Check for changes without LINQ
-        bool anyChanges = false;
-        for (int i = 0; i < maskCount; i++)
-        {
-            if (changeMasks[i] != 0) { anyChanges = true; break; }
-        }
+        if (!changes.HasChanges) return;
 
-        // Return rented array to pool
-        System.Buffers.ArrayPool<ulong>.Shared.Return(changeMasks);
-
-        if (!anyChanges) return;
-
-        var syncData = new SyncPacket(entity.GetType().Name, changedProperties);
+        var syncData = new SyncPacket(entity.GetType().Name, changes.Data);
 
         if (_clientSender != null)
         {

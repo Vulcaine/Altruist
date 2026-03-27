@@ -109,11 +109,63 @@ public sealed class SyncedProperty
     }
 }
 
+/// <summary>
+/// Zero-allocation change map returned by Synchronization.GetChangedData.
+/// Wraps the pooled per-entity dictionary — caller must NOT hold a reference after the next GetChangedData call.
+/// The masks array is rented from ArrayPool and must be returned by the caller.
+/// </summary>
+public struct SyncChangeMap : IDisposable
+{
+    public ulong[] Masks;
+    public int MaskCount;
+    public Dictionary<string, object?> Data;
+    public bool HasChanges;
+
+    /// <summary>Return the rented masks array to the pool. Call when done with the change map.</summary>
+    public void Dispose()
+    {
+        if (Masks != null)
+        {
+            ArrayPool<ulong>.Shared.Return(Masks);
+            Masks = null!;
+        }
+    }
+}
+
 public static class Synchronization
 {
     private static readonly Dictionary<string, object?[]> _lastSyncedStates = new();
     private static readonly Dictionary<string, Dictionary<string, object?>> _lastSyncedData = new();
     private static readonly ConcurrentDictionary<string, object> _entityLocks = new();
+
+    /// <summary>
+    /// Detect changed [Synced] properties since last call for this entity.
+    /// Returns a SyncChangeMap with zero new allocation (dictionary + masks reused per entity).
+    /// Caller must call Dispose() on the returned map, or use 'using'.
+    /// </summary>
+    public static SyncChangeMap GetSyncChanges<TType>(
+        TType newEntity,
+        string clientId,
+        long currentTick,
+        bool forceAllAsChanged = false
+    ) where TType : ISynchronizedEntity
+    {
+        var (masks, maskCount, data) = GetChangedData(newEntity, clientId, currentTick, forceAllAsChanged);
+
+        bool hasChanges = false;
+        for (int i = 0; i < maskCount; i++)
+        {
+            if (masks[i] != 0) { hasChanges = true; break; }
+        }
+
+        return new SyncChangeMap
+        {
+            Masks = masks,
+            MaskCount = maskCount,
+            Data = data,
+            HasChanges = hasChanges,
+        };
+    }
 
     public static (ulong[] Masks, int MaskCount, Dictionary<string, object?> ChangedData) GetChangedData<TType>(
         TType newEntity,

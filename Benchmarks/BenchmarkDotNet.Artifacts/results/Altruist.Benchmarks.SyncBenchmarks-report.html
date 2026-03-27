@@ -2,7 +2,7 @@
 <html lang='en'>
 <head>
 <meta charset='utf-8' />
-<title>Altruist.Benchmarks.SyncBenchmarks-20260327-201742</title>
+<title>Altruist.Benchmarks.SyncBenchmarks-20260327-204307</title>
 
 <style type="text/css">
 	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
@@ -17,19 +17,28 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
 Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
 .NET SDK 9.0.304
   [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
-  Job-LGNPJR : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-LIIQXQ : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  ShortRun   : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
 </code></pre>
-<pre><code>IterationCount=20  WarmupCount=5  
-</code></pre>
+<pre><code></code></pre>
 
 <table>
-<thead><tr><th>Method                                   </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
+<thead><tr><th>Method                                   </th><th>Job </th><th>IterationCount</th><th>LaunchCount</th><th>WarmupCount</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
 </tr>
-</thead><tbody><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>197.95 ns</td><td>3.631 ns</td><td>3.885 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>249.15 ns</td><td>7.330 ns</td><td>8.147 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>362.96 ns</td><td>9.689 ns</td><td>11.158 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>372.34 ns</td><td>6.105 ns</td><td>7.030 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>17.34 ns</td><td>1.073 ns</td><td>1.192 ns</td><td>0.0099</td><td>104 B</td>
+</thead><tbody><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>Job-LIIQXQ</td><td>20</td><td>Default</td><td>5</td><td>197.90 ns</td><td>1.718 ns</td><td>1.838 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>Job-LIIQXQ</td><td>20</td><td>Default</td><td>5</td><td>237.88 ns</td><td>3.387 ns</td><td>3.764 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>Job-LIIQXQ</td><td>20</td><td>Default</td><td>5</td><td>348.68 ns</td><td>2.141 ns</td><td>2.466 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>Job-LIIQXQ</td><td>20</td><td>Default</td><td>5</td><td>363.69 ns</td><td>2.241 ns</td><td>2.580 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetSyncChanges - struct API (no changes)&#39;</td><td>Job-LIIQXQ</td><td>20</td><td>Default</td><td>5</td><td>196.66 ns</td><td>2.837 ns</td><td>3.268 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetSyncChanges - position changed&#39;</td><td>Job-LIIQXQ</td><td>20</td><td>Default</td><td>5</td><td>249.02 ns</td><td>2.613 ns</td><td>2.904 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>Job-LIIQXQ</td><td>20</td><td>Default</td><td>5</td><td>16.63 ns</td><td>0.924 ns</td><td>1.064 ns</td><td>0.0099</td><td>104 B</td>
+</tr><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>201.73 ns</td><td>71.098 ns</td><td>3.897 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>238.72 ns</td><td>31.644 ns</td><td>1.735 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>361.48 ns</td><td>53.357 ns</td><td>2.925 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>362.40 ns</td><td>27.986 ns</td><td>1.534 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetSyncChanges - struct API (no changes)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>199.22 ns</td><td>48.908 ns</td><td>2.681 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetSyncChanges - position changed&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>235.37 ns</td><td>37.792 ns</td><td>2.072 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>15.36 ns</td><td>4.490 ns</td><td>0.246 ns</td><td>0.0099</td><td>104 B</td>
 </tr></tbody></table>
 </body>
 </html>

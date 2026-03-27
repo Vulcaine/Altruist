@@ -97,6 +97,20 @@ public class SyncBenchmarks
         System.Buffers.ArrayPool<ulong>.Shared.Return(masks);
     }
 
+    [Benchmark(Description = "GetSyncChanges - struct API (no changes)")]
+    public void SyncChangesNoChanges()
+    {
+        using var changes = Synchronization.GetSyncChanges(_entity, _clientId, 100);
+    }
+
+    [Benchmark(Description = "GetSyncChanges - position changed")]
+    public void SyncChangesPosition()
+    {
+        _entity.X++;
+        _entity.Y++;
+        using var changes = Synchronization.GetSyncChanges(_entity, _clientId, 100);
+    }
+
     [Benchmark(Description = "SyncMetadata lookup (cached)")]
     public void MetadataLookup()
     {
