@@ -2,7 +2,7 @@
 <html lang='en'>
 <head>
 <meta charset='utf-8' />
-<title>Altruist.Benchmarks.SyncBenchmarks-20260327-192142</title>
+<title>Altruist.Benchmarks.SyncBenchmarks-20260327-200302</title>
 
 <style type="text/css">
 	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
@@ -17,19 +17,24 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
 Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
 .NET SDK 9.0.304
   [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
-  Job-ESUBKE : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-VJJISO : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  ShortRun   : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
 </code></pre>
-<pre><code>IterationCount=20  WarmupCount=5  
-</code></pre>
+<pre><code></code></pre>
 
 <table>
-<thead><tr><th>Method                                   </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
+<thead><tr><th>Method                                   </th><th>Job </th><th>IterationCount</th><th>LaunchCount</th><th>WarmupCount</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
 </tr>
-</thead><tbody><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>196.83 ns</td><td>3.835 ns</td><td>4.416 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>263.26 ns</td><td>3.442 ns</td><td>3.826 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>360.48 ns</td><td>5.222 ns</td><td>5.804 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>363.45 ns</td><td>3.388 ns</td><td>3.766 ns</td><td>0.0305</td><td>320 B</td>
-</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>16.13 ns</td><td>0.417 ns</td><td>0.463 ns</td><td>0.0099</td><td>104 B</td>
+</thead><tbody><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>Job-VJJISO</td><td>20</td><td>Default</td><td>5</td><td>198.36 ns</td><td>5.466 ns</td><td>6.295 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>Job-VJJISO</td><td>20</td><td>Default</td><td>5</td><td>237.22 ns</td><td>3.052 ns</td><td>3.392 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>Job-VJJISO</td><td>20</td><td>Default</td><td>5</td><td>347.13 ns</td><td>2.034 ns</td><td>2.260 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>Job-VJJISO</td><td>20</td><td>Default</td><td>5</td><td>370.84 ns</td><td>2.496 ns</td><td>2.775 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>Job-VJJISO</td><td>20</td><td>Default</td><td>5</td><td>15.87 ns</td><td>0.250 ns</td><td>0.246 ns</td><td>0.0099</td><td>104 B</td>
+</tr><tr><td>&#39;GetChangedData - no changes (SyncAlways only)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>201.71 ns</td><td>9.727 ns</td><td>0.533 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - position changed (X+Y)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>237.35 ns</td><td>53.418 ns</td><td>2.928 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - all properties changed&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>353.99 ns</td><td>13.082 ns</td><td>0.717 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;GetChangedData - forceAll (full resync)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>370.61 ns</td><td>7.212 ns</td><td>0.395 ns</td><td>0.0305</td><td>320 B</td>
+</tr><tr><td>&#39;SyncMetadata lookup (cached)&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>3</td><td>16.31 ns</td><td>13.618 ns</td><td>0.746 ns</td><td>0.0099</td><td>104 B</td>
 </tr></tbody></table>
 </body>
 </html>

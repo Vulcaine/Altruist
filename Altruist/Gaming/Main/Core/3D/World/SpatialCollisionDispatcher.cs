@@ -35,15 +35,19 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
 {
     private readonly ILogger _logger;
 
-    // Active entity-entity overlaps: ordered (idA, idB) -> (objA, objB)
-    private readonly ConcurrentDictionary<(string, string), (object, object)> _activeOverlaps = new();
+    // Active entity-entity overlaps: long hash key -> (objA, objB)
+    // Uses combined hash of ordered InstanceIds to avoid tuple allocation
+    private readonly ConcurrentDictionary<long, (object, object)> _activeOverlaps = new();
+
+    // Reverse index: entity instanceId -> set of pair hashes it participates in
+    private readonly ConcurrentDictionary<string, HashSet<long>> _entityPairs = new();
 
     // Entity -> current zone name + zone object (for zone enter/exit)
     private readonly ConcurrentDictionary<string, (string ZoneName, object ZoneObj)> _entityZones = new();
 
-    // Reusable per-tick scratch collections
-    private readonly HashSet<(string, string)> _currentOverlaps = new();
-    private readonly List<(string, string)> _exitBuffer = new();
+    // Reusable per-tick scratch collections — long keys avoid tuple allocation
+    private readonly HashSet<long> _currentOverlaps = new();
+    private readonly List<long> _exitBuffer = new();
 
     // Spatial broadphase grid for O(n) instead of O(n²) pair detection
     private readonly SpatialHashGrid _grid = new(cellSize: 300f);
@@ -124,12 +128,13 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
                 if (dx * dx + dy * dy + dz * dz > totalRadius * totalRadius)
                     continue;
 
-                var pair = OrderPair(objA.InstanceId, objB.InstanceId);
+                var pair = PairHash(objA.InstanceId, objB.InstanceId);
                 _currentOverlaps.Add(pair);
 
                 if (!_activeOverlaps.ContainsKey(pair))
                 {
                     _activeOverlaps[pair] = (objA, objB);
+                    TrackPair(objA.InstanceId, objB.InstanceId, pair);
                     Dispatch(objA, objB, typeof(CollisionEnter));
                 }
                 else
@@ -151,7 +156,10 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
             }
         }
         for (int i = 0; i < _exitBuffer.Count; i++)
+        {
             _activeOverlaps.TryRemove(_exitBuffer[i], out _);
+            UntrackPair(_exitBuffer[i]);
+        }
 
         // -- Entity <-> Zone detection --
         TickZoneOverlaps(world, allObjects);
@@ -192,20 +200,29 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         }
     }
 
+    private void TrackPair(string idA, string idB, long pairHash)
+    {
+        _entityPairs.GetOrAdd(idA, static _ => new HashSet<long>()).Add(pairHash);
+        _entityPairs.GetOrAdd(idB, static _ => new HashSet<long>()).Add(pairHash);
+    }
+
+    private void UntrackPair(long pairHash)
+    {
+        // Clean reverse index when pair exits
+        foreach (var (_, pairSet) in _entityPairs)
+            pairSet.Remove(pairHash);
+    }
+
     /// <summary>Remove tracking for a destroyed entity.</summary>
     public void RemoveEntity(string instanceId)
     {
         _entityZones.TryRemove(instanceId, out _);
 
-        // Reuse exit buffer for removal
-        _exitBuffer.Clear();
-        foreach (var key in _activeOverlaps.Keys)
+        if (_entityPairs.TryRemove(instanceId, out var pairs))
         {
-            if (key.Item1 == instanceId || key.Item2 == instanceId)
-                _exitBuffer.Add(key);
+            foreach (var pairHash in pairs)
+                _activeOverlaps.TryRemove(pairHash, out _);
         }
-        for (int i = 0; i < _exitBuffer.Count; i++)
-            _activeOverlaps.TryRemove(_exitBuffer[i], out _);
     }
 
     /// <summary>
@@ -229,6 +246,23 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         return defaultRadius;
     }
 
-    private static (string, string) OrderPair(string a, string b)
-        => string.CompareOrdinal(a, b) <= 0 ? (a, b) : (b, a);
+    /// <summary>
+    /// Produces a deterministic long hash for an ordered pair of instance IDs.
+    /// Avoids string tuple allocation. Collision probability is negligible for game entity counts.
+    /// </summary>
+    private static long PairHash(string a, string b)
+    {
+        int ha, hb;
+        if (string.CompareOrdinal(a, b) <= 0)
+        {
+            ha = a.GetHashCode();
+            hb = b.GetHashCode();
+        }
+        else
+        {
+            ha = b.GetHashCode();
+            hb = a.GetHashCode();
+        }
+        return ((long)ha << 32) | (uint)hb;
+    }
 }
