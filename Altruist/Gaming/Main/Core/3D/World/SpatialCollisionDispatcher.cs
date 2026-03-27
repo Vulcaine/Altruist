@@ -45,6 +45,10 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
     private readonly HashSet<(string, string)> _currentOverlaps = new();
     private readonly List<(string, string)> _exitBuffer = new();
 
+    // Spatial broadphase grid for O(n) instead of O(n²) pair detection
+    private readonly SpatialHashGrid _grid = new(cellSize: 300f);
+    private readonly List<int> _nearbyBuffer = new(64);
+
     public int HandlerCount => CollisionHandlerRegistry.TotalHandlerCount;
 
     public SpatialCollisionDispatcher(ILoggerFactory loggerFactory)
@@ -82,15 +86,24 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         _currentOverlaps.Clear();
         var (allObjects, _) = world.GetCachedSnapshot();
 
-        // -- Entity <-> Entity overlap detection --
+        // Build spatial broadphase grid (O(n)) — avoids O(n²) pair checking
+        _grid.Build(allObjects);
+
+        // -- Entity <-> Entity overlap detection via broadphase --
         for (int i = 0; i < allObjects.Count; i++)
         {
             var objA = allObjects[i];
             var posA = objA.Transform.Position;
             var radiusA = GetColliderRadius(objA, collisionRadius);
 
-            for (int j = i + 1; j < allObjects.Count; j++)
+            // Query only nearby entities from the spatial grid
+            _grid.QueryRadius(posA.X, posA.Y, MathF.Max(radiusA, collisionRadius), _nearbyBuffer);
+
+            for (int n = 0; n < _nearbyBuffer.Count; n++)
             {
+                var j = _nearbyBuffer[n];
+                if (j <= i) continue; // Avoid duplicate pairs (same as j = i + 1)
+
                 var objB = allObjects[j];
 
                 // Layer filtering: entities only collide if their layers overlap

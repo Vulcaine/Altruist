@@ -14,6 +14,7 @@ namespace Altruist;
 public static class PacketContext
 {
     private static readonly AsyncLocal<byte[]?> _currentRawData = new();
+    private static readonly AsyncLocal<long> _clientTick = new();
 
     /// <summary>
     /// Raw bytes of the current packet being processed.
@@ -21,6 +22,24 @@ public static class PacketContext
     /// </summary>
     public static byte[]? RawData => _currentRawData.Value;
 
+    /// <summary>
+    /// The client's perceived engine tick at the time the packet was sent.
+    /// Set automatically by the framework for packets implementing ILagCompensated.
+    /// 0 = no lag compensation (use current server tick).
+    /// </summary>
+    public static long ClientTick => _clientTick.Value;
+
     internal static void Set(byte[]? data) => _currentRawData.Value = data;
-    internal static void Clear() => _currentRawData.Value = null;
+
+    /// <summary>
+    /// Set the client tick for lag compensation. Called automatically by the framework
+    /// when a decoded packet implements ILagCompensated, or manually by custom framers.
+    /// </summary>
+    public static void SetClientTick(long tick) => _clientTick.Value = tick;
+
+    internal static void Clear()
+    {
+        _currentRawData.Value = null;
+        _clientTick.Value = 0;
+    }
 }

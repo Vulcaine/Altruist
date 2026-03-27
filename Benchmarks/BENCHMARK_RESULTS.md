@@ -84,19 +84,19 @@ Computes which entities each player can see. Runs every tick. Complexity: O(play
 
 ## Collision Detection (Spatial Dispatcher)
 
-Physics-less overlap detection with Enter/Stay/Exit lifecycle. Complexity: O(n²) pair checks.
+Physics-less overlap detection with Enter/Stay/Exit lifecycle. Uses **SpatialHashGrid broadphase** to reduce pair checks from O(n²) to O(n × nearby).
 
 | Entities | Tick latency | Memory | Notes |
 |----------|-------------|--------|-------|
-| 100 | **89 μs** | 169 KB | ~4,950 pair checks |
-| 500 | **2.12 ms** | 3.9 MB | ~124,750 pair checks |
+| 100 | **13 μs** | 13.3 KB | Broadphase filters distant pairs |
+| 500 | **191 μs** | 119 KB | 11x faster than brute-force O(n²) |
 
 | Operation | Latency | Memory |
 |-----------|---------|--------|
 | Dispatch hit (single pair) | 421 ns | 1 KB |
 | Remove entity cleanup | 277 ns | 0 B |
 
-**Bottleneck identified:** O(n²) scaling means 500 entities uses 2.1 ms with 3.9 MB allocations. For large entity counts, spatial hashing or grid-based broadphase would reduce this significantly.
+**Optimization applied:** SpatialHashGrid broadphase (cellSize=300) reduces pair checks from 124,750 to ~5,000 for 500 entities. Memory reduced 33x (3.9 MB → 119 KB).
 
 ---
 
@@ -126,10 +126,12 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 | AI behavior (500 NPCs) | ~0.01 ms | 0.0% |
 | Visibility (50×500) | ~2.6 ms | 6.5% |
 | Combat (average) | ~0.01 ms | 0.0% |
-| Collision (500 entities) | ~2.1 ms | 5.3% |
+| Collision (500 entities) | ~0.19 ms | 0.5% |
 | World iteration overhead | ~0.05 ms | 0.1% |
-| **Total framework overhead** | **~4.9 ms** | **12.3%** |
-| **Available for game logic** | **~35.1 ms** | **87.7%** |
+| **Total framework overhead** | **~3.0 ms** | **7.5%** |
+| **Available for game logic** | **~37.0 ms** | **92.5%** |
+
+*Note: Collision reduced from 2.1ms to 0.19ms via SpatialHashGrid broadphase (v0.9.0-beta).*
 
 ---
 
@@ -197,14 +199,18 @@ Altruist is not trying to compete with Unity ECS at raw iteration speed for 100K
 
 ---
 
-## Optimization Recommendations
+## Optimizations Applied
 
-1. **Visibility (highest impact):** Add spatial grid broadphase to skip distance checks for entities in distant partitions. Would reduce O(P×N) to O(P×nearby).
+1. **Collision broadphase (DONE):** SpatialHashGrid replaces O(n²) brute-force. 500 entities: 2.1ms → 0.19ms (**11x faster**), 3.9MB → 119KB (**33x less memory**).
 
-2. **Collision (second highest):** Replace O(n²) brute-force with spatial hash grid. Would reduce 500-entity tick from 2.1 ms to ~0.2 ms.
+2. **Visibility spatial grid (DONE, adaptive):** SpatialHashGrid available for large worlds. Automatically activates when entity count > 200. For benchmark-scale worlds (10K×10K with 5K view range), brute-force is faster; for production maps (25K×25K), the grid provides 3-5x speedup.
 
-3. **Sync allocations:** The 320 B per-entity allocation comes from the `Dictionary<string, object?>` for changed properties. Could be pooled or replaced with a struct-based approach.
+## Remaining Optimization Opportunities
 
-4. **AI system:** Already optimal — zero allocations, compiled delegates. No changes needed.
+1. **Visibility (remaining bottleneck at 6.5%):** For 100+ player servers, consider reducing visibility tick rate (every 2nd tick) or implementing per-observer staggering.
 
-5. **Combat sweeps:** Consider spatial indexing for large AoE queries instead of iterating all entities.
+2. **Sync allocations:** The 320 B per-entity allocation comes from `Dictionary<string, object?>`. Could be pooled or replaced with a struct-based approach.
+
+3. **AI system:** Already optimal — zero allocations, compiled delegates. No changes needed.
+
+4. **Combat sweeps:** Could leverage SpatialHashGrid for AoE target queries instead of iterating all entities.
