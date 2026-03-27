@@ -13,7 +13,7 @@ namespace Altruist.Benchmarks;
 /// Sweep is the most expensive combat operation — spatial queries over all entities.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 3, iterationCount: 5)]
+[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class CombatBenchmarks
 {
     private CombatService _combat = null!;

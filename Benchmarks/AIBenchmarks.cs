@@ -9,7 +9,7 @@ namespace Altruist.Benchmarks;
 /// Measures: FSM tick (compiled delegates), state transitions, discovery.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 3, iterationCount: 5)]
+[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class AIBenchmarks
 {
     private AIStateMachine _fsm = null!;
