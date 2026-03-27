@@ -144,7 +144,8 @@ public static class Synchronization
 
             if (!_lastSyncedData.TryGetValue(clientId, out var changedData))
             {
-                changedData = new Dictionary<string, object?>();
+                // Pre-size to property count — avoids resize allocations on subsequent .Clear() + re-add
+                changedData = new Dictionary<string, object?>(count);
                 _lastSyncedData[clientId] = changedData;
             }
             else
