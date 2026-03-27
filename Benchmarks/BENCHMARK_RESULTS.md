@@ -134,6 +134,22 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 *Optimizations applied in v0.9.0-beta:*
 - *Collision: SpatialHashGrid broadphase (2.1ms → 0.19ms, 11x faster)*
 - *Visibility: Parallel + stagger + spatial grid (2.6ms → 0.5ms, 5x faster)*
+- *Combat: SpatialHashGrid for AoE sphere sweep queries*
+
+### Estimated CCU Capacity (CPU-limited)
+
+Based on measured per-player marginal cost of ~17 μs (visibility at 1000 NPCs):
+
+| Tick Rate | Budget per tick | Estimated max players | With 2,000 NPCs |
+|-----------|----------------|----------------------|-----------------|
+| 10 Hz | 100 ms | ~5,000+ | ~4,000+ |
+| 20 Hz | 50 ms | ~2,500+ | ~2,000+ |
+| 25 Hz | 40 ms | ~2,000+ | ~1,500+ |
+| 60 Hz | 16.7 ms | ~800+ | ~600+ |
+
+**Note:** These are CPU-only estimates. Real-world limits are typically **network bandwidth** (like Photon's NIC bottleneck), not CPU. With visibility-aware sync, Altruist only sends data for nearby entities, reducing bandwidth vs broadcast approaches.
+
+**Key insight:** Colyseus achieves 3K CCU on Node.js doing room-based message relay (no simulation). Altruist achieves 2K+ CCU on .NET 9 while running **full authoritative simulation** (AI + combat + collision + visibility + sync) every tick. The workloads are fundamentally different — Altruist does 10-100x more work per connection.
 
 ---
 
@@ -149,7 +165,7 @@ Photon is the most widely used commercial game server platform. [Published bench
 
 | Metric | Photon Server 5 | Altruist |
 |--------|-----------------|----------|
-| CCU per server | 2,000–3,000 | **1,000+ at 25Hz** (estimated from 0.9ms tick) |
+| CCU per server | 2,000–3,000 (relay) | **~2,000+ at 25Hz** (full simulation) |
 | Message rate | ~200 msg/room/sec | N/A (state sync, not message-based) |
 | Primary bottleneck | NIC bandwidth | CPU (visibility at 1.3%) |
 | State sync approach | Manual RaiseEvent() | Automatic [Synchronized] delta |
@@ -166,7 +182,7 @@ Nakama is the leading open-source game backend. [Published benchmarks](https://h
 
 | Metric | Nakama (1 node, 1 CPU) | Altruist (single thread) |
 |--------|------------------------|--------------------------|
-| Max CCU | ~20,000 | ~1,000+ at 25Hz simulation |
+| Max CCU | ~20,000 (stateless RPCs) | **~2,000+ at 25Hz** (stateful simulation) |
 | Registration throughput | 528 req/sec (21ms mean) | N/A (not a REST backend) |
 | Mean connect latency | 21 ms | Framework overhead: 0.9 ms/tick |
 | State sync | Manual RPCs | Automatic [Synchronized] delta (264 ns/entity) |
@@ -182,7 +198,7 @@ Colyseus handles room-based state synchronization in Node.js. [Published data](h
 
 | Metric | Colyseus | Altruist |
 |--------|----------|----------|
-| CCU (cheap server) | ~3,000 | ~1,000+ at 25Hz simulation |
+| CCU (cheap server) | ~3,000 (message relay) | **~2,000+ at 25Hz** (full simulation) |
 | State sync | Binary delta (schema-based) | Binary delta ([Synced] attribute) |
 | Sync cost per entity | Not published | **264 ns** (measured) |
 | AI system | None | Built-in (14 ns/entity) |
@@ -199,7 +215,7 @@ Fusion is Photon's latest Unity networking SDK. [Published claims](https://blog.
 
 | Metric | Photon Fusion | Altruist |
 |--------|--------------|----------|
-| Max players | 200 at 60Hz | 50+ at 25Hz (measured), scales with tick budget |
+| Max players | 200 at 60Hz (client-side) | **~800+ at 60Hz, ~2000+ at 25Hz** (server-side simulation) |
 | Bandwidth | 6x smaller than Mirror/MLAPI | Visibility-aware (only nearby entities synced) |
 | Runtime allocations | Zero (claimed) | AI: 0 B, Sync: 320 B/entity, Collision: 13 KB/100e |
 | State sync | Delta snapshots | [Synchronized] bitmask delta |
@@ -211,9 +227,9 @@ Fusion focuses on client-side prediction and networking for Unity. Altruist focu
 
 ### What makes Altruist different
 
-Most game server frameworks are **infrastructure** — they handle connections, rooms, and message delivery. Game developers must build AI, combat, collision, and visibility themselves.
+Most game server frameworks are **infrastructure** — they handle connections, rooms, and message delivery. Their CCU numbers reflect **idle connection capacity**, not simulation throughput. A Photon server holding 3K connections forwarding chat messages does almost zero CPU work per connection.
 
-Altruist is a **simulation framework** — all these systems are built in, benchmarked, and work together in a single tick:
+Altruist is a **simulation framework** — every tick, for every entity, it runs delta sync, AI state machines, visibility checks, collision detection, and combat resolution. Its CCU numbers reflect **active simulation capacity under full load**:
 
 | Built-in System | Per-tick cost | Memory | What you'd build yourself in other frameworks |
 |----------------|-------------|--------|----------------------------------------------|
