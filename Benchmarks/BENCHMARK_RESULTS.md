@@ -63,14 +63,14 @@ Single-target attacks and AoE sweep queries. Sweeps iterate all entities in the 
 
 ## Visibility Tracking
 
-Computes which entities each player can see. Runs every tick. Complexity: O(players × entities).
+Computes which entities each player can see. Uses **parallel per-observer computation** and **tick staggering** (8+ observers: half processed per tick, alternating).
 
 | Players | NPCs | Tick latency | Memory | Per-player cost |
 |---------|------|-------------|--------|-----------------|
-| 10 | 100 | **153 μs** | 35 KB | 15 μs |
-| 10 | 1,000 | **1.13 ms** | 205 KB | 113 μs |
-| 50 | 100 | **736 μs** | 55 KB | 15 μs |
-| 50 | 1,000 | **5.23 ms** | 198 KB | 105 μs |
+| 10 | 100 | **107 μs** | 36 KB | 11 μs |
+| 10 | 1,000 | **429 μs** | 170 KB | 43 μs |
+| 50 | 100 | **187 μs** | 43 KB | 4 μs |
+| 50 | 1,000 | **855 μs** | 133 KB | 17 μs |
 
 | Lookup Operation | Latency | Memory |
 |-----------------|---------|--------|
@@ -78,7 +78,7 @@ Computes which entities each player can see. Runs every tick. Complexity: O(play
 | Get all observers of entity (10 players) | 229 ns | 128 B |
 | Get all observers of entity (50 players) | 1.22 μs | 128 B |
 
-**Bottleneck identified:** Visibility is the most expensive per-tick operation. At 50 players × 1000 NPCs, it consumes 5.2 ms per tick (13% of a 40ms budget). For servers with 100+ players, consider spatial partitioning optimization or reducing tick rate for visibility.
+**Optimizations applied:** Parallel.For for 4+ observers (independent per-observer), tick staggering for 8+ observers (half per tick), adaptive SpatialHashGrid for 200+ entities. Combined: **6.1x faster** for 50 players × 1000 NPCs (5.23ms → 0.86ms).
 
 ---
 
@@ -124,14 +124,16 @@ Estimated per-tick cost for a typical game server (50 players, 500 NPCs, 25 Hz):
 |--------|-------------|-------------------|
 | Entity sync (550 entities) | ~0.15 ms | 0.4% |
 | AI behavior (500 NPCs) | ~0.01 ms | 0.0% |
-| Visibility (50×500) | ~2.6 ms | 6.5% |
+| Visibility (50×500) | ~0.5 ms | 1.3% |
 | Combat (average) | ~0.01 ms | 0.0% |
 | Collision (500 entities) | ~0.19 ms | 0.5% |
 | World iteration overhead | ~0.05 ms | 0.1% |
-| **Total framework overhead** | **~3.0 ms** | **7.5%** |
-| **Available for game logic** | **~37.0 ms** | **92.5%** |
+| **Total framework overhead** | **~0.9 ms** | **2.3%** |
+| **Available for game logic** | **~39.1 ms** | **97.7%** |
 
-*Note: Collision reduced from 2.1ms to 0.19ms via SpatialHashGrid broadphase (v0.9.0-beta).*
+*Optimizations applied in v0.9.0-beta:*
+- *Collision: SpatialHashGrid broadphase (2.1ms → 0.19ms, 11x faster)*
+- *Visibility: Parallel + stagger + spatial grid (2.6ms → 0.5ms, 5x faster)*
 
 ---
 
@@ -201,16 +203,16 @@ Altruist is not trying to compete with Unity ECS at raw iteration speed for 100K
 
 ## Optimizations Applied
 
-1. **Collision broadphase (DONE):** SpatialHashGrid replaces O(n²) brute-force. 500 entities: 2.1ms → 0.19ms (**11x faster**), 3.9MB → 119KB (**33x less memory**).
+1. **Collision broadphase:** SpatialHashGrid replaces O(n²) brute-force. 500 entities: 2.1ms → 0.19ms (**11x faster**), 3.9MB → 119KB (**33x less memory**).
 
-2. **Visibility spatial grid (DONE, adaptive):** SpatialHashGrid available for large worlds. Automatically activates when entity count > 200. For benchmark-scale worlds (10K×10K with 5K view range), brute-force is faster; for production maps (25K×25K), the grid provides 3-5x speedup.
+2. **Visibility parallel + stagger:** Parallel.For for per-observer computation (independent work). Tick staggering for 8+ observers (half per tick, alternating). Adaptive SpatialHashGrid for 200+ entities. 50 players × 1000 NPCs: 5.23ms → 0.86ms (**6.1x faster**).
+
+3. **SpatialHashGrid (shared):** Zero-allocation spatial hash with pooled cell lists. Used by both collision and visibility. Built once per tick, queried by all systems.
 
 ## Remaining Optimization Opportunities
 
-1. **Visibility (remaining bottleneck at 6.5%):** For 100+ player servers, consider reducing visibility tick rate (every 2nd tick) or implementing per-observer staggering.
+1. **Sync allocations:** The 320 B per-entity allocation comes from `Dictionary<string, object?>`. Could be pooled or replaced with a struct-based approach.
 
-2. **Sync allocations:** The 320 B per-entity allocation comes from `Dictionary<string, object?>`. Could be pooled or replaced with a struct-based approach.
+2. **AI system:** Already optimal — zero allocations, compiled delegates. No changes needed.
 
-3. **AI system:** Already optimal — zero allocations, compiled delegates. No changes needed.
-
-4. **Combat sweeps:** Could leverage SpatialHashGrid for AoE target queries instead of iterating all entities.
+3. **Combat sweeps:** Could leverage SpatialHashGrid for AoE target queries instead of iterating all entities.
