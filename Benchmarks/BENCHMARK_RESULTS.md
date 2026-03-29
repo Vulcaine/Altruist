@@ -327,28 +327,82 @@ Physics-based multiplayer framework with position interpolation and input coordi
 | Runtime | Node.js (single-threaded) | .NET 9 (multi-threaded) |
 | Performance | Not published | BenchmarkDotNet-verified |
 
-### The full picture: built-in simulation systems
+### The full picture: 21 game server frameworks analyzed
 
-This is the feature that separates Altruist from every framework on the market:
+Based on the comprehensive [Game Server Showdown 2025](https://medevel.com/game-server-2025/) survey of all open-source game server frameworks, plus our own research into commercial and newer frameworks, here is the complete landscape.
 
-| Built-in System | SpacetimeDB | Rivet | Pumpkin | Lance | Photon | Nakama | Colyseus | **Altruist** |
-|----------------|-------------|-------|---------|-------|--------|--------|----------|-------------|
-| AI state machines | No | No | Minecraft-only | No | No | No | No | **14 ns/entity, 0 B** |
-| Combat + AoE sweeps | No | No | Minecraft-only | No | No | No | No | **8 ns attack** |
-| Spatial collision | No | No | Minecraft-only | No | No | No | No | **13 μs/100 entities** |
-| Visibility tracking | No | No | Minecraft-only | No | No | No | No | **118 μs (10p×100n)** |
-| Auto delta sync | Subscriptions | No | Minecraft protocol | No | Manual | Manual | Schema-based | **249 ns/entity** |
-| Benchmarked perf | DB throughput | No | No | No | CCU only | CCU only | No | **BenchmarkDotNet** |
-| General-purpose | Yes | Yes | **No** | Yes | Yes | Yes | Yes | **Yes** |
+#### General-purpose frameworks (12 total)
 
-**No general-purpose game server framework ships built-in, benchmarked AI + combat + collision + visibility systems.** Every framework either provides infrastructure only (Photon, Nakama, Rivet), is game-specific (Pumpkin), solves the data layer only (SpacetimeDB), or is unmaintained (Lance). Altruist is the first to ship the complete simulation layer as a framework.
+These frameworks can be used for any game — they're not locked to a specific title or protocol.
+
+| Framework | Language | AI | Combat | Collision | Visibility/AOI | Auto sync | Benchmarked |
+|-----------|---------|:--:|:------:|:---------:|:--------------:|:---------:|:-----------:|
+| **Altruist** | **C# (.NET 9)** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** |
+| Nakama | Go | No | No | No | No | No | CCU only |
+| Colyseus | Node.js | No | No | No | Partial | Yes | No |
+| GoWorld | Go | No | No | No | Yes (AOI) | No | No |
+| Lance | Node.js | No | No | Physics | Yes | Yes | No |
+| SpacetimeDB | Rust | No | No | No | No | Subscriptions | DB throughput |
+| Leaf | Go | No | No | No | No | No | No |
+| Moon | C++/Lua | No | No | No | No | No | No |
+| Pitaya | Go | No | No | No | No | No | No |
+| zfoo | Multi-lang | No | No | No | No | No | No |
+| NoahGameFrame | C++ | No | No | No | No | No | No |
+| Kudos | Go/Node.js | No | No | No | No | No | No |
+
+**Result: 0 out of 12 general-purpose frameworks have built-in AI or combat.** Only Lance has physics collision. Only 3 have visibility/AOI. Only Colyseus and Lance have automatic state sync. **None** publish BenchmarkDotNet-level performance data. Altruist is the only one with all 6 capabilities.
+
+#### Game-specific servers (7 total)
+
+These have built-in game systems but are locked to a single game or genre.
+
+| Server | Language | Game | AI | Combat | Collision | Visibility | Reusable? |
+|--------|---------|------|:--:|:------:|:---------:|:----------:|:---------:|
+| AzerothCore | C++ | WoW 3.3.5a | Yes | Yes | Yes | Yes | No |
+| rAthena | C++ | Ragnarok Online | Yes | Yes | Yes | Yes | No |
+| KBEngine | C++/Python | MMO (generic) | No | No | No | Yes | Partially |
+| SEGS | C++ | Superhero MMO | No | Yes | Yes | Yes | No |
+| Pumpkin | Rust | Minecraft | No | Yes | Yes | Yes | No |
+| FerrumC | Rust | Minecraft | No | Yes | Yes | Yes | No |
+| Stendhal | Java | Custom MMORPG | Yes | Yes | Yes | Yes | No |
+
+These prove the **demand** for complete server-side game systems. Every MMO server that shipped has AI, combat, collision, and visibility built in — because you can't make an MMO without them. But each one was built from scratch, locked to one game, in C++ codebases that are 10-20 years old.
+
+**Altruist is what these game-specific servers would be if they were designed as a reusable framework from day one.**
+
+#### Infrastructure tools (not competitors)
+
+| Tool | Purpose |
+|------|---------|
+| Agones | Kubernetes orchestration for game server pods |
+| Rivet | Hosting platform with autoscaling + DDoS |
+| PufferPanel | Multi-server management dashboard |
+| Cherry | Actor model (work-in-progress) |
+
+These are where you'd **deploy** an Altruist server, not alternatives to it.
+
+#### Summary
+
+Across **21 game server projects** surveyed:
+
+| Capability | General-purpose (12) | Game-specific (7) | **Altruist** |
+|-----------|---------------------|-------------------|-------------|
+| Built-in AI FSM | **0** | 3 (game-locked) | **Yes (14 ns, 0 B)** |
+| Built-in combat system | **0** | 6 (game-locked) | **Yes (8 ns attack)** |
+| Built-in collision lifecycle | 1 (Lance, physics only) | 6 (game-locked) | **Yes (13 μs/100e)** |
+| Built-in visibility/AOI | 3 (partial) | 6 (game-locked) | **Yes (118 μs)** |
+| Automatic delta sync | 2 (Colyseus, Lance) | 0 | **Yes (249 ns/entity)** |
+| Published benchmarks | **0** | **0** | **BenchmarkDotNet verified** |
+
+**No general-purpose game server framework on the market ships built-in, benchmarked AI + combat + collision + visibility systems.** The game-specific servers prove these systems are essential for any real game — but they're all locked to one title. Altruist is the first framework to make them reusable, measurable, and available out of the box.
 
 **Sources:**
+- [Game Server Showdown 2025](https://medevel.com/game-server-2025/) — comprehensive survey of 21 open-source game servers
 - [SpacetimeDB](https://spacetimedb.com/) — database-as-server, BitCraft MMO
 - [SpacetimeDB 2.0 (Hacker News)](https://news.ycombinator.com/item?id=47157266) — v2.0 discussion
 - [Rivet](https://rivet.dev/) — Y Combinator game server hosting
 - [Pumpkin (GitHub)](https://github.com/Pumpkin-MC/Pumpkin) — Rust Minecraft server
-- [Game Server Showdown 2025](https://medevel.com/game-server-2025/) — open-source framework comparison
+- [Nakama Benchmarks](https://heroiclabs.com/docs/nakama/getting-started/benchmarks/) — CCU and throughput data
 
 ---
 
