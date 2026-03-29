@@ -266,6 +266,92 @@ Altruist is a **simulation framework** — every tick, for every entity, it runs
 
 ---
 
+## Simulation Framework Landscape
+
+The frameworks above (Photon, Nakama, Colyseus, Fusion) are **infrastructure** — they handle connections and data delivery but provide no game simulation systems. A newer generation of frameworks aims to be more complete. Here's how they compare:
+
+### [SpacetimeDB](https://spacetimedb.com/) (Rust — funded, v2.0 released 2026)
+
+The most ambitious competitor. A relational database that IS your game server — you write game logic as "reducers" (functions) that run inside the DB. Tables hold world state, subscriptions auto-push changes to clients. Used by [BitCraft](https://store.steampowered.com/app/2728600/BitCraft/) (MMO on Steam).
+
+| Aspect | SpacetimeDB | Altruist |
+|--------|------------|----------|
+| Architecture | Database-as-server (reducers + tables) | Framework-as-server (world objects + attributes) |
+| State sync | Subscription queries on tables | [Synchronized] attribute delta (249 ns/entity) |
+| Language | Rust (server), C#/TS (client) | C# everywhere (.NET 9) |
+| Built-in AI | No — write your own reducers | Yes — [AIBehavior] FSM (14 ns/entity, 0 alloc) |
+| Built-in combat | No | Yes — ICombatService + sweep queries (8 ns attack) |
+| Built-in collision | No | Yes — SpatialCollisionDispatcher (13 μs/100e) |
+| Built-in visibility | No (subscription filtering only) | Yes — VisibilityTracker3D with parallel + stagger |
+| Performance data | 100K+ transactions/sec (DB ops) | 0.9 ms/tick (full simulation, BenchmarkDotNet) |
+| Pricing | Free tier + $25/mo pro | Open source (Apache 2.0) |
+
+SpacetimeDB solves the **data persistence layer** brilliantly. Altruist solves the **simulation layer**. They're complementary — a production game could use SpacetimeDB for persistence and Altruist for real-time simulation.
+
+### [Rivet](https://rivet.dev/) (Rust — Y Combinator, open source)
+
+Game server hosting infrastructure with autoscaling, DDoS mitigation, and matchmaking. Supports server-authoritative patterns but provides no simulation systems.
+
+| Aspect | Rivet | Altruist |
+|--------|-------|----------|
+| What it is | Hosting platform (deploy + scale) | Simulation framework (game logic) |
+| Built-in AI/Combat/Collision | No | Yes (all benchmarked) |
+| State sync | Bring your own | Built-in [Synchronized] delta |
+| Value proposition | "Deploy game servers easily" | "Build game servers with built-in systems" |
+
+Rivet is where you'd **deploy** an Altruist server. Infrastructure, not simulation.
+
+### [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin) (Rust — open source)
+
+High-performance Minecraft server with combat, AI, and inventory. The closest in spirit to Altruist — it's a complete game server with built-in systems.
+
+| Aspect | Pumpkin | Altruist |
+|--------|---------|----------|
+| Scope | Minecraft-specific server | General-purpose game framework |
+| AI | Minecraft mob AI | Generic [AIBehavior] FSM for any game |
+| Combat | Minecraft combat rules | Pluggable IDamageCalculator + sweep queries |
+| Reusable for other games | No (Minecraft protocol only) | Yes (TCP/UDP/WebSocket, any game) |
+| Language | Rust | C# (.NET 9) |
+
+Pumpkin proves the demand for "complete server with built-in game systems" — but it's locked to one game. Altruist is the general-purpose version.
+
+### [Lance](https://lance.gg/) (Node.js — open source)
+
+Physics-based multiplayer framework with position interpolation and input coordination. Closest to Altruist's vision in the Node.js ecosystem, but largely unmaintained.
+
+| Aspect | Lance | Altruist |
+|--------|-------|----------|
+| Status | Minimal maintenance | Active development |
+| Physics | Built-in (matter.js) | Optional (Box2D/BEPU) |
+| AI/Combat/Collision | No | Yes (all built-in) |
+| Runtime | Node.js (single-threaded) | .NET 9 (multi-threaded) |
+| Performance | Not published | BenchmarkDotNet-verified |
+
+### The full picture: built-in simulation systems
+
+This is the feature that separates Altruist from every framework on the market:
+
+| Built-in System | SpacetimeDB | Rivet | Pumpkin | Lance | Photon | Nakama | Colyseus | **Altruist** |
+|----------------|-------------|-------|---------|-------|--------|--------|----------|-------------|
+| AI state machines | No | No | Minecraft-only | No | No | No | No | **14 ns/entity, 0 B** |
+| Combat + AoE sweeps | No | No | Minecraft-only | No | No | No | No | **8 ns attack** |
+| Spatial collision | No | No | Minecraft-only | No | No | No | No | **13 μs/100 entities** |
+| Visibility tracking | No | No | Minecraft-only | No | No | No | No | **118 μs (10p×100n)** |
+| Auto delta sync | Subscriptions | No | Minecraft protocol | No | Manual | Manual | Schema-based | **249 ns/entity** |
+| Benchmarked perf | DB throughput | No | No | No | CCU only | CCU only | No | **BenchmarkDotNet** |
+| General-purpose | Yes | Yes | **No** | Yes | Yes | Yes | Yes | **Yes** |
+
+**No general-purpose game server framework ships built-in, benchmarked AI + combat + collision + visibility systems.** Every framework either provides infrastructure only (Photon, Nakama, Rivet), is game-specific (Pumpkin), solves the data layer only (SpacetimeDB), or is unmaintained (Lance). Altruist is the first to ship the complete simulation layer as a framework.
+
+**Sources:**
+- [SpacetimeDB](https://spacetimedb.com/) — database-as-server, BitCraft MMO
+- [SpacetimeDB 2.0 (Hacker News)](https://news.ycombinator.com/item?id=47157266) — v2.0 discussion
+- [Rivet](https://rivet.dev/) — Y Combinator game server hosting
+- [Pumpkin (GitHub)](https://github.com/Pumpkin-MC/Pumpkin) — Rust Minecraft server
+- [Game Server Showdown 2025](https://medevel.com/game-server-2025/) — open-source framework comparison
+
+---
+
 ## Optimizations Applied (v0.9.0-beta)
 
 1. **Collision broadphase + zero-alloc:** SpatialHashGrid replaces O(n²) brute-force. Long hash pair keys eliminate tuple allocation. Reverse index enables O(1) entity removal. Cached handler registry eliminates per-dispatch allocation. **500 entities: 2.1ms → 0.20ms (10x faster), 3.9MB → 51KB (76x less memory).**
