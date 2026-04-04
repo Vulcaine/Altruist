@@ -1,30 +1,20 @@
 # Altruist Dashboard
 
-Altruist is a powerful, on-premise game server framework designed to provide plug-and-play ease of integration for game developers. The goal of this framework is to simplify the process of creating scalable, high-performance game servers with robust features, making it easier to develop, deploy, and maintain online multiplayer games.
+Altruist is a high-performance, config-driven server framework for building scalable game servers and real-time applications in C# / .NET 9. While it serves as a general-purpose application server (DI, REST APIs, WebSocket/TCP/UDP, auth, persistence), its standout feature is a complete **game simulation engine** — built-in AI, combat, collision detection, visibility tracking, and automatic entity synchronization — all benchmarked with BenchmarkDotNet.
 
-Whether you're building a small indie game or a large-scale multiplayer environment, Altruist aims to be a flexible solution that can meet the needs of game developers, while allowing them to focus on building the game itself, rather than worrying about the complexities of the server infrastructure.
 
-# ⚠️ Early Alpha Disclaimer
-This package is an early alpha release and is intended for experimentation and development purposes only. It is not production-ready and is subject to frequent changes and updates. The features and functionality are in early stages, and we highly encourage you to provide feedback and experiment with the package.
+## Status
 
-If you choose to experiment with it, please be aware that:
+This package is in **beta** (v0.9.0). The core API is stabilizing and actively used in production game development. Breaking changes are possible but increasingly rare. We encourage you to build with it and share feedback.
 
-The API may change in future versions.
-Not all features are implemented and some may be incomplete or broken.
-There are no guarantees of support for issues encountered during experimentation.
+## Documentation
 
-# 🔗 [Project Documentation](https://altruist-docs.vercel.app)
+📖 [Project Documentation](https://altruist-docs.vercel.app) — Installation, guides, API reference, and benchmarks.
 
-The [docs](https://altruist-docs.vercel.app) will guide you through installation, usage, and help you get started with testing the package in your project.
+## Links
 
-# Help Us Improve
+📨 [Open a GitHub Issue](https://github.com/Vulcaine/Altruist/issues) — Report bugs or request features.
 
-If you have any questions, suggestions, or issues, we're here to help! Reach out via the following channels:
-
-📨 [Open a GitHub Issue](https://github.com/Vulcaine/Altruist/issues) — Let us know your thoughts or report any bugs.
-
-♥️ Support us: [Sponsorship](https://github.com/sponsors/Vulcaine) — Help fund the project's future and development.
-
-Your feedback and support are greatly appreciated!
+♥️ [Sponsor the project](https://github.com/sponsors/Vulcaine) — Help fund development.
 
 Copyright (c) Aron Gere 2025
