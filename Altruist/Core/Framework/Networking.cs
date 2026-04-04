@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Numerics;
 using System.Reflection;
+
 using Altruist.UORM;
 
 namespace Altruist.Networking;
@@ -44,7 +45,48 @@ public class SyncedAttribute : Attribute
 
 public interface ISynchronizedEntity
 {
-    public string ConnectionId { get; set; }
+    public string ClientId { get; set; }
+}
+
+/// <summary>
+/// Marks an ISynchronizedEntity class for automatic delta synchronization.
+/// Altruist discovers all world objects with this attribute and broadcasts
+/// [Synced] property changes automatically — no manual code needed.
+///
+/// Default: syncs at engine tick rate (e.g., 25Hz).
+/// Optional: specify a custom frequency.
+///
+/// Usage:
+///   [Synchronized]                     // sync every engine tick
+///   [Synchronized(10)]                 // sync 10 times per second
+///   [Synchronized(1, SyncUnit.Seconds)] // sync once per second
+/// </summary>
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+public class SynchronizedAttribute : Attribute
+{
+    public int Frequency { get; }
+    public SyncUnit Unit { get; }
+
+    /// <summary>Sync at engine tick rate.</summary>
+    public SynchronizedAttribute()
+    {
+        Frequency = 0; // 0 = engine tick rate
+        Unit = SyncUnit.Ticks;
+    }
+
+    /// <summary>Sync at a custom frequency.</summary>
+    public SynchronizedAttribute(int frequency, SyncUnit unit = SyncUnit.Ticks)
+    {
+        Frequency = frequency;
+        Unit = unit;
+    }
+}
+
+public enum SyncUnit
+{
+    Ticks,   // per N engine ticks
+    Hz,      // N times per second
+    Seconds, // every N seconds
 }
 
 public sealed class SyncedProperty
@@ -67,26 +109,80 @@ public sealed class SyncedProperty
     }
 }
 
+/// <summary>
+/// Zero-allocation change map returned by Synchronization.GetChangedData.
+/// Wraps the pooled per-entity dictionary — caller must NOT hold a reference after the next GetChangedData call.
+/// The masks array is rented from ArrayPool and must be returned by the caller.
+/// </summary>
+public struct SyncChangeMap : IDisposable
+{
+    public ulong[] Masks;
+    public int MaskCount;
+    public Dictionary<string, object?> Data;
+    public bool HasChanges;
+
+    /// <summary>Return the rented masks array to the pool. Call when done with the change map.</summary>
+    public void Dispose()
+    {
+        if (Masks != null)
+        {
+            ArrayPool<ulong>.Shared.Return(Masks);
+            Masks = null!;
+        }
+    }
+}
+
 public static class Synchronization
 {
     private static readonly Dictionary<string, object?[]> _lastSyncedStates = new();
     private static readonly Dictionary<string, Dictionary<string, object?>> _lastSyncedData = new();
     private static readonly ConcurrentDictionary<string, object> _entityLocks = new();
 
-    public static (ulong[], Dictionary<string, object?>) GetChangedData<TType>(
+    /// <summary>
+    /// Detect changed [Synced] properties since last call for this entity.
+    /// Returns a SyncChangeMap with zero new allocation (dictionary + masks reused per entity).
+    /// Caller must call Dispose() on the returned map, or use 'using'.
+    /// </summary>
+    public static SyncChangeMap GetSyncChanges<TType>(
         TType newEntity,
         string clientId,
         long currentTick,
         bool forceAllAsChanged = false
     ) where TType : ISynchronizedEntity
     {
-        var entityLock = _entityLocks.GetOrAdd(clientId, _ => new object());
+        var (masks, maskCount, data) = GetChangedData(newEntity, clientId, currentTick, forceAllAsChanged);
+
+        bool hasChanges = false;
+        for (int i = 0; i < maskCount; i++)
+        {
+            if (masks[i] != 0) { hasChanges = true; break; }
+        }
+
+        return new SyncChangeMap
+        {
+            Masks = masks,
+            MaskCount = maskCount,
+            Data = data,
+            HasChanges = hasChanges,
+        };
+    }
+
+    public static (ulong[] Masks, int MaskCount, Dictionary<string, object?> ChangedData) GetChangedData<TType>(
+        TType newEntity,
+        string clientId,
+        long currentTick,
+        bool forceAllAsChanged = false
+    ) where TType : ISynchronizedEntity
+    {
+        var entityLock = _entityLocks.GetOrAdd(clientId, static _ => new object());
 
         lock (entityLock)
         {
-            var (properties, count) = SyncMetadataHelper.GetSyncMetadata(
+            var metadata = SyncMetadataHelper.GetSyncMetadata(
                 newEntity.GetType(),
                 onlySyncedProperties: !forceAllAsChanged);
+            var properties = metadata.Properties;
+            var count = metadata.Count;
 
             int maskCount = (count + 63) / 64;
             var masks = ArrayPool<ulong>.Shared.Rent(maskCount);
@@ -100,7 +196,8 @@ public static class Synchronization
 
             if (!_lastSyncedData.TryGetValue(clientId, out var changedData))
             {
-                changedData = new Dictionary<string, object?>();
+                // Pre-size to property count — avoids resize allocations on subsequent .Clear() + re-add
+                changedData = new Dictionary<string, object?>(count);
                 _lastSyncedData[clientId] = changedData;
             }
             else
@@ -108,31 +205,21 @@ public static class Synchronization
                 changedData.Clear();
             }
 
-            List<int>? syncAlwaysIndices = null;
-            bool nonSyncAlwaysChanged = false;
-
             for (int i = 0; i < count; i++)
             {
                 var prop = properties[i];
+                if (prop.SyncAlways) continue; // handled below
+
                 var newValue = prop.Getter(newEntity);
                 var lastValue = lastState[i];
 
                 bool shouldSync = forceAllAsChanged
                     || !AreValuesEqual(newValue, lastValue)
                     || (prop.OneTime && lastValue is null);
-                // check for engine ticks
                 shouldSync = forceAllAsChanged || shouldSync && prop.SyncTickFrequency == 0 || prop.SyncTickFrequency > 0 && currentTick % prop.SyncTickFrequency == 0;
-
-                if (prop.SyncAlways)
-                {
-                    syncAlwaysIndices ??= new List<int>();
-                    syncAlwaysIndices.Add(i);
-                }
 
                 if (shouldSync)
                 {
-                    nonSyncAlwaysChanged = true;
-
                     int maskIndex = i / 64;
                     int bitIndex = i % 64;
                     masks[maskIndex] |= 1UL << bitIndex;
@@ -142,23 +229,23 @@ public static class Synchronization
                 }
             }
 
-            if (nonSyncAlwaysChanged && syncAlwaysIndices is not null)
+            // SyncAlways properties: always included, pre-computed indices (zero allocation)
+            var alwaysIndices = metadata.SyncAlwaysIndices;
+            for (int j = 0; j < alwaysIndices.Length; j++)
             {
-                foreach (var i in syncAlwaysIndices)
-                {
-                    var prop = properties[i];
-                    var newValue = prop.Getter(newEntity);
+                var i = alwaysIndices[j];
+                var prop = properties[i];
+                var newValue = prop.Getter(newEntity);
 
-                    int maskIndex = i / 64;
-                    int bitIndex = i % 64;
-                    masks[maskIndex] |= 1UL << bitIndex;
+                int maskIndex = i / 64;
+                int bitIndex = i % 64;
+                masks[maskIndex] |= 1UL << bitIndex;
 
-                    changedData[prop.Name] = newValue;
-                    lastState[i] = CloneValueIfNeeded(newValue);
-                }
+                changedData[prop.Name] = newValue;
+                lastState[i] = CloneValueIfNeeded(newValue);
             }
 
-            return (masks, changedData);
+            return (masks, maskCount, changedData);
         }
     }
 
@@ -178,15 +265,18 @@ public static class Synchronization
 
     private static bool AreValuesEqual(object? a, object? b)
     {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
+        if (a == null && b == null)
+            return true;
+        if (a == null || b == null)
+            return false;
 
         if (a is Vector2 va && b is Vector2 vb)
             return va.Equals(vb);
 
         if (a is Array arrayA && b is Array arrayB)
         {
-            if (arrayA.Length != arrayB.Length) return false;
+            if (arrayA.Length != arrayB.Length)
+                return false;
 
             for (int i = 0; i < arrayA.Length; i++)
             {
@@ -202,11 +292,32 @@ public static class Synchronization
 }
 
 
+public sealed class SyncMetadata
+{
+    public List<SyncedProperty> Properties { get; }
+    public int Count { get; }
+    public int[] SyncAlwaysIndices { get; }
+
+    public SyncMetadata(List<SyncedProperty> properties)
+    {
+        Properties = properties;
+        Count = properties.Count;
+
+        var alwaysIndices = new List<int>();
+        for (int i = 0; i < Count; i++)
+        {
+            if (properties[i].SyncAlways)
+                alwaysIndices.Add(i);
+        }
+        SyncAlwaysIndices = alwaysIndices.ToArray();
+    }
+}
+
 public static class SyncMetadataHelper
 {
-    private static readonly ConcurrentDictionary<Type, (List<SyncedProperty>, int)> _syncMetadata = new();
+    private static readonly ConcurrentDictionary<Type, SyncMetadata> _syncMetadata = new();
 
-    public static (List<SyncedProperty> Properties, int Count) GetSyncMetadata(Type type, bool onlySyncedProperties = true)
+    public static SyncMetadata GetSyncMetadata(Type type, bool onlySyncedProperties = true)
     {
         return _syncMetadata.GetOrAdd(type, t =>
         {
@@ -224,7 +335,8 @@ public static class SyncMetadataHelper
                 {
                     var attr = prop.GetCustomAttribute<SyncedAttribute>();
 
-                    if (attr is null) continue;
+                    if (attr is null)
+                        continue;
 
                     var bitIndex = attr.BitIndex;
                     var syncAlways = attr.SyncAlways;
@@ -245,7 +357,8 @@ public static class SyncMetadataHelper
             foreach (var prop in localProps)
             {
                 var attr = prop.GetCustomAttribute<SyncedAttribute>();
-                if (attr is null) continue;
+                if (attr is null)
+                    continue;
 
                 var localBitIndex = attr.BitIndex;
                 var globalBitIndex = baseMaxBitIndex + 1 + localBitIndex;
@@ -253,7 +366,7 @@ public static class SyncMetadataHelper
                 syncedProperties.Add(BuildSyncedProperty(prop, globalBitIndex, attr.SyncAlways ?? false, attr.oneTime, attr.syncFrequency));
             }
 
-            return (syncedProperties, syncedProperties.Count);
+            return new SyncMetadata(syncedProperties);
         });
     }
 

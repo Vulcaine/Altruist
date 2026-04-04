@@ -34,3 +34,30 @@ public interface IDecoder
     TPacket Decode<TPacket>(byte[] message);
     TPacket Decode<TPacket>(byte[] message, Type type);
 }
+
+/// <summary>
+/// Optional extension for codecs that need stream-level packet framing (e.g. raw TCP binary protocols).
+/// If a codec implements this interface, the ConnectionManager will buffer incoming bytes
+/// and use the framer to extract complete packets before decoding.
+/// Codecs that do NOT implement this (MessagePack, JSON, WebSocket) are completely unaffected.
+/// </summary>
+public interface IFramedCodec : ICodec
+{
+    IPacketFramer Framer { get; }
+}
+
+/// <summary>
+/// Extracts individual packet byte arrays from a raw TCP byte stream.
+/// The framer is responsible for knowing packet boundaries (e.g. via opcode + size lookup).
+/// </summary>
+public interface IPacketFramer
+{
+    /// <summary>
+    /// Attempts to extract the next complete packet from the front of the buffer.
+    /// On success: returns the packet bytes and advances consumed past them.
+    /// On failure (not enough data): returns null, consumed is set to 0.
+    /// </summary>
+    /// <param name="buffer">The accumulated receive buffer.</param>
+    /// <param name="consumed">Number of bytes consumed from the front of the buffer.</param>
+    byte[]? TryFrame(ReadOnlySpan<byte> buffer, out int consumed);
+}

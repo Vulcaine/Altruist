@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,15 @@ limitations under the License.
 using System.Security.Cryptography;
 using System.Text;
 
+using Altruist.UORM;
+
 namespace Altruist.Security;
 
+[Vault("security")]
+[ConditionalOnConfig("altruist:security")]
 public class AuthTokenSessionModel : VaultModel, IIdGenerator
 {
-    public override string SysId { get; set; }
-    public override string Type { get; set; }
+    [VaultColumn("principal-id")]
     public string PrincipalId { get; set; } = string.Empty;
 
     /// <summary>
@@ -30,18 +33,25 @@ public class AuthTokenSessionModel : VaultModel, IIdGenerator
     /// </summary>
     public string? Fingerprint { get; set; }
 
+    [VaultColumn("access-token")]
     public string AccessToken { get; set; } = string.Empty;
+
+    [VaultColumn("refresh-token")]
     public string RefreshToken { get; set; } = string.Empty;
+
+    [VaultColumn("access-expiration")]
     public DateTime AccessExpiration { get; set; }
+
+    [VaultColumn("refresh-expiration")]
     public DateTime RefreshExpiration { get; set; }
     public string Ip { get; set; } = string.Empty;
     public override DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [VaultColumn("cache-invalidation-interval")]
     public TimeSpan CacheValidationInterval { get; set; } = TimeSpan.FromSeconds(10);
 
     public AuthTokenSessionModel()
     {
-        SysId = GenerateId();
-        Type = GetType().Name;
     }
 
     public bool IsAccessTokenValid() => AccessExpiration > DateTime.UtcNow;
@@ -50,7 +60,7 @@ public class AuthTokenSessionModel : VaultModel, IIdGenerator
     public string GenerateId()
     {
         if (string.IsNullOrWhiteSpace(PrincipalId))
-            throw new InvalidOperationException("PrincipalId must be set before generating SysId.");
+            throw new InvalidOperationException("PrincipalId must be set before generating StorageId.");
 
         var combined = string.IsNullOrWhiteSpace(Fingerprint)
             ? PrincipalId

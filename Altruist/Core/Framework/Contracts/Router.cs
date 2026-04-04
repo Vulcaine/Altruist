@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,8 @@ public interface IAltruistRouter
     IClientSynchronizator Synchronize { get; }
 }
 
+[Service(typeof(IClientSynchronizator))]
+[ConditionalOnConfig("altruist:server:transport")]
 public class ClientSynchronizator : IClientSynchronizator
 {
     public Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
@@ -76,6 +78,8 @@ public abstract class DirectRouter : AbstractAltruistRouter
     }
 }
 
+[Service]
+[ConditionalOnConfig("altruist:server:transport")]
 public class ClientSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
@@ -98,11 +102,15 @@ public class ClientSender : IAltruistRouterSender
 
     public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
     {
-        var encodedMessage = _codec.Encoder.Encode(message);
+        var envelope = new MessageEnvelope(message, clientId);
+        envelope.Stamp("server", clientId, DateTime.UtcNow);
+        var encodedMessage = _codec.Encoder.Encode(envelope);
         await SendAsync(clientId, encodedMessage);
     }
 }
 
+[Service]
+[ConditionalOnConfig("altruist:server:transport")]
 public class RoomSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
@@ -130,6 +138,8 @@ public class RoomSender : IAltruistRouterSender
     }
 }
 
+[Service]
+[ConditionalOnConfig("altruist:server:transport")]
 public class BroadcastSender
 {
     private readonly IConnectionStore _store;
@@ -151,7 +161,6 @@ public class BroadcastSender
             if (clientId == excludeClientId)
                 continue;
 
-            message.Header.SetReceiver(clientId);
             if (socket != null && socket.IsConnected)
             {
                 await _client.SendAsync(clientId, message);

@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@ public interface IPasswordHasher
     bool Verify(string password, string hash);
 }
 
-
+[Service(typeof(IPasswordHasher))]
 public class BcryptPasswordHasher : IPasswordHasher
 {
     public string Hash(string password) => BCrypt.Net.BCrypt.HashPassword(password);

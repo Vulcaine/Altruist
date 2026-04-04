@@ -1,0 +1,48 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>Altruist.Dashboard</PackageId>
+    <Description>Dashboard module for Altruist framework.</Description>
+    <Version>0.9.0-beta</Version>
+    <Copyright>Copyright © 2025 Aron Gere</Copyright>
+    <PackageReadmeFile>./README.md</PackageReadmeFile>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="UI\dist\ui\browser\**">
+      <!-- e.g. "scene/index.html", "sessions/index.html", "index.csr.html" -->
+      <LogicalName>%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="TestApp\**\*" />
+    <EmbeddedResource Remove="TestApp\**\*" />
+    <None Remove="TestApp\**\*" />
+    <Content Remove="TestApp\**\*" />
+  </ItemGroup>
+
+  <!-- <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.0-preview.5.24306.11" />
+  </ItemGroup> -->
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath=""/>
+  </ItemGroup>
+  
+  <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
+    <ProjectReference Include="..\Core\Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjects)' != 'true'">
+    <PackageReference Include="Altruist" Version="*-*" />
+  </ItemGroup>
+
+</Project>

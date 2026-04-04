@@ -1,0 +1,137 @@
+<div class="cache-view">
+  <header class="cache-header">
+    <div class="title">
+      <h2>🧠 Cache Dashboard</h2>
+      <span class="status">{{ statusHint }}</span>
+    </div>
+
+    <div class="controls">
+      <input
+        type="text"
+        placeholder="Filter by type, group, key or content…"
+        [(ngModel)]="filterText"
+        (ngModelChange)="onFilterChange($event)"
+      />
+      <button type="button" (click)="loadEntries()" [disabled]="isLoading">
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  <section class="cache-body" *ngIf="!error; else errorTpl">
+    <div class="table-wrapper" *ngIf="hasData; else emptyTpl">
+      <table class="cache-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Group</th>
+            <th>Key</th>
+            <th>Preview</th>
+            <th class="actions-col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let entry of pagedEntries"
+            (dblclick)="onRowDoubleClick(entry)"
+          >
+            <td class="type-cell">
+              <span class="type-pill">{{ entry.typeShortName }}</span>
+            </td>
+            <td>{{ entry.groupId || "—" }}</td>
+            <td class="key-cell" [title]="entry.key">{{ entry.key }}</td>
+            <td class="preview-cell">
+              <code>{{ entry.preview || (entry.value | json) }}</code>
+            </td>
+            <td class="actions-col">
+              <button
+                type="button"
+                class="btn-danger"
+                (click)="deleteEntry(entry, $event)"
+              >
+                Delete
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Page size + paginator -->
+      <div class="cache-pagination" *ngIf="showPager">
+        <div class="page-size">
+          <label>
+            Page size
+            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+              <option *ngFor="let size of pageSizeOptions" [value]="size">
+                {{ size }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div class="page-nav">
+          <button
+            type="button"
+            (click)="goPrevPage()"
+            [disabled]="currentPage === 0"
+          >
+            ‹
+          </button>
+          <span> Page {{ currentPage + 1 }} / {{ totalPages }} </span>
+          <button
+            type="button"
+            (click)="goNextPage()"
+            [disabled]="currentPage >= totalPages - 1"
+          >
+            ›
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <ng-template #emptyTpl>
+    <div class="empty-state">
+      <p>No cache entries found.</p>
+    </div>
+  </ng-template>
+
+  <ng-template #errorTpl>
+    <div class="error-state">
+      <p>{{ error }}</p>
+      <button type="button" (click)="loadEntries()">Retry</button>
+    </div>
+  </ng-template>
+
+  <!-- JSON editor modal -->
+  <div class="modal-backdrop" *ngIf="editorVisible">
+    <div class="modal">
+      <header class="modal-header">
+        <h3>
+          Edit cache entry
+          <small *ngIf="selectedEntry">
+            ({{ selectedEntry.typeShortName }} /
+            {{ selectedEntry.groupId || "default" }} / {{ selectedEntry.key }})
+          </small>
+        </h3>
+      </header>
+
+      <section class="modal-body">
+        <textarea
+          [(ngModel)]="editorJson"
+          spellcheck="false"
+          class="json-editor"
+        ></textarea>
+
+        <p class="error-text" *ngIf="editorError">{{ editorError }}</p>
+      </section>
+
+      <footer class="modal-footer">
+        <button type="button" (click)="closeEditor()">Cancel</button>
+        <button type="button" class="btn-primary" (click)="saveEditor()">
+          Save
+        </button>
+      </footer>
+    </div>
+  </div>
+</div>

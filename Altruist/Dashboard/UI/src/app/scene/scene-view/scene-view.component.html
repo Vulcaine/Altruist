@@ -1,0 +1,179 @@
+<div class="scene-root">
+  <header class="scene-header">
+    <div>
+      <h1>Scene View</h1>
+      <p>Visualize the current world state from your Altruist server.</p>
+    </div>
+
+    <div class="scene-header-actions">
+      <button class="button-base" (click)="onRefresh()">Refresh</button>
+
+      <button
+        class="button-primary"
+        type="button"
+        [class.is-on]="autoUpdate"
+        (click)="toggleAutoUpdate()"
+      >
+        Auto-Update: {{ autoUpdate ? "On" : "Off" }}
+      </button>
+    </div>
+  </header>
+
+  <section class="scene-layout">
+    <aside class="scene-sidebar">
+      <h2>Worlds</h2>
+
+      @if (isLoadingWorlds && worlds.length === 0) {
+        <div>Loading worlds…</div>
+      } @else if (!isLoadingWorlds && worlds.length === 0) {
+        <div>No worlds available.</div>
+      } @else {
+        <ul class="list">
+          @for (world of worlds; track world.index) {
+            <li>
+              <button
+                class="sidebar-group"
+                (click)="onSelectWorld(world)"
+                [class.active]="world === selectedWorld"
+              >
+                <span
+                  class="chevron"
+                  (click)="toggleWorld(); $event.stopPropagation()"
+                  [class.collapsed]="worldCollapsed && world === selectedWorld"
+                >
+                  ▶
+                </span>
+
+                <span>#{{ world.index }} — {{ world.name || "Unnamed" }}</span>
+
+                @if (world === selectedWorld) {
+                  <span class="world-meta">
+                    {{ world.partitionCount }} partitions ·
+                    {{ world.objectCount }} objects
+                  </span>
+                }
+              </button>
+
+              @if (world === selectedWorld && !worldCollapsed) {
+                <ul class="sublist">
+                  @for (
+                    p of partitions;
+                    track p.indexX + ":" + p.indexY + ":" + p.indexZ
+                  ) {
+                    <li>
+                      <button
+                        class="sidebar-group"
+                        (click)="onSelectPartition(p)"
+                        [class.active]="p === selectedPartition"
+                      >
+                        <span
+                          class="chevron"
+                          (click)="togglePartition(p, $event)"
+                          [class.collapsed]="p.collapsed"
+                        >
+                          ▶
+                        </span>
+
+                        <span>
+                          Partition [{{ p.indexX }}, {{ p.indexY }},
+                          {{ p.indexZ }}]
+                        </span>
+
+                        <span class="partition-meta">
+                          {{ p.objects.length }} objects
+                        </span>
+                      </button>
+
+                      @if (!p.collapsed && p.objects.length > 0) {
+                        <ul class="sublist">
+                          @for (obj of p.objects; track obj.instanceId) {
+                            <li>
+                              <button
+                                class="sidebar-item"
+                                [class.active]="obj === selectedObject"
+                                (click)="onSelectObject(obj)"
+                              >
+                                <div class="world-object-name">
+                                  {{ obj.archetype || "Object" }}
+                                </div>
+
+                                <div class="world-object-id">
+                                  #{{ obj.instanceId.slice(0, 6) }}
+                                </div>
+                              </button>
+                            </li>
+                          }
+                        </ul>
+                      }
+                    </li>
+                  }
+                </ul>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </aside>
+
+    <section class="scene-canvas">
+      <div class="canvas-toolbar">
+        <span class="canvas-title">3D Scene</span>
+        <span class="canvas-hint">{{ statusHint }}</span>
+      </div>
+
+      <div class="canvas-body">
+        @if (!selectedWorld || (isInitialLoading && !hasData)) {
+          <app-globe-scene></app-globe-scene>
+        } @else {
+          <app-world-scene
+            [world]="selectedWorld"
+            [objects]="visibleObjects"
+            [selectedObject]="selectedObject"
+            [isLoading]="false"
+            (cameraChanged)="onCameraChanged($event)"
+            (lastUpdateChanged)="onWorldLastUpdate($event)"
+          >
+          </app-world-scene>
+
+          @if (cameraInfo) {
+            <div class="camera-hud">
+              <div class="camera-hud-title">Camera</div>
+
+              <div>
+                Pos:
+                {{ cameraInfo.position.x | number: "1.1-2" }},
+                {{ cameraInfo.position.y | number: "1.1-2" }},
+                {{ cameraInfo.position.z | number: "1.1-2" }}
+              </div>
+
+              <div>
+                Rot: Y {{ cameraInfo.rotation.yaw | number: "1.0-1" }}° P
+                {{ cameraInfo.rotation.pitch | number: "1.0-1" }}° R
+                {{ cameraInfo.rotation.roll | number: "1.0-1" }}°
+              </div>
+
+              @if (selectedObject) {
+                <div class="camera-hud-divider"></div>
+
+                <div class="camera-hud-title">Selected</div>
+
+                <div class="camera-hud-sub">
+                  {{ selectedObject.archetype || "Object" }} · #{{
+                    selectedObject.instanceId.slice(0, 6)
+                  }}
+                </div>
+
+                <div>
+                  Pos:
+                  {{ selectedObject.transform.position.x | number: "1.1-2" }},
+                  {{ selectedObject.transform.position.y | number: "1.1-2" }},
+                  {{ selectedObject.transform.position.z | number: "1.1-2" }}
+                </div>
+              }
+            </div>
+          }
+        }
+      </div>
+    </section>
+  </section>
+</div>

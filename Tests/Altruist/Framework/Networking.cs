@@ -23,7 +23,9 @@ public class SyncMetadataHelperTests
     [Fact]
     public void Metadata_ShouldIncludeBaseAndDerivedProperties_WithCorrectBitIndices()
     {
-        var (props, count) = SyncMetadataHelper.GetSyncMetadata(typeof(DerivedEntity));
+        var metadata = SyncMetadataHelper.GetSyncMetadata(typeof(DerivedEntity));
+        var props = metadata.Properties;
+        var count = metadata.Count;
 
         Assert.Equal(4, count);
 
@@ -47,10 +49,10 @@ public class SyncMetadataHelperTests
     [Fact]
     public void Metadata_CachesResultAcrossCalls()
     {
-        var (props1, _) = SyncMetadataHelper.GetSyncMetadata(typeof(DerivedEntity));
-        var (props2, _) = SyncMetadataHelper.GetSyncMetadata(typeof(DerivedEntity));
+        var meta1 = SyncMetadataHelper.GetSyncMetadata(typeof(DerivedEntity));
+        var meta2 = SyncMetadataHelper.GetSyncMetadata(typeof(DerivedEntity));
 
         // Should return same instance due to caching
-        Assert.Same(props1, props2);
+        Assert.Same(meta1.Properties, meta2.Properties);
     }
 }

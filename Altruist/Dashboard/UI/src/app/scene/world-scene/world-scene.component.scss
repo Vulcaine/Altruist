@@ -1,0 +1,13 @@
+.world-scene-root {
+    height: 100%;
+    width: 100%;
+    display: flex;
+}
+
+.world-scene-viewport {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    position: relative;
+    overflow: hidden;
+}

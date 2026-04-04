@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,23 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Reflection;
 using Altruist.Contracts;
-using Altruist.UORM;
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence;
-
-public class ReplicationOptions
-{
-    public int ReplicationFactor { get; set; } = 1;
-
-    /// <summary>
-    /// Defines replication per data center (Only used for NetworkTopologyStrategy).
-    /// The key is the Data Center name (configured in ScyllaDB).
-    /// </summary>
-    public Dictionary<string, int>? DataCenters { get; set; }
-}
 
 public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace : class, IKeyspace
 {
@@ -47,47 +35,6 @@ public abstract class KeyspaceSetup<TKeyspace> : IKeyspaceSetup where TKeyspace 
         Token = token;
     }
 
-
-    public KeyspaceSetup<TKeyspace> AddVault<TVaultModel>() where TVaultModel : class, IVaultModel
-    {
-        VaultModels.Add(typeof(TVaultModel));
-        Services.AddSingleton<IVault<TVaultModel>>(sp => new VaultAdapter<TVaultModel>(sp.GetServices<IDatabaseVaultFactory>().Where(s => s.Token == Token).First(), Instance));
-        return this;
-    }
-
-    public KeyspaceSetup<TKeyspace> AddVault(Type vault)
-    {
-        if (!typeof(IVaultModel).IsAssignableFrom(vault))
-            throw new ArgumentException($"{vault.FullName} must implement IVaultModel");
-
-        var attribute = vault.GetCustomAttribute<VaultAttribute>();
-        var keyspaceFromAttribute = attribute?.Keyspace ?? "altruist";
-        var currentKeyspaceName = Instance.Name;
-
-        if (!string.Equals(keyspaceFromAttribute, currentKeyspaceName, StringComparison.OrdinalIgnoreCase))
-        {
-            // Keyspace mismatch, skip registration
-            return this;
-        }
-
-        VaultModels.Add(vault);
-
-        var vaultInterfaceType = typeof(IVault<>).MakeGenericType(vault);
-        var vaultImplementationType = typeof(VaultAdapter<>).MakeGenericType(vault);
-
-        Services.AddSingleton(vaultInterfaceType, sp =>
-        {
-            var factory = sp.GetServices<IDatabaseVaultFactory>().First(s => s.Token == Token);
-            return Activator.CreateInstance(vaultImplementationType, factory, Instance)!;
-        });
-
-        Services.AddSingleton(vaultImplementationType, sp => sp.GetRequiredService(vaultInterfaceType));
-        Services.AddSingleton(vault, sp => sp.GetRequiredService(vaultInterfaceType));
-
-        return this;
-    }
-
-
     public abstract Task Build();
 }
 
@@ -97,31 +44,49 @@ public interface IKeyspaceSetup
     Task Build();
 }
 
-public class VaultRepositoryFactory
+
+/// <summary>
+/// Generic SQL provider contract used by PgVault and the Postgres configuration.
+/// Implemented by SqlDbProvider (Npgsql-based).
+/// </summary>
+public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
 {
-    private readonly IServiceProvider _provider;
+    Task ConnectAsync(int maxRetries, int delayMilliseconds, CancellationToken ct = default);
+    Task ShutdownAsync(Exception? ex = null, CancellationToken ct = default);
 
-    public VaultRepositoryFactory(IServiceProvider provider)
-    {
-        _provider = provider;
-    }
+    // Query APIs (parameter list aligns with Vaults using "?" placeholders)
+    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default);
 
-    public IVaultRepository<TKeyspace> Make<TKeyspace>() where TKeyspace : class, IKeyspace, new()
-    {
-        var token = new TKeyspace().DatabaseToken;
-        return _provider.GetServices<IVaultRepository<TKeyspace>>().Where(p => p.Token == token).First();
-    }
-}
+    Task<List<object>> QueryAsync(
+        Type modelType,
+        string sql,
+        List<object?>? parameters,
+        CancellationToken ct);
 
+    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default)
+        where TVaultModel : class;
 
-public class DatabaseProviderFactory
-{
-    private readonly IServiceProvider _provider;
+    Task<long> ExecuteCountAsync(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default);
 
-    public DatabaseProviderFactory(IServiceProvider provider)
-    {
-        _provider = provider;
-    }
+    /// <summary>Executes INSERT/UPDATE/DELETE or batched statements; returns affected rows (driver-dependent).</summary>
+    Task<long> ExecuteAsync(
+        string sql,
+        List<object?>? parameters = null,
+        CancellationToken ct = default);
 
-    public IGeneralDatabaseProvider Make(IDatabaseServiceToken token) => _provider.GetServices<IGeneralDatabaseProvider>().Where(p => p.Token == token).First();
+    // Optional POCO-based ops (no-ops in current SqlDbProvider; kept for parity with Scylla provider)
+    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default) where TVaultModel : class, IVaultModel;
+    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default) where TVaultModel : class, IVaultModel;
+
+    // Bootstrap / DDL
+    Task CreateSchemaAsync(string schema, CancellationToken ct = default);
 }

@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,9 @@ limitations under the License.
 
 using System.Collections;
 using System.Collections.Concurrent;
+
 using Altruist.Contracts;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -26,12 +28,16 @@ using GroupCache = ConcurrentDictionary<string, EfficientConcurrentCache<object>
 
 public sealed class InMemoryServiceConfiguration : ICacheConfiguration
 {
-    public void Configure(IServiceCollection services)
-    {
+    public bool IsConfigured { get; set; }
 
+    public Task Configure(IServiceCollection services)
+    {
+        return Task.CompletedTask;
     }
 }
 
+[Service(typeof(ICacheServiceToken))]
+[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public sealed class InMemoryCacheServiceToken : ICacheServiceToken
 {
     public static readonly InMemoryCacheServiceToken Instance = new();
@@ -58,7 +64,8 @@ public class EfficientConcurrentCache<T> : IEnumerable<T>
         get
         {
             _lock.EnterReadLock();
-            try { return _items.Count; }
+            try
+            { return _items.Count; }
             finally { _lock.ExitReadLock(); }
         }
     }
@@ -160,7 +167,7 @@ public class EfficientConcurrentCache<T> : IEnumerable<T>
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
-
+[Service(typeof(IMemoryCacheProvider))]
 public class InMemoryCache : IMemoryCacheProvider
 {
     private readonly ConcurrentDictionary<Type, GroupCache> _cacheSource = new();
@@ -282,13 +289,62 @@ public class InMemoryCache : IMemoryCacheProvider
 
         return Task.FromResult(result);
     }
+
+    public IEnumerable<CacheEntrySnapshot> GetSnapshot()
+    {
+        foreach (var typeEntry in _cacheSource)
+        {
+            var type = typeEntry.Key;
+            var groupMap = typeEntry.Value;
+
+            foreach (var groupEntry in groupMap)
+            {
+                var groupId = groupEntry.Key;
+                var cache = groupEntry.Value;
+
+                foreach (var key in cache.Keys)
+                {
+                    if (cache.TryGet(key, out var value))
+                    {
+                        yield return new CacheEntrySnapshot(type, groupId, key, value);
+                    }
+                }
+            }
+        }
+    }
 }
 
 
-
+[Service(typeof(IConnectionStore))]
 public class InMemoryConnectionStore : AbstractConnectionStore
 {
     public InMemoryConnectionStore(IMemoryCacheProvider memoryCache, ILoggerFactory loggerFactory) : base(memoryCache, loggerFactory)
     {
     }
+}
+
+/// <summary>
+/// Registers InMemoryCache as ICacheProvider when cache provider is set to inmemory.
+/// InMemoryCache itself is always available as IMemoryCacheProvider (used by connection stores).
+/// </summary>
+[Service(typeof(ICacheProvider))]
+[ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
+public class InMemoryCacheProviderAdapter : ICacheProvider
+{
+    private readonly IMemoryCacheProvider _inner;
+
+    public InMemoryCacheProviderAdapter(IMemoryCacheProvider inner) => _inner = inner;
+
+    public ICacheServiceToken Token => _inner.Token;
+    public Task<bool> ContainsAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.ContainsAsync<T>(key, cacheGroupId);
+    public Task<T?> GetAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.GetAsync<T>(key, cacheGroupId);
+    public Task<ICursor<T>> GetAllAsync<T>(string cacheGroupId = "") where T : notnull => _inner.GetAllAsync<T>(cacheGroupId);
+    public Task<ICursor<object>> GetAllAsync(Type type, string cacheGroupId = "") => _inner.GetAllAsync(type, cacheGroupId);
+    public Task SaveAsync<T>(string key, T entity, string cacheGroupId = "") where T : notnull => _inner.SaveAsync(key, entity, cacheGroupId);
+    public Task SaveBatchAsync<T>(Dictionary<string, T> entities, string cacheGroupId = "") where T : notnull => _inner.SaveBatchAsync(entities, cacheGroupId);
+    public Task<T?> RemoveAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.RemoveAsync<T>(key, cacheGroupId);
+    public Task RemoveAndForgetAsync<T>(string key, string cacheGroupId = "") where T : notnull => _inner.RemoveAndForgetAsync<T>(key, cacheGroupId);
+    public Task ClearAsync<T>(string cacheGroupId = "") where T : notnull => _inner.ClearAsync<T>(cacheGroupId);
+    public Task ClearAllAsync() => _inner.ClearAllAsync();
+    public IEnumerable<CacheEntrySnapshot> GetSnapshot() => _inner.GetSnapshot();
 }

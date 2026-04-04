@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,9 @@ limitations under the License.
 
 using System.Net;
 using System.Security.Claims;
+
 using Altruist.Security;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 
@@ -36,7 +38,7 @@ public class AuthResult
 
 public interface ITokenValidator
 {
-    ClaimsPrincipal? ValidateToken(string token);
+    Task<ClaimsPrincipal?> ValidateToken(string token);
 }
 
 

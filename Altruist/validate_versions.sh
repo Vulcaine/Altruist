@@ -10,28 +10,32 @@ cd "$SCRIPT_DIR"
 
 VERSION_FILE="version.txt"
 EXPECTED_VERSION=$(cat $VERSION_FILE)
-FOUND_VERSIONS=()
+ERRORS=0
 
-echo "Checking .csproj versions..."
+echo "Checking .csproj versions match version.txt ($EXPECTED_VERSION)..."
+echo ""
 
 for csproj in $(find . -name '*.csproj'); do
   VERSION=$(grep '<Version>' "$csproj" | sed -E 's|.*<Version>(.*)</Version>.*|\1|')
-  echo "$csproj => $VERSION"
-  FOUND_VERSIONS+=("$VERSION")
+
+  if [ -z "$VERSION" ]; then
+    echo "  ⚠️  $csproj => no <Version> tag (skipped)"
+    continue
+  fi
+
+  if [ "$VERSION" == "$EXPECTED_VERSION" ]; then
+    echo "  ✅ $csproj => $VERSION"
+  else
+    echo "  ❌ $csproj => $VERSION (expected $EXPECTED_VERSION)"
+    ERRORS=$((ERRORS + 1))
+  fi
 done
 
-# Get unique versions
-UNIQUE_VERSIONS=($(printf "%s\n" "${FOUND_VERSIONS[@]}" | sort -u))
+echo ""
 
-if [ "${#UNIQUE_VERSIONS[@]}" -ne 1 ]; then
-  echo "❌ Error: Not all .csproj files have the same version."
-  printf "Versions found: %s\n" "${UNIQUE_VERSIONS[@]}"
+if [ $ERRORS -gt 0 ]; then
+  echo "❌ $ERRORS project(s) have mismatched versions. Run update_versions.sh to fix."
   exit 1
 fi
 
-if [ "${UNIQUE_VERSIONS[0]}" == "$EXPECTED_VERSION" ]; then
-  echo "❌ Error: Project version has not been bumped. It still matches version.txt ($EXPECTED_VERSION)."
-  exit 1
-fi
-
-echo "✅ All project versions are consistent and different from version.txt ($EXPECTED_VERSION)"
+echo "✅ All project versions match version.txt ($EXPECTED_VERSION)"

@@ -1,0 +1,37 @@
+altruist:
+  environment:
+    mode: "2D"
+
+  server:
+    http:
+      host: "0.0.0.0"
+      port: 8080
+      path: "/"
+    transport:
+      mode: tcp
+      timeout: 300
+      codec:
+        provider: messagepack
+      config:
+        port: 13000
+
+  persistence:
+    cache:
+      provider: inmemory
+
+  game:
+    engine:
+      diagnostics: true
+      frequency: 30
+      unit: "hz"
+
+    visibility:
+      range: 2000
+
+    worlds:
+      partitioner: { width: 128, height: 128 }
+      items:
+        - index: 0
+          id: "arena"
+          size: { x: 2000, y: 2000 }
+          gravity: { x: 0, y: 0 }

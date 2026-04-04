@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,15 +20,19 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
-using Altruist.Security;
+
 using Altruist.Contracts;
+using Altruist.Security;
 using Altruist.Transport;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist.Socket;
 
+[Service(typeof(ITransport))]
+[ConditionalOnConfig("altruist:server:transport:udp:enabled", havingValue: "true")]
 public sealed class UdpTransport : ITransport
 {
     private readonly int _port;
@@ -40,7 +44,13 @@ public sealed class UdpTransport : ITransport
 
     private static readonly IMurmurHash3 _hasher = MurmurHash3Factory.Instance.Create();
 
-    public UdpTransport(IConnectionStore store, ICodec codec, string @event, int port = 5000)
+    public string TransportType => "udp";
+
+    public UdpTransport(
+        IConnectionStore store,
+        ICodec codec,
+        [AppConfigValue("altruist:server:transport:udp:event", "/game")] string @event,
+        [AppConfigValue("altruist:server:transport:udp:port", "13001")] int port = 13001)
     {
         _port = port;
         _codec = codec;
@@ -48,7 +58,7 @@ public sealed class UdpTransport : ITransport
         _store = store;
     }
 
-    public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path)
+    public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path) where TType : class
     {
         StartUdpServer(app.ApplicationServices.GetRequiredService<IConnectionManager>(), app.ApplicationServices);
     }
@@ -93,7 +103,7 @@ public sealed class UdpTransport : ITransport
             var errorMessage = Encoding.UTF8.GetBytes("Authentication failed.");
             var shieldAttribute = connectionManager.GetType().GetCustomAttribute<ShieldAttribute>();
 
-            var handshakeMessage = _codec.Decoder.Decode<HandshakePacket>(buffer);
+            var handshakeMessage = _codec.Decoder.Decode<HandshakeRequestPacket>(buffer);
 
             // TODO: get token from handshakeMessage
             var authContext = new SocketAuthContext
@@ -126,13 +136,10 @@ public sealed class UdpTransport : ITransport
         await connectionManager.HandleConnection(connection, _endpoint, clientId);
     }
 
-    public void RouteTraffic(IApplicationBuilder app)
-    {
-        throw new NotImplementedException();
-    }
+    public void RouteTraffic(IApplicationBuilder app) { }
 }
 
-public sealed class CachedUdpConnection : Connection
+public sealed class CachedUdpConnection : AltruistConnection
 {
     [JsonIgnore]
     private UdpConnection? _udpConnection;
@@ -147,7 +154,7 @@ public sealed class CachedUdpConnection : Connection
         LastActivity = udpConnection.LastActivity;
     }
 
-    public CachedUdpConnection(Connection connection)
+    public CachedUdpConnection(AltruistConnection connection)
     {
         ConnectionId = connection.ConnectionId;
         AuthDetails = connection.AuthDetails;
@@ -190,7 +197,7 @@ public sealed class CachedUdpConnection : Connection
     }
 }
 
-public sealed class UdpConnection : Connection
+public sealed class UdpConnection : AltruistConnection
 {
     [JsonIgnore]
     private readonly UdpClient? _client;
@@ -247,35 +254,32 @@ public sealed class UdpConnection : Connection
 
 
 
-public sealed class UdpConnectionSetup : TransportConnectionSetup<UdpConnectionSetup>
-{
-    public UdpConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
-    {
-    }
-}
+// public sealed class UdpConnectionSetup : TransportConnectionSetup<UdpConnectionSetup>
+// {
+//     public UdpConnectionSetup(IServiceCollection services, IAltruistContext settings) : base(services, settings)
+//     {
+//     }
+// }
 
 public sealed class UdpTransportToken : ITransportServiceToken
 {
     public static UdpTransportToken Instance = new UdpTransportToken();
-    public ITransportConfiguration Configuration => new UdpSocketConfiguration();
 
     public string Description => "📡 Transport: Udp Socket";
 }
 
-
+[Service(typeof(ITransportConfiguration))]
+[ConditionalOnConfig("altruist:server:transport:udp:enabled", "true")]
 public sealed class UdpSocketConfiguration : ITransportConfiguration
 {
-    public void Configure(IServiceCollection services)
+    public bool IsConfigured { get; set; }
+
+    public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
         ILogger logger = factory.CreateLogger("WebsocketSupport");
-        logger.LogInformation("⚡ Udp Socket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
-        services.AddSingleton<ITransport, UdpTransport>();
+        logger.LogInformation("⚡ Tcp Socket support activated. Ready to transmit data across the cosmos in real-time! 🌌");
 
-        services.AddSingleton<UdpConnectionSetup>();
-        services.AddSingleton<ITransportConnectionSetupBase>(sp => sp.GetRequiredService<UdpConnectionSetup>());
-
-        services.AddSingleton<ITransportConfiguration, UdpSocketConfiguration>();
-        services.AddSingleton<ITransportServiceToken, UdpTransportToken>();
+        return Task.CompletedTask;
     }
 }

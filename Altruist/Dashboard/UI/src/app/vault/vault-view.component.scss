@@ -1,0 +1,32 @@
+@use '../../styles.scss' as *;
+
+/* Component-specific layout only */
+
+.vault-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.vault-main {
+  @extend .panel;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vault-table-section {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.vault-table-wrapper {
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Use global .table, .pk-header, .pk-cell */

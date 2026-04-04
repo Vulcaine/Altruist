@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,21 +15,21 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
+using Altruist.Engine;
 
 namespace Altruist;
 
 public interface IServerStatus
 {
     ReadyState Status { get; }
-    void SignalState(ReadyState state);
-    Task StartupAsync(AppManager manager);
+    void SignalState(IEngineCore engine, ReadyState state, CancellationToken token);
 }
 
 
 public interface IAltruistContext
 {
-    IServerStatus AppStatus { get; set; }
-    ITransportServiceToken TransportToken { get; set; }
+    // IServerStatus AppStatus { get; set; }
+    ITransportServiceToken? TransportToken { get; set; }
     List<IDatabaseServiceToken> DatabaseTokens { get; set; }
     ICacheServiceToken? CacheToken { get; set; }
     ServerInfo ServerInfo { get; set; }

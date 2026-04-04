@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,18 @@ limitations under the License.
 */
 
 using System.Text.Json.Serialization;
+
 using Altruist.Security;
 
 namespace Altruist;
 
-public interface IConnection : IStoredModel
+public interface IAltruistConnection : IStoredModel
 {
     AuthDetails? AuthDetails { get; }
+    public string Route { get; set; }
     string ConnectionId { get; }
+    string RemoteAddress { get; }
+    DateTime ConnectedAt { get; }
     Task SendAsync(byte[] data);
     Task<byte[]> ReceiveAsync(CancellationToken cancellationToken);
     Task CloseAsync();
@@ -32,27 +36,33 @@ public interface IConnection : IStoredModel
     bool IsConnected { get; }
 }
 
-public class Connection : StoredModel, IConnection
+public class AltruistConnection : StoredModel, IAltruistConnection
 {
-    [JsonIgnore] // Not serialized
+    [JsonIgnore]
     public AuthDetails? AuthDetails { get; set; }
 
-    [JsonPropertyName("Type")]
+    [JsonIgnore]
+    public string Route { get; set; } = "";
+
+    [JsonPropertyName("connectedAt")]
+    public DateTime ConnectedAt { get; set; }
+
+    [JsonPropertyName("remoteAddress")]
+    public string RemoteAddress { get; set; } = string.Empty;
+
+    [JsonPropertyName("type")]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public override string Type { get => GetType().Name; set => Type = value; }
 
-    [JsonPropertyName("ConnectionId")]
+    [JsonPropertyName("connectionId")]
     public string ConnectionId { get; set; } = string.Empty;
 
-    [JsonPropertyName("IsConnected")]
+    [JsonPropertyName("isConnected")]
     public virtual bool IsConnected { get; set; }
 
-    [JsonPropertyName("LastActivity")]
+    [JsonPropertyName("lastActivity")]
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
-    public override string SysId { get; set; } = Guid.NewGuid().ToString();
-
-    [JsonIgnore]
-    string ITypedModel.Type { get => Type; set { /* Allow deserialization but ignore */ } }
+    public override string StorageId { get; set; } = Guid.NewGuid().ToString();
 
     public virtual Task CloseOutputAsync()
     {
@@ -84,13 +94,30 @@ public interface ITransportClient
     bool IsConnected { get; }
 }
 
-
 public interface IConnectionManager
 {
-    Task HandleConnection(Connection socket, string @event, string clientId);
+    Task<IEnumerable<AltruistConnection>> GetConnectionsForPortal(IPortal portal);
+    Task HandleConnection(AltruistConnection socket, string @event, string clientId);
+    Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId);
+    void AddInterceptor(IInterceptor interceptor);
+    Task RemoveConnectionAsync(string connectionId);
+    Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null);
+    Task<AltruistConnection?> GetConnectionAsync(string connectionId);
+    Task<IEnumerable<string>> GetAllConnectionIdsAsync();
+    Task DisconnectEngineAwareAsync(string clientId);
+    Task DisconnectAsync(string clientId);
+    Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync();
+    Task<ICursor<AltruistConnection>> GetAllConnectionsAsync();
+    Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId);
+    Task<RoomPacket?> FindAvailableRoomAsync();
+    Task<RoomPacket?> FindRoomForClientAsync(string clientId);
+    Task<RoomPacket> CreateRoomAsync(string? roomId);
+    Task DeleteRoomAsync(string roomName);
+    Task<RoomPacket?> GetRoomAsync(string roomId);
+    Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync();
+    Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId);
+    Task SaveRoomAsync(RoomPacket room);
+    Task Cleanup();
+    Task<bool> IsConnectionExistsAsync(string connectionId);
 }
 
-public interface IPortal : IConnectionManager
-{
-    void AddInterceptor(IInterceptor interceptor);
-}

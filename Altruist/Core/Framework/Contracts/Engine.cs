@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
-using System;
 
 namespace Altruist.Engine;
 
@@ -33,7 +31,8 @@ public class TaskIdentifier : IEquatable<TaskIdentifier>
 
     public bool Equals(TaskIdentifier? other)
     {
-        if (other == null) return false;
+        if (other == null)
+            return false;
         return Id.Equals(other.Id, StringComparison.Ordinal);
     }
 
@@ -53,20 +52,31 @@ public class TaskIdentifier : IEquatable<TaskIdentifier>
 }
 
 
-public interface IAltruistEngine
+public interface IEngineCore
 {
-    public CycleRate Rate { get; }
-
-    public bool Enabled { get; }
-
+    CycleRate Rate { get; }
+    bool Enabled { get; }
     void Enable();
-
     void Disable();
-
-    void Start();
-    void Stop();
-
-    void ScheduleTask(Delegate taskDelegate, CycleRate? frequencyHz = null);
-    void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
     void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
+    void Start(CancellationToken token);
+    void Stop();
+    void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
+    void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
+    void WaitForNextTick(Delegate task);
+    void WaitForNextTick(Action task);
+    void WaitForNextTick(Func<Task> task);
+    void SyncCommit(Action commit);
+    Task<T> SyncCommit<T>(Func<T> commit);
+    TaskIdentifier ScheduleEffect(
+         CycleRate cycleRate,
+         DateTime expiresAtUtc,
+         Action<float> step);
+
+
+    bool CancelEffect(TaskIdentifier id);
+}
+
+public interface IAltruistEngine : IEngineCore
+{
 }

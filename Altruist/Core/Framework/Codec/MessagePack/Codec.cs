@@ -27,6 +27,7 @@ public class MessagePackMessageDecoder : IDecoder
 {
     private MessagePackSerializerOptions options = MessagePackSerializerOptions.Standard.WithResolver(
            CompositeResolver.Create(
+               StandardResolverAllowPrivate.Instance,
                TypelessContractlessStandardResolver.Instance
            )
        );
@@ -47,7 +48,9 @@ public class MessagePackMessageDecoder : IDecoder
     }
 }
 
-
+[Service(typeof(ICodec))]
+[CodecProvider("messagepack")]
+[ConditionalOnConfig("altruist:server:transport:codec:provider", havingValue: "messagepack")]
 public class MessagePackCodec : ICodec
 {
     public IEncoder Encoder { get; } = new MessagePackMessageEncoder();

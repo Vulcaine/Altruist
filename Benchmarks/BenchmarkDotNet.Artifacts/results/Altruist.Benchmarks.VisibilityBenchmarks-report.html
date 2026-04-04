@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Altruist.Benchmarks.VisibilityBenchmarks-20260327-202027</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8037)
+Intel Core i9-10900KF CPU 3.70GHz, 1 CPU, 20 logical and 10 physical cores
+.NET SDK 9.0.304
+  [Host]     : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+  Job-JGADJO : .NET 9.0.8 (9.0.825.36511), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>IterationCount=20  WarmupCount=5  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                                </th><th>PlayerCount</th><th>NpcCount</th><th>Mean    </th><th>Error   </th><th>StdDev  </th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>10</td><td>100</td><td>117,589.818 ns</td><td>5,202.7482 ns</td><td>5,991.4926 ns</td><td>3.9063</td><td>0.7324</td><td>38524 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>10</td><td>100</td><td>5.627 ns</td><td>0.0480 ns</td><td>0.0513 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>10</td><td>100</td><td>153.712 ns</td><td>1.0275 ns</td><td>1.1833 ns</td><td>0.0122</td><td>-</td><td>128 B</td>
+</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>10</td><td>1000</td><td>397,407.442 ns</td><td>18,518.3804 ns</td><td>20,583.1307 ns</td><td>14.6484</td><td>2.9297</td><td>151523 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>10</td><td>1000</td><td>5.677 ns</td><td>0.0299 ns</td><td>0.0294 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>10</td><td>1000</td><td>154.146 ns</td><td>0.8775 ns</td><td>0.9389 ns</td><td>0.0122</td><td>-</td><td>128 B</td>
+</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>50</td><td>100</td><td>200,952.302 ns</td><td>6,606.7843 ns</td><td>7,608.3826 ns</td><td>4.3945</td><td>0.9766</td><td>43061 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>50</td><td>100</td><td>5.438 ns</td><td>0.0388 ns</td><td>0.0399 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>50</td><td>100</td><td>770.962 ns</td><td>20.0748 ns</td><td>21.4798 ns</td><td>0.0114</td><td>-</td><td>128 B</td>
+</tr><tr><td>&#39;Visibility Tick (steady state, no changes)&#39;</td><td>50</td><td>1000</td><td>885,734.603 ns</td><td>18,348.6021 ns</td><td>19,632.7986 ns</td><td>15.6250</td><td>1.9531</td><td>153628 B</td>
+</tr><tr><td>&#39;GetVisibleEntities lookup&#39;</td><td>50</td><td>1000</td><td>6.300 ns</td><td>0.1493 ns</td><td>0.1533 ns</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;GetObserversOf (reverse lookup)&#39;</td><td>50</td><td>1000</td><td>766.726 ns</td><td>7.1451 ns</td><td>7.3375 ns</td><td>0.0114</td><td>-</td><td>128 B</td>
+</tr></tbody></table>
+</body>
+</html>

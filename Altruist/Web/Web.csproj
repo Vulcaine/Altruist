@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Web</PackageId>
     <Description>Web module for Altruist framework.</Description>
-    <Version>0.4.1-alpha</Version>
+    <Version>0.9.0-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>./README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
@@ -18,11 +18,7 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath=""/>
   </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="FarseerPhysics" Version="3.5.0" />
-  </ItemGroup>
-
+  
  <ItemGroup Condition="'$(UseLocalProjects)' == 'true'">
     <ProjectReference Include="..\Core\Core.csproj" />
   </ItemGroup>
