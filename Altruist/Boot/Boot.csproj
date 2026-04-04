@@ -4,9 +4,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <PackageId>Boot</PackageId>
+    <PackageId>Altruist.Boot</PackageId>
     <Description>Boot module for Altruist framework.</Description>
-    <Version>0.9.1-beta</Version>
+    <Version>0.9.2-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>./README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
