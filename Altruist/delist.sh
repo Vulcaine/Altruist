@@ -5,8 +5,9 @@ set -e
 # Example: ./delist.sh Altruist.EFCore
 #          ./delist.sh Altruist.ScyllaDB
 #
-# Unlists ALL versions of a NuGet package and marks them deprecated.
+# Unlists ALL versions of a NuGet package.
 # Prompts for API key securely (hidden input).
+# No dependencies required (no jq needed).
 
 PACKAGE_ID="$1"
 
@@ -26,13 +27,25 @@ if [ -z "$NUGET_API_KEY" ]; then
   exit 1
 fi
 
+# NuGet API uses lowercase package IDs
+PACKAGE_ID_LOWER=$(echo "$PACKAGE_ID" | tr '[:upper:]' '[:lower:]')
+
 echo "📦 Fetching versions for $PACKAGE_ID..."
 
-# Get all versions from NuGet API
-VERSIONS=$(curl -s "https://api.nuget.org/v3-flatcontainer/${PACKAGE_ID,,}/index.json" | jq -r '.versions[]' 2>/dev/null)
+# Get all versions from NuGet API (parse JSON without jq)
+API_RESPONSE=$(curl -s "https://api.nuget.org/v3-flatcontainer/${PACKAGE_ID_LOWER}/index.json")
+
+if echo "$API_RESPONSE" | grep -q '"versions"'; then
+  # Extract versions: grep quoted strings after "versions", strip quotes/commas/brackets
+  VERSIONS=$(echo "$API_RESPONSE" | grep -o '"[0-9][^"]*"' | tr -d '"')
+else
+  echo "❌ No versions found for $PACKAGE_ID"
+  echo "   API response: $API_RESPONSE"
+  exit 1
+fi
 
 if [ -z "$VERSIONS" ]; then
-  echo "❌ No versions found for $PACKAGE_ID (check package name, case-insensitive)"
+  echo "❌ No versions found for $PACKAGE_ID"
   exit 1
 fi
 
@@ -74,8 +87,6 @@ done
 echo ""
 echo "Done: $SUCCESS unlisted, $FAILED failed."
 echo ""
-echo "📋 To also mark as deprecated (with reason), go to:"
+echo "📋 To also mark as deprecated, go to:"
 echo "   https://www.nuget.org/packages/$PACKAGE_ID/"
 echo "   → Manage Package → Deprecation → Select all versions → Legacy"
-echo ""
-echo "   (NuGet deprecation API is not available via CLI yet — web UI only)"
