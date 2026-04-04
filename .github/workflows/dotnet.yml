@@ -74,33 +74,21 @@ jobs:
         git push origin "${{ steps.version.outputs.VERSION }}" || echo "Tag already pushed"
 
     - name: Create GitHub Release
+      id: create_release
       env:
         VERSION: ${{ steps.version.outputs.VERSION }}
-        GH_PAT: ${{ secrets.ACTION_PAT }}
+        GH_TOKEN: ${{ secrets.ACTION_PAT }}
       run: |
         echo "📦 Creating GitHub release for $VERSION"
 
-        API_RESPONSE=$(curl -s -X POST "https://api.github.com/repos/${{ github.repository }}/releases" \
-          -H "Authorization: token $GH_PAT" \
-          -H "Accept: application/vnd.github+json" \
-          -d "$(jq -n \
-            --arg tag "$VERSION" \
-            --arg name "$VERSION" \
-            --arg body "Release $VERSION" \
-            '{ tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false }')")
+        # Create release using gh CLI (more reliable than curl)
+        gh release create "$VERSION" \
+          --repo "${{ github.repository }}" \
+          --title "$VERSION" \
+          --notes "Release $VERSION" \
+          ./nupkgs/*.nupkg
 
-        UPLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.upload_url' | sed 's/{?name,label}//')
-
-        for file in ./nupkgs/*.nupkg; do
-          FILENAME=$(basename "$file")
-          echo "📤 Uploading $FILENAME"
-          curl -s --data-binary @"$file" \
-            -H "Authorization: token $GH_PAT" \
-            -H "Content-Type: application/octet-stream" \
-            "$UPLOAD_URL?name=$FILENAME"
-        done
-
-        echo "✅ Release created."
+        echo "✅ Release created with artifacts."
 
     - name: Publish to NuGet
       env:
