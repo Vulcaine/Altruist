@@ -196,10 +196,10 @@ jobs:
       run: |
         dotnet nuget push ./Altruist/nupkgs/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
 
-    - name: Create Release Pull Request Via GitHub API
+    - name: Create Release Pull Request to Main
       working-directory: ./repo
       run: |
-        echo "📬 Creating pull request via GitHub API..."
+        echo "📬 Creating pull request to main..."
         curl -s -X POST https://api.github.com/repos/Vulcaine/Altruist/pulls \
           -H "Authorization: token ${{ secrets.ACTION_PAT }}" \
           -H "Accept: application/vnd.github+json" \
@@ -209,3 +209,21 @@ jobs:
             "head": "${{ needs.update-version.outputs.RELEASE_BRANCH }}",
             "base": "main"
           }'
+
+    - name: Auto-merge release back into staging and develop
+      working-directory: ./repo
+      run: |
+        echo "🔄 Merging release back into staging and develop..."
+        git fetch origin
+
+        # Merge into staging
+        git checkout staging
+        git merge "${{ needs.update-version.outputs.RELEASE_BRANCH }}" --no-edit || echo "⚠️ Merge conflict into staging — manual merge needed"
+        git push origin staging || echo "⚠️ Push to staging failed"
+
+        # Merge into develop
+        git checkout develop
+        git merge staging --no-edit || echo "⚠️ Merge conflict into develop — manual merge needed"
+        git push origin develop || echo "⚠️ Push to develop failed"
+
+        echo "✅ Release merged back into staging and develop"
