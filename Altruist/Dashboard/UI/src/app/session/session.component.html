@@ -1,0 +1,212 @@
+<div class="session-root">
+  <header class="session-header">
+    <div>
+      <h1>Sessions</h1>
+      <p>Inspect live rooms and connections on your Altruist server.</p>
+    </div>
+    <div class="session-header-actions">
+      <button
+        class="btn btn-secondary"
+        type="button"
+        (click)="onRefresh()"
+        [disabled]="isLoading || isMutating"
+      >
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (errorMessage) {
+  <div class="session-error">
+    {{ errorMessage }}
+  </div>
+  }
+
+  <section class="session-layout">
+    <section class="session-panel session-panel--rooms">
+      <header class="panel-header">
+        <h2>Rooms</h2>
+        <span class="panel-meta">
+          @if (isLoading) { Loading… } @else { {{ rooms.length }} room(s) }
+        </span>
+      </header>
+
+      @if (!isLoading && !hasRooms) {
+      <div class="panel-empty">No rooms currently active.</div>
+      } @else {
+      <div class="table-wrapper">
+        <table class="session-table">
+          <thead>
+            <tr>
+              <th>Room</th>
+              <th>Connections</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (room of rooms; track room.roomId) {
+            <tr
+              class="room-row"
+              [class.room-row--active]="room === selectedRoom"
+              (click)="onSelectRoom(room)"
+            >
+              <td>
+                <div class="room-id">
+                  {{ room.roomId }}
+                </div>
+              </td>
+              <td>
+                <span class="badge">
+                  {{ room.connectionCount }}
+                </span>
+              </td>
+              <td class="col-actions">
+                @if (room.roomId !== 'waiting_room') {
+                <button
+                  class="btn btn-link"
+                  type="button"
+                  (click)="onDeleteRoom(room); $event.stopPropagation()"
+                  [disabled]="isMutating"
+                >
+                  Delete room
+                </button>
+                }
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+    <section class="session-panel session-panel--connections">
+      <header class="panel-header">
+        <h2>Connections</h2>
+        <span class="panel-meta">
+          @if (!hasSelection) { Select a room to inspect its connections. }
+          @else { Room: {{ selectedRoom?.roomId }} ·
+          {{ selectedRoom?.connectionCount }} connection(s) }
+        </span>
+      </header>
+
+      @if (!hasSelection) {
+      <div class="panel-empty panel-empty--muted">
+        Select a room on the left to see its connections.
+      </div>
+      } @else { @if (selectedRoom?.connections?.length === 0) {
+      <div class="panel-empty">No connections in this room.</div>
+      } @else {
+      <div class="table-wrapper">
+        <table class="session-table">
+          <thead>
+            <tr>
+              <th>Connection ID</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (conn of selectedRoom!.connections; track conn.connectionId) {
+            <tr>
+              <td>
+                <code class="conn-id">
+                  {{ conn.connectionId }}
+                </code>
+              </td>
+              <td class="col-actions">
+                <button
+                  class="btn btn-secondary"
+                  type="button"
+                  (click)="onRemoveConnection(selectedRoom!, conn)"
+                  [disabled]="isMutating"
+                >
+                  Remove from room
+                </button>
+                <button
+                  class="btn btn-solid-danger"
+                  type="button"
+                  (click)="onCloseSession(conn)"
+                  [disabled]="isMutating"
+                >
+                  Close session
+                </button>
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      } }
+    </section>
+  </section>
+
+  <!-- All connections panel (always visible, even if there are 0 rooms) -->
+  <section class="session-panel session-panel--all-connections">
+    <header class="panel-header">
+      <h2>All Connections</h2>
+      <span class="panel-meta">
+        @if (isLoading) { Loading… } @else {
+        {{ allConnections.length }} connection(s) }
+      </span>
+    </header>
+
+    @if (!isLoading && allConnections.length === 0) {
+    <div class="panel-empty">No active connections.</div>
+    } @else {
+    <div class="table-wrapper">
+      <table class="session-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Connection ID</th>
+            <th>IP address</th>
+            <th>Room</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (conn of allConnections; track conn.connectionId; let i = $index)
+          {
+          <tr>
+            <td>{{ i + 1 }}</td>
+            <td>
+              <code class="conn-id">
+                {{ conn.connectionId }}
+              </code>
+            </td>
+            <td>
+              @if (conn.ipAddress) {
+              <code class="conn-id">
+                {{ conn.ipAddress }}
+              </code>
+              } @else {
+              <span class="badge">Unknown</span>
+              }
+            </td>
+            <td>
+              @if (conn.roomId) {
+              <span class="room-id">
+                {{ conn.roomId }}
+              </span>
+              } @else {
+              <span class="badge">No room</span>
+              }
+            </td>
+            <td class="col-actions">
+              <button
+                class="btn btn-solid-danger"
+                type="button"
+                (click)="onCloseSession(conn)"
+                [disabled]="isMutating"
+              >
+                Close session
+              </button>
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+  </section>
+</div>

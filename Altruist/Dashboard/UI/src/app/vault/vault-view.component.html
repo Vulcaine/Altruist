@@ -1,0 +1,212 @@
+<div class="vault-view">
+
+  <!-- HEADER -->
+  <header class="panel vault-header">
+    <div class="vault-header-main">
+      <h2>🔐 Vault Dashboard</h2>
+      <p class="vault-status">{{ statusText }}</p>
+    </div>
+
+    <div class="vault-header-actions">
+      <input type="text" class="input" [(ngModel)]="vaultFilter" (ngModelChange)="applyVaultFilter()"
+        placeholder="Filter vaults…" />
+
+      @if (hasPendingChanges) {
+      <button type="button" class="button-primary commit-button" (click)="commitChanges()">
+        ⬆️ Commit ({{ dirtyItems.size }})
+      </button>
+      }
+
+      <button type="button" class="button-base" (click)="loadVaults()" [disabled]="isLoadingVaults">
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (error) {
+  <div class="panel vault-error">{{ error }}</div>
+  }
+
+  <!-- GRID LAYOUT -->
+  <section class="vault-layout">
+
+    <!-- SIDEBAR (PANEL) -->
+    <aside class="panel vault-sidebar">
+      <h3>Vaults</h3>
+
+      @if (!hasVaults && !isLoadingVaults) {
+
+      <p class="vault-empty">No vaults registered.</p>
+
+      } @else {
+
+      <ul class="list">
+
+        @for (group of groupedVaults; track group.keyspace) {
+
+        <li>
+
+          <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">
+            <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">▶</span>
+            <span>{{ group.keyspace }}</span>
+          </button>
+
+          @if (!collapsedKeyspaces.has(group.keyspace)) {
+
+          <ul class="sublist">
+
+            @for (v of group.vaults; track v.typeKey) {
+
+            <li>
+              <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"
+                (click)="onSelectVault(v)">
+                <div class="vault-item-type">{{ v.clrTypeShort }}</div>
+                <div class="vault-item-meta">
+                  {{ v.tableName }}
+                  @if (v.storeHistory) { <span class="vault-item-tag">History</span> }
+                </div>
+              </button>
+            </li>
+
+            }
+
+          </ul>
+
+          }
+
+        </li>
+
+        }
+
+      </ul>
+
+      }
+
+    </aside>
+
+    <!-- MAIN PANEL -->
+    <main class="panel vault-main">
+
+      @if (!selectedVault) {
+
+      <div class="vault-main-empty">
+        <p>Select a vault.</p>
+      </div>
+
+      } @else {
+
+      <!-- TABLE HEADER -->
+      <header class="panel-header vault-table-header">
+        <div>
+          <h3>{{ selectedVault.clrTypeShort }}</h3>
+          <p class="muted">
+            {{ selectedVault.typeKey }} ·
+            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> ·
+            <span class="vault-table-name">{{ selectedVault.tableName }}</span>
+          </p>
+        </div>
+
+        <div class="vault-table-controls">
+
+          <label>
+            Page size
+            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+              @for (sz of pageSizeOptions; track sz) {
+              <option [value]="sz">{{ sz }}</option>
+              }
+            </select>
+          </label>
+
+          <div class="vault-pagination">
+            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">
+              ‹
+            </button>
+
+            <span>Page {{ displayPage }} / {{ totalPages }}</span>
+
+            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">
+              ›
+            </button>
+          </div>
+
+        </div>
+      </header>
+
+      <!-- TABLE AREA -->
+      <section class="vault-table-section">
+
+        @if (isLoadingItems) {
+
+        <div class="vault-main-empty">
+          <p>Loading items…</p>
+        </div>
+
+        } @else if (!hasItems) {
+
+        <div class="vault-main-empty">
+          <p>No items.</p>
+        </div>
+
+        } @else {
+
+        <div class="vault-table-wrapper">
+
+          <table class="table vault-table">
+
+            <thead>
+              <tr>
+                @for (col of orderedColumns; track col.fieldName) {
+                <th [class.pk-header]="col.isPrimaryKey">
+                  {{ col.fieldName }}
+
+                  @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }
+                  @if (col.isUnique) { <span class="col-meta">UQ</span> }
+                  @if (col.isIndexed) { <span class="col-meta">IDX</span> }
+                  @if (col.isForeignKey) { <span class="col-meta">FK</span> }
+                </th>
+                }
+              </tr>
+            </thead>
+
+            <tbody>
+              @for (item of items; let row = $index; track row) {
+              <tr>
+
+                @for (col of orderedColumns; track col.fieldName) {
+
+                <td [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">
+
+                  @if (isEditing(row, col.fieldName)) {
+
+                  <input class="input vault-cell-input" [value]="item[col.fieldName]"
+                    (input)="onCellEdit(row, col.fieldName, $any($event.target).value)"
+                    (blur)="onCellBlur(row, col.fieldName)" autofocus />
+
+                  } @else {
+
+                  <code>{{ item[col.fieldName] }}</code>
+
+                  }
+
+                </td>
+
+                }
+
+              </tr>
+              }
+            </tbody>
+
+          </table>
+
+        </div>
+
+        }
+
+      </section>
+
+      }
+
+    </main>
+
+  </section>
+</div>

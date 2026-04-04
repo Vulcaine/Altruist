@@ -1,0 +1,52 @@
+<div class="dashboard-root">
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <a routerLink="/summary-view" class="brand-link">
+        <span class="brand">Altruist</span>
+        <span class="brand-sub">Server Dashboard</span>
+      </a>
+    </div>
+    <div class="topbar-right">
+      <!-- Later: env selector, auth user, etc -->
+      <span class="badge env">3D</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-section sidebar-title">Management</div>
+
+      <a routerLink="scene" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">🗺️</span>
+        <span class="nav-label">Scene View</span>
+      </a>
+
+      <a routerLink="cache-view" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">💾</span>
+        <span class="nav-label">Cache View</span>
+      </a>
+
+      <a routerLink="vault-view" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">🛢️</span>
+        <span class="nav-label">Vault View</span>
+      </a>
+
+      <a routerLink="sessions" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">📡</span>
+        <span class="nav-label">Sessions</span>
+      </a>
+
+      <a routerLink="metrics" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Metrics</span>
+      </a>
+    </nav>
+
+    <!-- Main content -->
+    <main class="content">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>

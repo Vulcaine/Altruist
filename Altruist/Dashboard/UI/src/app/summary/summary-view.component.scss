@@ -1,0 +1,64 @@
+@use '../../styles.scss' as *;
+@use '../../styles/dashboard-theme' as theme;
+
+/* Layout Root */
+.summary-root {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  height: auto;
+}
+
+/* Page Header */
+.summary-header {
+  @extend .panel;
+  flex-shrink: 0;
+}
+
+/* ENGINE + OVERVIEW SECTION */
+.summary-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  flex-shrink: 0;
+  min-height: 180px;
+}
+
+.engine-card,
+.stats-card {
+  @extend .panel;
+  flex: 1 1 300px;
+  min-width: 260px;
+}
+
+/* SHARED PANEL SETTINGS */
+.summary-configs,
+.summary-services {
+  @extend .panel;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+/* Sticky headers INSIDE scrollable sections */
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: theme.$bg-panel;
+  border-bottom: 1px solid theme.$border-subtle;
+}
+
+/* Scrollable table containers */
+.config-list,
+.services-table-wrapper {
+  flex: 1;
+  overflow: auto;
+}
+
+/* Table full width */
+.config-table,
+.services-table {
+  width: 100%;
+}

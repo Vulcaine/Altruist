@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@ limitations under the License.
 
 using Altruist.Contracts;
 using Altruist.Persistence;
+
 using StackExchange.Redis;
 
 namespace Altruist;
@@ -121,6 +122,8 @@ public interface ICacheProvider
     /// <returns>A task representing the asynchronous clear operation.</returns>
     Task ClearAllAsync();
 
+    public IEnumerable<CacheEntrySnapshot> GetSnapshot();
+
 }
 
 
@@ -170,6 +173,12 @@ public interface IRemoteCacheProvider : ICacheProvider, IConnectable, ISyncServi
 
     Task<ICursor<object>> GetAllRemoteAsync(Type type, string cacheGroupId = "");
 }
+
+public sealed record CacheEntrySnapshot(
+    Type Type,
+    string GroupId,
+    string Key,
+    object? Value);
 
 
 public interface IMemoryCacheProvider : ICacheProvider

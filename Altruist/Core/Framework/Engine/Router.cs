@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,9 @@ namespace Altruist.Engine;
 
 public interface IAltruistEngineRouter : IAltruistRouter { }
 
+[Service(typeof(IAltruistEngineRouter))]
+[Service(typeof(IAltruistRouter))]
+[ConditionalOnConfig("altruist:game:engine")]
 public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRouter
 {
     private readonly IAltruistEngine _engine;
@@ -35,32 +38,41 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
     }
 }
 
-
+[Service]
+[ConditionalOnConfig("altruist:game:engine")]
 public class EngineClientSender : ClientSender
 {
     private readonly IAltruistEngine _engine;
+    private readonly ConcurrentDictionary<string, byte> _inFlight = new();
+
     public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine) : base(store, codec)
     {
         _engine = engine;
     }
 
+    private static long _sendCounter;
+
     public override Task SendAsync<TPacketBase>(string clientId, TPacketBase message)
     {
-        // Efficient string allocation using string.Create (avoids clientId + message.Type allocation)
-        var id = string.Create(clientId.Length + 1 + message.Type.Length, (clientId, message.Type), (span, state) =>
+        if (message == null)
+            return Task.CompletedTask;
+
+        // Use monotonic counter for unique task ID — no expensive hash needed
+        var id = Interlocked.Increment(ref _sendCounter);
+        var key = $"send:{id}";
+        var identifier = new TaskIdentifier(key);
+
+        _engine.SendTask(identifier, async () =>
         {
-            state.clientId.AsSpan().CopyTo(span);
-            span[state.clientId.Length] = ':';
-            state.Item2.AsSpan().CopyTo(span.Slice(state.clientId.Length + 1));
+            await base.SendAsync(clientId, message).ConfigureAwait(false);
         });
 
-        var identifier = new TaskIdentifier(id);
-        _engine.SendTask(identifier, () => base.SendAsync(clientId, message));
         return Task.CompletedTask;
     }
 }
 
-
+[Service(typeof(IAltruistEngineRouter))]
+[ConditionalOnConfig("altruist:game:engine")]
 public class InMemoryEngineRouter : EngineRouter
 {
     public InMemoryEngineRouter(IConnectionStore store, ICodec codec, EngineClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, IClientSynchronizator clientSynchronizator, IAltruistEngine engine) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator, engine)

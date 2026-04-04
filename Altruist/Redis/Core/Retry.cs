@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using Microsoft.Extensions.Logging;
+
 using StackExchange.Redis;
 
 namespace Altruist.Redis;

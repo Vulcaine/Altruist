@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,12 @@ limitations under the License.
 */
 
 using System.Text.Json.Serialization;
+
 using Altruist.UORM;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+
 using Newtonsoft.Json;
 
 namespace Altruist.Security;
@@ -31,9 +34,9 @@ public interface ILoginToken
 public abstract class AccountModel : VaultModel
 {
     [VaultColumn("id")]
-    public override string SysId { get; set; } = Guid.NewGuid().ToString();
+    public override string StorageId { get; set; } = Guid.NewGuid().ToString();
 
-    [VaultColumn("createdAt")]
+    [VaultColumn("created-at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     [VaultColumn("timestamp")]
@@ -50,7 +53,7 @@ public class UsernamePasswordAccountModel : AccountModel
     [VaultColumn("username")]
     public required string Username { get; set; }
 
-    [VaultColumn("passwordHash")]
+    [VaultColumn("password-hash")]
     public required string PasswordHash { get; set; }
 
     [VaultColumn("type")]
@@ -62,7 +65,7 @@ public class EmailPasswordAccountModel : AccountModel
     [VaultColumn("email")]
     public required string Email { get; set; }
 
-    [VaultColumn("passwordHash")]
+    [VaultColumn("password-hash")]
     public required string PasswordHash { get; set; }
 
     [VaultColumn("type")]
@@ -79,7 +82,7 @@ public class HybridAccountModel : AccountModel
     [VaultColumn("email")]
     public required string Email { get; set; }
 
-    [VaultColumn("passwordHash")]
+    [VaultColumn("password-hash")]
     public required string PasswordHash { get; set; }
 
     [VaultColumn("type")]
@@ -91,6 +94,9 @@ public class LoginRequest
 {
     [JsonPropertyName("fingerprint")]
     public string? Fingerprint { get; set; }
+
+    [JsonPropertyName("rememberMe")]
+    public bool? RememberMe { get; set; }
 }
 
 public class SignupRequest
@@ -106,13 +112,14 @@ public class SignupRequest
 
     public SignupRequest(string password, string? username = null, string? email = null)
     {
-        if (username == null && email == null)
+        if (username == null || email == null)
         {
             throw new BadHttpRequestException("Username or email must be provided.");
         }
 
         Username = username;
         Password = password;
+        Email = email;
     }
 }
 

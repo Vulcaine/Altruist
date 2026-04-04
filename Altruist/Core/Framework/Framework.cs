@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,10 @@ limitations under the License.
 */
 
 using Altruist.Contracts;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist
 {
+    [Service(typeof(IAltruistContext))]
     public class AltruistServerContext : IAltruistContext
     {
         public ServerInfo ServerInfo { get; set; } = new ServerInfo("Altruist Server", "ws", "localhost", 3001);
@@ -29,10 +29,21 @@ namespace Altruist
 
         public string ProcessId { get; } = $"{Environment.MachineName}-{Environment.ProcessId}-${Guid.NewGuid()}";
 
-        public ITransportServiceToken TransportToken { get; set; }
-        public List<IDatabaseServiceToken> DatabaseTokens { get; set; } = new List<IDatabaseServiceToken>();
+        public ITransportServiceToken? TransportToken { get; set; }
+        public List<IDatabaseServiceToken> DatabaseTokens { get; set; }
         public ICacheServiceToken? CacheToken { get; set; }
-        public IServerStatus AppStatus { get; set; }
+
+        public AltruistServerContext(
+            List<IDatabaseServiceToken> databaseServiceTokens,
+            ITransportServiceToken? token = null,
+            ICacheServiceToken? cacheToken = null,
+            EngineConfigOptions? configOptions = null)
+        {
+            EngineEnabled = configOptions != null;
+            TransportToken = token;
+            DatabaseTokens = databaseServiceTokens ?? new();
+            CacheToken = cacheToken;
+        }
 
         public void AddEndpoint(string endpoint) => Endpoints.Add(endpoint);
 
@@ -59,7 +70,7 @@ namespace Altruist
                 lines.Add($"💻 Address: {serverString}{endpoint}");
             }
 
-            if (!string.IsNullOrEmpty(TransportToken.Description))
+            if (!string.IsNullOrEmpty(TransportToken?.Description))
             {
                 lines.Add(TransportToken.Description);
             }
@@ -82,42 +93,6 @@ namespace Altruist
 
     }
 
-    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = true)]
-    public sealed class PortalAttribute : Attribute
-    {
-        public string Endpoint { get; }
-        public string? Context { get; }
-
-        public PortalAttribute(string endpoint, string? context = "")
-        {
-            Endpoint = endpoint;
-            Context = context;
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = true)]
-    public sealed class GateAttribute : Attribute
-    {
-        public string Event { get; }
-
-        public GateAttribute(string eventName)
-        {
-            Event = eventName;
-        }
-    }
 
 }
 
-
-[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-public class ServiceAttribute : Attribute
-{
-    public Type? ServiceType { get; }
-    public ServiceLifetime Lifetime { get; }
-
-    public ServiceAttribute(Type? serviceType, ServiceLifetime lifetime = ServiceLifetime.Singleton)
-    {
-        ServiceType = serviceType;
-        Lifetime = lifetime;
-    }
-}

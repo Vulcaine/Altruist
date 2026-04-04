@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@ limitations under the License.
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Security.Cryptography;
+
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -45,7 +45,14 @@ public class JwtToken : TokenIssue
     public override string Type { get; set; } = "JwtToken";
 }
 
-public class SessionTokenIssuer : IIssuer
+public interface ISessionTokenIssuer : IIssuer
+{
+
+}
+
+[Service(typeof(ISessionTokenIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
+[ConditionalOnConfig("altruist:security")]
+public class SessionTokenIssuer : ISessionTokenIssuer
 {
     private readonly TimeSpan _accessTokenExpiration;
     private readonly TimeSpan _refreshTokenExpiration;
@@ -67,7 +74,14 @@ public class SessionTokenIssuer : IIssuer
     }
 }
 
-public class JwtTokenIssuer : IIssuer
+public interface IJwtTokenIssuer : IIssuer
+{
+
+}
+
+[Service(typeof(IJwtTokenIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
+[ConditionalOnConfig("altruist:security")]
+public class JwtTokenIssuer : IJwtTokenIssuer
 {
     public JwtBearerOptions JwtOptions { get; }
     private IEnumerable<Claim>? _customClaims;
@@ -111,30 +125,34 @@ public class JwtTokenIssuer : IIssuer
     public IIssue Issue()
     {
         var signingKey = JwtOptions.TokenValidationParameters.IssuerSigningKey
-            as SymmetricSecurityKey ?? throw new InvalidOperationException("Signing key is not configured.");
+            as SymmetricSecurityKey
+            ?? throw new InvalidOperationException("Signing key is not configured.");
 
         var creds = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
+    {
+        new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+    };
 
         if (_customClaims != null)
             claims.AddRange(_customClaims);
 
-        var accessToken = GenerateJwtToken(claims, DateTime.UtcNow.AddHours(1));
+        var subject =
+            claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value;
 
-        string refreshToken;
-        refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry) + ";jwt";
+        var accessToken = GenerateJwtToken(claims, DateTime.UtcNow.AddHours(1));
+        var refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry) + ";jwt";
 
         return new JwtToken
         {
             AccessToken = $"{accessToken};jwt",
-            RefreshToken = $"{refreshToken}",
-            Algorithm = creds.Algorithm
+            RefreshToken = refreshToken,
+            Algorithm = creds.Algorithm,
+            PrincipalId = subject ?? ""
         };
     }
+
 }
 
 

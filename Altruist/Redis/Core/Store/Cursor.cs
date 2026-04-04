@@ -1,20 +1,12 @@
-/* 
+/*
 Copyright 2025 Aron Gere
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0
 */
 
 using System.Text.Json;
+
+using Altruist.Persistence;
+
 using StackExchange.Redis;
 
 namespace Altruist.Redis;
@@ -25,15 +17,13 @@ public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : not
     private int CurrentIndex { get; set; }
 
     private readonly IDatabase _redis;
-    private readonly RedisDocument _document;
+    private readonly VaultDocument _document;
     private readonly string _group;
 
     public bool HasNext { get; private set; } = true;
-
-    // TODO: implement count correctly
     public int Count { get; } = -1;
 
-    public RedisCacheCursor(IDatabase redis, RedisDocument document, int batchSize, string cacheGroupId = "")
+    public RedisCacheCursor(IDatabase redis, VaultDocument document, int batchSize, string cacheGroupId = "")
     {
         _redis = redis;
         BatchSize = batchSize;
@@ -44,12 +34,13 @@ public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : not
 
     public async Task<IEnumerable<T>> NextBatch()
     {
-        // Use SCAN to fetch a batch of keys matching the pattern for the type
         var server = _redis.Multiplexer.GetServer(_redis.Multiplexer.GetEndPoints().First());
-        var keys = server.Keys(pattern: $"{_document.Name}{(_group != "" ? $"_{_group}" : "")}:*", pageSize: BatchSize)
-                        .Skip(CurrentIndex)
-                        .Take(BatchSize)
-                        .ToArray();
+        var keys = server.Keys(
+                pattern: $"{_document.Name}{(_group != "" ? $"_{_group}" : "")}:*",
+                pageSize: BatchSize)
+            .Skip(CurrentIndex)
+            .Take(BatchSize)
+            .ToArray();
 
         if (keys.Length == 0)
         {
@@ -57,7 +48,6 @@ public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : not
             return Enumerable.Empty<T>();
         }
 
-        // Fetch values for the keys in batch
         var values = await _redis.StringGetAsync(keys);
         var result = new List<T>(keys.Length);
 
@@ -67,9 +57,7 @@ public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : not
             {
                 var entity = JsonSerializer.Deserialize<T>(value.ToString());
                 if (entity != null)
-                {
                     result.Add(entity);
-                }
             }
         }
 
@@ -87,9 +75,7 @@ public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : not
 
             var batch = NextBatch().GetAwaiter().GetResult();
             foreach (var item in batch)
-            {
                 yield return item;
-            }
         }
     }
 
@@ -107,13 +93,8 @@ public class RedisCacheCursor<T> : ICursor<T>, IAsyncEnumerable<T> where T : not
     }
 
     public IEnumerator<T> GetEnumerator()
-    {
-        return FetchAllBatches().GetEnumerator();
-    }
+        => FetchAllBatches().GetEnumerator();
 
     IAsyncEnumerator<T> IAsyncEnumerable<T>.GetAsyncEnumerator(CancellationToken cancellationToken)
-    {
-        return GetAsyncEnumerator(cancellationToken);
-    }
+        => GetAsyncEnumerator(cancellationToken);
 }
-

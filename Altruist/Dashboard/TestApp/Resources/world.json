@@ -1,0 +1,53 @@
+{
+  "transform": {
+    "position": {
+      "X": 0.0,
+      "Y": 0.0,
+      "Z": 0.0
+    },
+    "rotation": {
+      "X": 0.0,
+      "Y": 0.0,
+      "Z": 0.0
+    },
+    "scale": {
+      "X": 1.0,
+      "Y": 1.0,
+      "Z": 1.0
+    },
+    "size": {
+      "X": 512.0,
+      "Y": 64.7317352,
+      "Z": 512.0
+    }
+  },
+  "objects": [
+    {
+      "id": "Playground_Triton/AutoLandscape_Ocean#74752",
+      "archetype": null,
+      "type": "Static",
+      "position": {
+        "X": 256.0,
+        "Y": 5.0,
+        "Z": 256.0
+      },
+      "rotation": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "scale": {
+        "X": 153.6,
+        "Y": 1.0,
+        "Z": 153.6
+      },
+      "size": {
+        "X": 1536.0,
+        "Y": 2.220446E-16,
+        "Z": 1536.0
+      },
+      "colliders": [],
+      "children": []
+    }
+  ]
+}

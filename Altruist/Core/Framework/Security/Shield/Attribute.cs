@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 namespace Altruist.Security;
 
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
-public class ShieldAttribute : Attribute
+public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
 {
     private readonly Type? _authHandlerType;
 
@@ -31,7 +31,7 @@ public class ShieldAttribute : Attribute
         _authHandlerType = authHandlerType;
     }
 
-    // HTTP-based authentication
+    // HTTP-based authentication for MVC + WebSockets
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         var serviceProvider = context.HttpContext.RequestServices;
@@ -40,13 +40,23 @@ public class ShieldAttribute : Attribute
             var authHandler = (IShieldAuth)serviceProvider.GetService(_authHandlerType)!;
             if (authHandler != null)
             {
-                var result = await authHandler.HandleAuthAsync(new HttpAuthContext(context.HttpContext));
-                context.HttpContext.Items["AuthResult"] = result;
 
-                if (!result.AuthorizationResult.Succeeded)
+                try
+                {
+                    var result = await authHandler.HandleAuthAsync(new HttpAuthContext(context.HttpContext));
+
+                    context.HttpContext.Items["AuthResult"] = result;
+
+                    if (!result.AuthorizationResult.Succeeded)
+                    {
+                        context.Result = new UnauthorizedResult();
+                    }
+                }
+                catch (UnauthorizedAccessException)
                 {
                     context.Result = new UnauthorizedResult();
                 }
+
             }
         }
     }

@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,10 @@ limitations under the License.
 */
 
 using System.Linq.Expressions;
-using System.Text.Json.Serialization;
+
 using Altruist.Contracts;
-using Altruist.Persistence;
+using Altruist.UORM;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 
@@ -36,131 +37,162 @@ public interface IIdGenerator
 
 public interface ITypedModel
 {
-    public string Type { get; set; }
+
 }
 
 public interface IStoredModel : ITypedModel
 {
-    public string SysId { get; set; }
-    public string GroupId { get; set; }
+    public string StorageId { get; set; }
+
 }
 
 public abstract class StoredModel : IStoredModel
 {
-    public abstract string SysId { get; set; }
-    public virtual string GroupId { get; set; } = "";
+    public abstract string StorageId { get; set; }
     public abstract string Type { get; set; }
 
-    public virtual string Key { get; set; }
+    // public virtual string Key { get; set; } = "";
 
-    public virtual string Group { get; set; }
+    // public virtual string Group { get; set; } = "";
 
-    [JsonIgnore]
-    public string StoredId => $"{Group}:{Key}";
+    // [JsonIgnore]
+    // public string StoredId => $"{Group}:{Key}";
 }
 
-public interface IVaultFactory<TToken, TConfig> where TConfig : IConfiguration where TToken : IServiceToken<TConfig>
+public interface IVaultFactory<TToken, TConfig> where TConfig : IAltruistConfiguration where TToken : IServiceToken<TConfig>
 {
     public TToken Token { get; }
 }
 
-public interface IDatabaseVaultFactory : IVaultFactory<IDatabaseServiceToken, IDatabaseConfiguration>
+public interface IPrefabModel : IVaultModel
 {
-    IVault<TVaultModel> Make<TVaultModel>(IKeyspace keyspace) where TVaultModel : class, IVaultModel;
-}
-
-public interface ICacheVaultFactory : IVaultFactory<ICacheServiceToken, ICacheConfiguration>
-{
-    IVault<TVaultModel> Make<TVaultModel>() where TVaultModel : class, IVaultModel;
+    // JSONB mapping: component name → StorageId
+    Dictionary<string, string?> ComponentRefs { get; set; }
 }
 
 public interface IVaultModel : IStoredModel
 {
     DateTime Timestamp { get; set; }
+    long Version { get; set; }
+
+    void OnSave();
 }
 
+[VaultPrimaryKey(nameof(StorageId))]
 public abstract class VaultModel : StoredModel, IVaultModel
 {
-    public abstract DateTime Timestamp { get; set; }
+    [VaultColumn("created-at")]
+    public virtual DateTime Timestamp { get; set; } = default!;
 
-    public VaultModel()
+    [VaultColumn("version")]
+    public virtual long Version { get; set; } = default!;
+
+    [VaultColumn("id")]
+    public override string StorageId { get; set; } = default!;
+
+    [VaultColumn("type")]
+    public override string Type { get; set; } = default!;
+
+    public void OnSave()
     {
-        SysId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(SysId) ? Guid.NewGuid().ToString() : SysId);
+        StorageId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(StorageId) ? Guid.NewGuid().ToString() : StorageId);
+        Timestamp = DateTime.UtcNow;
+        Type = GetType().Name;
     }
-}
-
-public interface ILinqVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
-{
-
-}
-
-public interface IVaultRepository<TKeyspace> where TKeyspace : class, IKeyspace
-{
-    IDatabaseServiceToken Token { get; }
-    IVault<TVaultModel> Select<TVaultModel>() where TVaultModel : class, IVaultModel;
-    ITypeErasedVault Select(Type type);
 }
 
 public interface IGeneralDatabaseProvider : IConnectable
 {
     IDatabaseServiceToken Token { get; }
-    Task CreateTableAsync<TVaultModel>(IKeyspace? keyspace = null) where TVaultModel : class, IVaultModel;
-    Task CreateTableAsync(Type entityType, IKeyspace? keyspace = null);
-    Task CreateKeySpaceAsync(string keyspace, ReplicationOptions? options = null);
-    Task ChangeKeyspaceAsync(string keyspace);
+    string GetConnectionString();
+    Task CreateKeySpaceAsync(string keyspace, CancellationToken ct = default);
+    Task ChangeKeyspaceAsync(string keyspace, CancellationToken ct = default);
 }
+
+
 public interface ILinqDatabaseProvider : IGeneralDatabaseProvider
 {
     DbContext Context { get; }
-    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(Expression<Func<TVaultModel, bool>> filter) where TVaultModel : class, IVaultModel;
-    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(Expression<Func<TVaultModel, bool>> filter) where TVaultModel : class, IVaultModel;
-    Task<int> UpdateAsync<TVaultModel>(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteAsync<TVaultModel>(Expression<Func<TVaultModel, bool>> filter) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteSingleAsync<TVaultModel>(TVaultModel model) where TVaultModel : class, IVaultModel;
-    Task<int> DeleteMultipleAsync<TVaultModel>(TVaultModel model) where TVaultModel : class, IVaultModel;
+
+    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
+        Expression<Func<TVaultModel, bool>> filter,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<List<object>> QueryAsync(Type modelType, string sql, List<object?>? parameters, CancellationToken ct);
+
+    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
+        Expression<Func<TVaultModel, bool>> filter,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> UpdateAsync<TVaultModel>(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> DeleteAsync<TVaultModel>(
+        Expression<Func<TVaultModel, bool>> filter,
+        CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> DeleteSingleAsync<TVaultModel>(TVaultModel model, CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
+
+    Task<int> DeleteMultipleAsync<TVaultModel>(TVaultModel model, CancellationToken ct = default)
+        where TVaultModel : class, IVaultModel;
 }
 
-public interface ICqlDatabaseProvider : IGeneralDatabaseProvider
-{
-    Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
-    Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string cqlQuery, List<object>? parameters = null) where TVaultModel : class, IVaultModel;
-    Task<long> ExecuteAsync(string cqlQuery, List<object>? parameters = null);
-    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
-    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel;
-    Task<long> ExecuteCountAsync(string cqlQuery, List<object>? parameters = null);
-}
-
-
-public interface ITypeErasedVault
-{
-    Task SaveAsync(object entity, bool? saveHistory = false);
-    Task SaveBatchAsync(IEnumerable<object> entities, bool? saveHistory = false);
-    Task<long> CountAsync();
-}
-
-public interface IVault<TVaultModel> : ITypeErasedVault where TVaultModel : class, IVaultModel
+public interface IVault<TVaultModel>
+    where TVaultModel : class, IVaultModel
 {
     IKeyspace Keyspace { get; }
+    IHistoricalVault<TVaultModel> History { get; }
+
+    // Fluent query ops
     IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
     IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     IVault<TVaultModel> Take(int count);
-    Task<List<TVaultModel>> ToListAsync();
-    Task<ICursor<TVaultModel>> ToCursorAsync();
-    Task<TVaultModel?> FirstOrDefaultAsync();
-    Task<TVaultModel?> FirstAsync();
-    Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate);
-    Task SaveAsync(TVaultModel entity, bool? saveHistory = false);
-    Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false);
-    Task<long> UpdateAsync(Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls);
-    Task<bool> DeleteAsync();
-    Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate);
     IVault<TVaultModel> Skip(int count);
-    Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<TVaultModel, TResult>> selector) where TResult : class, IVaultModel;
 
+    // Terminal query ops
+    Task<List<TVaultModel>> ToListAsync(CancellationToken ct = default);
+    Task<TVaultModel?> FirstOrDefaultAsync(CancellationToken ct = default);
+    Task<TVaultModel?> FirstAsync(CancellationToken ct = default);
+    Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate, CancellationToken ct = default);
+    Task<long> CountAsync(CancellationToken ct = default);
+
+    Task<IEnumerable<TResult>> SelectAsync<TResult>(
+        Expression<Func<TVaultModel, TResult>> selector,
+        CancellationToken ct = default)
+        where TResult : class, IVaultModel;
+
+    Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate, CancellationToken ct = default);
+
+    // Update / Delete
+    Task<long> UpdateAsync(
+        Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
+        CancellationToken ct = default);
+
+    Task<bool> DeleteAsync(CancellationToken ct = default);
+
+    // Cursor
+    Task<ICursor<TVaultModel>> ToCursorAsync(CancellationToken ct = default);
+
+    // Save
+    Task SaveAsync(TVaultModel entity, bool? saveHistory = false, CancellationToken ct = default);
+    Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false, CancellationToken ct = default);
 }
 
-public interface ICqlVault<TVaultModel> : IVault<TVaultModel> where TVaultModel : class, IVaultModel
+public interface IHistoricalVault<TVaultModel> where TVaultModel : class, IVaultModel
 {
+    // Fluent filters – same spirit as IVault, but scoped to history
+    IHistoricalVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
+    IHistoricalVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
+    IHistoricalVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
+    IHistoricalVault<TVaultModel> Take(int count);
+    IHistoricalVault<TVaultModel> Skip(int count);
 
+    Task<List<TVaultModel>> ToListAsync(DateTime startTime, DateTime endTime, CancellationToken ct = default);
 }

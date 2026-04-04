@@ -1,0 +1,43 @@
+altruist:
+  environment:
+    mode: "3D"
+
+  server:
+    http:
+      host: "0.0.0.0"
+      port: 8080
+      path: "/"
+    transport:
+      mode: tcp
+      timeout: 300
+      codec:
+        provider: messagepack
+      config:
+        port: 13000
+
+    udp:
+      enabled: true
+      port: 13001
+      codec:
+        provider: messagepack
+
+  persistence:
+    cache:
+      provider: inmemory
+
+  game:
+    engine:
+      diagnostics: true
+      frequency: 60
+      unit: "hz"
+
+    physics:
+      enabled: false
+
+    worlds:
+      partitioner: { width: 128, height: 128, depth: 128 }
+      items:
+        - index: 0
+          id: "world"
+          size: { x: 5000, y: 5000, z: 1000 }
+          gravity: { x: 0, y: -9.81, z: 0 }

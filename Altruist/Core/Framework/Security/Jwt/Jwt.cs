@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,18 +16,22 @@ limitations under the License.
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Security;
 
+[Service(typeof(IShieldAuth))]
+[ConditionalOnConfig("altruist:security")]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
 public class JwtAuth : IShieldAuth
 {
-    private readonly JwtTokenValidator _tokenValidator;
+    private readonly IJwtTokenValidator _tokenValidator;
     private readonly TokenSessionSyncService? _syncService;
 
-    public JwtAuth(JwtTokenValidator tokenValidator, IServiceProvider serviceProvider)
+    public JwtAuth(IJwtTokenValidator tokenValidator, IServiceProvider serviceProvider)
     {
         _tokenValidator = tokenValidator;
         _syncService = serviceProvider.GetService<TokenSessionSyncService>();
@@ -40,23 +44,30 @@ public class JwtAuth : IShieldAuth
         var token = GetTokenFromRequest(context);
         var authDetails = ExtractAuthDetails(token);
 
-        if (_syncService != null)
-        {
-            var cached = await _syncService.FindCachedByIdAsync(authDetails.Token);
-
-            if (cached == null)
-            {
-                return new AuthResult(AuthorizationResult.Failed(), null!);
-            }
-
-            token = cached.AccessToken;
-        }
-
-        if (string.IsNullOrEmpty(token) || _tokenValidator.ValidateToken(token) == null)
+        if (string.IsNullOrWhiteSpace(token))
         {
             return new AuthResult(AuthorizationResult.Failed(), null!);
         }
 
+        ClaimsPrincipal? principal;
+        try
+        {
+            principal = await _tokenValidator.ValidateToken(token);
+        }
+        catch (SecurityTokenException)
+        {
+            return new AuthResult(AuthorizationResult.Failed(), null!);
+        }
+
+        if (principal == null)
+        {
+            return new AuthResult(AuthorizationResult.Failed(), null!);
+        }
+
+        if (context is HttpAuthContext httpAuthContext)
+        {
+            httpAuthContext.HttpContext.User = principal;
+        }
 
         return new AuthResult(AuthorizationResult.Success(), authDetails);
     }
@@ -76,12 +87,17 @@ public class JwtAuth : IShieldAuth
 
     private AuthDetails ExtractAuthDetails(string token)
     {
+        if (token == null || token.Length == 0)
+        {
+            throw new UnauthorizedAccessException("Invalid JWT: Token is null or empty.");
+        }
+
         var jwt = _tokenHandler.ReadJwtToken(token);
         var expClaim = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Exp);
 
         if (expClaim == null || !long.TryParse(expClaim.Value, out long expUnix))
         {
-            throw new Exception("Invalid JWT: Missing or malformed expiration claim.");
+            throw new UnauthorizedAccessException("Invalid JWT: Missing or malformed expiration claim.");
         }
 
         var expirationTime = DateTimeOffset.FromUnixTimeSeconds(expUnix);
@@ -94,7 +110,16 @@ public class JwtAuth : IShieldAuth
     }
 }
 
-public class JwtTokenValidator : ITokenValidator
+public interface IJwtTokenValidator : ITokenValidator
+{
+
+}
+
+[Service(typeof(ITokenValidator))]
+[Service(typeof(IJwtTokenValidator))]
+[ConditionalOnConfig("altruist:security")]
+[ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
+public class JwtTokenValidator : IJwtTokenValidator
 {
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly TokenValidationParameters _validationParams;
@@ -105,18 +130,10 @@ public class JwtTokenValidator : ITokenValidator
         _validationParams = parameters;
     }
 
-    public ClaimsPrincipal GetClaimsPrincipal(string token) => _tokenHandler.ValidateToken(token, _validationParams, out _);
-
-    public ClaimsPrincipal? ValidateToken(string token)
+    public Task<ClaimsPrincipal?> ValidateToken(string token)
     {
-        try
-        {
-            return _tokenHandler.ValidateToken(token, _validationParams, out _);
-        }
-        catch
-        {
-            return null;
-        }
+        string actualToken = token.Replace(";jwt", "");
+        return Task.FromResult(_tokenHandler.ValidateToken(actualToken, _validationParams, out _))!;
     }
 }
 

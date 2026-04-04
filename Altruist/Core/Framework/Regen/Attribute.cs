@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@ limitations under the License.
 
 public enum CycleUnit
 {
+    Hz,
     Seconds,
     Milliseconds,
     Ticks
@@ -42,11 +43,11 @@ public class CycleRate
     /// <exception cref="ArgumentOutOfRangeException">Thrown if an unsupported <see cref="CycleUnit"/> is provided.</exception>
     /// <remarks>
     /// The frequency represents how often a cycle occurs per the given unit:
-    /// 
+    ///
     /// - **Seconds:** A frequency of 30 Hz means 30 cycles per second (faster execution).
     /// - **Milliseconds:** A frequency of 30 Hz means 30 cycles per millisecond (extremely fast execution).
     /// - **Ticks:** The frequency directly represents the number of cycles per tick, meaning **higher Hz results in slower execution**.
-    /// 
+    ///
     /// A **higher frequency (Hz) results in faster execution** for time-based units (Seconds, Milliseconds).
     /// However, for **Ticks, a higher frequency means slower execution** since it directly maps to CPU tick rate.
     /// </remarks>
@@ -67,6 +68,8 @@ public class CycleRate
 
             // 30 Hz → Direct mapping to ticks → Higher Hz means fewer cycles per tick (slower)
             CycleUnit.Ticks => frequencyHz,
+
+            CycleUnit.Hz => frequencyHz,
 
             _ => throw new ArgumentOutOfRangeException(nameof(unit), "Invalid cycle unit.")
         };

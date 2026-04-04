@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright 2025 Aron Gere
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,29 +16,16 @@ limitations under the License.
 
 namespace Altruist.Persistence;
 
-
-public interface IBeforeVaultCreate
+public interface IDatabaseInitializer
 {
-    Task<bool> BeforeCreateAsync(IServiceProvider serviceProvider);
+    /// <summary>
+    /// Lower numbers run first. Higher numbers run later.
+    /// </summary>
+    int Order { get; }
+
+    /// <summary>
+    /// Return vault models to seed.
+    /// </summary>
+    Task InitializeAsync(IServiceProvider services);
 }
 
-
-public interface IOnVaultCreate
-{
-    Task<List<IVaultModel>> OnCreateAsync(IServiceProvider serviceProvider);
-}
-
-public interface IAfterVaultCreate
-{
-    Task AfterCreateAsync(IServiceProvider serviceProvider);
-}
-
-public interface IAfterVaultSave
-{
-    Task AfterSaveAsync(IServiceProvider serviceProvider);
-}
-
-public interface IBeforeVaultSave
-{
-    Task<bool> BeforeSaveAsync(IServiceProvider serviceProvider);
-}

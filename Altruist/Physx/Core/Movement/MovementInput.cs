@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Numerics;
+
 using Box2DSharp.Dynamics;
 
 namespace Altruist.Physx;

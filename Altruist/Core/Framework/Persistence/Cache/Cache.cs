@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 using System.Collections;
+
 using Altruist.InMemory;
 
 namespace Altruist;
