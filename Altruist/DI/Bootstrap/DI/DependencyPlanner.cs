@@ -6,8 +6,6 @@ Licensed under the Apache License, Version 2.0
 using System.Collections.Concurrent;
 using System.Reflection;
 
-using Altruist.UORM;
-
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -36,13 +34,23 @@ public static class DependencyPlanner
 
     /// <summary>
     /// Only types with these attributes are allowed to be automatically registered
-    /// as dependencies by the planner.
+    /// as dependencies by the planner. Additional markers can be added via
+    /// <see cref="RegisterServiceMarker"/>.
     /// </summary>
-    private static readonly Type[] _serviceMarkerAttributes =
+    private static readonly List<Type> _serviceMarkerAttributes =
     [
-        typeof(ServiceAttribute),
-        typeof(VaultAttribute)
+        typeof(ServiceAttribute)
     ];
+
+    /// <summary>
+    /// Register an additional attribute type as a service marker.
+    /// Provider packages (e.g. Persistence) call this to add VaultAttribute etc.
+    /// </summary>
+    public static void RegisterServiceMarker(Type attributeType)
+    {
+        if (!_serviceMarkerAttributes.Contains(attributeType))
+            _serviceMarkerAttributes.Add(attributeType);
+    }
 
     private static bool HasServiceMarker(Type t) =>
         t.GetCustomAttributes(inherit: true)

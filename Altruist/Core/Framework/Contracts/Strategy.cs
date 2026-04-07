@@ -14,24 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Altruist.Contracts;
-
-public interface IAltruistConfiguration
-{
-    /// <summary>
-    /// True once Configure has successfully completed for this instance.
-    /// Used to prevent double-configuration and to satisfy [Service.DependsOn].
-    /// </summary>
-    bool IsConfigured { get; set; }
-
-    /// <summary>
-    /// Apply configuration to the given service collection.
-    /// Implementations should be idempotent.
-    /// </summary>
-    Task Configure(IServiceCollection services);
-}
 
 public interface ICacheConfiguration : IAltruistConfiguration
 {
