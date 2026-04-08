@@ -258,7 +258,7 @@ namespace Altruist
         ///  - prefer the one marked with [ActivatorUtilitiesConstructor] if present,
         ///  - otherwise the widest (most parameters) public ctor.
         /// </summary>
-        internal static ConstructorInfo SelectCtor(Type t)
+        public static ConstructorInfo SelectCtor(Type t)
         {
             var ctors = t.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
             if (ctors.Length == 0)
@@ -273,7 +273,7 @@ namespace Altruist
         /// "Simple" types that must be provided by config or default values, not by DI.
         /// Mirrors the logic used for config conversion and non-serviceability.
         /// </summary>
-        internal static bool IsSimple(Type type)
+        public static bool IsSimple(Type type)
         {
             type = Nullable.GetUnderlyingType(type) ?? type;
             return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) ||
@@ -285,7 +285,7 @@ namespace Altruist
         /// primitives, enums, string, pointers, byrefs, delegates, simple BCLs, Nullable&lt;T&gt; of simple, etc.
         /// Used by planner and resolver.
         /// </summary>
-        internal static bool IsNonServiceable(Type t)
+        public static bool IsNonServiceable(Type t)
         {
             // unwrap Nullable<T>
             var nn = Nullable.GetUnderlyingType(t) ?? t;
@@ -314,7 +314,7 @@ namespace Altruist
         /// and cached appropriately. The planner is responsible for deciding *what*
         /// gets registered; this method only does the actual DI registration.
         /// </summary>
-        internal static void RegisterPlannedService(
+        public static void RegisterPlannedService(
             IServiceCollection services,
             IConfiguration cfg,
             ILogger log,
@@ -448,7 +448,7 @@ namespace Altruist
             throw new InvalidOperationException(msg);
         }
 
-        internal static object? TryResolveKeyedService(IServiceProvider sp, Type serviceType, string key, ILogger log)
+        public static object? TryResolveKeyedService(IServiceProvider sp, Type serviceType, string key, ILogger log)
         {
             if (_genericGetKeyedService is null)
             {
@@ -507,7 +507,7 @@ namespace Altruist
         /// <summary>
         /// Logs a critical dependency resolution failure and terminates the process.
         /// </summary>
-        internal static void FailAndExit(ILogger log, string message, Exception? ex = null)
+        public static void FailAndExit(ILogger log, string message, Exception? ex = null)
         {
             try
             {

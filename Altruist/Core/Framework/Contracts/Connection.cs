@@ -52,7 +52,7 @@ public class AltruistConnection : StoredModel, IAltruistConnection
 
     [JsonPropertyName("type")]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public override string Type { get => GetType().Name; set => Type = value; }
+    public override string Type { get => GetType().Name; set { } }
 
     [JsonPropertyName("connectionId")]
     public string ConnectionId { get; set; } = string.Empty;

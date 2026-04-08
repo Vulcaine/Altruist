@@ -527,7 +527,10 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
+        // Schema name is framework-controlled (from config), not user input
+#pragma warning disable CA2100
         cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
+#pragma warning restore CA2100
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
@@ -706,6 +709,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         return true;
     }
 
+    // SQL is built by the Vault ORM query pipeline — not from user input.
+    // Parameters are always bound via DbParameter (parameterized queries).
+#pragma warning disable CA2100
     protected DbCommand PrepareCommand(DbConnection conn, string sql, List<object?>? parameters)
     {
         var cmd = conn.CreateCommand();
@@ -729,6 +735,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         return cmd;
     }
+#pragma warning restore CA2100
 
     protected static string ReplaceQuestionMarks(string sql, int expectedCount, string prefix)
     {
@@ -810,7 +817,10 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             await pingConn.OpenAsync(_healthCts.Token).ConfigureAwait(false);
 
             await using var cmd = pingConn.CreateCommand();
+            // HealthCheckSql is a constant ("SELECT 1"), not user input
+#pragma warning disable CA2100
             cmd.CommandText = HealthCheckSql;
+#pragma warning restore CA2100
             cmd.CommandTimeout = 3;
 
             await cmd.ExecuteScalarAsync(_healthCts.Token).ConfigureAwait(false);
@@ -839,5 +849,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         }
     }
 
-    protected void StopHealthChecks() => _healthCts.Cancel();
+    protected void StopHealthChecks()
+    {
+        _healthCts.Cancel();
+        _healthCts.Dispose();
+    }
 }

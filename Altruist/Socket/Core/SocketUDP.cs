@@ -33,7 +33,7 @@ namespace Altruist.Socket;
 
 [Service(typeof(ITransport))]
 [ConditionalOnConfig("altruist:server:transport:udp:enabled", havingValue: "true")]
-public sealed class UdpTransport : ITransport
+public sealed class UdpTransport : ITransport, IDisposable
 {
     private readonly int _port;
     private UdpClient? _udpClient;
@@ -137,6 +137,12 @@ public sealed class UdpTransport : ITransport
     }
 
     public void RouteTraffic(IApplicationBuilder app) { }
+
+    public void Dispose()
+    {
+        _udpClient?.Dispose();
+        _udpClient = null;
+    }
 }
 
 public sealed class CachedUdpConnection : AltruistConnection
