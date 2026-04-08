@@ -26,6 +26,9 @@
     "tslib": "^2.3.0",
     "zone.js": "~0.16.0"
   },
+  "overrides": {
+    "vite": "^7.3.2"
+  },
   "devDependencies": {
     "@angular-devkit/build-angular": "^21.0.2",
     "@angular/cli": "^21.0.2",

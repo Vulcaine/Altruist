@@ -26,7 +26,10 @@ public class TaskIdentifier : IEquatable<TaskIdentifier>
     public TaskIdentifier(string id)
     {
         Id = id ?? throw new ArgumentNullException(nameof(id));
+        // Not used for security — just a non-deterministic seed for task scheduling jitter
+#pragma warning disable CA5394
         Seed = Random.Shared.Next();
+#pragma warning restore CA5394
     }
 
     public bool Equals(TaskIdentifier? other)

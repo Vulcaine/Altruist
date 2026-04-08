@@ -29,7 +29,8 @@ public class AltruistEngine : IAltruistEngine
     public bool Enabled { get; private set; }
     public int Throttle = 1_000_000;
 
-    private CancellationTokenSource _cts = new();
+    private CancellationTokenSource? _cts = new();
+    private CancellationTokenSource? _linkedCts;
     private Thread? _engineThread;
 
     // -------- Next-tick (run once next tick, sequential) --------
@@ -217,22 +218,24 @@ public class AltruistEngine : IAltruistEngine
         if (Enabled)
             return;
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
-        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
+        _linkedCts?.Dispose();
+        _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
 
         // Physics worker runs as a Task
-        _ = Task.Run(() => RunPhysicsWorkerAsync(linkedCts.Token), linkedCts.Token);
+        _ = Task.Run(() => RunPhysicsWorkerAsync(_linkedCts.Token), _linkedCts.Token);
 
         _engineThread = new Thread(() =>
         {
             Thread.CurrentThread.Name = "EngineThread";
 
-            while (!linkedCts.IsCancellationRequested)
+            while (!_linkedCts!.IsCancellationRequested)
             {
                 if (_appStatus.Status == ReadyState.Alive)
                 {
                     try
-                    { RunEngineLoopAsync(linkedCts.Token).GetAwaiter().GetResult(); }
+                    { RunEngineLoopAsync(_linkedCts!.Token).GetAwaiter().GetResult(); }
                     catch (OperationCanceledException) { }
                     catch { /* log */ }
                     return;
@@ -253,7 +256,11 @@ public class AltruistEngine : IAltruistEngine
     public void Stop()
     {
         Disable();
-        _cts.Cancel();
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+        _linkedCts?.Dispose();
+        _linkedCts = null;
     }
 
     // ---------------- Core loops ----------------
