@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Physx</PackageId>
     <Description>Physx module for Altruist framework.</Description>
-    <Version>0.9.3-beta</Version>
+    <Version>0.9.4-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

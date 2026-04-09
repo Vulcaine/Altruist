@@ -49,7 +49,7 @@ public static class AltruistDI
 
         await BootstrapServices(Services, logger);
 
-        using var provider = Services.BuildServiceProvider();
+        var provider = Services.BuildServiceProvider();
         Dependencies.UseRootProvider(provider);
         await RunPostConstructsAsync(provider, Services);
     }

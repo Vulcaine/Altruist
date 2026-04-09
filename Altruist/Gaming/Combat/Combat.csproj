@@ -6,7 +6,7 @@
     <RootNamespace>Altruist.Gaming.Combat</RootNamespace>
     <AssemblyName>Combat</AssemblyName>
     <PackageId>Altruist.Gaming.Combat</PackageId>
-    <Version>0.9.3-beta</Version>
+    <Version>0.9.4-beta</Version>
   </PropertyGroup>
 
   <ItemGroup>

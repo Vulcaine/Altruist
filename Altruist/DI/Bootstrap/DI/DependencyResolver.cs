@@ -37,6 +37,14 @@ namespace Altruist
         private static readonly object _convLock = new();
         private static Dictionary<Type, IConfigConverter>? _converters;
 
+        // ---- Lazy<T> support ----
+        private static readonly MethodInfo s_createLazyMethod =
+            typeof(DependencyResolver).GetMethod(nameof(CreateLazy), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        private static Lazy<T> CreateLazy<T>(IServiceProvider sp) where T : class
+            => new Lazy<T>(() => sp.GetService(typeof(T)) as T ?? throw new InvalidOperationException(
+                $"Failed to resolve Lazy<{typeof(T).Name}>: service not registered."));
+
         // ---- Circular construction tracking (per-async-flow) ----
         private static readonly AsyncLocal<Stack<Type>> _constructionPath = new();
 
@@ -103,20 +111,12 @@ namespace Altruist
 
             if (path.Contains(impl))
             {
-                // 1) First, try to get an already-constructed instance from the provider.
-                //    This covers cases where the same implementation type was registered
-                //    under a different service type and is already built.
-                var fromProvider = sp.GetService(impl);
-                if (fromProvider is not null)
-                    return fromProvider;
-
-                // 2) Then, fall back to our own singleton cache.
-                //    If we've already finished constructing this impl, use it.
+                // Check the singleton cache directly (no sp.GetService call which causes re-entry)
                 if (_singletonCache.TryGetValue(impl, out var cached))
                     return cached;
 
-                // 3) At this point, we are genuinely in a construction cycle where
-                //    no concrete instance exists yet → fatal circular dependency.
+                // At this point, we are genuinely in a construction cycle where
+                // no concrete instance exists yet → fatal circular dependency.
                 var cycle = FormatCyclePath(path, impl);
                 var msg = $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}";
 
@@ -381,6 +381,13 @@ namespace Altruist
                 throw new InvalidOperationException(errMsg);
             }
 
+            // Lazy<T> — deferred resolution (breaks circular deps at construction time)
+            if (paramType.IsGenericType && paramType.GetGenericTypeDefinition() == typeof(Lazy<>))
+            {
+                var innerType = paramType.GetGenericArguments()[0];
+                return s_createLazyMethod.MakeGenericMethod(innerType).Invoke(null, [sp])!;
+            }
+
             // 4) Handle all supported collection kinds (Spring-style)
             if (paramType.IsGenericType)
             {
@@ -509,30 +516,14 @@ namespace Altruist
         /// </summary>
         public static void FailAndExit(ILogger log, string message, Exception? ex = null)
         {
-            try
-            {
-                if (ex is not null)
-                    log.LogCritical(ex, message);
-                else
-                    log.LogCritical(message);
+            if (ex is not null)
+                log.LogCritical(ex, message);
+            else
+                log.LogCritical(message);
 
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("💀 FATAL: " + message);
-                Console.ResetColor();
+            Console.WriteLine("FATAL DI: " + message);
 
-                // Give the logger a moment to flush
-                System.Threading.Thread.Sleep(200);
-
-                // Ensure a clean exit
-                Environment.Exit(1);
-            }
-            catch
-            {
-                // As a last resort, try to exit immediately
-                try
-                { Environment.FailFast(message, ex); }
-                catch { /* ignore */ }
-            }
+            throw new InvalidOperationException(message, ex);
         }
 
         /// <summary>

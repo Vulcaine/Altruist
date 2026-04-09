@@ -23,6 +23,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Exclude nested DI.Tests project (has its own .csproj) -->
+  <ItemGroup>
+    <Compile Remove="DI.Tests/**" />
+  </ItemGroup>
+
   <!-- Pre-existing tests referencing removed/renamed APIs — excluded until updated -->
   <ItemGroup>
     <Compile Remove="Altruist/Gaming/World/WorldManagerTests.cs" />

@@ -131,8 +131,8 @@ public static class DependencyPlanner
             var cycle = visiting.Reverse().Concat(new[] { implType }).Select(DependencyResolver.GetCleanName);
             var path = string.Join(" → ", cycle);
             var msg = $"Circular dependency detected: {path}";
-            log.LogCritical(msg);
-            Environment.Exit(1);
+            DependencyResolver.FailAndExit(log, msg);
+            throw new InvalidOperationException(msg);
         }
 
         visiting.Push(implType);
@@ -326,6 +326,10 @@ public static class DependencyPlanner
         if (t.IsGenericType)
         {
             var def = t.GetGenericTypeDefinition();
+
+            // Lazy<T> — deferred resolution, not a direct dependency (breaks cycles)
+            if (def == typeof(Lazy<>))
+                yield break;
 
             // supported collections: IEnumerable<T>, IList<T>, ICollection<T>, IReadOnlyList<T>, List<T>, HashSet<T>
             if (def == typeof(IEnumerable<>) ||
