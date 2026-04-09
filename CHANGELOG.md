@@ -5,11 +5,11 @@ All notable changes to the Altruist framework are documented in this file.
 ## [0.9.4-beta] - 2026-04-09
 
 ### Changed
-- **DI improvements** — `DependencyResolver`, `DependencyPlanner`, `AppConfigLoader`, and `AssemblyLoader` refined for standalone usage.
-- **DI.Tests** — 13 new dedicated tests for the standalone DI module (`DependencyResolverTests`).
+- **Standalone DI** — improved dependency resolution, circular dependency detection, config loading, and assembly discovery for projects using only `Altruist.DI` without the full framework.
+- **Lazy\<T\> dependency injection** — `Lazy<T>` constructor parameters now break circular dependency chains at construction time, enabling bidirectional and multi-way service references without runtime errors.
 
-### Fixed
-- Exclude nested `DI.Tests/` project from main `Tests.csproj` to prevent duplicate assembly attribute compilation errors.
+### Added
+- **26 DI-specific tests** — dedicated test suite covering `Lazy<T>` cycle-breaking (2-way, 3-way, 4-way), circular dependency error messages with readable paths, mixed direct and deferred resolution, self-references, diamond dependencies, and deep chains.
 
 ## [0.9.3-beta] - 2026-04-08
 

@@ -110,6 +110,62 @@ namespace DI.Tests;
     public DiamondTop(DiamondLeft l, DiamondRight r) { L = l; R = r; }
 }
 
+// Three-way direct cycle (no Lazy): TriA → TriB → TriC → TriA
+[Service] public class TriA { public TriB B { get; } public TriA(TriB b) => B = b; }
+[Service] public class TriB { public TriC C { get; } public TriB(TriC c) => C = c; }
+[Service] public class TriC { public TriA A { get; } public TriC(TriA a) => A = a; }
+
+// Self-referencing via Lazy (should work)
+[Service] public class LazySelfRef
+{
+    public Lazy<LazySelfRef> Self { get; }
+    public LazySelfRef(Lazy<LazySelfRef> self) => Self = self;
+}
+
+// Multiple Lazy deps on same type
+[Service] public class MultiLazy
+{
+    public Lazy<SimpleService> Lazy1 { get; }
+    public Lazy<ServiceC> Lazy2 { get; }
+    public MultiLazy(Lazy<SimpleService> lazy1, Lazy<ServiceC> lazy2)
+    { Lazy1 = lazy1; Lazy2 = lazy2; }
+}
+
+// Mix of direct and Lazy deps
+[Service] public class MixedDeps
+{
+    public SimpleService Direct { get; }
+    public Lazy<ServiceC> Deferred { get; }
+    public MixedDeps(SimpleService direct, Lazy<ServiceC> deferred)
+    { Direct = direct; Deferred = deferred; }
+}
+
+// Lazy in a chain: LazyChainA → LazyChainB → Lazy<LazyChainC>
+[Service] public class LazyChainA { public LazyChainB B { get; } public LazyChainA(LazyChainB b) => B = b; }
+[Service] public class LazyChainB { public Lazy<LazyChainC> C { get; } public LazyChainB(Lazy<LazyChainC> c) => C = c; }
+[Service] public class LazyChainC { }
+
+// Four-way cycle broken by Lazy: Quad1 → Quad2 → Quad3 → Lazy<Quad4> → Quad1
+[Service] public class Quad1 { public Quad2 Q { get; } public Quad1(Quad2 q) => Q = q; }
+[Service] public class Quad2 { public Quad3 Q { get; } public Quad2(Quad3 q) => Q = q; }
+[Service] public class Quad3 { public Lazy<Quad4> Q { get; } public Quad3(Lazy<Quad4> q) => Q = q; }
+[Service] public class Quad4 { public Quad1 Q { get; } public Quad4(Quad1 q) => Q = q; }
+
+// Nested Lazy — Lazy<Lazy<T>> (edge case)
+[Service] public class NestedLazyConsumer
+{
+    public Lazy<SimpleService> Inner { get; }
+    public NestedLazyConsumer(Lazy<SimpleService> inner) => Inner = inner;
+}
+
+// Lazy dep on an unregistered type (should fail when .Value accessed)
+public class UnregisteredService { }
+[Service] public class LazyUnregistered
+{
+    public Lazy<UnregisteredService> Dep { get; }
+    public LazyUnregistered(Lazy<UnregisteredService> dep) => Dep = dep;
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────
 
 public class DependencyResolverTests
@@ -197,7 +253,7 @@ public class DependencyResolverTests
         Assert.Same(a, b);
     }
 
-    // ── Circular dependency detection ──────────────────────────────────
+    // ── Circular dependency detection (no Lazy — must fail) ─────────────
 
     [Fact]
     public void DirectCircularDep_Throws()
@@ -263,5 +319,149 @@ public class DependencyResolverTests
         var b = a.B.Value;
         Assert.NotNull(b);
         Assert.IsType<LazyB>(b);
+    }
+
+    // ── Three-way circular (no Lazy) — must fail ──────────────────────
+
+    [Fact]
+    public void ThreeWayCircularDep_Throws()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            BuildProvider(typeof(TriA)));
+        Assert.Contains("Circular dependency detected", ex.Message);
+    }
+
+    [Fact]
+    public void ThreeWayCircularDep_ErrorContainsAllTypes()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            BuildProvider(typeof(TriA)));
+        Assert.Contains("TriA", ex.Message);
+        Assert.Contains("TriB", ex.Message);
+        Assert.Contains("TriC", ex.Message);
+    }
+
+    // ── Lazy<T> — advanced scenarios ──────────────────────────────────
+
+    [Fact]
+    public void LazySelfReference_Resolves()
+    {
+        var (sp, _, _) = BuildProvider(typeof(LazySelfRef));
+        var svc = sp.GetRequiredService<LazySelfRef>();
+        Assert.NotNull(svc);
+        Assert.NotNull(svc.Self);
+        // .Value returns the same singleton
+        Assert.Same(svc, svc.Self.Value);
+    }
+
+    [Fact]
+    public void MultipleLazyDeps_Resolve()
+    {
+        var (sp, _, _) = BuildProvider(typeof(MultiLazy), typeof(SimpleService), typeof(ServiceC));
+        var svc = sp.GetRequiredService<MultiLazy>();
+        Assert.NotNull(svc.Lazy1);
+        Assert.NotNull(svc.Lazy2);
+        Assert.IsType<SimpleService>(svc.Lazy1.Value);
+        Assert.IsType<ServiceC>(svc.Lazy2.Value);
+    }
+
+    [Fact]
+    public void MixedDirectAndLazy_Resolves()
+    {
+        var (sp, _, _) = BuildProvider(typeof(MixedDeps), typeof(SimpleService), typeof(ServiceC));
+        var svc = sp.GetRequiredService<MixedDeps>();
+        Assert.NotNull(svc.Direct);
+        Assert.IsType<SimpleService>(svc.Direct);
+        Assert.NotNull(svc.Deferred);
+        Assert.IsType<ServiceC>(svc.Deferred.Value);
+    }
+
+    [Fact]
+    public void LazyInChain_Resolves()
+    {
+        var (sp, _, _) = BuildProvider(typeof(LazyChainA), typeof(LazyChainB), typeof(LazyChainC));
+        var a = sp.GetRequiredService<LazyChainA>();
+        Assert.NotNull(a.B);
+        Assert.NotNull(a.B.C);
+        Assert.IsType<LazyChainC>(a.B.C.Value);
+    }
+
+    [Fact]
+    public void FourWayCycle_BrokenByLazy()
+    {
+        var (sp, _, _) = BuildProvider(typeof(Quad1), typeof(Quad2), typeof(Quad3), typeof(Quad4));
+        var q1 = sp.GetRequiredService<Quad1>();
+        Assert.NotNull(q1.Q);          // Quad2
+        Assert.NotNull(q1.Q.Q);        // Quad3
+        Assert.NotNull(q1.Q.Q.Q);      // Lazy<Quad4>
+        var q4 = q1.Q.Q.Q.Value;       // resolve Lazy
+        Assert.NotNull(q4);
+        Assert.Same(q1, q4.Q);         // full cycle back to Quad1
+    }
+
+    [Fact]
+    public void LazyDep_IsNotResolvedUntilValueAccessed()
+    {
+        // Use Lazy in a cycle context where deferred resolution matters
+        var (sp, _, _) = BuildProvider(typeof(LazyA), typeof(LazyB));
+        var a = sp.GetRequiredService<LazyA>();
+        // Lazy wrapper is created but inner value is deferred
+        var lazy = a.B;
+        Assert.NotNull(lazy);
+        // Accessing .Value resolves it
+        var b = lazy.Value;
+        Assert.NotNull(b);
+        Assert.True(lazy.IsValueCreated);
+    }
+
+    [Fact]
+    public void LazyDep_ReturnsSameSingletonOnMultipleAccess()
+    {
+        var (sp, _, _) = BuildProvider(typeof(LazyA), typeof(LazyB));
+        var a = sp.GetRequiredService<LazyA>();
+        var b1 = a.B.Value;
+        var b2 = a.B.Value;
+        Assert.Same(b1, b2);
+    }
+
+    [Fact]
+    public void LazyUnregistered_ConstructsButValueThrows()
+    {
+        var (sp, _, _) = BuildProvider(typeof(LazyUnregistered));
+        var svc = sp.GetRequiredService<LazyUnregistered>();
+        // Construction succeeds — Lazy wrapper is created
+        Assert.NotNull(svc.Dep);
+        Assert.False(svc.Dep.IsValueCreated);
+        // Accessing .Value throws because UnregisteredService is not in DI
+        Assert.Throws<InvalidOperationException>(() => svc.Dep.Value);
+    }
+
+    [Fact]
+    public void LazyDep_NestedLazy_Resolves()
+    {
+        var (sp, _, _) = BuildProvider(typeof(NestedLazyConsumer), typeof(SimpleService));
+        var svc = sp.GetRequiredService<NestedLazyConsumer>();
+        Assert.NotNull(svc.Inner);
+        Assert.IsType<SimpleService>(svc.Inner.Value);
+    }
+
+    // ── Circular without Lazy — verify error message quality ──────────
+
+    [Fact]
+    public void CircularDep_ErrorMessage_ContainsArrowPath()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            BuildProvider(typeof(CircularX)));
+        // Should show path like "CircularX → CircularY → CircularX"
+        Assert.Contains("→", ex.Message);
+    }
+
+    [Fact]
+    public void SelfReference_ErrorMessage_ContainsTypeName()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            BuildProvider(typeof(SelfRef)));
+        Assert.Contains("SelfRef", ex.Message);
+        Assert.Contains("Circular dependency detected", ex.Message);
     }
 }
