@@ -2,6 +2,15 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [0.9.4-beta] - 2026-04-09
+
+### Changed
+- **DI improvements** — `DependencyResolver`, `DependencyPlanner`, `AppConfigLoader`, and `AssemblyLoader` refined for standalone usage.
+- **DI.Tests** — 13 new dedicated tests for the standalone DI module (`DependencyResolverTests`).
+
+### Fixed
+- Exclude nested `DI.Tests/` project from main `Tests.csproj` to prevent duplicate assembly attribute compilation errors.
+
 ## [0.9.3-beta] - 2026-04-08
 
 ### Added

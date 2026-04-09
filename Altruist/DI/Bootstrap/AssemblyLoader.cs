@@ -44,6 +44,10 @@ public static class AssemblyLoader
 
         // 2) Load any physically present DLLs next to the app (covers copy-local/transitive)
         var baseDir = AppContext.BaseDirectory;
+        if (string.IsNullOrWhiteSpace(baseDir))
+            baseDir = Environment.CurrentDirectory;
+        if (string.IsNullOrWhiteSpace(baseDir) || !Directory.Exists(baseDir))
+            return;
         foreach (var path in Directory.EnumerateFiles(baseDir, "*.dll"))
         {
             try

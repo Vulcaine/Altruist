@@ -1,4 +1,6 @@
 // Altruist/ConfigLoader.cs
+using System.Reflection;
+
 using Microsoft.Extensions.Configuration;
 
 namespace Altruist
@@ -20,10 +22,24 @@ namespace Altruist
                 var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
                 var basePath = AppContext.BaseDirectory;
 
-                var cfg = new ConfigurationBuilder()
-                    .SetBasePath(basePath)
-                    .AddYamlFile(Path.Combine(basePath, "config.yml"), optional: false, reloadOnChange: true)
-                    .AddYamlFile(Path.Combine(basePath, $"config.{env}.yml"), optional: true, reloadOnChange: true)
+                // Fallback for hostfxr context where BaseDirectory is empty
+                if (string.IsNullOrWhiteSpace(basePath))
+                    basePath = Environment.CurrentDirectory;
+                if (string.IsNullOrWhiteSpace(basePath))
+                    basePath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
+                if (string.IsNullOrWhiteSpace(basePath))
+                    basePath = ".";
+
+                var builder = new ConfigurationBuilder();
+
+                if (!string.IsNullOrWhiteSpace(basePath) && Directory.Exists(basePath))
+                {
+                    builder.SetBasePath(basePath);
+                    builder.AddYamlFile(Path.Combine(basePath, "config.yml"), optional: true, reloadOnChange: true);
+                    builder.AddYamlFile(Path.Combine(basePath, $"config.{env}.yml"), optional: true, reloadOnChange: true);
+                }
+
+                var cfg = builder
                     .AddEnvironmentVariables(prefix: "ALTRUIST__")
                     .AddCommandLine(args ?? Array.Empty<string>())
                     .Build();
