@@ -60,6 +60,21 @@ internal static class DocumentBuilder
         doc.RenamedColumns = ScanRenames(type, columns);
         ScanCopyFromAndDeleted(type, columns, doc);
 
+        var tableDeleteAttr = type.GetCustomAttribute<VaultTableDeleteAttribute>(inherit: true);
+        if (tableDeleteAttr != null)
+        {
+            doc.IsTableDeleted = true;
+            doc.TableDeleteReason = tableDeleteAttr.Reason;
+        }
+
+        var archiveAttr = type.GetCustomAttribute<VaultArchivedAttribute>(inherit: true);
+        if (archiveAttr != null)
+        {
+            doc.IsTableArchived = true;
+            doc.ArchiveTableName = archiveAttr.ArchiveTableName;
+            doc.ArchiveReason = archiveAttr.Reason;
+        }
+
         return doc;
     }
 

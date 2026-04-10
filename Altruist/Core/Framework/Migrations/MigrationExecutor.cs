@@ -105,6 +105,9 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
             // TABLE OPERATIONS
             // --------------------------------
 
+            case ArchiveTableOperation archiveTable:
+                return ApplyArchiveTableAsync(defaultSchema, archiveTable);
+
             case CreateTableOperation createTable:
                 return ApplyCreateTableAsync(defaultSchema, createTable);
 
@@ -195,6 +198,8 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     protected abstract Task ApplyDeleteMarkedColumnAsync(string defaultSchema, DeleteMarkedColumnOperation op);
 
     protected abstract Task ApplyAlterColumnTypeAsync(string defaultSchema, AlterColumnTypeOperation op);
+
+    protected abstract Task ApplyArchiveTableAsync(string defaultSchema, ArchiveTableOperation op);
 
     protected abstract Task ApplyCreateSchemaAsync(string defaultSchema, CreateSchemaOperation createSchema);
 

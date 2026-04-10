@@ -67,6 +67,23 @@ namespace Altruist.Migrations.Postgres
         }
 
         // --------------------------------
+        // ARCHIVE TABLE ([VaultArchived])
+        // --------------------------------
+
+        protected override async Task ApplyArchiveTableAsync(string defaultSchema, ArchiveTableOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var sourceFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.SourceTable)}";
+            var archiveFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.ArchiveTable)}";
+
+            // Create archive table with same structure, then copy all data
+            await _provider.ExecuteAsync(
+                $"CREATE TABLE IF NOT EXISTS {archiveFqn} (LIKE {sourceFqn} INCLUDING ALL);");
+            await _provider.ExecuteAsync(
+                $"INSERT INTO {archiveFqn} SELECT * FROM {sourceFqn};");
+        }
+
+        // --------------------------------
         // TABLE OPERATIONS
         // --------------------------------
 

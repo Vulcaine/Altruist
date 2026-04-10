@@ -34,6 +34,55 @@ public class VaultAttribute : Attribute
         => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken, this.DbInstance) = (Name, StoreHistory, Keyspace, DbToken, DbInstance);
 }
 
+/// <summary>
+/// Marks an entire vault table for deletion during migration. The table is dropped from the DB.
+/// The class stays in code as self-documenting history.
+///
+/// Apply [Obsolete] alongside this attribute to get compiler warnings/errors and IDE
+/// strikethroughs wherever the vault is injected or referenced:
+///
+/// <example>
+/// [VaultTableDelete("Replaced by PlayerStatsVault in v3.0")]
+/// [Obsolete("This vault is deleted. Use PlayerStatsVault instead.", error: true)]
+/// [Vault("old_player_stats")]
+/// public class OldPlayerStatsVault : IStoredModel { ... }
+/// </example>
+///
+/// - error: false → compiler WARNING (yellow squiggle, strikethrough)
+/// - error: true  → compiler ERROR (red, won't compile if referenced)
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public class VaultTableDeleteAttribute : Attribute
+{
+    public string Reason { get; }
+    public VaultTableDeleteAttribute(string reason = "")
+        => Reason = reason ?? "";
+}
+
+/// <summary>
+/// Archives a vault table before dropping it. All data is copied to the archive table
+/// using INSERT INTO ... SELECT, then the original table is dropped.
+/// Safer than [VaultTableDelete] — data is preserved in the archive table.
+///
+/// <example>
+/// [VaultArchived("archived_old_stats", "Migrated to PlayerStatsVault in v3.0")]
+/// [Obsolete("Archived. Use PlayerStatsVault.", error: true)]
+/// [Vault("old_player_stats")]
+/// public class OldPlayerStatsVault : IStoredModel { ... }
+/// </example>
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public class VaultArchivedAttribute : Attribute
+{
+    public string ArchiveTableName { get; }
+    public string Reason { get; }
+    public VaultArchivedAttribute(string archiveTableName, string reason = "")
+    {
+        ArchiveTableName = archiveTableName ?? throw new ArgumentNullException(nameof(archiveTableName));
+        Reason = reason ?? "";
+    }
+}
+
 [AttributeUsage(AttributeTargets.Class, Inherited = true)]
 public class VaultPrimaryKeyAttribute : Attribute
 {
@@ -105,8 +154,11 @@ public class VaultColumnCopyAttribute : Attribute
 /// If [VaultColumnCopy] exists on another property referencing this column,
 /// the copy runs first, then the delete.
 ///
+/// Pair with [Obsolete] to get IDE strikethroughs and compiler warnings/errors:
+///
 /// <example>
 /// [VaultColumnDelete("Replaced by GoldDisplay (string) in v2.3")]
+/// [Obsolete("Column deleted. Use GoldDisplay instead.", error: true)]
 /// [VaultColumn("gold")]
 /// public int Gold { get; set; }
 /// </example>

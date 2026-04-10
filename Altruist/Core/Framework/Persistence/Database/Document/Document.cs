@@ -65,6 +65,15 @@ public sealed class VaultDocument
     // physical column names marked for deletion (from [VaultColumnDelete]) -> reason
     public Dictionary<string, string> DeletedColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    // true if [VaultTableDelete] is on the class — entire table should be dropped
+    public bool IsTableDeleted { get; internal set; }
+    public string TableDeleteReason { get; internal set; } = "";
+
+    // true if [VaultArchived] is on the class — data copied to archive table, then original dropped
+    public bool IsTableArchived { get; internal set; }
+    public string ArchiveTableName { get; internal set; } = "";
+    public string ArchiveReason { get; internal set; } = "";
+
     // logical field name -> accessor compiled once
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; }
 

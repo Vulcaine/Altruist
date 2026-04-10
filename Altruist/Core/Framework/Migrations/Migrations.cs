@@ -19,6 +19,15 @@ public sealed record CreateTableOperation(
     IReadOnlyList<string> PrimaryKeyColumns
 ) : MigrationOperation;
 
+/// <summary>
+/// Archives a table by copying all data to an archive table, then dropping the original.
+/// </summary>
+public sealed record ArchiveTableOperation(
+    string Schema,
+    string SourceTable,
+    string ArchiveTable
+) : MigrationOperation;
+
 public sealed record DropTableOperation(
     string Schema,
     string Table

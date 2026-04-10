@@ -171,6 +171,35 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                     new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
             }
 
+            // [VaultArchived] — copy data to archive table, then drop original
+            if (doc.IsTableArchived)
+            {
+                current.TryGetTable(doc.Name, out var tableToArchive);
+                if (tableToArchive != null)
+                {
+                    ops.Add(new ArchiveTableOperation(schema, doc.Name, doc.ArchiveTableName));
+                    current.TryGetTable(doc.Name + "_history", out var historyToArchive);
+                    if (historyToArchive != null)
+                        ops.Add(new DropTableOperation(schema, doc.Name + "_history"));
+                    ops.Add(new DropTableOperation(schema, doc.Name));
+                }
+                continue;
+            }
+
+            // [VaultTableDelete] — drop entire table if it exists in DB
+            if (doc.IsTableDeleted)
+            {
+                current.TryGetTable(doc.Name, out var tableToDelete);
+                if (tableToDelete != null)
+                {
+                    current.TryGetTable(doc.Name + "_history", out var historyToDelete);
+                    if (historyToDelete != null)
+                        ops.Add(new DropTableOperation(schema, doc.Name + "_history"));
+                    ops.Add(new DropTableOperation(schema, doc.Name));
+                }
+                continue;
+            }
+
             current.TryGetTable(doc.Name, out var existingTable);
 
             if (existingTable is null)
