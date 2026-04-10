@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- dotnet tool metadata -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>altruist</ToolCommandName>
+    <PackageId>Altruist.CLI</PackageId>
+    <Version>0.9.5-beta</Version>
+    <Authors>Aron Gere</Authors>
+    <Description>CLI tool for the Altruist game server framework. Create projects, manage migrations, and more.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
+  </PropertyGroup>
+
+</Project>
