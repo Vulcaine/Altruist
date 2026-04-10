@@ -186,7 +186,59 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
 
         // ─────────────────────────────────────────────
-        // 2nd pass: foreign keys (after all tables exist)
+        // 2nd pass: [VaultColumnCopy] — copy data between columns (before deletes)
+        // ─────────────────────────────────────────────
+        foreach (var doc in desiredDocuments)
+        {
+            if (doc.CopyFromColumns.Count == 0) continue;
+            var schema = GetSchemaForDocument(doc);
+
+            if (!currentBySchema.TryGetValue(schema, out var current))
+                current = new DatabaseModel(schema, new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
+
+            current.TryGetTable(doc.Name, out var existingTable);
+
+            foreach (var (targetCol, sourceCol) in doc.CopyFromColumns)
+            {
+                // Only emit if source exists in DB (otherwise nothing to copy)
+                if (existingTable?.Columns.ContainsKey(sourceCol) == true)
+                {
+                    var targetType = "text"; // default
+                    var logical = doc.Columns.FirstOrDefault(kv =>
+                        string.Equals(kv.Value, targetCol, StringComparison.OrdinalIgnoreCase)).Key;
+                    if (logical != null && doc.FieldTypes.TryGetValue(logical, out var clrType))
+                        targetType = MapClrTypeToStoreType(clrType);
+
+                    ops.Add(new CopyColumnDataOperation(schema, doc.Name, sourceCol, targetCol, targetType));
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // 3rd pass: [VaultColumnDelete] — drop marked columns (after copies complete)
+        // ─────────────────────────────────────────────
+        foreach (var doc in desiredDocuments)
+        {
+            if (doc.DeletedColumns.Count == 0) continue;
+            var schema = GetSchemaForDocument(doc);
+
+            if (!currentBySchema.TryGetValue(schema, out var current))
+                current = new DatabaseModel(schema, new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
+
+            current.TryGetTable(doc.Name, out var existingTable);
+
+            foreach (var (colName, reason) in doc.DeletedColumns)
+            {
+                // Only drop if column actually exists in DB
+                if (existingTable?.Columns.ContainsKey(colName) == true)
+                {
+                    ops.Add(new DeleteMarkedColumnOperation(schema, doc.Name, colName, reason));
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // 4th pass: foreign keys (after all tables exist)
         // ─────────────────────────────────────────────
         foreach (var doc in desiredDocuments)
         {

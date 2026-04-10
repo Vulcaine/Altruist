@@ -249,6 +249,41 @@ namespace Altruist.Migrations.Postgres
         }
 
         // --------------------------------
+        // COPY COLUMN DATA ([VaultColumnCopy])
+        // --------------------------------
+
+        protected override async Task ApplyCopyColumnDataAsync(string defaultSchema, CopyColumnDataOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+            var srcIdent = QuoteIdent(op.SourceColumn);
+            var tgtIdent = QuoteIdent(op.TargetColumn);
+
+            // Batched copy with type cast — same pattern as type change migration
+            while (true)
+            {
+                var affected = await _provider.ExecuteAsync(
+                    $"UPDATE {tableFqn} SET {tgtIdent} = {srcIdent}::{op.TargetStoreType} " +
+                    $"WHERE {tgtIdent} IS NULL AND {srcIdent} IS NOT NULL " +
+                    $"LIMIT {_batchSize};");
+                if (affected <= 0) break;
+            }
+        }
+
+        // --------------------------------
+        // DELETE MARKED COLUMN ([VaultColumnDelete])
+        // --------------------------------
+
+        protected override async Task ApplyDeleteMarkedColumnAsync(string defaultSchema, DeleteMarkedColumnOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+
+            await _provider.ExecuteAsync(
+                $"ALTER TABLE {tableFqn} DROP COLUMN IF EXISTS {QuoteIdent(op.ColumnName)} CASCADE;");
+        }
+
+        // --------------------------------
         // CONSTRAINT OPERATIONS
         // --------------------------------
 

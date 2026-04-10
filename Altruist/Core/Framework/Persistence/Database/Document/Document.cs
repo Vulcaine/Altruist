@@ -59,6 +59,12 @@ public sealed class VaultDocument
     // The planner picks the first one that exists in the current DB schema.
     public Dictionary<string, List<string>> RenamedColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    // target physical column name -> source physical column name (from [VaultColumnCopy])
+    public Dictionary<string, string> CopyFromColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    // physical column names marked for deletion (from [VaultColumnDelete]) -> reason
+    public Dictionary<string, string> DeletedColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
+
     // logical field name -> accessor compiled once
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; }
 

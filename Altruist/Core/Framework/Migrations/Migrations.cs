@@ -45,6 +45,28 @@ public sealed record RenameColumnOperation(
     string NewColumnName
 ) : MigrationOperation;
 
+/// <summary>
+/// Copies data from one column to another with type conversion.
+/// Executed as batched UPDATE with USING cast.
+/// </summary>
+public sealed record CopyColumnDataOperation(
+    string Schema,
+    string Table,
+    string SourceColumn,
+    string TargetColumn,
+    string TargetStoreType
+) : MigrationOperation;
+
+/// <summary>
+/// Drops a column marked with [VaultColumnDelete]. Runs after CopyColumnData operations.
+/// </summary>
+public sealed record DeleteMarkedColumnOperation(
+    string Schema,
+    string Table,
+    string ColumnName,
+    string Reason
+) : MigrationOperation;
+
 public sealed record AlterColumnTypeOperation(
     string Schema,
     string Table,

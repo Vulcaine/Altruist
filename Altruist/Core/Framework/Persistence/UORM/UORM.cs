@@ -74,6 +74,51 @@ public class VaultRenamedFromAttribute : Attribute
         => OldColumnName = oldColumnName ?? throw new ArgumentNullException(nameof(oldColumnName));
 }
 
+/// <summary>
+/// Copies data from an existing column into this new column during migration,
+/// with automatic type conversion (USING cast). The source column is NOT deleted —
+/// use [VaultColumnDelete] on a separate property to remove it after copy.
+///
+/// Use nameof() for compile-time safety when the source property still exists,
+/// or a string literal if it was already removed from the model.
+///
+/// <example>
+/// // Copy int gold into new string gold_display with cast
+/// [VaultColumn("gold_display")]
+/// [VaultColumnCopy(nameof(Gold))]     // or [VaultColumnCopy("gold")] if Gold property removed
+/// public string GoldDisplay { get; set; } = "";
+/// </example>
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public class VaultColumnCopyAttribute : Attribute
+{
+    public string SourceColumn { get; }
+    public VaultColumnCopyAttribute(string sourceColumn)
+        => SourceColumn = sourceColumn ?? throw new ArgumentNullException(nameof(sourceColumn));
+}
+
+/// <summary>
+/// Marks a column for deletion during migration. The column is dropped from the DB.
+/// The property serves as self-documenting history — it is ignored by the ORM
+/// (implicitly treated as [VaultIgnore]) but read by the migration planner.
+///
+/// If [VaultColumnCopy] exists on another property referencing this column,
+/// the copy runs first, then the delete.
+///
+/// <example>
+/// [VaultColumnDelete("Replaced by GoldDisplay (string) in v2.3")]
+/// [VaultColumn("gold")]
+/// public int Gold { get; set; }
+/// </example>
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public class VaultColumnDeleteAttribute : Attribute
+{
+    public string Reason { get; }
+    public VaultColumnDeleteAttribute(string reason = "")
+        => Reason = reason ?? "";
+}
+
 [AttributeUsage(AttributeTargets.Class)]
 public class VaultSortingByAttribute : Attribute
 {
