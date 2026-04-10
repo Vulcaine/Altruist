@@ -577,15 +577,19 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
         if (doc.RenamedColumns.Count > 0)
         {
-            foreach (var (newCol, oldCol) in doc.RenamedColumns)
+            foreach (var (newCol, oldNames) in doc.RenamedColumns)
             {
-                if (existingCols.Contains(oldCol) && !existingCols.Contains(newCol))
+                // Stacked [VaultRenamedFrom] — pick the first old name that exists in DB.
+                // Allows preserving rename history: oldest→newest, planner uses first match.
+                var matchedOld = oldNames.FirstOrDefault(old =>
+                    existingCols.Contains(old) && !existingCols.Contains(newCol));
+
+                if (matchedOld != null)
                 {
-                    ops.Add(new RenameColumnOperation(schemaName, tableName, oldCol, newCol));
-                    renamedOld.Add(oldCol);
+                    ops.Add(new RenameColumnOperation(schemaName, tableName, matchedOld, newCol));
+                    renamedOld.Add(matchedOld);
                     renamedNew.Add(newCol);
                 }
-                // If old column doesn't exist in DB, treat as a new column (attribute is stale)
             }
         }
 
@@ -610,9 +614,10 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
 
         // Also check type changes for renamed columns (rename + type change)
-        foreach (var (newCol, oldCol) in doc.RenamedColumns)
+        foreach (var (newCol, oldNames) in doc.RenamedColumns)
         {
-            if (!renamedOld.Contains(oldCol)) continue;
+            var oldCol = oldNames.FirstOrDefault(renamedOld.Contains);
+            if (oldCol == null) continue;
             if (!existing.Columns.TryGetValue(oldCol, out var existingCol)) continue;
 
             var logical = doc.Columns.First(kv =>

@@ -57,9 +57,16 @@ public class VaultIgnoreAttribute : Attribute { }
 /// <summary>
 /// Marks a property as renamed from a previous column name.
 /// The migration planner will emit a RENAME COLUMN instead of DROP + ADD,
-/// preserving existing data. Remove this attribute after the migration has run.
+/// preserving existing data. Multiple attributes can be stacked to preserve
+/// rename history — only the last one matching a current DB column is applied.
+///
+/// <example>
+/// [VaultRenamedFrom("original_name")]   // first rename (historical)
+/// [VaultRenamedFrom("display_name")]    // second rename — this one runs if "display_name" exists in DB
+/// public string PrettyName { get; set; }
+/// </example>
 /// </summary>
-[AttributeUsage(AttributeTargets.Property)]
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = true)]
 public class VaultRenamedFromAttribute : Attribute
 {
     public string OldColumnName { get; }

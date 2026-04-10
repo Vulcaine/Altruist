@@ -159,18 +159,20 @@ internal static class DocumentBuilder
         }
     }
 
-    private static Dictionary<string, string> ScanRenames(Type type, Dictionary<string, string> columns)
+    private static Dictionary<string, List<string>> ScanRenames(Type type, Dictionary<string, string> columns)
     {
-        var renames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var renames = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            var attr = prop.GetCustomAttribute<VaultRenamedFromAttribute>(inherit: true);
-            if (attr is null) continue;
+            var attrs = prop.GetCustomAttributes<VaultRenamedFromAttribute>(inherit: true).ToArray();
+            if (attrs.Length == 0) continue;
 
-            // Map: new physical column name → old physical column name
             if (columns.TryGetValue(prop.Name, out var newPhysical))
-                renames[newPhysical] = attr.OldColumnName;
+            {
+                // Preserve declaration order (oldest→newest) — planner picks first match in DB
+                renames[newPhysical] = attrs.Select(a => a.OldColumnName).ToList();
+            }
         }
 
         return renames;

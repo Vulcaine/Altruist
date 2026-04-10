@@ -55,8 +55,9 @@ public sealed class VaultDocument
     // physical column names that are nullable
     public HashSet<string> NullableColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    // new physical column name -> old physical column name (from [VaultRenamedFrom])
-    public Dictionary<string, string> RenamedColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
+    // new physical column name -> list of old physical column names (from [VaultRenamedFrom], ordered oldest→newest)
+    // The planner picks the first one that exists in the current DB schema.
+    public Dictionary<string, List<string>> RenamedColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
 
     // logical field name -> accessor compiled once
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; }
