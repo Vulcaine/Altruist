@@ -19,6 +19,15 @@ public sealed record CreateTableOperation(
     IReadOnlyList<string> PrimaryKeyColumns
 ) : MigrationOperation;
 
+/// <summary>
+/// Archives a table by copying all data to an archive table, then dropping the original.
+/// </summary>
+public sealed record ArchiveTableOperation(
+    string Schema,
+    string SourceTable,
+    string ArchiveTable
+) : MigrationOperation;
+
 public sealed record DropTableOperation(
     string Schema,
     string Table
@@ -36,6 +45,43 @@ public sealed record DropColumnOperation(
     string Schema,
     string Table,
     string ColumnName
+) : MigrationOperation;
+
+public sealed record RenameColumnOperation(
+    string Schema,
+    string Table,
+    string OldColumnName,
+    string NewColumnName
+) : MigrationOperation;
+
+/// <summary>
+/// Copies data from one column to another with type conversion.
+/// Executed as batched UPDATE with USING cast.
+/// </summary>
+public sealed record CopyColumnDataOperation(
+    string Schema,
+    string Table,
+    string SourceColumn,
+    string TargetColumn,
+    string TargetStoreType
+) : MigrationOperation;
+
+/// <summary>
+/// Drops a column marked with [VaultColumnDelete]. Runs after CopyColumnData operations.
+/// </summary>
+public sealed record DeleteMarkedColumnOperation(
+    string Schema,
+    string Table,
+    string ColumnName,
+    string Reason
+) : MigrationOperation;
+
+public sealed record AlterColumnTypeOperation(
+    string Schema,
+    string Table,
+    string ColumnName,
+    string OldStoreType,
+    string NewStoreType
 ) : MigrationOperation;
 
 // ----------------- constraints -----------------

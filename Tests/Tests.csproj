@@ -44,6 +44,8 @@
     <Compile Remove="Altruist/Physx/Movement/Forward/ForwardMovementTest.cs" />
     <Compile Remove="Altruist/Gaming/World/SpatialIndexingTests.cs" />
     <Compile Remove="Altruist/Persistance/Cache/Redis/RouterTests.cs" />
+    <Compile Remove="Altruist/Gaming/Combat/CombatServiceTests.cs" />
+    <Compile Remove="Altruist/Gaming/Physx/2D/Box2DWorldEngineTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -54,6 +56,7 @@
     <ProjectReference Include="..\Altruist\Gaming\Inventory\Inventory.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Autosave\Autosave.csproj" />
     <ProjectReference Include="..\Altruist\Redis\Redis.csproj" />
+    <ProjectReference Include="..\Altruist\Postgres\Postgres.csproj" />
     <ProjectReference Include="..\Altruist\ScyllaDB\ScyllaDB.csproj" />
   </ItemGroup>
 

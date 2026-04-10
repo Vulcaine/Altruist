@@ -239,13 +239,17 @@ namespace Altruist
                 if (packetData.Length == 0)
                     break;
 
-                // Frame format: [1-byte eventLen][eventName UTF8][payload]
-                // If first byte looks like a valid event length (1-127), use event-prefixed framing.
-                // Otherwise fall back to AltruistPacket decode for backward compat.
+                // Determine framing strategy:
+                // - JSON codec: data is a full JSON object like {"event":"hello","data":{...}}
+                //   → decode directly with the codec (AltruistPacket has [JsonPropertyName("event")])
+                // - Binary codecs (MessagePack): use event-prefixed framing
+                //   → [1-byte eventLen][eventName UTF8][payload]
                 AltruistPacket packet;
                 byte[] payloadBytes;
 
-                if (packetData.Length > 2 && packetData[0] > 0 && packetData[0] < 128)
+                bool isJsonCodec = _defaultCodec.GetType().Name.Contains("Json", StringComparison.OrdinalIgnoreCase);
+
+                if (!isJsonCodec && packetData.Length > 2 && packetData[0] > 0 && packetData[0] < 128)
                 {
                     int eventLen = packetData[0];
                     if (eventLen + 1 <= packetData.Length)
@@ -263,7 +267,34 @@ namespace Altruist
                 else
                 {
                     packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
-                    payloadBytes = packetData;
+
+                    // For JSON: extract the "data" field as the payload for gate handlers.
+                    // Client sends: {"event":"hello","data":{"text":"Hi!"}}
+                    // The gate handler needs just the data portion, not the envelope.
+                    if (isJsonCodec)
+                    {
+                        try
+                        {
+                            using var jsonDoc = System.Text.Json.JsonDocument.Parse(packetData);
+                            if (jsonDoc.RootElement.TryGetProperty("data", out var dataElement))
+                            {
+                                payloadBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(dataElement);
+                            }
+                            else
+                            {
+                                // No "data" wrapper — use the full object as payload
+                                payloadBytes = packetData;
+                            }
+                        }
+                        catch
+                        {
+                            payloadBytes = packetData;
+                        }
+                    }
+                    else
+                    {
+                        payloadBytes = packetData;
+                    }
                 }
 
                 if (!await ProcessPacket(packet, payloadBytes, @event, clientId))

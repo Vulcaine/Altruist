@@ -59,9 +59,28 @@ namespace Altruist.Migrations.Postgres
         private const string DropForeignKeyTemplate =
             "ALTER TABLE {table_fqn} DROP CONSTRAINT IF EXISTS {constraint_name};";
 
-        public PostgresMigrationExecutor(ISqlDatabaseProvider provider)
-            : base(provider)
+        public PostgresMigrationExecutor(
+            ISqlDatabaseProvider provider,
+            [AppConfigValue("altruist:persistence:migration:batch-size", "50000")] int batchSize = 50_000)
+            : base(provider, batchSize)
         {
+        }
+
+        // --------------------------------
+        // ARCHIVE TABLE ([VaultArchived])
+        // --------------------------------
+
+        protected override async Task ApplyArchiveTableAsync(string defaultSchema, ArchiveTableOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var sourceFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.SourceTable)}";
+            var archiveFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.ArchiveTable)}";
+
+            // Create archive table with same structure, then copy all data
+            await _provider.ExecuteAsync(
+                $"CREATE TABLE IF NOT EXISTS {archiveFqn} (LIKE {sourceFqn} INCLUDING ALL);");
+            await _provider.ExecuteAsync(
+                $"INSERT INTO {archiveFqn} SELECT * FROM {sourceFqn};");
         }
 
         // --------------------------------
@@ -164,6 +183,121 @@ namespace Altruist.Migrations.Postgres
                 .Replace("{column_ident}", QuoteIdent(dropCol.ColumnName));
 
             await _provider.ExecuteAsync(sql);
+        }
+
+        // --------------------------------
+        // RENAME COLUMN
+        // --------------------------------
+
+        protected override async Task ApplyRenameColumnAsync(string defaultSchema, RenameColumnOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+
+            // Direct metadata-only rename — no data copy needed
+            var sql = $"ALTER TABLE {tableFqn} RENAME COLUMN {QuoteIdent(op.OldColumnName)} TO {QuoteIdent(op.NewColumnName)};";
+            await _provider.ExecuteAsync(sql);
+        }
+
+        // --------------------------------
+        // ALTER COLUMN TYPE
+        // --------------------------------
+
+        protected override async Task ApplyAlterColumnTypeAsync(string defaultSchema, AlterColumnTypeOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+            var colIdent = QuoteIdent(op.ColumnName);
+
+            if (IsSameTypeFamily(op.OldStoreType, op.NewStoreType))
+            {
+                // Widening within same family — Postgres handles without full table rewrite
+                await _provider.ExecuteAsync(
+                    $"ALTER TABLE {tableFqn} ALTER COLUMN {colIdent} TYPE {op.NewStoreType} USING {colIdent}::{op.NewStoreType};");
+            }
+            else
+            {
+                // Cross-type: batched copy to avoid long ACCESS EXCLUSIVE lock on large tables
+                var tempCol = QuoteIdent($"_altruist_migrate_{op.ColumnName}");
+
+                // 1. Add temp column with new type
+                await _provider.ExecuteAsync(
+                    $"ALTER TABLE {tableFqn} ADD COLUMN IF NOT EXISTS {tempCol} {op.NewStoreType};");
+
+                // 2. Batch copy with cast (50K per batch, each batch is a short lock)
+                while (true)
+                {
+                    var affected = await _provider.ExecuteAsync(
+                        $"UPDATE {tableFqn} SET {tempCol} = {colIdent}::{op.NewStoreType} " +
+                        $"WHERE {tempCol} IS NULL AND {colIdent} IS NOT NULL " +
+                        $"LIMIT {_batchSize};");
+                    if (affected <= 0) break;
+                }
+
+                // 3. Drop old, rename temp
+                await _provider.ExecuteAsync(
+                    $"ALTER TABLE {tableFqn} DROP COLUMN {colIdent} CASCADE;");
+                await _provider.ExecuteAsync(
+                    $"ALTER TABLE {tableFqn} RENAME COLUMN {tempCol} TO {colIdent};");
+            }
+        }
+
+        private static bool IsSameTypeFamily(string oldType, string newType)
+        {
+            var old = oldType.ToLowerInvariant().Trim();
+            var @new = newType.ToLowerInvariant().Trim();
+
+            var intFamily = new HashSet<string> { "smallint", "integer", "bigint", "int", "int4", "int8", "int2" };
+            if (intFamily.Contains(old) && intFamily.Contains(@new)) return true;
+
+            var floatFamily = new HashSet<string> { "real", "double precision", "float4", "float8" };
+            if (floatFamily.Contains(old) && floatFamily.Contains(@new)) return true;
+
+            var textFamily = new HashSet<string> { "text", "varchar", "character varying", "char", "character" };
+            if (textFamily.Contains(old) && textFamily.Contains(@new)) return true;
+
+            var tsFamily = new HashSet<string> { "timestamp", "timestamptz", "timestamp without time zone", "timestamp with time zone" };
+            if (tsFamily.Contains(old) && tsFamily.Contains(@new)) return true;
+
+            var numFamily = new HashSet<string> { "numeric", "decimal" };
+            if (numFamily.Contains(old) && numFamily.Contains(@new)) return true;
+
+            return false;
+        }
+
+        // --------------------------------
+        // COPY COLUMN DATA ([VaultColumnCopy])
+        // --------------------------------
+
+        protected override async Task ApplyCopyColumnDataAsync(string defaultSchema, CopyColumnDataOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+            var srcIdent = QuoteIdent(op.SourceColumn);
+            var tgtIdent = QuoteIdent(op.TargetColumn);
+
+            // Batched copy with type cast — same pattern as type change migration
+            while (true)
+            {
+                var affected = await _provider.ExecuteAsync(
+                    $"UPDATE {tableFqn} SET {tgtIdent} = {srcIdent}::{op.TargetStoreType} " +
+                    $"WHERE {tgtIdent} IS NULL AND {srcIdent} IS NOT NULL " +
+                    $"LIMIT {_batchSize};");
+                if (affected <= 0) break;
+            }
+        }
+
+        // --------------------------------
+        // DELETE MARKED COLUMN ([VaultColumnDelete])
+        // --------------------------------
+
+        protected override async Task ApplyDeleteMarkedColumnAsync(string defaultSchema, DeleteMarkedColumnOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+
+            await _provider.ExecuteAsync(
+                $"ALTER TABLE {tableFqn} DROP COLUMN IF EXISTS {QuoteIdent(op.ColumnName)} CASCADE;");
         }
 
         // --------------------------------

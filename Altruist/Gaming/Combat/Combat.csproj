@@ -5,7 +5,8 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Altruist.Gaming.Combat</RootNamespace>
     <AssemblyName>Combat</AssemblyName>
-    <Version>0.9.1-beta</Version>
+    <PackageId>Altruist.Gaming.Combat</PackageId>
+    <Version>0.9.5-beta</Version>
   </PropertyGroup>
 
   <ItemGroup>

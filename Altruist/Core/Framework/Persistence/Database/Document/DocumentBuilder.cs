@@ -57,6 +57,23 @@ internal static class DocumentBuilder
 
         doc.FieldTypes = fieldTypes;
         doc.NullableColumns = new HashSet<string>(nullablePhysical, StringComparer.OrdinalIgnoreCase);
+        doc.RenamedColumns = ScanRenames(type, columns);
+        ScanCopyFromAndDeleted(type, columns, doc);
+
+        var tableDeleteAttr = type.GetCustomAttribute<VaultTableDeleteAttribute>(inherit: true);
+        if (tableDeleteAttr != null)
+        {
+            doc.IsTableDeleted = true;
+            doc.TableDeleteReason = tableDeleteAttr.Reason;
+        }
+
+        var archiveAttr = type.GetCustomAttribute<VaultArchivedAttribute>(inherit: true);
+        if (archiveAttr != null)
+        {
+            doc.IsTableArchived = true;
+            doc.ArchiveTableName = archiveAttr.ArchiveTableName;
+            doc.ArchiveReason = archiveAttr.Reason;
+        }
 
         return doc;
     }
@@ -74,6 +91,11 @@ internal static class DocumentBuilder
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (prop.GetCustomAttribute<VaultIgnoreAttribute>(inherit: true) is not null)
+                continue;
+
+            // [VaultColumnDelete] properties are not part of the active schema —
+            // they're scanned separately for migration deletion commands
+            if (prop.GetCustomAttribute<VaultColumnDeleteAttribute>(inherit: true) is not null)
                 continue;
 
             var colAttr = prop.GetCustomAttribute<VaultColumnAttribute>(inherit: true);
@@ -156,6 +178,62 @@ internal static class DocumentBuilder
 
             uniqueKeys.Add(new VaultDocument.UniqueKeyDefinition(physicalCols));
         }
+    }
+
+    private static void ScanCopyFromAndDeleted(Type type, Dictionary<string, string> columns, VaultDocument doc)
+    {
+        var copyFrom = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var deleted = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            // [VaultColumnCopy] on active columns — target is in the schema
+            var copyAttr = prop.GetCustomAttribute<VaultColumnCopyAttribute>(inherit: true);
+            if (copyAttr != null && columns.TryGetValue(prop.Name, out var targetPhysical))
+            {
+                // Source can be a logical name (nameof) or physical name — resolve both
+                var source = copyAttr.SourceColumn;
+                // Try logical→physical mapping first
+                if (columns.TryGetValue(source, out var sourcePhysical))
+                    source = sourcePhysical;
+                // Otherwise assume it's already a physical name (column removed from model)
+                copyFrom[targetPhysical] = source;
+            }
+
+            // [VaultColumnDelete] — not in active columns (skipped by ScanColumns),
+            // but we need the physical name for the drop operation
+            var delAttr = prop.GetCustomAttribute<VaultColumnDeleteAttribute>(inherit: true);
+            if (delAttr != null)
+            {
+                var colAttr = prop.GetCustomAttribute<VaultColumnAttribute>(inherit: true);
+                var physical = colAttr != null && !string.IsNullOrWhiteSpace(colAttr.Name)
+                    ? colAttr.Name
+                    : ToSnakeCase(prop.Name);
+                deleted[physical] = delAttr.Reason;
+            }
+        }
+
+        doc.CopyFromColumns = copyFrom;
+        doc.DeletedColumns = deleted;
+    }
+
+    private static Dictionary<string, List<string>> ScanRenames(Type type, Dictionary<string, string> columns)
+    {
+        var renames = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            var attrs = prop.GetCustomAttributes<VaultRenamedFromAttribute>(inherit: true).ToArray();
+            if (attrs.Length == 0) continue;
+
+            if (columns.TryGetValue(prop.Name, out var newPhysical))
+            {
+                // Preserve declaration order (oldest→newest) — planner picks first match in DB
+                renames[newPhysical] = attrs.Select(a => a.OldColumnName).ToList();
+            }
+        }
+
+        return renames;
     }
 
     private static Func<object, object?> CompileAccessor(PropertyInfo property)

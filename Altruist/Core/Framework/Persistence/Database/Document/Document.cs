@@ -55,6 +55,25 @@ public sealed class VaultDocument
     // physical column names that are nullable
     public HashSet<string> NullableColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    // new physical column name -> list of old physical column names (from [VaultRenamedFrom], ordered oldest→newest)
+    // The planner picks the first one that exists in the current DB schema.
+    public Dictionary<string, List<string>> RenamedColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    // target physical column name -> source physical column name (from [VaultColumnCopy])
+    public Dictionary<string, string> CopyFromColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    // physical column names marked for deletion (from [VaultColumnDelete]) -> reason
+    public Dictionary<string, string> DeletedColumns { get; internal set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    // true if [VaultTableDelete] is on the class — entire table should be dropped
+    public bool IsTableDeleted { get; internal set; }
+    public string TableDeleteReason { get; internal set; } = "";
+
+    // true if [VaultArchived] is on the class — data copied to archive table, then original dropped
+    public bool IsTableArchived { get; internal set; }
+    public string ArchiveTableName { get; internal set; } = "";
+    public string ArchiveReason { get; internal set; } = "";
+
     // logical field name -> accessor compiled once
     public Dictionary<string, Func<object, object?>> PropertyAccessors { get; }
 

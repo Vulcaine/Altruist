@@ -171,6 +171,35 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                     new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
             }
 
+            // [VaultArchived] — copy data to archive table, then drop original
+            if (doc.IsTableArchived)
+            {
+                current.TryGetTable(doc.Name, out var tableToArchive);
+                if (tableToArchive != null)
+                {
+                    ops.Add(new ArchiveTableOperation(schema, doc.Name, doc.ArchiveTableName));
+                    current.TryGetTable(doc.Name + "_history", out var historyToArchive);
+                    if (historyToArchive != null)
+                        ops.Add(new DropTableOperation(schema, doc.Name + "_history"));
+                    ops.Add(new DropTableOperation(schema, doc.Name));
+                }
+                continue;
+            }
+
+            // [VaultTableDelete] — drop entire table if it exists in DB
+            if (doc.IsTableDeleted)
+            {
+                current.TryGetTable(doc.Name, out var tableToDelete);
+                if (tableToDelete != null)
+                {
+                    current.TryGetTable(doc.Name + "_history", out var historyToDelete);
+                    if (historyToDelete != null)
+                        ops.Add(new DropTableOperation(schema, doc.Name + "_history"));
+                    ops.Add(new DropTableOperation(schema, doc.Name));
+                }
+                continue;
+            }
+
             current.TryGetTable(doc.Name, out var existingTable);
 
             if (existingTable is null)
@@ -186,7 +215,59 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
 
         // ─────────────────────────────────────────────
-        // 2nd pass: foreign keys (after all tables exist)
+        // 2nd pass: [VaultColumnCopy] — copy data between columns (before deletes)
+        // ─────────────────────────────────────────────
+        foreach (var doc in desiredDocuments)
+        {
+            if (doc.CopyFromColumns.Count == 0) continue;
+            var schema = GetSchemaForDocument(doc);
+
+            if (!currentBySchema.TryGetValue(schema, out var current))
+                current = new DatabaseModel(schema, new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
+
+            current.TryGetTable(doc.Name, out var existingTable);
+
+            foreach (var (targetCol, sourceCol) in doc.CopyFromColumns)
+            {
+                // Only emit if source exists in DB (otherwise nothing to copy)
+                if (existingTable?.Columns.ContainsKey(sourceCol) == true)
+                {
+                    var targetType = "text"; // default
+                    var logical = doc.Columns.FirstOrDefault(kv =>
+                        string.Equals(kv.Value, targetCol, StringComparison.OrdinalIgnoreCase)).Key;
+                    if (logical != null && doc.FieldTypes.TryGetValue(logical, out var clrType))
+                        targetType = MapClrTypeToStoreType(clrType);
+
+                    ops.Add(new CopyColumnDataOperation(schema, doc.Name, sourceCol, targetCol, targetType));
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // 3rd pass: [VaultColumnDelete] — drop marked columns (after copies complete)
+        // ─────────────────────────────────────────────
+        foreach (var doc in desiredDocuments)
+        {
+            if (doc.DeletedColumns.Count == 0) continue;
+            var schema = GetSchemaForDocument(doc);
+
+            if (!currentBySchema.TryGetValue(schema, out var current))
+                current = new DatabaseModel(schema, new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase));
+
+            current.TryGetTable(doc.Name, out var existingTable);
+
+            foreach (var (colName, reason) in doc.DeletedColumns)
+            {
+                // Only drop if column actually exists in DB
+                if (existingTable?.Columns.ContainsKey(colName) == true)
+                {
+                    ops.Add(new DeleteMarkedColumnOperation(schema, doc.Name, colName, reason));
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // 4th pass: foreign keys (after all tables exist)
         // ─────────────────────────────────────────────
         foreach (var doc in desiredDocuments)
         {
@@ -570,8 +651,73 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         var existingCols = new HashSet<string>(existing.Columns.Keys, StringComparer.OrdinalIgnoreCase);
         var desiredCols = new HashSet<string>(doc.Columns.Values, StringComparer.OrdinalIgnoreCase);
 
-        // columns to add
-        foreach (var col in desiredCols.Except(existingCols, StringComparer.OrdinalIgnoreCase))
+        // ── Rename detection via [VaultRenamedFrom] ──
+        // Process renames first so they don't appear as drop+add
+        var renamedOld = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var renamedNew = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (doc.RenamedColumns.Count > 0)
+        {
+            foreach (var (newCol, oldNames) in doc.RenamedColumns)
+            {
+                // Stacked [VaultRenamedFrom] — pick the first old name that exists in DB.
+                // Allows preserving rename history: oldest→newest, planner uses first match.
+                var matchedOld = oldNames.FirstOrDefault(old =>
+                    existingCols.Contains(old) && !existingCols.Contains(newCol));
+
+                if (matchedOld != null)
+                {
+                    ops.Add(new RenameColumnOperation(schemaName, tableName, matchedOld, newCol));
+                    renamedOld.Add(matchedOld);
+                    renamedNew.Add(newCol);
+                }
+            }
+        }
+
+        // ── Type change detection for columns that exist in both ──
+        foreach (var col in desiredCols.Intersect(existingCols, StringComparer.OrdinalIgnoreCase))
+        {
+            if (renamedNew.Contains(col)) continue; // just renamed, type checked below
+
+            var logical = doc.Columns.First(kv =>
+                    string.Equals(kv.Value, col, StringComparison.OrdinalIgnoreCase))
+                .Key;
+
+            if (!doc.FieldTypes.TryGetValue(logical, out var clrType)) continue;
+            if (!existing.Columns.TryGetValue(col, out var existingCol)) continue;
+
+            var desiredStoreType = MapClrTypeToStoreType(clrType);
+            if (!string.Equals(existingCol.StoreType, desiredStoreType, StringComparison.OrdinalIgnoreCase))
+            {
+                ops.Add(new AlterColumnTypeOperation(schemaName, tableName, col,
+                    existingCol.StoreType, desiredStoreType));
+            }
+        }
+
+        // Also check type changes for renamed columns (rename + type change)
+        foreach (var (newCol, oldNames) in doc.RenamedColumns)
+        {
+            var oldCol = oldNames.FirstOrDefault(renamedOld.Contains);
+            if (oldCol == null) continue;
+            if (!existing.Columns.TryGetValue(oldCol, out var existingCol)) continue;
+
+            var logical = doc.Columns.First(kv =>
+                    string.Equals(kv.Value, newCol, StringComparison.OrdinalIgnoreCase))
+                .Key;
+
+            if (!doc.FieldTypes.TryGetValue(logical, out var clrType)) continue;
+
+            var desiredStoreType = MapClrTypeToStoreType(clrType);
+            if (!string.Equals(existingCol.StoreType, desiredStoreType, StringComparison.OrdinalIgnoreCase))
+            {
+                ops.Add(new AlterColumnTypeOperation(schemaName, tableName, newCol,
+                    existingCol.StoreType, desiredStoreType));
+            }
+        }
+
+        // columns to add (exclude renamed columns)
+        foreach (var col in desiredCols.Except(existingCols, StringComparer.OrdinalIgnoreCase)
+                     .Where(c => !renamedNew.Contains(c)))
         {
             var logical = doc.Columns.First(kv =>
                     string.Equals(kv.Value, col, StringComparison.OrdinalIgnoreCase))
@@ -607,8 +753,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             ops.Add(new AddColumnOperation(schemaName, tableName, def));
         }
 
-        // columns to drop
-        foreach (var col in existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase))
+        // columns to drop (exclude renamed columns — they were handled above)
+        foreach (var col in existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase)
+                     .Where(c => !renamedOld.Contains(c)))
         {
             ops.Add(new DropColumnOperation(schemaName, tableName, col));
         }

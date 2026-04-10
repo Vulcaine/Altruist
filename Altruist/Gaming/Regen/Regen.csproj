@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Gaming.Regen</PackageId>
     <Description>Gaming.Regen module for Altruist framework.</Description>
-    <Version>0.9.4-beta</Version>
+    <Version>0.9.5-beta</Version>
     <IsPackable>false</IsPackable>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>./README.md</PackageReadmeFile>

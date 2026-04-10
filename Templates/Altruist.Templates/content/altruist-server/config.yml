@@ -1,0 +1,18 @@
+altruist:
+  server:
+    http:
+      host: "0.0.0.0"
+      port: 8080
+      path: "/"
+    transport:
+      codec:
+        provider: json
+      websocket:
+        enabled: true
+        path: /ws
+        codec:
+          provider: json
+
+  persistence:
+    cache:
+      provider: inmemory

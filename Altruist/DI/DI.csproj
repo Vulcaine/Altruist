@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.DI</PackageId>
     <Description>Standalone dependency injection module for Altruist framework. Attribute-based auto-registration, config binding, conditional services, keyed services, and PostConstruct hooks — no server, no networking.</Description>
-    <Version>0.9.4-beta</Version>
+    <Version>0.9.5-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
