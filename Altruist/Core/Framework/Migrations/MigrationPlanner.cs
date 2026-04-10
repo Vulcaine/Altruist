@@ -570,8 +570,68 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         var existingCols = new HashSet<string>(existing.Columns.Keys, StringComparer.OrdinalIgnoreCase);
         var desiredCols = new HashSet<string>(doc.Columns.Values, StringComparer.OrdinalIgnoreCase);
 
-        // columns to add
-        foreach (var col in desiredCols.Except(existingCols, StringComparer.OrdinalIgnoreCase))
+        // ── Rename detection via [VaultRenamedFrom] ──
+        // Process renames first so they don't appear as drop+add
+        var renamedOld = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var renamedNew = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (doc.RenamedColumns.Count > 0)
+        {
+            foreach (var (newCol, oldCol) in doc.RenamedColumns)
+            {
+                if (existingCols.Contains(oldCol) && !existingCols.Contains(newCol))
+                {
+                    ops.Add(new RenameColumnOperation(schemaName, tableName, oldCol, newCol));
+                    renamedOld.Add(oldCol);
+                    renamedNew.Add(newCol);
+                }
+                // If old column doesn't exist in DB, treat as a new column (attribute is stale)
+            }
+        }
+
+        // ── Type change detection for columns that exist in both ──
+        foreach (var col in desiredCols.Intersect(existingCols, StringComparer.OrdinalIgnoreCase))
+        {
+            if (renamedNew.Contains(col)) continue; // just renamed, type checked below
+
+            var logical = doc.Columns.First(kv =>
+                    string.Equals(kv.Value, col, StringComparison.OrdinalIgnoreCase))
+                .Key;
+
+            if (!doc.FieldTypes.TryGetValue(logical, out var clrType)) continue;
+            if (!existing.Columns.TryGetValue(col, out var existingCol)) continue;
+
+            var desiredStoreType = MapClrTypeToStoreType(clrType);
+            if (!string.Equals(existingCol.StoreType, desiredStoreType, StringComparison.OrdinalIgnoreCase))
+            {
+                ops.Add(new AlterColumnTypeOperation(schemaName, tableName, col,
+                    existingCol.StoreType, desiredStoreType));
+            }
+        }
+
+        // Also check type changes for renamed columns (rename + type change)
+        foreach (var (newCol, oldCol) in doc.RenamedColumns)
+        {
+            if (!renamedOld.Contains(oldCol)) continue;
+            if (!existing.Columns.TryGetValue(oldCol, out var existingCol)) continue;
+
+            var logical = doc.Columns.First(kv =>
+                    string.Equals(kv.Value, newCol, StringComparison.OrdinalIgnoreCase))
+                .Key;
+
+            if (!doc.FieldTypes.TryGetValue(logical, out var clrType)) continue;
+
+            var desiredStoreType = MapClrTypeToStoreType(clrType);
+            if (!string.Equals(existingCol.StoreType, desiredStoreType, StringComparison.OrdinalIgnoreCase))
+            {
+                ops.Add(new AlterColumnTypeOperation(schemaName, tableName, newCol,
+                    existingCol.StoreType, desiredStoreType));
+            }
+        }
+
+        // columns to add (exclude renamed columns)
+        foreach (var col in desiredCols.Except(existingCols, StringComparer.OrdinalIgnoreCase)
+                     .Where(c => !renamedNew.Contains(c)))
         {
             var logical = doc.Columns.First(kv =>
                     string.Equals(kv.Value, col, StringComparison.OrdinalIgnoreCase))
@@ -607,8 +667,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             ops.Add(new AddColumnOperation(schemaName, tableName, def));
         }
 
-        // columns to drop
-        foreach (var col in existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase))
+        // columns to drop (exclude renamed columns — they were handled above)
+        foreach (var col in existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase)
+                     .Where(c => !renamedOld.Contains(c)))
         {
             ops.Add(new DropColumnOperation(schemaName, tableName, col));
         }

@@ -38,6 +38,21 @@ public sealed record DropColumnOperation(
     string ColumnName
 ) : MigrationOperation;
 
+public sealed record RenameColumnOperation(
+    string Schema,
+    string Table,
+    string OldColumnName,
+    string NewColumnName
+) : MigrationOperation;
+
+public sealed record AlterColumnTypeOperation(
+    string Schema,
+    string Table,
+    string ColumnName,
+    string OldStoreType,
+    string NewStoreType
+) : MigrationOperation;
+
 // ----------------- constraints -----------------
 
 public sealed record AddUniqueConstraintOperation(

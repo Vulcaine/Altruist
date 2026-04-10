@@ -167,6 +167,35 @@ namespace Altruist.Migrations.Postgres
         }
 
         // --------------------------------
+        // RENAME COLUMN
+        // --------------------------------
+
+        protected override async Task ApplyRenameColumnAsync(string defaultSchema, RenameColumnOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+
+            // Direct metadata-only rename — no data copy needed
+            var sql = $"ALTER TABLE {tableFqn} RENAME COLUMN {QuoteIdent(op.OldColumnName)} TO {QuoteIdent(op.NewColumnName)};";
+            await _provider.ExecuteAsync(sql);
+        }
+
+        // --------------------------------
+        // ALTER COLUMN TYPE
+        // --------------------------------
+
+        protected override async Task ApplyAlterColumnTypeAsync(string defaultSchema, AlterColumnTypeOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+
+            // Use USING clause for explicit cast — handles widening (int→bigint) and
+            // cross-type conversions (int→text). May fail for lossy conversions (text→int).
+            var sql = $"ALTER TABLE {tableFqn} ALTER COLUMN {QuoteIdent(op.ColumnName)} TYPE {op.NewStoreType} USING {QuoteIdent(op.ColumnName)}::{op.NewStoreType};";
+            await _provider.ExecuteAsync(sql);
+        }
+
+        // --------------------------------
         // CONSTRAINT OPERATIONS
         // --------------------------------
 

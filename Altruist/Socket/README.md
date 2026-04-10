@@ -5,7 +5,7 @@ Altruist is a high-performance, config-driven server framework for building scal
 
 ## Status
 
-This package is in **beta** (v0.9.0). The core API is stabilizing and actively used in production game development. Breaking changes are possible but increasingly rare. We encourage you to build with it and share feedback.
+This package is in **beta** (v0.9.0). The core API is stabilizing and actively experimented with in production game development. Breaking changes are possible but increasingly rare. We encourage you to build with it and share feedback.
 
 ## Documentation
 

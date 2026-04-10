@@ -54,6 +54,19 @@ public class VaultColumnIndexAttribute : Attribute { }
 [AttributeUsage(AttributeTargets.Property)]
 public class VaultIgnoreAttribute : Attribute { }
 
+/// <summary>
+/// Marks a property as renamed from a previous column name.
+/// The migration planner will emit a RENAME COLUMN instead of DROP + ADD,
+/// preserving existing data. Remove this attribute after the migration has run.
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public class VaultRenamedFromAttribute : Attribute
+{
+    public string OldColumnName { get; }
+    public VaultRenamedFromAttribute(string oldColumnName)
+        => OldColumnName = oldColumnName ?? throw new ArgumentNullException(nameof(oldColumnName));
+}
+
 [AttributeUsage(AttributeTargets.Class)]
 public class VaultSortingByAttribute : Attribute
 {

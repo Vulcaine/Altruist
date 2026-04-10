@@ -76,6 +76,12 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
             case DropColumnOperation dropColumn:
                 return ApplyDropColumnAsync(defaultSchema, dropColumn);
 
+            case RenameColumnOperation renameColumn:
+                return ApplyRenameColumnAsync(defaultSchema, renameColumn);
+
+            case AlterColumnTypeOperation alterType:
+                return ApplyAlterColumnTypeAsync(defaultSchema, alterType);
+
             // --------------------------------
             // CONSTRAINT OPERATIONS
             // --------------------------------
@@ -131,6 +137,10 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     protected abstract Task ApplyCreateIndexAsync(string defaultSchema, CreateIndexOperation op);
 
     protected abstract Task ApplyDropIndexAsync(string defaultSchema, DropIndexOperation op);
+
+    protected abstract Task ApplyRenameColumnAsync(string defaultSchema, RenameColumnOperation op);
+
+    protected abstract Task ApplyAlterColumnTypeAsync(string defaultSchema, AlterColumnTypeOperation op);
 
     protected abstract Task ApplyCreateSchemaAsync(string defaultSchema, CreateSchemaOperation createSchema);
 

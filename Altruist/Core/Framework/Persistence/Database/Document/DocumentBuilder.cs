@@ -57,6 +57,7 @@ internal static class DocumentBuilder
 
         doc.FieldTypes = fieldTypes;
         doc.NullableColumns = new HashSet<string>(nullablePhysical, StringComparer.OrdinalIgnoreCase);
+        doc.RenamedColumns = ScanRenames(type, columns);
 
         return doc;
     }
@@ -156,6 +157,23 @@ internal static class DocumentBuilder
 
             uniqueKeys.Add(new VaultDocument.UniqueKeyDefinition(physicalCols));
         }
+    }
+
+    private static Dictionary<string, string> ScanRenames(Type type, Dictionary<string, string> columns)
+    {
+        var renames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            var attr = prop.GetCustomAttribute<VaultRenamedFromAttribute>(inherit: true);
+            if (attr is null) continue;
+
+            // Map: new physical column name → old physical column name
+            if (columns.TryGetValue(prop.Name, out var newPhysical))
+                renames[newPhysical] = attr.OldColumnName;
+        }
+
+        return renames;
     }
 
     private static Func<object, object?> CompileAccessor(PropertyInfo property)
