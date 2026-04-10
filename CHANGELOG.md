@@ -5,20 +5,21 @@ All notable changes to the Altruist framework are documented in this file.
 ## [0.9.5-beta] - 2026-04-10
 
 ### Added
-- **Column rename migrations** — `[VaultRenamedFrom("old_name")]` attribute. Emits `ALTER TABLE RENAME COLUMN` (metadata-only, instant) instead of destructive drop+add. Supports multiple renames, stale attribute detection.
-- **Column type change migrations** — auto-detected by comparing DB store type vs C# mapped type. Same-family widening (int→bigint) uses direct `ALTER COLUMN TYPE`. Cross-type conversions use batched copy (50K rows/batch) to avoid long locks on large tables.
-- **Transaction-safe migrations** — all migration operations wrapped in `BEGIN`/`COMMIT`. On failure: `ROLLBACK` + `MigrationException` with operation index and details. Postgres supports transactional DDL.
-- **`MigrationException`** — typed exception with operation context for clean error reporting.
-- **`IsSameTypeFamily`** — detects safe widening conversions (int/float/text/timestamp/numeric families) to skip unnecessary batched copy.
-- **57 migration planner unit tests** — new table creation, type mapping (14 primitives + 7 arrays + nullable/enum/collection), column diff, unique constraints, indexes, FK diff, history tables, schema handling, constraint naming, renames, type changes.
-- **`InternalsVisibleTo` for Tests** — Core.csproj exposes internals to test project.
+- **`[VaultRenamedFrom]`** — rename a column without losing data. Stackable to preserve full rename history; the migration picks the first match in the current database.
+- **`[VaultColumnCopy]`** — copy data from one column to another with automatic type conversion. Batched for large tables (configurable via `altruist:persistence:migration:batch-size`).
+- **`[VaultColumnDelete]`** — mark a column for deletion. The property stays in code as self-documenting history. Pair with `[Obsolete]` for IDE warnings/errors on usage.
+- **`[VaultTableDelete]`** — mark an entire vault table for deletion. History table is dropped automatically.
+- **`[VaultArchived]`** — safer alternative to delete: copies all data to an archive table before dropping the original.
+- **Automatic type change detection** — changing a property type (e.g. `int` → `long`) is detected automatically and migrated. Same-family widening is instant; cross-type conversions are batched.
+- **Transaction-safe migrations** — all operations run in a single transaction. On failure, everything rolls back cleanly with a descriptive error.
+- **Configurable batch size** — `altruist:persistence:migration:batch-size` in config.yml (default 50,000 rows per batch).
+- **59 migration planner unit tests** covering all operations, type mappings, renames, type changes, and edge cases.
 
 ### Changed
-- **Migration executor** — `ApplyAsync` now transactional. New abstract methods `ApplyRenameColumnAsync`, `ApplyAlterColumnTypeAsync`.
-- **Migration planner** — `PlanExistingTableDiff` processes renames before add/drop, checks type diffs for all existing columns.
+- **Migration execution order** — guaranteed: schema changes → column copies → column deletes → foreign keys. Safe to copy data out of a column and delete it in the same migration.
 
 ### Removed
-- **ScyllaDB test files** — deleted deprecated `ScyllaTests.cs`, removed ScyllaDB project reference from Tests.
+- **ScyllaDB tests** — removed deprecated test files and project reference.
 
 ## [0.9.4-beta] - 2026-04-09
 
