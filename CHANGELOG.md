@@ -2,6 +2,24 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [0.9.5-beta] - 2026-04-10
+
+### Added
+- **Column rename migrations** — `[VaultRenamedFrom("old_name")]` attribute. Emits `ALTER TABLE RENAME COLUMN` (metadata-only, instant) instead of destructive drop+add. Supports multiple renames, stale attribute detection.
+- **Column type change migrations** — auto-detected by comparing DB store type vs C# mapped type. Same-family widening (int→bigint) uses direct `ALTER COLUMN TYPE`. Cross-type conversions use batched copy (50K rows/batch) to avoid long locks on large tables.
+- **Transaction-safe migrations** — all migration operations wrapped in `BEGIN`/`COMMIT`. On failure: `ROLLBACK` + `MigrationException` with operation index and details. Postgres supports transactional DDL.
+- **`MigrationException`** — typed exception with operation context for clean error reporting.
+- **`IsSameTypeFamily`** — detects safe widening conversions (int/float/text/timestamp/numeric families) to skip unnecessary batched copy.
+- **57 migration planner unit tests** — new table creation, type mapping (14 primitives + 7 arrays + nullable/enum/collection), column diff, unique constraints, indexes, FK diff, history tables, schema handling, constraint naming, renames, type changes.
+- **`InternalsVisibleTo` for Tests** — Core.csproj exposes internals to test project.
+
+### Changed
+- **Migration executor** — `ApplyAsync` now transactional. New abstract methods `ApplyRenameColumnAsync`, `ApplyAlterColumnTypeAsync`.
+- **Migration planner** — `PlanExistingTableDiff` processes renames before add/drop, checks type diffs for all existing columns.
+
+### Removed
+- **ScyllaDB test files** — deleted deprecated `ScyllaTests.cs`, removed ScyllaDB project reference from Tests.
+
 ## [0.9.4-beta] - 2026-04-09
 
 ### Changed
