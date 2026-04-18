@@ -111,63 +111,56 @@ namespace Altruist.Gaming.ThreeD
 
             if (worlds.Length <= 1)
             {
-                // Single world: tick sequentially (no thread overhead)
                 foreach (var world in worlds)
                     StepWorld(world, deltaTime);
             }
             else
             {
-                // Multiple worlds: tick in parallel (one thread per world)
                 Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
                     world => StepWorld(world, deltaTime));
             }
 
-
-
-            // Record position history for lag compensation (after positions finalized)
             _positionRecorder?.RecordSnapshot(Altruist.Engine.AltruistEngine.CurrentTick);
 
-            // Build per-world snapshots once — reused by AI, visibility, and sync
             var worldSnapshots = new WorldSnapshot[worlds.Length];
             for (int i = 0; i < worlds.Length; i++)
             {
                 var (list, lookup) = worlds[i].GetCachedSnapshot();
-                // Cast IWorldObject3D lists to ITypelessWorldObject for dimension-agnostic services
                 var typelessList = (IReadOnlyList<ITypelessWorldObject>)list;
-                var typelessLookup = (IReadOnlyDictionary<string, ITypelessWorldObject>)(object)lookup;
+                // Dictionary is invariant on TValue — cannot cast directly.
+                // Wrap with a covariant read-only view.
+                var typelessLookup = new Dictionary<string, ITypelessWorldObject>(lookup.Count);
+                foreach (var kvp in lookup)
+                    typelessLookup[kvp.Key] = kvp.Value;
                 worldSnapshots[i] = new WorldSnapshot(worlds[i].Index.Index, typelessList, typelessLookup);
             }
 
-            // AI behaviors tick (after physics, before visibility/sync)
-            // AI is independent per-entity — safe to run on the snapshot
             if (_aiBehaviorService != null)
             {
                 try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
                 catch { }
             }
 
-            // Visibility (parallel per-observer + stagger) and sync can overlap
-            // since visibility writes to _visibleSets and sync reads entity state
             var visTask = Task.CompletedTask;
             if (_visibilityTracker is VisibilityTracker3D tracker)
             {
                 visTask = Task.Run(() =>
                 {
                     try { tracker.Tick(worldSnapshots); }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        System.Console.Error.WriteLine($"[VISIBILITY ERROR] {ex.GetType().Name}: {ex.Message}");
+                        System.Console.Error.WriteLine(ex.StackTrace?.Split('\n')[0]);
+                    }
                 });
             }
 
-            // Auto-sync [Synchronized] entities (delta-based)
-            // Can run concurrently with visibility — sync reads entity properties,
-            // visibility writes to separate _visibleSets dictionary
             if (_entitySyncService != null)
             {
                 try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
                 catch { }
             }
 
-            // Wait for visibility to complete before next tick
             visTask.GetAwaiter().GetResult();
         }
 
