@@ -12,7 +12,7 @@ namespace Altruist.ThreeD.Numerics
         public float Z => _v.Z;
 
         public Position3D(int x, int y, int z) => _v = new Vector3(x, y, z);
-        public Position3D(float x, float y, float z) => _v = new Vector3((int)x, (int)y, (int)z);
+        public Position3D(float x, float y, float z) => _v = new Vector3(x, y, z);
         private Position3D(Vector3 v) => _v = v;
 
         public static Position3D Zero => new(new Vector3(0, 0, 0));
@@ -97,7 +97,7 @@ namespace Altruist.ThreeD.Numerics
         public static Transform3D From(Vector3 origin, Quaternion rotation, Vector3 size, Vector3 scale)
         {
             return new Transform3D(
-                Position3D.From(new IntVector3((int)origin.X, (int)origin.Y, (int)origin.Z)),
+                Position3D.From(origin),
                 Size3D.From(size),
                 Scale3D.From(scale),
                 Rotation3D.FromQuaternion(rotation));
@@ -106,7 +106,7 @@ namespace Altruist.ThreeD.Numerics
         public static Transform3D From(Vector3 origin, Quaternion rotation, Vector3 size)
         {
             return new Transform3D(
-                Position3D.From(new IntVector3((int)origin.X, (int)origin.Y, (int)origin.Z)),
+                Position3D.From(origin),
                 Size3D.From(size),
                 Scale3D.One,
                 Rotation3D.FromQuaternion(rotation));
