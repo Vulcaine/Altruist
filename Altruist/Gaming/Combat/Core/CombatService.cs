@@ -8,11 +8,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Combat;
 
-[Service(typeof(IDamageCalculator))]
+/// <summary>
+/// Placeholder damage calculator — used as fallback when no game-specific
+/// IDamageCalculator is registered. Games should register their own
+/// IDamageCalculator implementation via [Service(typeof(IDamageCalculator))].
+/// </summary>
 public class DefaultDamageCalculator : IDamageCalculator
 {
-    public virtual int Calculate(ICombatEntity attacker, ICombatEntity target)
-        => Math.Max(1, attacker.GetAttackPower() - target.GetDefensePower());
+    public virtual (int Damage, DamageFlags Flags) Calculate(ICombatEntity attacker, ICombatEntity target)
+        => (Math.Max(1, attacker.GetAttackPower() - target.GetDefensePower()), DamageFlags.Normal);
 }
 
 [Service(typeof(ICombatService))]
@@ -29,17 +33,18 @@ public class CombatService : ICombatService
     public event Action<SweepEvent>? OnSweep;
 
     public CombatService(
-        IDamageCalculator calculator,
         ILoggerFactory loggerFactory,
+        IDamageCalculator? calculator = null,
         IGameWorldOrganizer3D? worldOrganizer = null,
         ISpatialCollisionDispatcher? collisionDispatcher = null,
         ILagCompensationService? lagCompensation = null)
     {
-        _calculator = calculator;
+        _calculator = calculator ?? new DefaultDamageCalculator();
         _worldOrganizer = worldOrganizer;
         _collisionDispatcher = collisionDispatcher;
         _lagCompensation = lagCompensation;
         _logger = loggerFactory.CreateLogger<CombatService>();
+        _logger.LogInformation("CombatService using damage calculator: {Type}", _calculator.GetType().FullName);
     }
 
     public HitResult Attack(ICombatEntity attacker, ICombatEntity target)
@@ -64,8 +69,8 @@ public class CombatService : ICombatService
         if (target.IsDead)
             return new HitResult(target, 0, DamageFlags.Miss, false);
 
-        var damage = _calculator.Calculate(attacker, target);
-        return ApplyDamage(attacker, target, damage, DamageFlags.Normal);
+        var (damage, flags) = _calculator.Calculate(attacker, target);
+        return ApplyDamage(attacker, target, damage, flags);
     }
 
     public HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal)

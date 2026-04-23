@@ -314,7 +314,15 @@ public class AltruistEngine : IAltruistEngine
                 while (_physicsTicks.Reader.TryRead(out var v))
                     dt = v;
 
-                _worldCoordinator.Step(dt);
+                try
+                {
+                    _worldCoordinator.Step(dt);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    System.Console.Error.WriteLine($"[PHYSICS-WORKER] Step() threw: {ex.GetType().Name}: {ex.Message}");
+                    // Don't die — keep the loop running
+                }
             }
         }
         catch (OperationCanceledException)

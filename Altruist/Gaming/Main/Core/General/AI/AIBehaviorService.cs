@@ -44,10 +44,24 @@ public sealed class AIBehaviorService : IAIBehaviorService
             _logger);
     }
 
+    static int _aiTickLog;
     public void Tick(WorldSnapshot[] snapshots, float dt)
     {
         EnsureDiscovered();
         _tickCounter++;
+
+        if (_tickCounter % 500 == 1)
+        {
+            int totalObj = 0, aiCount = 0, ctxCount = 0, hibCount = 0;
+            foreach (var s in snapshots) { totalObj += s.AllObjects.Count; }
+            foreach (var s in snapshots)
+                foreach (var o in s.AllObjects)
+                {
+                    if (o is IAIBehaviorEntity ae) { aiCount++; if (ae.AIContext != null) ctxCount++; }
+                    if (o is IHibernatable { IsHibernated: true }) hibCount++;
+                }
+            System.Console.WriteLine($"[AI-TICK] tick={_tickCounter} objects={totalObj} ai={aiCount} ctx={ctxCount} hib={hibCount} machines={_machines.Count}");
+        }
 
         foreach (var snapshot in snapshots)
         {

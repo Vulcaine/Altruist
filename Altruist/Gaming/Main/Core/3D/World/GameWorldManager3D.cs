@@ -35,6 +35,23 @@ namespace Altruist.Gaming.ThreeD
         IWorldObject3D? DestroyObject(string instanceId);
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
 
+        /// <summary>
+        /// Fires synchronously whenever DestroyObject successfully removes an object.
+        /// Subscribers (VisibilityTracker3D) use this to broadcast invisibility to
+        /// observers that were seeing the object — independent of the snapshot rebuild
+        /// timing, so there's no race between gate-handler-driven destroys and the
+        /// per-tick visibility Tick.
+        /// </summary>
+        event Action<IWorldObject3D>? OnObjectDestroyed;
+
+        /// <summary>
+        /// Raised synchronously after a world object is registered (spawn/attach/lightweight).
+        /// Subscribers (VisibilityTracker3D) use this to broadcast visibility to in-range
+        /// observers without waiting for the next per-tick Tick. Out-of-range observers
+        /// are still picked up by the regular Tick when they move into range.
+        /// </summary>
+        event Action<IWorldObject3D>? OnObjectCreated;
+
         IEnumerable<IWorldObject3D> GetNearbyObjectsInRoom(
             string archetype,
             int x, int y, int z,
@@ -80,23 +97,25 @@ namespace Altruist.Gaming.ThreeD
 
         private static uint _nextVirtualId = 1;
 
-        private readonly Dictionary<string, IWorldObject3D> _flatInstanceCache = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IWorldObject3D> _flatInstanceCache = new();
         private ZoneManager3D? _zoneManager;
 
         // ── Snapshot caching ─────────────────────────────────────────
         private readonly List<IWorldObject3D> _snapshotCache = new();
         private readonly Dictionary<string, IWorldObject3D> _snapshotLookup = new();
-        private bool _snapshotDirty = true;
+        private volatile bool _snapshotDirty = true;
 
-        /// <summary>
-        /// Returns a cached, reusable list of all world objects. The list is rebuilt
-        /// only when entities have been added or removed since the last call.
-        /// Callers must NOT modify the returned list.
-        /// </summary>
+        public event Action<IWorldObject3D>? OnObjectDestroyed;
+        public event Action<IWorldObject3D>? OnObjectCreated;
+
         public (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot()
         {
             if (_snapshotDirty)
             {
+                // Clear dirty BEFORE iterating so concurrent MarkSnapshotDirty()
+                // calls during iteration will set it back to true, triggering
+                // a rebuild on the next tick instead of being lost.
+                _snapshotDirty = false;
                 _snapshotCache.Clear();
                 _snapshotLookup.Clear();
                 foreach (var kvp in _flatInstanceCache)
@@ -104,7 +123,6 @@ namespace Altruist.Gaming.ThreeD
                     _snapshotCache.Add(kvp.Value);
                     _snapshotLookup[kvp.Value.InstanceId] = kvp.Value;
                 }
-                _snapshotDirty = false;
             }
             return (_snapshotCache, _snapshotLookup);
         }
@@ -198,6 +216,7 @@ namespace Altruist.Gaming.ThreeD
 
             _flatInstanceCache[obj.InstanceId] = obj;
             MarkSnapshotDirty();
+            OnObjectCreated?.Invoke(obj);
         }
 
         /// <summary>
@@ -272,6 +291,7 @@ namespace Altruist.Gaming.ThreeD
                 _flatInstanceCache[obj.InstanceId] = obj;
 
             MarkSnapshotDirty();
+            OnObjectCreated?.Invoke(obj);
             await Task.CompletedTask;
             return body;
         }
@@ -305,10 +325,9 @@ namespace Altruist.Gaming.ThreeD
 
             IWorldObject3D? removedFromCache = null;
 
-            if (_flatInstanceCache.TryGetValue(instanceId, out var cachedByKey))
+            if (_flatInstanceCache.TryRemove(instanceId, out var cachedByKey))
             {
                 removedFromCache = cachedByKey;
-                _flatInstanceCache.Remove(instanceId);
             }
 
             var obj = removedFromPartitions ?? removedFromCache;
@@ -317,7 +336,11 @@ namespace Altruist.Gaming.ThreeD
             {
                 MarkSnapshotDirty();
                 if (removeFromPhysx)
+                {
                     RemoveFromPhysxEngine(obj);
+                    // Only fire on destroy, not on detach-for-reposition (removeFromPhysx=false)
+                    OnObjectDestroyed?.Invoke(obj);
+                }
             }
 
             return obj;

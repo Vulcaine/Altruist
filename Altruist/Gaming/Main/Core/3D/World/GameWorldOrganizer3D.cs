@@ -32,6 +32,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IPositionHistoryRecorder? _positionRecorder;
         private IVisibilityTracker? _visibilityTracker;
         private float _engineFrequencyHz = 25f;
+        private long _stepCount;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
@@ -61,6 +62,18 @@ namespace Altruist.Gaming.ThreeD
         public void SetVisibilityTracker(IVisibilityTracker? tracker)
         {
             _visibilityTracker = tracker;
+        }
+
+        /// <summary>Flat enumeration of every 3D entity across all worlds.
+        /// Used by <see cref="IPositionHistoryRecorder"/> so the recorder
+        /// doesn't need to pull the organizer via DI (one-way push avoids a cycle).</summary>
+        private static IEnumerable<IWorldObject3D> EnumerateAllEntities(IGameWorldManager3D[] worlds)
+        {
+            for (int i = 0; i < worlds.Length; i++)
+            {
+                foreach (var obj in worlds[i].FindAllObjects<IWorldObject3D>())
+                    yield return obj;
+            }
         }
 
         private async Task InitializeWorlds(IEnumerable<IWorldIndex3D> worlds)
@@ -107,61 +120,72 @@ namespace Altruist.Gaming.ThreeD
 
         public void Step(float deltaTime)
         {
-            var worlds = _worlds.Values.ToArray();
-
-            if (worlds.Length <= 1)
+            _stepCount++;
+            try
             {
-                foreach (var world in worlds)
-                    StepWorld(world, deltaTime);
-            }
-            else
-            {
-                Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                    world => StepWorld(world, deltaTime));
-            }
+                var worlds = _worlds.Values.ToArray();
 
-            _positionRecorder?.RecordSnapshot(Altruist.Engine.AltruistEngine.CurrentTick);
-
-            var worldSnapshots = new WorldSnapshot[worlds.Length];
-            for (int i = 0; i < worlds.Length; i++)
-            {
-                var (list, lookup) = worlds[i].GetCachedSnapshot();
-                var typelessList = (IReadOnlyList<ITypelessWorldObject>)list;
-                // Dictionary is invariant on TValue — cannot cast directly.
-                // Wrap with a covariant read-only view.
-                var typelessLookup = new Dictionary<string, ITypelessWorldObject>(lookup.Count);
-                foreach (var kvp in lookup)
-                    typelessLookup[kvp.Key] = kvp.Value;
-                worldSnapshots[i] = new WorldSnapshot(worlds[i].Index.Index, typelessList, typelessLookup);
-            }
-
-            if (_aiBehaviorService != null)
-            {
-                try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
-                catch { }
-            }
-
-            var visTask = Task.CompletedTask;
-            if (_visibilityTracker is VisibilityTracker3D tracker)
-            {
-                visTask = Task.Run(() =>
+                if (worlds.Length <= 1)
                 {
-                    try { tracker.Tick(worldSnapshots); }
-                    catch (Exception ex)
+                    foreach (var world in worlds)
+                        StepWorld(world, deltaTime);
+                }
+                else
+                {
+                    Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                        world => StepWorld(world, deltaTime));
+                }
+
+                if (_positionRecorder != null)
+                    _positionRecorder.RecordSnapshot(Altruist.Engine.AltruistEngine.CurrentTick, EnumerateAllEntities(worlds));
+
+                var worldSnapshots = new WorldSnapshot[worlds.Length];
+                for (int i = 0; i < worlds.Length; i++)
+                {
+                    var (list, lookup) = worlds[i].GetCachedSnapshot();
+                    var typelessList = (IReadOnlyList<ITypelessWorldObject>)list;
+                    // Dictionary is invariant on TValue — cannot cast directly.
+                    // Wrap with a covariant read-only view.
+                    var typelessLookup = new Dictionary<string, ITypelessWorldObject>(lookup.Count);
+                    foreach (var kvp in lookup)
+                        typelessLookup[kvp.Key] = kvp.Value;
+                    worldSnapshots[i] = new WorldSnapshot(worlds[i].Index.Index, typelessList, typelessLookup);
+                }
+
+                if (_aiBehaviorService != null)
+                {
+                    try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
+                    catch { }
+                }
+
+                var visTask = Task.CompletedTask;
+                if (_visibilityTracker is VisibilityTracker3D tracker)
+                {
+                    visTask = Task.Run(() =>
                     {
-                        System.Console.Error.WriteLine($"[VISIBILITY ERROR] {ex.GetType().Name}: {ex.Message}");
-                        System.Console.Error.WriteLine(ex.StackTrace?.Split('\n')[0]);
-                    }
-                });
-            }
+                        try { tracker.Tick(worldSnapshots); }
+                        catch (Exception ex)
+                        {
+                            System.Console.Error.WriteLine($"[VISIBILITY ERROR] {ex.GetType().Name}: {ex.Message}");
+                            System.Console.Error.WriteLine(ex.StackTrace?.Split('\n')[0]);
+                        }
+                    });
+                }
 
-            if (_entitySyncService != null)
+                if (_entitySyncService != null)
+                {
+                    try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
+                    catch { }
+                }
+
+                visTask.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
             {
-                try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
-                catch { }
+                System.Console.Error.WriteLine($"[STEP-CRASH] #{_stepCount} {ex.GetType().Name}: {ex.Message}");
+                System.Console.Error.WriteLine(ex.StackTrace);
+                throw; // re-throw so physics worker can handle it
             }
-
-            visTask.GetAwaiter().GetResult();
         }
 
         private static void StepWorld(IGameWorldManager3D world, float deltaTime)

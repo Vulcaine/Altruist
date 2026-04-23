@@ -24,9 +24,9 @@ public sealed class EntityPositionHistory
         _buffer = new PositionSnapshot[capacity];
     }
 
-    public void Record(long tick, float x, float y, float z)
+    public void Record(long tick, float x, float y, float z, float yaw)
     {
-        _buffer[_head] = new PositionSnapshot(tick, x, y, z);
+        _buffer[_head] = new PositionSnapshot(tick, x, y, z, yaw);
         _head = (_head + 1) % _buffer.Length;
         if (_count < _buffer.Length)
             _count++;

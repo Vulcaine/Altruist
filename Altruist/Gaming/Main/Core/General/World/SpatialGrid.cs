@@ -40,7 +40,7 @@ public sealed class SpatialHashGrid
         for (int i = 0; i < objects.Count; i++)
         {
             var pos = objects[i].Transform.Position;
-            var key = CellKey((int)(pos.X * _invCellSize), (int)(pos.Y * _invCellSize));
+            var key = CellKey((int)(pos.X * _invCellSize), (int)(pos.Z * _invCellSize));
             if (!_cells.TryGetValue(key, out var list))
             {
                 list = RentList();
@@ -59,7 +59,7 @@ public sealed class SpatialHashGrid
             if (objects[i] is not ThreeD.IWorldObject3D obj3d) continue;
 
             var pos = obj3d.Transform.Position;
-            var key = CellKey((int)(pos.X * _invCellSize), (int)(pos.Y * _invCellSize));
+            var key = CellKey((int)(pos.X * _invCellSize), (int)(pos.Z * _invCellSize));
 
             if (!_cells.TryGetValue(key, out var list))
             {

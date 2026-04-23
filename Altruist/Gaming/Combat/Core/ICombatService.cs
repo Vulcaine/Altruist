@@ -11,7 +11,7 @@ namespace Altruist.Gaming.Combat;
 /// </summary>
 public interface IDamageCalculator
 {
-    int Calculate(ICombatEntity attacker, ICombatEntity target);
+    (int Damage, DamageFlags Flags) Calculate(ICombatEntity attacker, ICombatEntity target);
 }
 
 /// <summary>

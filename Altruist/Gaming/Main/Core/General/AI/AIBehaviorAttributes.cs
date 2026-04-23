@@ -6,88 +6,42 @@ Licensed under the Apache License, Version 2.0
 namespace Altruist.Gaming;
 
 /// <summary>
-/// Marks a class as an AI behavior definition.
-/// The class contains [AIState] methods that define state machine logic.
-/// Discovered at startup and compiled into FSM templates.
+/// Marks a class as an AI behavior. Thin specialization of <see cref="StateBehaviorAttribute"/>;
+/// the generic discovery picks it up because it's a <see cref="StateBehaviorAttribute"/> subclass.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
-public sealed class AIBehaviorAttribute : Attribute
+public sealed class AIBehaviorAttribute : StateBehaviorAttribute
 {
-    public string Name { get; }
-
-    public AIBehaviorAttribute(string name)
-    {
-        Name = name ?? throw new ArgumentNullException(nameof(name));
-    }
+    public AIBehaviorAttribute(string name) : base(name) { }
 }
 
 /// <summary>
-/// Marks a method as a state update handler in an [AIBehavior] class.
-/// Signature: string? MethodName(TContext context, float dt) where TContext : IAIContext
-/// Return next state name to transition, or null to stay in current state.
-///
-/// The framework tracks TimeInState on the context (IAIContext.TimeInState),
-/// which resets to 0 on every transition. Use it for timed states:
-///   if (ctx.TimeInState >= 5f) return "Idle";
-///
-/// Delay: the Update method is not called until Delay seconds have elapsed
-/// after entering the state. Enter/Exit hooks still fire immediately.
-///   [AIState("Talk", Delay = 2f)] — waits 2 seconds before first Update call
-///   [AIState("Patrol", Delay = 500, DelayUnit = TimeUnit.Milliseconds)]
+/// Marks a method as an AI state update handler. Thin specialization of <see cref="StateAttribute"/>.
+/// Signature: <c>string? MethodName(TContext context, float dt)</c> where <c>TContext : IAIContext</c>.
 /// </summary>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class AIStateAttribute : Attribute
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+public sealed class AIStateAttribute : StateAttribute
 {
-    public string Name { get; }
-    public bool Initial { get; set; }
-
-    /// <summary>
-    /// Delay before the state's Update method starts running after entry.
-    /// Default unit is seconds. Use DelayUnit to change.
-    /// </summary>
-    public float Delay { get; set; }
-
-    /// <summary>Unit for Delay value. Default: Seconds.</summary>
-    public TimeUnit DelayUnit { get; set; } = TimeUnit.Seconds;
-
-    public AIStateAttribute(string name)
-    {
-        Name = name ?? throw new ArgumentNullException(nameof(name));
-    }
+    public AIStateAttribute(string name) : base(name) { }
 }
 
+/// <summary>Time unit for the <see cref="StateAttribute.Delay"/> field.</summary>
 public enum TimeUnit
 {
     Seconds,
     Milliseconds,
 }
 
-/// <summary>
-/// Marks a method as a state enter hook. Called once when transitioning into this state.
-/// Signature: void MethodName(TContext context)
-/// </summary>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class AIStateEnterAttribute : Attribute
+/// <summary>Marks a method as a one-shot hook invoked once on transition INTO the named state.</summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+public sealed class AIStateEnterAttribute : StateEnterAttribute
 {
-    public string StateName { get; }
-
-    public AIStateEnterAttribute(string stateName)
-    {
-        StateName = stateName ?? throw new ArgumentNullException(nameof(stateName));
-    }
+    public AIStateEnterAttribute(string stateName) : base(stateName) { }
 }
 
-/// <summary>
-/// Marks a method as a state exit hook. Called once when transitioning out of this state.
-/// Signature: void MethodName(TContext context)
-/// </summary>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class AIStateExitAttribute : Attribute
+/// <summary>Marks a method as a one-shot hook invoked once on transition OUT OF the named state.</summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+public sealed class AIStateExitAttribute : StateExitAttribute
 {
-    public string StateName { get; }
-
-    public AIStateExitAttribute(string stateName)
-    {
-        StateName = stateName ?? throw new ArgumentNullException(nameof(stateName));
-    }
+    public AIStateExitAttribute(string stateName) : base(stateName) { }
 }

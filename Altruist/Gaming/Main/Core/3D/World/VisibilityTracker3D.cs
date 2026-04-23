@@ -47,7 +47,70 @@ namespace Altruist.Gaming.ThreeD
             _collisionDispatcher = collisionDispatcher;
         }
 
-        public void SetOrganizer(IGameWorldOrganizer3D organizer) => _organizer = organizer;
+        public void SetOrganizer(IGameWorldOrganizer3D organizer)
+        {
+            _organizer = organizer;
+
+            // Subscribe to spawn/destroy events on every world so we can synchronously
+            // notify in-range observers — no dependence on snapshot rebuild timing.
+            foreach (var world in organizer.GetAllWorlds())
+            {
+                int worldIndex = world.Index.Index;
+                world.OnObjectCreated += obj => HandleObjectCreated(obj, worldIndex);
+                world.OnObjectDestroyed += obj => HandleObjectDestroyed(obj, worldIndex);
+            }
+        }
+
+        private void HandleObjectCreated(IWorldObject3D obj, int worldIndex)
+        {
+            var instanceId = obj.InstanceId;
+            var objPos = obj.Transform.Position;
+            float rangeSq = ViewRange * ViewRange;
+
+            // Broadcast to every known observer in range right now. Observers outside
+            // range will still be picked up by the next Tick when they move closer.
+            foreach (var (observerClientId, observer) in _observers)
+            {
+                if (observer.InstanceId == instanceId) continue;
+
+                var op = observer.Transform.Position;
+                float dx = op.X - objPos.X;
+                float dz = op.Z - objPos.Z;
+                if (dx * dx + dz * dz > rangeSq) continue;
+
+                var visibleSet = _visibleSets.GetOrAdd(observerClientId, static _ => new HashSet<string>());
+                if (!visibleSet.Add(instanceId)) continue;
+
+                OnEntityVisible?.Invoke(new VisibilityChange
+                {
+                    ObserverClientId = observerClientId,
+                    Target = obj,
+                    WorldIndex = worldIndex,
+                });
+
+                _collisionDispatcher?.Dispatch(observer, obj, typeof(Physx.EntityVisible));
+            }
+        }
+
+        private void HandleObjectDestroyed(IWorldObject3D obj, int worldIndex)
+        {
+            var instanceId = obj.InstanceId;
+
+            foreach (var (observerClientId, visibleSet) in _visibleSets)
+            {
+                if (!visibleSet.Remove(instanceId)) continue;
+
+                OnEntityInvisible?.Invoke(new VisibilityChange
+                {
+                    ObserverClientId = observerClientId,
+                    Target = obj,
+                    WorldIndex = worldIndex,
+                });
+
+                if (_observers.TryGetValue(observerClientId, out var observer))
+                    _collisionDispatcher?.Dispatch(observer, obj, typeof(Physx.EntityInvisible));
+            }
+        }
 
         public void Tick(WorldSnapshot[] snapshots)
         {
@@ -235,7 +298,7 @@ namespace Altruist.Gaming.ThreeD
             // Use per-thread grid buffer for spatial query
             if (_useSpatialGrid && _grid != null)
             {
-                _grid.QueryRadius(pos.X, pos.Y, ViewRange, gridBuf);
+                _grid.QueryRadius(pos.X, pos.Z, ViewRange, gridBuf);
                 for (int q = 0; q < gridBuf.Count; q++)
                 {
                     var idx = gridBuf[q];
@@ -244,8 +307,8 @@ namespace Altruist.Gaming.ThreeD
 
                     var tp = target.Transform.Position;
                     float dx = tp.X - pos.X;
-                    float dy = tp.Y - pos.Y;
-                    if (dx * dx + dy * dy <= rangeSq)
+                    float dz = tp.Z - pos.Z;
+                    if (dx * dx + dz * dz <= rangeSq)
                     {
                         currentlyVisible.Add(target.InstanceId);
                         _observerCounts.AddOrUpdate(target.InstanceId, 1, (_, c) => c + 1);
@@ -261,8 +324,8 @@ namespace Altruist.Gaming.ThreeD
 
                     var tp = target.Transform.Position;
                     float dx = tp.X - pos.X;
-                    float dy = tp.Y - pos.Y;
-                    if (dx * dx + dy * dy <= rangeSq)
+                    float dz = tp.Z - pos.Z;
+                    if (dx * dx + dz * dz <= rangeSq)
                     {
                         currentlyVisible.Add(target.InstanceId);
                         _observerCounts.AddOrUpdate(target.InstanceId, 1, (_, c) => c + 1);
@@ -280,7 +343,7 @@ namespace Altruist.Gaming.ThreeD
         {
             if (_useSpatialGrid && _grid != null)
             {
-                _grid.QueryRadius(pos.X, pos.Y, ViewRange, _gridQueryBuffer);
+                _grid.QueryRadius(pos.X, pos.Z, ViewRange, _gridQueryBuffer);
                 for (int q = 0; q < _gridQueryBuffer.Count; q++)
                 {
                     var idx = _gridQueryBuffer[q];
@@ -289,8 +352,8 @@ namespace Altruist.Gaming.ThreeD
 
                     var tp = target.Transform.Position;
                     float dx = tp.X - pos.X;
-                    float dy = tp.Y - pos.Y;
-                    if (dx * dx + dy * dy <= rangeSq)
+                    float dz = tp.Z - pos.Z;
+                    if (dx * dx + dz * dz <= rangeSq)
                     {
                         currentlyVisible.Add(target.InstanceId);
                         if (_observerCounts.TryGetValue(target.InstanceId, out var c))
@@ -309,8 +372,8 @@ namespace Altruist.Gaming.ThreeD
 
                     var tp = target.Transform.Position;
                     float dx = tp.X - pos.X;
-                    float dy = tp.Y - pos.Y;
-                    if (dx * dx + dy * dy <= rangeSq)
+                    float dz = tp.Z - pos.Z;
+                    if (dx * dx + dz * dz <= rangeSq)
                     {
                         currentlyVisible.Add(target.InstanceId);
                         if (_observerCounts.TryGetValue(target.InstanceId, out var c))

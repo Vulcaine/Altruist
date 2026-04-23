@@ -38,6 +38,16 @@ public interface ILagCompensationService : IPositionHistoryRecorder
     (float X, float Y, float Z) Compensate(uint virtualId, float x, float y, float z);
 
     /// <summary>
+    /// Yaw pass-through transformer. During a RewindWorld callback, returns the
+    /// historical yaw (Y-axis rotation in radians) for the entity; outside rewind,
+    /// returns <paramref name="currentYaw"/> unchanged. Use this alongside
+    /// <see cref="Compensate"/> in facing-cone checks so the swing is validated
+    /// against where the attacker actually faced at the rewound tick, not where
+    /// they face now.
+    /// </summary>
+    float CompensateYaw(uint virtualId, float currentYaw);
+
+    /// <summary>
     /// Remove all position history for an entity (call on destroy/despawn).
     /// </summary>
     void RemoveEntity(uint virtualId);
