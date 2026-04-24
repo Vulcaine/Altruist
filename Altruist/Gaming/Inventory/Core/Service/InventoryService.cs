@@ -128,15 +128,15 @@ public class InventoryService : IInventoryService
         if (!dstContainer.ValidateItem(item))
             return Task.FromResult(new MoveItemResult(ItemStatus.ValidationFailed));
 
-        // Check destination
-        ItemStatus placeResult;
-        if (to.IsAuto)
-            placeResult = dstContainer.CanFit(item, 0, 0, count) ? ItemStatus.Success : ItemStatus.NotEnoughSpace;
-        else
-            placeResult = dstContainer.CanFit(item, to.X, to.Y, count) ? ItemStatus.Success : ItemStatus.NotEnoughSpace;
-
-        if (placeResult != ItemStatus.Success)
-            return Task.FromResult(new MoveItemResult(placeResult));
+        // Check destination. For auto placement we can't use CanFit(0,0) — slot 0 might be
+        // occupied while other slots are free. Defer the fit check to TryPlaceAuto below
+        // and rollback via the existing source.TryPlace on failure.
+        if (!to.IsAuto)
+        {
+            var placeResult = dstContainer.CanFit(item, to.X, to.Y, count) ? ItemStatus.Success : ItemStatus.NotEnoughSpace;
+            if (placeResult != ItemStatus.Success)
+                return Task.FromResult(new MoveItemResult(placeResult));
+        }
 
         // Remove from source
         var removeStatus = srcContainer.Remove(from.X, from.Y, count);
@@ -184,16 +184,33 @@ public class InventoryService : IInventoryService
         if (itemB != null && !containerA.ValidateItem(itemB))
             return Task.FromResult(new MoveItemResult(ItemStatus.ValidationFailed));
 
-        // Remove both
         var countA = slotDataA.ItemCount;
         var countB = slotDataB.ItemCount;
 
+        if (itemB != null && !containerA.CanFit(itemB, slotA.X, slotA.Y, countB))
+            return Task.FromResult(new MoveItemResult(ItemStatus.NotEnoughSpace));
+
+        if (itemA != null && !containerB.CanFit(itemA, slotB.X, slotB.Y, countA))
+            return Task.FromResult(new MoveItemResult(ItemStatus.NotEnoughSpace));
+
+        // Remove both
         if (!slotDataA.IsEmpty) containerA.Remove(slotA.X, slotA.Y, countA);
         if (!slotDataB.IsEmpty) containerB.Remove(slotB.X, slotB.Y, countB);
 
         // Place swapped
-        if (itemB != null) containerA.TryPlace(itemB, slotA.X, slotA.Y, countB);
-        if (itemA != null) containerB.TryPlace(itemA, slotB.X, slotB.Y, countA);
+        var placeB = itemB == null ? ItemStatus.Success : containerA.TryPlace(itemB, slotA.X, slotA.Y, countB);
+        var placeA = itemA == null ? ItemStatus.Success : containerB.TryPlace(itemA, slotB.X, slotB.Y, countA);
+
+        if (placeA != ItemStatus.Success || placeB != ItemStatus.Success)
+        {
+            if (itemB != null) containerA.Remove(slotA.X, slotA.Y, countB);
+            if (itemA != null) containerB.Remove(slotB.X, slotB.Y, countA);
+
+            if (itemA != null) containerA.TryPlace(itemA, slotA.X, slotA.Y, countA);
+            if (itemB != null) containerB.TryPlace(itemB, slotB.X, slotB.Y, countB);
+
+            return Task.FromResult(new MoveItemResult(ItemStatus.NotEnoughSpace));
+        }
 
         return Task.FromResult(new MoveItemResult(ItemStatus.Success, itemA));
     }
