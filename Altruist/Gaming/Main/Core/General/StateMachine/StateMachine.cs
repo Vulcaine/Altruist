@@ -96,6 +96,7 @@ public class StateMachine<TContext> where TContext : class, IStateContext
         context.ActiveWindows    = Def.Windows.TryGetValue(state, out var wins) ? wins : null;
         context.StateDuration    = Def.Durations.TryGetValue(state, out var dur) ? dur : 0f;
         context.CurrentStateData = Def.Data.TryGetValue(state, out var data) ? data : null;
+        context.CurrentStateMotion = Def.Motions.TryGetValue(state, out var motion) ? motion : null;
     }
 
     private void InvokeOnEnter(TContext context, string state)

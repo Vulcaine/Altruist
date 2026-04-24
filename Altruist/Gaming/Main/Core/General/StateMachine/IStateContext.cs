@@ -57,6 +57,10 @@ public interface IStateContext
     /// Set by the driver on every transition. Consumers cast to the expected type.</summary>
     object? CurrentStateData { get; set; }
 
+    /// <summary>Optional first-class motion profile attached to the active state.
+    /// The driver swaps this on every transition from the builder's state metadata.</summary>
+    StateMotionProfile? CurrentStateMotion { get; set; }
+
     /// <summary>Progress value recorded at the previous tick; used by window-edge helpers.
     /// Set by the driver to the prior <see cref="Progress"/> before each state update.</summary>
     float PreviousProgress { get; set; }

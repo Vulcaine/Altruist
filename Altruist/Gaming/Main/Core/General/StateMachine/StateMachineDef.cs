@@ -22,6 +22,7 @@ public sealed class StateMachineDef<TContext> where TContext : class, IStateCont
     public IReadOnlyDictionary<string, string?> Tags { get; }
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, StateWindow>> Windows { get; }
     public IReadOnlyDictionary<string, object?> Data { get; }
+    public IReadOnlyDictionary<string, StateMotionProfile> Motions { get; }
 
     /// <summary>Consumer-supplied hook invoked on every state entry as
     /// <c>(context, stateName, baseDuration)</c>. Useful for per-domain
@@ -39,6 +40,7 @@ public sealed class StateMachineDef<TContext> where TContext : class, IStateCont
         IReadOnlyDictionary<string, string?> tags,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, StateWindow>> windows,
         IReadOnlyDictionary<string, object?> data,
+        IReadOnlyDictionary<string, StateMotionProfile> motions,
         Action<TContext, string, float>? onStateEnter)
     {
         InitialState = initialState;
@@ -50,10 +52,15 @@ public sealed class StateMachineDef<TContext> where TContext : class, IStateCont
         Tags = tags;
         Windows = windows;
         Data = data;
+        Motions = motions;
         OnStateEnter = onStateEnter;
     }
 
     /// <summary>Get the per-state user-data blob attached via the builder's <c>.Data(…)</c> (or null).</summary>
     public object? GetData(string stateName)
         => Data.TryGetValue(stateName, out var d) ? d : null;
+
+    /// <summary>Get the state's motion profile attached via the builder's <c>.Motion(...)</c> (or null).</summary>
+    public StateMotionProfile? GetMotion(string stateName)
+        => Motions.TryGetValue(stateName, out var motion) ? motion : null;
 }

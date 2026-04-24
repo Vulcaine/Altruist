@@ -37,6 +37,7 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
     private readonly Dictionary<string, string?> _tags = new();
     private readonly Dictionary<string, Dictionary<string, StateWindow>> _windows = new();
     private readonly Dictionary<string, object?> _data = new();
+    private readonly Dictionary<string, StateMotionProfile> _motions = new();
     private string? _initial;
     private Action<TContext, string, float>? _onStateEnter;
 
@@ -168,6 +169,7 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
             new Dictionary<string, string?>(_tags),
             windowsReadonly,
             new Dictionary<string, object?>(_data),
+            _motions.ToDictionary(kv => kv.Key, kv => kv.Value.Clone()),
             _onStateEnter);
     }
 
@@ -221,6 +223,24 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
         public StateConfig Data(object blob)
         {
             _owner._data[_name] = blob;
+            return this;
+        }
+
+        /// <summary>Attach a first-class motion profile to the state.</summary>
+        public StateConfig Motion(StateMotionProfile motion)
+        {
+            _owner._motions[_name] = motion?.Clone() ?? StateMotionProfile.Default();
+            return this;
+        }
+
+        /// <summary>Convenience override for the state's locomotion damping / throttle.</summary>
+        public StateConfig MotionThrottle(float movementThrottle)
+        {
+            var motion = _owner._motions.TryGetValue(_name, out var existing)
+                ? existing.Clone()
+                : StateMotionProfile.Default();
+            motion.MovementThrottle = Math.Clamp(movementThrottle, 0f, 1f);
+            _owner._motions[_name] = motion;
             return this;
         }
 
