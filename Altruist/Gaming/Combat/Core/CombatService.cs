@@ -5,6 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 using Altruist.Gaming.ThreeD;
 using Microsoft.Extensions.Logging;
+using System.Numerics;
 
 namespace Altruist.Gaming.Combat;
 
@@ -15,8 +16,8 @@ namespace Altruist.Gaming.Combat;
 /// </summary>
 public class DefaultDamageCalculator : IDamageCalculator
 {
-    public virtual (int Damage, DamageFlags Flags) Calculate(ICombatEntity attacker, ICombatEntity target)
-        => (Math.Max(1, attacker.GetAttackPower() - target.GetDefensePower()), DamageFlags.Normal);
+    public virtual DamageSpec Calculate(ICombatEntity attacker, ICombatEntity target)
+        => new(Math.Max(1, attacker.GetAttackPower() - target.GetDefensePower()), DamageFlags.Normal);
 }
 
 [Service(typeof(ICombatService))]
@@ -69,11 +70,11 @@ public class CombatService : ICombatService
         if (target.IsDead)
             return new HitResult(target, 0, DamageFlags.Miss, false);
 
-        var (damage, flags) = _calculator.Calculate(attacker, target);
-        return ApplyDamage(attacker, target, damage, flags);
+        var spec = _calculator.Calculate(attacker, target);
+        return ApplyDamage(attacker, target, spec.Damage, spec.Flags, spec.CustomFlags);
     }
 
-    public HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal)
+    public HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal, uint customFlags = 0)
     {
         if (target.IsDead)
             return new HitResult(target, 0, DamageFlags.Miss, false);
@@ -84,15 +85,15 @@ public class CombatService : ICombatService
         // Fire collision handlers (same API as physics collision events)
         _collisionDispatcher?.DispatchHit(source, target);
 
-        OnHit?.Invoke(new HitEvent(source, target, damage, flags));
+        OnHit?.Invoke(new HitEvent(source, target, damage, flags, customFlags));
 
         if (killed)
             Kill(target, source);
 
-        return new HitResult(target, damage, flags, killed);
+        return new HitResult(target, damage, flags, killed, customFlags);
     }
 
-    public SweepResult Sweep(ICombatEntity attacker, SweepQuery query, int? damage = null)
+    public SweepResult Sweep(ICombatEntity attacker, SweepQuery query, int? damage = null, DamageFlags flags = DamageFlags.Normal, uint customFlags = 0)
     {
         // Transparent lag compensation: if enabled and client sent a tick, rewind
         if (_lagCompensation != null && !_lagCompensation.IsRewound)
@@ -102,14 +103,14 @@ public class CombatService : ICombatService
             {
                 SweepResult result = default!;
                 _lagCompensation.RewindWorld(clientTick, () =>
-                    result = SweepInternal(attacker, query, damage));
+                    result = SweepInternal(attacker, query, damage, flags, customFlags));
                 return result;
             }
         }
-        return SweepInternal(attacker, query, damage);
+        return SweepInternal(attacker, query, damage, flags, customFlags);
     }
 
-    private SweepResult SweepInternal(ICombatEntity attacker, SweepQuery query, int? damage)
+    private SweepResult SweepInternal(ICombatEntity attacker, SweepQuery query, int? damage, DamageFlags flags, uint customFlags)
     {
         var targets = FindEntitiesInSweep(query);
         var hits = new List<HitResult>();
@@ -121,7 +122,7 @@ public class CombatService : ICombatService
 
             HitResult hit;
             if (damage.HasValue)
-                hit = ApplyDamage(attacker, target, damage.Value, DamageFlags.Normal);
+                hit = ApplyDamage(attacker, target, damage.Value, flags, customFlags);
             else
                 hit = AttackInternal(attacker, target);
 
@@ -157,7 +158,7 @@ public class CombatService : ICombatService
         var (allObjects, _) = world.GetCachedSnapshot();
 
         // Use spatial grid for sphere queries (most common AoE type)
-        if (query.Type == SweepType.Sphere && allObjects.Count > 50)
+        if (query.Type == SweepType.Sphere && allObjects.Count > 50 && CanUseSpatialGrid(query))
         {
             // Rebuild grid if object list changed
             if (_cachedObjects != allObjects)
@@ -166,11 +167,12 @@ public class CombatService : ICombatService
                 _cachedObjects = allObjects;
             }
 
-            _sweepGrid.QueryRadius(query.CenterX, query.CenterY, query.Range, _sweepGridBuffer);
+            _sweepGrid.QueryRadius(query.CenterX, query.CenterY, query.CenterZ, query.Range, _sweepGridBuffer);
             for (int i = 0; i < _sweepGridBuffer.Count; i++)
             {
                 var obj = allObjects[_sweepGridBuffer[i]];
                 if (obj is not ICombatEntity entity || entity.IsDead) continue;
+                if (query.Filter != null && !query.Filter(entity)) continue;
                 if (IsInSweep(entity, query))
                     results.Add(entity);
             }
@@ -181,6 +183,7 @@ public class CombatService : ICombatService
             foreach (var obj in allObjects)
             {
                 if (obj is not ICombatEntity entity || entity.IsDead) continue;
+                if (query.Filter != null && !query.Filter(entity)) continue;
                 if (IsInSweep(entity, query))
                     results.Add(entity);
             }
@@ -208,15 +211,21 @@ public class CombatService : ICombatService
     private static bool IsInSphere(float ex, float ey, float ez, SweepQuery query)
     {
         var dx = ex - query.CenterX;
-        var dy = ey - query.CenterY;
-        var dz = ez - query.CenterZ;
-        return dx * dx + dy * dy + dz * dz <= query.Range * query.Range;
+        return query.Space switch
+        {
+            SweepSpace.PlanarXZ => dx * dx + (ez - query.CenterZ) * (ez - query.CenterZ) <= query.Range * query.Range,
+            SweepSpace.PlanarYZ => (ey - query.CenterY) * (ey - query.CenterY) + (ez - query.CenterZ) * (ez - query.CenterZ) <= query.Range * query.Range,
+            SweepSpace.ThreeD => dx * dx + (ey - query.CenterY) * (ey - query.CenterY) + (ez - query.CenterZ) * (ez - query.CenterZ) <= query.Range * query.Range,
+            _ => dx * dx + (ey - query.CenterY) * (ey - query.CenterY) <= query.Range * query.Range,
+        };
     }
 
     private static bool IsInCone(float ex, float ey, float ez, SweepQuery query)
     {
-        var dx = ex - query.CenterX;
-        var dy = ey - query.CenterY;
+        if (query.Space == SweepSpace.ThreeD)
+            return IsInCone3D(ex, ey, ez, query);
+
+        var (dx, dy) = GetPlanarDelta(ex, ey, ez, query);
         var dist = MathF.Sqrt(dx * dx + dy * dy);
         if (dist > query.Range || dist < 0.001f) return false;
 
@@ -228,8 +237,10 @@ public class CombatService : ICombatService
 
     private static bool IsInLine(float ex, float ey, float ez, SweepQuery query)
     {
-        var dx = ex - query.CenterX;
-        var dy = ey - query.CenterY;
+        if (query.Space == SweepSpace.ThreeD)
+            return IsInLine3D(ex, ey, ez, query);
+
+        var (dx, dy) = GetPlanarDelta(ex, ey, ez, query);
 
         var dirX = MathF.Cos(query.Direction);
         var dirY = MathF.Sin(query.Direction);
@@ -238,8 +249,64 @@ public class CombatService : ICombatService
         if (dot < 0 || dot > query.Range) return false;
 
         var perpDist = MathF.Abs(-dx * dirY + dy * dirX);
-        return perpDist <= 200f;
+        return perpDist <= (query.Width > 0f ? query.Width : 200f);
     }
+
+    private static bool IsInCone3D(float ex, float ey, float ez, SweepQuery query)
+    {
+        var delta = new Vector3(ex - query.CenterX, ey - query.CenterY, ez - query.CenterZ);
+        float distSq = delta.LengthSquared();
+        if (distSq > query.Range * query.Range)
+            return false;
+        if (distSq < 0.001f)
+            return true;
+
+        var direction = GetDirectionVector3D(query);
+        if (direction.LengthSquared() < 0.0001f)
+            return false;
+
+        direction = Vector3.Normalize(direction);
+        float dot = Vector3.Dot(Vector3.Normalize(delta), direction);
+        float cosHalf = MathF.Cos(query.Angle * MathF.PI / 360f);
+        return dot >= cosHalf;
+    }
+
+    private static bool IsInLine3D(float ex, float ey, float ez, SweepQuery query)
+    {
+        var direction = GetDirectionVector3D(query);
+        if (direction.LengthSquared() < 0.0001f)
+            return false;
+
+        direction = Vector3.Normalize(direction);
+        var delta = new Vector3(ex - query.CenterX, ey - query.CenterY, ez - query.CenterZ);
+        float along = Vector3.Dot(delta, direction);
+        if (along < 0 || along > query.Range)
+            return false;
+
+        float perpSq = delta.LengthSquared() - along * along;
+        float width = query.Width > 0f ? query.Width : 200f;
+        return perpSq <= width * width;
+    }
+
+    private static (float dx, float dy) GetPlanarDelta(float ex, float ey, float ez, SweepQuery query)
+        => query.Space switch
+        {
+            SweepSpace.PlanarXZ => (ex - query.CenterX, ez - query.CenterZ),
+            SweepSpace.PlanarYZ => (ey - query.CenterY, ez - query.CenterZ),
+            _ => (ex - query.CenterX, ey - query.CenterY),
+        };
+
+    private static Vector3 GetDirectionVector3D(SweepQuery query)
+        => query.Space switch
+        {
+            SweepSpace.PlanarXZ => new Vector3(MathF.Sin(query.Direction), 0f, MathF.Cos(query.Direction)),
+            SweepSpace.PlanarYZ => new Vector3(0f, MathF.Cos(query.Direction), MathF.Sin(query.Direction)),
+            SweepSpace.PlanarXY => new Vector3(MathF.Cos(query.Direction), MathF.Sin(query.Direction), 0f),
+            _ => new Vector3(query.DirectionX, query.DirectionY, query.DirectionZ),
+        };
+
+    private static bool CanUseSpatialGrid(SweepQuery query)
+        => query.Space is SweepSpace.PlanarXZ or SweepSpace.ThreeD;
 
     private static float NormalizeAngle(float angle)
     {

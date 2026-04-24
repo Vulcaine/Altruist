@@ -101,7 +101,7 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
             var radiusA = GetColliderRadius(objA, collisionRadius);
 
             // Query only nearby entities from the spatial grid
-            _grid.QueryRadius(posA.X, posA.Y, MathF.Max(radiusA, collisionRadius), _nearbyBuffer);
+            _grid.QueryRadius(posA.X, posA.Y, posA.Z, MathF.Max(radiusA, collisionRadius), _nearbyBuffer);
 
             for (int n = 0; n < _nearbyBuffer.Count; n++)
             {
