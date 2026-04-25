@@ -341,6 +341,9 @@ namespace Altruist
                 lifetime);
         }
 
+        public static object? ResolveParameter(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
+            => Arg(sp, cfg, p, log);
+
         private static object? Arg(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
         {
             var paramType = p.ParameterType;

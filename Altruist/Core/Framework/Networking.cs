@@ -178,9 +178,12 @@ public static class Synchronization
 
         lock (entityLock)
         {
+            // Networking must always enumerate the [Synced] surface of the entity.
+            // `forceAllAsChanged` means "send every synced property right now",
+            // not "switch to a different metadata source".
             var metadata = SyncMetadataHelper.GetSyncMetadata(
                 newEntity.GetType(),
-                onlySyncedProperties: !forceAllAsChanged);
+                onlySyncedProperties: true);
             var properties = metadata.Properties;
             var count = metadata.Count;
 
