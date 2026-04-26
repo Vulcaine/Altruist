@@ -1,0 +1,139 @@
+{
+  "name": "altruist-dashboard-vscode",
+  "displayName": "Altruist Dashboard",
+  "description": "Native VS Code dashboard client for Altruist servers.",
+  "version": "0.9.5-beta",
+  "publisher": "vulcaine",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "media/icon.png",
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:altruistConnection",
+    "onView:altruistExplorer",
+    "onCommand:altruist.connectDashboard",
+    "onCommand:altruist.disconnectDashboard",
+    "onCommand:altruist.refreshConnection",
+    "onCommand:altruist.openSummary",
+    "onCommand:altruist.openWorlds",
+    "onCommand:altruist.openConfig",
+    "onCommand:altruist.openSessions",
+    "onCommand:altruist.openCache",
+    "onCommand:altruist.openVault",
+    "onCommand:altruist.refreshCurrentPanel"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "altruist",
+          "title": "Altruist",
+          "icon": "media/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "altruist": [
+        {
+          "id": "altruistConnection",
+          "name": "Connection"
+        },
+        {
+          "id": "altruistExplorer",
+          "name": "Dashboard"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "altruist.connectDashboard",
+        "title": "Altruist: Connect to Dashboard"
+      },
+      {
+        "command": "altruist.disconnectDashboard",
+        "title": "Altruist: Disconnect Dashboard"
+      },
+      {
+        "command": "altruist.refreshConnection",
+        "title": "Altruist: Refresh Connection"
+      },
+      {
+        "command": "altruist.openSummary",
+        "title": "Altruist: Open Summary"
+      },
+      {
+        "command": "altruist.openWorlds",
+        "title": "Altruist: Open Worlds"
+      },
+      {
+        "command": "altruist.openConfig",
+        "title": "Altruist: Open Config"
+      },
+      {
+        "command": "altruist.openSessions",
+        "title": "Altruist: Open Sessions"
+      },
+      {
+        "command": "altruist.openCache",
+        "title": "Altruist: Open Cache"
+      },
+      {
+        "command": "altruist.openVault",
+        "title": "Altruist: Open Vault"
+      },
+      {
+        "command": "altruist.refreshCurrentPanel",
+        "title": "Altruist: Refresh Current Panel"
+      },
+      {
+        "command": "altruist.openSettings",
+        "title": "Altruist: Open Extension Settings"
+      }
+    ],
+    "configuration": {
+      "title": "Altruist Dashboard",
+      "properties": {
+        "altruist.dashboard.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional override for the Altruist server base URL, for example http://localhost:8000."
+        },
+        "altruist.dashboard.websocketUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional override for the Altruist dashboard websocket URL, for example ws://localhost:8000/ws/dashboard."
+        },
+        "altruist.dashboard.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically probe and connect to the dashboard when a workspace with Altruist config is opened."
+        },
+        "altruist.dashboard.defaultWorldIndex": {
+          "type": "number",
+          "default": 0,
+          "description": "Preferred default world index when opening the world viewer."
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "altruist.refreshConnection",
+          "when": "view == altruistConnection",
+          "group": "navigation"
+        },
+        {
+          "command": "altruist.refreshCurrentPanel",
+          "when": "view == altruistExplorer",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}
