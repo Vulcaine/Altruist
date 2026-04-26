@@ -9,11 +9,9 @@ public interface IKinematicCharacterController3D
 {
     void SetBody(IPhysxBody3D body);
 
-    // Intents (called by netcode)
-    void MoveIntent(float moveX, float moveZ);
-    void LookIntent(float lookX, float lookY, float lookZ);
-    void SprintIntent(bool sprintHeld);
-    void JumpIntent(bool jumpPressed);
+    void SetMovementInput(ICharacterMovementInput3D input);
+
+    void AddLocalMotionDelta(Vector3 localDelta);
 
     // Simulation tick (called by prefab/world Step)
     void Step(float dt, IGameWorldManager3D world);
@@ -21,8 +19,11 @@ public interface IKinematicCharacterController3D
     // State outputs (for replication)
     Vector3 Position { get; }
     Quaternion Rotation { get; }
+    float Yaw { get; }
     bool IsGrounded { get; }
     Vector3 Velocity { get; } // controller velocity (including gravity)
+    CharacterMovementFrame3D LastMovementFrame { get; }
+    bool HasActiveMovementInput { get; }
 }
 
 // Single hook (no pre/post)
@@ -85,17 +86,16 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
 
     // abilities (optional)
     private readonly List<ICharacterAbility3D> _abilities = new();
+    private IMovementProfile3D? _configuredMovementProfile;
+    private ICharacterMovementInput3D _movementInput = CharacterRealtimeWasdInput3D.Neutral;
+    private Vector3 _authoredLocalMotionDelta;
 
     // ─────────────────────────────────────────────
-    // Tuning knobs (defaults chosen to be "optional":
-    // - SprintSpeed == MoveSpeed
+    // Tuning knobs (defaults chosen to be "optional"):
     // - Acceleration == Deceleration
-    // - High accel/decel so default feels immediate/no drift
+    // - High accel/decel so default feels immediate/no drift.
+    // Per-character movement/facing values come from MovementStats + MovementProfile.
     // ─────────────────────────────────────────────
-
-    // Max speed (walk/sprint)
-    public float MoveSpeed { get; set; } = 5f;
-    public float SprintSpeed { get; set; } = 5f; // default == MoveSpeed (optional knob)
 
     // Acceleration / deceleration (m/s^2)
     public float Acceleration { get; set; } = 1000f;
@@ -131,24 +131,28 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     // Typically <= SkinWidth.
     public float DepenetrationPushDistance { get; set; } = 0.03f;
 
-    // Rotation
-    public bool FaceMoveDirection { get; set; } = true;
-    public float RotationSpeedDegPerSec { get; set; } = 0f; // 0 => snap
-
     // Character shape for grounding probe (set from capsule profile)
     public float Radius { get; set; } = 0.28f;
     public float Height { get; set; } = 1.8f;
-
-    // Optional external facing (for combat stance / lock-on)
-    // If enabled, controller will face ExternalFacingYaw (radians) instead of move direction/camera.
-    public bool UseExternalFacingYaw { get; set; } = false;
-    public float ExternalFacingYaw { get; set; } = 0f;
+    public IMovementProfile3D? MovementProfile { get; set; } = TpsMovementProfile3D.Default;
+    public CharacterMovementStats3D MovementStats { get; set; } = CharacterMovementStats3D.Default;
 
     // Outputs
     public Vector3 Position => _body?.Position ?? Vector3.Zero;
     public Quaternion Rotation => _body?.Rotation ?? Quaternion.Identity;
+    public float Yaw => _yaw;
     public bool IsGrounded => _isGrounded;
     public Vector3 Velocity => _velocity;
+    public CharacterMovementFrame3D LastMovementFrame { get; private set; }
+    public bool HasActiveMovementInput => _movementInput switch
+    {
+        CharacterClickToMoveInput3D => true,
+        CharacterRealtimeWasdInput3D wasd
+            => MathF.Abs(wasd.MoveX) >= 0.01f
+                || MathF.Abs(wasd.MoveZ) >= 0.01f
+                || wasd.Jump,
+        _ => false,
+    };
 
     public void AddAbility(ICharacterAbility3D ability)
     {
@@ -167,14 +171,14 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
 
     public void SetQueryProvider(ISpatialQueryProvider queries) => _queries = queries;
 
-    public void MoveIntent(float moveX, float moveZ)
+    private void MoveIntent(float moveX, float moveZ)
         => _moveLocal = new Vector3(moveX, 0f, moveZ);
 
-    public void SprintIntent(bool sprintHeld) => _sprintHeld = sprintHeld;
+    private void SprintIntent(bool sprintHeld) => _sprintHeld = sprintHeld;
 
-    public void JumpIntent(bool jumpPressed) => _jumpPressed = jumpPressed;
+    private void JumpIntent(bool jumpPressed) => _jumpPressed = jumpPressed;
 
-    public void LookIntent(float lookX, float lookY, float lookZ)
+    private void LookIntent(float lookX, float lookY, float lookZ)
     {
         var fwd = new Vector3(lookX, lookY, lookZ);
         if (fwd.LengthSquared() < 1e-10f)
@@ -187,6 +191,17 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         _cameraPitch = Math.Clamp(pitch, -1.55f, 1.55f);
     }
 
+    public void SetMovementInput(ICharacterMovementInput3D input)
+        => _movementInput = input ?? CharacterRealtimeWasdInput3D.Neutral;
+
+    public void AddLocalMotionDelta(Vector3 localDelta)
+    {
+        if (localDelta.LengthSquared() <= 1e-12f)
+            return;
+
+        _authoredLocalMotionDelta += localDelta;
+    }
+
     public void Step(float dt, IGameWorldManager3D world)
     {
         if (dt <= 0f || float.IsNaN(dt) || float.IsInfinity(dt))
@@ -195,6 +210,8 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         var body = _body;
         if (body == null)
             return;
+
+        ApplyMovementProfile(body);
 
         // 0) Depenetrate first (handles spawn/teleport/streaming into geometry)
         if (UseDepenetration && UseCapsuleSweeps)
@@ -207,6 +224,12 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         }
 
         // 1) Ground probe (start-of-step)
+        ProbeGround(body, world, out _isGrounded, out _groundNormal);
+
+        ApplyAuthoredLocalMotion(body, world);
+
+        // Authored motion can lift/drop the body, so refresh grounding before
+        // resolving the regular movement input for this tick.
         ProbeGround(body, world, out _isGrounded, out _groundNormal);
 
         // 2) Desired move in world space (camera-relative)
@@ -225,18 +248,19 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         else
             moveWorld = Vector3.Zero;
 
-        float baseSpeed = _sprintHeld ? SprintSpeed : MoveSpeed;
+        var movementFrame = LastMovementFrame;
+        float baseSpeed = _sprintHeld ? movementFrame.SprintSpeed : movementFrame.MoveSpeed;
         baseSpeed = MathF.Max(0f, baseSpeed);
 
         float desiredSpeed = (moveWorld.LengthSquared() > 1e-10f) ? baseSpeed : 0f;
 
         // 3) Yaw-only rotation
         float targetYaw;
-        if (UseExternalFacingYaw)
+        if (movementFrame.UseExternalFacing)
         {
-            targetYaw = ExternalFacingYaw;
+            targetYaw = movementFrame.ExternalFacingYaw;
         }
-        else if (FaceMoveDirection && desiredSpeed > 0f)
+        else if (movementFrame.FaceMoveDirection && desiredSpeed > 0f)
         {
             targetYaw = MathF.Atan2(moveWorld.X, moveWorld.Z);
         }
@@ -245,8 +269,8 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             targetYaw = _cameraYaw;
         }
 
-        _yaw = (RotationSpeedDegPerSec > 0f)
-            ? MoveTowardAngleRad(_yaw, targetYaw, (RotationSpeedDegPerSec * (MathF.PI / 180f)) * dt)
+        _yaw = (movementFrame.RotationSpeedDegPerSec > 0f)
+            ? MoveTowardAngleRad(_yaw, targetYaw, (movementFrame.RotationSpeedDegPerSec * (MathF.PI / 180f)) * dt)
             : WrapAngleRad(targetYaw);
 
         body.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, _yaw);
@@ -341,6 +365,55 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
 
         // Refresh grounded after move
         ProbeGround(body, world, out _isGrounded, out _groundNormal);
+    }
+
+    private void ApplyAuthoredLocalMotion(IPhysxBody3D body, IGameWorldManager3D world)
+    {
+        var localDelta = _authoredLocalMotionDelta;
+        _authoredLocalMotionDelta = Vector3.Zero;
+
+        if (localDelta.LengthSquared() <= 1e-12f)
+            return;
+
+        float sin = MathF.Sin(_yaw);
+        float cos = MathF.Cos(_yaw);
+        var displacement = new Vector3(
+            (localDelta.X * cos) + (localDelta.Z * sin),
+            localDelta.Y,
+            (-localDelta.X * sin) + (localDelta.Z * cos));
+
+        if (UseCapsuleSweeps && displacement.LengthSquared() > 1e-12f)
+        {
+            var authoredVelocity = Vector3.Zero;
+            body.Position = MoveWithSweepsAndSlide(body, world, displacement, ref authoredVelocity);
+        }
+        else
+        {
+            body.Position += displacement;
+        }
+    }
+
+    private void ApplyMovementProfile(IPhysxBody3D body)
+    {
+        var profile = MovementProfile;
+        if (profile == null)
+            return;
+
+        if (!ReferenceEquals(_configuredMovementProfile, profile))
+        {
+            profile.Configure(this);
+            _configuredMovementProfile = profile;
+        }
+
+        var frame = profile.Evaluate(_movementInput, body.Position, MovementStats);
+        LastMovementFrame = frame;
+        if (frame.ArrivedAtTarget && _movementInput is CharacterClickToMoveInput3D)
+            _movementInput = CharacterRealtimeWasdInput3D.Neutral;
+
+        LookIntent(frame.LookDirection.X, frame.LookDirection.Y, frame.LookDirection.Z);
+        MoveIntent(frame.LocalMoveX, frame.LocalMoveZ);
+        SprintIntent(frame.Sprint);
+        JumpIntent(frame.Jump);
     }
 
     private Vector3 MoveWithSweepsAndSlide(IPhysxBody3D body, IGameWorldManager3D world, Vector3 displacement, ref Vector3 velocity)
