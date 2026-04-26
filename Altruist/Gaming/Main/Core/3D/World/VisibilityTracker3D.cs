@@ -491,7 +491,16 @@ namespace Altruist.Gaming.ThreeD
 
         public void RemoveObserver(ITypelessWorldObject observer)
         {
-            if (observer is IWorldObject3D worldObject && !string.IsNullOrEmpty(worldObject.ClientId))
+            if (observer is not IWorldObject3D worldObject)
+                return;
+
+            if (_observerInstanceIds.TryGetValue(worldObject.InstanceId, out var clientId))
+            {
+                RemoveObserver(clientId);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(worldObject.ClientId))
                 RemoveObserver(worldObject.ClientId);
         }
 

@@ -222,6 +222,22 @@ public class VisibilityTracker2DTests
     }
 
     [Fact]
+    public void RemoveObserver_ShouldCleanupState_WhenCalledWithWorldObject()
+    {
+        var player = new TestWorldObj2D(0, 0, clientId: "player1");
+        var npc = new TestWorldObj2D(100, 0);
+        var world = CreateMockWorld(player, npc);
+        var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(player));
+
+        tracker.Tick();
+        player.ClientId = "";
+        tracker.RemoveObserver(player);
+
+        Assert.Null(tracker.GetVisibleEntities("player1"));
+    }
+
+    [Fact]
     public void Tick_ShouldNotTreatClientIdAsObserverUntilObserved()
     {
         var player = new TestWorldObj2D(0, 0, clientId: "player1");

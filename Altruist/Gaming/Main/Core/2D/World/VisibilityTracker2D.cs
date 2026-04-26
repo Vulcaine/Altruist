@@ -15,6 +15,7 @@ namespace Altruist.Gaming.TwoD
         private readonly IGameWorldOrganizer2D _organizer;
         private readonly ConcurrentDictionary<string, HashSet<string>> _visibleSets = new();
         private readonly ConcurrentDictionary<string, IWorldObject2D> _observers = new();
+        private readonly ConcurrentDictionary<string, string> _observerInstanceIds = new();
 
         public float ViewRange { get; set; } = 5000f;
 
@@ -57,6 +58,7 @@ namespace Altruist.Gaming.TwoD
                     }
 
                     _observers[clientId] = observer;
+                    _observerInstanceIds[observer.InstanceId] = clientId;
                     UpdateVisibilityFor(observer, worldIndex, allObjects);
                 }
             }
@@ -140,6 +142,7 @@ namespace Altruist.Gaming.TwoD
                 return false;
 
             _observers[worldObject.ClientId] = worldObject;
+            _observerInstanceIds[worldObject.InstanceId] = worldObject.ClientId;
             RefreshObserver(worldObject.ClientId);
             return true;
         }
@@ -151,7 +154,16 @@ namespace Altruist.Gaming.TwoD
 
         public void RemoveObserver(ITypelessWorldObject observer)
         {
-            if (observer is IWorldObject2D worldObject && !string.IsNullOrEmpty(worldObject.ClientId))
+            if (observer is not IWorldObject2D worldObject)
+                return;
+
+            if (_observerInstanceIds.TryGetValue(worldObject.InstanceId, out var clientId))
+            {
+                RemoveObserver(clientId);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(worldObject.ClientId))
                 RemoveObserver(worldObject.ClientId);
         }
 
@@ -178,7 +190,8 @@ namespace Altruist.Gaming.TwoD
                 }
             }
 
-            _observers.TryRemove(clientId, out _);
+            if (_observers.TryRemove(clientId, out var observer))
+                _observerInstanceIds.TryRemove(observer.InstanceId, out _);
         }
 
         public IReadOnlySet<string>? GetVisibleEntities(string clientId)

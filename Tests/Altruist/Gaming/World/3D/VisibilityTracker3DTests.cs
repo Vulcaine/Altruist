@@ -253,6 +253,28 @@ public class VisibilityTracker3DTests
     }
 
     [Fact]
+    public void RemoveObserver_ShouldCleanupState_WhenCalledWithWorldObject()
+    {
+        var world = CreateMockWorld();
+        var (tracker, organizer) = SetupTracker(world);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        var list = new List<IWorldObject3D> { player, npc };
+        var lookup = list.ToDictionary(o => o.InstanceId, o => o);
+        world.Setup(w => w.GetCachedSnapshot())
+            .Returns((list as IReadOnlyList<IWorldObject3D>, lookup as IReadOnlyDictionary<string, IWorldObject3D>));
+
+        player.ClientId = "";
+        tracker.RemoveObserver(player);
+
+        Assert.Null(tracker.GetVisibleEntities("player1"));
+    }
+
+    [Fact]
     public void Tick_ShouldNotTreatClientIdAsObserverUntilObserved()
     {
         var world = CreateMockWorld();
