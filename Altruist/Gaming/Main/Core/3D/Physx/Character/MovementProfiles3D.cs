@@ -35,7 +35,8 @@ public readonly record struct CharacterRealtimeWasdInput3D(
 
 public readonly record struct CharacterClickToMoveInput3D(
     Vector3 TargetWorldPosition,
-    float ArrivalDistance) : ICharacterMovementInput3D;
+    float ArrivalDistance,
+    bool Sprint = false) : ICharacterMovementInput3D;
 
 public readonly record struct CharacterMovementStats3D(
     float WalkSpeed,
@@ -140,7 +141,7 @@ public sealed class MmoMovementProfile3D : IMovementProfile3D
             FaceMoveDirection: false,
             UseExternalFacing: true,
             ExternalFacingYaw: yaw,
-            Sprint: false,
+            Sprint: input.Sprint,
             Jump: false,
             ArrivedAtTarget: false);
     }

@@ -279,6 +279,15 @@ namespace Altruist.Gaming.ThreeD
 
                 _physx3D.AddBody(body);
             }
+            else if (!isStatic)
+            {
+                var bodyDesc = obj.BodyDescriptor ?? PhysxBody3D.Create(
+                    bodyType, mass: 1f, transform: obj.Transform, isKinematic: bodyType == PhysxBodyType.Kinematic);
+
+                body = new InMemoryPhysxBody3D(bodyDesc);
+                obj.BodyDescriptor = bodyDesc;
+                obj.Body = body;
+            }
 
             // Always register in partitions for spatial queries
             var partitions = FindPartitionsForObject(obj);

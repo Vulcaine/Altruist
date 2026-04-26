@@ -44,7 +44,6 @@ public sealed class AIBehaviorService : IAIBehaviorService
             _logger);
     }
 
-    static int _aiTickLog;
     public void Tick(WorldSnapshot[] snapshots, float dt)
     {
         EnsureDiscovered();

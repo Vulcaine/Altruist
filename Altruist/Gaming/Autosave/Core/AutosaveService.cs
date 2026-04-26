@@ -45,6 +45,11 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         coordinator.Register(this);
     }
 
+    public void MarkDirty(T entity)
+    {
+        MarkDirty(entity, entity.StorageId);
+    }
+
     public void MarkDirty(T entity, string ownerId)
     {
         _dirtyMap[entity.StorageId] = ownerId;
