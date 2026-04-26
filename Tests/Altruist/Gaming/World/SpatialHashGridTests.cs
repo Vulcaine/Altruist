@@ -39,7 +39,7 @@ public class SpatialHashGridTests
         grid.Build(objects);
 
         var results = new List<int>();
-        grid.QueryRadius(150, 150, 500f, results);
+        grid.QueryRadius(150, 150, 0, 500f, results);
 
         // Objects at (100,100) and (200,200) are within 500 of (150,150)
         Assert.Contains(0, results);
@@ -54,7 +54,7 @@ public class SpatialHashGridTests
         grid.Build(objects);
 
         var results = new List<int>();
-        grid.QueryRadius(0, 0, 100f, results);
+        grid.QueryRadius(0, 0, 0, 100f, results);
 
         // Only the nearby object should be in the candidate list
         // (the grid returns candidates; exact distance is caller's job)
@@ -69,11 +69,11 @@ public class SpatialHashGridTests
         grid.Build(objects);
 
         var results = new List<int>();
-        grid.QueryRadius(150, 150, 1000f, results);
+        grid.QueryRadius(150, 150, 0, 1000f, results);
         Assert.True(results.Count > 0);
 
         // Second query clears and reuses same buffer
-        grid.QueryRadius(9999, 9999, 100f, results);
+        grid.QueryRadius(9999, 9999, 0, 100f, results);
         Assert.Empty(results);
     }
 
@@ -86,15 +86,15 @@ public class SpatialHashGridTests
 
         grid.Build(objects1);
         var results = new List<int>();
-        grid.QueryRadius(100, 100, 200f, results);
+        grid.QueryRadius(100, 100, 0, 200f, results);
         Assert.NotEmpty(results);
 
         // Rebuild with different objects
         grid.Build(objects2);
-        grid.QueryRadius(100, 100, 200f, results);
+        grid.QueryRadius(100, 100, 0, 200f, results);
         Assert.Empty(results); // Old objects gone
 
-        grid.QueryRadius(5000, 5000, 200f, results);
+        grid.QueryRadius(5000, 5000, 0, 200f, results);
         Assert.NotEmpty(results); // New objects found
     }
 
@@ -110,7 +110,7 @@ public class SpatialHashGridTests
         grid.Build(objects);
 
         var results = new List<int>();
-        grid.QueryRadius(5000, 5000, 500f, results);
+        grid.QueryRadius(5000, 5000, 0, 500f, results);
 
         // Should find some objects near center
         Assert.True(results.Count > 0);
@@ -129,7 +129,7 @@ public class SpatialHashGridTests
         grid.Build(objects);
 
         var results = new List<int>();
-        grid.QueryRadius(100, 100, 200f, results);
+        grid.QueryRadius(100, 100, 0, 200f, results);
         Assert.Contains(0, results);
     }
 
@@ -141,7 +141,7 @@ public class SpatialHashGridTests
         grid.Build(objects);
 
         var results = new List<int>();
-        grid.QueryRadius(0, 0, 100f, results);
+        grid.QueryRadius(0, 0, 0, 100f, results);
 
         Assert.Contains(0, results);
         Assert.Contains(1, results);

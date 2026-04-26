@@ -27,14 +27,17 @@ public sealed class LagCompensationService : ILagCompensationService
     private readonly Dictionary<uint, EntityPositionHistory> _histories = new();
     private readonly Dictionary<uint, PositionSnapshot> _overrides = new();
     private readonly int _maxTicks;
+    private readonly LagCompensationSnapshotStrategy _snapshotStrategy;
 
     public int HistoryDepthTicks => _maxTicks;
     public bool IsRewound { get; private set; }
 
     public LagCompensationService(
-        [AppConfigValue("altruist:game:lag-compensation:history-ticks", "64")] int historyTicks = 64)
+        [AppConfigValue("altruist:game:lag-compensation:history-ticks", "64")] int historyTicks = 64,
+        [AppConfigValue("altruist:game:lag-compensation:snapshot-strategy", "nearest")] LagCompensationSnapshotStrategy snapshotStrategy = LagCompensationSnapshotStrategy.Nearest)
     {
         _maxTicks = Math.Max(1, historyTicks);
+        _snapshotStrategy = snapshotStrategy;
     }
 
     public void RecordSnapshot(long tick, IEnumerable<IWorldObject3D> entities)
@@ -79,7 +82,9 @@ public sealed class LagCompensationService : ILagCompensationService
         _overrides.Clear();
         foreach (var (vid, history) in _histories)
         {
-            var snapshot = history.GetNearest(clampedTick);
+            var snapshot = _snapshotStrategy == LagCompensationSnapshotStrategy.Interpolate
+                ? history.GetInterpolated(clampedTick)
+                : history.GetNearest(clampedTick);
             if (snapshot.HasValue)
                 _overrides[vid] = snapshot.Value;
         }

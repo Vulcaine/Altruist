@@ -37,15 +37,27 @@ namespace Altruist.Gaming.TwoD
             foreach (var world in _organizer.GetAllWorlds())
             {
                 var allObjects = world.FindAllObjects<IWorldObject2D>().ToList();
+                var lookup = allObjects.ToDictionary(o => o.InstanceId, o => o);
                 var worldIndex = world.Index.Index;
 
-                foreach (var obj in allObjects)
+                foreach (var (clientId, registeredObserver) in _observers.ToArray())
                 {
-                    if (string.IsNullOrEmpty(obj.ClientId))
+                    if (!lookup.TryGetValue(registeredObserver.InstanceId, out var observer) ||
+                        string.IsNullOrEmpty(observer.ClientId))
+                    {
+                        RemoveObserver(clientId);
                         continue;
+                    }
 
-                    _observers[obj.ClientId] = obj;
-                    UpdateVisibilityFor(obj, worldIndex, allObjects);
+                    if (!string.Equals(observer.ClientId, clientId, StringComparison.Ordinal))
+                    {
+                        RemoveObserver(clientId);
+                        Observe(observer);
+                        continue;
+                    }
+
+                    _observers[clientId] = observer;
+                    UpdateVisibilityFor(observer, worldIndex, allObjects);
                 }
             }
         }
@@ -71,9 +83,7 @@ namespace Altruist.Gaming.TwoD
                 float dy = tp.Y - pos.Y;
 
                 if (dx * dx + dy * dy <= rangeSq)
-                {
                     currentlyVisible.Add(target.InstanceId);
-                }
             }
 
             var previouslyVisible = _visibleSets.GetOrAdd(clientId, _ => new HashSet<string>());
@@ -121,9 +131,28 @@ namespace Altruist.Gaming.TwoD
             AltruistPool.ReturnList(toRemove);
         }
 
+        public bool Observe(ITypelessWorldObject observer)
+        {
+            if (observer is not IWorldObject2D worldObject)
+                return false;
+
+            if (string.IsNullOrEmpty(worldObject.ClientId))
+                return false;
+
+            _observers[worldObject.ClientId] = worldObject;
+            RefreshObserver(worldObject.ClientId);
+            return true;
+        }
+
         public void RefreshObserver(string clientId)
         {
             _visibleSets.TryRemove(clientId, out _);
+        }
+
+        public void RemoveObserver(ITypelessWorldObject observer)
+        {
+            if (observer is IWorldObject2D worldObject && !string.IsNullOrEmpty(worldObject.ClientId))
+                RemoveObserver(worldObject.ClientId);
         }
 
         public void RemoveObserver(string clientId)

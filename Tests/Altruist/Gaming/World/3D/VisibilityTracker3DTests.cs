@@ -58,6 +58,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -77,6 +78,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick([CreateSnapshot(world, player, npc)]);
 
@@ -98,6 +100,7 @@ public class VisibilityTracker3DTests
         var (tracker, _) = SetupTracker(world);
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -115,6 +118,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         int visibleCount = 0;
         tracker.OnEntityVisible += _ => visibleCount++;
@@ -134,6 +138,7 @@ public class VisibilityTracker3DTests
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc1 = new TestWorldObj(100, 0);
         var npc2 = new TestWorldObj(200, 0);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick([CreateSnapshot(world, player, npc1, npc2)]);
 
@@ -152,6 +157,8 @@ public class VisibilityTracker3DTests
         var p1 = new TestWorldObj(0, 0, clientId: "player1");
         var p2 = new TestWorldObj(10, 0, clientId: "player2");
         var npc = new TestWorldObj(50, 0);
+        Assert.True(tracker.Observe(p1));
+        Assert.True(tracker.Observe(p2));
 
         tracker.Tick([CreateSnapshot(world, p1, p2, npc)]);
 
@@ -168,6 +175,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var farNpc = new TestWorldObj(200, 0);
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -185,6 +193,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         int visibleCount = 0;
         tracker.OnEntityVisible += _ => visibleCount++;
@@ -205,6 +214,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick([CreateSnapshot(world, player, npc)]);
 
@@ -229,6 +239,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
         tracker.Tick([CreateSnapshot(world, player, npc)]);
 
         var list = new List<IWorldObject3D>();
@@ -238,6 +249,24 @@ public class VisibilityTracker3DTests
 
         tracker.RemoveObserver("player1");
 
+        Assert.Null(tracker.GetVisibleEntities("player1"));
+    }
+
+    [Fact]
+    public void Tick_ShouldNotTreatClientIdAsObserverUntilObserved()
+    {
+        var world = CreateMockWorld();
+        var (tracker, _) = SetupTracker(world);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+
+        VisibilityChange? visible = null;
+        tracker.OnEntityVisible += v => visible = v;
+
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        Assert.Null(visible);
         Assert.Null(tracker.GetVisibleEntities("player1"));
     }
 }

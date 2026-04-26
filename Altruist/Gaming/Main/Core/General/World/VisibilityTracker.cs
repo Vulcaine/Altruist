@@ -21,11 +21,12 @@ namespace Altruist.Gaming
     }
 
     /// <summary>
-    /// Tracks which world objects are visible to each observer (client-linked object).
+    /// Tracks which world objects are visible to each explicitly registered observer.
     /// On each tick, computes the diff between previously visible and currently visible objects,
     /// then fires events for enter/leave.
     ///
-    /// Observers are world objects with a non-empty ClientId.
+    /// Observer status is explicit: call Observe(worldObject). A non-empty ClientId is still
+    /// required as the network destination, but ClientId alone does not make an object an observer.
     /// </summary>
     public interface IVisibilityTracker
     {
@@ -37,6 +38,18 @@ namespace Altruist.Gaming
 
         /// <summary>Fired when a world object leaves an observer's view range.</summary>
         event Action<VisibilityChange> OnEntityInvisible;
+
+        /// <summary>
+        /// Registers a world object as a visibility observer.
+        /// The object must be a dimension-specific world object and must have a non-empty ClientId.
+        /// </summary>
+        bool Observe(ITypelessWorldObject observer);
+
+        /// <summary>
+        /// Removes a registered observer world object.
+        /// All previously visible objects will fire OnEntityInvisible.
+        /// </summary>
+        void RemoveObserver(ITypelessWorldObject observer);
 
         /// <summary>
         /// Forces a full visibility refresh for a specific observer.

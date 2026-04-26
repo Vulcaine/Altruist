@@ -5,13 +5,16 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
 {
     protected readonly IGameSessionService _gameSessionService;
     protected readonly IAltruistRouter _router;
+    private readonly int _sessionTtlMinutes;
 
     protected AltruistGameSessionPortal(
         IGameSessionService gameSessionService,
-        IAltruistRouter router)
+        IAltruistRouter router,
+        [AppConfigValue("altruist:game:session:ttl-minutes", "60")] int sessionTtlMinutes = 60)
     {
         _gameSessionService = gameSessionService;
         _router = router;
+        _sessionTtlMinutes = Math.Max(1, sessionTtlMinutes);
     }
 
     // ---------------------------
@@ -58,13 +61,19 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
         await PublishResultAsync(clientId, finalResult);
     }
 
-    public virtual Task OnDisconnectedAsync(string clientId, Exception? exception)
+    public async Task OnDisconnectedAsync(string clientId, Exception? exception)
     {
+        var session = _gameSessionService.GetSession(clientId);
+        await OnSessionDisconnectingAsync(clientId, session, exception);
         _gameSessionService.ClearSession(clientId);
-        return Task.CompletedTask;
+        await OnSessionDisconnectedAsync(clientId, exception);
     }
 
-    public virtual Task OnConnectedAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection) => Task.CompletedTask;
+    public async Task OnConnectedAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection)
+    {
+        var session = _gameSessionService.CreateSession(clientId, DateTime.UtcNow.AddMinutes(_sessionTtlMinutes));
+        await OnSessionConnectedAsync(clientId, session, connectionManager, connection);
+    }
 
     public async Task Cleanup()
     {
@@ -92,6 +101,24 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
         string clientId,
         IResultPacket result)
         => Task.FromResult(result);
+
+    protected virtual Task OnSessionConnectedAsync(
+        string clientId,
+        IGameSession session,
+        ConnectionManager connectionManager,
+        AltruistConnection connection)
+        => Task.CompletedTask;
+
+    protected virtual Task OnSessionDisconnectingAsync(
+        string clientId,
+        IGameSession? session,
+        Exception? exception)
+        => Task.CompletedTask;
+
+    protected virtual Task OnSessionDisconnectedAsync(
+        string clientId,
+        Exception? exception)
+        => Task.CompletedTask;
 
     // -----------------------------------
     // Publishing logic (framework owned)

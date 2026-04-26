@@ -44,6 +44,7 @@ public class VisibilityTracker2DTests
         var npc = new TestWorldObj2D(100, 0);
         var world = CreateMockWorld(player, npc);
         var (tracker, _) = SetupTracker(world, 1000f);
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -62,6 +63,7 @@ public class VisibilityTracker2DTests
         var npc = new TestWorldObj2D(100, 0);
         var world = CreateMockWorld(player, npc);
         var (tracker, _) = SetupTracker(world, 1000f);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick();
 
@@ -84,6 +86,7 @@ public class VisibilityTracker2DTests
         var player = new TestWorldObj2D(0, 0, clientId: "player1");
         var world = CreateMockWorld(player);
         var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -100,6 +103,7 @@ public class VisibilityTracker2DTests
         var npc = new TestWorldObj2D(100, 0);
         var world = CreateMockWorld(player, npc);
         var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(player));
 
         int visibleCount = 0;
         tracker.OnEntityVisible += _ => visibleCount++;
@@ -118,6 +122,7 @@ public class VisibilityTracker2DTests
         var npc2 = new TestWorldObj2D(200, 0);
         var world = CreateMockWorld(player, npc1, npc2);
         var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick();
 
@@ -135,6 +140,8 @@ public class VisibilityTracker2DTests
         var npc = new TestWorldObj2D(50, 0);
         var world = CreateMockWorld(p1, p2, npc);
         var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(p1));
+        Assert.True(tracker.Observe(p2));
 
         tracker.Tick();
 
@@ -150,6 +157,7 @@ public class VisibilityTracker2DTests
         var farNpc = new TestWorldObj2D(200, 0);
         var world = CreateMockWorld(player, farNpc);
         var (tracker, _) = SetupTracker(world, 100f);
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -166,6 +174,7 @@ public class VisibilityTracker2DTests
         var npc = new TestWorldObj2D(100, 0);
         var world = CreateMockWorld(player, npc);
         var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(player));
 
         int visibleCount = 0;
         tracker.OnEntityVisible += _ => visibleCount++;
@@ -185,6 +194,7 @@ public class VisibilityTracker2DTests
         var npc = new TestWorldObj2D(100, 0);
         var world = CreateMockWorld(player, npc);
         var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick();
 
@@ -203,10 +213,28 @@ public class VisibilityTracker2DTests
         var npc = new TestWorldObj2D(100, 0);
         var world = CreateMockWorld(player, npc);
         var (tracker, _) = SetupTracker(world);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick();
         tracker.RemoveObserver("player1");
 
+        Assert.Null(tracker.GetVisibleEntities("player1"));
+    }
+
+    [Fact]
+    public void Tick_ShouldNotTreatClientIdAsObserverUntilObserved()
+    {
+        var player = new TestWorldObj2D(0, 0, clientId: "player1");
+        var npc = new TestWorldObj2D(100, 0);
+        var world = CreateMockWorld(player, npc);
+        var (tracker, _) = SetupTracker(world);
+
+        VisibilityChange? visible = null;
+        tracker.OnEntityVisible += v => visible = v;
+
+        tracker.Tick();
+
+        Assert.Null(visible);
         Assert.Null(tracker.GetVisibleEntities("player1"));
     }
 }

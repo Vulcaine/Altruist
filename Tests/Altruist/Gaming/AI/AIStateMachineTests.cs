@@ -21,6 +21,12 @@ public class TestAIContext : IAIContext
 {
     public ITypelessWorldObject Entity { get; set; } = new TestWorldObject();
     public float TimeInState { get; set; }
+    public float StateDuration { get; set; }
+    public string CurrentStateTag { get; set; } = "";
+    public IReadOnlyDictionary<string, StateWindow>? ActiveWindows { get; set; }
+    public object? CurrentStateData { get; set; }
+    public StateMotionProfile? CurrentStateMotion { get; set; }
+    public float PreviousProgress { get; set; }
     public bool IdleEntered { get; set; }
     public bool IdleExited { get; set; }
     public bool ChaseEntered { get; set; }

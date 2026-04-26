@@ -19,7 +19,9 @@ namespace Altruist.Gaming;
 ///   });
 ///
 /// Enable: set altruist:game:lag-compensation = true
-/// Configure: altruist:game:lag-compensation:history-ticks (default 64)
+/// Configure:
+///   altruist:game:lag-compensation:history-ticks (default 64)
+///   altruist:game:lag-compensation:snapshot-strategy = nearest | interpolate (default nearest)
 /// </summary>
 public interface ILagCompensationService : IPositionHistoryRecorder
 {
