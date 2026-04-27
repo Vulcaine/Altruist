@@ -18,8 +18,8 @@ async function discoverConnectionInfo() {
     };
   }
 
-  const configPath = await findWorkspaceConfigPath();
-  if (!configPath) {
+  const candidate = await findWorkspaceConfigCandidate();
+  if (!candidate) {
     return {
       source: "none",
       dashboardEnabled: false,
@@ -29,14 +29,13 @@ async function discoverConnectionInfo() {
       configPath: undefined,
     };
   }
-
-  const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(configPath));
-  const text = Buffer.from(bytes).toString("utf8");
-  const parsed = parseSimpleYaml(text);
+  const { configPath, parsed } = candidate;
 
   const dashboardEnabled =
     toBoolean(parsed?.altruist?.dashboard?.enabled) === true;
   const environmentMode = stringOrUndefined(parsed?.altruist?.environment?.mode);
+  const websocketEnabled =
+    toBoolean(parsed?.altruist?.server?.transport?.websocket?.enabled) === true;
 
   const httpHost = normalizeHost(
     stringOrUndefined(parsed?.altruist?.server?.http?.host) || "localhost"
@@ -47,13 +46,14 @@ async function discoverConnectionInfo() {
   );
 
   const transportPath = normalizePath(
-    stringOrUndefined(parsed?.altruist?.server?.transport?.config?.path) || "/ws"
+    stringOrUndefined(parsed?.altruist?.server?.transport?.websocket?.path) || "/ws"
   );
 
   const baseUrl = normalizeBaseUrl(`http://${httpHost}:${httpPort}${httpPath}`);
-  const websocketUrl =
-    websocketUrlOverride ||
-    normalizeWebsocketUrl(`ws://${httpHost}:${httpPort}${transportPath}/dashboard`);
+  const websocketUrl = websocketUrlOverride
+    || (websocketEnabled
+      ? normalizeWebsocketUrl(`ws://${httpHost}:${httpPort}${transportPath}/dashboard`)
+      : "");
 
   return {
     source: "workspace",
@@ -81,11 +81,76 @@ async function findWorkspaceConfigPath() {
   return sorted[0];
 }
 
+async function findWorkspaceConfigCandidate() {
+  const configPath = await findWorkspaceConfigPath();
+  if (!configPath) {
+    return undefined;
+  }
+
+  const matches = await vscode.workspace.findFiles(
+    "**/{config.yml,config.yaml,config.*.yml,config.*.yaml}",
+    "**/{node_modules,bin,obj,.git}/**",
+    20
+  );
+
+  const candidates = [];
+  for (const match of matches) {
+    const fsPath = match.fsPath;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(match);
+      const text = Buffer.from(bytes).toString("utf8");
+      const parsed = parseSimpleYaml(text);
+      candidates.push({
+        configPath: fsPath,
+        parsed,
+        score: scoreParsedConfig(fsPath, parsed),
+      });
+    } catch {
+      // ignore unreadable candidates
+    }
+  }
+
+  if (!candidates.length) {
+    const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(configPath));
+    const text = Buffer.from(bytes).toString("utf8");
+    return {
+      configPath,
+      parsed: parseSimpleYaml(text),
+    };
+  }
+
+  candidates.sort((a, b) => b.score - a.score || scoreConfigPath(a.configPath) - scoreConfigPath(b.configPath));
+  return {
+    configPath: candidates[0].configPath,
+    parsed: candidates[0].parsed,
+  };
+}
+
 function scoreConfigPath(filePath) {
   const lower = filePath.replace(/\\/g, "/").toLowerCase();
   if (lower.endsWith("/config.yml") || lower.endsWith("/config.yaml")) return 0;
   if (lower.includes("/examples/")) return 50;
   return 10;
+}
+
+function scoreParsedConfig(filePath, parsed) {
+  let score = 0;
+  const lower = filePath.replace(/\\/g, "/").toLowerCase();
+
+  if (toBoolean(parsed?.altruist?.dashboard?.enabled) === true) score += 1000;
+  if (stringOrUndefined(parsed?.altruist?.environment?.mode)) score += 250;
+  if (stringOrUndefined(parsed?.altruist?.server?.http?.host)) score += 120;
+  if (parsed?.altruist?.server?.http?.port != null) score += 120;
+  if (toBoolean(parsed?.altruist?.server?.transport?.websocket?.enabled) === true) score += 140;
+  if (stringOrUndefined(parsed?.altruist?.server?.transport?.websocket?.path)) score += 80;
+  if (parsed?.altruist?.game?.worlds?.items) score += 80;
+
+  if (lower.includes("/examples/")) score -= 250;
+  if (lower.includes("/templates/")) score -= 250;
+  if (lower.includes("/testapp/")) score -= 200;
+  if (lower.includes("/tests/")) score -= 120;
+
+  return score;
 }
 
 function parseSimpleYaml(text) {

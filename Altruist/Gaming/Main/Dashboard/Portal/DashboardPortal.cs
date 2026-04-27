@@ -8,6 +8,7 @@ namespace Altruist.Dashboard
     public sealed class DashboardPortal : Portal, OnConnectedAsync
     {
         private readonly IGameWorldOrganizer3D _gameWorldOrganizer;
+        private readonly IDashboardGizmoRegistry _gizmos;
         private readonly IAltruistRouter _router;
         private readonly IConnectionManager _connectionManager;
 
@@ -22,10 +23,12 @@ namespace Altruist.Dashboard
 
         public DashboardPortal(
             IGameWorldOrganizer3D gameWorldOrganizer,
+            IDashboardGizmoRegistry gizmos,
             IAltruistRouter router,
             IConnectionManager connectionManager)
         {
             _gameWorldOrganizer = gameWorldOrganizer;
+            _gizmos = gizmos;
             _router = router;
             _connectionManager = connectionManager;
         }
@@ -105,13 +108,19 @@ namespace Altruist.Dashboard
                     }
                 }
 
-                if (partitionDtos.Count == 0)
+                var gizmoChanges = _gizmos.DrainChanges(worldIndex);
+
+                if (partitionDtos.Count == 0
+                    && gizmoChanges.Gizmos.Length == 0
+                    && gizmoChanges.RemovedGizmoIds.Length == 0)
                     continue;
 
                 var packet = new DashboardWorldObjectStatePacket(
                     worldIndex,
                     now,
-                    partitionDtos.ToArray()
+                    partitionDtos.ToArray(),
+                    gizmoChanges.Gizmos,
+                    gizmoChanges.RemovedGizmoIds
                 );
 
                 foreach (var conn in _connections)

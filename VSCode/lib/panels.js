@@ -108,12 +108,22 @@ class GenericDashboardPanel {
     await this.refresh();
   }
 
-  async refresh() {
+  postLoading(label = "Loading dashboard data...") {
+    this.panel.webview.postMessage({
+      type: "panel:loading",
+      kind: this.kind,
+      label,
+    });
+  }
+
+  async refresh(viewState) {
+    this.postLoading("Loading dashboard data...");
+
     try {
       await this.connectionManager.ensureConnected();
       const state = this.connectionManager.getState();
       const client = new DashboardClient(state.baseUrl);
-      const payload = await loadGenericPanelPayload(client, this.kind);
+      const payload = await loadGenericPanelPayload(client, this.kind, viewState);
 
       this.panel.webview.postMessage({
         type: "panel:data",
@@ -139,33 +149,40 @@ class GenericDashboardPanel {
       switch (message?.type) {
         case "panel:ready":
         case "panel:refresh":
-          await this.refresh();
+          await this.refresh(message?.state);
           return;
-        case "config:update":
-          await client.updateConfig(message.key, message.value);
+        case "config:update-batch":
+          this.postLoading("Saving live config changes...");
+          await client.updateConfigBatch(message.entries || []);
           await this.refresh();
           return;
         case "sessions:closeConnection":
+          this.postLoading("Disconnecting session...");
           await client.closeSession(message.connectionId);
           await this.refresh();
           return;
         case "sessions:deleteRoom":
+          this.postLoading("Deleting room...");
           await client.deleteRoom(message.roomId);
           await this.refresh();
           return;
         case "sessions:removeRoomConnection":
+          this.postLoading("Removing connection from room...");
           await client.removeConnectionFromRoom(message.roomId, message.connectionId);
           await this.refresh();
           return;
         case "cache:update":
+          this.postLoading("Updating cache entry...");
           await client.updateCacheEntry(message.entry);
           await this.refresh();
           return;
         case "cache:delete":
+          this.postLoading("Deleting cache entry...");
           await client.deleteCacheEntry(message.entry);
           await this.refresh();
           return;
         case "vault:loadItems": {
+          this.postLoading("Loading vault items...");
           const items = await client.getVaultItems(
             message.typeKey,
             message.skip ?? 0,
@@ -178,10 +195,31 @@ class GenericDashboardPanel {
           });
           return;
         }
-        case "vault:batchUpdate":
+        case "vault:batchUpdate": {
+          this.postLoading("Committing vault changes...");
           await client.batchUpdateVault(message.typeKey, message.items ?? []);
-          await this.refresh();
+          const items = await client.getVaultItems(
+            message.typeKey,
+            message.skip ?? 0,
+            message.take ?? 50
+          );
+          this.panel.webview.postMessage({
+            type: "vault:items",
+            typeKey: message.typeKey,
+            payload: items,
+          });
           return;
+        }
+        case "vault:query": {
+          this.postLoading("Executing SQL query...");
+          const result = await client.queryVault(message.typeKey, message.sql || "");
+          this.panel.webview.postMessage({
+            type: "vault:queryResult",
+            typeKey: message.typeKey,
+            payload: result,
+          });
+          return;
+        }
         default:
           return;
       }
@@ -204,6 +242,8 @@ class WorldDashboardPanel {
     this.selectedWorldIndex = vscode.workspace
       .getConfiguration("altruist.dashboard")
       .get("defaultWorldIndex", 0);
+    this.webviewReady = false;
+    this.pendingRefresh = false;
     this._onDidDispose = new vscode.EventEmitter();
 
     this.panel = vscode.window.createWebviewPanel(
@@ -235,10 +275,26 @@ class WorldDashboardPanel {
 
   async show() {
     this.panel.reveal(vscode.ViewColumn.Active);
-    await this.refresh();
+    if (this.webviewReady) {
+      await this.refresh();
+      return;
+    }
+
+    this.pendingRefresh = true;
+    this.outputChannel.appendLine(
+      "[WorldDashboard] Waiting for webview readiness before sending bootstrap."
+    );
   }
 
   async refresh() {
+    if (!this.webviewReady) {
+      this.pendingRefresh = true;
+      this.outputChannel.appendLine(
+        "[WorldDashboard] Refresh requested before webview ready; queued."
+      );
+      return;
+    }
+
     try {
       await this.connectionManager.ensureConnected();
       const connection = this.connectionManager.getState();
@@ -255,6 +311,14 @@ class WorldDashboardPanel {
         ? await client.getWorldObjectsSnapshot(preferredWorld.index)
         : null;
 
+      const objectCount = (snapshot?.partitions || []).reduce(
+        (count, partition) => count + (partition.objects || []).length,
+        0
+      );
+      this.outputChannel.appendLine(
+        `[WorldDashboard] Posting bootstrap baseUrl=${connection.baseUrl} ws=${connection.websocketUrl || "-"} worlds=${worlds.length} selected=${preferredWorld?.index ?? "none"} partitions=${(snapshot?.partitions || []).length} objects=${objectCount}`
+      );
+
       this.panel.webview.postMessage({
         type: "world:bootstrap",
         payload: {
@@ -262,7 +326,8 @@ class WorldDashboardPanel {
           websocketUrl: connection.websocketUrl,
           environmentMode:
             readConfigValue(summary.configs, "altruist:environment:mode") ??
-            connection.environmentMode,
+            connection.environmentMode ??
+            "3D",
           worlds,
           selectedWorldIndex: preferredWorld?.index ?? null,
           summary,
@@ -271,6 +336,9 @@ class WorldDashboardPanel {
       });
     } catch (error) {
       this.connectionManager.setLastError(error);
+      this.outputChannel.appendLine(
+        `[WorldDashboard] Refresh failed: ${toErrorMessage(error)}`
+      );
       this.panel.webview.postMessage({
         type: "world:error",
         error: toErrorMessage(error),
@@ -282,6 +350,11 @@ class WorldDashboardPanel {
     try {
       switch (message?.type) {
         case "world:ready":
+          this.webviewReady = true;
+          this.outputChannel.appendLine("[WorldDashboard] Webview reported ready.");
+          this.pendingRefresh = false;
+          await this.refresh();
+          return;
         case "world:refresh":
           await this.refresh();
           return;
@@ -312,7 +385,7 @@ class WorldDashboardPanel {
   }
 }
 
-async function loadGenericPanelPayload(client, kind) {
+async function loadGenericPanelPayload(client, kind, viewState) {
   switch (kind) {
     case "summary":
       return client.getSummary();
@@ -336,9 +409,11 @@ async function loadGenericPanelPayload(client, kind) {
     }
     case "vault": {
       const definitions = await client.getVaults();
-      const first = definitions[0];
-      const firstItems = first
-        ? await client.getVaultItems(first.typeKey, 0, 50)
+      const selectedTypeKey = viewState?.selectedVaultTypeKey || definitions[0]?.typeKey;
+      const skip = Number.isFinite(viewState?.skip) ? viewState.skip : 0;
+      const take = Number.isFinite(viewState?.take) ? viewState.take : 50;
+      const firstItems = selectedTypeKey
+        ? await client.getVaultItems(selectedTypeKey, skip, take)
         : null;
       return { definitions, firstItems };
     }
@@ -375,7 +450,7 @@ function buildGenericPanelHtml(webview, context, kind) {
 }
 
 function buildWorldPanelHtml(webview, context) {
-  const bootstrapUri = webview.asWebviewUri(
+  const scriptUri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, "media", "worldPanel.js")
   );
   const styleUri = webview.asWebviewUri(
@@ -396,7 +471,7 @@ function buildWorldPanelHtml(webview, context) {
     <div id="world-root" class="world-root">
       <div class="loading">Loading Altruist world view...</div>
     </div>
-    <script nonce="${nonce}" type="module" src="${bootstrapUri}"></script>
+    <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;
 }

@@ -105,6 +105,11 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         public EngineInfoDto? Engine { get; set; }
     }
 
+    public sealed class ConfigBatchUpdateResultDto
+    {
+        public int Updated { get; set; }
+    }
+
     // ------------------ Endpoint ------------------
 
     [HttpPost("config/update")]
@@ -113,18 +118,10 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Key))
             return BadRequest("Missing key.");
 
-        var mutable = _configuration
-            .GetChildren()
-            .Select(c => c)
-            .Where(_ => true);
+        if (!LiveConfigRegistry.IsLiveConfig(dto.Key))
+            return BadRequest($"Config key '{dto.Key}' is not live-editable.");
 
-        var provider = _configuration
-            .GetType()
-            .GetField("_providers", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?.GetValue(_configuration) as IEnumerable<IConfigurationProvider>;
-
-        var mutableProvider = provider?
-            .FirstOrDefault(p => p is MutableConfigProvider) as MutableConfigProvider;
+        var mutableProvider = GetMutableConfigProvider();
 
         if (mutableProvider is null)
             return StatusCode(500, "Mutable configuration provider not found.");
@@ -133,6 +130,31 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         mutableProvider.Set(dto.Key, dto.Value ?? "");
 
         return Ok(new { Updated = dto.Key, Value = dto.Value });
+    }
+
+    [HttpPost("config/update-batch")]
+    public ActionResult<ConfigBatchUpdateResultDto> UpdateConfigBatch([FromBody] List<ConfigEntryDto>? entries)
+    {
+        if (entries is null || entries.Count == 0)
+            return Ok(new ConfigBatchUpdateResultDto { Updated = 0 });
+
+        var mutableProvider = GetMutableConfigProvider();
+        if (mutableProvider is null)
+            return StatusCode(500, "Mutable configuration provider not found.");
+
+        foreach (var entry in entries)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Key))
+                return BadRequest("Missing key.");
+
+            if (!LiveConfigRegistry.IsLiveConfig(entry.Key))
+                return BadRequest($"Config key '{entry.Key}' is not live-editable.");
+        }
+
+        foreach (var entry in entries)
+            mutableProvider.Set(entry.Key, entry.Value ?? string.Empty);
+
+        return Ok(new ConfigBatchUpdateResultDto { Updated = entries.Count });
     }
 
     [HttpGet]
@@ -203,6 +225,17 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         }
 
         return filtered;
+    }
+
+    private MutableConfigProvider? GetMutableConfigProvider()
+    {
+        var provider = _configuration
+            .GetType()
+            .GetField("_providers", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.GetValue(_configuration) as IEnumerable<IConfigurationProvider>;
+
+        return provider?
+            .FirstOrDefault(p => p is MutableConfigProvider) as MutableConfigProvider;
     }
 
     // ------------------ Engine Info ------------------

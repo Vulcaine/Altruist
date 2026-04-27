@@ -79,8 +79,11 @@ export class WorldRenderer {
       // user moved the camera manually -> stop auto-follow until they click a selection again
       this.followSelection = false;
     };
+    this.input.requestFocus = (center, radius) => {
+      this.focusCameraOnBounds(center, radius);
+    };
 
-    this.input.attach();
+    this.input.attach(this.renderer.domElement);
     this.lastFrameTime = performance.now();
   }
 
@@ -389,6 +392,12 @@ export class WorldRenderer {
       if (!isFinite(maxDim) || maxDim <= 0) maxDim = 1;
     }
 
+    this.focusCameraOnBounds(center, maxDim);
+  }
+
+  private focusCameraOnBounds(center: THREE.Vector3, maxDim: number): void {
+    if (!this.camera) return;
+
     // compute a good distance based on FOV (zoom *in*, not far away)
     const fov = (this.camera.fov * Math.PI) / 180;
     let distance = maxDim / (2 * Math.tan(fov / 2));
@@ -414,6 +423,7 @@ export class WorldRenderer {
     this.input.setOrientationFromDirection(dir);
 
     this.camera.lookAt(center);
+    this.input.setFocusTarget(center, distance, maxDim);
   }
 
   private fitCameraToGroup(): void {
@@ -441,5 +451,6 @@ export class WorldRenderer {
 
     this.input.setOrientationFromDirection(forward);
     this.camera.lookAt(center);
+    this.input.setFocusTarget(center, distance, maxDim);
   }
 }

@@ -19,12 +19,17 @@ export class WorldRenderer {
     this.resizeObserver = null;
     this.objectLayer = null;
     this.overlayLayer = null;
+    this.gizmoLayer = null;
     this.grid = null;
     this.objects = new Map();
+    this.gizmos = new Map();
+    this.hiddenGizmoIds = new Set();
+    this.hiddenGizmoCategories = new Set();
     this.pickables = [];
     this.selectedId = null;
     this.selectionHelper = null;
     this.worldSnapshot = null;
+    this.lastFrameTime = performance.now();
   }
 
   mount(container) {
@@ -48,6 +53,7 @@ export class WorldRenderer {
 
     this.objectLayer = new THREE.Group();
     this.overlayLayer = new THREE.Group();
+    this.gizmoLayer = new THREE.Group();
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.55);
     const directional = new THREE.DirectionalLight(0xfff3d4, 0.8);
@@ -56,15 +62,17 @@ export class WorldRenderer {
     this.grid = new THREE.GridHelper(3000, 120, 0x6b7280, 0x20252d);
     this.grid.position.y = 0;
 
-    this.scene.add(ambient, directional, this.grid, this.objectLayer, this.overlayLayer);
+    this.scene.add(ambient, directional, this.grid, this.objectLayer, this.gizmoLayer, this.overlayLayer);
 
     container.innerHTML = "";
     container.appendChild(this.renderer.domElement);
     this.inputController.attach(this.renderer.domElement);
+    this.inputController.requestFocus = (center, radius) => this.focusCameraOnBounds(center, radius);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
+    this.lastFrameTime = performance.now();
     this.startLoop();
   }
 
@@ -94,8 +102,10 @@ export class WorldRenderer {
     this.renderer = null;
     this.objectLayer = null;
     this.overlayLayer = null;
+    this.gizmoLayer = null;
     this.grid = null;
     this.objects.clear();
+    this.gizmos.clear();
     this.pickables = [];
     this.selectedId = null;
     this.selectionHelper = null;
@@ -117,7 +127,11 @@ export class WorldRenderer {
   startLoop() {
     const tick = () => {
       if (this.camera && this.renderer && this.scene) {
-        this.inputController.updateCamera(this.camera);
+        const now = performance.now();
+        const dt = Math.min(0.1, (now - this.lastFrameTime) / 1000);
+        this.lastFrameTime = now;
+
+        this.inputController.updateCamera(this.camera, dt);
         this.renderer.render(this.scene, this.camera);
       }
 
@@ -140,6 +154,18 @@ export class WorldRenderer {
     return this.objects.get(instanceId)?.dto || null;
   }
 
+  getGizmos() {
+    return Array.from(this.gizmos.values()).map((entry) => entry.dto);
+  }
+
+  setGizmoVisibility(hiddenIds, hiddenCategories) {
+    this.hiddenGizmoIds = new Set(hiddenIds || []);
+    this.hiddenGizmoCategories = new Set(
+      Array.from(hiddenCategories || []).map((value) => String(value).toLowerCase())
+    );
+    this.refreshGizmoVisibility();
+  }
+
   setSelectedObject(instanceId) {
     this.selectedId = instanceId || null;
     this.refreshSelectionHelper();
@@ -155,7 +181,28 @@ export class WorldRenderer {
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const radius = Math.max(4, size.length() * 0.5, Math.max(size.x, size.y, size.z) * 0.7);
-    this.inputController.focus({ center, radius });
+    this.focusCameraOnBounds(center, radius);
+  }
+
+  focusCameraOnBounds(center, radius) {
+    if (!this.camera) {
+      this.inputController.setFocusTarget(center, radius, radius);
+      return;
+    }
+
+    const distance = THREE.MathUtils.clamp(radius * 2.3, 6, 5000);
+    const viewDir = new THREE.Vector3(1, 0.65, 1).normalize();
+
+    this.camera.position.set(
+      center.x + viewDir.x * distance,
+      center.y + viewDir.y * distance,
+      center.z + viewDir.z * distance
+    );
+
+    const dir = new THREE.Vector3().subVectors(center, this.camera.position).normalize();
+    this.inputController.setOrientationFromDirection(dir);
+    this.camera.lookAt(center);
+    this.inputController.setFocusTarget(center, distance, radius);
   }
 
   pick(clientX, clientY) {
@@ -179,9 +226,6 @@ export class WorldRenderer {
 
   applyRealtimePacket(packet) {
     const updates = flattenRealtimeObjects(packet);
-    if (!updates.length) {
-      return;
-    }
 
     for (const update of updates) {
       const id = update.instanceId || update.id;
@@ -213,7 +257,20 @@ export class WorldRenderer {
       this.addObjectToScene(placeholder);
     }
 
+    this.applyGizmoRealtimePacket(packet);
     this.refreshSelectionHelper();
+  }
+
+  applyGizmoRealtimePacket(packet) {
+    for (const id of packet?.removedGizmoIds || []) {
+      this.removeGizmo(id);
+    }
+
+    for (const gizmo of packet?.gizmos || []) {
+      this.upsertGizmo(gizmo);
+    }
+
+    this.refreshGizmoVisibility();
   }
 
   rebuildWorld() {
@@ -224,6 +281,7 @@ export class WorldRenderer {
     clearGroup(this.objectLayer);
     clearGroup(this.overlayLayer);
     this.objects.clear();
+    this.gizmos.clear();
     this.pickables = [];
     this.selectionHelper = null;
 
@@ -243,6 +301,12 @@ export class WorldRenderer {
       }
     }
 
+    for (const gizmo of this.worldSnapshot?.gizmos || []) {
+      this.upsertGizmo(gizmo);
+    }
+
+    this.refreshGizmoVisibility();
+
     if (this.objects.size > 0) {
       const initialId = this.selectedId && this.objects.has(this.selectedId)
         ? this.selectedId
@@ -250,6 +314,45 @@ export class WorldRenderer {
       this.selectedId = initialId;
       this.focusOnObject(initialId);
       this.refreshSelectionHelper();
+    }
+  }
+
+  upsertGizmo(gizmo) {
+    if (!this.gizmoLayer || !gizmo?.id) {
+      return;
+    }
+
+    this.removeGizmo(gizmo.id);
+
+    const root = buildGizmoObject(gizmo);
+    if (!root) {
+      return;
+    }
+
+    root.userData.gizmoId = gizmo.id;
+    this.gizmoLayer.add(root);
+    this.gizmos.set(gizmo.id, {
+      dto: cloneObjectDto(gizmo),
+      root,
+    });
+  }
+
+  removeGizmo(id) {
+    const entry = this.gizmos.get(id);
+    if (!entry) {
+      return;
+    }
+
+    this.gizmos.delete(id);
+    this.gizmoLayer?.remove(entry.root);
+    disposeObject(entry.root);
+  }
+
+  refreshGizmoVisibility() {
+    for (const [id, entry] of this.gizmos) {
+      const category = String(entry.dto.category || "").toLowerCase();
+      entry.root.visible = !this.hiddenGizmoIds.has(id)
+        && !this.hiddenGizmoCategories.has(category);
     }
   }
 
@@ -522,6 +625,127 @@ function buildPartitionOverlay(entries) {
 
   edges.position.copy(center);
   return edges;
+}
+
+function buildGizmoObject(gizmo) {
+  const root = new THREE.Group();
+  root.name = gizmo.id || "gizmo";
+
+  const color = parseColor(gizmo.color || "#38BDF8FF");
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: parseAlpha(gizmo.color || "#38BDF8FF"),
+  });
+  const meshMaterial = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: Math.min(0.24, parseAlpha(gizmo.color || "#38BDF8FF")),
+    wireframe: true,
+  });
+
+  const position = toVector3(gizmo.position);
+  const type = String(gizmo.type || "sphere").toLowerCase();
+  const points = (gizmo.points || []).map(toVector3);
+
+  if (type === "polyline" && points.length >= 2) {
+    root.add(buildLine(points, material, false));
+    return root;
+  }
+
+  if ((type === "polygon" || type === "cone") && points.length >= 3) {
+    root.add(buildLine(points, material, true));
+    return root;
+  }
+
+  if (type === "circle") {
+    root.add(buildCircle(position, Number(gizmo.radius || 1), material));
+    return root;
+  }
+
+  if (type === "rect") {
+    root.add(buildRect(position, Number(gizmo.width || 1), Number(gizmo.height || 1), material));
+    return root;
+  }
+
+  if (type === "box") {
+    const geometry = new THREE.BoxGeometry(
+      Math.max(0.1, Number(gizmo.width || 1)),
+      Math.max(0.1, Number(gizmo.height || 1)),
+      Math.max(0.1, Number(gizmo.radius || gizmo.width || 1))
+    );
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), material);
+    edges.position.copy(position);
+    root.add(edges);
+    return root;
+  }
+
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(Math.max(0.05, Number(gizmo.radius || 0.35)), 18, 12),
+    meshMaterial
+  );
+  sphere.position.copy(position);
+  root.add(sphere);
+  return root;
+}
+
+function buildLine(points, material, closed) {
+  const linePoints = closed ? [...points, points[0]] : points;
+  const geometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+  return new THREE.Line(geometry, material);
+}
+
+function buildCircle(center, radius, material) {
+  const points = [];
+  const segments = 64;
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    points.push(new THREE.Vector3(
+      center.x + Math.cos(angle) * radius,
+      center.y,
+      center.z + Math.sin(angle) * radius
+    ));
+  }
+  return buildLine(points, material, false);
+}
+
+function buildRect(position, width, height, material) {
+  const points = [
+    new THREE.Vector3(position.x, position.y, position.z),
+    new THREE.Vector3(position.x + width, position.y, position.z),
+    new THREE.Vector3(position.x + width, position.y, position.z + height),
+    new THREE.Vector3(position.x, position.y, position.z + height),
+  ];
+  return buildLine(points, material, true);
+}
+
+function toVector3(value) {
+  return new THREE.Vector3(
+    Number(value?.x ?? value?.X ?? 0),
+    Number(value?.y ?? value?.Y ?? 0),
+    Number(value?.z ?? value?.Z ?? 0)
+  );
+}
+
+function parseColor(hex) {
+  const normalized = normalizeHexColor(hex);
+  return new THREE.Color(normalized.slice(0, 7));
+}
+
+function parseAlpha(hex) {
+  const normalized = normalizeHexColor(hex);
+  if (normalized.length < 9) {
+    return 0.8;
+  }
+  return Math.max(0.05, Math.min(1, Number.parseInt(normalized.slice(7, 9), 16) / 255));
+}
+
+function normalizeHexColor(hex) {
+  const value = String(hex || "#38BDF8FF").trim();
+  if (/^#[0-9a-fA-F]{8}$/.test(value) || /^#[0-9a-fA-F]{6}$/.test(value)) {
+    return value;
+  }
+  return "#38BDF8FF";
 }
 
 function getArchetypePalette(archetype) {

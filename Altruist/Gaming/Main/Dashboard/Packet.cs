@@ -30,21 +30,35 @@ namespace Altruist.Dashboard
         [Key(3)]
         public DashboardPartitionStateDto[] Partitions { get; set; }
 
+        [JsonPropertyName("gizmos")]
+        [Key(4)]
+        public DashboardGizmo[] Gizmos { get; set; }
+
+        [JsonPropertyName("removedGizmoIds")]
+        [Key(5)]
+        public string[] RemovedGizmoIds { get; set; }
+
         public DashboardWorldObjectStatePacket()
         {
             MessageCode = PacketCodes.DashboardWorldObjectState;
             Partitions = Array.Empty<DashboardPartitionStateDto>();
+            Gizmos = Array.Empty<DashboardGizmo>();
+            RemovedGizmoIds = Array.Empty<string>();
         }
 
         public DashboardWorldObjectStatePacket(
             int worldIndex,
             DateTime timestampUtc,
-            DashboardPartitionStateDto[] partitions)
+            DashboardPartitionStateDto[] partitions,
+            DashboardGizmo[]? gizmos = null,
+            string[]? removedGizmoIds = null)
         {
             MessageCode = PacketCodes.DashboardWorldObjectState;
             WorldIndex = worldIndex;
             TimestampUtc = timestampUtc;
             Partitions = partitions ?? Array.Empty<DashboardPartitionStateDto>();
+            Gizmos = gizmos ?? Array.Empty<DashboardGizmo>();
+            RemovedGizmoIds = removedGizmoIds ?? Array.Empty<string>();
         }
     }
 
@@ -107,6 +121,96 @@ namespace Altruist.Dashboard
         [JsonPropertyName("z")]
         [Key(2)]
         public float Z { get; set; }
+    }
+
+    [MessagePackObject]
+    public sealed class DashboardGizmoPoint
+    {
+        [JsonPropertyName("x")]
+        [Key(0)]
+        public float X { get; set; }
+
+        [JsonPropertyName("y")]
+        [Key(1)]
+        public float Y { get; set; }
+
+        [JsonPropertyName("z")]
+        [Key(2)]
+        public float Z { get; set; }
+    }
+
+    [MessagePackObject]
+    public sealed class DashboardGizmo
+    {
+        [JsonPropertyName("id")]
+        [Key(0)]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("worldIndex")]
+        [Key(1)]
+        public int WorldIndex { get; set; }
+
+        [JsonPropertyName("category")]
+        [Key(2)]
+        public string Category { get; set; } = string.Empty;
+
+        [JsonPropertyName("source")]
+        [Key(3)]
+        public string Source { get; set; } = string.Empty;
+
+        [JsonPropertyName("type")]
+        [Key(4)]
+        public string Type { get; set; } = "sphere";
+
+        [JsonPropertyName("label")]
+        [Key(5)]
+        public string Label { get; set; } = string.Empty;
+
+        [JsonPropertyName("color")]
+        [Key(6)]
+        public string Color { get; set; } = "#38BDF8FF";
+
+        [JsonPropertyName("position")]
+        [Key(7)]
+        public Vector3Dto Position { get; set; } = new();
+
+        [JsonPropertyName("radius")]
+        [Key(8)]
+        public float Radius { get; set; }
+
+        [JsonPropertyName("width")]
+        [Key(9)]
+        public float Width { get; set; }
+
+        [JsonPropertyName("height")]
+        [Key(10)]
+        public float Height { get; set; }
+
+        [JsonPropertyName("points")]
+        [Key(11)]
+        public List<DashboardGizmoPoint> Points { get; set; } = new();
+
+        [JsonPropertyName("attachToInstanceId")]
+        [Key(12)]
+        public string AttachToInstanceId { get; set; } = string.Empty;
+
+        [JsonPropertyName("ttlSeconds")]
+        [Key(13)]
+        public float TtlSeconds { get; set; }
+
+        [JsonPropertyName("createdAtUtc")]
+        [Key(14)]
+        public DateTime CreatedAtUtc { get; set; }
+
+        [JsonPropertyName("updatedAtUtc")]
+        [Key(15)]
+        public DateTime UpdatedAtUtc { get; set; }
+    }
+
+    public sealed class DashboardGizmoChangeSet
+    {
+        public DashboardGizmo[] Gizmos { get; set; } = Array.Empty<DashboardGizmo>();
+        public string[] RemovedGizmoIds { get; set; } = Array.Empty<string>();
     }
 
     /// <summary>

@@ -1,20 +1,33 @@
 import * as THREE from "./vendor/three.module.js";
 
-const MIN_POLAR = 0.15;
-const MAX_POLAR = Math.PI - 0.15;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const MIN_PITCH = -Math.PI / 2 + 0.02;
+const MAX_PITCH = Math.PI / 2 - 0.02;
 
 export class WorldInputController {
   constructor() {
     this.domElement = null;
-    this.dragMode = null;
-    this.pointerId = null;
+    this.currentCamera = null;
+    this.keys = {};
+    this.pressedButtons = 0;
+    this.activePointerId = null;
     this.lastX = 0;
     this.lastY = 0;
-    this.radius = 120;
-    this.theta = Math.PI / 4;
-    this.phi = 1.0;
-    this.target = new THREE.Vector3(0, 0, 0);
+    this.yaw = Math.PI;
+    this.pitch = -0.35;
+    this.pivot = new THREE.Vector3(0, 0, 0);
+    this.pivotRadius = 40;
+    this.lastFocus = null;
+    this.baseMoveSpeed = 90;
+    this.lookSensitivity = 0.003;
+    this.orbitSensitivity = 0.006;
+    this.panScale = 0.0018;
+    this.dollyScale = 0.0015;
+    this.onUserMove = null;
+    this.requestFocus = null;
 
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleKeyUp = this.handleKeyUp.bind(this);
     this.handlePointerDown = this.handlePointerDown.bind(this);
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerUp = this.handlePointerUp.bind(this);
@@ -25,6 +38,11 @@ export class WorldInputController {
   attach(domElement) {
     this.detach();
     this.domElement = domElement;
+    this.domElement.tabIndex = 0;
+    this.domElement.style.outline = "none";
+
+    window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener("keyup", this.handleKeyUp);
     domElement.addEventListener("pointerdown", this.handlePointerDown);
     domElement.addEventListener("pointermove", this.handlePointerMove);
     domElement.addEventListener("pointerup", this.handlePointerUp);
@@ -34,42 +52,88 @@ export class WorldInputController {
   }
 
   detach() {
-    if (!this.domElement) {
-      return;
+    window.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("keyup", this.handleKeyUp);
+
+    if (this.domElement) {
+      this.domElement.removeEventListener("pointerdown", this.handlePointerDown);
+      this.domElement.removeEventListener("pointermove", this.handlePointerMove);
+      this.domElement.removeEventListener("pointerup", this.handlePointerUp);
+      this.domElement.removeEventListener("pointerleave", this.handlePointerUp);
+      this.domElement.removeEventListener("wheel", this.handleWheel);
+      this.domElement.removeEventListener("contextmenu", this.handleContextMenu);
     }
 
-    this.domElement.removeEventListener("pointerdown", this.handlePointerDown);
-    this.domElement.removeEventListener("pointermove", this.handlePointerMove);
-    this.domElement.removeEventListener("pointerup", this.handlePointerUp);
-    this.domElement.removeEventListener("pointerleave", this.handlePointerUp);
-    this.domElement.removeEventListener("wheel", this.handleWheel);
-    this.domElement.removeEventListener("contextmenu", this.handleContextMenu);
     this.domElement = null;
-    this.dragMode = null;
-    this.pointerId = null;
+    this.currentCamera = null;
+    this.activePointerId = null;
+    this.pressedButtons = 0;
+    this.keys = {};
   }
 
-  updateCamera(camera) {
-    const sinPhi = Math.sin(this.phi);
-    const x = this.target.x + this.radius * sinPhi * Math.sin(this.theta);
-    const y = this.target.y + this.radius * Math.cos(this.phi);
-    const z = this.target.z + this.radius * sinPhi * Math.cos(this.theta);
+  updateCamera(camera, dt = 1 / 60) {
+    this.currentCamera = camera;
 
-    camera.position.set(x, y, z);
-    camera.lookAt(this.target);
+    const velocity = new THREE.Vector3();
+    const forward = this.getForward();
+    const right = this.getRight(forward);
+
+    if (this.keys.w) velocity.add(forward);
+    if (this.keys.s) velocity.sub(forward);
+    if (this.keys.d) velocity.add(right);
+    if (this.keys.a) velocity.sub(right);
+    if (this.keys.e) velocity.add(WORLD_UP);
+    if (this.keys.q) velocity.sub(WORLD_UP);
+
+    if (velocity.lengthSq() > 0) {
+      const speed = this.baseMoveSpeed * this.getSpeedMultiplier();
+      velocity.normalize().multiplyScalar(speed * dt);
+      camera.position.add(velocity);
+      this.pivot.add(velocity);
+      this.markMoved();
+    }
+
+    camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, "YXZ"));
+    this.pivotRadius = Math.max(1, camera.position.distanceTo(this.pivot));
   }
 
   focus(bounds) {
     const center = bounds.center || new THREE.Vector3();
     const radius = Math.max(4, Number(bounds.radius || 8));
-
-    this.target.copy(center);
-    this.radius = THREE.MathUtils.clamp(radius * 2.3, 6, 5000);
-    this.phi = THREE.MathUtils.clamp(this.phi, MIN_POLAR, MAX_POLAR);
+    this.focusCameraOnBounds(center, radius);
   }
 
   setTarget(target) {
-    this.target.copy(target);
+    this.pivot.copy(target);
+  }
+
+  setFocusTarget(center, pivotRadius, focusSize = pivotRadius) {
+    this.pivot.copy(center);
+    this.pivotRadius = Math.max(1, pivotRadius);
+    this.lastFocus = {
+      center: center.clone(),
+      radius: Math.max(1, focusSize),
+    };
+  }
+
+  setOrientationFromDirection(dir) {
+    const normalized = dir.clone().normalize();
+    this.pitch = THREE.MathUtils.clamp(Math.asin(normalized.y), MIN_PITCH, MAX_PITCH);
+    this.yaw = Math.atan2(-normalized.x, -normalized.z);
+  }
+
+  handleKeyDown(event) {
+    const key = event.key.toLowerCase();
+    this.keys[key] = true;
+
+    if (key === "f" && this.lastFocus) {
+      event.preventDefault();
+      this.requestFocus?.(this.lastFocus.center, this.lastFocus.radius);
+    }
+  }
+
+  handleKeyUp(event) {
+    this.keys[event.key.toLowerCase()] = false;
   }
 
   handlePointerDown(event) {
@@ -77,21 +141,20 @@ export class WorldInputController {
       return;
     }
 
-    this.pointerId = event.pointerId;
+    this.domElement.focus();
+    this.activePointerId = event.pointerId;
     this.lastX = event.clientX;
     this.lastY = event.clientY;
-
-    if (event.button === 2 || event.button === 1) {
-      this.dragMode = "pan";
-    } else {
-      this.dragMode = "orbit";
-    }
-
+    this.pressedButtons = event.buttons;
     this.domElement.setPointerCapture?.(event.pointerId);
+
+    if (this.isNavigationPointer(event)) {
+      event.preventDefault();
+    }
   }
 
   handlePointerMove(event) {
-    if (!this.dragMode || event.pointerId !== this.pointerId) {
+    if (!this.domElement || event.pointerId !== this.activePointerId) {
       return;
     }
 
@@ -99,42 +162,148 @@ export class WorldInputController {
     const dy = event.clientY - this.lastY;
     this.lastX = event.clientX;
     this.lastY = event.clientY;
+    this.pressedButtons = event.buttons;
 
-    if (this.dragMode === "orbit") {
-      this.theta -= dx * 0.008;
-      this.phi = THREE.MathUtils.clamp(this.phi + dy * 0.008, MIN_POLAR, MAX_POLAR);
+    if (this.isRightButton(event)) {
+      this.yaw -= dx * this.lookSensitivity;
+      this.pitch = THREE.MathUtils.clamp(this.pitch - dy * this.lookSensitivity, MIN_PITCH, MAX_PITCH);
+      this.markMoved();
+      event.preventDefault();
       return;
     }
 
-    const panSpeed = Math.max(0.05, this.radius * 0.0018);
-    const forward = new THREE.Vector3(
-      Math.sin(this.phi) * Math.sin(this.theta),
-      Math.cos(this.phi),
-      Math.sin(this.phi) * Math.cos(this.theta)
-    ).normalize();
-    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-    const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+    if (this.isMiddleButton(event)) {
+      this.panByScreenDelta(dx, dy, this.pivotRadius);
+      this.markMoved();
+      event.preventDefault();
+      return;
+    }
 
-    this.target.addScaledVector(right, -dx * panSpeed);
-    this.target.addScaledVector(up, dy * panSpeed);
+    if (this.isLeftButton(event) && event.altKey) {
+      this.orbitByScreenDelta(dx, dy);
+      this.markMoved();
+      event.preventDefault();
+    }
   }
 
   handlePointerUp(event) {
-    if (event.pointerId !== this.pointerId) {
+    if (event.pointerId !== this.activePointerId) {
       return;
     }
 
-    this.dragMode = null;
-    this.pointerId = null;
+    this.pressedButtons = event.buttons;
+    if (event.buttons === 0) {
+      this.activePointerId = null;
+    }
   }
 
   handleWheel(event) {
+    if (!this.currentCamera) {
+      return;
+    }
+
     event.preventDefault();
-    const factor = Math.exp(event.deltaY * 0.001);
-    this.radius = THREE.MathUtils.clamp(this.radius * factor, 3, 10000);
+    const distance = Math.max(1, this.pivotRadius);
+    const amount = event.deltaY * this.dollyScale * distance;
+    const forward = this.getForward();
+
+    this.currentCamera.position.addScaledVector(forward, amount);
+    this.pivot.addScaledVector(forward, amount);
+    this.pivotRadius = Math.max(1, this.currentCamera.position.distanceTo(this.pivot));
+    this.markMoved();
   }
 
   handleContextMenu(event) {
     event.preventDefault();
+  }
+
+  focusCameraOnBounds(center, radius) {
+    if (!this.currentCamera) {
+      this.setFocusTarget(center, radius);
+      return;
+    }
+
+    const distance = THREE.MathUtils.clamp(radius * 2.3, 6, 5000);
+    const viewDir = new THREE.Vector3(1, 0.65, 1).normalize();
+
+    this.currentCamera.position.set(
+      center.x + viewDir.x * distance,
+      center.y + viewDir.y * distance,
+      center.z + viewDir.z * distance
+    );
+
+    const dir = new THREE.Vector3().subVectors(center, this.currentCamera.position).normalize();
+    this.setOrientationFromDirection(dir);
+    this.currentCamera.lookAt(center);
+    this.setFocusTarget(center, distance, radius);
+  }
+
+  getForward() {
+    return new THREE.Vector3(0, 0, -1)
+      .applyEuler(new THREE.Euler(this.pitch, this.yaw, 0, "YXZ"))
+      .normalize();
+  }
+
+  getRight(forward = this.getForward()) {
+    return new THREE.Vector3().crossVectors(forward, WORLD_UP).normalize();
+  }
+
+  getUp(forward = this.getForward()) {
+    return new THREE.Vector3().crossVectors(this.getRight(forward), forward).normalize();
+  }
+
+  getSpeedMultiplier() {
+    if (this.keys.shift) return 4;
+    if (this.keys.alt) return 0.25;
+    return 1;
+  }
+
+  panByScreenDelta(dx, dy, distance) {
+    if (!this.currentCamera) {
+      return;
+    }
+
+    const forward = this.getForward();
+    const right = this.getRight(forward);
+    const up = this.getUp(forward);
+    const scale = Math.max(0.05, distance * this.panScale);
+    const delta = new THREE.Vector3()
+      .addScaledVector(right, -dx * scale)
+      .addScaledVector(up, dy * scale);
+
+    this.currentCamera.position.add(delta);
+    this.pivot.add(delta);
+  }
+
+  orbitByScreenDelta(dx, dy) {
+    if (!this.currentCamera) {
+      return;
+    }
+
+    this.yaw -= dx * this.orbitSensitivity;
+    this.pitch = THREE.MathUtils.clamp(this.pitch - dy * this.orbitSensitivity, MIN_PITCH, MAX_PITCH);
+
+    const forward = this.getForward();
+    this.currentCamera.position.copy(this.pivot).addScaledVector(forward, -this.pivotRadius);
+  }
+
+  isNavigationPointer(event) {
+    return this.isRightButton(event) || this.isMiddleButton(event) || (this.isLeftButton(event) && event.altKey);
+  }
+
+  isLeftButton(event) {
+    return (event.buttons & 1) !== 0;
+  }
+
+  isRightButton(event) {
+    return (event.buttons & 2) !== 0;
+  }
+
+  isMiddleButton(event) {
+    return (event.buttons & 4) !== 0;
+  }
+
+  markMoved() {
+    this.onUserMove?.();
   }
 }

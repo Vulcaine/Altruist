@@ -25,13 +25,16 @@ namespace Altruist.Dashboard
     public sealed class WorldDashboardController : ControllerBase
     {
         private readonly IGameWorldOrganizer3D _worldOrganizer;
+        private readonly IDashboardGizmoRegistry _gizmos;
         private readonly JsonSerializerOptions _jsonOptions;
 
         public WorldDashboardController(
             IGameWorldOrganizer3D worldOrganizer,
+            IDashboardGizmoRegistry gizmos,
             JsonSerializerOptions jsonOptions)
         {
             _worldOrganizer = worldOrganizer;
+            _gizmos = gizmos;
             _jsonOptions = jsonOptions;
         }
 
@@ -90,10 +93,21 @@ namespace Altruist.Dashboard
                 WorldIndex = world.Index.Index,
                 WorldName = world.Index.Name ?? string.Empty,
                 GeneratedAtUtc = DateTime.UtcNow,
-                Partitions = partitionDtos
+                Partitions = partitionDtos,
+                Gizmos = _gizmos.GetSnapshot(world.Index.Index).ToList()
             };
 
             return Ok(snapshot);
+        }
+
+        [HttpGet("{worldIndex:int}/gizmos")]
+        public ActionResult<IEnumerable<DashboardGizmo>> GetWorldGizmos(int worldIndex)
+        {
+            var world = _worldOrganizer.GetWorld(worldIndex);
+            if (world is null)
+                return NotFound(new { message = $"World {worldIndex} not found." });
+
+            return Ok(_gizmos.GetSnapshot(worldIndex));
         }
 
         [HttpGet("{worldIndex:int}/objects/stream")]
@@ -205,6 +219,8 @@ namespace Altruist.Dashboard
         public DateTime GeneratedAtUtc { get; set; }
 
         public List<WorldPartitionObjectsDto> Partitions { get; set; } = new();
+
+        public List<DashboardGizmo> Gizmos { get; set; } = new();
     }
 
     public sealed class WorldPartitionObjectsDto

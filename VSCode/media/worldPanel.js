@@ -10,6 +10,8 @@ const state = {
   error: "",
   selectedObjectId: null,
   filter: "",
+  hiddenGizmoIds: new Set(),
+  hiddenGizmoCategories: new Set(),
   websocketState: "idle",
   websocketError: "",
   reconnectTimer: null,
@@ -21,6 +23,7 @@ const renderer = new WorldRenderer(inputController);
 let worldSelect = null;
 let objectSearch = null;
 let objectList = null;
+let gizmoList = null;
 let inspector = null;
 let viewport = null;
 let ws = null;
@@ -78,7 +81,7 @@ function renderShell() {
     return;
   }
 
-  const environmentMode = state.bootstrap?.environmentMode || "Unknown";
+  const environmentMode = resolveEnvironmentMode();
   const worlds = state.bootstrap?.worlds || [];
   const selectedWorldIndex = state.bootstrap?.selectedWorldIndex;
   const websocketChip = buildWebsocketChip();
@@ -96,7 +99,7 @@ function renderShell() {
           <div class="toolbar-subtitle">Native VS Code 3D inspection panel backed by the live dashboard snapshot and websocket stream.</div>
         </div>
         <div class="toolbar-actions">
-          <label class="chip">
+          <label class="chip world-picker">
             <strong>World</strong>
             <select id="world-select">
               ${worlds
@@ -123,8 +126,10 @@ function renderShell() {
               <span class="chip"><strong>Objects</strong> ${getObjects().length}</span>
             </div>
             <div class="chip-row">
-              <span class="chip">Orbit: drag</span>
-              <span class="chip">Pan: right-drag</span>
+              <span class="chip">Look: RMB drag</span>
+              <span class="chip">Move: WASD + Q/E</span>
+              <span class="chip">Pan: MMB drag</span>
+              <span class="chip">Orbit: Alt + LMB</span>
               <span class="chip">Zoom: wheel</span>
             </div>
           </div>
@@ -155,6 +160,13 @@ function renderShell() {
             <input id="object-search" class="search-input" placeholder="Filter by archetype, instance id or client id..." value="${escapeAttribute(state.filter)}" />
             <div id="object-list" class="object-list"></div>
           </section>
+          <section class="sidebar-section" style="min-height: 0;">
+            <div class="section-title">
+              <h2>Gizmos</h2>
+              <span class="hint">${getGizmos().length} registered</span>
+            </div>
+            <div id="gizmo-list" class="object-list"></div>
+          </section>
           <section class="sidebar-section">
             <div class="hint">Click an object row or click inside the scene to inspect and focus it.</div>
           </section>
@@ -166,6 +178,7 @@ function renderShell() {
   worldSelect = document.getElementById("world-select");
   objectSearch = document.getElementById("object-search");
   objectList = document.getElementById("object-list");
+  gizmoList = document.getElementById("gizmo-list");
   inspector = document.getElementById("inspector");
   viewport = document.getElementById("viewport");
 
@@ -183,7 +196,7 @@ function renderShell() {
     renderObjectList();
   });
 
-  if (!state.bootstrap || state.bootstrap.environmentMode !== "3D") {
+  if (!state.bootstrap || resolveEnvironmentMode() !== "3D") {
     renderer.dispose();
     viewport.innerHTML = `
       <div class="unsupported-state">
@@ -201,10 +214,11 @@ function renderShell() {
 
   renderInspector();
   renderObjectList();
+  renderGizmoList();
 }
 
 function refreshWorld() {
-  if (!state.bootstrap || !viewport || state.bootstrap.environmentMode !== "3D") {
+  if (!state.bootstrap || !viewport || resolveEnvironmentMode() !== "3D") {
     renderInspector();
     renderObjectList();
     return;
@@ -239,6 +253,7 @@ function refreshWorld() {
   }
 
   renderer.setSnapshot(state.snapshot);
+  renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
 
   if (!findObject(state.selectedObjectId)) {
     state.selectedObjectId = getObjects()[0]?.instanceId || null;
@@ -251,6 +266,7 @@ function refreshWorld() {
 
   renderInspector();
   renderObjectList();
+  renderGizmoList();
 }
 
 function renderObjectList() {
@@ -300,6 +316,84 @@ function renderObjectList() {
   }
 }
 
+function renderGizmoList() {
+  if (!gizmoList) {
+    return;
+  }
+
+  const gizmos = getGizmos()
+    .slice()
+    .sort((left, right) => {
+      const leftKey = `${left.category}|${left.id}`;
+      const rightKey = `${right.category}|${right.id}`;
+      return leftKey.localeCompare(rightKey);
+    });
+
+  if (!gizmos.length) {
+    gizmoList.innerHTML = `<div class="empty-state">No dashboard gizmos registered.</div>`;
+    return;
+  }
+
+  const categories = Array.from(new Set(gizmos.map((gizmo) => gizmo.category || "uncategorized")))
+    .sort((left, right) => left.localeCompare(right));
+
+  gizmoList.innerHTML = `
+    <div class="object-row">
+      <div class="object-name"><strong>Categories</strong></div>
+      ${categories
+        .map((category) => `
+          <label class="object-meta">
+            <input type="checkbox" data-gizmo-category="${escapeAttribute(category)}" ${state.hiddenGizmoCategories.has(category.toLowerCase()) ? "" : "checked"} />
+            ${escapeHtml(category)}
+          </label>
+        `)
+        .join("")}
+    </div>
+    ${gizmos
+      .map((gizmo) => {
+        const hidden = state.hiddenGizmoIds.has(gizmo.id);
+        return `
+          <label class="object-row">
+            <div class="object-name">
+              <input type="checkbox" data-gizmo-id="${escapeAttribute(gizmo.id)}" ${hidden ? "" : "checked"} />
+              <strong>${escapeHtml(gizmo.label || gizmo.id)}</strong>
+              <span class="chip">${escapeHtml(gizmo.category || "-")}</span>
+            </div>
+            <div class="object-meta">${escapeHtml(gizmo.id)}</div>
+            <div class="object-meta">${escapeHtml(gizmo.type || "shape")} · ${escapeHtml(gizmo.source || "-")}</div>
+          </label>
+        `;
+      })
+      .join("")}
+  `;
+
+  for (const input of gizmoList.querySelectorAll("[data-gizmo-category]")) {
+    input.addEventListener("change", () => {
+      const category = String(input.dataset.gizmoCategory || "").toLowerCase();
+      if (input.checked) {
+        state.hiddenGizmoCategories.delete(category);
+      } else {
+        state.hiddenGizmoCategories.add(category);
+      }
+      renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
+      renderGizmoList();
+    });
+  }
+
+  for (const input of gizmoList.querySelectorAll("[data-gizmo-id]")) {
+    input.addEventListener("change", () => {
+      const id = input.dataset.gizmoId || "";
+      if (input.checked) {
+        state.hiddenGizmoIds.delete(id);
+      } else {
+        state.hiddenGizmoIds.add(id);
+      }
+      renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
+      renderGizmoList();
+    });
+  }
+}
+
 function renderInspector() {
   if (!inspector) {
     return;
@@ -344,7 +438,7 @@ function connectWebSocket() {
   disconnectWebSocket();
 
   const websocketUrl = state.bootstrap?.websocketUrl;
-  if (!websocketUrl || state.bootstrap?.environmentMode !== "3D") {
+  if (!websocketUrl || resolveEnvironmentMode() !== "3D") {
     state.shouldReconnect = false;
     state.websocketState = "idle";
     state.websocketError = websocketUrl ? "" : "World websocket URL was not provided.";
@@ -378,7 +472,7 @@ function connectWebSocket() {
 
     ws.addEventListener("close", () => {
       ws = null;
-      if (state.shouldReconnect && state.bootstrap?.environmentMode === "3D") {
+      if (state.shouldReconnect && resolveEnvironmentMode() === "3D") {
         state.websocketState = "closed";
         state.websocketError = "World stream closed. Retrying in 2s.";
         rerenderToolbarOnly();
@@ -430,12 +524,18 @@ function handleRealtimeMessage(raw) {
 
   renderer.applyRealtimePacket(envelope.message);
   renderer.setSelectedObject(state.selectedObjectId);
+  renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
   renderInspector();
   renderObjectList();
+  renderGizmoList();
 }
 
 function getObjects() {
   return renderer.getObjects();
+}
+
+function getGizmos() {
+  return renderer.getGizmos();
 }
 
 function findObject(instanceId) {
@@ -491,6 +591,19 @@ function buildWebsocketChip() {
 
   const detail = state.websocketError || state.bootstrap?.websocketUrl || "No websocket";
   return `<span class="chip ${statusClass}" data-role="socket-chip"><strong>Stream</strong> ${escapeHtml(label)}: ${escapeHtml(detail)}</span>`;
+}
+
+function resolveEnvironmentMode() {
+  const configured = String(state.bootstrap?.environmentMode || "").trim().toUpperCase();
+  if (configured === "2D" || configured === "3D") {
+    return configured;
+  }
+
+  if (state.bootstrap?.snapshot || (state.bootstrap?.worlds || []).length > 0) {
+    return "3D";
+  }
+
+  return "Unknown";
 }
 
 function renderDetail(label, value) {

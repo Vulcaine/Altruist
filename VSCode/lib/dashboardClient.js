@@ -20,6 +20,13 @@ class DashboardClient {
     });
   }
 
+  async updateConfigBatch(entries) {
+    return this.#fetchJson(`${SUMMARY_PATH}/config/update-batch`, {
+      method: "POST",
+      body: JSON.stringify(entries || []),
+    });
+  }
+
   async getWorlds() {
     return this.#fetchJson(WORLDS_PATH, { cache: "no-store" });
   }
@@ -27,6 +34,13 @@ class DashboardClient {
   async getWorldObjectsSnapshot(worldIndex) {
     return this.#fetchJson(
       `${WORLDS_PATH}/${encodeURIComponent(worldIndex)}/objects`,
+      { cache: "no-store" }
+    );
+  }
+
+  async getWorldGizmos(worldIndex) {
+    return this.#fetchJson(
+      `${WORLDS_PATH}/${encodeURIComponent(worldIndex)}/gizmos`,
       { cache: "no-store" }
     );
   }
@@ -115,6 +129,16 @@ class DashboardClient {
           typeKey,
           items,
         }),
+      }
+    );
+  }
+
+  async queryVault(typeKey, sql) {
+    return this.#fetchJson(
+      `${VAULTS_PATH}/${encodeURIComponent(typeKey)}/query`,
+      {
+        method: "POST",
+        body: JSON.stringify({ sql }),
       }
     );
   }

@@ -133,6 +133,13 @@ button:hover {
   color: var(--text);
 }
 
+.world-picker {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
 .chip.status-online {
   border-color: rgba(34, 197, 94, 0.24);
   background: rgba(34, 197, 94, 0.12);
@@ -203,7 +210,8 @@ button:hover {
 
 .sidebar-panel {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  overflow: hidden;
 }
 
 .sidebar-section {
@@ -334,7 +342,7 @@ button:hover {
   }
 
   .sidebar-panel {
-    grid-template-rows: auto auto minmax(280px, 1fr) auto;
+    grid-template-rows: auto auto minmax(240px, 1fr) minmax(240px, 1fr) auto;
   }
 }
 
