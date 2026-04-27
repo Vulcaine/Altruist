@@ -19,10 +19,10 @@ namespace Altruist.Gaming;
 public interface ISpatialCollisionDispatcher
 {
     /// <summary>One-shot hit dispatch (combat). No enter/stay/exit tracking.</summary>
-    void DispatchHit(object entityA, object entityB);
+    void DispatchHit(object entityA, object entityB, CollisionHit? hit = null);
 
     /// <summary>Dispatch a specific event phase between two objects.</summary>
-    void Dispatch(object entityA, object entityB, Type eventType);
+    void Dispatch(object entityA, object entityB, Type eventType, object? payload = null);
 
     /// <summary>Run full overlap detection tick (enter/stay/exit) for a world.</summary>
     void Tick(IGameWorldManager3D world, float collisionRadius = 200f);
@@ -60,13 +60,19 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         _logger = loggerFactory.CreateLogger<SpatialCollisionDispatcher>();
     }
 
-    public void DispatchHit(object entityA, object entityB)
+    public void DispatchHit(object entityA, object entityB, CollisionHit? hit = null)
     {
-        Dispatch(entityA, entityB, typeof(CollisionHit));
+        Dispatch(entityA, entityB, typeof(CollisionHit), hit ?? new CollisionHit
+        {
+            Source = entityA,
+            Target = entityB,
+        });
     }
 
-    public void Dispatch(object entityA, object entityB, Type eventType)
+    public void Dispatch(object entityA, object entityB, Type eventType, object? payload = null)
     {
+        payload ??= Activator.CreateInstance(eventType);
+
         var handlers = CollisionHandlerRegistry.GetHandlers(
             entityA.GetType(), entityB.GetType(), eventType);
 
@@ -74,7 +80,10 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         {
             try
             {
-                ((Action<object, object>)handler.Invoker)(entityA, entityB);
+                if (handler.ParamTypeA.IsInstanceOfType(entityA) && handler.ParamTypeB.IsInstanceOfType(entityB))
+                    ((Action<object?, object, object>)handler.Invoker)(payload, entityA, entityB);
+                else if (handler.ParamTypeA.IsInstanceOfType(entityB) && handler.ParamTypeB.IsInstanceOfType(entityA))
+                    ((Action<object?, object, object>)handler.Invoker)(payload, entityB, entityA);
             }
             catch (Exception ex)
             {

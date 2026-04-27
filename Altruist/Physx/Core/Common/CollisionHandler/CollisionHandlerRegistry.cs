@@ -63,30 +63,40 @@ namespace Altruist.Physx
             {
                 var pars = method.GetParameters();
 
-                // Require exactly two parameters: the two entities/components.
-                if (pars.Length != 2)
+                // Require event payload first, followed by the two entities/components.
+                if (pars.Length != 3)
                     throw new InvalidOperationException(
-                        $"Method {type.Name}.{method.Name} marked with [CollisionEvent] must have exactly 2 parameters.");
+                        $"Method {type.Name}.{method.Name} marked with [CollisionEvent] must have exactly 3 parameters: event payload, entity A, entity B.");
 
-                var paramA = pars[0].ParameterType;
-                var paramB = pars[1].ParameterType;
+                var payloadType = pars[0].ParameterType;
+                var paramA = pars[1].ParameterType;
+                var paramB = pars[2].ParameterType;
+
+                if (!payloadType.IsClass || payloadType.IsAbstract)
+                    throw new InvalidOperationException(
+                        $"First parameter of {type.Name}.{method.Name} must be a concrete event payload reference type.");
+
+                if (!payloadType.IsAssignableFrom(attr.EventType) && !attr.EventType.IsAssignableFrom(payloadType))
+                    throw new InvalidOperationException(
+                        $"First parameter of {type.Name}.{method.Name} must be compatible with the [CollisionEvent] event type.");
 
                 if (!paramA.IsClass || paramA.IsAbstract)
                     throw new InvalidOperationException(
-                        $"First parameter of {type.Name}.{method.Name} must be a concrete reference type.");
+                        $"Second parameter of {type.Name}.{method.Name} must be a concrete reference type.");
 
                 if (!paramB.IsClass || paramB.IsAbstract)
                     throw new InvalidOperationException(
-                        $"Second parameter of {type.Name}.{method.Name} must be a concrete reference type.");
+                        $"Third parameter of {type.Name}.{method.Name} must be a concrete reference type.");
 
                 if (method.ReturnType != typeof(void))
                     throw new InvalidOperationException(
                         $"Method {type.Name}.{method.Name} marked with [CollisionEvent] must return void.");
 
-                // Build a compiled delegate Action<object, object> that:
+                // Build a compiled delegate Action<object?, object, object> that:
+                //   - casts the event payload first
                 //   - casts the two objects to the method's parameter types
                 //   - calls the method on the given instance.
-                var invoker = BuildInvoker(instance, method, paramA, paramB);
+                var invoker = BuildInvoker(instance, method, paramA, paramB, payloadType);
 
                 var descriptor = new CollisionHandlerRegistry.HandlerDescriptor(
                     HandlerType: type,
@@ -108,26 +118,29 @@ namespace Altruist.Physx
         }
 
         /// <summary>
-        /// Builds an Action&lt;object, object&gt; that casts arguments to param types and invokes the method.
+        /// Builds an Action&lt;object?, object, object&gt; that casts arguments to param types and invokes the method.
         /// All reflection/Expression stuff happens once at startup.
         /// </summary>
         private static Delegate BuildInvoker(
             object target,
             MethodInfo method,
             Type paramA,
-            Type paramB)
+            Type paramB,
+            Type payloadType)
         {
             var targetConst = Expression.Constant(target);
 
+            var payload = Expression.Parameter(typeof(object), "payload");
             var argA = Expression.Parameter(typeof(object), "a");
             var argB = Expression.Parameter(typeof(object), "b");
 
+            var castPayload = Expression.Convert(payload, payloadType);
             var castA = Expression.Convert(argA, paramA);
             var castB = Expression.Convert(argB, paramB);
 
-            var call = Expression.Call(targetConst, method, castA, castB);
+            var call = Expression.Call(targetConst, method, castPayload, castA, castB);
 
-            var lambda = Expression.Lambda<Action<object, object>>(call, argA, argB);
+            var lambda = Expression.Lambda<Action<object?, object, object>>(call, payload, argA, argB);
             return lambda.Compile();
         }
     }

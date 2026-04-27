@@ -33,7 +33,6 @@ public class DamagePacket : IPacketBase
     [Key(1)] public uint VID { get; set; }
     [Key(2)] public byte Flags { get; set; }
     [Key(3)] public int Damage { get; set; }
-    [Key(4)] public uint CustomFlags { get; set; }
 }
 
 [MessagePackObject]
@@ -120,7 +119,6 @@ public abstract class AltruistCombatPortal : Portal
             VID = hit.Target.VirtualId,
             Flags = (byte)hit.Flags,
             Damage = hit.Damage,
-            CustomFlags = hit.CustomFlags,
         };
 
         foreach (var cid in GetNearbyClientIds(center, 5000f))

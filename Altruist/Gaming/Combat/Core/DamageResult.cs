@@ -15,17 +15,15 @@ public enum DamageFlags : uint
     Dodge = 8,
     Block = 16,
     Miss = 32,
+    Killed = 1u << 31,
 }
 
 /// <summary>
-/// Framework-level damage metadata. Core flags stay small and reusable, while
-/// CustomFlags are reserved for game-specific semantics.
+/// Framework-level damage metadata.
 /// </summary>
-public readonly record struct DamageTraits(
-    DamageFlags Flags,
-    uint CustomFlags = 0)
+public readonly record struct DamageTraits(DamageFlags Flags)
 {
-    public static readonly DamageTraits None = new(DamageFlags.None, 0);
+    public static readonly DamageTraits None = new(DamageFlags.None);
 }
 
 /// <summary>
@@ -35,11 +33,10 @@ public readonly record struct DamageSpec(
     int Damage,
     DamageTraits Traits)
 {
-    public DamageSpec(int damage, DamageFlags flags, uint customFlags = 0)
-        : this(damage, new DamageTraits(flags, customFlags)) { }
+    public DamageSpec(int damage, DamageFlags flags)
+        : this(damage, new DamageTraits(flags)) { }
 
     public DamageFlags Flags => Traits.Flags;
-    public uint CustomFlags => Traits.CustomFlags;
 }
 
 public enum SweepType
@@ -55,11 +52,10 @@ public readonly record struct HitResult(
     DamageTraits Traits,
     bool Killed)
 {
-    public HitResult(ICombatEntity target, int damage, DamageFlags flags, bool killed, uint customFlags = 0)
-        : this(target, damage, new DamageTraits(flags, customFlags), killed) { }
+    public HitResult(ICombatEntity target, int damage, DamageFlags flags, bool killed)
+        : this(target, damage, new DamageTraits(flags), killed) { }
 
     public DamageFlags Flags => Traits.Flags;
-    public uint CustomFlags => Traits.CustomFlags;
 }
 
 public readonly record struct SweepResult(

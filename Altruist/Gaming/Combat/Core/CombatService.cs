@@ -3,7 +3,9 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist;
 using Altruist.Gaming.ThreeD;
+using Altruist.Physx;
 using Microsoft.Extensions.Logging;
 using System.Numerics;
 
@@ -48,7 +50,7 @@ public class CombatService : ICombatService
         _logger.LogInformation("CombatService using damage calculator: {Type}", _calculator.GetType().FullName);
     }
 
-    public HitResult Attack(ICombatEntity attacker, ICombatEntity target)
+    public HitResult Attack(ICombatEntity attacker, ICombatEntity target, object? context = null)
     {
         // Transparent lag compensation: if enabled and client sent a tick, rewind
         if (_lagCompensation != null && !_lagCompensation.IsRewound)
@@ -58,23 +60,23 @@ public class CombatService : ICombatService
             {
                 HitResult result = default!;
                 _lagCompensation.RewindWorld(clientTick, () =>
-                    result = AttackInternal(attacker, target));
+                    result = AttackInternal(attacker, target, context));
                 return result;
             }
         }
-        return AttackInternal(attacker, target);
+        return AttackInternal(attacker, target, context);
     }
 
-    private HitResult AttackInternal(ICombatEntity attacker, ICombatEntity target)
+    private HitResult AttackInternal(ICombatEntity attacker, ICombatEntity target, object? context = null)
     {
         if (target.IsDead)
             return new HitResult(target, 0, DamageFlags.Miss, false);
 
         var spec = _calculator.Calculate(attacker, target);
-        return ApplyDamage(attacker, target, spec.Damage, spec.Flags, spec.CustomFlags);
+        return ApplyDamage(attacker, target, spec.Damage, spec.Flags, context);
     }
 
-    public HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal, uint customFlags = 0)
+    public HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal, object? context = null)
     {
         if (target.IsDead)
             return new HitResult(target, 0, DamageFlags.Miss, false);
@@ -82,18 +84,27 @@ public class CombatService : ICombatService
         target.Health = Math.Max(0, target.Health - damage);
         bool killed = target.Health <= 0;
 
-        // Fire collision handlers (same API as physics collision events)
-        _collisionDispatcher?.DispatchHit(source, target);
+        var payloadFlags = BuildPayloadFlags(flags, killed);
 
-        OnHit?.Invoke(new HitEvent(source, target, damage, flags, customFlags));
+        // Fire collision handlers (same API as physics collision events)
+        _collisionDispatcher?.DispatchHit(source, target, new CollisionHit
+        {
+            Source = source,
+            Target = target,
+            Damage = damage,
+            Flags = payloadFlags,
+            Context = context,
+        });
+
+        OnHit?.Invoke(new HitEvent(source, target, damage, killed ? flags.SetFlag(DamageFlags.Killed) : flags));
 
         if (killed)
             Kill(target, source);
 
-        return new HitResult(target, damage, flags, killed, customFlags);
+        return new HitResult(target, damage, flags, killed);
     }
 
-    public SweepResult Sweep(ICombatEntity attacker, SweepQuery query, int? damage = null, DamageFlags flags = DamageFlags.Normal, uint customFlags = 0)
+    public SweepResult Sweep(ICombatEntity attacker, SweepQuery query, int? damage = null, DamageFlags flags = DamageFlags.Normal, object? context = null)
     {
         // Transparent lag compensation: if enabled and client sent a tick, rewind
         if (_lagCompensation != null && !_lagCompensation.IsRewound)
@@ -103,14 +114,14 @@ public class CombatService : ICombatService
             {
                 SweepResult result = default!;
                 _lagCompensation.RewindWorld(clientTick, () =>
-                    result = SweepInternal(attacker, query, damage, flags, customFlags));
+                    result = SweepInternal(attacker, query, damage, flags, context));
                 return result;
             }
         }
-        return SweepInternal(attacker, query, damage, flags, customFlags);
+        return SweepInternal(attacker, query, damage, flags, context);
     }
 
-    private SweepResult SweepInternal(ICombatEntity attacker, SweepQuery query, int? damage, DamageFlags flags, uint customFlags)
+    private SweepResult SweepInternal(ICombatEntity attacker, SweepQuery query, int? damage, DamageFlags flags, object? context)
     {
         var targets = FindEntitiesInSweep(query);
         var hits = new List<HitResult>();
@@ -122,9 +133,9 @@ public class CombatService : ICombatService
 
             HitResult hit;
             if (damage.HasValue)
-                hit = ApplyDamage(attacker, target, damage.Value, flags, customFlags);
+                hit = ApplyDamage(attacker, target, damage.Value, flags, context);
             else
-                hit = AttackInternal(attacker, target);
+                hit = AttackInternal(attacker, target, context);
 
             hits.Add(hit);
 
@@ -135,6 +146,11 @@ public class CombatService : ICombatService
         var result = new SweepResult(attacker, query, hits);
         OnSweep?.Invoke(new SweepEvent(attacker, query, hits));
         return result;
+    }
+
+    private static uint BuildPayloadFlags(DamageFlags flags, bool killed)
+    {
+        return (uint)(killed ? flags.SetFlag(DamageFlags.Killed) : flags);
     }
 
     public void Kill(ICombatEntity entity, ICombatEntity? killer = null)
