@@ -1,0 +1,416 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="utf-8">
+    <title>Altruist Dashboard</title>
+    <base href="/">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #0f172a;
+        color: #e5e7eb;
+      }
+    </style>
+  <link rel="stylesheet" href="styles.css"><style ng-app-id="ng">
+.dashboard-root[_ngcontent-ng-c4242450497] {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #020617;
+  color: #e5e7eb;
+}
+.topbar[_ngcontent-ng-c4242450497] {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background:
+    linear-gradient(
+      90deg,
+      #111827,
+      #020617);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+.topbar-left[_ngcontent-ng-c4242450497] {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.brand[_ngcontent-ng-c4242450497] {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 13px;
+  color: #38bdf8;
+}
+.brand-sub[_ngcontent-ng-c4242450497] {
+  font-size: 13px;
+  color: #9ca3af;
+}
+.topbar-right[_ngcontent-ng-c4242450497] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.badge[_ngcontent-ng-c4242450497] {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+}
+.badge.env[_ngcontent-ng-c4242450497] {
+  color: #a855f7;
+  border-color: rgba(168, 85, 247, 0.7);
+}
+.layout[_ngcontent-ng-c4242450497] {
+  flex: 1 0 auto;
+  display: flex;
+}
+.sidebar[_ngcontent-ng-c4242450497] {
+  width: 220px;
+  padding: 12px 8px;
+  background:
+    radial-gradient(
+      circle at top left,
+      #111827,
+      #020617 60%);
+  border-right: 1px solid rgba(31, 41, 55, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.sidebar-section[_ngcontent-ng-c4242450497] {
+  padding: 8px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: #6b7280;
+}
+.sidebar-title[_ngcontent-ng-c4242450497] {
+  margin-bottom: 4px;
+}
+.nav-item[_ngcontent-ng-c4242450497] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: #9ca3af;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    transform 80ms ease;
+}
+.nav-item[_ngcontent-ng-c4242450497]:hover {
+  background: rgba(15, 23, 42, 0.8);
+  color: #e5e7eb;
+  transform: translateX(1px);
+}
+.nav-item.active[_ngcontent-ng-c4242450497] {
+  background:
+    linear-gradient(
+      90deg,
+      #1d283a,
+      #0f172a);
+  color: #e5e7eb;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+}
+.nav-icon[_ngcontent-ng-c4242450497] {
+  width: 18px;
+  text-align: center;
+}
+.content[_ngcontent-ng-c4242450497] {
+  flex: 1 1 auto;
+  padding: 12px 16px;
+  overflow: visible;
+  background:
+    radial-gradient(
+      circle at top,
+      #020617 0,
+      #020617 40%,
+      #000 100%);
+}
+/*# sourceMappingURL=/app.component.css.map */</style><style ng-app-id="ng">@charset "UTF-8";
+
+
+.session-root[_ngcontent-ng-c2498798811] {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  background: #020617;
+  color: #e5e7eb;
+}
+.session-header[_ngcontent-ng-c2498798811] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.session-header[_ngcontent-ng-c2498798811]   h1[_ngcontent-ng-c2498798811] {
+  margin: 0;
+  font-size: 1.5rem;
+}
+.session-header[_ngcontent-ng-c2498798811]   p[_ngcontent-ng-c2498798811] {
+  margin: 0.25rem 0 0;
+  opacity: 0.8;
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+.session-header-actions[_ngcontent-ng-c2498798811] {
+  display: flex;
+  gap: 0.5rem;
+}
+.session-header-actions[_ngcontent-ng-c2498798811]   .btn[_ngcontent-ng-c2498798811] {
+  cursor: pointer;
+}
+.session-error[_ngcontent-ng-c2498798811] {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
+  font-size: 0.875rem;
+}
+.session-layout[_ngcontent-ng-c2498798811] {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);
+  gap: 1.5rem;
+}
+.session-panel[_ngcontent-ng-c2498798811] {
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+}
+.panel-header[_ngcontent-ng-c2498798811] {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.panel-header[_ngcontent-ng-c2498798811]   h2[_ngcontent-ng-c2498798811] {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.panel-header[_ngcontent-ng-c2498798811]   .panel-meta[_ngcontent-ng-c2498798811] {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  color: #9ca3af;
+}
+.panel-empty[_ngcontent-ng-c2498798811] {
+  padding: 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+}
+.panel-empty--muted[_ngcontent-ng-c2498798811] {
+  opacity: 0.8;
+}
+.table-wrapper[_ngcontent-ng-c2498798811] {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
+}
+.session-table[_ngcontent-ng-c2498798811] {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.session-table[_ngcontent-ng-c2498798811]   th[_ngcontent-ng-c2498798811], 
+.session-table[_ngcontent-ng-c2498798811]   td[_ngcontent-ng-c2498798811] {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.5);
+  vertical-align: middle;
+}
+.session-table[_ngcontent-ng-c2498798811]   thead[_ngcontent-ng-c2498798811]   th[_ngcontent-ng-c2498798811] {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  color: #9ca3af;
+}
+.session-table[_ngcontent-ng-c2498798811]   tbody[_ngcontent-ng-c2498798811]   tr[_ngcontent-ng-c2498798811]:hover {
+  background: rgba(15, 23, 42, 0.9);
+}
+.session-table[_ngcontent-ng-c2498798811]   .col-actions[_ngcontent-ng-c2498798811] {
+  text-align: right;
+  white-space: nowrap;
+}
+.room-row[_ngcontent-ng-c2498798811] {
+  cursor: pointer;
+}
+.room-row--active[_ngcontent-ng-c2498798811] {
+  background: rgba(59, 130, 246, 0.12);
+}
+.room-row--active[_ngcontent-ng-c2498798811]:hover {
+  background: rgba(59, 130, 246, 0.18);
+}
+.room-id[_ngcontent-ng-c2498798811], 
+.conn-id[_ngcontent-ng-c2498798811] {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+.badge[_ngcontent-ng-c2498798811] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #bfdbfe;
+  font-size: 0.75rem;
+}
+.btn[_ngcontent-ng-c2498798811] {
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+.btn.btn-secondary[_ngcontent-ng-c2498798811], 
+.btn.btn-primary[_ngcontent-ng-c2498798811] {
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+}
+.btn.btn-secondary[_ngcontent-ng-c2498798811] {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease,
+    filter 120ms ease;
+}
+.btn.btn-secondary[_ngcontent-ng-c2498798811]:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.btn.btn-secondary[_ngcontent-ng-c2498798811]:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+  filter: none;
+}
+.btn.btn-secondary[_ngcontent-ng-c2498798811] {
+  border-color: rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.8);
+  padding: 0.4rem 0.8rem;
+}
+.btn.btn-primary[_ngcontent-ng-c2498798811] {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease,
+    filter 120ms ease;
+}
+.btn.btn-primary[_ngcontent-ng-c2498798811]:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.btn.btn-primary[_ngcontent-ng-c2498798811]:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+  filter: none;
+}
+.btn.btn-primary[_ngcontent-ng-c2498798811] {
+  background:
+    linear-gradient(
+      135deg,
+      #4f46e5,
+      #7c3aed);
+  border-color: rgba(129, 140, 248, 0.9);
+  padding: 0.4rem 0.8rem;
+}
+.btn.btn-link[_ngcontent-ng-c2498798811] {
+  background: none;
+  color: #93c5fd;
+  padding: 0;
+  margin-left: 0.2rem;
+  border: none;
+}
+.btn.btn-link--danger[_ngcontent-ng-c2498798811] {
+  color: #fecaca;
+}
+.btn[_ngcontent-ng-c2498798811] {
+}
+.btn.btn-solid-danger[_ngcontent-ng-c2498798811] {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease,
+    filter 120ms ease;
+}
+.btn.btn-solid-danger[_ngcontent-ng-c2498798811]:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.btn.btn-solid-danger[_ngcontent-ng-c2498798811]:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+  filter: none;
+}
+.btn.btn-solid-danger[_ngcontent-ng-c2498798811] {
+  border-color: rgba(248, 113, 113, 0.7);
+  background: rgba(248, 113, 113, 0.16);
+  color: #fecaca;
+  padding: 0.3rem 0.7rem;
+}
+.btn[_ngcontent-ng-c2498798811]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/*# sourceMappingURL=/session.component.css.map */</style></head>
+  <body><!--nghm--><script type="text/javascript" id="ng-event-dispatch-contract">(()=>{function p(t,n,r,o,e,i,f,m){return{eventType:t,event:n,targetElement:r,eic:o,timeStamp:e,eia:i,eirp:f,eiack:m}}function u(t){let n=[],r=e=>{n.push(e)};return{c:t,q:n,et:[],etc:[],d:r,h:e=>{r(p(e.type,e,e.target,t,Date.now()))}}}function s(t,n,r){for(let o=0;o<n.length;o++){let e=n[o];(r?t.etc:t.et).push(e),t.c.addEventListener(e,t.h,r)}}function c(t,n,r,o,e=window){let i=u(t);e._ejsas||(e._ejsas={}),e._ejsas[n]=i,s(i,r),s(i,o,!0)}window.__jsaction_bootstrap=c;})();
+</script><script>window.__jsaction_bootstrap(document.body,"ng",["click"],[]);</script>
+    <app-root ng-version="21.2.7" _nghost-ng-c4242450497="" ngh="1" ng-server-context="ssg"><div _ngcontent-ng-c4242450497="" class="dashboard-root"><header _ngcontent-ng-c4242450497="" class="topbar"><div _ngcontent-ng-c4242450497="" class="topbar-left"><a _ngcontent-ng-c4242450497="" routerlink="/summary-view" class="brand-link" href="/summary-view" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="brand">Altruist</span><span _ngcontent-ng-c4242450497="" class="brand-sub">Server Dashboard</span></a></div><div _ngcontent-ng-c4242450497="" class="topbar-right"><span _ngcontent-ng-c4242450497="" class="badge env">3D</span></div></header><div _ngcontent-ng-c4242450497="" class="layout"><nav _ngcontent-ng-c4242450497="" class="sidebar"><div _ngcontent-ng-c4242450497="" class="sidebar-section sidebar-title">Management</div><a _ngcontent-ng-c4242450497="" routerlink="scene" routerlinkactive="active" class="nav-item" href="/scene" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">🗺️</span><span _ngcontent-ng-c4242450497="" class="nav-label">Scene View</span></a><a _ngcontent-ng-c4242450497="" routerlink="cache-view" routerlinkactive="active" class="nav-item" href="/cache-view" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">💾</span><span _ngcontent-ng-c4242450497="" class="nav-label">Cache View</span></a><a _ngcontent-ng-c4242450497="" routerlink="vault-view" routerlinkactive="active" class="nav-item" href="/vault-view" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">🛢️</span><span _ngcontent-ng-c4242450497="" class="nav-label">Vault View</span></a><a _ngcontent-ng-c4242450497="" routerlink="sessions" routerlinkactive="active" class="nav-item active" href="/sessions" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">📡</span><span _ngcontent-ng-c4242450497="" class="nav-label">Sessions</span></a><a _ngcontent-ng-c4242450497="" routerlink="metrics" routerlinkactive="active" class="nav-item" href="/metrics" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">📊</span><span _ngcontent-ng-c4242450497="" class="nav-label">Metrics</span></a></nav><main _ngcontent-ng-c4242450497="" class="content"><router-outlet _ngcontent-ng-c4242450497=""></router-outlet><app-session _nghost-ng-c2498798811="" ngh="0"><div _ngcontent-ng-c2498798811="" class="session-root"><header _ngcontent-ng-c2498798811="" class="session-header"><div _ngcontent-ng-c2498798811=""><h1 _ngcontent-ng-c2498798811="">Sessions</h1><p _ngcontent-ng-c2498798811="">Inspect live rooms and connections on your Altruist server.</p></div><div _ngcontent-ng-c2498798811="" class="session-header-actions"><button _ngcontent-ng-c2498798811="" type="button" class="btn btn-secondary" jsaction="click:;"> Refresh </button></div></header><div _ngcontent-ng-c2498798811="" class="session-error"> Failed to load sessions. </div><!--container--><section _ngcontent-ng-c2498798811="" class="session-layout"><section _ngcontent-ng-c2498798811="" class="session-panel session-panel--rooms"><header _ngcontent-ng-c2498798811="" class="panel-header"><h2 _ngcontent-ng-c2498798811="">Rooms</h2><span _ngcontent-ng-c2498798811="" class="panel-meta"><!--container--> 0 room(s) <!--container--></span></header><div _ngcontent-ng-c2498798811="" class="panel-empty">No rooms currently active.</div><!--container--><!--container--></section><section _ngcontent-ng-c2498798811="" class="session-panel session-panel--connections"><header _ngcontent-ng-c2498798811="" class="panel-header"><h2 _ngcontent-ng-c2498798811="">Connections</h2><span _ngcontent-ng-c2498798811="" class="panel-meta"> Select a room to inspect its connections. <!--container--><!--container--></span></header><div _ngcontent-ng-c2498798811="" class="panel-empty panel-empty--muted"> Select a room on the left to see its connections. </div><!--container--><!--container--></section></section><section _ngcontent-ng-c2498798811="" class="session-panel session-panel--all-connections"><header _ngcontent-ng-c2498798811="" class="panel-header"><h2 _ngcontent-ng-c2498798811="">All Connections</h2><span _ngcontent-ng-c2498798811="" class="panel-meta"><!--container--> 0 connection(s) <!--container--></span></header><div _ngcontent-ng-c2498798811="" class="panel-empty">No active connections.</div><!--container--><!--container--></section></div></app-session><!--container--></main></div></div></app-root>
+  <script src="polyfills.js" type="module"></script><script src="main.js" type="module"></script>
+
+<script id="ng-state" type="application/json">{"__nghData__":[{"t":{"10":"t0","17":"t1","18":"t2","19":"t3","20":"t4","26":"t5","27":"t6","28":"t7","29":"t8","35":"t9","36":"t10","37":"t11","38":"t12"},"c":{"10":[{"i":"t0","r":1}],"17":[],"18":[{"i":"t2","r":1}],"19":[{"i":"t3","r":1}],"20":[],"26":[{"i":"t5","r":1}],"27":[],"28":[{"i":"t7","r":1}],"29":[],"35":[],"36":[{"i":"t10","r":1}],"37":[{"i":"t11","r":1}],"38":[]}},{"c":{"41":[{"i":"c2498798811","r":1}]}}]}</script></body></html>

@@ -1,0 +1,477 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="utf-8">
+    <title>Altruist Dashboard</title>
+    <base href="/">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #0f172a;
+        color: #e5e7eb;
+      }
+    </style>
+  <link rel="stylesheet" href="styles.css"><style ng-app-id="ng">
+.dashboard-root[_ngcontent-ng-c4242450497] {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #020617;
+  color: #e5e7eb;
+}
+.topbar[_ngcontent-ng-c4242450497] {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background:
+    linear-gradient(
+      90deg,
+      #111827,
+      #020617);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+.topbar-left[_ngcontent-ng-c4242450497] {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.brand[_ngcontent-ng-c4242450497] {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 13px;
+  color: #38bdf8;
+}
+.brand-sub[_ngcontent-ng-c4242450497] {
+  font-size: 13px;
+  color: #9ca3af;
+}
+.topbar-right[_ngcontent-ng-c4242450497] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.badge[_ngcontent-ng-c4242450497] {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+}
+.badge.env[_ngcontent-ng-c4242450497] {
+  color: #a855f7;
+  border-color: rgba(168, 85, 247, 0.7);
+}
+.layout[_ngcontent-ng-c4242450497] {
+  flex: 1 0 auto;
+  display: flex;
+}
+.sidebar[_ngcontent-ng-c4242450497] {
+  width: 220px;
+  padding: 12px 8px;
+  background:
+    radial-gradient(
+      circle at top left,
+      #111827,
+      #020617 60%);
+  border-right: 1px solid rgba(31, 41, 55, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.sidebar-section[_ngcontent-ng-c4242450497] {
+  padding: 8px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: #6b7280;
+}
+.sidebar-title[_ngcontent-ng-c4242450497] {
+  margin-bottom: 4px;
+}
+.nav-item[_ngcontent-ng-c4242450497] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: #9ca3af;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    transform 80ms ease;
+}
+.nav-item[_ngcontent-ng-c4242450497]:hover {
+  background: rgba(15, 23, 42, 0.8);
+  color: #e5e7eb;
+  transform: translateX(1px);
+}
+.nav-item.active[_ngcontent-ng-c4242450497] {
+  background:
+    linear-gradient(
+      90deg,
+      #1d283a,
+      #0f172a);
+  color: #e5e7eb;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+}
+.nav-icon[_ngcontent-ng-c4242450497] {
+  width: 18px;
+  text-align: center;
+}
+.content[_ngcontent-ng-c4242450497] {
+  flex: 1 1 auto;
+  padding: 12px 16px;
+  overflow: visible;
+  background:
+    radial-gradient(
+      circle at top,
+      #020617 0,
+      #020617 40%,
+      #000 100%);
+}
+/*# sourceMappingURL=/app.component.css.map */</style><style ng-app-id="ng">
+*[_ngcontent-ng-c2820908680] {
+  box-sizing: border-box;
+}
+html[_ngcontent-ng-c2820908680], 
+body[_ngcontent-ng-c2820908680] {
+  height: 100%;
+  margin: 0;
+}
+body[_ngcontent-ng-c2820908680] {
+  overflow: auto;
+}
+#app-root[_ngcontent-ng-c2820908680] {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+[_ngcontent-ng-c2820908680]::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+[_ngcontent-ng-c2820908680]::-webkit-scrollbar-thumb {
+  background: rgba(70, 90, 150, 0.45);
+  border-radius: 6px;
+}
+[_ngcontent-ng-c2820908680]::-webkit-scrollbar-track {
+  background: rgba(10, 15, 30, 0.4);
+}
+.panel[_ngcontent-ng-c2820908680], 
+.summary-header[_ngcontent-ng-c2820908680], 
+.engine-card[_ngcontent-ng-c2820908680], 
+.stats-card[_ngcontent-ng-c2820908680], 
+.summary-configs[_ngcontent-ng-c2820908680], 
+.summary-services[_ngcontent-ng-c2820908680] {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(30, 64, 175, 0.7);
+  border-radius: 10px;
+  padding: 5px;
+  margin: 5px;
+}
+.panel-header[_ngcontent-ng-c2820908680] {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.9);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.button-base[_ngcontent-ng-c2820908680], 
+.button-danger[_ngcontent-ng-c2820908680], 
+.button-primary[_ngcontent-ng-c2820908680] {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease,
+    filter 120ms ease;
+}
+.button-base[_ngcontent-ng-c2820908680]:hover, 
+.button-danger[_ngcontent-ng-c2820908680]:hover, 
+.button-primary[_ngcontent-ng-c2820908680]:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.button-base[_ngcontent-ng-c2820908680]:disabled, 
+.button-danger[_ngcontent-ng-c2820908680]:disabled, 
+.button-primary[_ngcontent-ng-c2820908680]:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+  filter: none;
+}
+.button-base[_ngcontent-ng-c2820908680], 
+.button-danger[_ngcontent-ng-c2820908680], 
+.button-primary[_ngcontent-ng-c2820908680] {
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.button-base[_ngcontent-ng-c2820908680]:hover, 
+.button-danger[_ngcontent-ng-c2820908680]:hover, 
+.button-primary[_ngcontent-ng-c2820908680]:hover {
+  transform: translateY(-1px);
+  opacity: 1;
+}
+.button-primary[_ngcontent-ng-c2820908680] {
+  background: #2563eb;
+  border-color: rgba(37, 99, 235, 0.18);
+  color: white;
+}
+.button-primary[_ngcontent-ng-c2820908680]:hover {
+  filter: brightness(1.05);
+}
+.button-danger[_ngcontent-ng-c2820908680] {
+  background: #ef4444;
+  border-color: #b91c1c;
+  color: white;
+}
+.table[_ngcontent-ng-c2820908680] {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.table[_ngcontent-ng-c2820908680]   thead[_ngcontent-ng-c2820908680] {
+  background: rgba(10, 20, 40, 0.9);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.table[_ngcontent-ng-c2820908680]   thead[_ngcontent-ng-c2820908680]   th[_ngcontent-ng-c2820908680] {
+  padding: 0.55rem 0.65rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(30, 64, 175, 0.7);
+  color: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.table[_ngcontent-ng-c2820908680]   thead[_ngcontent-ng-c2820908680]   th[_ngcontent-ng-c2820908680]   .col-meta[_ngcontent-ng-c2820908680] {
+  margin-left: 0.3rem;
+  border-radius: 999px;
+  padding: 0.05rem 0.35rem;
+  background: rgba(15, 25, 45, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+.table[_ngcontent-ng-c2820908680]   tbody[_ngcontent-ng-c2820908680]   tr[_ngcontent-ng-c2820908680] {
+  transition: background 120ms ease, transform 80ms ease;
+}
+.table[_ngcontent-ng-c2820908680]   tbody[_ngcontent-ng-c2820908680]   tr[_ngcontent-ng-c2820908680]:nth-child(odd) {
+  background: rgba(12, 20, 45, 0.95);
+}
+.table[_ngcontent-ng-c2820908680]   tbody[_ngcontent-ng-c2820908680]   tr[_ngcontent-ng-c2820908680]:nth-child(even) {
+  background: rgba(16, 25, 55, 0.95);
+}
+.table[_ngcontent-ng-c2820908680]   tbody[_ngcontent-ng-c2820908680]   tr[_ngcontent-ng-c2820908680]:hover {
+  background: #1e293b;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.table[_ngcontent-ng-c2820908680]   td[_ngcontent-ng-c2820908680] {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid rgba(30, 40, 70, 0.35);
+  vertical-align: top;
+}
+.table[_ngcontent-ng-c2820908680]   td[_ngcontent-ng-c2820908680]   code[_ngcontent-ng-c2820908680] {
+  font-family:
+    ui-monospace,
+    SF Mono,
+    Consolas,
+    monospace;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  display: block;
+}
+.pk-header[_ngcontent-ng-c2820908680] {
+  background: rgba(255, 230, 150, 0.25);
+}
+.pk-cell[_ngcontent-ng-c2820908680] {
+  background: rgba(255, 230, 150, 0.35) !important;
+  border-right: 2px solid #e0b132;
+  font-weight: 600;
+}
+.pk-tag[_ngcontent-ng-c2820908680] {
+  color: #b87500 !important;
+  font-weight: bold;
+}
+.sidebar-group[_ngcontent-ng-c2820908680] {
+  background: rgba(25, 35, 60, 0.35);
+  border-radius: 999px;
+  border: none;
+  padding: 0.35rem 0.65rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 2.5px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: #e5e7eb;
+  transition: background 120ms ease;
+}
+.sidebar-group[_ngcontent-ng-c2820908680]:hover {
+  background: rgba(40, 60, 110, 0.45);
+}
+.sidebar-group[_ngcontent-ng-c2820908680]   .chevron[_ngcontent-ng-c2820908680] {
+  transition: transform 150ms ease;
+}
+.sidebar-group[_ngcontent-ng-c2820908680]   .chevron.collapsed[_ngcontent-ng-c2820908680] {
+  transform: rotate(-90deg);
+}
+.sidebar-item[_ngcontent-ng-c2820908680] {
+  border-radius: 0.55rem;
+  background: rgba(15, 25, 50, 0.65);
+  border: none;
+  padding: 0.55rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  cursor: pointer;
+  opacity: 0.9;
+  transition: 120ms ease;
+  width: 100%;
+  text-align: left;
+}
+.sidebar-item[_ngcontent-ng-c2820908680]:hover {
+  background: rgba(20, 30, 70, 0.75);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  opacity: 1;
+  border: 1px solid rgba(40, 60, 110, 0.4);
+}
+.sidebar-item.active[_ngcontent-ng-c2820908680] {
+  background: #2563eb;
+  border-color: rgba(37, 99, 235, 0.18);
+  color: white;
+  opacity: 1;
+}
+.input[_ngcontent-ng-c2820908680] {
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  color: #e5e7eb;
+  font-size: 0.85rem;
+}
+.input[_ngcontent-ng-c2820908680]:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+.flex[_ngcontent-ng-c2820908680] {
+  display: flex;
+}
+.flex-col[_ngcontent-ng-c2820908680] {
+  display: flex;
+  flex-direction: column;
+}
+.flex-between[_ngcontent-ng-c2820908680] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.gap-sm[_ngcontent-ng-c2820908680] {
+  gap: 0.25rem;
+}
+.gap-md[_ngcontent-ng-c2820908680] {
+  gap: 0.5rem;
+}
+.gap-lg[_ngcontent-ng-c2820908680] {
+  gap: 1rem;
+}
+.w-full[_ngcontent-ng-c2820908680] {
+  width: 100%;
+}
+.h-full[_ngcontent-ng-c2820908680] {
+  height: 100%;
+}
+.list[_ngcontent-ng-c2820908680], 
+.sublist[_ngcontent-ng-c2820908680] {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.sublist[_ngcontent-ng-c2820908680] {
+  margin-left: 0.75rem;
+  padding-left: 0.25rem;
+  border-left: 1px solid rgba(80, 100, 150, 0.35);
+}
+.summary-root[_ngcontent-ng-c2820908680] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  height: auto;
+}
+.summary-header[_ngcontent-ng-c2820908680] {
+  flex-shrink: 0;
+}
+.summary-top[_ngcontent-ng-c2820908680] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  flex-shrink: 0;
+  min-height: 180px;
+}
+.engine-card[_ngcontent-ng-c2820908680], 
+.stats-card[_ngcontent-ng-c2820908680] {
+  flex: 1 1 300px;
+  min-width: 260px;
+}
+.summary-configs[_ngcontent-ng-c2820908680], 
+.summary-services[_ngcontent-ng-c2820908680] {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.sticky-header[_ngcontent-ng-c2820908680] {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.9);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.9);
+}
+.config-list[_ngcontent-ng-c2820908680], 
+.services-table-wrapper[_ngcontent-ng-c2820908680] {
+  flex: 1;
+  overflow: auto;
+}
+.config-table[_ngcontent-ng-c2820908680], 
+.services-table[_ngcontent-ng-c2820908680] {
+  width: 100%;
+}
+/*# sourceMappingURL=/summary-view.component.css.map */</style></head>
+  <body><!--nghm--><script type="text/javascript" id="ng-event-dispatch-contract">(()=>{function p(t,n,r,o,e,i,f,m){return{eventType:t,event:n,targetElement:r,eic:o,timeStamp:e,eia:i,eirp:f,eiack:m}}function u(t){let n=[],r=e=>{n.push(e)};return{c:t,q:n,et:[],etc:[],d:r,h:e=>{r(p(e.type,e,e.target,t,Date.now()))}}}function s(t,n,r){for(let o=0;o<n.length;o++){let e=n[o];(r?t.etc:t.et).push(e),t.c.addEventListener(e,t.h,r)}}function c(t,n,r,o,e=window){let i=u(t);e._ejsas||(e._ejsas={}),e._ejsas[n]=i,s(i,r),s(i,o,!0)}window.__jsaction_bootstrap=c;})();
+</script><script>window.__jsaction_bootstrap(document.body,"ng",["click"],[]);</script>
+    <app-root ng-version="21.2.7" _nghost-ng-c4242450497="" ngh="1" ng-server-context="ssg"><div _ngcontent-ng-c4242450497="" class="dashboard-root"><header _ngcontent-ng-c4242450497="" class="topbar"><div _ngcontent-ng-c4242450497="" class="topbar-left"><a _ngcontent-ng-c4242450497="" routerlink="/summary-view" class="brand-link" href="/summary-view" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="brand">Altruist</span><span _ngcontent-ng-c4242450497="" class="brand-sub">Server Dashboard</span></a></div><div _ngcontent-ng-c4242450497="" class="topbar-right"><span _ngcontent-ng-c4242450497="" class="badge env">3D</span></div></header><div _ngcontent-ng-c4242450497="" class="layout"><nav _ngcontent-ng-c4242450497="" class="sidebar"><div _ngcontent-ng-c4242450497="" class="sidebar-section sidebar-title">Management</div><a _ngcontent-ng-c4242450497="" routerlink="scene" routerlinkactive="active" class="nav-item" href="/scene" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">🗺️</span><span _ngcontent-ng-c4242450497="" class="nav-label">Scene View</span></a><a _ngcontent-ng-c4242450497="" routerlink="cache-view" routerlinkactive="active" class="nav-item" href="/cache-view" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">💾</span><span _ngcontent-ng-c4242450497="" class="nav-label">Cache View</span></a><a _ngcontent-ng-c4242450497="" routerlink="vault-view" routerlinkactive="active" class="nav-item" href="/vault-view" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">🛢️</span><span _ngcontent-ng-c4242450497="" class="nav-label">Vault View</span></a><a _ngcontent-ng-c4242450497="" routerlink="sessions" routerlinkactive="active" class="nav-item" href="/sessions" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">📡</span><span _ngcontent-ng-c4242450497="" class="nav-label">Sessions</span></a><a _ngcontent-ng-c4242450497="" routerlink="metrics" routerlinkactive="active" class="nav-item" href="/metrics" jsaction="click:;"><span _ngcontent-ng-c4242450497="" class="nav-icon">📊</span><span _ngcontent-ng-c4242450497="" class="nav-label">Metrics</span></a></nav><main _ngcontent-ng-c4242450497="" class="content"><router-outlet _ngcontent-ng-c4242450497=""></router-outlet><app-summary-view _nghost-ng-c2820908680="" ngh="0"><div _ngcontent-ng-c2820908680="" class="summary-root"><header _ngcontent-ng-c2820908680="" class="summary-header"><div _ngcontent-ng-c2820908680="" class="header-main"><h1 _ngcontent-ng-c2820908680="">✨ Altruist Dashboard</h1><p _ngcontent-ng-c2820908680=""> High-level overview of configuration, engine state, and discovered services. </p></div><div _ngcontent-ng-c2820908680="" class="header-actions"><button _ngcontent-ng-c2820908680="" type="button" class="button-base" jsaction="click:;"> Refresh </button></div></header><div _ngcontent-ng-c2820908680="" class="summary-error">Failed to load Altruist summary.</div><!--container--><!--container--><!--container--></div></app-summary-view><!--container--></main></div></div></app-root>
+  <script src="polyfills.js" type="module"></script><script src="main.js" type="module"></script>
+
+<script id="ng-state" type="application/json">{"__nghData__":[{"t":{"10":"t4","11":"t5","12":"t6"},"c":{"10":[{"i":"t4","r":1}],"11":[],"12":[]}},{"c":{"41":[{"i":"c2820908680","r":1}]}}]}</script></body></html>

@@ -69,10 +69,13 @@ namespace Altruist.Dashboard
                 .ToList();
 
             var partitionDtos = new List<WorldPartitionObjectsDto>();
+            var emittedObjects = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var partition in partitions)
             {
-                var objs = partition.GetAllObjects<IWorldObject3D>();
+                var objs = partition
+                    .GetAllObjects<IWorldObject3D>()
+                    .Where(o => emittedObjects.Add(o.InstanceId));
 
                 var dto = new WorldPartitionObjectsDto
                 {
@@ -129,12 +132,15 @@ namespace Altruist.Dashboard
                 .FindPartitionsForPosition(0, 0, 0, float.MaxValue)
                 .OfType<WorldPartitionManager3D>()
                 .ToList();
+            var emittedObjects = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var partition in partitions)
             {
                 ct.ThrowIfCancellationRequested();
 
-                var objs = partition.GetAllObjects<IWorldObject3D>();
+                var objs = partition
+                    .GetAllObjects<IWorldObject3D>()
+                    .Where(o => emittedObjects.Add(o.InstanceId));
 
                 var dto = new WorldPartitionObjectsDto
                 {

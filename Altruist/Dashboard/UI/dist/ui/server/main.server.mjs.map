@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["angular:main-server-inject-manifest:angular:main-server-inject-manifest"],
+  "sourcesContent": ["import manifest from './angular-app-manifest.mjs';\nimport { \u0275setAngularAppManifest } from '@angular/ssr';\n\u0275setAngularAppManifest(manifest);"],
+  "mappings": ";;;;;;;;;;;;AAAA,OAAO,cAAc;AAErB,sBAAuB,QAAQ;",
+  "names": []
+}

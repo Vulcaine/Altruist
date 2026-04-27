@@ -64,6 +64,7 @@ namespace Altruist.Dashboard
                 }
 
                 var partitionDtos = new List<DashboardPartitionStateDto>();
+                var emittedObjects = new HashSet<string>(StringComparer.Ordinal);
 
                 foreach (var partition in world.FindPartitionsForPosition(0, 0, 0, float.MaxValue))
                 {
@@ -71,6 +72,9 @@ namespace Altruist.Dashboard
 
                     foreach (var obj in partition.GetAllObjects<IWorldObject3D>())
                     {
+                        if (!emittedObjects.Add(obj.InstanceId))
+                            continue;
+
                         if (obj is Terrain)
                             continue;
 

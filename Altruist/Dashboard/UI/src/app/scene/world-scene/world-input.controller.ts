@@ -3,6 +3,9 @@ import * as THREE from 'three';
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const MIN_PITCH = -Math.PI / 2 + 0.02;
 const MAX_PITCH = Math.PI / 2 - 0.02;
+const MIN_SPEED_MULTIPLIER = 0.5;
+const MAX_SPEED_MULTIPLIER = 100;
+const WHEEL_SPEED_SENSITIVITY = 0.0025;
 
 export class WorldInputController {
   private domElement?: HTMLElement;
@@ -20,6 +23,7 @@ export class WorldInputController {
     | null = null;
 
   private readonly baseMoveSpeed = 90;
+  private moveSpeedMultiplier = 1;
   private readonly lookSensitivity = 0.003;
   private readonly orbitSensitivity = 0.006;
   private readonly panScale = 0.0018;
@@ -27,6 +31,9 @@ export class WorldInputController {
 
   /** Called whenever the user actually moves/rotates the camera. */
   onUserMove?: () => void;
+
+  /** Called when the fly-speed multiplier changes through wheel or manual input. */
+  onSpeedChanged?: (speedMultiplier: number) => void;
 
   private keyDownHandler = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase();
@@ -105,6 +112,12 @@ export class WorldInputController {
     if (!this.domElement || !this.currentCamera) return;
 
     event.preventDefault();
+
+    if (this.isSpeedWheelMode()) {
+      this.adjustMoveSpeedFromWheel(event.deltaY);
+      return;
+    }
+
     const distance = Math.max(1, this.pivotRadius);
     const amount = event.deltaY * this.dollyScale * distance;
     const forward = this.getForward();
@@ -141,6 +154,30 @@ export class WorldInputController {
     domElement.addEventListener('pointerleave', this.pointerUpHandler);
     domElement.addEventListener('wheel', this.wheelHandler, { passive: false });
     domElement.addEventListener('contextmenu', this.contextMenuHandler);
+  }
+
+  getMoveSpeedMultiplier(): number {
+    return this.moveSpeedMultiplier;
+  }
+
+  setMoveSpeedMultiplier(value: number): void {
+    const next = THREE.MathUtils.clamp(
+      Number.isFinite(value) ? value : 1,
+      MIN_SPEED_MULTIPLIER,
+      MAX_SPEED_MULTIPLIER,
+    );
+
+    if (Math.abs(next - this.moveSpeedMultiplier) < 0.001) {
+      return;
+    }
+
+    this.moveSpeedMultiplier = next;
+    this.onSpeedChanged?.(this.moveSpeedMultiplier);
+  }
+
+  adjustMoveSpeedFromWheel(deltaY: number): void {
+    const factor = Math.pow(1 + WHEEL_SPEED_SENSITIVITY, -deltaY);
+    this.setMoveSpeedMultiplier(this.moveSpeedMultiplier * factor);
   }
 
   detach(): void {
@@ -220,9 +257,13 @@ export class WorldInputController {
   }
 
   private getSpeedMultiplier(): number {
-    if (this.keys['shift']) return 4;
-    if (this.keys['alt']) return 0.25;
-    return 1;
+    if (this.keys['shift']) return this.moveSpeedMultiplier * 4;
+    if (this.keys['alt']) return this.moveSpeedMultiplier * 0.25;
+    return this.moveSpeedMultiplier;
+  }
+
+  private isSpeedWheelMode(): boolean {
+    return (this.pressedButtons & 2) !== 0;
   }
 
   private panByScreenDelta(dx: number, dy: number, distance: number): void {

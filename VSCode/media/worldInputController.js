@@ -3,6 +3,9 @@ import * as THREE from "./vendor/three.module.js";
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const MIN_PITCH = -Math.PI / 2 + 0.02;
 const MAX_PITCH = Math.PI / 2 - 0.02;
+const MIN_SPEED_MULTIPLIER = 0.5;
+const MAX_SPEED_MULTIPLIER = 100;
+const WHEEL_SPEED_SENSITIVITY = 0.0025;
 
 export class WorldInputController {
   constructor() {
@@ -19,11 +22,13 @@ export class WorldInputController {
     this.pivotRadius = 40;
     this.lastFocus = null;
     this.baseMoveSpeed = 90;
+    this.moveSpeedMultiplier = 1;
     this.lookSensitivity = 0.003;
     this.orbitSensitivity = 0.006;
     this.panScale = 0.0018;
     this.dollyScale = 0.0015;
     this.onUserMove = null;
+    this.onSpeedChanged = null;
     this.requestFocus = null;
 
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -203,6 +208,12 @@ export class WorldInputController {
     }
 
     event.preventDefault();
+
+    if (this.isSpeedWheelMode()) {
+      this.adjustMoveSpeedFromWheel(event.deltaY);
+      return;
+    }
+
     const distance = Math.max(1, this.pivotRadius);
     const amount = event.deltaY * this.dollyScale * distance;
     const forward = this.getForward();
@@ -211,6 +222,31 @@ export class WorldInputController {
     this.pivot.addScaledVector(forward, amount);
     this.pivotRadius = Math.max(1, this.currentCamera.position.distanceTo(this.pivot));
     this.markMoved();
+  }
+
+  getMoveSpeedMultiplier() {
+    return this.moveSpeedMultiplier;
+  }
+
+  setMoveSpeedMultiplier(value) {
+    const numeric = Number(value);
+    const next = THREE.MathUtils.clamp(
+      Number.isFinite(numeric) ? numeric : 1,
+      MIN_SPEED_MULTIPLIER,
+      MAX_SPEED_MULTIPLIER
+    );
+
+    if (Math.abs(next - this.moveSpeedMultiplier) < 0.001) {
+      return;
+    }
+
+    this.moveSpeedMultiplier = next;
+    this.onSpeedChanged?.(this.moveSpeedMultiplier);
+  }
+
+  adjustMoveSpeedFromWheel(deltaY) {
+    const factor = Math.pow(1 + WHEEL_SPEED_SENSITIVITY, -deltaY);
+    this.setMoveSpeedMultiplier(this.moveSpeedMultiplier * factor);
   }
 
   handleContextMenu(event) {
@@ -253,9 +289,13 @@ export class WorldInputController {
   }
 
   getSpeedMultiplier() {
-    if (this.keys.shift) return 4;
-    if (this.keys.alt) return 0.25;
-    return 1;
+    if (this.keys.shift) return this.moveSpeedMultiplier * 4;
+    if (this.keys.alt) return this.moveSpeedMultiplier * 0.25;
+    return this.moveSpeedMultiplier;
+  }
+
+  isSpeedWheelMode() {
+    return (this.pressedButtons & 2) !== 0;
   }
 
   panByScreenDelta(dx, dy, distance) {

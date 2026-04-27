@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import {
   AfterViewInit,
   Component,
@@ -22,7 +23,7 @@ import { WorldService } from './world-scene.service';
 @Component({
   selector: 'app-world-scene',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './world-scene.component.html',
   styleUrl: './world-scene.component.scss',
 })
@@ -51,6 +52,10 @@ export class WorldSceneComponent
   private readonly inputController = new WorldInputController();
   private readonly renderer: WorldRenderer;
 
+  cameraSpeedMultiplier = 1;
+  cameraNear = 1;
+  cameraFar = 30000;
+
   constructor(
     private readonly worldService: WorldService,
     private readonly zone: NgZone,
@@ -61,6 +66,12 @@ export class WorldSceneComponent
         this.cameraChanged.emit(info);
       });
     });
+
+    this.inputController.onSpeedChanged = (speed) => {
+      this.zone.run(() => {
+        this.cameraSpeedMultiplier = speed;
+      });
+    };
   }
 
   ngAfterViewInit(): void {
@@ -149,6 +160,26 @@ export class WorldSceneComponent
   // Three.js initialization guard
   // ────────────────────────────────────────────────────────────────
 
+  onSpeedInput(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    this.inputController.setMoveSpeedMultiplier(Number(input?.value));
+    this.cameraSpeedMultiplier = this.inputController.getMoveSpeedMultiplier();
+  }
+
+  onSpeedWheel(event: WheelEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.inputController.adjustMoveSpeedFromWheel(event.deltaY);
+    this.cameraSpeedMultiplier = this.inputController.getMoveSpeedMultiplier();
+  }
+
+  onClipInput(): void {
+    this.renderer.setCameraClip(this.cameraNear, this.cameraFar);
+    const clip = this.renderer.getCameraClip();
+    this.cameraNear = clip.near;
+    this.cameraFar = clip.far;
+  }
+
   private tryInitThree(): void {
     if (this.hasThreeInitialized) return;
     if (!this.world) return;
@@ -157,6 +188,7 @@ export class WorldSceneComponent
     const container = this.viewportRef.nativeElement;
 
     this.renderer.init(container);
+    this.renderer.setCameraClip(this.cameraNear, this.cameraFar);
     this.renderer.rebuildColliders(this.objects, this.selectedObject);
     this.renderer.startLoop();
 

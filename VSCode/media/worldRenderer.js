@@ -30,6 +30,8 @@ export class WorldRenderer {
     this.selectionHelper = null;
     this.worldSnapshot = null;
     this.lastFrameTime = performance.now();
+    this.cameraNear = 1;
+    this.cameraFar = 30000;
   }
 
   mount(container) {
@@ -42,7 +44,7 @@ export class WorldRenderer {
     this.scene.background = new THREE.Color(0x06080c);
     this.scene.fog = new THREE.Fog(0x06080c, 600, 6000);
 
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 30000);
+    this.camera = new THREE.PerspectiveCamera(60, 1, this.cameraNear, this.cameraFar);
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -122,6 +124,42 @@ export class WorldRenderer {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+  }
+
+  setCameraClip(near, far) {
+    const nextNear = THREE.MathUtils.clamp(
+      Number.isFinite(Number(near)) ? Number(near) : this.cameraNear,
+      0.01,
+      100000
+    );
+    const nextFar = THREE.MathUtils.clamp(
+      Number.isFinite(Number(far)) ? Number(far) : this.cameraFar,
+      nextNear + 1,
+      10000000
+    );
+
+    this.cameraNear = nextNear;
+    this.cameraFar = nextFar;
+
+    if (!this.camera) {
+      return;
+    }
+
+    this.camera.near = this.cameraNear;
+    this.camera.far = this.cameraFar;
+    this.camera.updateProjectionMatrix();
+
+    if (this.scene?.fog) {
+      this.scene.fog.near = Math.min(600, this.cameraFar * 0.2);
+      this.scene.fog.far = this.cameraFar;
+    }
+  }
+
+  getCameraClip() {
+    return {
+      near: this.cameraNear,
+      far: this.cameraFar,
+    };
   }
 
   startLoop() {
@@ -559,12 +597,43 @@ function buildHeightfieldMesh(heightfield) {
       wireframe: false,
     })
   );
-  const wire = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geometry),
-    new THREE.LineBasicMaterial({ color: 0x7dd3fc })
-  );
+  const wire = buildHeightfieldWireframe(width, height, positions);
   surface.add(wire);
   return surface;
+}
+
+function buildHeightfieldWireframe(width, height, positions) {
+  const lines = [];
+
+  const pushVertex = (index) => {
+    const offset = index * 3;
+    lines.push(positions[offset], positions[offset + 1], positions[offset + 2]);
+  };
+
+  for (let z = 0; z < height; z++) {
+    for (let x = 0; x < width - 1; x++) {
+      pushVertex((z * width) + x);
+      pushVertex((z * width) + x + 1);
+    }
+  }
+
+  for (let z = 0; z < height - 1; z++) {
+    for (let x = 0; x < width; x++) {
+      pushVertex((z * width) + x);
+      pushVertex(((z + 1) * width) + x);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+  return new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({
+      color: 0x7dd3fc,
+      transparent: true,
+      opacity: 0.82,
+    })
+  );
 }
 
 function buildPlaceholderMesh(object) {

@@ -133,6 +133,24 @@ button:hover {
   color: var(--text);
 }
 
+.speed-control input {
+  width: 68px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text);
+  padding: 3px 6px;
+}
+
+.camera-clip-control input {
+  width: 82px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text);
+  padding: 3px 6px;
+}
+
 .world-picker {
   border: 0;
   background: transparent;

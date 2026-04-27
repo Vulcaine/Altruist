@@ -26,7 +26,14 @@ let objectList = null;
 let gizmoList = null;
 let inspector = null;
 let viewport = null;
+let cameraSpeedInput = null;
+let cameraNearInput = null;
+let cameraFarInput = null;
 let ws = null;
+
+inputController.onSpeedChanged = () => {
+  updateSpeedUi();
+};
 
 window.addEventListener("message", (event) => {
   const message = event.data;
@@ -128,6 +135,19 @@ function renderShell() {
             <div class="chip-row">
               <span class="chip">Look: RMB drag</span>
               <span class="chip">Move: WASD + Q/E</span>
+              <label class="chip speed-control" title="Scroll this control or use RMB + wheel in the viewport to adjust fly speed.">
+                <strong>Speed</strong>
+                <input id="camera-speed" type="number" min="0.5" max="100" step="0.1" value="${formatSpeed(inputController.getMoveSpeedMultiplier())}" />
+                <span>x</span>
+              </label>
+              <label class="chip camera-clip-control" title="Raise Near and/or lower Far to reduce depth precision artifacts on huge worlds.">
+                <strong>Near</strong>
+                <input id="camera-near" type="number" min="0.01" step="0.1" value="${formatClip(renderer.getCameraClip().near)}" />
+              </label>
+              <label class="chip camera-clip-control" title="Lower Far to clip distant terrain and reduce shadow-like depth artifacts.">
+                <strong>Far</strong>
+                <input id="camera-far" type="number" min="1" step="100" value="${formatClip(renderer.getCameraClip().far)}" />
+              </label>
               <span class="chip">Pan: MMB drag</span>
               <span class="chip">Orbit: Alt + LMB</span>
               <span class="chip">Zoom: wheel</span>
@@ -181,6 +201,9 @@ function renderShell() {
   gizmoList = document.getElementById("gizmo-list");
   inspector = document.getElementById("inspector");
   viewport = document.getElementById("viewport");
+  cameraSpeedInput = document.getElementById("camera-speed");
+  cameraNearInput = document.getElementById("camera-near");
+  cameraFarInput = document.getElementById("camera-far");
 
   document.getElementById("refresh-world")?.addEventListener("click", () => {
     vscode.postMessage({ type: "world:refresh" });
@@ -195,6 +218,45 @@ function renderShell() {
     state.filter = event.target.value || "";
     renderObjectList();
   });
+
+  cameraSpeedInput?.addEventListener("change", (event) => {
+    inputController.setMoveSpeedMultiplier(Number(event.target.value));
+    updateSpeedUi();
+  });
+
+  cameraSpeedInput?.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+  });
+
+  cameraSpeedInput?.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+
+  cameraSpeedInput?.closest(".speed-control")?.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      inputController.adjustMoveSpeedFromWheel(event.deltaY);
+      updateSpeedUi();
+    },
+    { passive: false }
+  );
+
+  for (const input of [cameraNearInput, cameraFarInput]) {
+    input?.addEventListener("change", () => {
+      renderer.setCameraClip(Number(cameraNearInput?.value), Number(cameraFarInput?.value));
+      updateClipUi();
+    });
+
+    input?.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+    });
+
+    input?.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+  }
 
   if (!state.bootstrap || resolveEnvironmentMode() !== "3D") {
     renderer.dispose();
@@ -591,6 +653,31 @@ function buildWebsocketChip() {
 
   const detail = state.websocketError || state.bootstrap?.websocketUrl || "No websocket";
   return `<span class="chip ${statusClass}" data-role="socket-chip"><strong>Stream</strong> ${escapeHtml(label)}: ${escapeHtml(detail)}</span>`;
+}
+
+function updateSpeedUi() {
+  if (cameraSpeedInput) {
+    cameraSpeedInput.value = formatSpeed(inputController.getMoveSpeedMultiplier());
+  }
+}
+
+function formatSpeed(value) {
+  return Number(value || 1).toFixed(1);
+}
+
+function updateClipUi() {
+  const clip = renderer.getCameraClip();
+  if (cameraNearInput) {
+    cameraNearInput.value = formatClip(clip.near);
+  }
+  if (cameraFarInput) {
+    cameraFarInput.value = formatClip(clip.far);
+  }
+}
+
+function formatClip(value) {
+  const number = Number(value || 0);
+  return number >= 100 ? number.toFixed(0) : number.toFixed(2).replace(/\.?0+$/, "");
 }
 
 function resolveEnvironmentMode() {

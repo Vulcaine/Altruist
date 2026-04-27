@@ -481,6 +481,27 @@ namespace Altruist.Gaming.ThreeD
             if (chosen.HasValue)
             {
                 transformToUse = chosen.Value.Transform;
+
+                if (chosen.Value.Heightfield is { } heightfield)
+                {
+                    var p = transformToUse.Position;
+                    var width = MathF.Max(1f, (heightfield.Width - 1) * heightfield.CellSizeX);
+                    var depth = MathF.Max(1f, (heightfield.Height - 1) * heightfield.CellSizeZ);
+
+                    var heightfieldMinY = p.Y;
+                    var heightfieldMaxY = p.Y;
+                    for (var x = 0; x < heightfield.Width; x++)
+                    {
+                        for (var z = 0; z < heightfield.Height; z++)
+                        {
+                            var y = p.Y + heightfield.Heights[x, z];
+                            if (y < heightfieldMinY) heightfieldMinY = y;
+                            if (y > heightfieldMaxY) heightfieldMaxY = y;
+                        }
+                    }
+
+                    return (p.X, heightfieldMinY, p.Z, p.X + width, heightfieldMaxY, p.Z + depth);
+                }
             }
             else
             {
