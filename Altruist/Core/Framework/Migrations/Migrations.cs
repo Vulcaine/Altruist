@@ -139,5 +139,6 @@ public sealed record ColumnDefinition(
     string Name,
     string StoreType,
     bool IsNullable,
-    bool IsUnique
+    bool IsUnique,
+    string? DefaultSql = null
 );

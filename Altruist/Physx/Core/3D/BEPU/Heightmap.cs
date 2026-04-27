@@ -16,7 +16,22 @@ public interface IHeightmapFormatLoader
 /// <summary>
 /// RAW / R16 / R32 loader.
 /// </summary>
-public interface IRawHeightmapLoader : IHeightmapFormatLoader { }
+public interface IRawHeightmapLoader : IHeightmapFormatLoader
+{
+    HeightfieldData LoadUInt16Heightmap(Stream stream, RawHeightmapLoadOptions options);
+    HeightfieldData LoadUInt16Heightmap(string filePath, RawHeightmapLoadOptions options);
+}
+
+public sealed class RawHeightmapLoadOptions
+{
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+    public float CellSizeX { get; init; } = 1f;
+    public float CellSizeZ { get; init; } = 1f;
+    public float HeightScale { get; init; } = 1f;
+    public bool FlipZ { get; init; }
+    public bool LittleEndian { get; init; } = true;
+}
 
 /// <summary>
 /// 16-bit PNG loader.
@@ -146,6 +161,55 @@ public abstract class AbstractHeightmapLoader<TPixel> : IHeightmapFormatLoader
         using var fs = File.OpenRead(filePath);
         return LoadHeightmap(fs);
     }
+
+}
+
+public static class HeightfieldDataExtensions
+{
+    public static float SampleHeight(this HeightfieldData heightfield, float localX, float localZ)
+    {
+        if (heightfield.Width <= 0 || heightfield.Height <= 0)
+            return 0f;
+
+        float maxX = MathF.Max(0f, (heightfield.Width - 1) * heightfield.CellSizeX);
+        float maxZ = MathF.Max(0f, (heightfield.Height - 1) * heightfield.CellSizeZ);
+        if (maxX <= 0f || maxZ <= 0f)
+            return heightfield.Heights[0, 0] * heightfield.HeightScale;
+
+        localX = Math.Clamp(localX, 0f, maxX);
+        localZ = Math.Clamp(localZ, 0f, maxZ);
+
+        float sx = localX / heightfield.CellSizeX;
+        float sz = localZ / heightfield.CellSizeZ;
+
+        int x0 = Math.Clamp((int)MathF.Floor(sx), 0, heightfield.Width - 1);
+        int z0 = Math.Clamp((int)MathF.Floor(sz), 0, heightfield.Height - 1);
+        int x1 = Math.Min(x0 + 1, heightfield.Width - 1);
+        int z1 = Math.Min(z0 + 1, heightfield.Height - 1);
+        float fx = sx - x0;
+        float fz = sz - z0;
+
+        float h00 = heightfield.Heights[x0, z0] * heightfield.HeightScale;
+        float h10 = heightfield.Heights[x1, z0] * heightfield.HeightScale;
+        float h01 = heightfield.Heights[x0, z1] * heightfield.HeightScale;
+        float h11 = heightfield.Heights[x1, z1] * heightfield.HeightScale;
+
+        float hx0 = Lerp(h00, h10, fx);
+        float hx1 = Lerp(h01, h11, fx);
+        return Lerp(hx0, hx1, fz);
+    }
+
+    public static System.Numerics.Vector3 SampleNormal(this HeightfieldData heightfield, float localX, float localZ, float step = 0.5f)
+    {
+        float hL = heightfield.SampleHeight(localX - step, localZ);
+        float hR = heightfield.SampleHeight(localX + step, localZ);
+        float hD = heightfield.SampleHeight(localX, localZ - step);
+        float hU = heightfield.SampleHeight(localX, localZ + step);
+        var normal = new System.Numerics.Vector3(hL - hR, step * 2f, hD - hU);
+        return normal.LengthSquared() > 1e-8f ? System.Numerics.Vector3.Normalize(normal) : System.Numerics.Vector3.UnitY;
+    }
+
+    private static float Lerp(float a, float b, float t) => a + (b - a) * t;
 }
 
 /// <summary>
@@ -198,6 +262,58 @@ public sealed class RawHeightmapLoader : IRawHeightmapLoader
         using var fs = File.OpenRead(filePath);
         return LoadHeightmap(fs);
     }
+
+    public HeightfieldData LoadUInt16Heightmap(Stream stream, RawHeightmapLoadOptions options)
+    {
+        if (stream == null)
+            throw new ArgumentNullException(nameof(stream));
+        if (options.Width <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "Heightmap width must be positive.");
+        if (options.Height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "Heightmap height must be positive.");
+
+        long expectedBytes = (long)options.Width * options.Height * sizeof(ushort);
+        if (stream.CanSeek && stream.Length - stream.Position < expectedBytes)
+            throw new InvalidDataException($"Raw uint16 heightmap is too small. Expected {expectedBytes} bytes, found {stream.Length - stream.Position}.");
+
+        var heights = new float[options.Width, options.Height];
+        Span<byte> pair = stackalloc byte[2];
+
+        for (int z = 0; z < options.Height; z++)
+        {
+            int targetZ = options.FlipZ ? options.Height - 1 - z : z;
+            for (int x = 0; x < options.Width; x++)
+            {
+                if (stream.Read(pair) != pair.Length)
+                    throw new EndOfStreamException("Unexpected end of raw uint16 heightmap stream.");
+
+                ushort rawHeight = options.LittleEndian
+                    ? (ushort)(pair[0] | (pair[1] << 8))
+                    : (ushort)((pair[0] << 8) | pair[1]);
+
+                heights[x, targetZ] = rawHeight * options.HeightScale;
+            }
+        }
+
+        return new HeightfieldData
+        {
+            Width = options.Width,
+            Height = options.Height,
+            CellSizeX = options.CellSizeX,
+            CellSizeZ = options.CellSizeZ,
+            HeightScale = 1f,
+            Heights = heights
+        };
+    }
+
+    public HeightfieldData LoadUInt16Heightmap(string filePath, RawHeightmapLoadOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            throw new ArgumentException("File path must be non-empty.", nameof(filePath));
+
+        using var fs = File.OpenRead(filePath);
+        return LoadUInt16Heightmap(fs, options);
+    }
 }
 
 /// <summary>
@@ -245,4 +361,3 @@ public sealed class JpegHeightmapLoader : AbstractHeightmapLoader<L8>, IJpegHeig
     protected override float ConvertPixelToHeight(L8 pixel)
         => pixel.PackedValue / 255f;
 }
-

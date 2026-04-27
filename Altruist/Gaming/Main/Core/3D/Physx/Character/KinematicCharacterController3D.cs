@@ -134,11 +134,12 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     // Character shape for grounding probe (set from capsule profile)
     public float Radius { get; set; } = 0.28f;
     public float Height { get; set; } = 1.8f;
+    public float PivotToCenterY { get; set; }
     public IMovementProfile3D? MovementProfile { get; set; } = TpsMovementProfile3D.Default;
     public CharacterMovementStats3D MovementStats { get; set; } = CharacterMovementStats3D.Default;
 
     // Outputs
-    public Vector3 Position => _body?.Position ?? Vector3.Zero;
+    public Vector3 Position => _body == null ? Vector3.Zero : BodyCenterToPivot(_body.Position);
     public Quaternion Rotation => _body?.Rotation ?? Quaternion.Identity;
     public float Yaw => _yaw;
     public bool IsGrounded => _isGrounded;
@@ -166,6 +167,8 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     public void SetBody(IPhysxBody3D body)
     {
         _body = body ?? throw new ArgumentNullException(nameof(body));
+        if (PivotToCenterY > 0f)
+            body.Position = PivotToBodyCenter(body.Position);
         _yaw = ExtractYaw(body.Rotation);
     }
 
@@ -416,6 +419,16 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         JumpIntent(frame.Jump);
     }
 
+    public Vector3 PivotToBodyCenter(Vector3 pivot)
+        => PivotToCenterY > 0f
+            ? new Vector3(pivot.X, pivot.Y + PivotToCenterY, pivot.Z)
+            : pivot;
+
+    public Vector3 BodyCenterToPivot(Vector3 center)
+        => PivotToCenterY > 0f
+            ? new Vector3(center.X, center.Y - PivotToCenterY, center.Z)
+            : center;
+
     private Vector3 MoveWithSweepsAndSlide(IPhysxBody3D body, IGameWorldManager3D world, Vector3 displacement, ref Vector3 velocity)
     {
         float halfLength = MathF.Max(0f, (Height * 0.5f) - Radius);
@@ -464,6 +477,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             if (!gotHit)
             {
                 pos += remaining;
+                ResolveDownwardTerrainContact(world, ref pos, remaining, ref velocity);
                 break;
             }
 
@@ -516,6 +530,45 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         }
 
         return pos;
+    }
+
+    private void ResolveDownwardTerrainContact(
+        IGameWorldManager3D world,
+        ref Vector3 position,
+        Vector3 displacement,
+        ref Vector3 velocity)
+    {
+        if (_queries == null || displacement.Y >= 0f)
+            return;
+
+        float halfLength = MathF.Max(0f, (Height * 0.5f) - Radius);
+        float centerToFoot = halfLength + Radius;
+        float probeUp = MathF.Max(SkinWidth + GroundProbeDistance, 0.05f);
+        float probeDown = MathF.Abs(displacement.Y) + probeUp + SkinWidth;
+        var origin = new Vector3(position.X, position.Y - centerToFoot + probeUp, position.Z);
+
+        foreach (var hit in QueryRayCast(
+            world,
+            new PhysxRay3D(origin, origin - (Vector3.UnitY * probeDown)),
+            maxHits: 4,
+            layerMask: (uint)GroundMask))
+        {
+            if (hit.Body != null)
+                continue;
+
+            if (hit.Normal.Y < 0.2f)
+                continue;
+
+            float groundedCenterY = hit.Point.Y + centerToFoot;
+            if (position.Y <= groundedCenterY)
+            {
+                position = new Vector3(position.X, groundedCenterY, position.Z);
+                if (velocity.Y < 0f)
+                    velocity = new Vector3(velocity.X, 0f, velocity.Z);
+            }
+
+            return;
+        }
     }
 
     private bool TryDepenetrate(IPhysxBody3D body, IGameWorldManager3D world, out Vector3 depenNormal)
@@ -612,11 +665,8 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         var dir = -Vector3.UnitY;
 
         // Get hits
-        IEnumerable<PhysxRaycastHit3D> hits;
-
-        if (UseCapsuleSweeps)
-        {
-            hits = QueryCapsuleCast(world,
+        var hits = UseCapsuleSweeps
+            ? QueryCapsuleCast(world,
                 center: body.Position,
                 radius: Radius,
                 halfLength: halfLength,
@@ -624,36 +674,42 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
                 maxDistance: maxDist,
                 maxHits: 4,
                 layerMask: (uint)GroundMask
-            );
-        }
-        else
-        {
-            // Fallback to ray if you want
-            float bottomOffset = MathF.Max(0f, (Height * 0.5f) - Radius);
-            var origin = body.Position + new Vector3(0f, -(bottomOffset - SkinWidth), 0f);
-            var target = origin + new Vector3(0f, -(GroundProbeDistance + SkinWidth), 0f);
-
-            hits = QueryRayCast(world,
-                new PhysxRay3D(origin, target),
-                maxHits: 4,
-                layerMask: (uint)GroundMask
-            );
-        }
+            )
+            : Enumerable.Empty<PhysxRaycastHit3D>();
 
         bool gotHit = false;
         PhysxRaycastHit3D best = default;
 
         foreach (var h in hits)
         {
-            if (h.Body == null)
-                continue;
-
-            if (ReferenceEquals(h.Body, body))
+            if (h.Body != null && ReferenceEquals(h.Body, body))
                 continue;
 
             best = h;
             gotHit = true;
             break; // hits are already sorted by T in engine
+        }
+
+        if (!gotHit)
+        {
+            float probeUp = MathF.Max(SkinWidth, 0.03f);
+            float centerToFoot = halfLength + Radius;
+            var origin = body.Position - (Vector3.UnitY * centerToFoot) + (Vector3.UnitY * probeUp);
+            var target = origin - (Vector3.UnitY * (GroundProbeDistance + SkinWidth + probeUp));
+
+            foreach (var h in QueryRayCast(
+                world,
+                new PhysxRay3D(origin, target),
+                maxHits: 4,
+                layerMask: (uint)GroundMask))
+            {
+                if (h.Body != null && ReferenceEquals(h.Body, body))
+                    continue;
+
+                best = h;
+                gotHit = true;
+                break;
+            }
         }
 
         if (!gotHit)

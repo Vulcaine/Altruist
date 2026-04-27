@@ -304,6 +304,18 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected abstract string MapClrTypeToStoreType(Type type);
 
     /// <summary>
+    /// Provider-specific mapping from a model initializer/default value to a database DEFAULT expression.
+    /// </summary>
+    protected virtual string? MapClrDefaultValueToStoreDefault(object? value, Type type) => null;
+
+    protected string? ResolveColumnDefaultSql(VaultDocument doc, string columnName, Type clrType)
+    {
+        return doc.ColumnDefaultValues.TryGetValue(columnName, out var defaultValue)
+            ? MapClrDefaultValueToStoreDefault(defaultValue, clrType)
+            : null;
+    }
+
+    /// <summary>
     /// Default schema name for this provider (e.g. "public", "dbo").
     /// </summary>
     protected virtual string GetDefaultSchemaName() => "public";
@@ -390,6 +402,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             }
 
             var storeType = MapClrTypeToStoreType(clrType);
+            var defaultSql = ResolveColumnDefaultSql(doc, columnName, clrType);
 
             bool isPk = pkSet.Contains(columnName);
             bool isSingleUnique = singleUniqueCols.Contains(columnName);
@@ -399,7 +412,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 Name: columnName,
                 StoreType: storeType,
                 IsNullable: isNullable,
-                IsUnique: isSingleUnique)); // column-level UNIQUE only for single-col unique keys
+                IsUnique: isSingleUnique,
+                DefaultSql: defaultSql)); // column-level UNIQUE only for single-col unique keys
         }
 
         ops.Add(new CreateTableOperation(
@@ -730,6 +744,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             }
 
             var storeType = MapClrTypeToStoreType(clrType);
+            var defaultSql = ResolveColumnDefaultSql(doc, col, clrType);
 
             var pkSet = new HashSet<string>(existing.PrimaryKeyColumns, StringComparer.OrdinalIgnoreCase);
             var singleUniqueCols = new HashSet<string>(
@@ -748,7 +763,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 Name: col,
                 StoreType: storeType,
                 IsNullable: isNullable,
-                IsUnique: isSingleUnique);
+                IsUnique: isSingleUnique,
+                DefaultSql: defaultSql);
 
             ops.Add(new AddColumnOperation(schemaName, tableName, def));
         }

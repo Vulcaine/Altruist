@@ -61,18 +61,46 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     public async Task FireAsync(TContext baseContext, QuestTrigger trigger, long targetId = 0, int value = 0, string? npcKey = null)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
+        string hookKey = QuestDefinition<TContext>.QuestTriggerToHookKey(trigger);
         IEnumerable<QuestDefinition<TContext>> targets = trigger == QuestTrigger.Npc && !string.IsNullOrWhiteSpace(npcKey)
             && _npcBindings.TryGetValue(npcKey, out var bound)
                 ? bound
                 : _quests;
 
         foreach (var quest in targets)
-            await DispatchOneAsync(baseContext, quest, trigger, targetId, value);
+            await DispatchOneAsync(baseContext, quest, trigger, hookKey, targetId, value);
 
         await _stateStore.SaveDirtyAsync(baseContext.SubjectId, _states[baseContext.SubjectId]);
     }
 
-    public async Task<bool> FireQuestAsync(TContext baseContext, string questId, QuestTrigger trigger, long targetId = 0, int value = 0)
+    public Task<bool> FireQuestAsync(TContext baseContext, string questId, QuestTrigger trigger, long targetId = 0, int value = 0)
+    {
+        return FireQuestHookAsync(
+            baseContext,
+            questId,
+            QuestDefinition<TContext>.QuestTriggerToHookKey(trigger),
+            trigger,
+            targetId,
+            value);
+    }
+
+    public async Task FireHookAsync(TContext baseContext, string hookKey, long targetId = 0, int value = 0)
+    {
+        await EnsureStatesLoadedAsync(baseContext.SubjectId);
+
+        foreach (var quest in _quests.Where(q => q.HasHook(hookKey)))
+            await DispatchOneAsync(baseContext, quest, QuestTrigger.Custom, hookKey, targetId, value);
+
+        await _stateStore.SaveDirtyAsync(baseContext.SubjectId, _states[baseContext.SubjectId]);
+    }
+
+    public async Task<bool> FireQuestHookAsync(
+        TContext baseContext,
+        string questId,
+        string hookKey,
+        QuestTrigger trigger = QuestTrigger.Custom,
+        long targetId = 0,
+        int value = 0)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
 
@@ -80,7 +108,7 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         if (quest == null)
             return false;
 
-        await DispatchOneAsync(baseContext, quest, trigger, targetId, value);
+        await DispatchOneAsync(baseContext, quest, trigger, hookKey, targetId, value);
         await _stateStore.SaveDirtyAsync(baseContext.SubjectId, _states[baseContext.SubjectId]);
         return true;
     }
@@ -99,8 +127,9 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         foreach (var quest in _quests.Where(q => q.HasLevelHook))
         {
             var state = GetState(baseContext.SubjectId, quest.Id);
-            var evaluation = await EvaluateRequirementsAsync(baseContext, quest, QuestTrigger.Level, 0, targetLevel, state);
+            var evaluation = await EvaluateRequirementsAsync(baseContext, quest, QuestTrigger.Level, QuestHooks.Level, 0, targetLevel, state);
             var ctx = _contextFactory(baseContext, QuestTrigger.Level, quest, 0, targetLevel, state, evaluation);
+            ctx.HookKey = QuestHooks.Level;
 
             if (levelDown)
             {
@@ -122,7 +151,8 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
             for (int level = last + 1; level <= targetLevel; level++)
             {
                 ctx = _contextFactory(baseContext, QuestTrigger.Level, quest, 0, level, state, evaluation);
-                await quest.DispatchAsync(ctx, QuestTrigger.Level);
+                ctx.HookKey = QuestHooks.Level;
+                await quest.DispatchHookAsync(ctx, QuestHooks.Level);
                 state.Set(LevelReconciledKey, level);
             }
 
@@ -147,7 +177,7 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         foreach (var quest in _quests)
         {
             var state = GetState(baseContext.SubjectId, quest.Id);
-            var evaluation = await EvaluateRequirementsAsync(baseContext, quest, QuestTrigger.Enter, 0, 0, state);
+            var evaluation = await EvaluateRequirementsAsync(baseContext, quest, QuestTrigger.Enter, QuestHooks.Enter, 0, 0, state);
             var status = AllPassed(evaluation) ? ResolveStatus(state) : QuestStatus.Suspended;
             updates.Add(CreateUpdate(baseContext.SubjectId, quest, state, status, evaluation));
         }
@@ -160,11 +190,18 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         return GetState(subjectId, questId);
     }
 
-    private async Task DispatchOneAsync(TContext baseContext, QuestDefinition<TContext> quest, QuestTrigger trigger, long targetId, int value)
+    private async Task DispatchOneAsync(
+        TContext baseContext,
+        QuestDefinition<TContext> quest,
+        QuestTrigger trigger,
+        string hookKey,
+        long targetId,
+        int value)
     {
         var state = GetState(baseContext.SubjectId, quest.Id);
-        var evaluation = await EvaluateRequirementsAsync(baseContext, quest, trigger, targetId, value, state);
+        var evaluation = await EvaluateRequirementsAsync(baseContext, quest, trigger, hookKey, targetId, value, state);
         var ctx = _contextFactory(baseContext, trigger, quest, targetId, value, state, evaluation);
+        ctx.HookKey = hookKey;
 
         if (!AllPassed(evaluation))
         {
@@ -172,7 +209,7 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
             return;
         }
 
-        await quest.DispatchAsync(ctx, trigger);
+        await quest.DispatchHookAsync(ctx, hookKey);
         await PublishAsync(ctx, quest, ResolveStatus(state), evaluation);
     }
 
@@ -180,6 +217,7 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         TContext baseContext,
         QuestDefinition<TContext> quest,
         QuestTrigger trigger,
+        string hookKey,
         long targetId,
         int value,
         QuestState state)
@@ -189,6 +227,7 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
 
         var results = new List<QuestRequirementResult>(quest.Requirements.Count);
         var ctx = _contextFactory(baseContext, trigger, quest, targetId, value, state, Array.Empty<QuestRequirementResult>());
+        ctx.HookKey = hookKey;
 
         foreach (var requirement in quest.Requirements)
         {

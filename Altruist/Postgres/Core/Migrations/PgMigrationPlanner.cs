@@ -4,6 +4,9 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0 (the "License");
 */
 
+using System.Globalization;
+using System.Text.Json;
+
 namespace Altruist.Migrations.Postgres;
 /*
 Copyright 2025 Aron Gere
@@ -83,4 +86,38 @@ public sealed class PostgresMigrationPlanner : AbstractMigrationPlanner
 
         return "jsonb";
     }
+
+    protected override string? MapClrDefaultValueToStoreDefault(object? value, Type type)
+    {
+        if (value == null)
+            return null;
+
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            type = Nullable.GetUnderlyingType(type)!;
+
+        if (type == typeof(string))
+            return $"'{EscapeSqlLiteral((string)value)}'";
+        if (type == typeof(bool))
+            return (bool)value ? "true" : "false";
+        if (type == typeof(byte) || type == typeof(short) || type == typeof(int) || type == typeof(long))
+            return Convert.ToString(value, CultureInfo.InvariantCulture);
+        if (type == typeof(float) || type == typeof(double) || type == typeof(decimal))
+            return Convert.ToString(value, CultureInfo.InvariantCulture);
+        if (type == typeof(DateTime))
+            return $"'{((DateTime)value).ToString("O", CultureInfo.InvariantCulture)}'";
+        if (type == typeof(DateTimeOffset))
+            return $"'{((DateTimeOffset)value).ToString("O", CultureInfo.InvariantCulture)}'";
+        if (type == typeof(Guid))
+            return $"'{value}'";
+        if (type == typeof(TimeSpan))
+            return $"'{value}'";
+        if (type.IsEnum)
+            return Convert.ToString(Convert.ToInt32(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+
+        var json = JsonSerializer.Serialize(value);
+        return $"'{EscapeSqlLiteral(json)}'::jsonb";
+    }
+
+    private static string EscapeSqlLiteral(string value)
+        => value.Replace("'", "''");
 }

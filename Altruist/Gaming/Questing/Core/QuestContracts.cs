@@ -29,6 +29,69 @@ public interface IQuestRequirementEvaluator<TContext> where TContext : QuestCont
     ValueTask<bool> EvaluateAsync(QuestRequirementContext<TContext> context);
 }
 
+[AttributeUsage(AttributeTargets.Interface)]
+public sealed class QuestHookAttribute : Attribute
+{
+    public string Key { get; }
+
+    public QuestHookAttribute(string key)
+    {
+        Key = key;
+    }
+}
+
+public interface IQuestHook<TContext> where TContext : QuestContext
+{
+}
+
+[QuestHook(QuestHooks.Enter)]
+public interface IOnEnter<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnEnter(TContext ctx);
+}
+
+[QuestHook(QuestHooks.Leave)]
+public interface IOnLeave<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnLeave(TContext ctx);
+}
+
+[QuestHook(QuestHooks.Level)]
+public interface IOnLevel<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnLevel(TContext ctx);
+}
+
+[QuestHook(QuestHooks.Kill)]
+public interface IOnKill<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnKill(TContext ctx);
+}
+
+[QuestHook(QuestHooks.Npc)]
+public interface IOnNpc<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnNpc(TContext ctx);
+}
+
+[QuestHook(QuestHooks.Item)]
+public interface IOnItem<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnItem(TContext ctx);
+}
+
+[QuestHook(QuestHooks.Button)]
+public interface IOnButton<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnButton(TContext ctx);
+}
+
+[QuestHook(QuestHooks.Timer)]
+public interface IOnTimer<TContext> : IQuestHook<TContext> where TContext : QuestContext
+{
+    Task OnTimer(TContext ctx);
+}
+
 public sealed class DelegateQuestRequirementEvaluator<TContext> : IQuestRequirementEvaluator<TContext>
     where TContext : QuestContext
 {

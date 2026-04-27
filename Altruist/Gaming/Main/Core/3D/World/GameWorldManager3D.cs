@@ -22,6 +22,7 @@ namespace Altruist.Gaming.ThreeD
         IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D;
         IEnumerable<IWorldObject3D> GetAllObjects();
         (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot();
+        Task<IPhysxBody3D?> SpawnObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
 
@@ -31,7 +32,7 @@ namespace Altruist.Gaming.ThreeD
         /// but has no collision or physics simulation. Ideal for distance-based
         /// combat entities that only need position tracking.
         /// </summary>
-        void SpawnLightweight(IWorldObject3D obj);
+        void SpawnLightweight(IWorldObject3D obj, string? withId = null);
         IWorldObject3D? DestroyObject(string instanceId);
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
 
@@ -181,6 +182,15 @@ namespace Altruist.Gaming.ThreeD
             return await Task.FromResult(partitions.ToList());
         }
 
+        public Task<IPhysxBody3D?> SpawnObject(IWorldObject3D obj, string? withId = null)
+        {
+            if (RequiresPhysicsBody(obj))
+                return SpawnDynamicObject(obj, withId);
+
+            SpawnLightweight(obj, withId);
+            return Task.FromResult<IPhysxBody3D?>(null);
+        }
+
         public async Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null)
         {
             return await SpawnObjectInternal(
@@ -199,22 +209,21 @@ namespace Altruist.Gaming.ThreeD
                 withId: withId);
         }
 
-        public void SpawnLightweight(IWorldObject3D obj)
+        public void SpawnLightweight(IWorldObject3D obj, string? withId = null)
         {
             if (obj is null) return;
 
-            if (obj.VirtualId == 0)
-                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
-
-            obj.ObjectArchetype = obj is AnonymousWorldObject3D
-                ? obj.ObjectArchetype
-                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
+            EnsureSpawnMetadata(obj);
 
             // Add to partitions for spatial queries — no physics body
             var partitions = FindPartitionsForObject(obj);
             AddObjectToPartitions(obj, partitions);
 
-            _flatInstanceCache[obj.InstanceId] = obj;
+            if (withId != null)
+                _flatInstanceCache[withId] = obj;
+            else
+                _flatInstanceCache[obj.InstanceId] = obj;
+
             MarkSnapshotDirty();
             OnObjectCreated?.Invoke(obj);
         }
@@ -231,12 +240,7 @@ namespace Altruist.Gaming.ThreeD
             if (obj is null)
                 return null;
 
-            if (obj.VirtualId == 0)
-                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
-
-            obj.ObjectArchetype = obj is AnonymousWorldObject3D
-                ? obj.ObjectArchetype
-                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
+            EnsureSpawnMetadata(obj);
 
             IPhysxBody3D? body = null;
 
@@ -303,6 +307,25 @@ namespace Altruist.Gaming.ThreeD
             OnObjectCreated?.Invoke(obj);
             await Task.CompletedTask;
             return body;
+        }
+
+        private static bool RequiresPhysicsBody(IWorldObject3D? obj)
+        {
+            if (obj?.BodyDescriptor != null)
+                return true;
+
+            var colliders = obj?.ColliderDescriptors;
+            return colliders != null && colliders.Any(c => !c.IsTrigger);
+        }
+
+        private static void EnsureSpawnMetadata(IWorldObject3D obj)
+        {
+            if (obj.VirtualId == 0)
+                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
+
+            obj.ObjectArchetype = obj is AnonymousWorldObject3D
+                ? obj.ObjectArchetype
+                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
         }
 
         public IWorldObject3D? DestroyObject(string instanceId)

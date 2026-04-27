@@ -106,6 +106,9 @@ namespace Altruist.Migrations.Postgres
                   .Append(' ')
                   .Append(col.StoreType);
 
+                if (!string.IsNullOrWhiteSpace(col.DefaultSql))
+                    sb.Append(" DEFAULT ").Append(col.DefaultSql);
+
                 if (!col.IsNullable)
                     sb.Append(" NOT NULL");
 
@@ -159,6 +162,7 @@ namespace Altruist.Migrations.Postgres
 
             var typeSegment =
                 column.StoreType +
+                (string.IsNullOrWhiteSpace(column.DefaultSql) ? "" : " DEFAULT " + column.DefaultSql) +
                 (column.IsNullable ? "" : " NOT NULL") +
                 (column.IsUnique ? " UNIQUE" : "");
 

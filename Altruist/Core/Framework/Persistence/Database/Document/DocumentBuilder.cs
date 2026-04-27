@@ -57,6 +57,7 @@ internal static class DocumentBuilder
 
         doc.FieldTypes = fieldTypes;
         doc.NullableColumns = new HashSet<string>(nullablePhysical, StringComparer.OrdinalIgnoreCase);
+        doc.ColumnDefaultValues = ScanColumnDefaultValues(type, columns, accessors);
         doc.RenamedColumns = ScanRenames(type, columns);
         ScanCopyFromAndDeleted(type, columns, doc);
 
@@ -76,6 +77,37 @@ internal static class DocumentBuilder
         }
 
         return doc;
+    }
+
+    private static Dictionary<string, object?> ScanColumnDefaultValues(
+        Type type,
+        Dictionary<string, string> columns,
+        Dictionary<string, Func<object, object?>> accessors)
+    {
+        var defaults = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        object? instance;
+        try
+        {
+            instance = Activator.CreateInstance(type);
+        }
+        catch
+        {
+            return defaults;
+        }
+
+        if (instance == null)
+            return defaults;
+
+        foreach (var (logical, physical) in columns)
+        {
+            if (!accessors.TryGetValue(logical, out var accessor))
+                continue;
+
+            defaults[physical] = accessor(instance);
+        }
+
+        return defaults;
     }
 
     private static void ScanColumns(

@@ -10,7 +10,19 @@ public enum QuestTrigger
     Item,
     Button,
     Timer,
-    Scroll,
+    Custom,
+}
+
+public static class QuestHooks
+{
+    public const string Enter = "enter";
+    public const string Leave = "leave";
+    public const string Level = "level";
+    public const string Kill = "kill";
+    public const string Npc = "npc";
+    public const string Item = "item";
+    public const string Button = "button";
+    public const string Timer = "timer";
 }
 
 public enum QuestStatus
@@ -41,6 +53,7 @@ public class QuestContext
     public string SubjectId { get; init; } = "";
     public object? Subject { get; init; }
     public QuestTrigger Trigger { get; init; }
+    public string HookKey { get; set; } = "";
     public long TargetId { get; init; }
     public int Value { get; init; }
     public IQuestState State { get; init; } = null!;
@@ -50,15 +63,6 @@ public class QuestContext
 
 public abstract class QuestBehavior<TContext> where TContext : QuestContext
 {
-    public virtual Task OnEnter(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnLeave(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnLevel(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnKill(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnNpc(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnItem(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnButton(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnTimer(TContext ctx) => Task.CompletedTask;
-    public virtual Task OnScroll(TContext ctx) => Task.CompletedTask;
 }
 
 public interface IQuestLevelResetHook<TContext> where TContext : QuestContext

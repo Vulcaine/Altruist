@@ -23,6 +23,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Resources\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Exclude nested DI.Tests project (has its own .csproj) -->
   <ItemGroup>
     <Compile Remove="DI.Tests/**" />
@@ -51,6 +55,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Altruist\Core\Core.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Main\Gaming.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Questing\Questing.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Combat\Combat.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Movement\Movement.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Inventory\Inventory.csproj" />
