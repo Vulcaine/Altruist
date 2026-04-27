@@ -75,6 +75,15 @@ public sealed class LagCompensationService : ILagCompensationService
 
     public void RewindWorld(long toTick, Action callback)
     {
+        RewindWorld<object?>(toTick, () =>
+        {
+            callback();
+            return null;
+        });
+    }
+
+    public T RewindWorld<T>(long toTick, Func<T> callback)
+    {
         var currentTick = AltruistEngine.CurrentTick;
         var minTick = currentTick - _maxTicks;
         var clampedTick = Math.Clamp(toTick, minTick, currentTick);
@@ -92,7 +101,7 @@ public sealed class LagCompensationService : ILagCompensationService
         IsRewound = true;
         try
         {
-            callback();
+            return callback();
         }
         finally
         {

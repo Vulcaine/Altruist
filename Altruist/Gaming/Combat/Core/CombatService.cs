@@ -5,7 +5,6 @@ Licensed under the Apache License, Version 2.0
 
 using Altruist;
 using Altruist.Gaming.ThreeD;
-using Altruist.Physx;
 using Microsoft.Extensions.Logging;
 using System.Numerics;
 
@@ -27,7 +26,7 @@ public class CombatService : ICombatService
 {
     private readonly IDamageCalculator _calculator;
     private readonly IGameWorldOrganizer3D? _worldOrganizer;
-    private readonly ISpatialCollisionDispatcher? _collisionDispatcher;
+    private readonly ICombatEventDispatcher? _combatEvents;
     private readonly ILagCompensationService? _lagCompensation;
     private readonly ILogger _logger;
 
@@ -39,12 +38,12 @@ public class CombatService : ICombatService
         ILoggerFactory loggerFactory,
         IDamageCalculator? calculator = null,
         IGameWorldOrganizer3D? worldOrganizer = null,
-        ISpatialCollisionDispatcher? collisionDispatcher = null,
-        ILagCompensationService? lagCompensation = null)
+        ILagCompensationService? lagCompensation = null,
+        ICombatEventDispatcher? combatEvents = null)
     {
         _calculator = calculator ?? new DefaultDamageCalculator();
         _worldOrganizer = worldOrganizer;
-        _collisionDispatcher = collisionDispatcher;
+        _combatEvents = combatEvents;
         _lagCompensation = lagCompensation;
         _logger = loggerFactory.CreateLogger<CombatService>();
         _logger.LogInformation("CombatService using damage calculator: {Type}", _calculator.GetType().FullName);
@@ -57,12 +56,7 @@ public class CombatService : ICombatService
         {
             var clientTick = PacketContext.ClientTick;
             if (clientTick > 0)
-            {
-                HitResult result = default!;
-                _lagCompensation.RewindWorld(clientTick, () =>
-                    result = AttackInternal(attacker, target, context));
-                return result;
-            }
+                return _lagCompensation.RewindWorld(clientTick, () => AttackInternal(attacker, target, context));
         }
         return AttackInternal(attacker, target, context);
     }
@@ -84,19 +78,9 @@ public class CombatService : ICombatService
         target.Health = Math.Max(0, target.Health - damage);
         bool killed = target.Health <= 0;
 
-        var payloadFlags = BuildPayloadFlags(flags, killed);
-
-        // Fire collision handlers (same API as physics collision events)
-        _collisionDispatcher?.DispatchHit(source, target, new CollisionHit
-        {
-            Source = source,
-            Target = target,
-            Damage = damage,
-            Flags = payloadFlags,
-            Context = context,
-        });
-
-        OnHit?.Invoke(new HitEvent(source, target, damage, killed ? flags.SetFlag(DamageFlags.Killed) : flags));
+        var hitEvent = new HitEvent(source, target, damage, killed ? flags.SetFlag(DamageFlags.Killed) : flags, context);
+        _combatEvents?.Dispatch(hitEvent, source, target);
+        OnHit?.Invoke(hitEvent);
 
         if (killed)
             Kill(target, source);
@@ -111,12 +95,7 @@ public class CombatService : ICombatService
         {
             var clientTick = PacketContext.ClientTick;
             if (clientTick > 0)
-            {
-                SweepResult result = default!;
-                _lagCompensation.RewindWorld(clientTick, () =>
-                    result = SweepInternal(attacker, query, damage, flags, context));
-                return result;
-            }
+                return _lagCompensation.RewindWorld(clientTick, () => SweepInternal(attacker, query, damage, flags, context));
         }
         return SweepInternal(attacker, query, damage, flags, context);
     }
@@ -144,19 +123,21 @@ public class CombatService : ICombatService
         }
 
         var result = new SweepResult(attacker, query, hits);
-        OnSweep?.Invoke(new SweepEvent(attacker, query, hits));
+        var sweepEvent = new SweepEvent(attacker, query, hits);
+        _combatEvents?.Dispatch(sweepEvent, attacker);
+        OnSweep?.Invoke(sweepEvent);
         return result;
-    }
-
-    private static uint BuildPayloadFlags(DamageFlags flags, bool killed)
-    {
-        return (uint)(killed ? flags.SetFlag(DamageFlags.Killed) : flags);
     }
 
     public void Kill(ICombatEntity entity, ICombatEntity? killer = null)
     {
         entity.Health = 0;
-        OnDeath?.Invoke(new DeathEvent(entity, killer, entity.X, entity.Y, entity.Z));
+        var deathEvent = new DeathEvent(entity, killer, entity.X, entity.Y, entity.Z);
+        if (killer != null)
+            _combatEvents?.Dispatch(deathEvent, entity, killer);
+        else
+            _combatEvents?.Dispatch(deathEvent, entity);
+        OnDeath?.Invoke(deathEvent);
     }
 
     // Spatial broadphase for AoE sweep queries — avoids iterating all entities

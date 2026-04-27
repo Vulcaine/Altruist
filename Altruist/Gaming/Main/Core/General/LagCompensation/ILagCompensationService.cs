@@ -33,6 +33,12 @@ public interface ILagCompensationService : IPositionHistoryRecorder
     void RewindWorld(long toTick, Action callback);
 
     /// <summary>
+    /// Temporarily rewind all tracked entity positions to the given tick,
+    /// execute the callback, return its result, then restore.
+    /// </summary>
+    T RewindWorld<T>(long toTick, Func<T> callback);
+
+    /// <summary>
     /// Position pass-through transformer. During a RewindWorld callback, returns
     /// the historical position for the entity. Outside rewind, returns the input
     /// position unchanged. Use this in distance checks, sweep geometry, etc.

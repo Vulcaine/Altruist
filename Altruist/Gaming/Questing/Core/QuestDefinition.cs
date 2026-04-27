@@ -32,23 +32,27 @@ public sealed class QuestDefinition<TContext> where TContext : QuestContext
         Instance = instance;
         StateDispatcher = stateDispatcher;
         _hookHandlers = CompileHookHandlers(instance);
-        HasLevelHook = HasHook(QuestHooks.Level) || stateDispatcher.HasStateHandlers;
+        HasLevelHook = HasHook(QuestHooks.Level);
     }
 
     public bool HasHook(string hookKey) =>
-        !string.IsNullOrWhiteSpace(hookKey) && _hookHandlers.ContainsKey(hookKey);
+        !string.IsNullOrWhiteSpace(hookKey)
+        && (_hookHandlers.ContainsKey(hookKey)
+            || StateDispatcher.HasHook(hookKey)
+            || StateDispatcher.HasGenericStateHandlers);
 
     public async Task DispatchAsync(TContext context, QuestTrigger trigger)
     {
-        if (StateDispatcher.HasStateHandlers && await StateDispatcher.DispatchAsync(context))
+        var hookKey = QuestTriggerToHookKey(trigger);
+        if (StateDispatcher.HasStateHandlers && await StateDispatcher.DispatchAsync(context, hookKey))
             return;
 
-        await DispatchHookAsync(context, QuestTriggerToHookKey(trigger));
+        await DispatchHookAsync(context, hookKey);
     }
 
     public async Task DispatchHookAsync(TContext context, string hookKey)
     {
-        if (StateDispatcher.HasStateHandlers && await StateDispatcher.DispatchAsync(context))
+        if (StateDispatcher.HasStateHandlers && await StateDispatcher.DispatchAsync(context, hookKey))
             return;
 
         if (string.IsNullOrWhiteSpace(hookKey))

@@ -184,6 +184,53 @@ public sealed class StateMachineQuest : QuestBehavior<TestQuestContext>
     }
 }
 
+[Quest("test.state_hooks")]
+public sealed class StateScopedHookQuest : QuestBehavior<TestQuestContext>
+{
+    [QuestState("start", Initial = true)]
+    private Task<string?> OnKill(TestQuestContext ctx)
+    {
+        ctx.State.Increment("state_kills");
+        return Task.FromResult<string?>(ctx.State.Get("state_kills", 0) >= 2 ? "return" : null);
+    }
+
+    [QuestState("start")]
+    private Task<string?> OnNpc(TestQuestContext ctx)
+    {
+        ctx.State.Set("npc_in_start", true);
+        return Task.FromResult<string?>(null);
+    }
+
+    [QuestState("return")]
+    private Task<string?> OnNpcReturn(TestQuestContext ctx)
+    {
+        ctx.State.Set("returned", true);
+        return Task.FromResult<string?>("completed");
+    }
+}
+
+[Quest("test.state_invalid_end")]
+public sealed class StateInvalidEndQuest : QuestBehavior<TestQuestContext>
+{
+    [QuestState("start", Initial = true)]
+    private Task<string?> OnKill(TestQuestContext ctx)
+    {
+        ctx.State.Set("ended_from_kill", true);
+        return Task.FromResult<string?>("not_a_real_state");
+    }
+}
+
+[Quest("test.state_custom_scroll")]
+public sealed class StateCustomScrollQuest : QuestBehavior<TestQuestContext>
+{
+    [QuestState("start", Initial = true)]
+    private Task<string?> OnScroll(TestQuestContext ctx)
+    {
+        ctx.State.Set("state_scroll", true);
+        return Task.FromResult<string?>(null);
+    }
+}
+
 public sealed class QuestRuntimeTests
 {
     [Fact]
@@ -316,6 +363,51 @@ public sealed class QuestRuntimeTests
         Assert.Equal(1, state.Get("finish_ticks", 0));
         Assert.True(state.Get("exited_start", false));
         Assert.True(state.Get("entered_finish", false));
+    }
+
+    [Fact]
+    public async Task StateScopedHook_DispatchesOnlyMatchingHookInCurrentState()
+    {
+        var fixture = CreateRuntime("subject-state-hooks");
+
+        await fixture.Runtime.FireQuestAsync(fixture.Context, "test.state_hooks", QuestTrigger.Npc);
+        await fixture.Runtime.FireQuestAsync(fixture.Context, "test.state_hooks", QuestTrigger.Kill);
+        await fixture.Runtime.FireQuestAsync(fixture.Context, "test.state_hooks", QuestTrigger.Kill);
+        await fixture.Runtime.FireQuestAsync(fixture.Context, "test.state_hooks", QuestTrigger.Kill);
+        await fixture.Runtime.FireQuestAsync(fixture.Context, "test.state_hooks", QuestTrigger.Npc);
+
+        var state = await fixture.Runtime.GetStateAsync(fixture.Context.SubjectId, "test.state_hooks");
+        Assert.Equal("completed", state.CurrentState);
+        Assert.Equal(2, state.Get("state_kills", 0));
+        Assert.True(state.Get("npc_in_start", false));
+        Assert.True(state.Get("returned", false));
+        Assert.True(state.Get("_done", false));
+    }
+
+    [Fact]
+    public async Task StateScopedHook_InvalidNextStateCompletesQuest()
+    {
+        var fixture = CreateRuntime("subject-state-invalid");
+
+        await fixture.Runtime.FireQuestAsync(fixture.Context, "test.state_invalid_end", QuestTrigger.Kill);
+
+        var state = await fixture.Runtime.GetStateAsync(fixture.Context.SubjectId, "test.state_invalid_end");
+        var update = fixture.Sink.Updates.Last(u => u.QuestId == "test.state_invalid_end");
+        Assert.Equal("not_a_real_state", state.CurrentState);
+        Assert.True(state.Get("ended_from_kill", false));
+        Assert.True(state.Get("_done", false));
+        Assert.Equal(QuestStatus.Completed, update.Status);
+    }
+
+    [Fact]
+    public async Task StateScopedHook_CanUseCustomHookMethodName()
+    {
+        var fixture = CreateRuntime("subject-state-custom");
+
+        await fixture.Runtime.FireQuestHookAsync(fixture.Context, "test.state_custom_scroll", "scroll");
+
+        var state = await fixture.Runtime.GetStateAsync(fixture.Context.SubjectId, "test.state_custom_scroll");
+        Assert.True(state.Get("state_scroll", false));
     }
 
     [Fact]
