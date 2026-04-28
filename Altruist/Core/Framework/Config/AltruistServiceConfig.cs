@@ -80,7 +80,8 @@ public class AltruistServiceConfig : IAltruistConfiguration
                         var portalAttribute = portalInstance.GetType().GetCustomAttribute<PortalAttribute>();
                         if (portalAttribute is not null)
                         {
-                            var basePath = cfg["altruist:server:transport:config:path"];
+                            var basePath = cfg["altruist:server:transport:websocket:path"]
+                                ?? cfg["altruist:server:transport:config:path"];
                             portalInstance.Route = PathUtils.NormalizeRoute(basePath, portalAttribute.Endpoint);
                         }
                     }

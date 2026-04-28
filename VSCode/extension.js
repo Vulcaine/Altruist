@@ -39,6 +39,9 @@ function activate(context) {
     vscode.commands.registerCommand("altruist.openSessions", () => openPanel(panelRegistry, "sessions")),
     vscode.commands.registerCommand("altruist.openCache", () => openPanel(panelRegistry, "cache")),
     vscode.commands.registerCommand("altruist.openVault", () => openPanel(panelRegistry, "vault")),
+    vscode.commands.registerCommand("altruist.openNetwork", () => openPanel(panelRegistry, "network")),
+    vscode.commands.registerCommand("altruist.openPerformance", () => openPanel(panelRegistry, "performance")),
+    vscode.commands.registerCommand("altruist.openLab", () => openPanel(panelRegistry, "lab")),
     vscode.commands.registerCommand("altruist.refreshCurrentPanel", () => panelRegistry.refreshCurrentPanel()),
     vscode.commands.registerCommand("altruist.openSettings", () => {
       vscode.commands.executeCommand(
@@ -219,6 +222,18 @@ class ExplorerTreeProvider {
       makeCommandItem("Vault", "altruist.openVault", {
         description: "Persistent storage",
         icon: "archive",
+      }),
+      makeCommandItem("Network", "altruist.openNetwork", {
+        description: "Requests and packets",
+        icon: "pulse",
+      }),
+      makeCommandItem("Performance", "altruist.openPerformance", {
+        description: "Timings and slow paths",
+        icon: "graph-line",
+      }),
+      makeCommandItem("API Lab", "altruist.openLab", {
+        description: "Invoke endpoints and gates",
+        icon: "beaker",
       }),
     ];
   }

@@ -45,7 +45,7 @@ public class EngineClientSender : ClientSender
     private readonly IAltruistEngine _engine;
     private readonly ConcurrentDictionary<string, byte> _inFlight = new();
 
-    public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine) : base(store, codec)
+    public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine, IDashboardNetworkRecorder? networkRecorder = null) : base(store, codec, networkRecorder)
     {
         _engine = engine;
     }

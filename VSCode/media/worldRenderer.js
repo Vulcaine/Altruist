@@ -25,11 +25,29 @@ export class WorldRenderer {
     this.gizmos = new Map();
     this.hiddenGizmoIds = new Set();
     this.hiddenGizmoCategories = new Set();
+    this.visiblePartitionKeys = new Set();
+    this.hiddenObjectIds = new Set();
     this.pickables = [];
     this.selectedId = null;
     this.selectionHelper = null;
     this.worldSnapshot = null;
+    this.renderScale = 1;
     this.lastFrameTime = performance.now();
+    this.lastRenderTime = 0;
+    this.lastStatsTime = performance.now();
+    this.frameCounter = 0;
+    this.dirty = true;
+    this.activeFps = 45;
+    this.idleFps = 5;
+    this.showTerrainSurface = false;
+    this.onStatsChanged = null;
+    this.lastStats = {
+      fps: 0,
+      drawCalls: 0,
+      triangles: 0,
+      geometries: 0,
+      textures: 0,
+    };
     this.cameraNear = 1;
     this.cameraFar = 30000;
   }
@@ -42,7 +60,7 @@ export class WorldRenderer {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x06080c);
-    this.scene.fog = new THREE.Fog(0x06080c, 600, 6000);
+    this.scene.fog = new THREE.Fog(0x06080c, this.cameraFar * 0.2, this.cameraFar);
 
     this.camera = new THREE.PerspectiveCamera(60, 1, this.cameraNear, this.cameraFar);
 
@@ -61,8 +79,7 @@ export class WorldRenderer {
     const directional = new THREE.DirectionalLight(0xfff3d4, 0.8);
     directional.position.set(180, 320, 140);
 
-    this.grid = new THREE.GridHelper(3000, 120, 0x6b7280, 0x20252d);
-    this.grid.position.y = 0;
+    this.grid = new THREE.Group();
 
     this.scene.add(ambient, directional, this.grid, this.objectLayer, this.gizmoLayer, this.overlayLayer);
 
@@ -70,11 +87,14 @@ export class WorldRenderer {
     container.appendChild(this.renderer.domElement);
     this.inputController.attach(this.renderer.domElement);
     this.inputController.requestFocus = (center, radius) => this.focusCameraOnBounds(center, radius);
+    this.inputController.onUserMove = () => this.markDirty();
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
     this.lastFrameTime = performance.now();
+    this.lastRenderTime = 0;
+    this.markDirty();
     this.startLoop();
   }
 
@@ -112,6 +132,8 @@ export class WorldRenderer {
     this.selectedId = null;
     this.selectionHelper = null;
     this.worldSnapshot = null;
+    this.renderScale = 1;
+    this.dirty = true;
   }
 
   resize() {
@@ -124,6 +146,7 @@ export class WorldRenderer {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.markDirty();
   }
 
   setCameraClip(near, far) {
@@ -153,6 +176,8 @@ export class WorldRenderer {
       this.scene.fog.near = Math.min(600, this.cameraFar * 0.2);
       this.scene.fog.far = this.cameraFar;
     }
+
+    this.markDirty();
   }
 
   getCameraClip() {
@@ -163,14 +188,27 @@ export class WorldRenderer {
   }
 
   startLoop() {
-    const tick = () => {
+    const tick = (now) => {
       if (this.camera && this.renderer && this.scene) {
-        const now = performance.now();
         const dt = Math.min(0.1, (now - this.lastFrameTime) / 1000);
         this.lastFrameTime = now;
+        const activeMotion = Boolean(this.inputController.hasActiveMotion?.());
+        let cameraMoved = false;
 
-        this.inputController.updateCamera(this.camera, dt);
-        this.renderer.render(this.scene, this.camera);
+        if (this.dirty || activeMotion) {
+          cameraMoved = Boolean(this.inputController.updateCamera(this.camera, dt));
+        }
+
+        const targetFps = activeMotion || cameraMoved ? this.activeFps : this.idleFps;
+        const minFrameInterval = 1000 / Math.max(1, targetFps);
+        const shouldRender = this.dirty || activeMotion || (now - this.lastRenderTime) >= minFrameInterval;
+
+        if (shouldRender) {
+          this.renderer.render(this.scene, this.camera);
+          this.lastRenderTime = now;
+          this.dirty = false;
+          this.recordFrame(now);
+        }
       }
 
       this.frameHandle = requestAnimationFrame(tick);
@@ -180,7 +218,14 @@ export class WorldRenderer {
   }
 
   setSnapshot(snapshot) {
+    if (snapshot === this.worldSnapshot) {
+      this.markDirty();
+      return;
+    }
+
     this.worldSnapshot = snapshot || null;
+    this.renderScale = normalizeRenderScale(this.worldSnapshot?.renderOptions?.renderScale);
+    this.applyRenderScale();
     this.rebuildWorld();
   }
 
@@ -197,15 +242,42 @@ export class WorldRenderer {
   }
 
   setGizmoVisibility(hiddenIds, hiddenCategories) {
-    this.hiddenGizmoIds = new Set(hiddenIds || []);
-    this.hiddenGizmoCategories = new Set(
+    const nextHiddenIds = new Set(hiddenIds || []);
+    const nextHiddenCategories = new Set(
       Array.from(hiddenCategories || []).map((value) => String(value).toLowerCase())
     );
+
+    if (setsEqual(this.hiddenGizmoIds, nextHiddenIds) && setsEqual(this.hiddenGizmoCategories, nextHiddenCategories)) {
+      return;
+    }
+
+    this.hiddenGizmoIds = nextHiddenIds;
+    this.hiddenGizmoCategories = nextHiddenCategories;
     this.refreshGizmoVisibility();
   }
 
+  setSceneVisibility(visiblePartitionKeys, hiddenObjectIds) {
+    const nextVisiblePartitionKeys = new Set(
+      Array.from(visiblePartitionKeys || []).map((value) => String(value))
+    );
+    const nextHiddenObjectIds = new Set(hiddenObjectIds || []);
+
+    if (setsEqual(this.visiblePartitionKeys, nextVisiblePartitionKeys) && setsEqual(this.hiddenObjectIds, nextHiddenObjectIds)) {
+      return;
+    }
+
+    this.visiblePartitionKeys = nextVisiblePartitionKeys;
+    this.hiddenObjectIds = nextHiddenObjectIds;
+    this.rebuildWorld();
+  }
+
   setSelectedObject(instanceId) {
-    this.selectedId = instanceId || null;
+    const nextSelectedId = instanceId || null;
+    if (this.selectedId === nextSelectedId) {
+      return;
+    }
+
+    this.selectedId = nextSelectedId;
     this.refreshSelectionHelper();
   }
 
@@ -228,7 +300,10 @@ export class WorldRenderer {
       return;
     }
 
-    const distance = THREE.MathUtils.clamp(radius * 2.3, 6, 5000);
+    const safeRadius = Math.max(4, Number(radius || 8));
+    const distance = Math.max(6, safeRadius * 2.3);
+    this.ensureCameraCanSeeBounds(safeRadius, distance);
+
     const viewDir = new THREE.Vector3(1, 0.65, 1).normalize();
 
     this.camera.position.set(
@@ -240,7 +315,54 @@ export class WorldRenderer {
     const dir = new THREE.Vector3().subVectors(center, this.camera.position).normalize();
     this.inputController.setOrientationFromDirection(dir);
     this.camera.lookAt(center);
-    this.inputController.setFocusTarget(center, distance, radius);
+    this.inputController.setFocusTarget(center, distance, safeRadius);
+    this.markDirty();
+  }
+
+  setPerformanceOptions(options = {}) {
+    const nextActiveFps = THREE.MathUtils.clamp(Number(options.activeFps || this.activeFps), 1, 120);
+    const nextIdleFps = THREE.MathUtils.clamp(Number(options.idleFps || this.idleFps), 0.5, 60);
+    const nextShowTerrainSurface = Boolean(options.showTerrainSurface);
+    const shouldRebuild = this.showTerrainSurface !== nextShowTerrainSurface;
+
+    this.activeFps = nextActiveFps;
+    this.idleFps = nextIdleFps;
+    this.showTerrainSurface = nextShowTerrainSurface;
+
+    if (shouldRebuild) {
+      this.rebuildWorld();
+      return;
+    }
+
+    this.markDirty();
+  }
+
+  getPerformanceStats() {
+    return { ...this.lastStats };
+  }
+
+  markDirty() {
+    this.dirty = true;
+  }
+
+  recordFrame(now) {
+    this.frameCounter += 1;
+    const elapsed = now - this.lastStatsTime;
+    if (elapsed < 500) {
+      return;
+    }
+
+    const fps = (this.frameCounter * 1000) / elapsed;
+    this.frameCounter = 0;
+    this.lastStatsTime = now;
+    this.lastStats = {
+      fps,
+      drawCalls: this.renderer?.info?.render?.calls || 0,
+      triangles: this.renderer?.info?.render?.triangles || 0,
+      geometries: this.renderer?.info?.memory?.geometries || 0,
+      textures: this.renderer?.info?.memory?.textures || 0,
+    };
+    this.onStatsChanged?.(this.getPerformanceStats());
   }
 
   pick(clientX, clientY) {
@@ -275,28 +397,17 @@ export class WorldRenderer {
       if (entry) {
         entry.root.position.set(update.position.x, update.position.y, update.position.z);
         entry.dto.transform.position = { ...update.position };
+        this.markDirty();
         continue;
       }
 
-      const placeholder = {
-        instanceId: id,
-        archetype: update.archetype || "RuntimeObject",
-        zoneId: "",
-        clientId: "",
-        expired: false,
-        transform: {
-          position: { ...update.position },
-          size: { x: 0.7, y: 1.4, z: 0.7 },
-          scale: { x: 1, y: 1, z: 1 },
-        },
-        colliders: [],
-      };
-
-      this.addObjectToScene(placeholder);
+      // Partition membership comes from the snapshot. Unknown live objects are
+      // picked up on refresh so hidden/non-selected partitions stay hidden.
     }
 
     this.applyGizmoRealtimePacket(packet);
     this.refreshSelectionHelper();
+    this.markDirty();
   }
 
   applyGizmoRealtimePacket(packet) {
@@ -309,50 +420,107 @@ export class WorldRenderer {
     }
 
     this.refreshGizmoVisibility();
+    this.markDirty();
   }
 
   rebuildWorld() {
-    if (!this.objectLayer || !this.overlayLayer) {
+    if (!this.objectLayer || !this.overlayLayer || !this.gizmoLayer) {
       return;
     }
 
     clearGroup(this.objectLayer);
     clearGroup(this.overlayLayer);
+    clearGroup(this.gizmoLayer);
+    clearGroup(this.grid);
     this.objects.clear();
     this.gizmos.clear();
     this.pickables = [];
     this.selectionHelper = null;
+    this.applyRenderScale();
+
+    const playArea = buildPlayArea(this.worldSnapshot);
+    if (playArea) {
+      this.grid.add(playArea);
+    }
 
     const partitions = this.worldSnapshot?.partitions || [];
     for (const partition of partitions) {
+      if (!this.isPartitionVisible(partition)) {
+        continue;
+      }
+
       const partitionEntries = [];
 
       for (const object of partition.objects || []) {
-        const entry = this.addObjectToScene(object);
+        if (!object?.instanceId || this.hiddenObjectIds.has(object.instanceId)) {
+          continue;
+        }
+
+        const entry = this.objects.get(object.instanceId) || this.addObjectToScene(object);
         if (entry) {
           partitionEntries.push(entry);
         }
       }
 
-      if (partitionEntries.length > 0) {
-        this.overlayLayer.add(buildPartitionOverlay(partitionEntries));
+      // Per-object selection already gives local focus. Avoid drawing a huge
+      // partition/terrain 3D box over the scene; the play-area plane is the
+      // canonical world boundary.
+    }
+
+    const gizmos = this.worldSnapshot?.gizmos || [];
+    const batchedWalkability = gizmos.filter(isWalkabilitySolidRect);
+    const regularGizmos = gizmos.filter((gizmo) => !isWalkabilitySolidRect(gizmo));
+
+    if (batchedWalkability.length > 0) {
+      const terrainSampler = createTerrainHeightSampler(this.worldSnapshot);
+      const root = buildWalkabilityBatch(batchedWalkability, terrainSampler);
+      if (root) {
+        const id = "__walkability_batch__";
+        root.userData.gizmoId = id;
+        this.gizmoLayer.add(root);
+        this.gizmos.set(id, {
+          dto: {
+            id,
+            category: "walkability",
+            source: "server",
+            type: "batched-solid-rect",
+            label: `${batchedWalkability.length} walkability cells`,
+          },
+          root,
+        });
       }
     }
 
-    for (const gizmo of this.worldSnapshot?.gizmos || []) {
+    for (const gizmo of regularGizmos) {
       this.upsertGizmo(gizmo);
     }
 
     this.refreshGizmoVisibility();
+    this.markDirty();
 
     if (this.objects.size > 0) {
+      const firstInspectable = this.getObjects().find((object) => !isTerrainObject(object));
       const initialId = this.selectedId && this.objects.has(this.selectedId)
         ? this.selectedId
-        : this.getObjects()[0].instanceId;
+        : firstInspectable?.instanceId || null;
       this.selectedId = initialId;
-      this.focusOnObject(initialId);
+      if (initialId) {
+        this.focusOnObject(initialId);
+      } else {
+        this.focusOnPlayArea();
+      }
       this.refreshSelectionHelper();
     }
+
+    this.markDirty();
+  }
+
+  isPartitionVisible(partition) {
+    if (!this.visiblePartitionKeys.size) {
+      return true;
+    }
+
+    return this.visiblePartitionKeys.has(getPartitionKey(partition));
   }
 
   upsertGizmo(gizmo) {
@@ -392,6 +560,7 @@ export class WorldRenderer {
       entry.root.visible = !this.hiddenGizmoIds.has(id)
         && !this.hiddenGizmoCategories.has(category);
     }
+    this.markDirty();
   }
 
   addObjectToScene(object) {
@@ -413,7 +582,9 @@ export class WorldRenderer {
 
     if (colliders.length > 0) {
       for (const collider of colliders) {
-        const mesh = buildColliderMesh(object, collider);
+        const mesh = buildColliderMesh(object, collider, {
+          showTerrainSurface: this.showTerrainSurface,
+        });
         if (!mesh) {
           continue;
         }
@@ -456,6 +627,7 @@ export class WorldRenderer {
       this.overlayLayer.remove(this.selectionHelper);
       disposeObject(this.selectionHelper);
       this.selectionHelper = null;
+      this.markDirty();
     }
 
     if (!this.selectedId) {
@@ -467,10 +639,67 @@ export class WorldRenderer {
       return;
     }
 
+    if (isTerrainObject(entry.dto)) {
+      return;
+    }
+
     const helper = new THREE.BoxHelper(entry.root, 0xd08c0e);
     this.selectionHelper = helper;
     this.overlayLayer.add(helper);
+    this.markDirty();
   }
+
+  applyRenderScale() {
+    const scale = normalizeRenderScale(this.renderScale);
+    this.renderScale = scale;
+
+    for (const layer of [this.objectLayer, this.overlayLayer, this.gizmoLayer]) {
+      if (layer) {
+        layer.scale.setScalar(scale);
+      }
+    }
+
+    if (this.grid) {
+      this.grid.scale.setScalar(scale);
+    }
+    this.markDirty();
+  }
+
+  ensureCameraCanSeeBounds(radius, distance) {
+    const requiredFar = Math.max(this.cameraFar, distance + (radius * 2.5), 1000);
+    if (requiredFar > this.cameraFar * 1.05) {
+      this.cameraFar = Math.min(requiredFar, 10000000);
+    }
+
+    if (this.camera) {
+      this.camera.near = this.cameraNear;
+      this.camera.far = this.cameraFar;
+      this.camera.updateProjectionMatrix();
+    }
+
+    if (this.scene?.fog) {
+      this.scene.fog.near = Math.min(Math.max(600, this.cameraFar * 0.04), this.cameraFar * 0.35);
+      this.scene.fog.far = this.cameraFar;
+    }
+  }
+
+  focusOnPlayArea() {
+    const bounds = computeWorldBounds(this.worldSnapshot);
+    if (!bounds) {
+      return;
+    }
+
+    this.focusCameraOnBounds(bounds.center, bounds.radius);
+  }
+}
+
+function normalizeRenderScale(value) {
+  const scale = Number(value);
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return 1;
+  }
+
+  return THREE.MathUtils.clamp(scale, 0.01, 100);
 }
 
 function flattenRealtimeObjects(packet) {
@@ -489,7 +718,16 @@ function flattenRealtimeObjects(packet) {
   return [];
 }
 
-function buildColliderMesh(object, collider) {
+function getPartitionKey(partition) {
+  return `${partitionIndex(partition, "x")}:${partitionIndex(partition, "y")}:${partitionIndex(partition, "z")}`;
+}
+
+function partitionIndex(partition, axis) {
+  const upper = `index${axis.toUpperCase()}`;
+  return Number(partition?.[upper] ?? partition?.[axis] ?? 0);
+}
+
+function buildColliderMesh(object, collider, options = {}) {
   const objectPosition = object.transform?.position || { x: 0, y: 0, z: 0 };
   const transform = collider.transform || object.transform || {};
   const position = transform.position || objectPosition;
@@ -502,7 +740,7 @@ function buildColliderMesh(object, collider) {
   );
 
   if (collider.shape === SHAPE_HEIGHTFIELD || collider.heightfield) {
-    const mesh = buildHeightfieldMesh(collider.heightfield);
+    const mesh = buildHeightfieldMesh(collider.heightfield, options);
     mesh.position.copy(localPosition);
     return mesh;
   }
@@ -549,7 +787,7 @@ function buildColliderMesh(object, collider) {
   return mesh;
 }
 
-function buildHeightfieldMesh(heightfield) {
+function buildHeightfieldMesh(heightfield, options = {}) {
   if (!heightfield) {
     return new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
@@ -588,6 +826,11 @@ function buildHeightfieldMesh(heightfield) {
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
 
+  const wire = buildHeightfieldWireframe(width, height, positions);
+  if (!options.showTerrainSurface) {
+    return wire;
+  }
+
   const surface = new THREE.Mesh(
     geometry,
     new THREE.MeshBasicMaterial({
@@ -597,7 +840,6 @@ function buildHeightfieldMesh(heightfield) {
       wireframe: false,
     })
   );
-  const wire = buildHeightfieldWireframe(width, height, positions);
   surface.add(wire);
   return surface;
 }
@@ -670,36 +912,139 @@ function buildArchetypeMarker(object) {
   return mesh;
 }
 
-function buildPartitionOverlay(entries) {
-  const box = new THREE.Box3();
-  for (const entry of entries) {
-    box.union(new THREE.Box3().setFromObject(entry.root));
+function buildPlayArea(snapshot) {
+  const bounds = computeWorldBounds(snapshot);
+  if (!bounds) {
+    return null;
   }
 
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const geometry = new THREE.BoxGeometry(
-    Math.max(1, size.x + 2),
-    Math.max(1, size.y + 2),
-    Math.max(1, size.z + 2)
+  const group = new THREE.Group();
+  const y = bounds.minY - 20;
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(bounds.sizeX, bounds.sizeZ),
+    new THREE.MeshBasicMaterial({
+      color: 0xd08c0e,
+      transparent: true,
+      opacity: 0.035,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
   );
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geometry),
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.set(bounds.center.x, y, bounds.center.z);
+  plane.renderOrder = -10;
+  group.add(plane);
+
+  group.add(buildPlayAreaGrid(bounds, y + 1));
+  group.add(buildPlayAreaOutline(bounds, y + 2));
+  return group;
+}
+
+function buildPlayAreaGrid(bounds, y) {
+  const targetDivisions = 32;
+  const step = Math.max(1, Math.max(bounds.sizeX, bounds.sizeZ) / targetDivisions);
+  const lines = [];
+
+  for (let x = bounds.minX; x <= bounds.maxX + 0.001; x += step) {
+    lines.push(x, y, bounds.minZ, x, y, bounds.maxZ);
+  }
+
+  for (let z = bounds.minZ; z <= bounds.maxZ + 0.001; z += step) {
+    lines.push(bounds.minX, y, z, bounds.maxX, y, z);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+  return new THREE.LineSegments(
+    geometry,
     new THREE.LineBasicMaterial({
       color: 0xd08c0e,
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.16,
     })
   );
+}
 
-  edges.position.copy(center);
-  return edges;
+function buildPlayAreaOutline(bounds, y) {
+  const points = [
+    new THREE.Vector3(bounds.minX, y, bounds.minZ),
+    new THREE.Vector3(bounds.maxX, y, bounds.minZ),
+    new THREE.Vector3(bounds.maxX, y, bounds.maxZ),
+    new THREE.Vector3(bounds.minX, y, bounds.maxZ),
+  ];
+
+  return buildLine(points, new THREE.LineBasicMaterial({
+    color: 0xd08c0e,
+    transparent: true,
+    opacity: 0.92,
+  }), true);
+}
+
+function computeWorldBounds(snapshot) {
+  const terrainObjects = (snapshot?.partitions || [])
+    .flatMap((partition) => partition.objects || [])
+    .filter(isTerrainObject);
+
+  const objects = terrainObjects.length > 0
+    ? terrainObjects
+    : (snapshot?.partitions || []).flatMap((partition) => partition.objects || []);
+
+  if (!objects.length) {
+    return null;
+  }
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+
+  for (const object of objects) {
+    const position = object.transform?.position || { x: 0, y: 0, z: 0 };
+    const size = object.transform?.size || { x: 1, y: 1, z: 1 };
+    const objectMinX = Number(position.x || 0);
+    const objectMinY = Number(position.y || 0);
+    const objectMinZ = Number(position.z || 0);
+    const objectMaxX = objectMinX + Math.max(1, Number(size.x || 1));
+    const objectMaxY = objectMinY + Math.max(1, Number(size.y || 1));
+    const objectMaxZ = objectMinZ + Math.max(1, Number(size.z || 1));
+
+    minX = Math.min(minX, objectMinX);
+    minY = Math.min(minY, objectMinY);
+    minZ = Math.min(minZ, objectMinZ);
+    maxX = Math.max(maxX, objectMaxX);
+    maxY = Math.max(maxY, objectMaxY);
+    maxZ = Math.max(maxZ, objectMaxZ);
+  }
+
+  const sizeX = Math.max(1, maxX - minX);
+  const sizeY = Math.max(1, maxY - minY);
+  const sizeZ = Math.max(1, maxZ - minZ);
+  return {
+    minX,
+    minY,
+    minZ,
+    maxX,
+    maxY,
+    maxZ,
+    sizeX,
+    sizeY,
+    sizeZ,
+    center: new THREE.Vector3(minX + (sizeX * 0.5), minY + (sizeY * 0.5), minZ + (sizeZ * 0.5)),
+    radius: Math.max(sizeX, sizeY, sizeZ) * 0.55,
+  };
+}
+
+function isTerrainObject(object) {
+  return (object?.colliders || []).some((collider) => collider?.heightfield);
 }
 
 function buildGizmoObject(gizmo) {
   const root = new THREE.Group();
   root.name = gizmo.id || "gizmo";
 
+  const category = String(gizmo.category || "").toLowerCase();
   const color = parseColor(gizmo.color || "#38BDF8FF");
   const material = new THREE.LineBasicMaterial({
     color,
@@ -734,6 +1079,18 @@ function buildGizmoObject(gizmo) {
 
   if (type === "rect") {
     root.add(buildRect(position, Number(gizmo.width || 1), Number(gizmo.height || 1), material));
+    return root;
+  }
+
+  if (type === "solid-rect" || type === "filled-rect") {
+    root.add(buildSolidRect(
+      position,
+      Number(gizmo.width || 1),
+      Number(gizmo.height || 1),
+      color,
+      parseAlpha(gizmo.color || "#38BDF8FF"),
+      category
+    ));
     return root;
   }
 
@@ -788,6 +1145,240 @@ function buildRect(position, width, height, material) {
   return buildLine(points, material, true);
 }
 
+function buildSolidRect(position, width, height, color, alpha, category) {
+  const geometry = new THREE.PlaneGeometry(Math.max(0.05, width), Math.max(0.05, height));
+  const isWalkability = category === "walkability";
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: isWalkability ? 0.62 : Math.min(0.38, Math.max(0.08, alpha)),
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.copy(position);
+  if (isWalkability) {
+    mesh.position.y += 0.35;
+  }
+  mesh.renderOrder = isWalkability ? 200 : 50;
+
+  const root = new THREE.Group();
+  root.add(mesh);
+
+  if (isWalkability) {
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry),
+      new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.95,
+        depthTest: false,
+      })
+    );
+    outline.rotation.x = -Math.PI / 2;
+    outline.position.copy(mesh.position);
+    outline.position.y += 0.01;
+    outline.renderOrder = 201;
+    root.add(outline);
+  }
+
+  return root;
+}
+
+function isWalkabilitySolidRect(gizmo) {
+  const category = String(gizmo?.category || "").toLowerCase();
+  const type = String(gizmo?.type || "").toLowerCase();
+  return category === "walkability" && (type === "solid-rect" || type === "filled-rect");
+}
+
+function buildWalkabilityBatch(gizmos, terrainSampler) {
+  const positions = [];
+  const indices = [];
+  const linePositions = [];
+  let vertexOffset = 0;
+
+  for (const gizmo of gizmos) {
+    const center = toVector3(gizmo.position);
+    const width = Math.max(0.05, Number(gizmo.width || 1));
+    const height = Math.max(0.05, Number(gizmo.height || 1));
+    const halfWidth = width * 0.5;
+    const halfHeight = height * 0.5;
+    const y00 = sampleOverlayHeight(terrainSampler, center.x - halfWidth, center.z - halfHeight, center.y);
+    const y10 = sampleOverlayHeight(terrainSampler, center.x + halfWidth, center.z - halfHeight, center.y);
+    const y11 = sampleOverlayHeight(terrainSampler, center.x + halfWidth, center.z + halfHeight, center.y);
+    const y01 = sampleOverlayHeight(terrainSampler, center.x - halfWidth, center.z + halfHeight, center.y);
+
+    if ([y00, y10, y11, y01].some((value) => value == null)) {
+      continue;
+    }
+
+    const corners = [
+      center.x - halfWidth, y00, center.z - halfHeight,
+      center.x + halfWidth, y10, center.z - halfHeight,
+      center.x + halfWidth, y11, center.z + halfHeight,
+      center.x - halfWidth, y01, center.z + halfHeight,
+    ];
+
+    positions.push(...corners);
+    indices.push(vertexOffset, vertexOffset + 1, vertexOffset + 2, vertexOffset, vertexOffset + 2, vertexOffset + 3);
+
+    pushLineSegment(linePositions, corners, 0, 1);
+    pushLineSegment(linePositions, corners, 1, 2);
+    pushLineSegment(linePositions, corners, 2, 3);
+    pushLineSegment(linePositions, corners, 3, 0);
+
+    vertexOffset += 4;
+  }
+
+  if (positions.length === 0) {
+    return null;
+  }
+
+  const color = parseColor(gizmos[0]?.color || "#FF2E2E77");
+  const root = new THREE.Group();
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.48,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+  );
+  mesh.renderOrder = 200;
+  root.add(mesh);
+
+  const lineGeometry = new THREE.BufferGeometry();
+  lineGeometry.setAttribute("position", new THREE.Float32BufferAttribute(linePositions, 3));
+  const outline = new THREE.LineSegments(
+    lineGeometry,
+    new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.75,
+      depthTest: false,
+    })
+  );
+  outline.renderOrder = 201;
+  root.add(outline);
+  return root;
+}
+
+function createTerrainHeightSampler(snapshot) {
+  const terrainObjects = (snapshot?.partitions || [])
+    .flatMap((partition) => partition.objects || [])
+    .filter((object) => (object.colliders || []).some((collider) => collider?.heightfield));
+
+  if (terrainObjects.length === 0) {
+    return null;
+  }
+
+  const terrains = terrainObjects
+    .map((object) => {
+      const collider = (object.colliders || []).find((item) => item?.heightfield);
+      const heightfield = collider?.heightfield;
+      if (!heightfield) {
+        return null;
+      }
+
+      const objectPosition = object.transform?.position || { x: 0, y: 0, z: 0 };
+      const colliderPosition = collider.transform?.position || objectPosition;
+      return {
+        originX: Number(colliderPosition.x || 0),
+        originY: Number(colliderPosition.y || 0),
+        originZ: Number(colliderPosition.z || 0),
+        width: Number(heightfield.width || 0),
+        height: Number(heightfield.height || 0),
+        cellSizeX: Number(heightfield.cellSizeX || 1),
+        cellSizeZ: Number(heightfield.cellSizeZ || 1),
+        heights: heightfield.heights || [],
+      };
+    })
+    .filter(Boolean);
+
+  if (terrains.length === 0) {
+    return null;
+  }
+
+  return {
+    sample(x, z) {
+      for (const terrain of terrains) {
+        const localX = x - terrain.originX;
+        const localZ = z - terrain.originZ;
+        const maxX = (terrain.width - 1) * terrain.cellSizeX;
+        const maxZ = (terrain.height - 1) * terrain.cellSizeZ;
+
+        if (localX < 0 || localZ < 0 || localX > maxX || localZ > maxZ) {
+          continue;
+        }
+
+        return terrain.originY + sampleHeightfieldBilinear(terrain, localX, localZ);
+      }
+
+      return null;
+    },
+  };
+}
+
+function sampleOverlayHeight(terrainSampler, x, z, fallbackY) {
+  if (terrainSampler) {
+    const sampled = terrainSampler.sample(x, z);
+    return Number.isFinite(sampled) ? sampled + 8 : null;
+  }
+
+  return Number(fallbackY || 0) + 8;
+}
+
+function sampleHeightfieldBilinear(terrain, localX, localZ) {
+  const fx = THREE.MathUtils.clamp(localX / terrain.cellSizeX, 0, Math.max(0, terrain.width - 1));
+  const fz = THREE.MathUtils.clamp(localZ / terrain.cellSizeZ, 0, Math.max(0, terrain.height - 1));
+  const x0 = Math.floor(fx);
+  const z0 = Math.floor(fz);
+  const x1 = Math.min(terrain.width - 1, x0 + 1);
+  const z1 = Math.min(terrain.height - 1, z0 + 1);
+  const tx = fx - x0;
+  const tz = fz - z0;
+
+  const h00 = getHeightfieldValue(terrain, x0, z0);
+  const h10 = getHeightfieldValue(terrain, x1, z0);
+  const h01 = getHeightfieldValue(terrain, x0, z1);
+  const h11 = getHeightfieldValue(terrain, x1, z1);
+  const hx0 = THREE.MathUtils.lerp(h00, h10, tx);
+  const hx1 = THREE.MathUtils.lerp(h01, h11, tx);
+  return THREE.MathUtils.lerp(hx0, hx1, tz);
+}
+
+function getHeightfieldValue(terrain, x, z) {
+  const row = terrain.heights?.[x];
+  if (!Array.isArray(row)) {
+    return 0;
+  }
+
+  return Number(row[z] || 0);
+}
+
+function pushLineSegment(target, corners, from, to) {
+  const fromOffset = from * 3;
+  const toOffset = to * 3;
+  target.push(
+    corners[fromOffset],
+    corners[fromOffset + 1],
+    corners[fromOffset + 2],
+    corners[toOffset],
+    corners[toOffset + 1],
+    corners[toOffset + 2]
+  );
+}
+
 function toVector3(value) {
   return new THREE.Vector3(
     Number(value?.x ?? value?.X ?? 0),
@@ -834,6 +1425,20 @@ function getArchetypePalette(archetype) {
 
 function cloneObjectDto(object) {
   return JSON.parse(JSON.stringify(object));
+}
+
+function setsEqual(left, right) {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function clearGroup(group) {

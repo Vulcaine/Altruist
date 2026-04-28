@@ -27,15 +27,18 @@ namespace Altruist.Dashboard
         private readonly IGameWorldOrganizer3D _worldOrganizer;
         private readonly IDashboardGizmoRegistry _gizmos;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly DashboardWorldViewOptions _viewOptions;
 
         public WorldDashboardController(
             IGameWorldOrganizer3D worldOrganizer,
             IDashboardGizmoRegistry gizmos,
-            JsonSerializerOptions jsonOptions)
+            JsonSerializerOptions jsonOptions,
+            DashboardWorldViewOptions viewOptions)
         {
             _worldOrganizer = worldOrganizer;
             _gizmos = gizmos;
             _jsonOptions = jsonOptions;
+            _viewOptions = viewOptions;
         }
 
         [HttpGet]
@@ -69,13 +72,13 @@ namespace Altruist.Dashboard
                 .ToList();
 
             var partitionDtos = new List<WorldPartitionObjectsDto>();
-            var emittedObjects = new HashSet<string>(StringComparer.Ordinal);
+            var emittedLargeObjects = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var partition in partitions)
             {
                 var objs = partition
                     .GetAllObjects<IWorldObject3D>()
-                    .Where(o => emittedObjects.Add(o.InstanceId));
+                    .Where(o => !IsLargeSnapshotObject(o) || emittedLargeObjects.Add(o.InstanceId));
 
                 var dto = new WorldPartitionObjectsDto
                 {
@@ -96,6 +99,7 @@ namespace Altruist.Dashboard
                 WorldIndex = world.Index.Index,
                 WorldName = world.Index.Name ?? string.Empty,
                 GeneratedAtUtc = DateTime.UtcNow,
+                RenderOptions = BuildRenderOptions(),
                 Partitions = partitionDtos,
                 Gizmos = _gizmos.GetSnapshot(world.Index.Index).ToList()
             };
@@ -132,7 +136,7 @@ namespace Altruist.Dashboard
                 .FindPartitionsForPosition(0, 0, 0, float.MaxValue)
                 .OfType<WorldPartitionManager3D>()
                 .ToList();
-            var emittedObjects = new HashSet<string>(StringComparer.Ordinal);
+            var emittedLargeObjects = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var partition in partitions)
             {
@@ -140,7 +144,7 @@ namespace Altruist.Dashboard
 
                 var objs = partition
                     .GetAllObjects<IWorldObject3D>()
-                    .Where(o => emittedObjects.Add(o.InstanceId));
+                    .Where(o => !IsLargeSnapshotObject(o) || emittedLargeObjects.Add(o.InstanceId));
 
                 var dto = new WorldPartitionObjectsDto
                 {
@@ -159,7 +163,7 @@ namespace Altruist.Dashboard
             }
         }
 
-        private static WorldObjectDto BuildWorldObjectDto(IWorldObject3D o)
+        private WorldObjectDto BuildWorldObjectDto(IWorldObject3D o)
         {
             var effectiveTransform = o.Transform;
 
@@ -194,14 +198,25 @@ namespace Altruist.Dashboard
             {
                 foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
                 {
-                    wod.Colliders.Add(ColliderDto.FromCollider(c));
+                    wod.Colliders.Add(ColliderDto.FromCollider(c, _viewOptions.TerrainSampleStride));
                 }
             }
 
             return wod;
         }
 
-        private static ColliderDto BuildRuntimeColliderDto(IPhysxCollider3D c, Transform3D fallbackWorldTransform)
+        private static bool IsLargeSnapshotObject(IWorldObject3D o)
+            => o is Terrain
+                || o.ColliderDescriptors.Any(c => c.Shape == PhysxColliderShape3D.Heightfield3D || c.Heightfield != null);
+
+        private DashboardWorldRenderOptionsDto BuildRenderOptions()
+            => new()
+            {
+                RenderScale = _viewOptions.RenderScale,
+                TerrainSampleStride = _viewOptions.TerrainSampleStride
+            };
+
+        private ColliderDto BuildRuntimeColliderDto(IPhysxCollider3D c, Transform3D fallbackWorldTransform)
         {
             var t = c.Transform;
             if (t.Equals(Transform3D.Identity))
@@ -213,7 +228,7 @@ namespace Altruist.Dashboard
                 Shape = c.Shape,
                 Transform = TransformDto.FromTransform(t),
                 IsTrigger = c.IsTrigger,
-                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield)
+                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield, _viewOptions.TerrainSampleStride)
             };
         }
     }
@@ -224,9 +239,17 @@ namespace Altruist.Dashboard
         public string WorldName { get; set; } = string.Empty;
         public DateTime GeneratedAtUtc { get; set; }
 
+        public DashboardWorldRenderOptionsDto RenderOptions { get; set; } = new();
+
         public List<WorldPartitionObjectsDto> Partitions { get; set; } = new();
 
         public List<DashboardGizmo> Gizmos { get; set; } = new();
+    }
+
+    public sealed class DashboardWorldRenderOptionsDto
+    {
+        public float RenderScale { get; set; } = 1f;
+        public int TerrainSampleStride { get; set; } = 1;
     }
 
     public sealed class WorldPartitionObjectsDto

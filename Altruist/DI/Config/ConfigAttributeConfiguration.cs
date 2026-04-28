@@ -180,17 +180,9 @@ namespace Altruist
                     // Compute absolute full path
                     var fullPath = ResolveWildcardPath(cfg, declaring, attr);
 
-                    // Read initial value
-                    var initial = DependencyResolver.ResolveFromConfig(
-                        cfg,
-                        inner,
-                        new AppConfigValueAttribute(fullPath),
-                        logger
-                    );
-
                     // Create live wrapper
                     var liveType = typeof(LiveConfigValue<>).MakeGenericType(inner);
-                    return Activator.CreateInstance(liveType, cfg, fullPath, initial);
+                    return Activator.CreateInstance(liveType, cfg, fullPath, fullPath);
                 }
 
                 // Non-live value fallback

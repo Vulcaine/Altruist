@@ -1,6 +1,7 @@
 using System.Numerics;
 using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
+using Altruist.Physx;
 using Altruist.ThreeD.Numerics;
 using Moq;
 
@@ -21,6 +22,9 @@ public class VisibilityTracker3DTests
 {
     private VisibilityTracker3D CreateTracker(float viewRange = 5000f)
         => new(viewRange);
+
+    private VisibilityTracker3D CreateTracker(float viewRange, ISpatialCollisionDispatcher dispatcher)
+        => new(viewRange, null, dispatcher);
 
     private WorldSnapshot CreateSnapshot(Mock<IGameWorldManager3D> world, params IWorldObject3D[] objects)
     {
@@ -71,6 +75,28 @@ public class VisibilityTracker3DTests
     }
 
     [Fact]
+    public void Tick_ShouldDispatchEntityVisibleCollisionEvent_WhenEntityEntersRange()
+    {
+        var dispatcher = new Mock<ISpatialCollisionDispatcher>();
+        var tracker = CreateTracker(1000f, dispatcher.Object);
+        var world = CreateMockWorld();
+        var organizer = new Mock<IGameWorldOrganizer3D>();
+        organizer.Setup(o => o.GetWorld(0)).Returns(world.Object);
+        organizer.Setup(o => o.GetAllWorlds()).Returns([world.Object]);
+        tracker.SetOrganizer(organizer.Object);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
+
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        dispatcher.Verify(
+            d => d.Dispatch(player, npc, typeof(EntityVisible), null),
+            Times.Once);
+    }
+
+    [Fact]
     public void Tick_ShouldFireOnEntityInvisible_WhenEntityLeavesRange()
     {
         var world = CreateMockWorld();
@@ -91,6 +117,30 @@ public class VisibilityTracker3DTests
 
         Assert.NotNull(invisible);
         Assert.Equal("player1", invisible.Value.ObserverClientId);
+    }
+
+    [Fact]
+    public void Tick_ShouldDispatchEntityInvisibleCollisionEvent_WhenEntityLeavesRange()
+    {
+        var dispatcher = new Mock<ISpatialCollisionDispatcher>();
+        var tracker = CreateTracker(1000f, dispatcher.Object);
+        var world = CreateMockWorld();
+        var organizer = new Mock<IGameWorldOrganizer3D>();
+        organizer.Setup(o => o.GetWorld(0)).Returns(world.Object);
+        organizer.Setup(o => o.GetAllWorlds()).Returns([world.Object]);
+        tracker.SetOrganizer(organizer.Object);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
+
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+        npc.Transform = Transform3D.From(new Vector3(5000, 0, 0), Quaternion.Identity, Vector3.One);
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        dispatcher.Verify(
+            d => d.Dispatch(player, npc, typeof(EntityInvisible), null),
+            Times.Once);
     }
 
     [Fact]

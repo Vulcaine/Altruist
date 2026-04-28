@@ -13,7 +13,16 @@
     loadingLabel: "Loading dashboard data...",
     configFilter: "",
     cacheFilter: "",
+    networkFilter: "",
+    networkKind: "",
+    networkDirection: "",
+    labFilter: "",
+    labExpanded: {},
+    labPayloads: {},
+    labClientIds: {},
+    labResults: {},
     serviceFilter: "",
+    serviceTypeFilter: "",
     selectedVaultTypeKey: "",
     vaultPage: null,
     vaultOriginalItems: [],
@@ -89,6 +98,13 @@
           state.isRefreshing = false;
           render();
         }
+        return;
+      case "lab:result":
+        state.labResults[message.actionId || ""] = message.payload ?? null;
+        state.error = "";
+        state.isBootstrapping = false;
+        state.isRefreshing = false;
+        render({ preserveViewport: true });
         return;
       default:
         return;
@@ -220,6 +236,16 @@
         state.vaultQueryResult = null;
         render();
         return;
+      case "service-type-filter":
+        state.serviceTypeFilter = button.dataset.filter || "";
+        render({ preserveViewport: true });
+        return;
+      case "lab-toggle":
+        toggleLabAction(button.dataset.actionId || "");
+        return;
+      case "lab-submit":
+        submitLabAction(button.dataset.actionId || "");
+        return;
       case "close-modal":
         closeModal();
         return;
@@ -237,19 +263,33 @@
     switch (target.dataset.role) {
       case "config-filter":
         state.configFilter = target.value || "";
-        render();
+        render({ preserveViewport: true });
         return;
       case "cache-filter":
         state.cacheFilter = target.value || "";
-        render();
+        render({ preserveViewport: true });
+        return;
+      case "network-filter":
+        state.networkFilter = target.value || "";
+        render({ preserveViewport: true });
+        return;
+      case "lab-filter":
+        state.labFilter = target.value || "";
+        render({ preserveViewport: true });
+        return;
+      case "lab-payload":
+        state.labPayloads[target.dataset.actionId || ""] = target.value || "";
+        return;
+      case "lab-client-id":
+        state.labClientIds[target.dataset.actionId || ""] = target.value || "";
         return;
       case "service-filter":
         state.serviceFilter = target.value || "";
-        render();
+        render({ preserveViewport: true });
         return;
       case "vault-filter-inline":
         state.vaultFilters[target.dataset.field || ""] = target.value || "";
-        render();
+        render({ preserveViewport: true });
         return;
       case "vault-query-sql":
         state.vaultQuerySql = target.value || "";
@@ -293,6 +333,16 @@
       state.vaultFilters = {};
       state.expandedVaultCells = {};
       requestVaultPage(0, getVaultTake());
+    }
+
+    if (target.dataset.role === "network-kind") {
+      state.networkKind = target.value || "";
+      render({ preserveViewport: true });
+    }
+
+    if (target.dataset.role === "network-direction") {
+      state.networkDirection = target.value || "";
+      render({ preserveViewport: true });
     }
   });
 
@@ -344,13 +394,19 @@
   vscode.postMessage({ type: "panel:ready" });
   render();
 
-  function render() {
+  function render(options = {}) {
+    const viewport = options.preserveViewport ? captureViewportState() : null;
+
     app.innerHTML = `
       ${renderToolbar()}
       ${renderBody()}
       ${renderOverlay()}
       ${renderModal()}
     `;
+
+    if (viewport) {
+      restoreViewportState(viewport);
+    }
   }
 
   function renderToolbar() {
@@ -360,6 +416,9 @@
       sessions: "Sessions",
       cache: "Cache",
       vault: "Vault",
+      network: "Network",
+      performance: "Performance",
+      lab: "API Lab",
     };
 
     return `
@@ -402,6 +461,12 @@
         return renderCache();
       case "vault":
         return renderVault();
+      case "network":
+        return renderNetwork();
+      case "performance":
+        return renderPerformance();
+      case "lab":
+        return renderLab();
       default:
         return `<div class="empty-state">Unsupported Altruist panel.</div>`;
     }
@@ -473,7 +538,7 @@
 
   function renderSummary() {
     const payload = state.payload || {};
-    const services = filterEntries(payload.services || [], state.serviceFilter, [
+    const services = filterEntries(filterServicesByType(payload.services || [], state.serviceTypeFilter), state.serviceFilter, [
       "name",
       "fullName",
       "assembly",
@@ -539,9 +604,17 @@
               <h2>Registered Services</h2>
               <div class="muted">Search by type, lifetime, endpoint, assembly, or context.</div>
             </div>
-            <div class="filters compact">
+            <div class="service-filter-bar">
+              <div class="service-type-filters" aria-label="Service type filters">
+                ${renderServiceTypeButton("", "all", "All services")}
+                ${renderServiceTypeButton("prefab", "prefab", "Prefabs")}
+                ${renderServiceTypeButton("portal", "portal", "Portals")}
+                ${renderServiceTypeButton("service", "service", "Services")}
+                ${renderServiceTypeButton("factory", "factory", "Factories")}
+                ${renderServiceTypeButton("config", "config", "Configurations")}
+              </div>
               <input
-                class="grow"
+                class="service-filter-input"
                 data-role="service-filter"
                 value="${escapeAttribute(state.serviceFilter)}"
                 placeholder="Filter services..."
@@ -569,7 +642,7 @@
                                 <strong>${escapeHtml(service.name)}</strong>
                                 <div class="muted mono">${escapeHtml(service.fullName)}</div>
                               </td>
-                              <td>${escapeHtml(String(service.category))}</td>
+                              <td>${escapeHtml(serviceCategoryLabel(service.category))}</td>
                               <td>${escapeHtml(service.assembly || "-")}</td>
                               <td class="mono">
                                 ${escapeHtml(
@@ -876,6 +949,371 @@
     `;
   }
 
+  function renderNetwork() {
+    const payload = state.payload || {};
+    const events = filterEntries(payload.events || [], state.networkFilter, [
+      "kind",
+      "direction",
+      "transport",
+      "method",
+      "path",
+      "route",
+      "portal",
+      "gate",
+      "event",
+      "packetType",
+      "connectionId",
+      "clientId",
+      "roomId",
+      "payloadPreview",
+      "error",
+    ]).filter((entry) => {
+      const kindOk = !state.networkKind || entry.kind === state.networkKind;
+      const directionOk = !state.networkDirection || entry.direction === state.networkDirection;
+      return kindOk && directionOk;
+    });
+
+    return `
+      <div class="stack">
+        ${renderInlineError()}
+        <section class="card">
+          <div class="section-header">
+            <div>
+              <h2>Network Events</h2>
+              <div class="muted">
+                ${payload.enabled === false ? "Capture is disabled by config." : `${events.length} visible event(s), ${Number(payload.retentionMinutes || 0)} minute retention.`}
+              </div>
+            </div>
+            <div class="filters compact network-filter-grid">
+              <select data-role="network-kind">
+                ${renderOption("", "All kinds", state.networkKind)}
+                ${renderOption("http", "HTTP", state.networkKind)}
+                ${renderOption("packet", "Packets", state.networkKind)}
+              </select>
+              <select data-role="network-direction">
+                ${renderOption("", "All directions", state.networkDirection)}
+                ${renderOption("inbound", "Inbound", state.networkDirection)}
+                ${renderOption("outbound", "Outbound", state.networkDirection)}
+              </select>
+              <input
+                class="grow"
+                data-role="network-filter"
+                value="${escapeAttribute(state.networkFilter)}"
+                placeholder="Filter route, gate, id, payload, error..."
+              />
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="network-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Target</th>
+                  <th>Ids</th>
+                  <th>Timing</th>
+                  <th>Payload</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  events.length
+                    ? events.slice().reverse().map((entry) => renderNetworkRow(entry)).join("")
+                    : `<tr><td colspan="7" class="muted">No network events matched your filter.</td></tr>`
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  function renderNetworkRow(entry) {
+    const statusTone = entry.error || Number(entry.statusCode || 0) >= 500 ? "danger" : "neutral";
+    const target = entry.kind === "http"
+      ? `${entry.method || ""} ${entry.path || entry.route || "-"}`
+      : [entry.route, entry.gate || entry.event || entry.packetType].filter(Boolean).join(" :: ") || "-";
+    const ids = [
+      entry.clientId ? `client=${entry.clientId}` : "",
+      entry.connectionId && entry.connectionId !== entry.clientId ? `conn=${entry.connectionId}` : "",
+      entry.roomId ? `room=${entry.roomId}` : "",
+    ].filter(Boolean).join("\n") || "-";
+    const timings = [
+      entry.durationMs != null ? `total=${entry.durationMs}ms` : "",
+      entry.handlerDurationMs != null ? `gate=${entry.handlerDurationMs}ms` : "",
+      entry.decodeDurationMs != null ? `decode=${entry.decodeDurationMs}ms` : "",
+      entry.encodeDurationMs != null ? `encode=${entry.encodeDurationMs}ms` : "",
+      entry.sendDurationMs != null ? `send=${entry.sendDurationMs}ms` : "",
+    ].filter(Boolean).join("\n") || "-";
+    const raw = entry.rawPayload || entry.payloadPreview || "";
+
+    return `
+      <tr class="${entry.error ? "row-error" : ""}">
+        <td class="mono">${escapeHtml(formatTime(entry.timestampUtc))}</td>
+        <td>
+          <span class="badge badge--${statusTone}">${escapeHtml(entry.kind || "-")}</span>
+          <div class="muted mono">${escapeHtml(entry.direction || "-")}</div>
+          ${entry.statusCode ? `<div class="muted mono">status=${escapeHtml(String(entry.statusCode))}</div>` : ""}
+        </td>
+        <td>
+          <strong>${escapeHtml(target)}</strong>
+          <div class="muted mono">${escapeHtml(entry.portal || entry.transport || "-")}</div>
+          ${entry.error ? `<div class="network-error">${escapeHtml(entry.error)}</div>` : ""}
+        </td>
+        <td class="mono preline">${escapeHtml(ids)}</td>
+        <td class="mono preline">${escapeHtml(timings)}</td>
+        <td class="mono payload-cell">
+          ${escapeHtml(entry.payloadPreview || "-")}
+          ${entry.payloadTruncated ? `<span class="badge">truncated</span>` : ""}
+        </td>
+        <td>
+          ${raw ? renderIconButton("copy-json", "Copy Payload", "copy", "neutral", { value: raw }) : ""}
+        </td>
+      </tr>
+    `;
+  }
+
+  function renderPerformance() {
+    const payload = state.payload || {};
+    return `
+      <div class="stack">
+        ${renderInlineError()}
+        <section class="card">
+          <h2>Timings</h2>
+          <div class="stats-grid">
+            ${renderTimingStat("HTTP p95", payload.http?.p95Ms)}
+            ${renderTimingStat("Gate p95", payload.gates?.p95Ms)}
+            ${renderTimingStat("Decode p95", payload.packetDecode?.p95Ms)}
+            ${renderTimingStat("Send p95", payload.transportSend?.p95Ms)}
+          </div>
+        </section>
+        <section class="split-detail">
+          ${renderTimingCard("HTTP Routes", payload.http)}
+          ${renderTimingCard("Portal Gates", payload.gates)}
+        </section>
+        <section class="split-detail">
+          ${renderTimingCard("Packet Decode", payload.packetDecode)}
+          ${renderTimingCard("Packet Encode", payload.packetEncode)}
+        </section>
+        <section class="split-detail">
+          ${renderSlowList("Slow Requests", payload.slowRequests || [])}
+          ${renderSlowList("Slow Gates", payload.slowGates || [])}
+        </section>
+      </div>
+    `;
+  }
+
+  function renderLab() {
+    const actions = filterEntries(state.payload?.actions || [], state.labFilter, [
+      "kind",
+      "method",
+      "path",
+      "event",
+      "name",
+      "handler",
+      "payloadType",
+    ]);
+
+    return `
+      <div class="stack">
+        ${renderInlineError()}
+        <section class="card">
+          <div class="section-header">
+            <div>
+              <h2>API Lab</h2>
+              <div class="muted">${actions.length} endpoint(s) and portal gate(s) ready for live testing.</div>
+            </div>
+            <div class="filters compact">
+              <input class="grow" data-role="lab-filter" value="${escapeAttribute(state.labFilter)}" placeholder="Filter endpoints, gates, handlers..." />
+            </div>
+          </div>
+          <div class="lab-list">
+            ${
+              actions.length
+                ? actions.map((action) => renderLabAction(action)).join("")
+                : `<div class="empty-state">No endpoints or gates matched your filter.</div>`
+            }
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  function renderLabAction(action) {
+    const expanded = !!state.labExpanded[action.id];
+    const result = state.labResults[action.id];
+    const payload = getLabPayload(action);
+    const clientId = state.labClientIds[action.id] || "";
+    const target = action.kind === "gate"
+      ? `${action.path || "-"} :: ${action.event || action.name}`
+      : `${action.method || "GET"} ${action.path || "-"}`;
+
+    return `
+      <article class="lab-item ${expanded ? "is-expanded" : ""}">
+        <div class="lab-row">
+          <button class="lab-expand-button" data-action="lab-toggle" data-action-id="${escapeAttribute(action.id)}" title="Expand" aria-label="Expand">
+            ${iconMarkup(expanded ? "chevron-down" : "chevron-right")}
+          </button>
+          <div class="lab-main">
+            <div class="lab-title">
+              <span class="badge">${escapeHtml(action.kind || "-")}</span>
+              <strong>${escapeHtml(target)}</strong>
+              ${renderLabStatus(result)}
+            </div>
+            <div class="muted mono">${escapeHtml(action.handler || "-")}${action.payloadType ? ` | ${escapeHtml(action.payloadType)}` : ""}</div>
+          </div>
+          <div class="row-actions">
+            ${renderIconButton("lab-submit", "Submit", "execute", result?.success ? "success" : "accent", { actionId: action.id })}
+          </div>
+        </div>
+        ${
+          expanded
+            ? `
+              <div class="lab-editor">
+                ${
+                  action.kind === "gate"
+                    ? `<input class="lab-client-input" data-role="lab-client-id" data-action-id="${escapeAttribute(action.id)}" value="${escapeAttribute(clientId)}" placeholder="client id (default: dashboard-lab)" />`
+                    : ""
+                }
+                <textarea class="query-input lab-payload-input" data-role="lab-payload" data-action-id="${escapeAttribute(action.id)}" spellcheck="false">${escapeHtml(payload)}</textarea>
+                ${renderLabResult(result)}
+              </div>
+            `
+            : ""
+        }
+      </article>
+    `;
+  }
+
+  function renderLabStatus(result) {
+    if (!result) {
+      return "";
+    }
+
+    return result.success
+      ? `<span class="lab-status lab-status--success" title="Success">${iconMarkup("check")}</span>`
+      : `<span class="lab-status lab-status--error" title="Failed">${iconMarkup("error")}</span>`;
+  }
+
+  function renderLabResult(result) {
+    if (!result) {
+      return "";
+    }
+
+    const body = result.responseBody || result.message || "";
+    return `
+      <div class="lab-result ${result.success ? "lab-result--success" : "lab-result--error"}">
+        <div class="lab-result-header">
+          <strong>${result.success ? "Success" : "Failed"}</strong>
+          ${result.statusCode ? `<span class="mono">HTTP ${Number(result.statusCode)}</span>` : ""}
+        </div>
+        ${body ? `<pre class="json-view"><code>${renderHighlightedJson(prettyJsonOrString(body))}</code></pre>` : ""}
+      </div>
+    `;
+  }
+
+  function getLabPayload(action) {
+    if (Object.prototype.hasOwnProperty.call(state.labPayloads, action.id)) {
+      return state.labPayloads[action.id];
+    }
+
+    return action.sampleJson || "";
+  }
+
+  function renderTimingStat(label, value) {
+    return `
+      <div class="stat">
+        <div class="stat-label">${escapeHtml(label)}</div>
+        <div class="stat-value">${value == null ? "-" : `${escapeHtml(String(value))}ms`}</div>
+      </div>
+    `;
+  }
+
+  function renderTimingCard(title, summary) {
+    const rows = summary?.byName || [];
+    return `
+      <section class="card">
+        <h2>${escapeHtml(title)}</h2>
+        ${renderTimingSummary(summary)}
+        <div class="table-wrap timing-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Count</th>
+                <th>p50</th>
+                <th>p95</th>
+                <th>p99</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                rows.length
+                  ? rows.map((row) => renderTimingRow(row)).join("")
+                  : `<tr><td colspan="6" class="muted">No timing samples yet.</td></tr>`
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderTimingSummary(summary) {
+    if (!summary) {
+      return `<div class="empty-state">No timing data yet.</div>`;
+    }
+
+    return `
+      <div class="chip-row timing-summary">
+        <span class="chip"><strong>${Number(summary.count || 0)}</strong> samples</span>
+        <span class="chip"><strong>${escapeHtml(String(summary.p50Ms ?? 0))}ms</strong> p50</span>
+        <span class="chip"><strong>${escapeHtml(String(summary.p95Ms ?? 0))}ms</strong> p95</span>
+        <span class="chip"><strong>${escapeHtml(String(summary.p99Ms ?? 0))}ms</strong> p99</span>
+        <span class="chip"><strong>${escapeHtml(String(summary.errorRate ?? 0))}%</strong> errors</span>
+      </div>
+    `;
+  }
+
+  function renderTimingRow(row) {
+    return `
+      <tr>
+        <td class="mono">${escapeHtml(row.name || "-")}</td>
+        <td>${Number(row.count || 0)}</td>
+        <td class="mono">${escapeHtml(String(row.p50Ms ?? 0))}ms</td>
+        <td class="mono">${escapeHtml(String(row.p95Ms ?? 0))}ms</td>
+        <td class="mono">${escapeHtml(String(row.p99Ms ?? 0))}ms</td>
+        <td class="mono">${Number(row.errorCount || 0)} / ${escapeHtml(String(row.errorRate ?? 0))}%</td>
+      </tr>
+    `;
+  }
+
+  function renderSlowList(title, rows) {
+    return `
+      <section class="card">
+        <h2>${escapeHtml(title)}</h2>
+        <div class="list">
+          ${
+            rows.length
+              ? rows.map((entry) => `
+                  <article class="list-item">
+                    <div class="list-item-header">
+                      <strong>${escapeHtml(entry.kind === "http" ? `${entry.method || ""} ${entry.path || "-"}` : entry.gate || entry.event || entry.packetType || "-")}</strong>
+                      <span class="badge">${escapeHtml(String(entry.handlerDurationMs ?? entry.durationMs ?? 0))}ms</span>
+                    </div>
+                    <div class="muted mono">${escapeHtml([entry.route, entry.clientId, entry.roomId].filter(Boolean).join(" | ") || "-")}</div>
+                  </article>
+                `).join("")
+              : `<div class="empty-state">No slow entries in the current buffer.</div>`
+          }
+        </div>
+      </section>
+    `;
+  }
+
   function renderVault() {
     const definitions = state.payload?.definitions || [];
     const selected = definitions.find((item) => item.typeKey === state.selectedVaultTypeKey) || definitions[0] || null;
@@ -888,7 +1326,7 @@
         <section class="card">
           <h2>Vault Definitions</h2>
           <div class="filters">
-            <select data-role="vault-select" class="grow">
+            <select data-role="vault-select" class="grow vault-definition-select">
               ${definitions
                 .map(
                   (definition) => `
@@ -1201,6 +1639,60 @@
     `;
   }
 
+  function renderOption(value, label, selectedValue) {
+    return `<option value="${escapeAttribute(value)}" ${value === selectedValue ? "selected" : ""}>${escapeHtml(label)}</option>`;
+  }
+
+  function formatTime(value) {
+    if (!value) {
+      return "-";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      fractionalSecondDigits: 3,
+    });
+  }
+
+  function captureViewportState() {
+    const active = document.activeElement;
+    const hasEditableFocus = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+
+    return {
+      scrollX: window.scrollX || document.documentElement.scrollLeft || 0,
+      scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+      role: hasEditableFocus ? active.dataset.role || "" : "",
+      selectionStart: hasEditableFocus ? active.selectionStart : null,
+      selectionEnd: hasEditableFocus ? active.selectionEnd : null,
+    };
+  }
+
+  function restoreViewportState(viewport) {
+    const restore = () => {
+      if (viewport.role) {
+        const active = app.querySelector(`[data-role="${cssEscape(viewport.role)}"]`);
+        if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+          active.focus({ preventScroll: true });
+          if (viewport.selectionStart != null && viewport.selectionEnd != null) {
+            active.setSelectionRange(viewport.selectionStart, viewport.selectionEnd);
+          }
+        }
+      }
+
+      window.scrollTo(viewport.scrollX, viewport.scrollY);
+    };
+
+    restore();
+    requestAnimationFrame(restore);
+  }
+
   function filterEntries(entries, filter, keys) {
     const query = String(filter || "").trim().toLowerCase();
     if (!query) {
@@ -1210,6 +1702,77 @@
     return entries.filter((entry) =>
       keys.some((key) => stringifyValue(entry[key]).toLowerCase().includes(query))
     );
+  }
+
+  function filterServicesByType(services, filter) {
+    const key = String(filter || "").toLowerCase();
+    if (!key) {
+      return services;
+    }
+
+    return services.filter((service) => {
+      const category = normalizeServiceCategory(service.category);
+      const haystack = [
+        service.name,
+        service.fullName,
+        service.assembly,
+        service.endpoint,
+        service.context,
+        service.serviceType,
+        service.lifetime,
+        category,
+      ]
+        .map((value) => stringifyValue(value).toLowerCase())
+        .join(" ");
+
+      switch (key) {
+        case "prefab":
+          return haystack.includes("prefab");
+        case "portal":
+          return category === "portal" || !!service.endpoint;
+        case "service":
+          return category === "service";
+        case "factory":
+          return category === "servicefactory" || haystack.includes("factory");
+        case "config":
+          return category === "serviceconfiguration" || haystack.includes("configuration");
+        default:
+          return haystack.includes(key);
+      }
+    });
+  }
+
+  function normalizeServiceCategory(category) {
+    if (typeof category === "number") {
+      return ["portal", "service", "servicefactory", "serviceconfiguration"][category] || String(category);
+    }
+
+    const raw = String(category ?? "").trim();
+    return raw.toLowerCase().replace(/\s+/g, "");
+  }
+
+  function serviceCategoryLabel(category) {
+    const normalized = normalizeServiceCategory(category);
+    switch (normalized) {
+      case "portal":
+        return "Portal";
+      case "service":
+        return "Service";
+      case "servicefactory":
+        return "Service Factory";
+      case "serviceconfiguration":
+        return "Service Configuration";
+      default:
+        return String(category ?? "-");
+    }
+  }
+
+  function cssEscape(value) {
+    if (window.CSS?.escape) {
+      return window.CSS.escape(value);
+    }
+
+    return String(value).replace(/["\\]/g, "\\$&");
   }
 
   function orderedVaultColumns(definition, fields) {
@@ -1226,15 +1789,23 @@
   }
 
   function buildPanelRefreshState() {
-    if (state.kind !== "vault") {
-      return null;
+    if (state.kind === "vault") {
+      return {
+        selectedVaultTypeKey: state.selectedVaultTypeKey,
+        skip: state.vaultPage?.skip || 0,
+        take: getVaultTake(),
+      };
     }
 
-    return {
-      selectedVaultTypeKey: state.selectedVaultTypeKey,
-      skip: state.vaultPage?.skip || 0,
-      take: getVaultTake(),
-    };
+    if (state.kind === "network") {
+      return {
+        networkKind: state.networkKind,
+        networkDirection: state.networkDirection,
+        networkFilter: state.networkFilter,
+      };
+    }
+
+    return null;
   }
 
   function getVaultTake() {
@@ -1569,6 +2140,36 @@
     });
   }
 
+  function toggleLabAction(actionId) {
+    if (!actionId) {
+      return;
+    }
+
+    state.labExpanded[actionId] = !state.labExpanded[actionId];
+    render({ preserveViewport: true });
+  }
+
+  function submitLabAction(actionId) {
+    const action = (state.payload?.actions || []).find((item) => item.id === actionId);
+    if (!action) {
+      return;
+    }
+
+    beginLoading("Invoking endpoint...");
+    vscode.postMessage({
+      type: "lab:invoke",
+      actionId,
+      request: {
+        kind: action.kind,
+        method: action.method,
+        path: action.path,
+        event: action.event,
+        clientId: state.labClientIds[actionId] || "",
+        bodyJson: getLabPayload(action),
+      },
+    });
+  }
+
   function applyVaultPage(page) {
     state.vaultPage = cloneValue(page);
     state.vaultOriginalItems = cloneValue(page?.items || []);
@@ -1679,10 +2280,12 @@
 
   function renderVaultSortIndicator(field) {
     if (state.vaultSortField !== field) {
-      return "&#x2195;";
+      return '<span class="codicon codicon-arrow-both" aria-hidden="true"></span>';
     }
 
-    return state.vaultSortDirection === "desc" ? "&#x2193;" : "&#x2191;";
+    return state.vaultSortDirection === "desc"
+      ? '<span class="codicon codicon-arrow-down" aria-hidden="true"></span>'
+      : '<span class="codicon codicon-arrow-up" aria-hidden="true"></span>';
   }
 
   function compareVaultValues(left, right) {
@@ -1853,34 +2456,49 @@
     `;
   }
 
+  function renderServiceTypeButton(filter, icon, title) {
+    const active = state.serviceTypeFilter === filter;
+    return `
+      <button
+        class="service-type-button ${active ? "is-active" : ""}"
+        data-action="service-type-filter"
+        data-filter="${escapeAttribute(filter)}"
+        title="${escapeAttribute(title)}"
+        aria-label="${escapeAttribute(title)}"
+        aria-pressed="${active ? "true" : "false"}"
+      >
+        ${iconMarkup(icon)}
+      </button>
+    `;
+  }
+
   function iconMarkup(icon) {
-    switch (icon) {
-      case "refresh":
-        return "&#x21BB;";
-      case "edit":
-        return "&#x270E;";
-      case "delete":
-        return '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 2h4l.6 1H13v1H3V3h2.4L6 2zm-1 3h1v7H5V5zm3 0h1v7H8V5zm3 0h1v7h-1V5zM4 13h8a1 1 0 0 0 1-1V4H3v8a1 1 0 0 0 1 1z" fill="currentColor"></path></svg>';
-      case "copy":
-        return '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M5 2h7a1 1 0 0 1 1 1v8h-1V3H5V2zM3 5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm0 1v7h7V6H3z" fill="currentColor"></path></svg>';
-      case "prev":
-        return "&#x2190;";
-      case "next":
-        return "&#x2192;";
-      case "save":
-        return "&#x2714;";
-      case "execute":
-        return "&#x25B6;";
-      case "filter":
-        return '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2 3h12L9.5 8.2v4.1l-3-1.7V8.2L2 3z" fill="currentColor"></path></svg>';
-      case "disconnect":
-        return "&#x2715;";
-      case "close":
-      case "cancel":
-        return "&#x2715;";
-      default:
-        return "&#x2022;";
-    }
+    const codicons = {
+      all: "list-unordered",
+      prefab: "package",
+      portal: "plug",
+      service: "gear",
+      factory: "server-process",
+      config: "settings-gear",
+      refresh: "refresh",
+      edit: "edit",
+      delete: "trash",
+      copy: "copy",
+      prev: "arrow-left",
+      next: "arrow-right",
+      save: "save",
+      execute: "play",
+      filter: "filter",
+      disconnect: "debug-disconnect",
+      close: "close",
+      cancel: "close",
+      "chevron-down": "chevron-down",
+      "chevron-right": "chevron-right",
+      check: "pass-filled",
+      error: "error",
+    };
+    const name = codicons[icon] || "circle-filled";
+    return `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
   }
 
   function renderValuePreview(value, truncate) {

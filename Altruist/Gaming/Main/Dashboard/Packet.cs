@@ -255,7 +255,7 @@ namespace Altruist.Dashboard
 
         public HeightfieldDto? Heightfield { get; set; }
 
-        public static ColliderDto FromCollider(PhysxCollider3DDesc c)
+        public static ColliderDto FromCollider(PhysxCollider3DDesc c, int terrainSampleStride = 1)
         {
             return new ColliderDto
             {
@@ -263,7 +263,7 @@ namespace Altruist.Dashboard
                 Shape = c.Shape,
                 IsTrigger = c.IsTrigger,
                 Transform = TransformDto.FromTransform(c.Transform),
-                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield)
+                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield, terrainSampleStride)
             };
         }
     }
@@ -285,25 +285,33 @@ namespace Altruist.Dashboard
         /// </summary>
         public float[][] Heights { get; set; } = Array.Empty<float[]>();
 
-        public static HeightfieldDto FromHeightfield(HeightfieldData hf)
+        public static HeightfieldDto FromHeightfield(HeightfieldData hf, int sampleStride = 1)
         {
+            int stride = Math.Max(1, sampleStride);
+            int width = (int)Math.Ceiling(hf.Width / (double)stride);
+            int height = (int)Math.Ceiling(hf.Height / (double)stride);
+
             var dto = new HeightfieldDto
             {
-                Width = hf.Width,
-                Height = hf.Height,
-                CellSizeX = hf.CellSizeX,
-                CellSizeZ = hf.CellSizeZ,
+                Width = width,
+                Height = height,
+                CellSizeX = hf.CellSizeX * stride,
+                CellSizeZ = hf.CellSizeZ * stride,
                 HeightScale = hf.HeightScale,
-                Heights = new float[hf.Width][]
+                Heights = new float[width][]
             };
 
-            for (int x = 0; x < hf.Width; x++)
+            for (int x = 0; x < width; x++)
             {
-                var row = new float[hf.Height];
-                for (int z = 0; z < hf.Height; z++)
+                var row = new float[height];
+                int sourceX = Math.Min(hf.Width - 1, x * stride);
+
+                for (int z = 0; z < height; z++)
                 {
-                    row[z] = hf.Heights[x, z];
+                    int sourceZ = Math.Min(hf.Height - 1, z * stride);
+                    row[z] = hf.Heights[sourceX, sourceZ];
                 }
+
                 dto.Heights[x] = row;
             }
 

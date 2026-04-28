@@ -5,7 +5,7 @@ namespace Altruist.Dashboard
     [Portal("dashboard")]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     [ConditionalOnAssembly("Altruist.Dashboard")]
-    public sealed class DashboardPortal : Portal, OnConnectedAsync
+    public sealed class DashboardPortal : Portal, OnConnectingAsync, OnConnectedAsync
     {
         private readonly IGameWorldOrganizer3D _gameWorldOrganizer;
         private readonly IDashboardGizmoRegistry _gizmos;
@@ -31,6 +31,15 @@ namespace Altruist.Dashboard
             _gizmos = gizmos;
             _router = router;
             _connectionManager = connectionManager;
+        }
+
+        public Task OnConnectingAsync(
+            string clientId,
+            ConnectionManager connectionManager,
+            AltruistConnection connection)
+        {
+            connection.SetId("dashboard");
+            return Task.CompletedTask;
         }
 
         public async Task OnConnectedAsync(
@@ -64,7 +73,6 @@ namespace Altruist.Dashboard
                 }
 
                 var partitionDtos = new List<DashboardPartitionStateDto>();
-                var emittedObjects = new HashSet<string>(StringComparer.Ordinal);
 
                 foreach (var partition in world.FindPartitionsForPosition(0, 0, 0, float.MaxValue))
                 {
@@ -72,9 +80,6 @@ namespace Altruist.Dashboard
 
                     foreach (var obj in partition.GetAllObjects<IWorldObject3D>())
                     {
-                        if (!emittedObjects.Add(obj.InstanceId))
-                            continue;
-
                         if (obj is Terrain)
                             continue;
 

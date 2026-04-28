@@ -25,6 +25,7 @@ public interface IAltruistConnection : IStoredModel
     AuthDetails? AuthDetails { get; }
     public string Route { get; set; }
     string ConnectionId { get; }
+    void SetId(string connectionId);
     string RemoteAddress { get; }
     DateTime ConnectedAt { get; }
     Task SendAsync(byte[] data);
@@ -38,6 +39,8 @@ public interface IAltruistConnection : IStoredModel
 
 public class AltruistConnection : StoredModel, IAltruistConnection
 {
+    private string _connectionId = string.Empty;
+
     [JsonIgnore]
     public AuthDetails? AuthDetails { get; set; }
 
@@ -55,7 +58,11 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     public override string Type { get => GetType().Name; set { } }
 
     [JsonPropertyName("connectionId")]
-    public string ConnectionId { get; set; } = string.Empty;
+    public string ConnectionId
+    {
+        get => _connectionId;
+        set => SetIdCore(value, allowEmpty: true);
+    }
 
     [JsonPropertyName("isConnected")]
     public virtual bool IsConnected { get; set; }
@@ -63,6 +70,26 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     [JsonPropertyName("lastActivity")]
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
     public override string StorageId { get; set; } = Guid.NewGuid().ToString();
+
+    public void SetId(string connectionId)
+        => SetIdCore(connectionId, allowEmpty: false);
+
+    private void SetIdCore(string connectionId, bool allowEmpty)
+    {
+        if (string.IsNullOrWhiteSpace(connectionId))
+        {
+            if (allowEmpty)
+            {
+                _connectionId = string.Empty;
+                return;
+            }
+
+            throw new ArgumentException("Connection id cannot be empty.", nameof(connectionId));
+        }
+
+        _connectionId = connectionId.Trim();
+        StorageId = _connectionId;
+    }
 
     public virtual Task CloseOutputAsync()
     {
@@ -120,4 +147,3 @@ public interface IConnectionManager
     Task Cleanup();
     Task<bool> IsConnectionExistsAsync(string connectionId);
 }
-

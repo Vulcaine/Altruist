@@ -62,20 +62,17 @@ public abstract class AbstractConnectionStore : IConnectionStore
 
     public virtual async Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null)
     {
+        if (string.IsNullOrWhiteSpace(connectionId))
+        {
+            return false;
+        }
+
+        socket.SetId(connectionId);
         await _memoryCache.SaveAsync(connectionId, socket);
 
         if (!string.IsNullOrEmpty(roomId))
         {
-            var existingRoom = await _memoryCache.GetAsync<RoomPacket>(roomId);
-
-            if (existingRoom == null)
-            {
-                return false;
-            }
-
-            existingRoom.ConnectionIds.Add(connectionId);
-            await _memoryCache.SaveAsync(roomId, existingRoom);
-            return true;
+            return await JoinRoomAsync(connectionId, roomId) != null;
         }
 
         return true;
@@ -83,23 +80,60 @@ public abstract class AbstractConnectionStore : IConnectionStore
 
     public virtual async Task RemoveConnectionAsync(string connectionId)
     {
-        await _memoryCache.RemoveAndForgetAsync<AltruistConnection>(connectionId);
-
         var roomId = await _memoryCache.GetAsync<string>(connectionId);
+        await _memoryCache.RemoveAndForgetAsync<AltruistConnection>(connectionId);
+        await _memoryCache.RemoveAndForgetAsync<string>(connectionId);
+
         if (!string.IsNullOrEmpty(roomId))
         {
-            var room = await _memoryCache.GetAsync<RoomPacket>(roomId);
-            if (room != null)
+            await RemoveConnectionFromRoomAsync(connectionId, roomId);
+        }
+        else
+        {
+            await RemoveConnectionFromAllRoomsAsync(connectionId);
+        }
+    }
+
+    private async Task RemoveConnectionFromRoomAsync(string connectionId, string roomId)
+    {
+        var room = await _memoryCache.GetAsync<RoomPacket>(roomId);
+        if (room == null)
+        {
+            return;
+        }
+
+        if (!room.ConnectionIds.Remove(connectionId))
+        {
+            return;
+        }
+
+        if (room.ConnectionIds.Count == 0 && !string.Equals(room.Id, StoreConstants.WaitingRoomId, StringComparison.Ordinal))
+        {
+            await _memoryCache.RemoveAndForgetAsync<RoomPacket>(roomId);
+        }
+        else
+        {
+            await _memoryCache.SaveAsync(roomId, room);
+        }
+    }
+
+    private async Task RemoveConnectionFromAllRoomsAsync(string connectionId)
+    {
+        var cursor = await _memoryCache.GetAllAsync<RoomPacket>();
+        foreach (var room in cursor)
+        {
+            if (!room.ConnectionIds.Remove(connectionId))
             {
-                room.ConnectionIds.Remove(connectionId);
-                if (room.ConnectionIds.Count == 0)
-                {
-                    await _memoryCache.RemoveAndForgetAsync<RoomPacket>(roomId);
-                }
-                else
-                {
-                    await _memoryCache.SaveAsync(roomId, room);
-                }
+                continue;
+            }
+
+            if (room.ConnectionIds.Count == 0 && !string.Equals(room.Id, StoreConstants.WaitingRoomId, StringComparison.Ordinal))
+            {
+                await _memoryCache.RemoveAndForgetAsync<RoomPacket>(room.Id);
+            }
+            else
+            {
+                await _memoryCache.SaveAsync(room.Id, room);
             }
         }
     }
@@ -288,12 +322,48 @@ public abstract class AbstractConnectionStore : IConnectionStore
             }
         }
 
+        await PruneRoomsAsync();
+
         if (removed.Count > 0)
         {
             _logger.LogInformation("Inactive connections have been removed from memory.");
         }
 
         await CreateRoomAsync(StoreConstants.WaitingRoomId);
+    }
+
+    private async Task PruneRoomsAsync()
+    {
+        var cursor = await _memoryCache.GetAllAsync<RoomPacket>();
+        foreach (var room in cursor)
+        {
+            var changed = false;
+            foreach (var connectionId in room.ConnectionIds.ToArray())
+            {
+                if (await _memoryCache.ContainsAsync<AltruistConnection>(connectionId))
+                {
+                    continue;
+                }
+
+                room.ConnectionIds.Remove(connectionId);
+                await _memoryCache.RemoveAndForgetAsync<string>(connectionId);
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                continue;
+            }
+
+            if (room.ConnectionIds.Count == 0 && !string.Equals(room.Id, StoreConstants.WaitingRoomId, StringComparison.Ordinal))
+            {
+                await _memoryCache.RemoveAndForgetAsync<RoomPacket>(room.Id);
+            }
+            else
+            {
+                await _memoryCache.SaveAsync(room.Id, room);
+            }
+        }
     }
 
     public virtual Task<bool> IsConnectionExistsAsync(string connectionId)

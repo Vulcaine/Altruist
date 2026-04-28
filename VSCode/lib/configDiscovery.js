@@ -44,15 +44,14 @@ async function discoverConnectionInfo() {
   const httpPath = normalizePath(
     stringOrUndefined(parsed?.altruist?.server?.http?.path) || "/"
   );
-
-  const transportPath = normalizePath(
+  const websocketPath = normalizePath(
     stringOrUndefined(parsed?.altruist?.server?.transport?.websocket?.path) || "/ws"
   );
 
   const baseUrl = normalizeBaseUrl(`http://${httpHost}:${httpPort}${httpPath}`);
   const websocketUrl = websocketUrlOverride
     || (websocketEnabled
-      ? normalizeWebsocketUrl(`ws://${httpHost}:${httpPort}${transportPath}/dashboard`)
+      ? normalizeWebsocketUrl(`ws://${httpHost}:${httpPort}${combinePaths(httpPath, websocketPath, "/dashboard")}`)
       : "");
 
   return {
@@ -226,6 +225,15 @@ function normalizeBaseUrl(baseUrl) {
 
 function normalizeWebsocketUrl(url) {
   return String(url || "").trim().replace(/\/+$/, "");
+}
+
+function combinePaths(...paths) {
+  const parts = paths
+    .map((path) => normalizePath(path))
+    .filter((path) => path !== "/")
+    .map((path) => path.replace(/^\/+|\/+$/g, ""));
+
+  return parts.length ? `/${parts.join("/")}` : "/";
 }
 
 function deriveWebsocketUrlFromBaseUrl(baseUrl) {

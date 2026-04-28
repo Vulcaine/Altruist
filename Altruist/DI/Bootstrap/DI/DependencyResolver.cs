@@ -711,9 +711,10 @@ namespace Altruist
                 target.GetGenericTypeDefinition() == typeof(ILiveConfigValue<>))
             {
                 var genArg = target.GetGenericArguments()[0];
-                var relativeKey = ExtractWildcardRelativeKey(a.Path);
+                var readKey = ExtractWildcardRelativeKey(a.Path ?? string.Empty);
+                var registryKey = ExpandWildcardPath(cfg, a.Path ?? string.Empty);
                 var wrapperType = typeof(LiveConfigValue<>).MakeGenericType(genArg);
-                return Activator.CreateInstance(wrapperType, cfg, relativeKey);
+                return Activator.CreateInstance(wrapperType, cfg, readKey, registryKey);
             }
             // -------------------------------------------------------------------
 

@@ -9,13 +9,26 @@ const state = {
   snapshot: null,
   error: "",
   selectedObjectId: null,
+  selectedPartitionKey: null,
   filter: "",
+  explorerTab: "objects",
+  explorerCollapsed: false,
+  sceneControlsCollapsed: true,
+  layersCollapsed: false,
+  collapsedPartitionKeys: new Set(),
+  visiblePartitionKeys: new Set(),
+  hiddenObjectIds: new Set(),
   hiddenGizmoIds: new Set(),
   hiddenGizmoCategories: new Set(),
   websocketState: "idle",
   websocketError: "",
   reconnectTimer: null,
   shouldReconnect: false,
+  activeFps: 45,
+  idleFps: 5,
+  performanceMode: true,
+  showTerrainSurface: false,
+  perfStats: null,
 };
 
 const inputController = new WorldInputController();
@@ -24,15 +37,25 @@ let worldSelect = null;
 let objectSearch = null;
 let objectList = null;
 let gizmoList = null;
+let layerList = null;
 let inspector = null;
 let viewport = null;
 let cameraSpeedInput = null;
 let cameraNearInput = null;
 let cameraFarInput = null;
+let activeFpsInput = null;
+let idleFpsInput = null;
+let performanceModeInput = null;
+let terrainSurfaceInput = null;
 let ws = null;
 
 inputController.onSpeedChanged = () => {
   updateSpeedUi();
+};
+
+renderer.onStatsChanged = (stats) => {
+  state.perfStats = stats;
+  renderPerformanceHud();
 };
 
 window.addEventListener("message", (event) => {
@@ -43,9 +66,7 @@ window.addEventListener("message", (event) => {
       state.bootstrap = message.payload || null;
       state.snapshot = message.payload?.snapshot || null;
       state.error = "";
-      if (!state.selectedObjectId || !findObject(state.selectedObjectId)) {
-        state.selectedObjectId = getObjects()[0]?.instanceId || null;
-      }
+      reconcileSceneState();
       renderShell();
       refreshWorld();
       connectWebSocket();
@@ -58,9 +79,7 @@ window.addEventListener("message", (event) => {
           selectedWorldIndex: message.payload.selectedWorldIndex,
         };
       }
-      if (!findObject(state.selectedObjectId)) {
-        state.selectedObjectId = getObjects()[0]?.instanceId || null;
-      }
+      reconcileSceneState();
       refreshWorld();
       return;
     case "world:error":
@@ -121,76 +140,152 @@ function renderShell() {
             </select>
           </label>
           <span class="chip"><strong>Worlds</strong> ${worldCount}</span>
-          ${websocketChip}
           <button id="refresh-world">Refresh</button>
         </div>
       </section>
       <section class="world-layout">
+        <section class="editor-main">
         <section class="viewport-panel">
-          <div class="viewport-toolbar">
-            <div class="chip-row">
-              <span class="chip"><strong>Snapshot</strong> ${(state.snapshot?.partitions || []).length} partitions</span>
-              <span class="chip"><strong>Objects</strong> ${getObjects().length}</span>
+          <div class="scene-info-card ${state.sceneControlsCollapsed ? "is-collapsed" : ""}" data-collapsed="${state.sceneControlsCollapsed ? "true" : "false"}">
+            <div class="scene-info-header">
+              <div>
+                <span class="eyebrow">Scene Controls</span>
+                <span class="mini-badge">${escapeHtml(environmentMode)}</span>
+              </div>
+              <button id="scene-controls-toggle" class="ghost-button" aria-expanded="${state.sceneControlsCollapsed ? "false" : "true"}" title="${state.sceneControlsCollapsed ? "Expand scene controls" : "Collapse scene controls"}">
+                ${state.sceneControlsCollapsed ? "Show" : "Hide"}
+              </button>
             </div>
-            <div class="chip-row">
-              <span class="chip">Look: RMB drag</span>
-              <span class="chip">Move: WASD + Q/E</span>
-              <label class="chip speed-control" title="Scroll this control or use RMB + wheel in the viewport to adjust fly speed.">
-                <strong>Speed</strong>
-                <input id="camera-speed" type="number" min="0.5" max="100" step="0.1" value="${formatSpeed(inputController.getMoveSpeedMultiplier())}" />
-                <span>x</span>
+            <div class="scene-info-body">
+              <div class="scene-info-stack">
+              <div class="setting-row">
+                <span>Stream</span>
+                ${websocketChip}
+              </div>
+              <div class="setting-row">
+                <span>Snapshot</span>
+                <strong>${(state.snapshot?.partitions || []).length} partitions</strong>
+              </div>
+              <div class="setting-row">
+                <span>Objects</span>
+                <strong id="object-count-chip">${getVisibleSnapshotObjects().length} visible / ${getUniqueSnapshotObjects().length} total</strong>
+              </div>
+              <div class="setting-row">
+                <span>Render Scale</span>
+                <strong>${formatRenderScale(state.snapshot?.renderOptions?.renderScale)}</strong>
+              </div>
+              <div class="setting-row">
+                <span>Terrain Stride</span>
+                <strong>${formatStride(state.snapshot?.renderOptions?.terrainSampleStride)}</strong>
+              </div>
+              <label class="setting-row speed-control" title="Scroll this control or use RMB + wheel in the viewport to adjust fly speed.">
+                <span>Speed</span>
+                <span class="inline-control">
+                  <input id="camera-speed" type="number" min="0.5" max="100" step="0.1" value="${formatSpeed(inputController.getMoveSpeedMultiplier())}" />
+                  <strong>x</strong>
+                </span>
               </label>
-              <label class="chip camera-clip-control" title="Raise Near and/or lower Far to reduce depth precision artifacts on huge worlds.">
-                <strong>Near</strong>
+              <label class="setting-row camera-clip-control" title="Raise Near to reduce depth precision artifacts on huge worlds.">
+                <span>Camera Near</span>
                 <input id="camera-near" type="number" min="0.01" step="0.1" value="${formatClip(renderer.getCameraClip().near)}" />
               </label>
-              <label class="chip camera-clip-control" title="Lower Far to clip distant terrain and reduce shadow-like depth artifacts.">
-                <strong>Far</strong>
+              <label class="setting-row camera-clip-control" title="Lower Far to clip distant terrain and reduce shadow-like depth artifacts.">
+                <span>Camera Far</span>
                 <input id="camera-far" type="number" min="1" step="100" value="${formatClip(renderer.getCameraClip().far)}" />
               </label>
-              <span class="chip">Pan: MMB drag</span>
-              <span class="chip">Orbit: Alt + LMB</span>
-              <span class="chip">Zoom: wheel</span>
+              <label class="setting-row checkbox-control" title="Performance mode keeps the terrain wireframe-only and prefers lower idle rendering cost.">
+                <span>Performance Mode</span>
+                <input id="performance-mode" type="checkbox" ${state.performanceMode ? "checked" : ""} />
+              </label>
+              <label class="setting-row checkbox-control" title="Enable the transparent terrain fill. Wireframe-only is cheaper and is the default.">
+                <span>Terrain Surface</span>
+                <input id="terrain-surface" type="checkbox" ${state.showTerrainSurface ? "checked" : ""} />
+              </label>
+              <label class="setting-row camera-clip-control" title="Maximum render rate while moving the camera or receiving updates.">
+                <span>Active FPS</span>
+                <input id="active-fps" type="number" min="1" max="120" step="1" value="${state.activeFps}" />
+              </label>
+              <label class="setting-row camera-clip-control" title="Maximum render rate while the scene is idle.">
+                <span>Idle FPS</span>
+                <input id="idle-fps" type="number" min="1" max="60" step="1" value="${state.idleFps}" />
+              </label>
+              <div id="performance-hud" class="performance-hud"></div>
+              </div>
+              <div class="control-hints">
+                <span>RMB look</span>
+                <span>WASD + Q/E move</span>
+                <span>RMB+Wheel speed</span>
+                <span>MMB pan</span>
+                <span>Alt+LMB orbit</span>
+                <span>Wheel zoom</span>
+              </div>
             </div>
+          </div>
+          <div class="layer-card ${state.layersCollapsed ? "is-collapsed" : ""}">
+            <div class="layer-card-header">
+              <div>
+                <span class="eyebrow">Layers</span>
+                <span class="hint">${getLayerSummary()}</span>
+              </div>
+              <button id="layer-card-toggle" class="ghost-button" aria-expanded="${state.layersCollapsed ? "false" : "true"}" title="${state.layersCollapsed ? "Expand layers" : "Collapse layers"}">
+                ${state.layersCollapsed ? "Show" : "Hide"}
+              </button>
+            </div>
+            <div id="layer-list" class="layer-list"></div>
           </div>
           <div id="viewport" class="viewport"></div>
         </section>
-        <aside class="sidebar-panel">
+        <aside class="sidebar-panel inspector-panel">
           <section class="sidebar-section">
             <div class="section-title">
-              <h2>Scene</h2>
+              <h2>Inspector</h2>
+              <span class="hint">Selection details</span>
             </div>
             <div class="detail-grid">
               ${renderDetail("Dashboard", state.bootstrap?.baseUrl || "-")}
               ${renderDetail("World", getSelectedWorldSummary()?.name || "-")}
               ${renderDetail("Generated", state.snapshot?.generatedAtUtc || "-")}
             </div>
-          </section>
-          <section class="sidebar-section">
-            <div class="section-title">
-              <h2>Selection</h2>
-            </div>
+            <div class="inspector-divider"></div>
             <div id="inspector" class="detail-grid"></div>
-          </section>
-          <section class="sidebar-section" style="min-height: 0;">
-            <div class="section-title">
-              <h2>Objects</h2>
-              <span class="hint">${getObjects().length} visible</span>
-            </div>
-            <input id="object-search" class="search-input" placeholder="Filter by archetype, instance id or client id..." value="${escapeAttribute(state.filter)}" />
-            <div id="object-list" class="object-list"></div>
-          </section>
-          <section class="sidebar-section" style="min-height: 0;">
-            <div class="section-title">
-              <h2>Gizmos</h2>
-              <span class="hint">${getGizmos().length} registered</span>
-            </div>
-            <div id="gizmo-list" class="object-list"></div>
-          </section>
-          <section class="sidebar-section">
             <div class="hint">Click an object row or click inside the scene to inspect and focus it.</div>
           </section>
         </aside>
+        </section>
+        <section class="scene-explorer ${state.explorerCollapsed ? "is-collapsed" : ""}">
+          <div class="explorer-header">
+            <div>
+              <div class="eyebrow">Scene Explorer</div>
+              <strong>${getUniqueSnapshotObjects().length} objects · ${getGizmos().length} gizmos · ${(state.snapshot?.partitions || []).length} partitions</strong>
+            </div>
+            <div class="explorer-actions">
+              ${["objects", "gizmos", "partitions", "layers"].map((tab) => `
+                <button class="tab-button ${state.explorerTab === tab ? "is-active" : ""}" data-explorer-tab="${tab}">
+                  ${escapeHtml(capitalize(tab))}
+                </button>
+              `).join("")}
+              <button id="explorer-toggle" class="ghost-button">${state.explorerCollapsed ? "Expand" : "Collapse"}</button>
+            </div>
+          </div>
+          <div class="explorer-body">
+            <section class="explorer-panel ${state.explorerTab === "objects" ? "is-active" : ""}">
+              <div class="explorer-tools">
+                <input id="object-search" class="search-input" placeholder="Filter by archetype, instance id, client id or zone..." value="${escapeAttribute(state.filter)}" />
+                <span id="object-visible-hint" class="hint">${getVisibleSnapshotObjects().length} visible</span>
+              </div>
+              <div id="object-list" class="object-list object-table"></div>
+            </section>
+            <section class="explorer-panel ${state.explorerTab === "gizmos" ? "is-active" : ""}">
+              <div id="gizmo-list" class="object-list object-table"></div>
+            </section>
+            <section class="explorer-panel ${state.explorerTab === "partitions" ? "is-active" : ""}">
+              <div class="object-list object-table">${renderPartitionSummary()}</div>
+            </section>
+            <section class="explorer-panel ${state.explorerTab === "layers" ? "is-active" : ""}">
+              <div class="layer-grid">${renderLayerCards()}</div>
+            </section>
+          </div>
+        </section>
       </section>
     </div>
   `;
@@ -199,15 +294,45 @@ function renderShell() {
   objectSearch = document.getElementById("object-search");
   objectList = document.getElementById("object-list");
   gizmoList = document.getElementById("gizmo-list");
+  layerList = document.getElementById("layer-list");
   inspector = document.getElementById("inspector");
   viewport = document.getElementById("viewport");
   cameraSpeedInput = document.getElementById("camera-speed");
   cameraNearInput = document.getElementById("camera-near");
   cameraFarInput = document.getElementById("camera-far");
+  activeFpsInput = document.getElementById("active-fps");
+  idleFpsInput = document.getElementById("idle-fps");
+  performanceModeInput = document.getElementById("performance-mode");
+  terrainSurfaceInput = document.getElementById("terrain-surface");
 
   document.getElementById("refresh-world")?.addEventListener("click", () => {
     vscode.postMessage({ type: "world:refresh" });
   });
+
+  document.getElementById("scene-controls-toggle")?.addEventListener("click", () => {
+    state.sceneControlsCollapsed = !state.sceneControlsCollapsed;
+    applySceneControlsState();
+  });
+
+  document.getElementById("explorer-toggle")?.addEventListener("click", () => {
+    state.explorerCollapsed = !state.explorerCollapsed;
+    applyExplorerCollapsedState();
+  });
+
+  document.getElementById("layer-card-toggle")?.addEventListener("click", () => {
+    state.layersCollapsed = !state.layersCollapsed;
+    applyLayerCardState();
+  });
+
+  for (const button of root.querySelectorAll("[data-explorer-tab]")) {
+    button.addEventListener("click", () => {
+      state.explorerTab = button.dataset.explorerTab || "objects";
+      applyExplorerTabState();
+    });
+  }
+
+  bindLayerInputs(root);
+  bindPartitionSummary();
 
   worldSelect?.addEventListener("change", (event) => {
     const nextWorldIndex = Number(event.target.value);
@@ -258,6 +383,46 @@ function renderShell() {
     });
   }
 
+  for (const input of [activeFpsInput, idleFpsInput]) {
+    input?.addEventListener("change", () => {
+      state.activeFps = clampNumber(Number(activeFpsInput?.value), 1, 120, 45);
+      state.idleFps = clampNumber(Number(idleFpsInput?.value), 1, 60, 5);
+      if (activeFpsInput) activeFpsInput.value = String(state.activeFps);
+      if (idleFpsInput) idleFpsInput.value = String(state.idleFps);
+      updatePerformanceOptions();
+    });
+
+    input?.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+    });
+
+    input?.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+  }
+
+  performanceModeInput?.addEventListener("change", () => {
+    state.performanceMode = Boolean(performanceModeInput.checked);
+    if (state.performanceMode) {
+      state.showTerrainSurface = false;
+      state.idleFps = Math.min(state.idleFps, 5);
+      state.activeFps = Math.min(state.activeFps, 45);
+      renderShell();
+      refreshWorld();
+      return;
+    }
+    updatePerformanceOptions();
+  });
+
+  terrainSurfaceInput?.addEventListener("change", () => {
+    state.showTerrainSurface = Boolean(terrainSurfaceInput.checked);
+    if (state.showTerrainSurface) {
+      state.performanceMode = false;
+    }
+    renderShell();
+    refreshWorld();
+  });
+
   if (!state.bootstrap || resolveEnvironmentMode() !== "3D") {
     renderer.dispose();
     viewport.innerHTML = `
@@ -270,6 +435,7 @@ function renderShell() {
     `;
     renderInspector();
     renderObjectList();
+    renderLayerList();
     disconnectWebSocket();
     return;
   }
@@ -277,12 +443,17 @@ function renderShell() {
   renderInspector();
   renderObjectList();
   renderGizmoList();
+  renderLayerList();
+  renderPerformanceHud();
+  bindPartitionSummary();
+  rerenderObjectCountChips();
 }
 
 function refreshWorld() {
   if (!state.bootstrap || !viewport || resolveEnvironmentMode() !== "3D") {
     renderInspector();
     renderObjectList();
+    renderLayerList();
     return;
   }
 
@@ -298,6 +469,7 @@ function refreshWorld() {
     `;
     renderInspector();
     renderObjectList();
+    renderLayerList();
     return;
   }
 
@@ -306,6 +478,7 @@ function refreshWorld() {
     viewport.innerHTML = `<div class="loading">Waiting for world snapshot...</div>`;
     renderInspector();
     renderObjectList();
+    renderLayerList();
     return;
   }
 
@@ -314,12 +487,13 @@ function refreshWorld() {
     viewport.addEventListener("click", handleViewportClick);
   }
 
+  updatePerformanceOptions();
   renderer.setSnapshot(state.snapshot);
+  renderer.setSceneVisibility(state.visiblePartitionKeys, state.hiddenObjectIds);
   renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
 
-  if (!findObject(state.selectedObjectId)) {
-    state.selectedObjectId = getObjects()[0]?.instanceId || null;
-  }
+  reconcileSceneState();
+  renderer.setSceneVisibility(state.visiblePartitionKeys, state.hiddenObjectIds);
 
   renderer.setSelectedObject(state.selectedObjectId);
   if (state.selectedObjectId) {
@@ -329,6 +503,9 @@ function refreshWorld() {
   renderInspector();
   renderObjectList();
   renderGizmoList();
+  renderLayerList();
+  bindPartitionSummary();
+  rerenderObjectCountChips();
 }
 
 function renderObjectList() {
@@ -337,43 +514,98 @@ function renderObjectList() {
   }
 
   const query = String(state.filter || "").trim().toLowerCase();
-  const objects = getObjects()
-    .slice()
-    .sort((left, right) => {
-      const leftKey = `${left.archetype}|${left.instanceId}`;
-      const rightKey = `${right.archetype}|${right.instanceId}`;
-      return leftKey.localeCompare(rightKey);
+  const partitions = getPartitions();
+
+  if (!partitions.length) {
+    objectList.innerHTML = `<div class="empty-state">No partitions in this world snapshot.</div>`;
+    return;
+  }
+
+  objectList.innerHTML = partitions
+    .map((partition) => {
+      const key = getPartitionKey(partition);
+      const collapsed = state.collapsedPartitionKeys.has(key);
+      const visible = state.visiblePartitionKeys.has(key);
+      const objects = (partition.objects || []).filter((object) => objectMatchesQuery(object, query));
+
+      return `
+        <div class="partition-block ${key === state.selectedPartitionKey ? "is-selected" : ""}">
+          <div class="partition-row ${key === state.selectedPartitionKey ? "is-selected" : ""}" role="button" tabindex="0" data-partition-key="${escapeAttribute(key)}">
+            <button class="visibility-button ${visible ? "is-visible" : ""}" title="${visible ? "Hide partition" : "Show partition"}" data-partition-eye="${escapeAttribute(key)}">${renderVisibilityIcon(visible)}</button>
+            <span class="chevron ${collapsed ? "is-collapsed" : ""}" data-partition-collapse="${escapeAttribute(key)}">&#9654;</span>
+            <span class="partition-title">Partition [${partitionIndex(partition, "x")}, ${partitionIndex(partition, "y")}, ${partitionIndex(partition, "z")}]</span>
+            <span class="partition-meta">${objects.length}/${(partition.objects || []).length} objects</span>
+          </div>
+          ${collapsed ? "" : `
+            <div class="partition-objects">
+              ${objects.length ? objects.map((object) => {
+                const objectVisible = visible && !state.hiddenObjectIds.has(object.instanceId);
+                return `
+                  <div class="object-row ${object.instanceId === state.selectedObjectId ? "is-selected" : ""}" role="button" tabindex="0" data-object-id="${escapeAttribute(object.instanceId)}">
+                    <button class="visibility-button ${objectVisible ? "is-visible" : ""}" title="${objectVisible ? "Hide object" : "Show object"}" data-object-eye="${escapeAttribute(object.instanceId)}">${renderVisibilityIcon(objectVisible)}</button>
+                    <div class="object-row-body">
+                      <div class="object-name">
+                        <strong>${escapeHtml(formatObjectName(object))}</strong>
+                        ${object.clientId ? `<span class="chip">${escapeHtml(object.clientId)}</span>` : ""}
+                      </div>
+                      <div class="object-meta">${escapeHtml(object.instanceId)}</div>
+                      <div class="object-meta">Position: ${formatVector(object.transform?.position)}</div>
+                    </div>
+                  </div>
+                `;
+              }).join("") : `<div class="empty-state compact">No objects matched this partition/filter.</div>`}
+            </div>
+          `}
+        </div>
+      `;
     })
-    .filter((object) => {
-      if (!query) {
-        return true;
-      }
+    .join("");
 
-      return [object.archetype, object.instanceId, object.clientId, object.zoneId]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query));
+  for (const button of objectList.querySelectorAll("[data-partition-key]")) {
+    button.addEventListener("click", () => {
+      selectPartition(button.dataset.partitionKey);
     });
+  }
 
-  objectList.innerHTML = objects.length
-    ? objects
-        .map(
-          (object) => `
-            <button class="object-row ${object.instanceId === state.selectedObjectId ? "is-selected" : ""}" data-object-id="${escapeAttribute(object.instanceId)}">
-              <div class="object-name">
-                <strong>${escapeHtml(object.archetype || "Object")}</strong>
-                ${object.clientId ? `<span class="chip">${escapeHtml(object.clientId)}</span>` : ""}
-              </div>
-              <div class="object-meta">${escapeHtml(object.instanceId)}</div>
-              <div class="object-meta">Position: ${formatVector(object.transform?.position)}</div>
-            </button>
-          `
-        )
-        .join("")
-    : `<div class="empty-state">No objects matched the current filter.</div>`;
+  for (const button of objectList.querySelectorAll("[data-partition-eye]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      togglePartitionVisibility(button.dataset.partitionEye);
+    });
+  }
+
+  for (const button of objectList.querySelectorAll("[data-partition-collapse]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      togglePartitionCollapsed(button.dataset.partitionCollapse);
+    });
+  }
 
   for (const button of objectList.querySelectorAll("[data-object-id]")) {
     button.addEventListener("click", () => {
       selectObject(button.dataset.objectId, true);
+    });
+  }
+
+  for (const button of objectList.querySelectorAll("[data-object-eye]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleObjectVisibility(button.dataset.objectEye);
+    });
+  }
+}
+
+function bindPartitionSummary() {
+  for (const button of root.querySelectorAll(".scene-explorer [data-partition-key]")) {
+    button.addEventListener("click", () => {
+      selectPartition(button.dataset.partitionKey);
+    });
+  }
+
+  for (const button of root.querySelectorAll(".scene-explorer [data-partition-eye]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      togglePartitionVisibility(button.dataset.partitionEye);
     });
   }
 }
@@ -422,7 +654,7 @@ function renderGizmoList() {
               <span class="chip">${escapeHtml(gizmo.category || "-")}</span>
             </div>
             <div class="object-meta">${escapeHtml(gizmo.id)}</div>
-            <div class="object-meta">${escapeHtml(gizmo.type || "shape")} · ${escapeHtml(gizmo.source || "-")}</div>
+            <div class="object-meta">${escapeHtml(gizmo.type || "shape")} &middot; ${escapeHtml(gizmo.source || "-")}</div>
           </label>
         `;
       })
@@ -456,6 +688,60 @@ function renderGizmoList() {
   }
 }
 
+function renderLayerList() {
+  if (!layerList) {
+    return;
+  }
+
+  layerList.innerHTML = renderLayerCards();
+  bindLayerInputs(layerList);
+}
+
+function renderLayerCards() {
+  const categories = getGizmoCategories();
+  const objectCount = getUniqueSnapshotObjects().length;
+  const visibleObjectCount = getVisibleSnapshotObjects().length;
+
+  return `
+    <label class="layer-row">
+      <span>
+        <strong>Objects</strong>
+        <small>${visibleObjectCount}/${objectCount} visible</small>
+      </span>
+      <input type="checkbox" checked disabled />
+    </label>
+    ${categories.map((category) => {
+      const hidden = state.hiddenGizmoCategories.has(category.toLowerCase());
+      const count = getGizmos().filter((gizmo) => (gizmo.category || "uncategorized") === category).length;
+      return `
+        <label class="layer-row">
+          <span>
+            <strong>${escapeHtml(category)}</strong>
+            <small>${count} gizmos</small>
+          </span>
+          <input type="checkbox" data-layer-category="${escapeAttribute(category)}" ${hidden ? "" : "checked"} />
+        </label>
+      `;
+    }).join("")}
+  `;
+}
+
+function bindLayerInputs(scope) {
+  for (const input of scope.querySelectorAll("[data-layer-category]")) {
+    input.addEventListener("change", () => {
+      const category = String(input.dataset.layerCategory || "").toLowerCase();
+      if (input.checked) {
+        state.hiddenGizmoCategories.delete(category);
+      } else {
+        state.hiddenGizmoCategories.add(category);
+      }
+      renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
+      renderGizmoList();
+      renderLayerList();
+    });
+  }
+}
+
 function renderInspector() {
   if (!inspector) {
     return;
@@ -468,7 +754,7 @@ function renderInspector() {
   }
 
   inspector.innerHTML = `
-    ${renderDetail("Archetype", object.archetype || "Object")}
+    ${renderDetail("Archetype", formatObjectName(object))}
     ${renderDetail("Instance", object.instanceId)}
     ${renderDetail("Client", object.clientId || "-")}
     ${renderDetail("Zone", object.zoneId || "-")}
@@ -485,6 +771,90 @@ function selectObject(instanceId, focus) {
   }
   renderInspector();
   renderObjectList();
+}
+
+function selectPartition(partitionKey) {
+  if (!partitionKey) {
+    return;
+  }
+
+  state.selectedPartitionKey = partitionKey;
+  state.visiblePartitionKeys = new Set([partitionKey]);
+  state.collapsedPartitionKeys.delete(partitionKey);
+
+  const partition = getPartitions().find((item) => getPartitionKey(item) === partitionKey);
+  const firstObject = (partition?.objects || []).find((object) => !state.hiddenObjectIds.has(object.instanceId));
+  state.selectedObjectId = firstObject?.instanceId || null;
+
+  renderer.setSceneVisibility(state.visiblePartitionKeys, state.hiddenObjectIds);
+  renderer.setSelectedObject(state.selectedObjectId);
+  if (state.selectedObjectId) {
+    renderer.focusOnObject(state.selectedObjectId);
+  }
+
+  renderInspector();
+  renderObjectList();
+  rerenderObjectCountChips();
+}
+
+function togglePartitionVisibility(partitionKey) {
+  if (!partitionKey) {
+    return;
+  }
+
+  if (state.visiblePartitionKeys.has(partitionKey)) {
+    state.visiblePartitionKeys.delete(partitionKey);
+  } else {
+    state.visiblePartitionKeys.add(partitionKey);
+  }
+
+  if (!state.visiblePartitionKeys.size && state.selectedPartitionKey) {
+    state.visiblePartitionKeys.add(state.selectedPartitionKey);
+  }
+
+  renderer.setSceneVisibility(state.visiblePartitionKeys, state.hiddenObjectIds);
+  if (!findObject(state.selectedObjectId)) {
+    state.selectedObjectId = getVisibleObjects()[0]?.instanceId || null;
+    renderer.setSelectedObject(state.selectedObjectId);
+  }
+  renderInspector();
+  renderObjectList();
+  rerenderObjectCountChips();
+}
+
+function togglePartitionCollapsed(partitionKey) {
+  if (!partitionKey) {
+    return;
+  }
+
+  if (state.collapsedPartitionKeys.has(partitionKey)) {
+    state.collapsedPartitionKeys.delete(partitionKey);
+  } else {
+    state.collapsedPartitionKeys.add(partitionKey);
+  }
+
+  renderObjectList();
+}
+
+function toggleObjectVisibility(instanceId) {
+  if (!instanceId) {
+    return;
+  }
+
+  if (state.hiddenObjectIds.has(instanceId)) {
+    state.hiddenObjectIds.delete(instanceId);
+  } else {
+    state.hiddenObjectIds.add(instanceId);
+  }
+
+  renderer.setSceneVisibility(state.visiblePartitionKeys, state.hiddenObjectIds);
+  if (!findObject(state.selectedObjectId)) {
+    state.selectedObjectId = getVisibleObjects()[0]?.instanceId || null;
+    renderer.setSelectedObject(state.selectedObjectId);
+  }
+  renderInspector();
+  renderObjectList();
+  rerenderObjectCountChips();
 }
 
 function handleViewportClick(event) {
@@ -596,8 +966,50 @@ function getObjects() {
   return renderer.getObjects();
 }
 
+function getVisibleObjects() {
+  return renderer.getObjects();
+}
+
+function getVisibleSnapshotObjects() {
+  const byId = new Map();
+  for (const partition of getPartitions()) {
+    if (!state.visiblePartitionKeys.has(getPartitionKey(partition))) {
+      continue;
+    }
+
+    for (const object of partition.objects || []) {
+      if (object?.instanceId && !state.hiddenObjectIds.has(object.instanceId)) {
+        byId.set(object.instanceId, object);
+      }
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
+function getPartitions() {
+  return state.snapshot?.partitions || [];
+}
+
+function getUniqueSnapshotObjects() {
+  const byId = new Map();
+  for (const partition of getPartitions()) {
+    for (const object of partition.objects || []) {
+      if (object?.instanceId && !byId.has(object.instanceId)) {
+        byId.set(object.instanceId, object);
+      }
+    }
+  }
+  return Array.from(byId.values());
+}
+
 function getGizmos() {
-  return renderer.getGizmos();
+  return state.snapshot?.gizmos || [];
+}
+
+function getGizmoCategories() {
+  return Array.from(new Set(getGizmos().map((gizmo) => gizmo.category || "uncategorized")))
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function findObject(instanceId) {
@@ -607,6 +1019,68 @@ function findObject(instanceId) {
   return renderer.getObject(instanceId);
 }
 
+function reconcileSceneState() {
+  const partitions = getPartitions();
+  const partitionKeys = new Set(partitions.map(getPartitionKey));
+
+  for (const key of Array.from(state.collapsedPartitionKeys)) {
+    if (!partitionKeys.has(key)) {
+      state.collapsedPartitionKeys.delete(key);
+    }
+  }
+
+  for (const key of Array.from(state.visiblePartitionKeys)) {
+    if (!partitionKeys.has(key)) {
+      state.visiblePartitionKeys.delete(key);
+    }
+  }
+
+  if (!state.selectedPartitionKey || !partitionKeys.has(state.selectedPartitionKey)) {
+    state.selectedPartitionKey = partitions[0] ? getPartitionKey(partitions[0]) : null;
+  }
+
+  if (!state.visiblePartitionKeys.size && state.selectedPartitionKey) {
+    state.visiblePartitionKeys.add(state.selectedPartitionKey);
+  }
+
+  const visibleObjectIds = new Set();
+  for (const partition of partitions) {
+    const key = getPartitionKey(partition);
+    if (!state.visiblePartitionKeys.has(key)) {
+      continue;
+    }
+
+    for (const object of partition.objects || []) {
+      if (object?.instanceId && !state.hiddenObjectIds.has(object.instanceId)) {
+        visibleObjectIds.add(object.instanceId);
+      }
+    }
+  }
+
+  if (!state.selectedObjectId || !visibleObjectIds.has(state.selectedObjectId)) {
+    state.selectedObjectId = Array.from(visibleObjectIds)[0] || null;
+  }
+}
+
+function objectMatchesQuery(object, query) {
+  if (!query) {
+    return true;
+  }
+
+  return [object.archetype, object.instanceId, object.clientId, object.zoneId]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+}
+
+function getPartitionKey(partition) {
+  return `${partitionIndex(partition, "x")}:${partitionIndex(partition, "y")}:${partitionIndex(partition, "z")}`;
+}
+
+function partitionIndex(partition, axis) {
+  const upper = `index${axis.toUpperCase()}`;
+  return Number(partition?.[upper] ?? partition?.[axis] ?? 0);
+}
+
 function getSelectedWorldSummary() {
   const worlds = state.bootstrap?.worlds || [];
   return worlds.find((world) => world.index === state.bootstrap?.selectedWorldIndex) || null;
@@ -614,20 +1088,166 @@ function getSelectedWorldSummary() {
 
 function rerenderToolbarOnly() {
   const chip = buildWebsocketChip();
-  const existing = root.querySelector(".toolbar-actions");
-  if (!existing) {
+  const connectionChip = root.querySelector('[data-role="socket-chip"]');
+  if (!connectionChip) {
     renderShell();
     refreshWorld();
     return;
   }
 
-  const chips = Array.from(existing.querySelectorAll(".chip"));
-  const connectionChip = chips.find((item) => item.dataset.role === "socket-chip");
-  if (connectionChip) {
-    connectionChip.outerHTML = chip;
-  } else {
-    existing.insertAdjacentHTML("afterbegin", chip);
+  connectionChip.outerHTML = chip;
+}
+
+function rerenderObjectCountChips() {
+  const count = getVisibleSnapshotObjects().length;
+  const total = getUniqueSnapshotObjects().length;
+  const chip = document.getElementById("object-count-chip");
+  if (chip) {
+    chip.textContent = `${count} visible / ${total} total`;
   }
+
+  const hint = document.getElementById("object-visible-hint");
+  if (hint) {
+    hint.textContent = `${count} visible`;
+  }
+}
+
+function applySceneControlsState() {
+  const card = root.querySelector(".scene-info-card");
+  const button = document.getElementById("scene-controls-toggle");
+  if (!card || !button) {
+    return;
+  }
+
+  card.classList.toggle("is-collapsed", state.sceneControlsCollapsed);
+  card.dataset.collapsed = state.sceneControlsCollapsed ? "true" : "false";
+  button.textContent = state.sceneControlsCollapsed ? "Show" : "Hide";
+  button.setAttribute("aria-expanded", state.sceneControlsCollapsed ? "false" : "true");
+  button.title = state.sceneControlsCollapsed ? "Expand scene controls" : "Collapse scene controls";
+}
+
+function applyExplorerCollapsedState() {
+  const explorer = root.querySelector(".scene-explorer");
+  const button = document.getElementById("explorer-toggle");
+  if (!explorer || !button) {
+    return;
+  }
+
+  explorer.classList.toggle("is-collapsed", state.explorerCollapsed);
+  button.textContent = state.explorerCollapsed ? "Expand" : "Collapse";
+}
+
+function applyLayerCardState() {
+  const card = root.querySelector(".layer-card");
+  const button = document.getElementById("layer-card-toggle");
+  if (!card || !button) {
+    return;
+  }
+
+  card.classList.toggle("is-collapsed", state.layersCollapsed);
+  button.textContent = state.layersCollapsed ? "Show" : "Hide";
+  button.setAttribute("aria-expanded", state.layersCollapsed ? "false" : "true");
+  button.title = state.layersCollapsed ? "Expand layers" : "Collapse layers";
+}
+
+function applyExplorerTabState() {
+  for (const button of root.querySelectorAll("[data-explorer-tab]")) {
+    button.classList.toggle("is-active", button.dataset.explorerTab === state.explorerTab);
+  }
+
+  for (const panel of root.querySelectorAll(".explorer-panel")) {
+    panel.classList.remove("is-active");
+  }
+
+  const tabs = ["objects", "gizmos", "partitions", "layers"];
+  const index = Math.max(0, tabs.indexOf(state.explorerTab));
+  root.querySelectorAll(".explorer-panel")[index]?.classList.add("is-active");
+
+  if (state.explorerTab === "objects") {
+    renderObjectList();
+  } else if (state.explorerTab === "gizmos") {
+    renderGizmoList();
+  } else if (state.explorerTab === "layers") {
+    renderLayerList();
+  } else {
+    bindPartitionSummary();
+  }
+}
+
+function updatePerformanceOptions() {
+  renderer.setPerformanceOptions({
+    activeFps: state.activeFps,
+    idleFps: state.idleFps,
+    showTerrainSurface: state.showTerrainSurface,
+  });
+  renderPerformanceHud();
+}
+
+function renderPerformanceHud() {
+  const target = document.getElementById("performance-hud");
+  if (!target) {
+    return;
+  }
+
+  const stats = state.perfStats || renderer.getPerformanceStats();
+  target.innerHTML = `
+    <div class="perf-row">
+      <span>FPS</span>
+      <strong>${formatPerfNumber(stats.fps, 1)}</strong>
+    </div>
+    <div class="perf-row">
+      <span>Draw Calls</span>
+      <strong>${formatPerfNumber(stats.drawCalls, 0)}</strong>
+    </div>
+    <div class="perf-row">
+      <span>Triangles</span>
+      <strong>${formatPerfNumber(stats.triangles, 0)}</strong>
+    </div>
+    <div class="perf-row">
+      <span>Geometries</span>
+      <strong>${formatPerfNumber(stats.geometries, 0)}</strong>
+    </div>
+  `;
+}
+
+function renderPartitionSummary() {
+  const partitions = getPartitions();
+  if (!partitions.length) {
+    return `<div class="empty-state compact">No partitions in this world snapshot.</div>`;
+  }
+
+  return partitions.map((partition) => {
+    const key = getPartitionKey(partition);
+    const visible = state.visiblePartitionKeys.has(key);
+    const count = (partition.objects || []).length;
+    return `
+      <div class="partition-row ${key === state.selectedPartitionKey ? "is-selected" : ""}" data-partition-key="${escapeAttribute(key)}">
+        <button class="visibility-button ${visible ? "is-visible" : ""}" data-partition-eye="${escapeAttribute(key)}">${renderVisibilityIcon(visible)}</button>
+        <span class="partition-title">Partition [${partitionIndex(partition, "x")}, ${partitionIndex(partition, "y")}, ${partitionIndex(partition, "z")}]</span>
+        <span class="partition-meta">${count} objects</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderVisibilityIcon(visible) {
+  if (visible) {
+    return `
+      <svg class="visibility-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M2.4 12s3.6-6.2 9.6-6.2S21.6 12 21.6 12s-3.6 6.2-9.6 6.2S2.4 12 2.4 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      </svg>
+    `;
+  }
+
+  return `
+    <svg class="visibility-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3.1 5.1 20.9 18.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M9.4 6.2A9.4 9.4 0 0 1 12 5.8c6 0 9.6 6.2 9.6 6.2a17 17 0 0 1-2.8 3.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14.2 17.9a9.3 9.3 0 0 1-2.2.3C6 18.2 2.4 12 2.4 12a17.3 17.3 0 0 1 3.5-3.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9.9 10.1a3.1 3.1 0 0 0 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+  `;
 }
 
 function buildWebsocketChip() {
@@ -665,6 +1285,42 @@ function formatSpeed(value) {
   return Number(value || 1).toFixed(1);
 }
 
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function formatPerfNumber(value, digits) {
+  const number = Number(value || 0);
+  if (digits > 0) {
+    return number.toFixed(digits);
+  }
+  return number.toLocaleString();
+}
+
+function formatRenderScale(value) {
+  const scale = Number(value || 1);
+  return `${scale.toFixed(2).replace(/\.?0+$/, "")}x`;
+}
+
+function formatStride(value) {
+  const stride = Math.max(1, Number(value || 1));
+  return `${stride}x sample`;
+}
+
+function getLayerSummary() {
+  const hidden = state.hiddenGizmoCategories.size;
+  return hidden ? `${hidden} hidden` : "all visible";
+}
+
+function capitalize(value) {
+  const text = String(value || "");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function updateClipUi() {
   const clip = renderer.getCameraClip();
   if (cameraNearInput) {
@@ -678,6 +1334,16 @@ function updateClipUi() {
 function formatClip(value) {
   const number = Number(value || 0);
   return number >= 100 ? number.toFixed(0) : number.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function formatObjectName(object) {
+  const archetype = String(object?.archetype || "").trim();
+  if (archetype) {
+    return archetype;
+  }
+
+  const hasHeightfield = (object?.colliders || []).some((collider) => collider?.heightfield);
+  return hasHeightfield ? "Terrain / Heightfield" : "World Object";
 }
 
 function resolveEnvironmentMode() {

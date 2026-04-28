@@ -87,11 +87,16 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
     public event Action<T>? OnChange;
 
     public LiveConfigValue(IConfiguration config, string key)
+        : this(config, key, key)
+    {
+    }
+
+    public LiveConfigValue(IConfiguration config, string key, string registryKey)
     {
         this.config = config;
         this.key = key;
 
-        LiveConfigRegistry.Register(key);
+        LiveConfigRegistry.Register(registryKey);
 
         Current = Read();
         ChangeToken.OnChange(config.GetReloadToken, Reload);

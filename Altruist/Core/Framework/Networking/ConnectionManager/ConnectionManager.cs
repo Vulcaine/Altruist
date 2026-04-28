@@ -18,6 +18,8 @@ using Altruist.Engine;
 
 using Microsoft.Extensions.Logging;
 
+using System.Diagnostics;
+
 namespace Altruist
 {
 
@@ -36,6 +38,7 @@ namespace Altruist
         private readonly ISocketManager _socketManager;
         private readonly IEngineCore? _engine;
         private readonly ILogger _logger;
+        private readonly IDashboardNetworkRecorder? _networkRecorder;
 
         private readonly int _idleTimeout;
 
@@ -43,6 +46,7 @@ namespace Altruist
             ISocketManager socketManager,
             ICodecResolver codecResolver,
             ILoggerFactory loggerFactory, IEngineCore? engineCore = null,
+            IDashboardNetworkRecorder? networkRecorder = null,
             [AppConfigValue("altruist:server:transport:timeout", "10")] int timeout = 10
          )
         {
@@ -51,6 +55,7 @@ namespace Altruist
             _defaultCodec = codecResolver.Resolve();
             _engine = engineCore;
             _logger = loggerFactory.CreateLogger(GetType());
+            _networkRecorder = networkRecorder;
             _idleTimeout = timeout;
 
             Initialize();
@@ -84,34 +89,50 @@ namespace Altruist
             if (string.IsNullOrEmpty(packet.Event))
                 return false;
 
+            var totalWatch = Stopwatch.StartNew();
+            var decodeMs = 0d;
+            var handlerMs = 0d;
+            string? error = null;
+            IPacket? message = null;
+            string? packetType = null;
+            string? portalName = null;
+
             if (PortalGateRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
             {
                 var data = bytes;
                 var context = new InterceptContext(@event);
                 var handlerMethod = @delegate.Method;
-                var parameterType = handlerMethod.GetParameters()[0].ParameterType;
+                var parameters = handlerMethod.GetParameters();
+                var hasPacketPayload = parameters.Length >= 2 && typeof(IPacket).IsAssignableFrom(parameters[0].ParameterType);
+                var parameterType = hasPacketPayload ? parameters[0].ParameterType : null;
+                packetType = parameterType?.Name;
+                portalName = handlerMethod.DeclaringType?.Name ?? @delegate.Target?.GetType().Name;
 
-                IPacket? message;
                 try
                 {
-                    if (data.Length > 0)
+                    var decodeWatch = Stopwatch.StartNew();
+                    if (hasPacketPayload && parameterType is not null && data.Length > 0)
                     {
                         message = _defaultCodec.Decoder.Decode<IPacket>(data, parameterType);
                     }
-                    else
+                    else if (hasPacketPayload && parameterType is not null)
                     {
                         message = (IPacket?)Activator.CreateInstance(parameterType);
                     }
+                    decodeWatch.Stop();
+                    decodeMs = decodeWatch.Elapsed.TotalMilliseconds;
                 }
                 catch (Exception decodeEx)
                 {
-                    _logger.LogWarning("Failed to decode {Len} bytes as {Type}: {Error}", data.Length, parameterType.Name, decodeEx.Message);
-                    message = (IPacket?)Activator.CreateInstance(parameterType);
+                    decodeMs = 0;
+                    _logger.LogWarning("Failed to decode {Len} bytes as {Type}: {Error}", data.Length, parameterType?.Name ?? "empty", decodeEx.Message);
+                    message = parameterType is null ? null : (IPacket?)Activator.CreateInstance(parameterType);
+                    error = decodeEx.Message;
                 }
 
                 // Avoid LINQ allocation — pre-sized array for interceptor tasks
                 Task interceptorExecution;
-                if (_interceptors.Count == 0)
+                if (_interceptors.Count == 0 || message is null)
                 {
                     interceptorExecution = Task.CompletedTask;
                 }
@@ -131,9 +152,13 @@ namespace Altruist
 
                 try
                 {
-                    Task? handlerTask = data != null
-                        ? (Task?)@delegate.DynamicInvoke(message, clientId)
-                        : null;
+                    var handlerWatch = Stopwatch.StartNew();
+                    Task? handlerTask = parameters.Length switch
+                    {
+                        0 => (Task?)@delegate.DynamicInvoke(),
+                        1 when parameters[0].ParameterType == typeof(string) => (Task?)@delegate.DynamicInvoke(clientId),
+                        _ => (Task?)@delegate.DynamicInvoke(message, clientId)
+                    };
 
                     if (handlerTask != null)
                     {
@@ -141,32 +166,128 @@ namespace Altruist
                     }
 
                     await interceptorExecution;
+                    handlerWatch.Stop();
+                    handlerMs = handlerWatch.Elapsed.TotalMilliseconds;
+                }
+                catch (Exception ex)
+                {
+                    error = ex.InnerException?.Message ?? ex.Message;
+                    throw;
                 }
                 finally
                 {
                     PacketContext.Clear();
+                    totalWatch.Stop();
+                    await RecordPacketAsync(
+                        connectionId: clientId,
+                        route: @event,
+                        packet: packet,
+                        payload: message,
+                        rawPayload: data,
+                        portalName: portalName,
+                        packetType: packetType,
+                        durationMs: totalWatch.Elapsed.TotalMilliseconds,
+                        decodeMs: decodeMs,
+                        handlerMs: handlerMs,
+                        error: error);
                 }
             }
             else
             {
                 _logger.LogWarning("No handler found for event: {Event}", packet.Event);
+                totalWatch.Stop();
+                await RecordPacketAsync(
+                    connectionId: clientId,
+                    route: @event,
+                    packet: packet,
+                    payload: null,
+                    rawPayload: bytes,
+                    portalName: null,
+                    packetType: null,
+                    durationMs: totalWatch.Elapsed.TotalMilliseconds,
+                    decodeMs: null,
+                    handlerMs: null,
+                    error: "No handler found.");
             }
 
             return true;
         }
 
+        private async Task RecordPacketAsync(
+            string connectionId,
+            string route,
+            AltruistPacket packet,
+            object? payload,
+            byte[]? rawPayload,
+            string? portalName,
+            string? packetType,
+            double durationMs,
+            double? decodeMs,
+            double? handlerMs,
+            string? error)
+        {
+            if (_networkRecorder is null || !_networkRecorder.CapturePackets)
+                return;
+
+            string? roomId = null;
+            try
+            {
+                roomId = (await FindRoomForClientAsync(connectionId))?.Id;
+            }
+            catch
+            {
+                roomId = null;
+            }
+
+            await _networkRecorder.RecordAsync(new DashboardNetworkEvent
+            {
+                Kind = "packet",
+                Direction = "inbound",
+                Transport = "socket",
+                Route = route,
+                Portal = portalName,
+                Gate = packet.Event,
+                Event = packet.Event,
+                PacketType = packetType,
+                ConnectionId = connectionId,
+                ClientId = connectionId,
+                RoomId = roomId,
+                DurationMs = durationMs,
+                DecodeDurationMs = decodeMs,
+                HandlerDurationMs = handlerMs,
+                Error = error
+            }, payload, rawPayload);
+        }
+
         public async Task HandleConnection(AltruistConnection connection, string @event, string clientId)
         {
-            await _socketManager.AddConnectionAsync(clientId, connection, StoreConstants.WaitingRoomId);
+            var portals = PortalGateRegistry<IPortal>.GetAllHandlers()
+                .Where(portal => portal.Route.TrimEnd('/') == connection.Route.TrimEnd('/'))
+                .ToArray();
 
-            var portals = PortalGateRegistry<IPortal>.GetAllHandlers();
             foreach (var portal in portals)
             {
-                if (portal.Route.TrimEnd('/') != connection.Route.TrimEnd('/'))
+                try
                 {
-                    continue;
+                    if (portal is OnConnectingAsync connectingAsync)
+                    {
+                        await connectingAsync.OnConnectingAsync(clientId, this, connection);
+                    }
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "OnConnectingAsync handler threw for client {ClientId}.", clientId);
+                }
+            }
 
+            clientId = string.IsNullOrWhiteSpace(connection.ConnectionId)
+                ? clientId
+                : connection.ConnectionId;
+
+            await _socketManager.AddConnectionAsync(clientId, connection, StoreConstants.WaitingRoomId);
+
+            foreach (var portal in portals)
+            {
                 try
                 {
                     if (portal is OnConnectedAsync connectedAsync)

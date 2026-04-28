@@ -16,6 +16,8 @@ limitations under the License.
 
 using Altruist.Networking;
 
+using System.Diagnostics;
+
 namespace Altruist;
 
 public interface IAltruistRouterSender
@@ -84,11 +86,13 @@ public class ClientSender : IAltruistRouterSender
 {
     protected readonly IConnectionStore _store;
     protected readonly ICodec _codec;
+    protected readonly IDashboardNetworkRecorder? _networkRecorder;
 
-    public ClientSender(IConnectionStore store, ICodec codec)
+    public ClientSender(IConnectionStore store, ICodec codec, IDashboardNetworkRecorder? networkRecorder = null)
     {
         _store = store;
         _codec = codec;
+        _networkRecorder = networkRecorder;
     }
 
     public virtual async Task SendAsync(string clientId, byte[] message)
@@ -96,7 +100,22 @@ public class ClientSender : IAltruistRouterSender
         var socket = await _store.GetConnectionAsync(clientId);
         if (socket != null && socket.IsConnected)
         {
-            await socket.SendAsync(message);
+            var watch = Stopwatch.StartNew();
+            string? error = null;
+            try
+            {
+                await socket.SendAsync(message);
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                throw;
+            }
+            finally
+            {
+                watch.Stop();
+                await RecordOutboundAsync(clientId, socket, null, message, null, null, watch.Elapsed.TotalMilliseconds, error);
+            }
         }
     }
 
@@ -104,8 +123,89 @@ public class ClientSender : IAltruistRouterSender
     {
         var envelope = new MessageEnvelope(message, clientId);
         envelope.Stamp("server", clientId, DateTime.UtcNow);
+        var encodeWatch = Stopwatch.StartNew();
         var encodedMessage = _codec.Encoder.Encode(envelope);
-        await SendAsync(clientId, encodedMessage);
+        encodeWatch.Stop();
+        await SendEncodedPacketAsync(clientId, encodedMessage, message, encodeWatch.Elapsed.TotalMilliseconds);
+    }
+
+    protected virtual async Task SendEncodedPacketAsync<TPacketBase>(
+        string clientId,
+        byte[] encodedMessage,
+        TPacketBase message,
+        double encodeDurationMs) where TPacketBase : IPacketBase
+    {
+        var socket = await _store.GetConnectionAsync(clientId);
+        if (socket == null || !socket.IsConnected)
+            return;
+
+        var watch = Stopwatch.StartNew();
+        string? error = null;
+        try
+        {
+            await socket.SendAsync(encodedMessage);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            throw;
+        }
+        finally
+        {
+            watch.Stop();
+            await RecordOutboundAsync(
+                clientId,
+                socket,
+                message,
+                encodedMessage,
+                message.GetType().Name,
+                message.MessageCode.ToString(),
+                watch.Elapsed.TotalMilliseconds,
+                error,
+                encodeDurationMs);
+        }
+    }
+
+    protected virtual async Task RecordOutboundAsync(
+        string clientId,
+        AltruistConnection socket,
+        object? payload,
+        byte[] rawPayload,
+        string? packetType,
+        string? gate,
+        double sendDurationMs,
+        string? error,
+        double? encodeDurationMs = null)
+    {
+        if (_networkRecorder is null || !_networkRecorder.CapturePackets)
+            return;
+
+        string? roomId = null;
+        try
+        {
+            roomId = (await _store.FindRoomForClientAsync(clientId))?.Id;
+        }
+        catch
+        {
+            roomId = null;
+        }
+
+        await _networkRecorder.RecordAsync(new DashboardNetworkEvent
+        {
+            Kind = "packet",
+            Direction = "outbound",
+            Transport = socket.GetType().Name,
+            Route = socket.Route,
+            Gate = gate,
+            PacketType = packetType,
+            ConnectionId = socket.ConnectionId,
+            ClientId = clientId,
+            RoomId = roomId,
+            DurationMs = sendDurationMs + (encodeDurationMs ?? 0),
+            EncodeDurationMs = encodeDurationMs,
+            SendDurationMs = sendDurationMs,
+            Error = error
+        }, payload, rawPayload);
     }
 }
 

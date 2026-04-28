@@ -46,6 +46,33 @@ namespace Altruist.Physx
             }
         }
 
+        public static void RegisterCollisionHandlerTypes(
+            IEnumerable<Type> handlerTypes,
+            Func<Type, object?> instanceFactory,
+            ILogger logger)
+        {
+            if (handlerTypes is null)
+                throw new ArgumentNullException(nameof(handlerTypes));
+            if (instanceFactory is null)
+                throw new ArgumentNullException(nameof(instanceFactory));
+            if (logger is null)
+                throw new ArgumentNullException(nameof(logger));
+
+            foreach (var handlerType in handlerTypes)
+            {
+                object? instance = instanceFactory(handlerType);
+
+                if (instance is null)
+                {
+                    logger.LogWarning("Could not resolve collision handler type {Type}. Skipping.",
+                        handlerType.FullName);
+                    continue;
+                }
+
+                RegisterCollisionMethodsFromInstance(instance, logger);
+            }
+        }
+
         /// <summary>
         /// Registers all [CollisionEvent] methods on a given handler instance.
         /// Follows the pattern of RegisterGateMethodsFromInstance, but

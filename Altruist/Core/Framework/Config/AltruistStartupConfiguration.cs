@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using System.Diagnostics;
 
 using Altruist.Contracts;
 using Altruist.Security;
@@ -7,6 +8,7 @@ using Altruist.Transport;
 using Altruist.Web.Features;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.Extensions.DependencyInjection;
@@ -162,6 +164,43 @@ namespace Altruist
             }
 
             app.UseRouting();
+            app.Use(async (context, next) =>
+            {
+                var recorder = context.RequestServices.GetService<IDashboardNetworkRecorder>();
+                if (recorder is null || !recorder.CaptureHttp || IsDashboardDevtoolsEndpoint(context.Request.Path.Value))
+                {
+                    await next();
+                    return;
+                }
+
+                var watch = Stopwatch.StartNew();
+                string? error = null;
+                try
+                {
+                    await next();
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    throw;
+                }
+                finally
+                {
+                    watch.Stop();
+                    await recorder.RecordAsync(new DashboardNetworkEvent
+                    {
+                        Kind = "http",
+                        Direction = "inbound",
+                        Transport = "http",
+                        Method = context.Request.Method,
+                        Path = context.Request.Path.Value,
+                        StatusCode = context.Response.StatusCode,
+                        Route = context.GetEndpoint()?.DisplayName,
+                        DurationMs = watch.Elapsed.TotalMilliseconds,
+                        Error = error
+                    });
+                }
+            });
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
@@ -219,6 +258,15 @@ namespace Altruist
         // ---------- helpers ----------
 
         private static string NormalizeEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
+
+        private static bool IsDashboardDevtoolsEndpoint(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            return path.StartsWith("/dashboard/v1/network", StringComparison.OrdinalIgnoreCase) ||
+                   path.StartsWith("/dashboard/v1/performance", StringComparison.OrdinalIgnoreCase);
+        }
 
         private static string NormalizePath(string? path, string defaultIfEmpty = "/")
         {

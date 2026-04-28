@@ -8,6 +8,9 @@ const GENERIC_PANEL_TITLES = {
   sessions: "Altruist Sessions",
   cache: "Altruist Cache",
   vault: "Altruist Vault",
+  network: "Altruist Network",
+  performance: "Altruist Performance",
+  lab: "Altruist API Lab",
 };
 
 class PanelRegistry {
@@ -220,6 +223,16 @@ class GenericDashboardPanel {
           });
           return;
         }
+        case "lab:invoke": {
+          this.postLoading("Invoking endpoint...");
+          const result = await client.invokeLabAction(message.request || {});
+          this.panel.webview.postMessage({
+            type: "lab:result",
+            actionId: message.actionId,
+            payload: result,
+          });
+          return;
+        }
         default:
           return;
       }
@@ -417,6 +430,17 @@ async function loadGenericPanelPayload(client, kind, viewState) {
         : null;
       return { definitions, firstItems };
     }
+    case "network":
+      return client.getNetworkEvents({
+        take: 500,
+        kind: viewState?.networkKind || "",
+        direction: viewState?.networkDirection || "",
+        query: viewState?.networkFilter || "",
+      });
+    case "performance":
+      return client.getPerformance();
+    case "lab":
+      return client.getLabActions();
     default:
       return {};
   }
@@ -429,6 +453,9 @@ function buildGenericPanelHtml(webview, context, kind) {
   const styleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, "media", "dashboard.css")
   );
+  const codiconsUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, "media", "vendor", "codicons", "codicon.css")
+  );
   const nonce = createNonce();
 
   return `<!DOCTYPE html>
@@ -437,6 +464,7 @@ function buildGenericPanelHtml(webview, context, kind) {
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource};" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="${codiconsUri}" />
     <link rel="stylesheet" href="${styleUri}" />
     <title>Altruist</title>
   </head>

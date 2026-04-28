@@ -78,6 +78,7 @@ export class WorldInputController {
 
   updateCamera(camera, dt = 1 / 60) {
     this.currentCamera = camera;
+    let moved = false;
 
     const velocity = new THREE.Vector3();
     const forward = this.getForward();
@@ -96,10 +97,12 @@ export class WorldInputController {
       camera.position.add(velocity);
       this.pivot.add(velocity);
       this.markMoved();
+      moved = true;
     }
 
     camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, "YXZ"));
     this.pivotRadius = Math.max(1, camera.position.distanceTo(this.pivot));
+    return moved;
   }
 
   focus(bounds) {
@@ -259,7 +262,7 @@ export class WorldInputController {
       return;
     }
 
-    const distance = THREE.MathUtils.clamp(radius * 2.3, 6, 5000);
+    const distance = Math.max(radius * 2.3, 6);
     const viewDir = new THREE.Vector3(1, 0.65, 1).normalize();
 
     this.currentCamera.position.set(
@@ -296,6 +299,18 @@ export class WorldInputController {
 
   isSpeedWheelMode() {
     return (this.pressedButtons & 2) !== 0;
+  }
+
+  hasActiveMotion() {
+    return Boolean(
+      this.keys.w
+      || this.keys.a
+      || this.keys.s
+      || this.keys.d
+      || this.keys.q
+      || this.keys.e
+      || this.isNavigationPointer({ buttons: this.pressedButtons, altKey: false })
+    );
   }
 
   panByScreenDelta(dx, dy, distance) {
