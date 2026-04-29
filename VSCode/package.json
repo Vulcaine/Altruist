@@ -2,7 +2,7 @@
   "name": "altruist-dashboard-vscode",
   "displayName": "Altruist Dashboard",
   "description": "Native VS Code dashboard client for Altruist servers.",
-  "version": "0.9.45-beta",
+  "version": "0.9.47-beta",
   "publisher": "vulcaine",
   "license": "Apache-2.0",
   "engines": {

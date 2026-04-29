@@ -6,6 +6,8 @@ const SHAPE_CAPSULE = 2;
 const SHAPE_HEIGHTFIELD = 3;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const TRIGGER_COLLIDER_RENDER_RADIUS_LIMIT = 64;
+const SELECTION_BOUNDS_LIMIT = 32;
+const SELECTION_CENTER_DISTANCE_LIMIT = 64;
 
 export class WorldRenderer {
   constructor(inputController) {
@@ -899,12 +901,9 @@ export class WorldRenderer {
       return;
     }
 
-    const helper = new THREE.Group();
-    helper.add(new THREE.BoxHelper(entry.root, 0xd08c0e));
-
-    const box = new THREE.Box3().setFromObject(entry.root);
-    if (!box.isEmpty()) {
-      helper.add(buildSelectionAxes(box));
+    const helper = buildSelectionHelper(entry);
+    if (!helper) {
+      return;
     }
 
     this.selectionHelper = helper;
@@ -1006,6 +1005,74 @@ function buildSelectionAxes(box) {
   );
   axes.renderOrder = 250;
   return axes;
+}
+
+function buildSelectionHelper(entry) {
+  const box = getSafeSelectionBox(entry);
+  if (!box) {
+    return null;
+  }
+
+  const helper = new THREE.Group();
+  const boxHelper = new THREE.Box3Helper(box, 0xd08c0e);
+  boxHelper.material.depthTest = false;
+  boxHelper.material.transparent = true;
+  boxHelper.material.opacity = 0.95;
+  boxHelper.renderOrder = 240;
+  helper.add(boxHelper);
+  helper.add(buildSelectionAxes(box));
+  return helper;
+}
+
+function getSafeSelectionBox(entry) {
+  const rootPosition = entry.root?.position;
+  if (!rootPosition) {
+    return null;
+  }
+
+  const measured = new THREE.Box3().setFromObject(entry.root);
+  if (isSelectionBoxUsable(measured, rootPosition)) {
+    return measured;
+  }
+
+  return buildFallbackSelectionBox(rootPosition, entry.dto);
+}
+
+function isSelectionBoxUsable(box, rootPosition) {
+  if (!box || box.isEmpty()) {
+    return false;
+  }
+
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  if (![size.x, size.y, size.z, center.x, center.y, center.z].every(Number.isFinite)) {
+    return false;
+  }
+
+  const maxSize = Math.max(size.x, size.y, size.z);
+  if (maxSize <= 0 || maxSize > SELECTION_BOUNDS_LIMIT) {
+    return false;
+  }
+
+  return center.distanceTo(rootPosition) <= SELECTION_CENTER_DISTANCE_LIMIT;
+}
+
+function buildFallbackSelectionBox(rootPosition, object) {
+  const transformSize = object?.transform?.size || {};
+  const width = clampSelectionDimension(Math.max(Number(transformSize.x) || 0, Number(transformSize.z) || 0), 1.2);
+  const height = clampSelectionDimension(Number(transformSize.y) || 0, 2.2);
+  const half = new THREE.Vector3(width * 0.5, height * 0.5, width * 0.5);
+  const center = rootPosition.clone().add(new THREE.Vector3(0, half.y, 0));
+  return new THREE.Box3(center.clone().sub(half), center.clone().add(half));
+}
+
+function clampSelectionDimension(value, fallback) {
+  const dimension = Number(value);
+  if (!Number.isFinite(dimension) || dimension <= 0) {
+    return fallback;
+  }
+
+  return THREE.MathUtils.clamp(dimension, 0.4, SELECTION_BOUNDS_LIMIT);
 }
 
 function flattenRealtimeObjects(packet) {

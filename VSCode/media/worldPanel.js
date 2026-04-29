@@ -3,6 +3,7 @@ import { WorldRenderer } from "./worldRenderer.js";
 
 const vscode = acquireVsCodeApi();
 const root = document.getElementById("world-root");
+const DASHBOARD_WORLD_OBJECT_STATE_CODE = 13;
 
 const state = {
   bootstrap: null,
@@ -1229,19 +1230,21 @@ function handleRealtimeMessage(raw) {
     return;
   }
 
-  if (envelope?.type !== "DashboardWorldObjectStatePacket" || !envelope.message) {
+  const packet = unwrapWorldStatePacket(envelope);
+  if (!packet) {
     return;
   }
 
   const selectedWorldIndex = state.bootstrap?.selectedWorldIndex;
-  if (selectedWorldIndex == null || envelope.message.worldIndex !== selectedWorldIndex) {
+  if (selectedWorldIndex == null || packet.worldIndex !== selectedWorldIndex) {
     return;
   }
 
-  removeSnapshotObjects(envelope.message.removedObjectIds);
-  applySnapshotObjectUpdates(envelope.message.partitions);
+  removeSnapshotObjects(packet.removedObjectIds);
+  applySnapshotObjectUpdates(packet.partitions);
+  applySnapshotGizmoUpdates(packet);
   reconcileSceneState();
-  renderer.applyRealtimePacket(envelope.message);
+  renderer.applyRealtimePacket(packet);
   if (!findObject(state.selectedObjectId)) {
     state.selectedObjectId = getVisibleSnapshotObjects()[0]?.instanceId || null;
   }
@@ -1252,6 +1255,30 @@ function handleRealtimeMessage(raw) {
   renderGizmoList();
   renderLayerList();
   rerenderObjectCountChips();
+}
+
+function unwrapWorldStatePacket(envelope) {
+  if (!envelope || typeof envelope !== "object") {
+    return null;
+  }
+
+  if (envelope.type === "DashboardWorldObjectStatePacket" && envelope.message) {
+    return envelope.message;
+  }
+
+  if (Number(envelope.messageCode) === DASHBOARD_WORLD_OBJECT_STATE_CODE && envelope.message) {
+    return envelope.message;
+  }
+
+  if (Number(envelope.message?.messageCode) === DASHBOARD_WORLD_OBJECT_STATE_CODE) {
+    return envelope.message;
+  }
+
+  if (Number(envelope.messageCode) === DASHBOARD_WORLD_OBJECT_STATE_CODE) {
+    return envelope;
+  }
+
+  return null;
 }
 
 function applySnapshotObjectUpdates(partitions) {
@@ -1381,6 +1408,29 @@ function removeSnapshotObjects(instanceIds) {
   for (const id of removed) {
     state.hiddenObjectIds.delete(id);
   }
+}
+
+function applySnapshotGizmoUpdates(packet) {
+  if (!state.snapshot) {
+    return;
+  }
+
+  const removed = new Set((packet?.removedGizmoIds || []).filter(Boolean));
+  const byId = new Map();
+
+  for (const gizmo of state.snapshot.gizmos || []) {
+    if (gizmo?.id && !removed.has(gizmo.id)) {
+      byId.set(gizmo.id, gizmo);
+    }
+  }
+
+  for (const gizmo of packet?.gizmos || []) {
+    if (gizmo?.id) {
+      byId.set(gizmo.id, gizmo);
+    }
+  }
+
+  state.snapshot.gizmos = Array.from(byId.values());
 }
 
 function getObjects() {

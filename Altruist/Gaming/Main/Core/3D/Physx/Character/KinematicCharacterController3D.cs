@@ -131,15 +131,14 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     // Typically <= SkinWidth.
     public float DepenetrationPushDistance { get; set; } = 0.03f;
 
-    // Character shape for grounding probe (set from capsule profile)
+    // Character shape for grounding probe.
     public float Radius { get; set; } = 0.28f;
     public float Height { get; set; } = 1.8f;
-    public float PivotToCenterY { get; set; }
     public IMovementProfile3D? MovementProfile { get; set; } = TpsMovementProfile3D.Default;
     public CharacterMovementStats3D MovementStats { get; set; } = CharacterMovementStats3D.Default;
 
     // Outputs
-    public Vector3 Position => _body == null ? Vector3.Zero : BodyCenterToPivot(_body.Position);
+    public Vector3 Position => _body?.Position ?? Vector3.Zero;
     public Quaternion Rotation => _body?.Rotation ?? Quaternion.Identity;
     public float Yaw => _yaw;
     public bool IsGrounded => _isGrounded;
@@ -167,8 +166,6 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     public void SetBody(IPhysxBody3D body)
     {
         _body = body ?? throw new ArgumentNullException(nameof(body));
-        if (PivotToCenterY > 0f)
-            body.Position = PivotToBodyCenter(body.Position);
         _yaw = ExtractYaw(body.Rotation);
     }
 
@@ -418,16 +415,6 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         SprintIntent(frame.Sprint);
         JumpIntent(frame.Jump);
     }
-
-    public Vector3 PivotToBodyCenter(Vector3 pivot)
-        => PivotToCenterY > 0f
-            ? new Vector3(pivot.X, pivot.Y + PivotToCenterY, pivot.Z)
-            : pivot;
-
-    public Vector3 BodyCenterToPivot(Vector3 center)
-        => PivotToCenterY > 0f
-            ? new Vector3(center.X, center.Y - PivotToCenterY, center.Z)
-            : center;
 
     private Vector3 MoveWithSweepsAndSlide(IPhysxBody3D body, IGameWorldManager3D world, Vector3 displacement, ref Vector3 velocity)
     {

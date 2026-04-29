@@ -10,22 +10,21 @@ namespace Tests.Gaming.Physx.ThreeD;
 public sealed class KinematicCharacterController3DTests
 {
     [Fact]
-    public void SetBody_ShouldKeepPublicPositionAtPivot_WhenBodyUsesCapsuleCenter()
+    public void SetBody_ShouldExposeBodyPositionWithoutPivotOffset()
     {
-        var body = CreateBody(new Vector3(10f, 20f, 30f));
         var controller = CreateController();
+        var body = CreateBody(new Vector3(10f, 20f, 30f));
 
         controller.SetBody(body);
 
-        AssertVector(new Vector3(10f, 20.9f, 30f), body.Position);
         AssertVector(new Vector3(10f, 20f, 30f), controller.Position);
     }
 
     [Fact]
     public void Step_ShouldMoveFromPivotWithoutChangingPivotHeight()
     {
-        var body = CreateBody(new Vector3(0f, 100f, 0f));
         var controller = CreateController();
+        var body = CreateBody(new Vector3(0f, 100f, 0f));
         controller.SetBody(body);
         controller.MovementStats = new CharacterMovementStats3D(
             WalkSpeed: 2f,
@@ -48,14 +47,13 @@ public sealed class KinematicCharacterController3DTests
         Assert.InRange(controller.Position.Y, 99.99f, 100.01f);
         Assert.InRange(controller.Position.Z, -0.01f, 0.01f);
         Assert.InRange(controller.Yaw, (MathF.PI * 0.5f) - 0.001f, (MathF.PI * 0.5f) + 0.001f);
-        Assert.InRange(body.Position.Y, 100.89f, 100.91f);
     }
 
     [Fact]
     public void Step_ShouldApplyExternalFacingYawWithoutRotatingAroundPivot()
     {
-        var body = CreateBody(new Vector3(3f, 50f, 7f));
         var controller = CreateController();
+        var body = CreateBody(new Vector3(3f, 50f, 7f));
         controller.SetBody(body);
         controller.SetMovementInput(new CharacterRealtimeWasdInput3D(
             MoveX: 0f,
@@ -71,14 +69,13 @@ public sealed class KinematicCharacterController3DTests
 
         Assert.InRange(controller.Yaw, 1.249f, 1.251f);
         AssertVector(new Vector3(3f, 50f, 7f), controller.Position);
-        AssertVector(new Vector3(3f, 50.9f, 7f), body.Position);
     }
 
     [Fact]
     public void Step_ShouldClearClickToMoveInput_WhenTargetAlreadyReached()
     {
-        var body = CreateBody(new Vector3(5f, 12f, 8f));
         var controller = CreateController();
+        var body = CreateBody(new Vector3(5f, 12f, 8f));
         controller.SetBody(body);
         controller.SetMovementInput(new CharacterClickToMoveInput3D(
             TargetWorldPosition: new Vector3(5f, 12f, 8f),
@@ -97,7 +94,6 @@ public sealed class KinematicCharacterController3DTests
     private static KinematicCharacterController3D CreateController() => new()
     {
         MovementProfile = MmoMovementProfile3D.Default,
-        PivotToCenterY = 0.9f,
         UseCapsuleSweeps = false,
         Acceleration = 1000f,
         Deceleration = 1000f,
