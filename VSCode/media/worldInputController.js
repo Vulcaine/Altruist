@@ -4,7 +4,7 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const MIN_PITCH = -Math.PI / 2 + 0.02;
 const MAX_PITCH = Math.PI / 2 - 0.02;
 const MIN_SPEED_MULTIPLIER = 0.5;
-const MAX_SPEED_MULTIPLIER = 100;
+const MAX_SPEED_MULTIPLIER = 1000;
 const WHEEL_SPEED_SENSITIVITY = 0.0025;
 
 export class WorldInputController {
@@ -292,7 +292,7 @@ export class WorldInputController {
   }
 
   getSpeedMultiplier() {
-    if (this.keys.shift) return this.moveSpeedMultiplier * 4;
+    if (this.keys.shift) return Math.min(MAX_SPEED_MULTIPLIER, this.moveSpeedMultiplier * 4);
     if (this.keys.alt) return this.moveSpeedMultiplier * 0.25;
     return this.moveSpeedMultiplier;
   }

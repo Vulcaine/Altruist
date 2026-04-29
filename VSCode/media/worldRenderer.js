@@ -4,6 +4,8 @@ const SHAPE_SPHERE = 0;
 const SHAPE_BOX = 1;
 const SHAPE_CAPSULE = 2;
 const SHAPE_HEIGHTFIELD = 3;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const TRIGGER_COLLIDER_RENDER_RADIUS_LIMIT = 64;
 
 export class WorldRenderer {
   constructor(inputController) {
@@ -229,6 +231,109 @@ export class WorldRenderer {
     this.rebuildWorld();
   }
 
+  beginSnapshot(snapshot) {
+    this.worldSnapshot = snapshot || null;
+    this.renderScale = normalizeRenderScale(this.worldSnapshot?.renderOptions?.renderScale);
+
+    if (!this.objectLayer || !this.overlayLayer || !this.gizmoLayer) {
+      return;
+    }
+
+    clearGroup(this.objectLayer);
+    clearGroup(this.overlayLayer);
+    clearGroup(this.gizmoLayer);
+    clearGroup(this.grid);
+    this.objects.clear();
+    this.gizmos.clear();
+    this.pickables = [];
+    this.selectionHelper = null;
+    this.applyRenderScale();
+    this.markDirty();
+  }
+
+  appendPartition(partition) {
+    if (!this.objectLayer || !this.worldSnapshot || !partition) {
+      return;
+    }
+
+    if (!this.worldSnapshot.partitions) {
+      this.worldSnapshot.partitions = [];
+    }
+
+    if (!this.worldSnapshot.partitions.includes(partition)) {
+      this.worldSnapshot.partitions.push(partition);
+    }
+
+    if (!this.isPartitionVisible(partition)) {
+      this.markDirty();
+      return;
+    }
+
+    let addedTerrain = false;
+    for (const object of partition.objects || []) {
+      if (!object?.instanceId || this.hiddenObjectIds.has(object.instanceId) || this.objects.has(object.instanceId)) {
+        continue;
+      }
+
+      const entry = this.addObjectToScene(object);
+      addedTerrain = addedTerrain || Boolean(entry && isTerrainObject(object));
+    }
+
+    if (addedTerrain) {
+      this.rebuildPlayArea();
+    }
+
+    if (this.selectedId) {
+      this.refreshSelectionHelper();
+    }
+
+    this.markDirty();
+  }
+
+  setGizmos(gizmos) {
+    if (!this.gizmoLayer) {
+      return;
+    }
+
+    clearGroup(this.gizmoLayer);
+    this.gizmos.clear();
+
+    if (this.worldSnapshot) {
+      this.worldSnapshot.gizmos = Array.isArray(gizmos) ? gizmos : [];
+    }
+
+    const allGizmos = Array.isArray(gizmos) ? gizmos : [];
+    const batchedWalkability = allGizmos.filter(isWalkabilitySolidRect);
+    const regularGizmos = allGizmos.filter((gizmo) => !isWalkabilitySolidRect(gizmo));
+
+    if (batchedWalkability.length > 0) {
+      const terrainSampler = createTerrainHeightSampler(this.worldSnapshot);
+      const root = buildWalkabilityBatch(batchedWalkability, terrainSampler);
+      if (root) {
+        const id = "__walkability_batch__";
+        root.userData.gizmoId = id;
+        this.gizmoLayer.add(root);
+        this.gizmos.set(id, {
+          dto: {
+            id,
+            category: "walkability",
+            source: "server",
+            type: "batched-solid-rect",
+            label: `${batchedWalkability.length} walkability cells`,
+          },
+          root,
+        });
+      }
+    }
+
+    for (const gizmo of regularGizmos) {
+      this.upsertGizmo(gizmo);
+    }
+
+    this.refreshGizmoVisibility();
+    this.markDirty();
+  }
+
   getObjects() {
     return Array.from(this.objects.values()).map((entry) => entry.dto);
   }
@@ -288,10 +393,19 @@ export class WorldRenderer {
     }
 
     const box = new THREE.Box3().setFromObject(entry.root);
-    const size = box.getSize(new THREE.Vector3());
+    this.focusCameraOnBox(box);
+  }
+
+  focusCameraOnBox(box) {
+    if (!box || box.isEmpty()) {
+      return;
+    }
+
     const center = box.getCenter(new THREE.Vector3());
-    const radius = Math.max(4, size.length() * 0.5, Math.max(size.x, size.y, size.z) * 0.7);
-    this.focusCameraOnBounds(center, radius);
+    const radius = Math.max(4, box.getBoundingSphere(new THREE.Sphere()).radius);
+    const viewDir = this.getCurrentViewDirection();
+    const distance = this.getCameraDistanceForBounds(box, radius, viewDir);
+    this.positionCameraForFocus(center, radius, distance, viewDir);
   }
 
   focusCameraOnBounds(center, radius) {
@@ -301,22 +415,86 @@ export class WorldRenderer {
     }
 
     const safeRadius = Math.max(4, Number(radius || 8));
-    const distance = Math.max(6, safeRadius * 2.3);
-    this.ensureCameraCanSeeBounds(safeRadius, distance);
+    const distance = this.getCameraDistanceForRadius(safeRadius);
+    this.positionCameraForFocus(center, safeRadius, distance, new THREE.Vector3(1, 0.65, 1).normalize());
+  }
 
-    const viewDir = new THREE.Vector3(1, 0.65, 1).normalize();
+  positionCameraForFocus(center, radius, distance, viewDir) {
+    if (!this.camera) {
+      this.inputController.setFocusTarget(center, distance, radius);
+      return;
+    }
+
+    const safeDistance = Math.max(6, distance);
+    this.ensureCameraCanSeeBounds(radius, safeDistance);
 
     this.camera.position.set(
-      center.x + viewDir.x * distance,
-      center.y + viewDir.y * distance,
-      center.z + viewDir.z * distance
+      center.x + viewDir.x * safeDistance,
+      center.y + viewDir.y * safeDistance,
+      center.z + viewDir.z * safeDistance
     );
 
     const dir = new THREE.Vector3().subVectors(center, this.camera.position).normalize();
     this.inputController.setOrientationFromDirection(dir);
     this.camera.lookAt(center);
-    this.inputController.setFocusTarget(center, distance, safeRadius);
+    this.inputController.setFocusTarget(center, safeDistance, radius);
     this.markDirty();
+  }
+
+  getCameraDistanceForBounds(box, radius, viewDir) {
+    if (!this.camera) {
+      return radius * 2.3;
+    }
+
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov || 60);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * Math.max(0.01, this.camera.aspect || 1));
+    const center = box.getCenter(new THREE.Vector3());
+    const direction = viewDir.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(WORLD_UP, direction);
+    if (right.lengthSq() < 0.0001) {
+      right.set(1, 0, 0);
+    } else {
+      right.normalize();
+    }
+    const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+    let halfWidth = 0;
+    let halfHeight = 0;
+    let halfDepth = 0;
+
+    for (const corner of getBoxCorners(box)) {
+      const offset = corner.sub(center);
+      halfWidth = Math.max(halfWidth, Math.abs(offset.dot(right)));
+      halfHeight = Math.max(halfHeight, Math.abs(offset.dot(up)));
+      halfDepth = Math.max(halfDepth, Math.abs(offset.dot(direction)));
+    }
+
+    const widthDistance = halfWidth / Math.max(0.001, Math.tan(horizontalFov / 2));
+    const heightDistance = halfHeight / Math.max(0.001, Math.tan(verticalFov / 2));
+    return Math.max(6, (Math.max(widthDistance, heightDistance) + halfDepth) * 1.12);
+  }
+
+  getCameraDistanceForRadius(radius) {
+    if (!this.camera) {
+      return Math.max(6, radius * 2.3);
+    }
+
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov || 60);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * Math.max(0.01, this.camera.aspect || 1));
+    const fitFov = Math.max(0.01, Math.min(verticalFov, horizontalFov));
+    return Math.max(6, (radius / Math.sin(fitFov / 2)) * 1.12);
+  }
+
+  getCurrentViewDirection() {
+    if (!this.camera) {
+      return new THREE.Vector3(1, 0.65, 1).normalize();
+    }
+
+    const direction = new THREE.Vector3().subVectors(this.camera.position, this.inputController.pivot);
+    if (direction.lengthSq() < 0.0001) {
+      return new THREE.Vector3(1, 0.65, 1).normalize();
+    }
+
+    return direction.normalize();
   }
 
   setPerformanceOptions(options = {}) {
@@ -385,6 +563,10 @@ export class WorldRenderer {
   }
 
   applyRealtimePacket(packet) {
+    for (const id of packet?.removedObjectIds || []) {
+      this.removeObject(id);
+    }
+
     const updates = flattenRealtimeObjects(packet);
 
     for (const update of updates) {
@@ -395,19 +577,76 @@ export class WorldRenderer {
 
       const entry = this.objects.get(id);
       if (entry) {
-        entry.root.position.set(update.position.x, update.position.y, update.position.z);
-        entry.dto.transform.position = { ...update.position };
+        if (update.position) {
+          entry.root.position.set(update.position.x, update.position.y, update.position.z);
+          entry.dto.transform.position = { ...update.position };
+        }
+        if (typeof update.name === "string") {
+          entry.dto.name = update.name;
+        }
+        if (typeof update.archetype === "string") {
+          entry.dto.archetype = update.archetype;
+        }
         this.markDirty();
         continue;
       }
 
-      // Partition membership comes from the snapshot. Unknown live objects are
-      // picked up on refresh so hidden/non-selected partitions stay hidden.
+      const snapshotObject = this.findSnapshotObject(id);
+      const snapshotPartition = this.findSnapshotPartitionForObject(id);
+      if (
+        snapshotObject &&
+        !this.hiddenObjectIds.has(id) &&
+        (!snapshotPartition || this.isPartitionVisible(snapshotPartition))
+      ) {
+        this.addObjectToScene(snapshotObject);
+        this.markDirty();
+      }
     }
 
     this.applyGizmoRealtimePacket(packet);
     this.refreshSelectionHelper();
     this.markDirty();
+  }
+
+  removeObject(id) {
+    const entry = this.objects.get(id);
+    if (!entry) {
+      return;
+    }
+
+    this.objects.delete(id);
+    this.pickables = this.pickables.filter((pickable) => !entry.pickables.includes(pickable));
+    this.objectLayer?.remove(entry.root);
+    disposeObject(entry.root);
+
+    if (this.selectedId === id) {
+      this.selectedId = null;
+      this.refreshSelectionHelper();
+    }
+
+    this.markDirty();
+  }
+
+  findSnapshotObject(id) {
+    for (const partition of this.worldSnapshot?.partitions || []) {
+      for (const object of partition.objects || []) {
+        if (object?.instanceId === id) {
+          return object;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  findSnapshotPartitionForObject(id) {
+    for (const partition of this.worldSnapshot?.partitions || []) {
+      if ((partition.objects || []).some((object) => object?.instanceId === id)) {
+        return partition;
+      }
+    }
+
+    return null;
   }
 
   applyGizmoRealtimePacket(packet) {
@@ -515,6 +754,19 @@ export class WorldRenderer {
     this.markDirty();
   }
 
+  rebuildPlayArea() {
+    if (!this.grid) {
+      return;
+    }
+
+    clearGroup(this.grid);
+    const playArea = buildPlayArea(this.worldSnapshot);
+    if (playArea) {
+      this.grid.add(playArea);
+    }
+    this.markDirty();
+  }
+
   isPartitionVisible(partition) {
     if (!this.visiblePartitionKeys.size) {
       return true;
@@ -580,6 +832,7 @@ export class WorldRenderer {
     const pickables = [];
     const colliders = object.colliders || [];
 
+    let renderedCollider = false;
     if (colliders.length > 0) {
       for (const collider of colliders) {
         const mesh = buildColliderMesh(object, collider, {
@@ -592,8 +845,11 @@ export class WorldRenderer {
         mesh.userData.instanceId = object.instanceId;
         root.add(mesh);
         pickables.push(mesh);
+        renderedCollider = true;
       }
-    } else {
+    }
+
+    if (!renderedCollider && !isTerrainObject(object)) {
       const placeholder = buildPlaceholderMesh(object);
       placeholder.userData.instanceId = object.instanceId;
       root.add(placeholder);
@@ -643,7 +899,14 @@ export class WorldRenderer {
       return;
     }
 
-    const helper = new THREE.BoxHelper(entry.root, 0xd08c0e);
+    const helper = new THREE.Group();
+    helper.add(new THREE.BoxHelper(entry.root, 0xd08c0e));
+
+    const box = new THREE.Box3().setFromObject(entry.root);
+    if (!box.isEmpty()) {
+      helper.add(buildSelectionAxes(box));
+    }
+
     this.selectionHelper = helper;
     this.overlayLayer.add(helper);
     this.markDirty();
@@ -702,6 +965,49 @@ function normalizeRenderScale(value) {
   return THREE.MathUtils.clamp(scale, 0.01, 100);
 }
 
+function getBoxCorners(box) {
+  return [
+    new THREE.Vector3(box.min.x, box.min.y, box.min.z),
+    new THREE.Vector3(box.min.x, box.min.y, box.max.z),
+    new THREE.Vector3(box.min.x, box.max.y, box.min.z),
+    new THREE.Vector3(box.min.x, box.max.y, box.max.z),
+    new THREE.Vector3(box.max.x, box.min.y, box.min.z),
+    new THREE.Vector3(box.max.x, box.min.y, box.max.z),
+    new THREE.Vector3(box.max.x, box.max.y, box.min.z),
+    new THREE.Vector3(box.max.x, box.max.y, box.max.z),
+  ];
+}
+
+function buildSelectionAxes(box) {
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const axisLength = Math.max(2, Math.min(12, Math.max(size.x, size.y, size.z) * 1.25));
+  const positions = [
+    center.x, center.y, center.z, center.x + axisLength, center.y, center.z,
+    center.x, center.y, center.z, center.x, center.y + axisLength, center.z,
+    center.x, center.y, center.z, center.x, center.y, center.z + axisLength,
+  ];
+  const colors = [
+    1, 0.08, 0.08, 1, 0.08, 0.08,
+    0.1, 0.9, 0.2, 0.1, 0.9, 0.2,
+    0.15, 0.45, 1, 0.15, 0.45, 1,
+  ];
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  const axes = new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({
+      vertexColors: true,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.95,
+    })
+  );
+  axes.renderOrder = 250;
+  return axes;
+}
+
 function flattenRealtimeObjects(packet) {
   if (!packet) {
     return [];
@@ -730,19 +1036,21 @@ function partitionIndex(partition, axis) {
 function buildColliderMesh(object, collider, options = {}) {
   const objectPosition = object.transform?.position || { x: 0, y: 0, z: 0 };
   const transform = collider.transform || object.transform || {};
-  const position = transform.position || objectPosition;
+  const position = transform.position || { x: 0, y: 0, z: 0 };
   const size = transform.size || object.transform?.size || { x: 1, y: 1, z: 1 };
   const scale = transform.scale || object.transform?.scale || { x: 1, y: 1, z: 1 };
-  const localPosition = new THREE.Vector3(
-    position.x - objectPosition.x,
-    position.y - objectPosition.y,
-    position.z - objectPosition.z
-  );
+  const hasHeightfield = collider.shape === SHAPE_HEIGHTFIELD || collider.heightfield;
+  const localPosition = getColliderLocalPosition(collider, position, objectPosition, hasHeightfield, size, scale);
 
-  if (collider.shape === SHAPE_HEIGHTFIELD || collider.heightfield) {
+  if (hasHeightfield) {
     const mesh = buildHeightfieldMesh(collider.heightfield, options);
     mesh.position.copy(localPosition);
     return mesh;
+  }
+
+  const triggerRadius = getColliderApproxRadius(collider, size, scale);
+  if (collider.isTrigger && triggerRadius > TRIGGER_COLLIDER_RENDER_RADIUS_LIMIT) {
+    return null;
   }
 
   const palette = getArchetypePalette(object.archetype);
@@ -785,6 +1093,65 @@ function buildColliderMesh(object, collider, options = {}) {
   );
   mesh.add(edges);
   return mesh;
+}
+
+function getColliderLocalPosition(collider, position, objectPosition, hasHeightfield, size, scale) {
+  const pos = {
+    x: Number(position?.x || 0),
+    y: Number(position?.y || 0),
+    z: Number(position?.z || 0),
+  };
+  const obj = {
+    x: Number(objectPosition?.x || 0),
+    y: Number(objectPosition?.y || 0),
+    z: Number(objectPosition?.z || 0),
+  };
+
+  if (String(collider?.transformSpace || "").toLowerCase() === "world") {
+    return new THREE.Vector3(pos.x - obj.x, pos.y - obj.y, pos.z - obj.z);
+  }
+
+  const isZero = Math.abs(pos.x) < 0.0001 && Math.abs(pos.y) < 0.0001 && Math.abs(pos.z) < 0.0001;
+  const matchesObject = Math.abs(pos.x - obj.x) < 0.0001
+    && Math.abs(pos.y - obj.y) < 0.0001
+    && Math.abs(pos.z - obj.z) < 0.0001;
+
+  const dx = pos.x - obj.x;
+  const dy = pos.y - obj.y;
+  const dz = pos.z - obj.z;
+  const maxColliderExtent = Math.max(
+    Math.abs(Number(size?.x || 0) * Number(scale?.x || 1)),
+    Math.abs(Number(size?.y || 0) * Number(scale?.y || 1)),
+    Math.abs(Number(size?.z || 0) * Number(scale?.z || 1)),
+    1
+  );
+  const nearObject = ((dx * dx) + (dy * dy) + (dz * dz)) <= Math.max(16, maxColliderExtent * maxColliderExtent * 16);
+
+  if (hasHeightfield || matchesObject || nearObject) {
+    return new THREE.Vector3(pos.x - obj.x, pos.y - obj.y, pos.z - obj.z);
+  }
+
+  if (isZero) {
+    return new THREE.Vector3(0, 0, 0);
+  }
+
+  return new THREE.Vector3(pos.x, pos.y, pos.z);
+}
+
+function getColliderApproxRadius(collider, size, scale) {
+  const sx = Number(size?.x || 0) * Number(scale?.x || 1);
+  const sy = Number(size?.y || 0) * Number(scale?.y || 1);
+  const sz = Number(size?.z || 0) * Number(scale?.z || 1);
+
+  if (collider.shape === SHAPE_SPHERE) {
+    return Math.max(0, sx);
+  }
+
+  if (collider.shape === SHAPE_CAPSULE) {
+    return Math.max(0, sx + sy);
+  }
+
+  return Math.max(Math.abs(sx), Math.abs(sy), Math.abs(sz));
 }
 
 function buildHeightfieldMesh(heightfield, options = {}) {

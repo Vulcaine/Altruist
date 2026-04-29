@@ -233,12 +233,13 @@ namespace Altruist.Gaming.ThreeD
             if (obj.Body is not IPhysxBody3D body)
                 return;
 
-            var newPos = Position3D.From(body.Position);
-            var newRot = Rotation3D.FromQuaternion(body.Rotation);
+            var bodyTransform = obj.Transform
+                .WithPosition(Position3D.From(body.Position))
+                .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
 
-            obj.Transform = obj.Transform
-                .WithPosition(newPos)
-                .WithRotation(newRot);
+            obj.Transform = obj is IPhysicsTransformSync3D transformSync
+                ? transformSync.GetWorldTransformFromPhysics(body)
+                : bodyTransform;
 
             if (obj.Colliders != null)
             {
@@ -246,9 +247,7 @@ namespace Altruist.Gaming.ThreeD
                 {
                     try
                     {
-                        col.Transform = col.Transform
-                            .WithPosition(newPos)
-                            .WithRotation(newRot);
+                        col.Transform = bodyTransform;
                     }
                     catch
                     {

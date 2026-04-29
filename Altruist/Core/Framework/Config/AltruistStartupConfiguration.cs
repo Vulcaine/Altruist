@@ -167,7 +167,10 @@ namespace Altruist
             app.Use(async (context, next) =>
             {
                 var recorder = context.RequestServices.GetService<IDashboardNetworkRecorder>();
-                if (recorder is null || !recorder.CaptureHttp || IsDashboardDevtoolsEndpoint(context.Request.Path.Value))
+                if (recorder is null
+                    || !recorder.CaptureHttp
+                    || context.WebSockets.IsWebSocketRequest
+                    || IsDashboardDevtoolsEndpoint(context.Request.Path.Value))
                 {
                     await next();
                     return;
@@ -214,11 +217,11 @@ namespace Altruist
             {
                 if (transport.TransportType == "websocket")
                 {
-                    // WebSocket: prefix paths, validate shields, register routes
+                    // WebSocket: portal paths are exact. Include any desired prefix in [Portal(...)].
                     ValidateWebSocketShields(portals, logger);
                     foreach (var (type, path) in portals)
                     {
-                        var wsMappedPath = CombinePaths(_wsContextPath, path);
+                        var wsMappedPath = NormalizePath(path);
                         transport.UseTransportEndpoints(app, type, wsMappedPath);
                     }
                     transport.RouteTraffic(app);

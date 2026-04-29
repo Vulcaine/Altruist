@@ -207,5 +207,11 @@ namespace Altruist.Gaming.TwoD
                     yield return clientId;
             }
         }
+
+        public IEnumerable<ITypelessWorldObject> GetObservers()
+        {
+            foreach (var observer in _observers.Values.ToArray())
+                yield return observer;
+        }
     }
 }

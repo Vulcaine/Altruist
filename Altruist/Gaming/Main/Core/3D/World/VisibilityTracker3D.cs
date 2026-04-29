@@ -484,6 +484,12 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        public IEnumerable<ITypelessWorldObject> GetObservers()
+        {
+            foreach (var observer in _observers.Values.ToArray())
+                yield return observer;
+        }
+
         public void RefreshObserver(string clientId)
         {
             _visibleSets.TryRemove(clientId, out _);

@@ -16,11 +16,16 @@
     networkFilter: "",
     networkKind: "",
     networkDirection: "",
+    networkSortField: "timestampUtc",
+    networkSortDirection: "desc",
+    networkFilters: {},
     labFilter: "",
     labExpanded: {},
     labPayloads: {},
     labClientIds: {},
     labResults: {},
+    labGroups: [],
+    labDrag: null,
     serviceFilter: "",
     serviceTypeFilter: "",
     selectedVaultTypeKey: "",
@@ -56,6 +61,9 @@
         state.isBootstrapping = false;
         state.isRefreshing = false;
         state.dirtyConfig = reconcileDirtyConfig(state.dirtyConfig, state.payload?.configs || []);
+        if (state.kind === "lab") {
+          applyLabState(state.payload?.labState);
+        }
 
         if (state.kind === "vault") {
           const definitions = state.payload?.definitions || [];
@@ -173,6 +181,9 @@
       case "copy-json":
         await navigator.clipboard.writeText(button.dataset.value || "");
         return;
+      case "view-network-payload":
+        openNetworkPayloadModal(Number(button.dataset.eventId || "0"));
+        return;
       case "edit-cache":
         openCacheModal(Number(button.dataset.index || "-1"));
         return;
@@ -212,16 +223,25 @@
         );
         return;
       case "vault-sort":
-        toggleVaultSort(button.dataset.field || "");
+        toggleTableSort("vault", button.dataset.field || "");
         return;
       case "vault-filter":
-        openVaultFilterModal(button.dataset.field || "");
+        openTableFilterModal("vault", button.dataset.field || "");
+        return;
+      case "table-sort":
+        toggleTableSort(button.dataset.tableId || "", button.dataset.field || "");
+        return;
+      case "table-filter":
+        openTableFilterModal(button.dataset.tableId || "", button.dataset.field || "");
         return;
       case "save-vault-cell":
         saveVaultCellModal();
         return;
       case "stage-vault-filter":
-        stageVaultFilterModal();
+        stageTableFilterModal();
+        return;
+      case "stage-table-filter":
+        stageTableFilterModal();
         return;
       case "commit-vault-batch":
         commitVaultChanges();
@@ -241,10 +261,22 @@
         render({ preserveViewport: true });
         return;
       case "lab-toggle":
-        toggleLabAction(button.dataset.actionId || "");
+        toggleLabAction(getLabRenderKey(button.dataset.actionId || "", button.dataset.instanceId || ""));
         return;
       case "lab-submit":
-        submitLabAction(button.dataset.actionId || "");
+        submitLabAction(button.dataset.actionId || "", button.dataset.instanceId || "");
+        return;
+      case "lab-tag":
+        tagLabAction(button.dataset.actionId || "", button.dataset.instanceId || "");
+        return;
+      case "lab-remove-instance":
+        removeLabInstance(button.dataset.groupId || "", button.dataset.instanceId || "");
+        return;
+      case "lab-run-group":
+        runLabGroup(button.dataset.groupId || "");
+        return;
+      case "save-lab-tags":
+        saveLabTagModal();
         return;
       case "close-modal":
         closeModal();
@@ -278,10 +310,18 @@
         render({ preserveViewport: true });
         return;
       case "lab-payload":
-        state.labPayloads[target.dataset.actionId || ""] = target.value || "";
+        updateLabInstanceData(
+          target.dataset.actionId || "",
+          target.dataset.instanceId || "",
+          { bodyJson: target.value || "" }
+        );
         return;
       case "lab-client-id":
-        state.labClientIds[target.dataset.actionId || ""] = target.value || "";
+        updateLabInstanceData(
+          target.dataset.actionId || "",
+          target.dataset.instanceId || "",
+          { clientId: target.value || "" }
+        );
         return;
       case "service-filter":
         state.serviceFilter = target.value || "";
@@ -344,6 +384,55 @@
       state.networkDirection = target.value || "";
       render({ preserveViewport: true });
     }
+  });
+
+  app.addEventListener("dragstart", (event) => {
+    const row = event.target.closest("[data-lab-draggable='true']");
+    if (!row) {
+      return;
+    }
+
+    const payload = {
+      actionId: row.dataset.actionId || "",
+      instanceId: row.dataset.instanceId || "",
+      groupId: row.dataset.groupId || "",
+    };
+    state.labDrag = payload;
+    event.dataTransfer?.setData("application/json", JSON.stringify(payload));
+    event.dataTransfer?.setData("text/plain", payload.actionId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "copyMove";
+    }
+  });
+
+  app.addEventListener("dragover", (event) => {
+    if (!event.target.closest("[data-lab-drop-group]")) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+  });
+
+  app.addEventListener("drop", (event) => {
+    const target = event.target.closest("[data-lab-drop-group]");
+    if (!target) {
+      return;
+    }
+
+    event.preventDefault();
+    const drag = readLabDragPayload(event);
+    if (!drag?.actionId) {
+      return;
+    }
+
+    dropLabActionIntoGroup(
+      drag,
+      target.dataset.labDropGroup || "",
+      target.dataset.dropBeforeInstanceId || ""
+    );
   });
 
   app.addEventListener("mousedown", (event) => {
@@ -508,29 +597,63 @@
               state.modal.prettyValue
                 ? `
                   <div class="modal-section">
-                    <div class="detail-label">Current Value</div>
+                    <div class="detail-label">${escapeHtml(state.modal.prettyLabel || "Current Value")}</div>
                     <pre class="json-view"><code>${renderHighlightedJson(state.modal.prettyValue)}</code></pre>
                   </div>
                 `
                 : ""
             }
-            <div class="modal-section">
-              <div class="detail-label">Edit</div>
-              <div class="code-editor-shell">
-                <pre class="json-view json-view--editor"><code>${renderHighlightedJson(prettyJsonOrString(state.modal.editValue || ""))}</code></pre>
-                <textarea
-                  class="modal-input modal-input--overlay"
-                  data-role="modal-input"
-                  spellcheck="false"
-                >${escapeHtml(state.modal.editValue || "")}</textarea>
-              </div>
-            </div>
+            ${
+              state.modal.rawValue != null
+                ? `
+                  <div class="modal-section">
+                    <div class="detail-label">${escapeHtml(state.modal.rawLabel || "Raw Value")}</div>
+                    <pre class="json-view"><code>${escapeHtml(String(state.modal.rawValue))}</code></pre>
+                  </div>
+                `
+                : ""
+            }
+            ${state.modal.readOnly ? "" : renderModalEditor()}
             ${state.modal.error ? `<div class="modal-error">${escapeHtml(state.modal.error)}</div>` : ""}
           </div>
           <div class="modal-footer">
-            ${renderIconButton("close-modal", "Cancel", "cancel", "neutral")}
-            ${renderIconButton(state.modal.saveAction, state.modal.saveLabel || "Save", "save", state.modal.saveTone || "success")}
+            ${renderIconButton("close-modal", state.modal.readOnly ? "Close" : "Cancel", "cancel", "neutral")}
+            ${
+              state.modal.readOnly
+                ? ""
+                : renderIconButton(state.modal.saveAction, state.modal.saveLabel || "Save", "save", state.modal.saveTone || "success")
+            }
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderModalEditor() {
+    if (state.modal?.inputMode === "text") {
+      return `
+        <div class="modal-section">
+          <div class="detail-label">${escapeHtml(state.modal.inputLabel || "Edit")}</div>
+          <textarea
+            class="modal-input modal-input--text"
+            data-role="modal-input"
+            spellcheck="false"
+            placeholder="${escapeAttribute(state.modal.placeholder || "")}"
+          >${escapeHtml(state.modal.editValue || "")}</textarea>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="modal-section">
+        <div class="detail-label">Edit</div>
+        <div class="code-editor-shell">
+          <pre class="json-view json-view--editor"><code>${renderHighlightedJson(prettyJsonOrString(state.modal.editValue || ""))}</code></pre>
+          <textarea
+            class="modal-input modal-input--overlay"
+            data-role="modal-input"
+            spellcheck="false"
+          >${escapeHtml(state.modal.editValue || "")}</textarea>
         </div>
       </div>
     `;
@@ -671,7 +794,9 @@
   }
 
   function renderConfig() {
-    const configs = filterEntries(state.payload?.configs || [], state.configFilter, ["key", "value"]);
+    const configs = sortConfigEntries(
+      filterEntries(state.payload?.configs || [], state.configFilter, ["key", "value"])
+    );
     const hasPending = getDirtyConfigEntries().length > 0;
 
     return `
@@ -972,6 +1097,7 @@
       const directionOk = !state.networkDirection || entry.direction === state.networkDirection;
       return kindOk && directionOk;
     });
+    const columns = getNetworkTableColumns();
 
     return `
       <div class="stack">
@@ -1003,94 +1129,148 @@
               />
             </div>
           </div>
-          <div class="table-wrap">
-            <table class="network-table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Type</th>
-                  <th>Target</th>
-                  <th>Ids</th>
-                  <th>Timing</th>
-                  <th>Payload</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${
-                  events.length
-                    ? events.slice().reverse().map((entry) => renderNetworkRow(entry)).join("")
-                    : `<tr><td colspan="7" class="muted">No network events matched your filter.</td></tr>`
-                }
-              </tbody>
-            </table>
-          </div>
+          ${renderDataTable({
+            tableId: "network",
+            className: "network-table",
+            columns,
+            rows: events,
+            emptyText: "No network events matched your filter.",
+            rowClass: (entry) => entry.error ? "row-error" : "",
+            renderCell: renderNetworkCell,
+          })}
         </section>
       </div>
     `;
   }
 
-  function renderNetworkRow(entry) {
-    const statusTone = entry.error || Number(entry.statusCode || 0) >= 500 ? "danger" : "neutral";
-    const target = entry.kind === "http"
-      ? `${entry.method || ""} ${entry.path || entry.route || "-"}`
+  function getNetworkTableColumns() {
+    return [
+      {
+        field: "timestampUtc",
+        label: "Time",
+        value: (entry) => entry.timestampUtc,
+        sortValue: (entry) => Date.parse(entry.timestampUtc || "") || 0,
+        filterValue: (entry) => formatTime(entry.timestampUtc),
+      },
+      {
+        field: "type",
+        label: "Type",
+        value: (entry) => [entry.kind, entry.direction, entry.statusCode].filter(Boolean).join(" "),
+      },
+      {
+        field: "target",
+        label: "Target",
+        value: (entry) => getNetworkTarget(entry),
+      },
+      {
+        field: "ids",
+        label: "Ids",
+        value: (entry) => getNetworkIds(entry),
+      },
+      {
+        field: "timing",
+        label: "Timing",
+        value: (entry) => getNetworkTimings(entry),
+        sortValue: (entry) => Number(entry.durationMs ?? entry.handlerDurationMs ?? entry.sendDurationMs ?? 0),
+      },
+      {
+        field: "payload",
+        label: "Payload",
+        value: (entry) => entry.payloadPreview || entry.rawPayload || "",
+      },
+      {
+        field: "actions",
+        label: "",
+        sortable: false,
+        filterable: false,
+      },
+    ];
+  }
+
+  function getNetworkTarget(entry) {
+    return entry.kind === "http"
+      ? `${entry.method || ""} ${entry.path || entry.route || "-"}`.trim()
       : [entry.route, entry.gate || entry.event || entry.packetType].filter(Boolean).join(" :: ") || "-";
-    const ids = [
+  }
+
+  function getNetworkIds(entry) {
+    return [
       entry.clientId ? `client=${entry.clientId}` : "",
       entry.connectionId && entry.connectionId !== entry.clientId ? `conn=${entry.connectionId}` : "",
       entry.roomId ? `room=${entry.roomId}` : "",
     ].filter(Boolean).join("\n") || "-";
-    const timings = [
+  }
+
+  function getNetworkTimings(entry) {
+    return [
       entry.durationMs != null ? `total=${entry.durationMs}ms` : "",
       entry.handlerDurationMs != null ? `gate=${entry.handlerDurationMs}ms` : "",
       entry.decodeDurationMs != null ? `decode=${entry.decodeDurationMs}ms` : "",
       entry.encodeDurationMs != null ? `encode=${entry.encodeDurationMs}ms` : "",
       entry.sendDurationMs != null ? `send=${entry.sendDurationMs}ms` : "",
     ].filter(Boolean).join("\n") || "-";
+  }
+
+  function renderNetworkCell(entry, column) {
+    const statusTone = entry.error || Number(entry.statusCode || 0) >= 500 ? "danger" : "neutral";
     const raw = entry.rawPayload || entry.payloadPreview || "";
 
-    return `
-      <tr class="${entry.error ? "row-error" : ""}">
-        <td class="mono">${escapeHtml(formatTime(entry.timestampUtc))}</td>
-        <td>
+    switch (column.field) {
+      case "timestampUtc":
+        return `<span class="mono">${escapeHtml(formatTime(entry.timestampUtc))}</span>`;
+      case "type":
+        return `
           <span class="badge badge--${statusTone}">${escapeHtml(entry.kind || "-")}</span>
           <div class="muted mono">${escapeHtml(entry.direction || "-")}</div>
           ${entry.statusCode ? `<div class="muted mono">status=${escapeHtml(String(entry.statusCode))}</div>` : ""}
-        </td>
-        <td>
-          <strong>${escapeHtml(target)}</strong>
+        `;
+      case "target":
+        return `
+          <strong>${escapeHtml(getNetworkTarget(entry))}</strong>
           <div class="muted mono">${escapeHtml(entry.portal || entry.transport || "-")}</div>
           ${entry.error ? `<div class="network-error">${escapeHtml(entry.error)}</div>` : ""}
-        </td>
-        <td class="mono preline">${escapeHtml(ids)}</td>
-        <td class="mono preline">${escapeHtml(timings)}</td>
-        <td class="mono payload-cell">
+        `;
+      case "ids":
+        return `<div class="mono preline">${escapeHtml(getNetworkIds(entry))}</div>`;
+      case "timing":
+        return `<div class="mono preline">${escapeHtml(getNetworkTimings(entry))}</div>`;
+      case "payload":
+        return `
+          <div class="mono payload-cell">
           ${escapeHtml(entry.payloadPreview || "-")}
           ${entry.payloadTruncated ? `<span class="badge">truncated</span>` : ""}
-        </td>
-        <td>
+          </div>
+        `;
+      case "actions":
+        return `
+          <div class="row-actions payload-actions">
+          ${raw ? renderIconButton("view-network-payload", "View Payload", "view", "accent", { eventId: entry.id }) : ""}
           ${raw ? renderIconButton("copy-json", "Copy Payload", "copy", "neutral", { value: raw }) : ""}
-        </td>
-      </tr>
-    `;
+          </div>
+        `;
+      default:
+        return escapeHtml(getTableColumnValue(entry, column));
+    }
   }
 
   function renderPerformance() {
     const payload = state.payload || {};
+    const http = filterHttpTimingSummary(payload.http);
+    const slowRequests = (payload.slowRequests || []).filter((entry) => !isSocketHttpEntry(entry));
     return `
       <div class="stack">
         ${renderInlineError()}
         <section class="card">
           <h2>Timings</h2>
           <div class="stats-grid">
-            ${renderTimingStat("HTTP p95", payload.http?.p95Ms)}
+            ${renderTimingStat("HTTP p95", http?.p95Ms)}
             ${renderTimingStat("Gate p95", payload.gates?.p95Ms)}
             ${renderTimingStat("Decode p95", payload.packetDecode?.p95Ms)}
             ${renderTimingStat("Send p95", payload.transportSend?.p95Ms)}
           </div>
         </section>
         <section class="split-detail">
-          ${renderTimingCard("HTTP Routes", payload.http)}
+          ${renderTimingCard("HTTP Routes", http)}
           ${renderTimingCard("Portal Gates", payload.gates)}
         </section>
         <section class="split-detail">
@@ -1098,7 +1278,7 @@
           ${renderTimingCard("Packet Encode", payload.packetEncode)}
         </section>
         <section class="split-detail">
-          ${renderSlowList("Slow Requests", payload.slowRequests || [])}
+          ${renderSlowList("Slow Requests", slowRequests)}
           ${renderSlowList("Slow Gates", payload.slowGates || [])}
         </section>
       </div>
@@ -1114,7 +1294,10 @@
       "name",
       "handler",
       "payloadType",
+      "shield",
     ]);
+    const httpActions = sortLabActions(actions.filter((action) => isLabKind(action, "http")));
+    const gateActions = sortLabActions(actions.filter((action) => isLabKind(action, "gate")));
 
     return `
       <div class="stack">
@@ -1129,43 +1312,193 @@
               <input class="grow" data-role="lab-filter" value="${escapeAttribute(state.labFilter)}" placeholder="Filter endpoints, gates, handlers..." />
             </div>
           </div>
-          <div class="lab-list">
-            ${
-              actions.length
-                ? actions.map((action) => renderLabAction(action)).join("")
-                : `<div class="empty-state">No endpoints or gates matched your filter.</div>`
-            }
-          </div>
+          ${
+            actions.length
+              ? `
+                <div class="lab-sections">
+                  ${renderLabCustomGroups(actions)}
+                  ${renderLabHttpSection(httpActions)}
+                  ${renderLabGateSection(gateActions)}
+                </div>
+              `
+              : `<div class="empty-state">No endpoints or gates matched your filter.</div>`
+          }
         </section>
       </div>
     `;
   }
 
-  function renderLabAction(action) {
-    const expanded = !!state.labExpanded[action.id];
-    const result = state.labResults[action.id];
-    const payload = getLabPayload(action);
-    const clientId = state.labClientIds[action.id] || "";
-    const target = action.kind === "gate"
+  function renderLabCustomGroups(availableActions) {
+    if (!state.labGroups.length) {
+      return "";
+    }
+
+    return state.labGroups
+      .map((group) => renderLabCustomGroup(group, availableActions))
+      .join("");
+  }
+
+  function renderLabCustomGroup(group, availableActions) {
+    const actionsById = new Map((availableActions || state.payload?.actions || []).map((action) => [action.id, action]));
+    const items = group.items || [];
+
+    return `
+      <section class="lab-section lab-custom-section">
+        <div class="lab-section-header">
+          <div>
+            <h3>${escapeHtml(group.name)}</h3>
+            <div class="muted">${items.length} saved endpoint(s)</div>
+          </div>
+          ${renderIconButton("lab-run-group", `Run ${group.name}`, "execute", "success", { groupId: group.id }, items.length === 0)}
+        </div>
+        <div class="lab-list lab-drop-zone" data-lab-drop-group="${escapeAttribute(group.id)}">
+          ${
+            items.length
+              ? items
+                  .map((item) => {
+                    const action = actionsById.get(item.actionId) || findLabAction(item.actionId);
+                    return action
+                      ? renderLabAction(action, { group, instance: item })
+                      : renderMissingLabInstance(group, item);
+                  })
+                  .join("")
+              : `<div class="empty-state compact">Drop endpoints here.</div>`
+          }
+        </div>
+      </section>
+    `;
+  }
+
+  function renderMissingLabInstance(group, item) {
+    return `
+      <article
+        class="lab-item lab-missing-item"
+        draggable="true"
+        data-lab-draggable="true"
+        data-action-id="${escapeAttribute(item.actionId)}"
+        data-instance-id="${escapeAttribute(item.instanceId)}"
+        data-group-id="${escapeAttribute(group.id)}"
+        data-lab-drop-group="${escapeAttribute(group.id)}"
+        data-drop-before-instance-id="${escapeAttribute(item.instanceId)}"
+      >
+        <div class="lab-row">
+          <span></span>
+          <div class="lab-main">
+            <div class="lab-title">
+              <span class="badge">Missing</span>
+              <strong>${escapeHtml(item.actionId)}</strong>
+            </div>
+            <div class="muted mono">Endpoint is not available in the current server.</div>
+          </div>
+          <div class="row-actions">
+            ${renderIconButton("lab-remove-instance", "Remove from group", "delete", "danger", {
+              groupId: group.id,
+              instanceId: item.instanceId,
+            })}
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderLabHttpSection(actions) {
+    if (!actions.length) {
+      return "";
+    }
+
+    return `
+      <section class="lab-section">
+        <div class="lab-section-header">
+          <h3>Http</h3>
+          <span class="muted">${actions.length} endpoint(s)</span>
+        </div>
+        <div class="lab-method-groups">
+          ${groupLabHttpActions(actions)
+            .map(
+              ({ method, items }) => `
+                <section class="lab-method-group">
+                  <div class="lab-method-header">
+                    <span class="badge">${escapeHtml(method)}</span>
+                    <span class="muted">${items.length}</span>
+                  </div>
+                  <div class="lab-list">
+                    ${items.map((action) => renderLabAction(action)).join("")}
+                  </div>
+                </section>
+              `
+            )
+            .join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderLabGateSection(actions) {
+    if (!actions.length) {
+      return "";
+    }
+
+    return `
+      <section class="lab-section">
+        <div class="lab-section-header">
+          <h3>Portal/Gate</h3>
+          <span class="muted">${actions.length} gate(s)</span>
+        </div>
+        <div class="lab-list">
+          ${actions.map((action) => renderLabAction(action)).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderLabAction(action, options = {}) {
+    const instance = options.instance || null;
+    const group = options.group || null;
+    const instanceId = instance?.instanceId || "";
+    const groupId = group?.id || "";
+    const renderKey = getLabRenderKey(action.id, instanceId);
+    const expanded = !!state.labExpanded[renderKey];
+    const result = state.labResults[renderKey];
+    const payload = getLabPayload(action, instance);
+    const clientId = getLabClientId(action.id, instance);
+    const target = isLabKind(action, "gate")
       ? `${action.path || "-"} :: ${action.event || action.name}`
       : `${action.method || "GET"} ${action.path || "-"}`;
 
     return `
-      <article class="lab-item ${expanded ? "is-expanded" : ""}">
+      <article
+        class="lab-item ${expanded ? "is-expanded" : ""}"
+        draggable="true"
+        data-lab-draggable="true"
+        data-action-id="${escapeAttribute(action.id)}"
+        data-instance-id="${escapeAttribute(instanceId)}"
+        data-group-id="${escapeAttribute(groupId)}"
+        ${groupId ? `data-lab-drop-group="${escapeAttribute(groupId)}" data-drop-before-instance-id="${escapeAttribute(instanceId)}"` : ""}
+      >
         <div class="lab-row">
-          <button class="lab-expand-button" data-action="lab-toggle" data-action-id="${escapeAttribute(action.id)}" title="Expand" aria-label="Expand">
+          <button class="lab-expand-button" data-action="lab-toggle" data-action-id="${escapeAttribute(action.id)}" data-instance-id="${escapeAttribute(instanceId)}" title="Expand" aria-label="Expand">
             ${iconMarkup(expanded ? "chevron-down" : "chevron-right")}
           </button>
           <div class="lab-main">
             <div class="lab-title">
-              <span class="badge">${escapeHtml(action.kind || "-")}</span>
+              <span class="badge">${escapeHtml(resolveLabActionBadge(action))}</span>
+              ${renderLabAuthBadge(action)}
               <strong>${escapeHtml(target)}</strong>
               ${renderLabStatus(result)}
             </div>
             <div class="muted mono">${escapeHtml(action.handler || "-")}${action.payloadType ? ` | ${escapeHtml(action.payloadType)}` : ""}</div>
           </div>
           <div class="row-actions">
-            ${renderIconButton("lab-submit", "Submit", "execute", result?.success ? "success" : "accent", { actionId: action.id })}
+            ${renderIconButton("lab-submit", "Submit", "execute", result?.success ? "success" : "accent", { actionId: action.id, instanceId })}
+            ${renderIconButton("lab-tag", "Add to tag group", "tag", "neutral", { actionId: action.id, instanceId })}
+            ${
+              groupId
+                ? renderIconButton("lab-remove-instance", "Remove from group", "delete", "danger", {
+                    groupId,
+                    instanceId,
+                  })
+                : ""
+            }
           </div>
         </div>
         ${
@@ -1173,11 +1506,11 @@
             ? `
               <div class="lab-editor">
                 ${
-                  action.kind === "gate"
-                    ? `<input class="lab-client-input" data-role="lab-client-id" data-action-id="${escapeAttribute(action.id)}" value="${escapeAttribute(clientId)}" placeholder="client id (default: dashboard-lab)" />`
+                  isLabKind(action, "gate")
+                    ? `<input class="lab-client-input" data-role="lab-client-id" data-action-id="${escapeAttribute(action.id)}" data-instance-id="${escapeAttribute(instanceId)}" value="${escapeAttribute(clientId)}" placeholder="client id (default: dashboard-lab)" />`
                     : ""
                 }
-                <textarea class="query-input lab-payload-input" data-role="lab-payload" data-action-id="${escapeAttribute(action.id)}" spellcheck="false">${escapeHtml(payload)}</textarea>
+                <textarea class="query-input lab-payload-input" data-role="lab-payload" data-action-id="${escapeAttribute(action.id)}" data-instance-id="${escapeAttribute(instanceId)}" spellcheck="false">${escapeHtml(payload)}</textarea>
                 ${renderLabResult(result)}
               </div>
             `
@@ -1197,6 +1530,19 @@
       : `<span class="lab-status lab-status--error" title="Failed">${iconMarkup("error")}</span>`;
   }
 
+  function renderLabAuthBadge(action) {
+    if (!action?.requiresAuth) {
+      return "";
+    }
+
+    const label = action.shield || "Auth required";
+    return `
+      <span class="lab-auth-badge" title="${escapeAttribute(`Requires auth: ${label}`)}" aria-label="${escapeAttribute(`Requires auth: ${label}`)}">
+        ${iconMarkup("shield")}
+      </span>
+    `;
+  }
+
   function renderLabResult(result) {
     if (!result) {
       return "";
@@ -1214,12 +1560,119 @@
     `;
   }
 
-  function getLabPayload(action) {
+  function getLabPayload(action, instance = null) {
+    if (instance) {
+      return instance.bodyJson ?? action.sampleJson ?? "";
+    }
+
     if (Object.prototype.hasOwnProperty.call(state.labPayloads, action.id)) {
       return state.labPayloads[action.id];
     }
 
     return action.sampleJson || "";
+  }
+
+  function getLabClientId(actionId, instance = null) {
+    if (instance) {
+      return instance.clientId || "";
+    }
+
+    return state.labClientIds[actionId] || "";
+  }
+
+  function getLabRenderKey(actionId, instanceId = "") {
+    return instanceId ? `instance:${instanceId}` : actionId;
+  }
+
+  function describeLabAction(action) {
+    if (isLabKind(action, "gate")) {
+      return `${action.path || "-"} :: ${action.event || action.name || action.id}`;
+    }
+
+    return `${action.method || "GET"} ${action.path || action.name || action.id}`;
+  }
+
+  function resolveLabActionBadge(action) {
+    if (isLabKind(action, "http")) {
+      return action.method || "HTTP";
+    }
+
+    return "GATE";
+  }
+
+  function isLabKind(action, kind) {
+    return String(action?.kind || "").toLowerCase() === kind;
+  }
+
+  function sortLabActions(actions) {
+    return [...actions].sort((left, right) => {
+      const leftAuth = isLikelyAuthEndpoint(left) ? 0 : 1;
+      const rightAuth = isLikelyAuthEndpoint(right) ? 0 : 1;
+      if (leftAuth !== rightAuth) {
+        return leftAuth - rightAuth;
+      }
+
+      const methodDelta = labMethodRank(left.method) - labMethodRank(right.method);
+      if (methodDelta !== 0) {
+        return methodDelta;
+      }
+
+      return String(left.path || left.event || left.name || "").localeCompare(
+        String(right.path || right.event || right.name || ""),
+        undefined,
+        { sensitivity: "base" }
+      );
+    });
+  }
+
+  function groupLabHttpActions(actions) {
+    const authItems = actions.filter(isLikelyAuthEndpoint);
+    const regularItems = actions.filter((action) => !isLikelyAuthEndpoint(action));
+    const groups = new Map();
+    for (const action of regularItems) {
+      const method = String(action.method || "GET").toUpperCase();
+      if (!groups.has(method)) {
+        groups.set(method, []);
+      }
+      groups.get(method).push(action);
+    }
+
+    const methodGroups = [...groups.entries()]
+      .sort(([left], [right]) => labMethodRank(left) - labMethodRank(right))
+      .map(([method, items]) => ({ method, items }));
+
+    return authItems.length
+      ? [{ method: "Auth", items: authItems }, ...methodGroups]
+      : methodGroups;
+  }
+
+  function labMethodRank(method) {
+    switch (String(method || "").toUpperCase()) {
+      case "GET":
+        return 0;
+      case "POST":
+        return 1;
+      case "PUT":
+        return 2;
+      case "PATCH":
+        return 3;
+      case "DELETE":
+        return 4;
+      case "HEAD":
+        return 5;
+      case "OPTIONS":
+        return 6;
+      default:
+        return 99;
+    }
+  }
+
+  function isLikelyAuthEndpoint(action) {
+    const text = `${action.path || ""} ${action.name || ""} ${action.handler || ""}`.toLowerCase();
+    return text.includes("auth") ||
+      text.includes("login") ||
+      text.includes("token") ||
+      text.includes("identity");
   }
 
   function renderTimingStat(label, value) {
@@ -1229,6 +1682,59 @@
         <div class="stat-value">${value == null ? "-" : `${escapeHtml(String(value))}ms`}</div>
       </div>
     `;
+  }
+
+  function filterHttpTimingSummary(summary) {
+    if (!summary) {
+      return summary;
+    }
+
+    const byName = (summary.byName || []).filter((row) => !isSocketHttpTimingName(row.name));
+    if (byName.length === (summary.byName || []).length) {
+      return summary;
+    }
+
+    return rebuildTimingSummary(summary, byName);
+  }
+
+  function rebuildTimingSummary(summary, byName) {
+    const count = byName.reduce((total, row) => total + Number(row.count || 0), 0);
+    const errorCount = byName.reduce((total, row) => total + Number(row.errorCount || 0), 0);
+    const pickMax = (field) => byName.reduce((max, row) => Math.max(max, Number(row[field] || 0)), 0);
+
+    return {
+      ...summary,
+      byName,
+      count,
+      errorCount,
+      errorRate: count ? roundNumber((100 * errorCount) / count) : 0,
+      p50Ms: pickMax("p50Ms"),
+      p95Ms: pickMax("p95Ms"),
+      p99Ms: pickMax("p99Ms"),
+      maxMs: pickMax("maxMs"),
+    };
+  }
+
+  function roundNumber(value) {
+    return Math.round(value * 100) / 100;
+  }
+
+  function isSocketHttpEntry(entry) {
+    if (!entry || entry.kind !== "http") {
+      return false;
+    }
+
+    return Number(entry.statusCode || 0) === 101 || isSocketHttpPath(entry.path);
+  }
+
+  function isSocketHttpTimingName(name) {
+    const text = String(name || "").trim().toLowerCase();
+    return text === "get /ws" || text.startsWith("get /ws/");
+  }
+
+  function isSocketHttpPath(path) {
+    const text = String(path || "").trim().toLowerCase();
+    return text === "/ws" || text.startsWith("/ws/");
   }
 
   function renderTimingCard(title, summary) {
@@ -1474,98 +1980,56 @@
 
   function renderVaultItemsTable(page, selected) {
     const fields = page.fields || [];
-    const columns = orderedVaultColumns(selected, fields);
-    const rows = getVaultDisplayRows(page, columns);
+    const columns = orderedVaultColumns(selected, fields).map((column) => ({
+      ...column,
+      field: column.fieldName,
+      label: column.fieldName,
+      headerClass: column.isPrimaryKey ? "pk-header" : "",
+      cellClass: (item) => {
+        const cellDirty = !!state.dirtyVaultRows[item.sourceIndex]?.[column.fieldName];
+        const cellKey = `${item.sourceIndex}:${column.fieldName}`;
+        const expanded = !!state.expandedVaultCells[cellKey];
+        return `${column.isPrimaryKey ? "pk-cell" : ""} ${cellDirty ? "cell-dirty" : ""} ${expanded ? "cell-expanded" : ""}`;
+      },
+      resizable: true,
+      value: (item) => item.row[column.fieldName],
+    }));
+    const rows = (page.items || []).map((row, sourceIndex) => ({ row, sourceIndex }));
+
+    return renderDataTable({
+      tableId: "vault",
+      className: "vault-table",
+      columns,
+      rows,
+      colgroup: columns
+        .map((column) => `<col style="width: ${getVaultColumnWidth(column.fieldName)}px;" />`)
+        .join(""),
+      emptyText: "No rows matched the current client-side filters.",
+      rowClass: (item) => state.dirtyVaultRows[item.sourceIndex] ? "row-dirty" : "",
+      renderCell: renderVaultCell,
+    });
+  }
+
+  function renderVaultCell(item, column) {
+    const sourceIndex = item.sourceIndex;
+    const field = column.fieldName;
+    const cellDirty = !!state.dirtyVaultRows[sourceIndex]?.[field];
+    const cellKey = `${sourceIndex}:${field}`;
+    const expanded = !!state.expandedVaultCells[cellKey];
 
     return `
-      <div class="table-wrap">
-        <table class="vault-table">
-          <colgroup>
-            ${columns
-              .map((column) => `<col style="width: ${getVaultColumnWidth(column.fieldName)}px;" />`)
-              .join("")}
-          </colgroup>
-          <thead>
-            <tr>
-              ${columns
-                .map(
-                  (column) => `
-                    <th class="${column.isPrimaryKey ? "pk-header" : ""}">
-                      <div class="vault-header-cell">
-                        <button
-                          class="vault-header-button ${state.vaultSortField === column.fieldName ? "is-active" : ""}"
-                          data-action="vault-sort"
-                          data-field="${escapeAttribute(column.fieldName)}"
-                          title="Sort by ${escapeAttribute(column.fieldName)}"
-                        >
-                          <span>${escapeHtml(column.fieldName)}</span>
-                          <span class="vault-sort-indicator">${renderVaultSortIndicator(column.fieldName)}</span>
-                        </button>
-                        ${renderIconButton(
-                          "vault-filter",
-                          getVaultFilterValue(column.fieldName)
-                            ? `Edit filter for ${column.fieldName}`
-                            : `Filter ${column.fieldName}`,
-                          "filter",
-                          getVaultFilterValue(column.fieldName) ? "success" : "neutral",
-                          { field: column.fieldName }
-                        )}
-                        <div
-                          class="column-resizer"
-                          data-field="${escapeAttribute(column.fieldName)}"
-                          title="Drag to resize. Double click to auto-fit."
-                        ></div>
-                      </div>
-                    </th>
-                  `
-                )
-                .join("")}
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              rows.length
-                ? rows
-                    .map(({ row, sourceIndex }) => {
-                      const dirty = !!state.dirtyVaultRows[sourceIndex];
-                      return `
-                        <tr class="${dirty ? "row-dirty" : ""}">
-                          ${columns
-                            .map((column) => {
-                              const cellDirty = !!state.dirtyVaultRows[sourceIndex]?.[column.fieldName];
-                              const cellKey = `${sourceIndex}:${column.fieldName}`;
-                              const expanded = !!state.expandedVaultCells[cellKey];
-                              return `
-                                <td
-                                  class="${column.isPrimaryKey ? "pk-cell" : ""} ${cellDirty ? "cell-dirty" : ""} ${expanded ? "cell-expanded" : ""}"
-                                  data-cell-key="${escapeAttribute(cellKey)}"
-                                  title="Double click to expand or collapse"
-                                >
-                                  <div class="cell-layout">
-                                    <div class="cell-preview mono">${renderValuePreview(row[column.fieldName], !expanded)}</div>
-                                    ${renderIconButton(
-                                      "vault-edit-cell",
-                                      `Edit ${column.fieldName}`,
-                                      "edit",
-                                      cellDirty ? "success" : "accent",
-                                      {
-                                        rowIndex: sourceIndex,
-                                        field: column.fieldName,
-                                      }
-                                    )}
-                                  </div>
-                                </td>
-                              `;
-                            })
-                            .join("")}
-                        </tr>
-                      `;
-                    })
-                    .join("")
-                : `<tr><td colspan="${columns.length || 1}" class="muted">No rows matched the current client-side filters.</td></tr>`
-            }
-          </tbody>
-        </table>
+      <div class="cell-layout">
+        <div class="cell-preview mono">${renderValuePreview(item.row[field], !expanded)}</div>
+        ${renderIconButton(
+          "vault-edit-cell",
+          `Edit ${field}`,
+          "edit",
+          cellDirty ? "success" : "accent",
+          {
+            rowIndex: sourceIndex,
+            field,
+          }
+        )}
       </div>
     `;
   }
@@ -1693,6 +2157,230 @@
     requestAnimationFrame(restore);
   }
 
+  function renderDataTable({ tableId, className = "", columns = [], rows = [], emptyText = "No rows matched.", rowClass, renderCell, colgroup = "" }) {
+    const visibleRows = getTableDisplayRows(tableId, rows, columns);
+    return `
+      <div class="table-wrap">
+        <table class="data-table ${escapeAttribute(className)}">
+          ${colgroup ? `<colgroup>${colgroup}</colgroup>` : ""}
+          <thead>
+            <tr>${columns.map((column) => renderDataTableHeader(tableId, column)).join("")}</tr>
+          </thead>
+          <tbody>
+            ${
+              visibleRows.length
+                ? visibleRows
+                    .map((row) => `
+                      <tr class="${escapeAttribute(rowClass ? rowClass(row) : "")}">
+                        ${columns.map((column) => renderDataTableCell(row, column, renderCell)).join("")}
+                      </tr>
+                    `)
+                    .join("")
+                : `<tr><td colspan="${columns.length || 1}" class="muted">${escapeHtml(emptyText)}</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderDataTableHeader(tableId, column) {
+    const field = column.field || column.fieldName || "";
+    const sortable = column.sortable !== false && !!field;
+    const filterable = column.filterable !== false && !!field;
+    const activeFilter = filterable && !!getTableFilterValue(tableId, field);
+
+    return `
+      <th class="${escapeAttribute(column.headerClass || "")}">
+        <div class="table-header-cell">
+          ${
+            sortable
+              ? `
+                <button
+                  class="table-header-button ${getTableSortField(tableId) === field ? "is-active" : ""}"
+                  data-action="table-sort"
+                  data-table-id="${escapeAttribute(tableId)}"
+                  data-field="${escapeAttribute(field)}"
+                  title="Sort by ${escapeAttribute(column.label || field)}"
+                >
+                  <span>${escapeHtml(column.label || field)}</span>
+                  <span class="table-sort-indicator">${renderTableSortIndicator(tableId, field)}</span>
+                </button>
+              `
+              : `<span>${escapeHtml(column.label || field)}</span>`
+          }
+          ${
+            filterable
+              ? renderIconButton(
+                  "table-filter",
+                  activeFilter ? `Edit filter for ${column.label || field}` : `Filter ${column.label || field}`,
+                  "filter",
+                  activeFilter ? "success" : "neutral",
+                  { tableId, field }
+                )
+              : ""
+          }
+          ${
+            column.resizable
+              ? `
+                <div
+                  class="column-resizer"
+                  data-field="${escapeAttribute(field)}"
+                  title="Drag to resize. Double click to auto-fit."
+                ></div>
+              `
+              : ""
+          }
+        </div>
+      </th>
+    `;
+  }
+
+  function renderDataTableCell(row, column, renderCell) {
+    const className = typeof column.cellClass === "function" ? column.cellClass(row) : column.cellClass || "";
+    const attrs = [];
+    if (column.fieldName) {
+      attrs.push(`data-cell-key="${escapeAttribute(`${row.sourceIndex}:${column.fieldName}`)}"`);
+      attrs.push(`title="Double click to expand or collapse"`);
+    }
+
+    return `
+      <td class="${escapeAttribute(className)}" ${attrs.join(" ")}>
+        ${renderCell ? renderCell(row, column) : escapeHtml(String(getTableColumnValue(row, column) ?? ""))}
+      </td>
+    `;
+  }
+
+  function getTableDisplayRows(tableId, rows, columns) {
+    const filtered = (rows || []).filter((row) =>
+      columns.every((column) => {
+        const field = column.field || column.fieldName || "";
+        const filterValue = getTableFilterValue(tableId, field);
+        if (!field || !filterValue || column.filterable === false) {
+          return true;
+        }
+
+        return String(getTableFilterColumnValue(row, column) ?? "").toLowerCase().includes(filterValue.toLowerCase());
+      })
+    );
+
+    const sortField = getTableSortField(tableId);
+    if (!sortField) {
+      return filtered;
+    }
+
+    const sortColumn = columns.find((column) => (column.field || column.fieldName) === sortField);
+    if (!sortColumn || sortColumn.sortable === false) {
+      return filtered;
+    }
+
+    const direction = getTableSortDirection(tableId) === "desc" ? -1 : 1;
+    return filtered.slice().sort((left, right) => {
+      const result = compareTableValues(getTableSortColumnValue(left, sortColumn), getTableSortColumnValue(right, sortColumn));
+      return result !== 0 ? result * direction : getStableRowIndex(left) - getStableRowIndex(right);
+    });
+  }
+
+  function getTableColumnValue(row, column) {
+    return typeof column.value === "function"
+      ? column.value(row)
+      : row?.[column.field || column.fieldName || ""];
+  }
+
+  function getTableFilterColumnValue(row, column) {
+    return typeof column.filterValue === "function" ? column.filterValue(row) : getTableColumnValue(row, column);
+  }
+
+  function getTableSortColumnValue(row, column) {
+    return typeof column.sortValue === "function" ? column.sortValue(row) : getTableColumnValue(row, column);
+  }
+
+  function compareTableValues(left, right) {
+    if (left == null && right == null) return 0;
+    if (left == null) return -1;
+    if (right == null) return 1;
+    if (typeof left === "number" && typeof right === "number") return left - right;
+    if (typeof left === "boolean" && typeof right === "boolean") return Number(left) - Number(right);
+    return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function getStableRowIndex(row) {
+    return Number.isFinite(Number(row?.sourceIndex)) ? Number(row.sourceIndex) : Number(row?.id || 0);
+  }
+
+  function getTableSortField(tableId) {
+    return tableId === "vault" ? state.vaultSortField : state[`${tableId}SortField`] || "";
+  }
+
+  function getTableSortDirection(tableId) {
+    return tableId === "vault" ? state.vaultSortDirection : state[`${tableId}SortDirection`] || "asc";
+  }
+
+  function setTableSort(tableId, field, direction) {
+    if (tableId === "vault") {
+      state.vaultSortField = field;
+      state.vaultSortDirection = direction;
+      return;
+    }
+
+    state[`${tableId}SortField`] = field;
+    state[`${tableId}SortDirection`] = direction;
+  }
+
+  function getTableFilters(tableId) {
+    if (tableId === "vault") {
+      return state.vaultFilters || {};
+    }
+
+    const key = `${tableId}Filters`;
+    state[key] = state[key] || {};
+    return state[key];
+  }
+
+  function getTableFilterValue(tableId, field) {
+    return String(getTableFilters(tableId)?.[field] || "");
+  }
+
+  function setTableFilterValue(tableId, field, value) {
+    const filters = getTableFilters(tableId);
+    if (value) {
+      filters[field] = value;
+    } else {
+      delete filters[field];
+    }
+  }
+
+  function toggleTableSort(tableId, field) {
+    if (!tableId || !field) {
+      return;
+    }
+
+    if (getTableSortField(tableId) !== field) {
+      setTableSort(tableId, field, "asc");
+      render({ preserveViewport: true });
+      return;
+    }
+
+    if (getTableSortDirection(tableId) === "asc") {
+      setTableSort(tableId, field, "desc");
+      render({ preserveViewport: true });
+      return;
+    }
+
+    setTableSort(tableId, "", "asc");
+    render({ preserveViewport: true });
+  }
+
+  function renderTableSortIndicator(tableId, field) {
+    if (getTableSortField(tableId) !== field) {
+      return '<span class="codicon codicon-arrow-both" aria-hidden="true"></span>';
+    }
+
+    return getTableSortDirection(tableId) === "desc"
+      ? '<span class="codicon codicon-arrow-down" aria-hidden="true"></span>'
+      : '<span class="codicon codicon-arrow-up" aria-hidden="true"></span>';
+  }
+
   function filterEntries(entries, filter, keys) {
     const query = String(filter || "").trim().toLowerCase();
     if (!query) {
@@ -1802,6 +2490,9 @@
         networkKind: state.networkKind,
         networkDirection: state.networkDirection,
         networkFilter: state.networkFilter,
+        networkSortField: state.networkSortField,
+        networkSortDirection: state.networkSortDirection,
+        networkFilters: state.networkFilters,
       };
     }
 
@@ -1913,22 +2604,52 @@
   }
 
   function openVaultFilterModal(field) {
-    if (!field) {
+    openTableFilterModal("vault", field);
+  }
+
+  function openTableFilterModal(tableId, field) {
+    if (!tableId || !field) {
+      return;
+    }
+
+    const title = tableId === "vault" ? "Filter Vault Column" : "Filter Table Column";
+    const context = tableId === "vault" ? state.selectedVaultTypeKey : tableId;
+    const currentValue = getTableFilterValue(tableId, field);
+
+    state.modal = {
+      type: "tableFilter",
+      title,
+      subtitle: `${context} :: ${field}`,
+      prettyValue: currentValue
+        ? JSON.stringify({ field, contains: currentValue }, null, 2)
+        : JSON.stringify({ field, contains: "" }, null, 2),
+      editValue: currentValue,
+      saveAction: "stage-table-filter",
+      saveLabel: "Apply Filter",
+      saveTone: "success",
+      tableId,
+      field,
+      error: "",
+    };
+    render();
+  }
+
+  function openNetworkPayloadModal(eventId) {
+    const entry = (state.payload?.events || []).find((item) => Number(item.id) === Number(eventId));
+    const raw = entry?.rawPayload || entry?.payloadPreview || "";
+    if (!entry || !raw) {
       return;
     }
 
     state.modal = {
-      type: "vaultFilter",
-      title: "Filter Vault Column",
-      subtitle: `${state.selectedVaultTypeKey} :: ${field}`,
-      prettyValue: getVaultFilterValue(field)
-        ? JSON.stringify({ field, contains: getVaultFilterValue(field) }, null, 2)
-        : JSON.stringify({ field, contains: "" }, null, 2),
-      editValue: getVaultFilterValue(field),
-      saveAction: "stage-vault-filter",
-      saveLabel: "Apply Filter",
-      saveTone: "success",
-      field,
+      type: "networkPayload",
+      title: "Network Payload",
+      subtitle: getNetworkTarget(entry),
+      prettyValue: prettyJsonOrString(raw),
+      rawValue: raw,
+      prettyLabel: "Pretty JSON",
+      rawLabel: "Full Content",
+      readOnly: true,
       error: "",
     };
     render();
@@ -1991,21 +2712,21 @@
   }
 
   function stageVaultFilterModal() {
-    if (!state.modal || state.modal.type !== "vaultFilter") {
+    stageTableFilterModal();
+  }
+
+  function stageTableFilterModal() {
+    if (!state.modal || state.modal.type !== "tableFilter") {
       return;
     }
 
+    const tableId = state.modal.tableId || "vault";
     const field = state.modal.field;
     const nextValue = String(state.modal.editValue || "").trim();
-
-    if (!nextValue) {
-      delete state.vaultFilters[field];
-    } else {
-      state.vaultFilters[field] = nextValue;
-    }
+    setTableFilterValue(tableId, field, nextValue);
 
     closeModal();
-    render();
+    render({ preserveViewport: true });
   }
 
   function saveVaultCellModal() {
@@ -2140,34 +2861,157 @@
     });
   }
 
-  function toggleLabAction(actionId) {
-    if (!actionId) {
+  function toggleLabAction(renderKey) {
+    if (!renderKey) {
       return;
     }
 
-    state.labExpanded[actionId] = !state.labExpanded[actionId];
+    state.labExpanded[renderKey] = !state.labExpanded[renderKey];
     render({ preserveViewport: true });
   }
 
-  function submitLabAction(actionId) {
-    const action = (state.payload?.actions || []).find((item) => item.id === actionId);
+  function submitLabAction(actionId, instanceId = "") {
+    const action = findLabAction(actionId);
     if (!action) {
       return;
     }
 
+    const instance = instanceId ? findLabInstance(instanceId) : null;
+    const renderKey = getLabRenderKey(actionId, instanceId);
     beginLoading("Invoking endpoint...");
     vscode.postMessage({
       type: "lab:invoke",
-      actionId,
-      request: {
-        kind: action.kind,
-        method: action.method,
-        path: action.path,
-        event: action.event,
-        clientId: state.labClientIds[actionId] || "",
-        bodyJson: getLabPayload(action),
-      },
+      actionId: renderKey,
+      request: buildLabInvokeRequest(action, instance),
     });
+  }
+
+  function tagLabAction(actionId, instanceId = "") {
+    const action = findLabAction(actionId);
+    if (!action) {
+      return;
+    }
+
+    state.modal = {
+      type: "labTags",
+      title: "Add To Tag Groups",
+      subtitle: describeLabAction(action),
+      prettyValue: "",
+      editValue: "",
+      inputMode: "text",
+      inputLabel: "Tags",
+      placeholder: "Auth, Enter world",
+      saveAction: "save-lab-tags",
+      saveLabel: "Add To Groups",
+      saveTone: "success",
+      actionId,
+      instanceId,
+      error: "",
+    };
+    render();
+  }
+
+  function saveLabTagModal() {
+    if (!state.modal || state.modal.type !== "labTags") {
+      return;
+    }
+
+    const actionId = state.modal.actionId || "";
+    const instanceId = state.modal.instanceId || "";
+    const action = findLabAction(actionId);
+    if (!action) {
+      closeModal();
+      return;
+    }
+
+    const raw = String(state.modal.editValue || "");
+    const names = raw
+      .split(/[,;\n]/g)
+      .map(normalizeLabGroupName)
+      .filter(Boolean);
+
+    if (!names.length) {
+      state.modal.error = "Adj meg legalább egy taget, például: Auth, Enter world";
+      render();
+      return;
+    }
+
+    const uniqueNames = [];
+    const seen = new Set();
+    for (const name of names) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      uniqueNames.push(name);
+    }
+
+    const source = instanceId ? findLabInstance(instanceId) : null;
+    for (const name of uniqueNames) {
+      const group = ensureLabGroup(name);
+      addLabActionToGroup(group.id, actionId, source);
+    }
+
+    saveLabState();
+    closeModal();
+    render({ preserveViewport: true });
+  }
+
+  function removeLabInstance(groupId, instanceId) {
+    const group = state.labGroups.find((item) => item.id === groupId);
+    if (!group) {
+      return;
+    }
+
+    group.items = (group.items || []).filter((item) => item.instanceId !== instanceId);
+    delete state.labExpanded[getLabRenderKey("", instanceId)];
+    delete state.labResults[getLabRenderKey("", instanceId)];
+    saveLabState();
+    render({ preserveViewport: true });
+  }
+
+  function runLabGroup(groupId) {
+    const group = state.labGroups.find((item) => item.id === groupId);
+    if (!group?.items?.length) {
+      return;
+    }
+
+    const items = [];
+    for (const instance of group.items) {
+      const action = findLabAction(instance.actionId);
+      if (!action) {
+        continue;
+      }
+
+      items.push({
+        actionId: getLabRenderKey(action.id, instance.instanceId),
+        request: buildLabInvokeRequest(action, instance),
+      });
+    }
+
+    if (!items.length) {
+      return;
+    }
+
+    beginLoading(`Running ${group.name}...`);
+    vscode.postMessage({
+      type: "lab:invoke-sequence",
+      label: `Running ${group.name}...`,
+      items,
+    });
+  }
+
+  function buildLabInvokeRequest(action, instance = null) {
+    return {
+      kind: action.kind,
+      method: action.method,
+      path: action.path,
+      event: action.event,
+      clientId: getLabClientId(action.id, instance),
+      bodyJson: getLabPayload(action, instance),
+    };
   }
 
   function applyVaultPage(page) {
@@ -2216,6 +3060,270 @@
     return next;
   }
 
+  function sortConfigEntries(configs) {
+    return [...(configs || [])].sort((left, right) => {
+      const liveDelta = Number(!!right.modifiable) - Number(!!left.modifiable);
+      if (liveDelta !== 0) {
+        return liveDelta;
+      }
+
+      return String(left.key || "").localeCompare(String(right.key || ""), undefined, {
+        sensitivity: "base",
+      });
+    });
+  }
+
+  function applyLabState(saved) {
+    const next = saved && typeof saved === "object" ? saved : {};
+    state.labPayloads = {};
+    state.labClientIds = {};
+
+    for (const [actionId, value] of Object.entries(next.default || {})) {
+      if (!actionId || !value || typeof value !== "object") {
+        continue;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(value, "bodyJson")) {
+        state.labPayloads[actionId] = String(value.bodyJson ?? "");
+      }
+      if (Object.prototype.hasOwnProperty.call(value, "clientId")) {
+        state.labClientIds[actionId] = String(value.clientId ?? "");
+      }
+    }
+
+    state.labGroups = Array.isArray(next.groups)
+      ? next.groups
+          .map((group) => ({
+            id: String(group?.id || "").trim(),
+            name: String(group?.name || "").trim(),
+            items: dedupeLabGroupItems(group?.items || []),
+          }))
+          .filter((group) => group.id && group.name)
+      : [];
+  }
+
+  function dedupeLabGroupItems(items) {
+    const seen = new Set();
+    const result = [];
+    for (const item of items || []) {
+      const actionId = String(item?.actionId || "").trim();
+      const instanceId = String(item?.instanceId || "").trim() || createLabInstanceId();
+      if (!actionId || seen.has(actionId)) {
+        continue;
+      }
+
+      seen.add(actionId);
+      result.push({
+        instanceId,
+        actionId,
+        bodyJson: String(item?.bodyJson ?? ""),
+        clientId: String(item?.clientId ?? ""),
+      });
+    }
+
+    return result;
+  }
+
+  function buildLabState() {
+    const defaultState = {};
+    const actionIds = new Set([
+      ...Object.keys(state.labPayloads || {}),
+      ...Object.keys(state.labClientIds || {}),
+    ]);
+
+    for (const actionId of actionIds) {
+      defaultState[actionId] = {
+        bodyJson: state.labPayloads[actionId] ?? "",
+        clientId: state.labClientIds[actionId] ?? "",
+      };
+    }
+
+    return {
+      version: 1,
+      default: defaultState,
+      groups: state.labGroups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        items: (group.items || []).map((item) => ({
+          instanceId: item.instanceId,
+          actionId: item.actionId,
+          bodyJson: item.bodyJson ?? "",
+          clientId: item.clientId ?? "",
+        })),
+      })),
+    };
+  }
+
+  function saveLabState() {
+    vscode.postMessage({
+      type: "lab:save-state",
+      state: buildLabState(),
+    });
+  }
+
+  function updateLabInstanceData(actionId, instanceId, patch) {
+    if (instanceId) {
+      const instance = findLabInstance(instanceId);
+      if (!instance) {
+        return;
+      }
+
+      Object.assign(instance, patch);
+      saveLabState();
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "bodyJson")) {
+      state.labPayloads[actionId] = patch.bodyJson;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "clientId")) {
+      state.labClientIds[actionId] = patch.clientId;
+    }
+    saveLabState();
+  }
+
+  function findLabAction(actionId) {
+    return (state.payload?.actions || []).find((item) => item.id === actionId) || null;
+  }
+
+  function findLabInstance(instanceId) {
+    for (const group of state.labGroups) {
+      const item = (group.items || []).find((candidate) => candidate.instanceId === instanceId);
+      if (item) {
+        return item;
+      }
+    }
+
+    return null;
+  }
+
+  function ensureLabGroup(name) {
+    const normalized = normalizeLabGroupName(name);
+    let group = state.labGroups.find(
+      (item) => normalizeLabGroupName(item.name).toLowerCase() === normalized.toLowerCase()
+    );
+    if (group) {
+      return group;
+    }
+
+    group = {
+      id: createLabGroupId(normalized),
+      name: normalized,
+      items: [],
+    };
+    state.labGroups.push(group);
+    return group;
+  }
+
+  function addLabActionToGroup(groupId, actionId, sourceInstance = null, insertBeforeInstanceId = "") {
+    const group = state.labGroups.find((item) => item.id === groupId);
+    const action = findLabAction(actionId);
+    if (!group || !action) {
+      return false;
+    }
+
+    group.items = group.items || [];
+    if (group.items.some((item) => item.actionId === actionId)) {
+      return false;
+    }
+
+    const next = {
+      instanceId: createLabInstanceId(),
+      actionId,
+      bodyJson: sourceInstance
+        ? sourceInstance.bodyJson ?? action.sampleJson ?? ""
+        : getLabPayload(action),
+      clientId: sourceInstance
+        ? sourceInstance.clientId ?? ""
+        : getLabClientId(actionId),
+    };
+    insertLabGroupItem(group, next, insertBeforeInstanceId);
+    return true;
+  }
+
+  function insertLabGroupItem(group, item, insertBeforeInstanceId = "") {
+    if (!insertBeforeInstanceId) {
+      group.items.push(item);
+      return;
+    }
+
+    const index = group.items.findIndex((candidate) => candidate.instanceId === insertBeforeInstanceId);
+    if (index < 0) {
+      group.items.push(item);
+      return;
+    }
+
+    group.items.splice(index, 0, item);
+  }
+
+  function dropLabActionIntoGroup(drag, targetGroupId, insertBeforeInstanceId = "") {
+    const targetGroup = state.labGroups.find((item) => item.id === targetGroupId);
+    if (!targetGroup || !drag.actionId) {
+      return;
+    }
+
+    if (drag.groupId && drag.groupId === targetGroupId && drag.instanceId) {
+      reorderLabGroupItem(targetGroup, drag.instanceId, insertBeforeInstanceId);
+      saveLabState();
+      render({ preserveViewport: true });
+      return;
+    }
+
+    const sourceInstance = drag.instanceId ? findLabInstance(drag.instanceId) : null;
+    if (addLabActionToGroup(targetGroupId, drag.actionId, sourceInstance, insertBeforeInstanceId)) {
+      saveLabState();
+      render({ preserveViewport: true });
+    }
+  }
+
+  function reorderLabGroupItem(group, instanceId, insertBeforeInstanceId = "") {
+    if (!instanceId || instanceId === insertBeforeInstanceId) {
+      return;
+    }
+
+    const index = group.items.findIndex((item) => item.instanceId === instanceId);
+    if (index < 0) {
+      return;
+    }
+
+    const [item] = group.items.splice(index, 1);
+    insertLabGroupItem(group, item, insertBeforeInstanceId);
+  }
+
+  function readLabDragPayload(event) {
+    const raw = event.dataTransfer?.getData("application/json");
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return state.labDrag;
+      }
+    }
+
+    return state.labDrag;
+  }
+
+  function normalizeLabGroupName(name) {
+    return String(name || "").trim().replace(/\s+/g, " ");
+  }
+
+  function createLabGroupId(name) {
+    const slug = normalizeLabGroupName(name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "group";
+    let id = `group-${slug}`;
+    let counter = 2;
+    while (state.labGroups.some((group) => group.id === id)) {
+      id = `group-${slug}-${counter++}`;
+    }
+    return id;
+  }
+
+  function createLabInstanceId() {
+    return `lab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
   function hasVaultChanges() {
     return Object.keys(state.dirtyVaultRows).length > 0;
   }
@@ -2252,40 +3360,15 @@
   }
 
   function toggleVaultSort(field) {
-    if (!field) {
-      return;
-    }
-
-    if (state.vaultSortField !== field) {
-      state.vaultSortField = field;
-      state.vaultSortDirection = "asc";
-      render();
-      return;
-    }
-
-    if (state.vaultSortDirection === "asc") {
-      state.vaultSortDirection = "desc";
-      render();
-      return;
-    }
-
-    state.vaultSortField = "";
-    state.vaultSortDirection = "asc";
-    render();
+    toggleTableSort("vault", field);
   }
 
   function getVaultFilterValue(field) {
-    return String(state.vaultFilters?.[field] || "");
+    return getTableFilterValue("vault", field);
   }
 
   function renderVaultSortIndicator(field) {
-    if (state.vaultSortField !== field) {
-      return '<span class="codicon codicon-arrow-both" aria-hidden="true"></span>';
-    }
-
-    return state.vaultSortDirection === "desc"
-      ? '<span class="codicon codicon-arrow-down" aria-hidden="true"></span>'
-      : '<span class="codicon codicon-arrow-up" aria-hidden="true"></span>';
+    return renderTableSortIndicator("vault", field);
   }
 
   function compareVaultValues(left, right) {
@@ -2482,6 +3565,7 @@
       config: "settings-gear",
       refresh: "refresh",
       edit: "edit",
+      view: "eye",
       delete: "trash",
       copy: "copy",
       prev: "arrow-left",
@@ -2490,6 +3574,8 @@
       execute: "play",
       filter: "filter",
       disconnect: "debug-disconnect",
+      shield: "shield",
+      tag: "tag",
       close: "close",
       cancel: "close",
       "chevron-down": "chevron-down",

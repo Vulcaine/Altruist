@@ -57,6 +57,21 @@ button:hover {
   border-color: var(--border-strong);
 }
 
+.icon-button {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 2px;
+  border-radius: 7px;
+}
+
+.icon-button .codicon {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .world-root {
   height: 100vh;
   padding: 16px;
@@ -396,6 +411,27 @@ button:hover {
   display: block;
 }
 
+.world-fullscreen-button {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 6;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border-color: rgba(208, 140, 14, 0.34);
+  background:
+    linear-gradient(180deg, rgba(208, 140, 14, 0.16), rgba(10, 10, 13, 0.84)),
+    rgba(8, 8, 10, 0.82);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(12px);
+}
+
+.world-fullscreen-button .codicon {
+  font-family: codicon !important;
+  font-size: 16px;
+}
+
 .sidebar-panel {
   display: grid;
   grid-template-rows: auto auto minmax(180px, 1fr) minmax(180px, 1fr) auto;
@@ -698,6 +734,53 @@ button:hover {
   gap: 14px;
 }
 
+.world-shell.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  height: 100vh;
+  padding: 0;
+  background: var(--bg);
+}
+
+.world-shell.is-fullscreen .world-toolbar,
+.world-shell.is-fullscreen .scene-info-card,
+.world-shell.is-fullscreen .layer-card,
+.world-shell.is-fullscreen .inspector-panel,
+.world-shell.is-fullscreen .scene-explorer {
+  display: none;
+}
+
+.world-shell.is-fullscreen .world-layout,
+.world-shell.is-fullscreen .editor-main,
+.world-shell.is-fullscreen .viewport-panel {
+  min-height: 0;
+  height: 100%;
+  display: block;
+}
+
+.world-shell.is-fullscreen .world-layout {
+  overflow: hidden;
+}
+
+.world-shell.is-fullscreen .viewport-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.world-shell.is-fullscreen .viewport {
+  min-height: 0;
+}
+
+.world-shell.is-fullscreen .world-fullscreen-button {
+  right: 18px;
+  bottom: 18px;
+}
+
 .inspector-panel {
   display: block;
   padding: 16px;
@@ -832,6 +915,31 @@ button:hover {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.explorer-actions .icon-button .codicon {
+  font-family: codicon !important;
+}
+
+.scene-explorer.is-fullscreen {
+  position: fixed;
+  inset: 12px;
+  z-index: 120;
+  min-height: 0;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(208, 140, 14, 0.09), rgba(255, 255, 255, 0.02)),
+    rgba(8, 8, 11, 0.96);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(16px);
+}
+
+.scene-explorer.is-fullscreen .explorer-body {
+  min-height: 0;
+}
+
+.scene-explorer.is-fullscreen .object-list {
+  max-height: none;
 }
 
 .tab-button {

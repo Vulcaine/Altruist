@@ -74,5 +74,10 @@ namespace Altruist.Gaming
         /// the given entity. Used for spatial sync broadcasting.
         /// </summary>
         IEnumerable<string> GetObserversOf(string entityInstanceId);
+
+        /// <summary>
+        /// Returns the world objects currently registered as visibility observers.
+        /// </summary>
+        IEnumerable<ITypelessWorldObject> GetObservers();
     }
 }

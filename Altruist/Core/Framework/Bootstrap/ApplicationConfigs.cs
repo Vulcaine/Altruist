@@ -62,6 +62,8 @@ namespace Altruist
     public sealed class WorldOptions
     {
         public int Index { get; set; }
+        public string? Id { get; set; }
+        public string? Name { get; set; }
         public string? Data { get; set; } = null;
         public VectorConfig Size { get; set; } = new();
         public VectorConfig Gravity { get; set; } = new();

@@ -74813,13 +74813,27 @@ var WorldSceneComponent = class _WorldSceneComponent {
     for (const obj of this.objects) {
       byId.set(obj.instanceId, obj);
     }
-    for (const state of packet.objects) {
+    const updates = packet.objects ?? (packet.partitions ?? []).flatMap((partition) => partition.objects ?? []);
+    for (const state of updates) {
       const obj = byId.get(state.id);
       if (!obj)
         continue;
       obj.transform.position.x = state.position.x;
       obj.transform.position.y = state.position.y;
       obj.transform.position.z = state.position.z;
+      if (state.name !== void 0) {
+        obj.name = state.name;
+      }
+      if (state.archetype !== void 0) {
+        obj.archetype = state.archetype;
+      }
+    }
+    const removed = new Set(packet.removedObjectIds ?? []);
+    if (removed.size > 0) {
+      this.objects = this.objects.filter((obj) => !removed.has(obj.instanceId));
+      if (this.selectedObject && removed.has(this.selectedObject.instanceId)) {
+        this.selectedObject = null;
+      }
     }
     this.renderer.rebuildColliders(this.objects, this.selectedObject);
     let ts;

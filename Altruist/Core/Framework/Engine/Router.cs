@@ -14,8 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Collections.Concurrent;
-
 namespace Altruist.Engine;
 
 public interface IAltruistEngineRouter : IAltruistRouter { }
@@ -43,7 +41,6 @@ public abstract class EngineRouter : AbstractAltruistRouter, IAltruistEngineRout
 public class EngineClientSender : ClientSender
 {
     private readonly IAltruistEngine _engine;
-    private readonly ConcurrentDictionary<string, byte> _inFlight = new();
 
     public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine, IDashboardNetworkRecorder? networkRecorder = null) : base(store, codec, networkRecorder)
     {
@@ -57,7 +54,9 @@ public class EngineClientSender : ClientSender
         if (message == null)
             return Task.CompletedTask;
 
-        // Use monotonic counter for unique task ID — no expensive hash needed
+        if (!ShouldRunThroughEngine(message))
+            return base.SendAsync(clientId, message);
+
         var id = Interlocked.Increment(ref _sendCounter);
         var key = $"send:{id}";
         var identifier = new TaskIdentifier(key);
@@ -69,6 +68,9 @@ public class EngineClientSender : ClientSender
 
         return Task.CompletedTask;
     }
+
+    private static bool ShouldRunThroughEngine<TPacketBase>(TPacketBase message) where TPacketBase : IPacketBase
+        => message.MessageCode == Altruist.PacketCodes.Sync;
 }
 
 [Service(typeof(IAltruistEngineRouter))]

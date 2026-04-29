@@ -128,6 +128,15 @@ namespace Altruist.Gaming.ThreeD
     }
 
     /// <summary>
+    /// Allows objects whose gameplay pivot differs from the physics body center
+    /// to expose the transform that should be written back to the world object.
+    /// </summary>
+    public interface IPhysicsTransformSync3D
+    {
+        Transform3D GetWorldTransformFromPhysics(IPhysxBody3D body);
+    }
+
+    /// <summary>
     /// Convenience base implementation wired for typical usage:
     /// - auto InstanceId
     /// - Archetype resolved from [WorldObject] attribute by default
@@ -227,4 +236,3 @@ namespace Altruist.Gaming.ThreeD
         }
     }
 }
-

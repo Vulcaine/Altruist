@@ -19,6 +19,9 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 
+using Altruist.Security;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -60,7 +63,9 @@ public sealed class ApiLabDashboardController : ControllerBase
         return Ok(new ApiLabActionsDto
         {
             Actions = items
-                .OrderBy(i => i.Kind, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(i => i.Kind.Equals("http", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(i => i.Kind.Equals("http", StringComparison.OrdinalIgnoreCase) && IsAuthEndpoint(i) ? 0 : 1)
+                .ThenBy(i => HttpMethodRank(i.Method))
                 .ThenBy(i => i.Path ?? i.Event, StringComparer.OrdinalIgnoreCase)
                 .ToList()
         });
@@ -94,6 +99,10 @@ public sealed class ApiLabDashboardController : ControllerBase
 
             var bodyType = FindHttpBodyType(action);
             var sample = bodyType is null ? "" : PrettySample(bodyType);
+            var auth = ResolveAuthMetadata(
+                action.EndpointMetadata,
+                action.MethodInfo,
+                action.ControllerTypeInfo.AsType());
 
             foreach (var method in methods)
             {
@@ -106,7 +115,9 @@ public sealed class ApiLabDashboardController : ControllerBase
                     Name = $"{method} {route}",
                     Handler = $"{action.ControllerTypeInfo.Name}.{action.MethodInfo.Name}",
                     PayloadType = bodyType?.FullName,
-                    SampleJson = sample
+                    SampleJson = sample,
+                    RequiresAuth = auth.RequiresAuth,
+                    Shield = auth.Name
                 };
             }
         }
@@ -123,6 +134,7 @@ public sealed class ApiLabDashboardController : ControllerBase
             var bodyType = parameters.Length >= 2 && typeof(IPacket).IsAssignableFrom(parameters[0].ParameterType)
                 ? parameters[0].ParameterType
                 : null;
+            var auth = ResolveAuthMetadata(Array.Empty<object>(), method, targetType);
 
             yield return new ApiLabActionDto
             {
@@ -134,9 +146,70 @@ public sealed class ApiLabDashboardController : ControllerBase
                 Name = eventName,
                 Handler = $"{targetType?.Name ?? "Portal"}.{method.Name}",
                 PayloadType = bodyType?.FullName,
-                SampleJson = bodyType is null ? "" : PrettySample(bodyType)
+                SampleJson = bodyType is null ? "" : PrettySample(bodyType),
+                RequiresAuth = auth.RequiresAuth,
+                Shield = auth.Name
             };
         }
+    }
+
+    private static ApiLabAuthMetadata ResolveAuthMetadata(
+        IEnumerable<object> endpointMetadata,
+        MethodInfo? method,
+        Type? declaringType)
+    {
+        var metadata = endpointMetadata.ToArray();
+        var allowAnonymous = metadata.OfType<IAllowAnonymous>().Any() ||
+                             method?.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true) is not null ||
+                             declaringType?.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true) is not null;
+        if (allowAnonymous)
+            return ApiLabAuthMetadata.Public;
+
+        var shield = metadata.OfType<ShieldAttribute>().FirstOrDefault() ??
+                     method?.GetCustomAttributes(inherit: true).OfType<ShieldAttribute>().FirstOrDefault() ??
+                     declaringType?.GetCustomAttributes(inherit: true).OfType<ShieldAttribute>().FirstOrDefault();
+        if (shield is not null)
+            return new ApiLabAuthMetadata(true, CleanAttributeName(shield.GetType()));
+
+        var authorize = metadata.OfType<IAuthorizeData>().FirstOrDefault() ??
+                        method?.GetCustomAttributes(inherit: true).OfType<IAuthorizeData>().FirstOrDefault() ??
+                        declaringType?.GetCustomAttributes(inherit: true).OfType<IAuthorizeData>().FirstOrDefault();
+        if (authorize is not null)
+            return new ApiLabAuthMetadata(true, CleanAttributeName(authorize.GetType()));
+
+        return ApiLabAuthMetadata.Public;
+    }
+
+    private static string CleanAttributeName(Type type)
+    {
+        var name = type.Name;
+        return name.EndsWith("Attribute", StringComparison.Ordinal)
+            ? name[..^"Attribute".Length]
+            : name;
+    }
+
+    private static int HttpMethodRank(string? method)
+    {
+        return (method ?? string.Empty).ToUpperInvariant() switch
+        {
+            "GET" => 0,
+            "POST" => 1,
+            "PUT" => 2,
+            "PATCH" => 3,
+            "DELETE" => 4,
+            "HEAD" => 5,
+            "OPTIONS" => 6,
+            _ => 99
+        };
+    }
+
+    private static bool IsAuthEndpoint(ApiLabActionDto action)
+    {
+        var text = $"{action.Path} {action.Name} {action.Handler}".ToLowerInvariant();
+        return text.Contains("auth", StringComparison.Ordinal) ||
+               text.Contains("login", StringComparison.Ordinal) ||
+               text.Contains("token", StringComparison.Ordinal) ||
+               text.Contains("identity", StringComparison.Ordinal);
     }
 
     private async Task<ApiLabInvokeResultDto> InvokeHttp(ApiLabInvokeRequestDto request)
@@ -341,6 +414,8 @@ public sealed class ApiLabActionDto
     public string Handler { get; set; } = string.Empty;
     public string? PayloadType { get; set; }
     public string SampleJson { get; set; } = string.Empty;
+    public bool RequiresAuth { get; set; }
+    public string? Shield { get; set; }
 }
 
 public sealed class ApiLabInvokeRequestDto
@@ -359,4 +434,9 @@ public sealed class ApiLabInvokeResultDto
     public int? StatusCode { get; set; }
     public string? Message { get; set; }
     public string? ResponseBody { get; set; }
+}
+
+internal sealed record ApiLabAuthMetadata(bool RequiresAuth, string? Name)
+{
+    public static ApiLabAuthMetadata Public { get; } = new(false, null);
 }

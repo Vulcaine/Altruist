@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using System.Collections.Concurrent;
+using System.Reflection;
 
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
@@ -38,12 +40,17 @@ namespace Altruist.Dashboard
         [Key(5)]
         public string[] RemovedGizmoIds { get; set; }
 
+        [JsonPropertyName("removedObjectIds")]
+        [Key(6)]
+        public string[] RemovedObjectIds { get; set; }
+
         public DashboardWorldObjectStatePacket()
         {
             MessageCode = PacketCodes.DashboardWorldObjectState;
             Partitions = Array.Empty<DashboardPartitionStateDto>();
             Gizmos = Array.Empty<DashboardGizmo>();
             RemovedGizmoIds = Array.Empty<string>();
+            RemovedObjectIds = Array.Empty<string>();
         }
 
         public DashboardWorldObjectStatePacket(
@@ -51,7 +58,8 @@ namespace Altruist.Dashboard
             DateTime timestampUtc,
             DashboardPartitionStateDto[] partitions,
             DashboardGizmo[]? gizmos = null,
-            string[]? removedGizmoIds = null)
+            string[]? removedGizmoIds = null,
+            string[]? removedObjectIds = null)
         {
             MessageCode = PacketCodes.DashboardWorldObjectState;
             WorldIndex = worldIndex;
@@ -59,6 +67,7 @@ namespace Altruist.Dashboard
             Partitions = partitions ?? Array.Empty<DashboardPartitionStateDto>();
             Gizmos = gizmos ?? Array.Empty<DashboardGizmo>();
             RemovedGizmoIds = removedGizmoIds ?? Array.Empty<string>();
+            RemovedObjectIds = removedObjectIds ?? Array.Empty<string>();
         }
     }
 
@@ -102,6 +111,29 @@ namespace Altruist.Dashboard
         [JsonPropertyName("position")]
         [Key(2)]
         public Vector3Dto Position { get; set; } = default!;
+
+        [JsonPropertyName("name")]
+        [Key(3)]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    internal static class DashboardWorldObjectNames
+    {
+        private static readonly ConcurrentDictionary<Type, PropertyInfo?> NameProperties = new();
+
+        public static string Resolve(object? obj)
+        {
+            if (obj is null)
+                return string.Empty;
+
+            var property = NameProperties.GetOrAdd(obj.GetType(), static type =>
+            {
+                var candidate = type.GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
+                return candidate?.PropertyType == typeof(string) ? candidate : null;
+            });
+
+            return property?.GetValue(obj) as string ?? string.Empty;
+        }
     }
 
     /// <summary>
@@ -233,6 +265,7 @@ namespace Altruist.Dashboard
     {
         public string InstanceId { get; set; } = string.Empty;
         public string Archetype { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
         public string ZoneId { get; set; } = string.Empty;
         public string ClientId { get; set; } = string.Empty;
 
@@ -252,6 +285,7 @@ namespace Altruist.Dashboard
         public PhysxColliderShape3D Shape { get; set; }
         public TransformDto Transform { get; set; } = default!;
         public bool IsTrigger { get; set; }
+        public string TransformSpace { get; set; } = "local";
 
         public HeightfieldDto? Heightfield { get; set; }
 
@@ -262,6 +296,7 @@ namespace Altruist.Dashboard
                 Id = c.Id,
                 Shape = c.Shape,
                 IsTrigger = c.IsTrigger,
+                TransformSpace = "local",
                 Transform = TransformDto.FromTransform(c.Transform),
                 Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield, terrainSampleStride)
             };

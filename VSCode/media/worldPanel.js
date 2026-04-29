@@ -13,6 +13,7 @@ const state = {
   filter: "",
   explorerTab: "objects",
   explorerCollapsed: false,
+  explorerFullscreen: false,
   sceneControlsCollapsed: true,
   layersCollapsed: false,
   collapsedPartitionKeys: new Set(),
@@ -24,6 +25,12 @@ const state = {
   websocketError: "",
   reconnectTimer: null,
   shouldReconnect: false,
+  streamState: "idle",
+  streamError: "",
+  streamLoadedPartitions: 0,
+  streamRequestId: 0,
+  streamRenderQueued: false,
+  worldFullscreen: false,
   activeFps: 45,
   idleFps: 5,
   performanceMode: true,
@@ -70,6 +77,7 @@ window.addEventListener("message", (event) => {
       renderShell();
       refreshWorld();
       connectWebSocket();
+      loadWorldSnapshotStream();
       return;
     case "world:snapshot":
       state.snapshot = message.payload?.snapshot || null;
@@ -81,11 +89,35 @@ window.addEventListener("message", (event) => {
       }
       reconcileSceneState();
       refreshWorld();
+      loadWorldSnapshotStream();
       return;
     case "world:error":
       state.error = message.error || "Unknown world viewer error.";
       renderShell();
       refreshWorld();
+      return;
+    case "world:stream-partition":
+      if (isCurrentStreamMessage(message)) {
+        appendStreamPartition(message.partition);
+      }
+      return;
+    case "world:stream-complete":
+      if (isCurrentStreamMessage(message)) {
+        state.snapshot.gizmos = Array.isArray(message.gizmos) ? message.gizmos : [];
+        state.streamState = "ready";
+        state.streamError = "";
+        renderer.setGizmos(state.snapshot.gizmos);
+        renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
+        finishStreamRender();
+      }
+      return;
+    case "world:stream-error":
+      if (isCurrentStreamMessage(message)) {
+        state.streamState = "error";
+        state.streamError = message.error || "World snapshot stream failed.";
+        renderShell();
+        refreshWorld();
+      }
       return;
     default:
       return;
@@ -95,6 +127,32 @@ window.addEventListener("message", (event) => {
 window.addEventListener("beforeunload", () => {
   disconnectWebSocket();
   renderer.dispose();
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  if (state.explorerFullscreen) {
+    exitExplorerFullscreen();
+    return;
+  }
+
+  if (state.worldFullscreen) {
+    exitWorldFullscreen();
+  }
+});
+
+document.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement) {
+    return;
+  }
+
+  if (state.worldFullscreen) {
+    state.worldFullscreen = false;
+    applyWorldFullscreenState();
+  }
 });
 
 vscode.postMessage({ type: "world:ready" });
@@ -114,7 +172,7 @@ function renderShell() {
   const worldCount = worlds.length;
 
   root.innerHTML = `
-    <div class="world-shell">
+    <div class="world-shell ${state.worldFullscreen ? "is-fullscreen" : ""}">
       <section class="world-toolbar">
         <div class="toolbar-main">
           <div class="eyebrow">Altruist Dashboard</div>
@@ -140,7 +198,9 @@ function renderShell() {
             </select>
           </label>
           <span class="chip"><strong>Worlds</strong> ${worldCount}</span>
-          <button id="refresh-world">Refresh</button>
+          <button id="refresh-world" class="icon-button refresh-icon-button" title="Refresh" aria-label="Refresh">
+            <span class="codicon codicon-refresh" aria-hidden="true"></span>
+          </button>
         </div>
       </section>
       <section class="world-layout">
@@ -164,7 +224,7 @@ function renderShell() {
               </div>
               <div class="setting-row">
                 <span>Snapshot</span>
-                <strong>${(state.snapshot?.partitions || []).length} partitions</strong>
+                <strong>${renderStreamSnapshotStatus()}</strong>
               </div>
               <div class="setting-row">
                 <span>Objects</span>
@@ -181,7 +241,7 @@ function renderShell() {
               <label class="setting-row speed-control" title="Scroll this control or use RMB + wheel in the viewport to adjust fly speed.">
                 <span>Speed</span>
                 <span class="inline-control">
-                  <input id="camera-speed" type="number" min="0.5" max="100" step="0.1" value="${formatSpeed(inputController.getMoveSpeedMultiplier())}" />
+                  <input id="camera-speed" type="number" min="0.5" max="1000" step="0.1" value="${formatSpeed(inputController.getMoveSpeedMultiplier())}" />
                   <strong>x</strong>
                 </span>
               </label>
@@ -234,6 +294,15 @@ function renderShell() {
             <div id="layer-list" class="layer-list"></div>
           </div>
           <div id="viewport" class="viewport"></div>
+          <button
+            id="world-fullscreen-toggle"
+            class="icon-button world-fullscreen-button"
+            title="${state.worldFullscreen ? "Exit fullscreen" : "Fullscreen"}"
+            aria-label="${state.worldFullscreen ? "Exit fullscreen" : "Fullscreen"}"
+            aria-pressed="${state.worldFullscreen ? "true" : "false"}"
+          >
+            <span class="codicon codicon-${state.worldFullscreen ? "screen-normal" : "screen-full"}" aria-hidden="true"></span>
+          </button>
         </section>
         <aside class="sidebar-panel inspector-panel">
           <section class="sidebar-section">
@@ -248,11 +317,11 @@ function renderShell() {
             </div>
             <div class="inspector-divider"></div>
             <div id="inspector" class="detail-grid"></div>
-            <div class="hint">Click an object row or click inside the scene to inspect and focus it.</div>
+            <div class="hint">Click an object row or scene object to inspect it. Double-click to focus the camera around its full bounds.</div>
           </section>
         </aside>
         </section>
-        <section class="scene-explorer ${state.explorerCollapsed ? "is-collapsed" : ""}">
+        <section class="scene-explorer ${state.explorerCollapsed ? "is-collapsed" : ""} ${state.explorerFullscreen ? "is-fullscreen" : ""}">
           <div class="explorer-header">
             <div>
               <div class="eyebrow">Scene Explorer</div>
@@ -264,13 +333,16 @@ function renderShell() {
                   ${escapeHtml(capitalize(tab))}
                 </button>
               `).join("")}
+              <button id="explorer-fullscreen-toggle" class="icon-button" title="${state.explorerFullscreen ? "Exit explorer fullscreen" : "Explorer fullscreen"}" aria-label="${state.explorerFullscreen ? "Exit explorer fullscreen" : "Explorer fullscreen"}" aria-pressed="${state.explorerFullscreen ? "true" : "false"}">
+                <span class="codicon codicon-${state.explorerFullscreen ? "screen-normal" : "screen-full"}" aria-hidden="true"></span>
+              </button>
               <button id="explorer-toggle" class="ghost-button">${state.explorerCollapsed ? "Expand" : "Collapse"}</button>
             </div>
           </div>
           <div class="explorer-body">
             <section class="explorer-panel ${state.explorerTab === "objects" ? "is-active" : ""}">
               <div class="explorer-tools">
-                <input id="object-search" class="search-input" placeholder="Filter by archetype, instance id, client id or zone..." value="${escapeAttribute(state.filter)}" />
+                <input id="object-search" class="search-input" placeholder="Filter by name, archetype, instance id, client id or zone..." value="${escapeAttribute(state.filter)}" />
                 <span id="object-visible-hint" class="hint">${getVisibleSnapshotObjects().length} visible</span>
               </div>
               <div id="object-list" class="object-list object-table"></div>
@@ -305,8 +377,12 @@ function renderShell() {
   performanceModeInput = document.getElementById("performance-mode");
   terrainSurfaceInput = document.getElementById("terrain-surface");
 
+  document.getElementById("world-fullscreen-toggle")?.addEventListener("click", () => {
+    toggleWorldFullscreen();
+  });
+
   document.getElementById("refresh-world")?.addEventListener("click", () => {
-    vscode.postMessage({ type: "world:refresh" });
+    loadWorldSnapshotStream();
   });
 
   document.getElementById("scene-controls-toggle")?.addEventListener("click", () => {
@@ -317,6 +393,10 @@ function renderShell() {
   document.getElementById("explorer-toggle")?.addEventListener("click", () => {
     state.explorerCollapsed = !state.explorerCollapsed;
     applyExplorerCollapsedState();
+  });
+
+  document.getElementById("explorer-fullscreen-toggle")?.addEventListener("click", () => {
+    toggleExplorerFullscreen();
   });
 
   document.getElementById("layer-card-toggle")?.addEventListener("click", () => {
@@ -336,7 +416,19 @@ function renderShell() {
 
   worldSelect?.addEventListener("change", (event) => {
     const nextWorldIndex = Number(event.target.value);
-    vscode.postMessage({ type: "world:select", worldIndex: nextWorldIndex });
+    state.bootstrap = {
+      ...(state.bootstrap || {}),
+      selectedWorldIndex: nextWorldIndex,
+    };
+    const selected = (state.bootstrap?.worlds || []).find((world) => world.index === nextWorldIndex);
+    state.snapshot = createEmptyWorldSnapshot(selected || { index: nextWorldIndex, name: `World ${nextWorldIndex}` });
+    state.selectedObjectId = null;
+    state.selectedPartitionKey = null;
+    state.visiblePartitionKeys.clear();
+    state.collapsedPartitionKeys.clear();
+    renderShell();
+    refreshWorld();
+    loadWorldSnapshotStream();
   });
 
   objectSearch?.addEventListener("input", (event) => {
@@ -447,6 +539,180 @@ function renderShell() {
   renderPerformanceHud();
   bindPartitionSummary();
   rerenderObjectCountChips();
+  applyWorldFullscreenState();
+}
+
+async function toggleWorldFullscreen() {
+  if (state.worldFullscreen) {
+    await exitWorldFullscreen();
+    return;
+  }
+
+  await enterWorldFullscreen();
+}
+
+async function enterWorldFullscreen() {
+  state.worldFullscreen = true;
+  applyWorldFullscreenState();
+
+  const target = root.querySelector(".world-shell") || root;
+  if (target?.requestFullscreen && !document.fullscreenElement) {
+    try {
+      await target.requestFullscreen();
+    } catch {
+      // VS Code webviews may deny native fullscreen. The CSS fullscreen fallback still works.
+    }
+  }
+
+  scheduleRendererResize();
+}
+
+async function exitWorldFullscreen() {
+  state.worldFullscreen = false;
+  applyWorldFullscreenState();
+
+  if (document.fullscreenElement && document.exitFullscreen) {
+    try {
+      await document.exitFullscreen();
+    } catch {
+      // Keep the CSS fallback state authoritative even if native fullscreen exit fails.
+    }
+  }
+
+  scheduleRendererResize();
+}
+
+function applyWorldFullscreenState() {
+  const shell = root.querySelector(".world-shell");
+  shell?.classList.toggle("is-fullscreen", state.worldFullscreen);
+
+  const button = document.getElementById("world-fullscreen-toggle");
+  if (button) {
+    const label = state.worldFullscreen ? "Exit fullscreen" : "Fullscreen";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-pressed", state.worldFullscreen ? "true" : "false");
+    button.innerHTML = `<span class="codicon codicon-${state.worldFullscreen ? "screen-normal" : "screen-full"}" aria-hidden="true"></span>`;
+  }
+
+  scheduleRendererResize();
+}
+
+function scheduleRendererResize() {
+  requestAnimationFrame(() => {
+    renderer.resize();
+    requestAnimationFrame(() => renderer.resize());
+  });
+}
+
+function loadWorldSnapshotStream() {
+  if (!state.bootstrap || resolveEnvironmentMode() !== "3D") {
+    return;
+  }
+
+  const worldIndex = state.bootstrap.selectedWorldIndex;
+  if (worldIndex == null) {
+    return;
+  }
+
+  const requestId = state.streamRequestId + 1;
+  state.streamRequestId = requestId;
+  state.streamState = "loading";
+  state.streamError = "";
+  state.streamLoadedPartitions = 0;
+
+  const selected = (state.bootstrap?.worlds || []).find((world) => world.index === worldIndex);
+  state.snapshot = createEmptyWorldSnapshot(selected || { index: worldIndex, name: `World ${worldIndex}` });
+  reconcileSceneState();
+  refreshWorld();
+
+  vscode.postMessage({
+    type: "world:load-stream",
+    worldIndex,
+    requestId,
+  });
+}
+
+function appendStreamLine(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed || !state.snapshot) {
+    return;
+  }
+
+  const partition = JSON.parse(trimmed);
+  appendStreamPartition(partition);
+}
+
+function appendStreamPartition(partition) {
+  if (!partition || !state.snapshot) {
+    return;
+  }
+
+  state.snapshot.partitions.push(partition);
+  state.streamLoadedPartitions += 1;
+
+  const key = getPartitionKey(partition);
+  if (!state.selectedPartitionKey) {
+    state.selectedPartitionKey = key;
+  }
+  if (!state.visiblePartitionKeys.size) {
+    state.visiblePartitionKeys.add(key);
+  }
+
+  renderer.appendPartition(partition);
+  scheduleStreamRender();
+}
+
+function isCurrentStreamMessage(message) {
+  return (
+    message?.worldIndex === state.bootstrap?.selectedWorldIndex &&
+    Number(message?.requestId) === state.streamRequestId
+  );
+}
+
+function scheduleStreamRender() {
+  if (state.streamRenderQueued) {
+    return;
+  }
+
+  state.streamRenderQueued = true;
+  requestAnimationFrame(() => {
+    state.streamRenderQueued = false;
+    reconcileSceneState();
+    renderer.setSelectedObject(state.selectedObjectId);
+    renderInspector();
+    renderObjectList();
+    renderGizmoList();
+    renderLayerList();
+    bindPartitionSummary();
+    rerenderObjectCountChips();
+  });
+}
+
+function finishStreamRender() {
+  reconcileSceneState();
+  renderer.setSelectedObject(state.selectedObjectId);
+  renderInspector();
+  renderObjectList();
+  renderGizmoList();
+  renderLayerList();
+  bindPartitionSummary();
+  rerenderObjectCountChips();
+  rerenderToolbarOnly();
+}
+
+function createEmptyWorldSnapshot(world) {
+  return {
+    worldIndex: world?.index ?? 0,
+    worldName: world?.name || `World ${world?.index ?? 0}`,
+    generatedAtUtc: new Date().toISOString(),
+    renderOptions: {
+      renderScale: 1,
+      terrainSampleStride: 1,
+    },
+    partitions: [],
+    gizmos: [],
+  };
 }
 
 function refreshWorld() {
@@ -485,6 +751,7 @@ function refreshWorld() {
   if (!renderer.renderer || viewport.children.length === 0 || viewport.querySelector("canvas") === null) {
     renderer.mount(viewport);
     viewport.addEventListener("click", handleViewportClick);
+    viewport.addEventListener("dblclick", handleViewportDoubleClick);
   }
 
   updatePerformanceOptions();
@@ -546,6 +813,7 @@ function renderObjectList() {
                     <div class="object-row-body">
                       <div class="object-name">
                         <strong>${escapeHtml(formatObjectName(object))}</strong>
+                        ${object.name && object.archetype ? `<span class="chip">${escapeHtml(object.archetype)}</span>` : ""}
                         ${object.clientId ? `<span class="chip">${escapeHtml(object.clientId)}</span>` : ""}
                       </div>
                       <div class="object-meta">${escapeHtml(object.instanceId)}</div>
@@ -583,6 +851,9 @@ function renderObjectList() {
 
   for (const button of objectList.querySelectorAll("[data-object-id]")) {
     button.addEventListener("click", () => {
+      selectObject(button.dataset.objectId, false);
+    });
+    button.addEventListener("dblclick", () => {
       selectObject(button.dataset.objectId, true);
     });
   }
@@ -754,7 +1025,8 @@ function renderInspector() {
   }
 
   inspector.innerHTML = `
-    ${renderDetail("Archetype", formatObjectName(object))}
+    ${renderDetail("Name", object.name || "-")}
+    ${renderDetail("Archetype", object.archetype || formatObjectName(object))}
     ${renderDetail("Instance", object.instanceId)}
     ${renderDetail("Client", object.clientId || "-")}
     ${renderDetail("Zone", object.zoneId || "-")}
@@ -863,6 +1135,15 @@ function handleViewportClick(event) {
     return;
   }
 
+  selectObject(instanceId, false);
+}
+
+function handleViewportDoubleClick(event) {
+  const instanceId = renderer.pick(event.clientX, event.clientY);
+  if (!instanceId) {
+    return;
+  }
+
   selectObject(instanceId, true);
 }
 
@@ -889,6 +1170,9 @@ function connectWebSocket() {
       state.websocketState = "open";
       state.websocketError = "";
       rerenderToolbarOnly();
+      if (state.streamState !== "loading") {
+        loadWorldSnapshotStream();
+      }
     });
 
     ws.addEventListener("message", async (event) => {
@@ -954,12 +1238,149 @@ function handleRealtimeMessage(raw) {
     return;
   }
 
+  removeSnapshotObjects(envelope.message.removedObjectIds);
+  applySnapshotObjectUpdates(envelope.message.partitions);
+  reconcileSceneState();
   renderer.applyRealtimePacket(envelope.message);
+  if (!findObject(state.selectedObjectId)) {
+    state.selectedObjectId = getVisibleSnapshotObjects()[0]?.instanceId || null;
+  }
   renderer.setSelectedObject(state.selectedObjectId);
   renderer.setGizmoVisibility(state.hiddenGizmoIds, state.hiddenGizmoCategories);
   renderInspector();
   renderObjectList();
   renderGizmoList();
+  renderLayerList();
+  rerenderObjectCountChips();
+}
+
+function applySnapshotObjectUpdates(partitions) {
+  if (!state.snapshot || !Array.isArray(partitions)) {
+    return;
+  }
+
+  for (const partition of partitions) {
+    for (const update of partition?.objects || []) {
+      const id = update?.instanceId || update?.id;
+      if (!id) {
+        continue;
+      }
+
+      const { partition: snapshotPartition, created } = ensureSnapshotPartition(partition);
+      const object = findSnapshotObject(id) || createSnapshotObjectFromRealtime(update, id);
+      if (created) {
+        state.visiblePartitionKeys.add(getPartitionKey(snapshotPartition));
+      }
+      removeSnapshotObjectReferences(id, snapshotPartition);
+      if (!snapshotPartition.objects.some((item) => item?.instanceId === id)) {
+        snapshotPartition.objects.push(object);
+      }
+
+      const position = normalizeRealtimeVector(update.position);
+      if (position) {
+        object.transform = object.transform || {};
+        object.transform.position = position;
+      }
+      if (typeof update.name === "string") {
+        object.name = update.name;
+      }
+      if (typeof update.archetype === "string") {
+        object.archetype = update.archetype;
+      }
+    }
+  }
+
+  pruneEmptySnapshotPartitions();
+}
+
+function removeSnapshotObjectReferences(instanceId, exceptPartition = null) {
+  for (const partition of state.snapshot?.partitions || []) {
+    if (partition === exceptPartition) {
+      continue;
+    }
+
+    partition.objects = (partition.objects || []).filter((object) => object?.instanceId !== instanceId);
+  }
+}
+
+function pruneEmptySnapshotPartitions() {
+  if (!state.snapshot) {
+    return;
+  }
+
+  state.snapshot.partitions = (state.snapshot.partitions || [])
+    .filter((partition) => (partition.objects || []).length > 0);
+}
+
+function ensureSnapshotPartition(partition) {
+  const key = getPartitionKey(partition);
+  let snapshotPartition = getPartitions().find((item) => getPartitionKey(item) === key);
+  let created = false;
+
+  if (!snapshotPartition) {
+    snapshotPartition = {
+      x: partitionIndex(partition, "x"),
+      y: partitionIndex(partition, "y"),
+      z: partitionIndex(partition, "z"),
+      objects: [],
+    };
+    state.snapshot.partitions.push(snapshotPartition);
+    created = true;
+  }
+
+  if (!Array.isArray(snapshotPartition.objects)) {
+    snapshotPartition.objects = [];
+  }
+
+  return { partition: snapshotPartition, created };
+}
+
+function createSnapshotObjectFromRealtime(update, instanceId) {
+  return {
+    instanceId,
+    archetype: update?.archetype || "",
+    name: update?.name || "",
+    zoneId: "",
+    clientId: "",
+    expired: false,
+    transform: {
+      position: normalizeRealtimeVector(update?.position) || { x: 0, y: 0, z: 0 },
+    },
+    colliders: [],
+  };
+}
+
+function normalizeRealtimeVector(vector) {
+  if (!vector || typeof vector !== "object") {
+    return null;
+  }
+
+  return {
+    x: Number(vector.x ?? vector.X ?? 0),
+    y: Number(vector.y ?? vector.Y ?? 0),
+    z: Number(vector.z ?? vector.Z ?? 0),
+  };
+}
+
+function removeSnapshotObjects(instanceIds) {
+  if (!state.snapshot || !Array.isArray(instanceIds) || instanceIds.length === 0) {
+    return;
+  }
+
+  const removed = new Set(instanceIds.filter(Boolean));
+  if (!removed.size) {
+    return;
+  }
+
+  for (const partition of state.snapshot.partitions || []) {
+    partition.objects = (partition.objects || []).filter((object) => !removed.has(object?.instanceId));
+  }
+
+  state.snapshot.partitions = (state.snapshot.partitions || []).filter((partition) => (partition.objects || []).length > 0);
+
+  for (const id of removed) {
+    state.hiddenObjectIds.delete(id);
+  }
 }
 
 function getObjects() {
@@ -1016,7 +1437,18 @@ function findObject(instanceId) {
   if (!instanceId) {
     return null;
   }
-  return renderer.getObject(instanceId);
+  return renderer.getObject(instanceId) || findSnapshotObject(instanceId);
+}
+
+function findSnapshotObject(instanceId) {
+  for (const partition of getPartitions()) {
+    for (const object of partition.objects || []) {
+      if (object?.instanceId === instanceId) {
+        return object;
+      }
+    }
+  }
+  return null;
 }
 
 function reconcileSceneState() {
@@ -1067,7 +1499,7 @@ function objectMatchesQuery(object, query) {
     return true;
   }
 
-  return [object.archetype, object.instanceId, object.clientId, object.zoneId]
+  return [object.name, object.archetype, object.instanceId, object.clientId, object.zoneId]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(query));
 }
@@ -1135,6 +1567,43 @@ function applyExplorerCollapsedState() {
 
   explorer.classList.toggle("is-collapsed", state.explorerCollapsed);
   button.textContent = state.explorerCollapsed ? "Expand" : "Collapse";
+}
+
+function toggleExplorerFullscreen() {
+  if (state.explorerFullscreen) {
+    exitExplorerFullscreen();
+    return;
+  }
+
+  enterExplorerFullscreen();
+}
+
+function enterExplorerFullscreen() {
+  state.explorerFullscreen = true;
+  state.explorerCollapsed = false;
+  applyExplorerFullscreenState();
+  applyExplorerCollapsedState();
+}
+
+function exitExplorerFullscreen() {
+  state.explorerFullscreen = false;
+  applyExplorerFullscreenState();
+}
+
+function applyExplorerFullscreenState() {
+  const explorer = root.querySelector(".scene-explorer");
+  explorer?.classList.toggle("is-fullscreen", state.explorerFullscreen);
+
+  const button = document.getElementById("explorer-fullscreen-toggle");
+  if (!button) {
+    return;
+  }
+
+  const label = state.explorerFullscreen ? "Exit explorer fullscreen" : "Explorer fullscreen";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", state.explorerFullscreen ? "true" : "false");
+  button.innerHTML = `<span class="codicon codicon-${state.explorerFullscreen ? "screen-normal" : "screen-full"}" aria-hidden="true"></span>`;
 }
 
 function applyLayerCardState() {
@@ -1275,6 +1744,17 @@ function buildWebsocketChip() {
   return `<span class="chip ${statusClass}" data-role="socket-chip"><strong>Stream</strong> ${escapeHtml(label)}: ${escapeHtml(detail)}</span>`;
 }
 
+function renderStreamSnapshotStatus() {
+  const partitions = (state.snapshot?.partitions || []).length;
+  if (state.streamState === "loading") {
+    return `streaming ${state.streamLoadedPartitions || partitions} partitions`;
+  }
+  if (state.streamState === "error") {
+    return `stream error`;
+  }
+  return `${partitions} partitions`;
+}
+
 function updateSpeedUi() {
   if (cameraSpeedInput) {
     cameraSpeedInput.value = formatSpeed(inputController.getMoveSpeedMultiplier());
@@ -1337,6 +1817,11 @@ function formatClip(value) {
 }
 
 function formatObjectName(object) {
+  const name = String(object?.name || "").trim();
+  if (name) {
+    return name;
+  }
+
   const archetype = String(object?.archetype || "").trim();
   if (archetype) {
     return archetype;

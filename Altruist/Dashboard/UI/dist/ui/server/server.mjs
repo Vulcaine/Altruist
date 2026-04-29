@@ -7,7 +7,7 @@ import {
   renderApplication,
   renderModule,
   validateUrl
-} from "./chunk-OWEC2OGG.mjs";
+} from "./chunk-QJM5J7X5.mjs";
 import {
   __async,
   __commonJS,

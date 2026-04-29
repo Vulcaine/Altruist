@@ -455,15 +455,15 @@ namespace Altruist.Gaming.ThreeD
             GetObjectBounds(IWorldObject3D obj)
         {
             PhysxCollider3DDesc? chosen = null;
-            PhysxCollider3DDesc? firstAny = null;
+            PhysxCollider3DDesc? heightfieldCollider = null;
 
             var colliders = obj.ColliderDescriptors;
             if (colliders != null)
             {
                 foreach (var c in colliders)
                 {
-                    if (!firstAny.HasValue)
-                        firstAny = c;
+                    if (c.Heightfield is not null && !heightfieldCollider.HasValue)
+                        heightfieldCollider = c;
 
                     if (!c.IsTrigger)
                     {
@@ -471,18 +471,16 @@ namespace Altruist.Gaming.ThreeD
                         break;
                     }
                 }
-
-                if (!chosen.HasValue && firstAny.HasValue)
-                    chosen = firstAny;
             }
 
             Transform3D transformToUse;
 
-            if (chosen.HasValue)
+            var colliderForBounds = chosen ?? heightfieldCollider;
+            if (colliderForBounds.HasValue)
             {
-                transformToUse = chosen.Value.Transform;
+                transformToUse = colliderForBounds.Value.Transform;
 
-                if (chosen.Value.Heightfield is { } heightfield)
+                if (colliderForBounds.Value.Heightfield is { } heightfield)
                 {
                     var p = transformToUse.Position;
                     var width = MathF.Max(1f, (heightfield.Width - 1) * heightfield.CellSizeX);

@@ -11,6 +11,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
+using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
@@ -26,6 +27,7 @@ namespace Altruist.Dashboard
     {
         private readonly IGameWorldOrganizer3D _worldOrganizer;
         private readonly IDashboardGizmoRegistry _gizmos;
+        private readonly IVisibilityTracker? _visibilityTracker;
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly DashboardWorldViewOptions _viewOptions;
 
@@ -33,10 +35,12 @@ namespace Altruist.Dashboard
             IGameWorldOrganizer3D worldOrganizer,
             IDashboardGizmoRegistry gizmos,
             JsonSerializerOptions jsonOptions,
-            DashboardWorldViewOptions viewOptions)
+            DashboardWorldViewOptions viewOptions,
+            IVisibilityTracker? visibilityTracker = null)
         {
             _worldOrganizer = worldOrganizer;
             _gizmos = gizmos;
+            _visibilityTracker = visibilityTracker;
             _jsonOptions = jsonOptions;
             _viewOptions = viewOptions;
         }
@@ -51,7 +55,7 @@ namespace Altruist.Dashboard
                     Index = w.Index.Index,
                     Name = w.Index.Name,
                     PartitionCount = w.FindPartitionsForPosition(0, 0, 0, float.MaxValue).Count(),
-                    ObjectCount = w.FindAllObjects<IWorldObject3D>().Count()
+                    ObjectCount = w.FindAllObjects<IWorldObject3D>().Count(ShouldIncludeObject)
                 })
                 .OrderBy(w => w.Index)
                 .ToList();
@@ -78,6 +82,7 @@ namespace Altruist.Dashboard
             {
                 var objs = partition
                     .GetAllObjects<IWorldObject3D>()
+                    .Where(ShouldIncludeObject)
                     .Where(o => !IsLargeSnapshotObject(o) || emittedLargeObjects.Add(o.InstanceId));
 
                 var dto = new WorldPartitionObjectsDto
@@ -101,7 +106,7 @@ namespace Altruist.Dashboard
                 GeneratedAtUtc = DateTime.UtcNow,
                 RenderOptions = BuildRenderOptions(),
                 Partitions = partitionDtos,
-                Gizmos = _gizmos.GetSnapshot(world.Index.Index).ToList()
+                Gizmos = BuildWorldGizmos(world).ToList()
             };
 
             return Ok(snapshot);
@@ -114,7 +119,7 @@ namespace Altruist.Dashboard
             if (world is null)
                 return NotFound(new { message = $"World {worldIndex} not found." });
 
-            return Ok(_gizmos.GetSnapshot(worldIndex));
+            return Ok(BuildWorldGizmos(world));
         }
 
         [HttpGet("{worldIndex:int}/objects/stream")]
@@ -144,6 +149,7 @@ namespace Altruist.Dashboard
 
                 var objs = partition
                     .GetAllObjects<IWorldObject3D>()
+                    .Where(ShouldIncludeObject)
                     .Where(o => !IsLargeSnapshotObject(o) || emittedLargeObjects.Add(o.InstanceId));
 
                 var dto = new WorldPartitionObjectsDto
@@ -165,19 +171,15 @@ namespace Altruist.Dashboard
 
         private WorldObjectDto BuildWorldObjectDto(IWorldObject3D o)
         {
-            var effectiveTransform = o.Transform;
+            var effectiveTransform = GetWorldObjectTransform(o);
+            var colliderFallbackTransform = GetColliderFallbackTransform(o, effectiveTransform);
 
-            if (o.Body is IPhysxBody3D body)
-            {
-                effectiveTransform = effectiveTransform
-                    .WithPosition(Position3D.From(body.Position))
-                    .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
-            }
 
             var wod = new WorldObjectDto
             {
                 InstanceId = o.InstanceId,
                 Archetype = o.ObjectArchetype ?? string.Empty,
+                Name = DashboardWorldObjectNames.Resolve(o),
                 ZoneId = o.ZoneId,
                 ClientId = o.ClientId,
                 Expired = o.Expired,
@@ -191,7 +193,7 @@ namespace Altruist.Dashboard
             foreach (var c in runtimeColliders)
             {
                 anyRuntime = true;
-                wod.Colliders.Add(BuildRuntimeColliderDto(c, effectiveTransform));
+                wod.Colliders.Add(BuildRuntimeColliderDto(c, colliderFallbackTransform));
             }
 
             if (!anyRuntime)
@@ -205,9 +207,81 @@ namespace Altruist.Dashboard
             return wod;
         }
 
+        private static Transform3D GetWorldObjectTransform(IWorldObject3D o)
+        {
+            if (o.Body is not IPhysxBody3D body)
+                return o.Transform;
+
+            if (o is IPhysicsTransformSync3D transformSync)
+                return transformSync.GetWorldTransformFromPhysics(body);
+
+            return o.Transform
+                .WithPosition(Position3D.From(body.Position))
+                .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
+        }
+
+        private static Transform3D GetColliderFallbackTransform(IWorldObject3D o, Transform3D objectTransform)
+        {
+            if (o.Body is not IPhysxBody3D body)
+                return objectTransform;
+
+            return objectTransform
+                .WithPosition(Position3D.From(body.Position))
+                .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
+        }
+
         private static bool IsLargeSnapshotObject(IWorldObject3D o)
             => o is Terrain
                 || o.ColliderDescriptors.Any(c => c.Shape == PhysxColliderShape3D.Heightfield3D || c.Heightfield != null);
+
+        private bool ShouldIncludeObject(IWorldObject3D o)
+        {
+            if (o is Terrain)
+                return true;
+
+            if (_visibilityTracker is null)
+                return true;
+
+            if (!string.IsNullOrEmpty(o.ClientId))
+                return true;
+
+            return _visibilityTracker.GetObserversOf(o.InstanceId).Any();
+        }
+
+        private IEnumerable<DashboardGizmo> BuildWorldGizmos(IGameWorldManager3D world)
+            => _gizmos.GetSnapshot(world.Index.Index).Concat(BuildVisibilityRadiusGizmos(world));
+
+        private IEnumerable<DashboardGizmo> BuildVisibilityRadiusGizmos(IGameWorldManager3D world)
+        {
+            if (_visibilityTracker is null)
+                yield break;
+
+            var (_, lookup) = world.GetCachedSnapshot();
+            foreach (var observer in _visibilityTracker.GetObservers())
+            {
+                if (observer is not IWorldObject3D observer3D)
+                    continue;
+
+                if (!lookup.ContainsKey(observer3D.InstanceId))
+                    continue;
+
+                var p = observer3D.Transform.Position;
+                yield return new DashboardGizmo
+                {
+                    Id = $"altruist:visibility:observer:{observer3D.InstanceId}:radius",
+                    WorldIndex = world.Index.Index,
+                    Category = "visibility",
+                    Source = "altruist",
+                    Type = "circle",
+                    Label = $"visibility radius {_visibilityTracker.ViewRange:F0}",
+                    Color = "#22C55E66",
+                    Position = new Vector3Dto { X = p.X, Y = p.Y, Z = p.Z },
+                    Radius = _visibilityTracker.ViewRange,
+                    AttachToInstanceId = observer3D.InstanceId,
+                    UpdatedAtUtc = DateTime.UtcNow,
+                };
+            }
+        }
 
         private DashboardWorldRenderOptionsDto BuildRenderOptions()
             => new()
@@ -219,7 +293,7 @@ namespace Altruist.Dashboard
         private ColliderDto BuildRuntimeColliderDto(IPhysxCollider3D c, Transform3D fallbackWorldTransform)
         {
             var t = c.Transform;
-            if (t.Equals(Transform3D.Identity))
+            if (t.Equals(Transform3D.Identity) || c.Shape != PhysxColliderShape3D.Heightfield3D)
                 t = fallbackWorldTransform;
 
             return new ColliderDto
@@ -228,6 +302,7 @@ namespace Altruist.Dashboard
                 Shape = c.Shape,
                 Transform = TransformDto.FromTransform(t),
                 IsTrigger = c.IsTrigger,
+                TransformSpace = "world",
                 Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield, _viewOptions.TerrainSampleStride)
             };
         }

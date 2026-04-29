@@ -216,7 +216,6 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
 
         var filtered = raw
             .Where(r => !parentKeys.Contains(r.Key))
-            .OrderBy(r => r.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         foreach (var entry in filtered)
@@ -224,7 +223,10 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
             entry.Modifiable = LiveConfigRegistry.IsLiveConfig(entry.Key);
         }
 
-        return filtered;
+        return filtered
+            .OrderByDescending(r => r.Modifiable)
+            .ThenBy(r => r.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private MutableConfigProvider? GetMutableConfigProvider()

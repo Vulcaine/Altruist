@@ -6,6 +6,7 @@ const VAULTS_PATH = "/dashboard/v1/vaults";
 const NETWORK_PATH = "/dashboard/v1/network";
 const PERFORMANCE_PATH = "/dashboard/v1/performance";
 const LAB_PATH = "/dashboard/v1/lab";
+const STREAM_STOPPED = new Error("World stream stopped.");
 
 class DashboardClient {
   constructor(baseUrl) {
@@ -39,6 +40,38 @@ class DashboardClient {
       `${WORLDS_PATH}/${encodeURIComponent(worldIndex)}/objects`,
       { cache: "no-store" }
     );
+  }
+
+  async streamWorldObjects(worldIndex, onPartition) {
+    const response = await fetch(
+      `${this.baseUrl}${WORLDS_PATH}/${encodeURIComponent(worldIndex)}/objects/stream`,
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      throw new Error(await buildErrorMessage(response));
+    }
+
+    try {
+      if (!response.body) {
+        const text = await response.text();
+        await readNdjsonText(text, onPartition);
+        return;
+      }
+
+      if (typeof response.body.getReader === "function") {
+        await readWebStreamNdjson(response.body, onPartition);
+        return;
+      }
+
+      await readNodeStreamNdjson(response.body, onPartition);
+    } catch (error) {
+      if (error === STREAM_STOPPED) {
+        return;
+      }
+
+      throw error;
+    }
   }
 
   async getWorldGizmos(worldIndex) {
@@ -232,6 +265,68 @@ async function buildErrorMessage(response) {
   }
 
   return `Request failed with ${response.status} ${response.statusText}: ${body}`.trim();
+}
+
+async function readWebStreamNdjson(body, onItem) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    buffer = await drainNdjsonBuffer(buffer, onItem);
+  }
+
+  buffer += decoder.decode();
+  await readNdjsonText(buffer, onItem);
+}
+
+async function readNodeStreamNdjson(body, onItem) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for await (const chunk of body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    buffer = await drainNdjsonBuffer(buffer, onItem);
+  }
+
+  buffer += decoder.decode();
+  await readNdjsonText(buffer, onItem);
+}
+
+async function drainNdjsonBuffer(buffer, onItem) {
+  const lines = buffer.split(/\r?\n/g);
+  const rest = lines.pop() || "";
+  for (const line of lines) {
+    await emitNdjsonLine(line, onItem);
+  }
+
+  return rest;
+}
+
+async function readNdjsonText(text, onItem) {
+  for (const line of String(text || "").split(/\r?\n/g)) {
+    await emitNdjsonLine(line, onItem);
+  }
+}
+
+async function emitNdjsonLine(line, onItem) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed) {
+    return true;
+  }
+
+  const keepGoing = await onItem(JSON.parse(trimmed));
+  if (keepGoing === false) {
+    throw STREAM_STOPPED;
+  }
+
+  return true;
 }
 
 module.exports = {

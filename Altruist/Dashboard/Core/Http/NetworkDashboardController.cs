@@ -57,6 +57,9 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
         if (entry.Kind.Equals("packet", StringComparison.OrdinalIgnoreCase) && !CapturePackets)
             return Task.CompletedTask;
 
+        if (IsSocketUpgradeHttpEvent(entry))
+            return Task.CompletedTask;
+
         var payloadInfo = BuildPayloadInfo(payload, rawPayload);
         var dto = new DashboardNetworkEventDto
         {
@@ -149,7 +152,9 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
             snapshot = _events.ToList();
         }
 
-        var http = snapshot.Where(e => e.Kind == "http" && e.DurationMs is not null).ToList();
+        var http = snapshot
+            .Where(e => e.Kind == "http" && e.DurationMs is not null && !IsSocketUpgradeHttpEvent(e))
+            .ToList();
         var packets = snapshot.Where(e => e.Kind == "packet").ToList();
 
         return new DashboardPerformanceDto
@@ -394,6 +399,27 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
 
     private static string RouteKey(DashboardNetworkEventDto e)
         => string.Join(" ", new[] { e.Method, e.Path ?? e.Route }.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+    private static bool IsSocketUpgradeHttpEvent(DashboardNetworkEvent entry)
+        => IsSocketUpgradeHttpEvent(entry.Kind, entry.Method, entry.Path, entry.StatusCode);
+
+    private static bool IsSocketUpgradeHttpEvent(DashboardNetworkEventDto entry)
+        => IsSocketUpgradeHttpEvent(entry.Kind, entry.Method, entry.Path, entry.StatusCode);
+
+    private static bool IsSocketUpgradeHttpEvent(string kind, string? method, string? path, int? statusCode)
+    {
+        if (!string.Equals(kind, "http", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (statusCode == 101)
+            return true;
+
+        if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(path))
+            return false;
+
+        return path.Equals("/ws", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/ws/", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool Matches(DashboardNetworkEventDto e, string query)
     {

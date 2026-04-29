@@ -6,7 +6,7 @@ import {
   main_server_default,
   resetCompiledComponents,
   setAngularAppManifest
-} from "./chunk-OWEC2OGG.mjs";
+} from "./chunk-QJM5J7X5.mjs";
 import "./chunk-AKHAU2FS.mjs";
 
 // angular:main-server-inject-manifest:angular:main-server-inject-manifest
