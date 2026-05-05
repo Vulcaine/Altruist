@@ -93,11 +93,33 @@ public sealed class KinematicCharacterController3DTests
 
     private static KinematicCharacterController3D CreateController() => new()
     {
-        MovementProfile = MmoMovementProfile3D.Default,
+        MovementProfile = ZeroGravityMmoProfile.Instance,
         UseCapsuleSweeps = false,
         Acceleration = 1000f,
         Deceleration = 1000f,
     };
+
+    // Test-only profile: same Evaluate as MMO, but Configure leaves the
+    // gravity/snap knobs at zero so these tests exercise KCC's pure horizontal
+    // motion deterministically. Profile-driven terrain following is covered by
+    // the player-prefab tests in the Valeria test suite.
+    private sealed class ZeroGravityMmoProfile : IMovementProfile3D
+    {
+        public static ZeroGravityMmoProfile Instance { get; } = new();
+
+        public void Configure(KinematicCharacterController3D controller)
+        {
+            controller.Gravity = 0f;
+            controller.MaxFallSpeed = 0f;
+            controller.GroundSnapSpeed = 0f;
+        }
+
+        public CharacterMovementFrame3D Evaluate(
+            ICharacterMovementInput3D input,
+            Vector3 currentPosition,
+            in CharacterMovementStats3D stats)
+            => MmoMovementProfile3D.Default.Evaluate(input, currentPosition, stats);
+    }
 
     private static InMemoryPhysxBody3D CreateBody(Vector3 pivot)
     {

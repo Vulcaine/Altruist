@@ -51,9 +51,6 @@ public class AltruistEngine : IAltruistEngine
     private readonly Dictionary<TaskIdentifier, long> _staticLastRunFrame = new();     // for frame-based
     private readonly Dictionary<TaskIdentifier, Task> _staticInFlight = new();
 
-    // Cache only for building the static delegates (startup-time).
-    private readonly Dictionary<string, Action> _staticDelegateCache = new();
-
     // -------- Effects --------
     private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effects = new();
 
@@ -487,21 +484,17 @@ public class AltruistEngine : IAltruistEngine
                     $"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
         }
 
-        var cacheKey = GenerateCacheKey(methodInfo, resolvedParameters);
-
-        if (!_staticDelegateCache.TryGetValue(cacheKey, out var precompiled))
-        {
-            precompiled = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
-            _staticDelegateCache[cacheKey] = precompiled;
-        }
+        // No cache. CreateTaskDelegate wraps `void` methods in a shared closure
+        // (same lambda source line → same compiler-generated method), so caching
+        // by methodInfo+paramTypes collapses all void [Cycle]s to one key.
+        // The first void registration would then own the cached precompiled,
+        // and every later void [Cycle] would silently invoke the first one
+        // forever — i.e. only one of N void [Cycle] handlers would ever run.
+        // ScheduleTask is called once per handler at startup; the cost of
+        // building a fresh wrapper here is negligible.
+        var precompiled = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
 
         _staticTasks.Add(new EngineStaticTask(precompiled, actualRate, Stopwatch.GetTimestamp()));
-    }
-
-    private static string GenerateCacheKey(MethodInfo methodInfo, object[] resolvedParameters)
-    {
-        var paramTypes = string.Join(",", resolvedParameters.Select(p => p?.GetType().FullName));
-        return $"{methodInfo.DeclaringType!.FullName}.{methodInfo.Name}({paramTypes})";
     }
 
     private static Action CreateDelegateWithResolvedParameters(Delegate taskDelegate, object[] resolvedParameters)

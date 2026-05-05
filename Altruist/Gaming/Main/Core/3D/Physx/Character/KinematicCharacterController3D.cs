@@ -291,10 +291,15 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
             _abilities[i].Step(dt, ref ctx);
 
         // 5) Gravity + ground snap
+        // When grounded we keep a small constant downward velocity so the
+        // sweep produces displacement.Y < 0 and ResolveDownwardTerrainContact
+        // resamples the ground Y at the new XZ each tick. Without this, walking
+        // across a slope leaves the body at the spawn-time Y (drift).
+        // Abilities like SimpleJumpAbility set IsGrounded=false before this
+        // block so jumping is unaffected.
         if (ctx.IsGrounded)
         {
-            if (ctx.Velocity.Y < 0f)
-                ctx.Velocity = new Vector3(ctx.Velocity.X, -MathF.Abs(GroundSnapSpeed), ctx.Velocity.Z);
+            ctx.Velocity = new Vector3(ctx.Velocity.X, -MathF.Abs(GroundSnapSpeed), ctx.Velocity.Z);
         }
         else
         {

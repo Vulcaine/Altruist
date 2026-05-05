@@ -31,32 +31,59 @@ public static class AIBehaviorDiscovery
         if (_discovered) return;
         _discovered = true;
 
-        var behaviorTypes = TypeDiscovery.FindTypesWithAttribute<AIBehaviorAttribute>(assemblies);
+        var asmList = assemblies.ToList();
+        var behaviorTypes = TypeDiscovery.FindTypesWithAttribute<AIBehaviorAttribute>(asmList).ToList();
+        logger.LogInformation("[AI-DISC] scanning {Asm} assemblies, found {N} [AIBehavior] types",
+            asmList.Count, behaviorTypes.Count);
 
         foreach (var type in behaviorTypes)
         {
             var attr = type.GetCustomAttribute<AIBehaviorAttribute>()!;
-            var instance = instanceFactory(type) ?? Activator.CreateInstance(type);
-
-            if (instance == null)
-            {
-                logger.LogWarning("Could not create AI behavior instance {Type}", type.FullName);
-                continue;
-            }
 
             try
             {
+                object? instance;
+                try
+                {
+                    instance = instanceFactory(type);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning("[AI-DISC] DI factory threw for {Type}: {ExType}: {ExMessage}\n{Stack}",
+                        type.FullName, ex.GetType().FullName, ex.Message, ex.ToString());
+                    instance = null;
+                }
+
+                if (instance == null)
+                {
+                    try
+                    {
+                        instance = Activator.CreateInstance(type);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "[AI-DISC] Activator.CreateInstance failed for {Type} — likely missing parameterless ctor (constructor injects services that DI couldn't resolve)", type.FullName);
+                        continue;
+                    }
+                }
+
+                if (instance == null)
+                {
+                    logger.LogWarning("[AI-DISC] Could not create AI behavior instance {Type}", type.FullName);
+                    continue;
+                }
+
                 var def = new StateMachineBuilder<IAIContext>()
                     .RegisterHandlers(type, instance)
                     .Build();
 
                 _templates[attr.Name] = def;
-                logger.LogInformation("Registered AI behavior '{Name}' with states: [{States}]",
+                logger.LogInformation("[AI-DISC] Registered AI behavior '{Name}' with states: [{States}]",
                     attr.Name, string.Join(", ", def.Updates.Keys));
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Failed to build AI behavior {Name} from {Type}", attr.Name, type.FullName);
+                logger.LogWarning(ex, "[AI-DISC] Failed to build AI behavior {Name} from {Type}", attr.Name, type.FullName);
             }
         }
     }

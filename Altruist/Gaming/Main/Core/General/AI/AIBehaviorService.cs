@@ -20,33 +20,43 @@ public sealed class AIBehaviorService : IAIBehaviorService
 {
     private readonly Dictionary<string, AIStateMachine> _machines = new();
     private readonly ILogger _logger;
-    private readonly IServiceProvider _serviceProvider;
     private uint _tickCounter;
-    private bool _discovered;
 
     public int ActiveCount => _machines.Count;
 
-    public AIBehaviorService(ILoggerFactory loggerFactory, IServiceProvider serviceProvider)
+    public AIBehaviorService(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<AIBehaviorService>();
-        _serviceProvider = serviceProvider;
     }
 
-    private void EnsureDiscovered()
+    // Discovery has to wait until [PostConstruct] for two reasons:
+    //  1. The DI graph contains a cycle (GameWorldOrganizer3D → AIBehaviorService
+    //     → AggressiveMonsterBehavior → CharacterService → GameWorldOrganizer3D),
+    //     so we can't resolve behaviors during the AIBehaviorService constructor.
+    //  2. An IServiceProvider injected at construction may belong to a temp
+    //     bootstrap container (BindConfigurationClasses / BootstrapServices use
+    //     `using var tmpProvider`) — by the time we'd need it, that container
+    //     is disposed and GetService throws ObjectDisposedException.
+    // Pulling the live root provider via Dependencies.RootProvider at PostConstruct
+    // time gives us the long-lived bootstrap provider that hosts the runtime
+    // singleton graph.
+    [PostConstruct]
+    public void DiscoverBehaviors()
     {
-        if (_discovered) return;
-        _discovered = true;
+        var provider = Dependencies.RootProvider
+            ?? throw new InvalidOperationException(
+                "Dependencies.RootProvider is null at PostConstruct time — "
+                + "Bootstrap should have set it before invoking PostConstruct hooks.");
 
         var assemblies = AppDomain.CurrentDomain.GetAssemblies();
         AIBehaviorDiscovery.DiscoverBehaviors(
             assemblies,
-            type => _serviceProvider.GetService(type),
+            type => provider.GetService(type),
             _logger);
     }
 
     public void Tick(WorldSnapshot[] snapshots, float dt)
     {
-        EnsureDiscovered();
         _tickCounter++;
 
         if (_tickCounter % 500 == 1)

@@ -69,11 +69,16 @@ public sealed class MmoMovementProfile3D : IMovementProfile3D
 {
     public static MmoMovementProfile3D Default { get; } = new();
 
+    // Gravity must stay non-zero so KCC.ResolveDownwardTerrainContact runs each
+    // tick: that path is what re-samples ground Y at the new XZ and keeps the
+    // server-authoritative pivot snapped to the heightmap. With Gravity=0 the
+    // pivot freezes at spawn elevation and drifts away from the client visual
+    // (server-debug gizmos render below the terrain on slopes).
     public void Configure(KinematicCharacterController3D controller)
     {
-        controller.Gravity = 0f;
-        controller.MaxFallSpeed = 0f;
-        controller.GroundSnapSpeed = 0f;
+        controller.Gravity = 25f;
+        controller.MaxFallSpeed = 50f;
+        controller.GroundSnapSpeed = 2f;
     }
 
     public CharacterMovementFrame3D Evaluate(ICharacterMovementInput3D input, Vector3 currentPosition, in CharacterMovementStats3D stats)
