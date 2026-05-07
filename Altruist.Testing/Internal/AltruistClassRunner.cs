@@ -245,6 +245,16 @@ internal sealed class AltruistClassRunner : XunitTestClassRunner
                 argumentValue = client;
                 return true;
             }
+
+            // Fall through to the live server's DI container so tests can inject
+            // any production service — IVault<T>, ICharacterService, etc. — and
+            // assert against real persisted state without the manual SQL shim.
+            var live = LiveServerHandle.Provider.GetService(parameter.ParameterType);
+            if (live is not null)
+            {
+                argumentValue = live;
+                return true;
+            }
             argumentValue = null!;
             return false;
         }
