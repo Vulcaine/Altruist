@@ -102,8 +102,17 @@ public class InventoryService : IInventoryService
         var item = GetItem(existingSlot.ItemInstanceId);
         var status = container.Remove(slot.X, slot.Y, count);
 
-        if (status == ItemStatus.Success && existingSlot.IsEmpty)
-            _items.TryRemove(existingSlot.ItemInstanceId, out _);
+        if (status == ItemStatus.Success)
+        {
+            // Storage holds the authoritative count on the slot; the GameItem
+            // shadows it for callers that read item.Count directly. Keep them
+            // in sync after a partial decrement, otherwise persistence/UI code
+            // reading item.Count sees the pre-removal value.
+            if (existingSlot.IsEmpty)
+                _items.TryRemove(existingSlot.ItemInstanceId, out _);
+            else if (item != null)
+                item.Count = existingSlot.ItemCount;
+        }
 
         return new(status, item);
     }

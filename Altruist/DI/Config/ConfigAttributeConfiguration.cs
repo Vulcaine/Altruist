@@ -32,7 +32,7 @@ namespace Altruist
 
             Console.Error.WriteLine($"[CONFIG-DISCOVERY] Found {candidates.Length} ServiceConfiguration types from {assemblies.Length} assemblies:");
             foreach (var c in candidates)
-                Console.Error.WriteLine($"[CONFIG-DISCOVERY]   {c.Type.FullName} (order={c.Attr.Order})");
+                Console.Error.WriteLine($"[CONFIG-DISCOVERY]   {c.Type.FullName} (order={c.Attr.Order}) from {c.Type.Assembly.GetName().Name}");
 
             var cfg = AppConfigLoader.Load();
 
@@ -236,6 +236,40 @@ namespace Altruist
                 lifetime));
         }
 
+        /// <summary>
+        /// Tracks which <see cref="IAltruistConfiguration"/> types have already had
+        /// their <c>Configure</c> method invoked against a given
+        /// <see cref="IServiceCollection"/>.
+        ///
+        /// <para>Why this exists: <c>RegisterServiceAttributes</c> may invoke
+        /// <see cref="EnsureConfigurationRegisteredAndConfigured"/> for every
+        /// <c>[Service(DependsOn = …)]</c> declaration, AND the second foreach in
+        /// <see cref="Configure"/> also walks the discovered config types — so a single
+        /// <c>IAltruistConfiguration</c> can be visited multiple times during one boot.
+        /// The instance's own <c>IsConfigured</c> flag isn't enough because
+        /// <see cref="ConfigureConfigTypeAsync"/> rebuilds a temporary provider on each
+        /// call, getting a fresh instance with the flag reset. Authentication-style
+        /// registrations (which add <c>IConfigureOptions</c>) would otherwise stack up
+        /// and produce "scheme already exists" failures on first resolution.</para>
+        ///
+        /// <para>Keyed by <see cref="IServiceCollection"/> (weak) so different boots
+        /// (e.g. live test server vs unit-test DI runtime) don't suppress each other.</para>
+        /// </summary>
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IServiceCollection, HashSet<Type>> _configuredTypes = new();
+
+        private static bool TryMarkConfigured(IServiceCollection services, Type type)
+        {
+            lock (_configuredTypes)
+            {
+                if (!_configuredTypes.TryGetValue(services, out var set))
+                {
+                    set = new HashSet<Type>();
+                    _configuredTypes.Add(services, set);
+                }
+                return set.Add(type);
+            }
+        }
+
         static async Task ConfigureConfigTypeAsync(
             IServiceCollection services,
             IConfiguration cfg,
@@ -245,26 +279,25 @@ namespace Altruist
         {
             var serviceType = attr.ServiceType ?? type;
 
+            // Skip if Configure has already run against THIS services collection — the
+            // instance's own IsConfigured flag isn't reliable across temporary providers.
+            if (!TryMarkConfigured(services, type))
+                return;
+
             using var sp = services.BuildServiceProvider();
             var instanceObj = sp.GetService(serviceType);
             if (instanceObj is null)
             {
-                Console.Error.WriteLine($"[CONFIG-CONFIGURE] {type.Name}: GetService returned null (serviceType={serviceType.Name})");
-                // Debug: check if it was filtered by ConditionalOnConfig
-                var cond = type.GetCustomAttributes(typeof(ConditionalOnConfigAttribute), false);
-                foreach (ConditionalOnConfigAttribute c in cond)
+                // Re-allow a future Configure attempt — registration may catch up later.
+                lock (_configuredTypes)
                 {
-                    var val = cfg[c.Path];
-                    Console.Error.WriteLine($"[CONFIG-CONFIGURE]   Condition: path={c.Path} expected={c.HavingValue} actual={val ?? "NULL"}");
+                    if (_configuredTypes.TryGetValue(services, out var set))
+                        set.Remove(type);
                 }
                 return;
             }
-            Console.WriteLine($"[CONFIG-CONFIGURE] {type.Name}: configuring...");
 
             if (instanceObj is not IAltruistConfiguration configInstance)
-                return;
-
-            if (configInstance.IsConfigured)
                 return;
 
             await configInstance.Configure(services).ConfigureAwait(false);

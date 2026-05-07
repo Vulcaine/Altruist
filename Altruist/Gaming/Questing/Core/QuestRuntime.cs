@@ -68,7 +68,22 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
                 : _quests;
 
         foreach (var quest in targets)
-            await DispatchOneAsync(baseContext, quest, trigger, hookKey, targetId, value);
+        {
+            // Isolate per-quest dispatch — a single faulting handler used to take down
+            // every subsequent quest in the trigger chain (the outer try/catch in
+            // QuestEngine logged the exception but the foreach had already stopped).
+            // E.g. one OnKill handler that resolved an unregistered vnum would prevent
+            // every other OnKill from firing for the same kill event.
+            try
+            {
+                await DispatchOneAsync(baseContext, quest, trigger, hookKey, targetId, value);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"[QuestRuntime] {trigger} dispatch failed for quest '{quest.Id}': {ex.GetType().Name}: {ex.Message}");
+            }
+        }
 
         await _stateStore.SaveDirtyAsync(baseContext.SubjectId, _states[baseContext.SubjectId]);
     }
@@ -152,7 +167,18 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
             {
                 ctx = _contextFactory(baseContext, QuestTrigger.Level, quest, 0, level, state, evaluation);
                 ctx.HookKey = QuestHooks.Level;
-                await quest.DispatchHookAsync(ctx, QuestHooks.Level);
+                // Isolate per-quest level dispatch (see FireAsync for rationale). A
+                // faulting OnLevel handler at level N must not stop reconciliation for
+                // subsequent levels of the same quest, nor for other quests in the loop.
+                try
+                {
+                    await quest.DispatchHookAsync(ctx, QuestHooks.Level);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(
+                        $"[QuestRuntime] Level reconcile failed for quest '{quest.Id}' at level {level}: {ex.GetType().Name}: {ex.Message}");
+                }
                 state.Set(LevelReconciledKey, level);
             }
 

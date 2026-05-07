@@ -50,9 +50,11 @@
     <Compile Remove="Altruist/Persistance/Cache/Redis/RouterTests.cs" />
     <Compile Remove="Altruist/Gaming/Combat/CombatServiceTests.cs" />
     <Compile Remove="Altruist/Gaming/Physx/2D/Box2DWorldEngineTests.cs" />
+    <Compile Remove="Altruist/Gaming/World/2D/WorldLoader2DTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Altruist.Testing\Altruist.Testing.csproj" />
     <ProjectReference Include="..\Altruist\Core\Core.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Main\Gaming.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Questing\Questing.csproj" />

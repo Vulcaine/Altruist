@@ -76,12 +76,28 @@ namespace Altruist
 
         /// <summary>
         /// Build and run the single HTTP server after all services and PostConstruct hooks are done.
+        /// Blocks until shutdown.
         /// </summary>
         public async Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
         {
+            var app = await BuildAndStartAsync(rootServices, cancellationToken);
+            if (app is null) return;
+            await app.WaitForShutdownAsync(cancellationToken);
+        }
 
+        /// <summary>
+        /// Same setup as <see cref="StartAsync"/> but returns the live <see cref="WebApplication"/>
+        /// after listeners are bound, instead of blocking on shutdown. Callers (notably the
+        /// test framework) can let it run in the background and shut it down explicitly via
+        /// the returned <c>WebApplication</c>'s <c>StopAsync</c>/<c>DisposeAsync</c>.
+        ///
+        /// <para>Returns <c>null</c> if HTTP host/port is unconfigured (matches
+        /// <see cref="StartAsync"/>'s no-op semantic).</para>
+        /// </summary>
+        public async Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+        {
             if (string.IsNullOrWhiteSpace(_httpHost) || string.IsNullOrWhiteSpace(_httpPort))
-                return;
+                return null;
 
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
             using var tempProvider = rootServices.BuildServiceProvider();
@@ -253,9 +269,13 @@ namespace Altruist
                 }
             }
 
-            // Listen & serve (this will block until shutdown)
+            // Bind listeners (non-blocking). Caller decides whether to await shutdown
+            // — production calls <see cref="StartAsync"/> which then awaits
+            // <c>WaitForShutdownAsync</c>; tests keep the handle and stop explicitly.
             var connectionString = $"http://{_httpHost}:{portNum}";
-            await app.RunAsync(connectionString);
+            app.Urls.Add(connectionString);
+            await app.StartAsync(cancellationToken);
+            return app;
         }
 
         // ---------- helpers ----------
