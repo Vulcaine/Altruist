@@ -78,9 +78,12 @@ namespace Altruist
         /// Build and run the single HTTP server after all services and PostConstruct hooks are done.
         /// Blocks until shutdown.
         /// </summary>
-        public async Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+        public Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+            => StartAsync(rootServices, bootstrapProvider: null, cancellationToken);
+
+        public async Task StartAsync(IServiceCollection rootServices, IServiceProvider? bootstrapProvider, CancellationToken cancellationToken = default)
         {
-            var app = await BuildAndStartAsync(rootServices, cancellationToken);
+            var app = await BuildAndStartAsync(rootServices, bootstrapProvider, cancellationToken);
             if (app is null) return;
             await app.WaitForShutdownAsync(cancellationToken);
         }
@@ -94,13 +97,21 @@ namespace Altruist
         /// <para>Returns <c>null</c> if HTTP host/port is unconfigured (matches
         /// <see cref="StartAsync"/>'s no-op semantic).</para>
         /// </summary>
-        public async Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+        public Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+            => BuildAndStartAsync(rootServices, bootstrapProvider: null, cancellationToken);
+
+        public async Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, IServiceProvider? bootstrapProvider, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(_httpHost) || string.IsNullOrWhiteSpace(_httpPort))
                 return null;
 
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
             using var tempProvider = rootServices.BuildServiceProvider();
+            // The provider whose pre-built singletons we share with WebApplication.
+            // Production passes the bootstrap provider (the one whose [PostConstruct]
+            // hooks ran). Tests inherit the same — LiveServerHandle's _provider.
+            // Falls back to tempProvider only when callers haven't been updated.
+            var sharingProvider = bootstrapProvider ?? tempProvider;
 
             var configSource = tempProvider.GetService<MutableConfigSource>();
 
@@ -111,10 +122,42 @@ namespace Altruist
             builder.Configuration.Sources.Insert(0, configSource);
             builder.Logging.ClearProviders();
 
+            // Promote every Singleton-with-factory descriptor to an instance-based
+            // registration backed by the bootstrap provider's already-built instance.
+            // Otherwise WebApplication's provider builds a fresh duplicate of each
+            // singleton (per-provider singleton lifetime in MEDI), and none of those
+            // duplicates would have had [PostConstruct] run on them. Symptoms in
+            // production: IServerStatus stuck at Starting → ReadinessMiddleware 503s
+            // forever; portals/sessions/connection-managers diverge from the bootstrap
+            // state so TCP packets dispatch against fresh handlers and silently drop.
+            // Restores the cross-provider singleton sharing that the old static
+            // _singletonCache provided implicitly. Test child providers (per-method
+            // DI containers) still build their own fresh singletons so mocks still
+            // substitute cleanly.
             foreach (var d in rootServices)
             {
                 if (d.ServiceType == typeof(IHostApplicationLifetime))
                     continue;
+
+                if (d.Lifetime == ServiceLifetime.Singleton
+                    && d.ImplementationFactory is not null
+                    && !d.ServiceType.IsGenericTypeDefinition
+                    && !d.IsKeyedService)
+                {
+                    try
+                    {
+                        var instance = sharingProvider.GetService(d.ServiceType);
+                        if (instance is not null)
+                        {
+                            builder.Services.AddSingleton(d.ServiceType, instance);
+                            continue;
+                        }
+                    }
+                    catch
+                    {
+                        // Fall through — copy the original factory descriptor unchanged.
+                    }
+                }
 
                 builder.Services.Add(d);
             }

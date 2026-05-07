@@ -62,6 +62,23 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <summary>
+        /// Wires the circular tracker ↔ organizer dependency at the point both
+        /// instances are guaranteed to be the bootstrap provider's. EngineStartupConfiguration
+        /// also performs this wiring during its <c>Configure</c> phase, but that runs against
+        /// a temp provider whose instances get garbage-collected; with per-provider singleton
+        /// lifetime the bootstrap provider builds its own tracker and organizer that would
+        /// otherwise stay un-wired — Tick() returns early on null _organizer and visibility
+        /// broadcasts (SCharacterAdd / SCharacterRemove) never fire.
+        /// </summary>
+        [PostConstruct]
+        public void WireOrganizer(IGameWorldOrganizer3D organizer)
+        {
+            if (_organizer is not null) return;
+            organizer.SetVisibilityTracker(this);
+            SetOrganizer(organizer);
+        }
+
         private void HandleObjectCreated(IWorldObject3D obj, int worldIndex)
         {
             var instanceId = obj.InstanceId;
@@ -187,7 +204,6 @@ namespace Altruist.Gaming.ThreeD
                     current is not IWorldObject3D observer ||
                     string.IsNullOrEmpty(observer.ClientId))
                 {
-                    RemoveObserver(clientId);
                     continue;
                 }
 

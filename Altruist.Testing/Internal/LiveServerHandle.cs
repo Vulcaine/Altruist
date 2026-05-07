@@ -93,7 +93,7 @@ internal static class LiveServerHandle
                 ?? throw new InvalidOperationException(
                     "AltruistStartupConfiguration not registered — the live server requires the full framework boot path.");
 
-            _app = await startup.BuildAndStartAsync(services)
+            _app = await startup.BuildAndStartAsync(services, _provider)
                 ?? throw new InvalidOperationException(
                     "BuildAndStartAsync returned null — check altruist:server:http:host and :port in config.yml/config-test.yml.");
 

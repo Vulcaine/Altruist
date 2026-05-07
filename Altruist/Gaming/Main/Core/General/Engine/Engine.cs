@@ -92,6 +92,24 @@ public class MethodScheduler
         _registeredMethodsByType = new Dictionary<Type, (object? serviceInstance, HashSet<MethodInfo>)>();
     }
 
+    /// <summary>
+    /// Self-register all <c>[Cycle]</c>-annotated methods against THIS scheduler's
+    /// provider. <see cref="EngineStartupConfiguration"/> also calls
+    /// <see cref="RegisterMethods"/> during its <c>Configure</c> phase, but that
+    /// runs against an anonymous temp <see cref="IServiceProvider"/> whose
+    /// MethodScheduler instance gets garbage-collected. With per-provider
+    /// singleton lifetime, the bootstrap provider's MethodScheduler stays empty
+    /// — its engine starts (via <c>ServerStatus.SignalState</c>) but ticks
+    /// nothing, so all <c>[Cycle]</c> work (visibility broadcasts, world step,
+    /// AI behavior, sync) silently never runs.
+    /// </summary>
+    [PostConstruct]
+    public void SelfRegister()
+    {
+        if (_registeredMethodsByType.Count > 0) return;
+        RegisterMethods(_serviceProvider);
+    }
+
     public List<MethodInfo> RegisterMethods(IServiceProvider serviceProvider)
     {
         // 1. Collect all methods annotated with CycleAttribute
