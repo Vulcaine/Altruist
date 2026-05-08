@@ -3,6 +3,15 @@ using MessagePack.Formatters;
 
 namespace Altruist.Networking.Codec.MessagePack;
 
+/// <summary>
+/// MessagePack formatter that round-trips an <see cref="IPacketBase"/> reference
+/// polymorphically. Wire shape: <c>fixarray(2) [AssemblyQualifiedName, [packet bytes]]</c>.
+///
+/// <para>Uses reflection (<see cref="Type.GetType(string)"/>) on the deserialize path,
+/// so it does NOT work on stripped runtimes (IL2CPP / NativeAOT / Blazor AOT). For
+/// AOT-safe paths, deserialize the inner packet as the concrete <c>T</c> at the call
+/// site instead of as <c>IPacketBase</c>.</para>
+/// </summary>
 public class PacketBaseFormatter : IMessagePackFormatter<IPacketBase?>
 {
     public void Serialize(ref MessagePackWriter writer, IPacketBase? value, MessagePackSerializerOptions options)
@@ -22,7 +31,6 @@ public class PacketBaseFormatter : IMessagePackFormatter<IPacketBase?>
         var formatter = options.Resolver.GetFormatterDynamic(type);
         var specificFormatter = (IMessagePackFormatter<IPacketBase?>)formatter!;
 
-        // Serialize the value using the specific formatter
         specificFormatter.Serialize(ref writer, value, options);
     }
 

@@ -16,134 +16,16 @@ limitations under the License.
 
 using System.Text.Json.Serialization;
 
-using Altruist.Networking.Codec.MessagePack;
-
 using MessagePack;
+
+// NOTE: PacketCodes, PacketHeaders, IPacket, IPacketBase, PacketHeader, MessageEnvelope
+// have moved to the Altruist.Protocol package (still under namespace Altruist) so the
+// client (Altruist.Client) and server can share one source of truth for the wire shape.
+// This file keeps the *concrete* framework packets (Text, Interprocess, Sync, etc.)
+// that depend on Core types.
 
 namespace Altruist
 {
-    /// <summary>
-    /// Reserved message codes for built-in framework packets.
-    /// User-defined packets are recommended to start from 1000+.
-    /// </summary>
-    public static class PacketCodes
-    {
-        // 0 reserved / invalid
-        public const uint Text = 1;
-        public const uint Interprocess = 2;
-        public const uint Sync = 3;
-        public const uint Altruist = 4;
-
-        public const uint Success = 5;
-        public const uint Failed = 6;
-
-        public const uint HandshakeRequest = 7;
-        public const uint HandshakeResponse = 8;
-
-        public const uint JoinGame = 9;
-        public const uint LeaveGame = 10;
-
-        public const uint Room = 11;
-        public const uint SessionAuth = 12;
-        public const uint DashboardWorldObjectState = 13;
-    }
-
-    public static class PacketHeaders
-    {
-        // Framework can later overwrite timestamp/receiver/etc as needed
-        public static readonly PacketHeader Broadcast = new PacketHeader
-        {
-            Sender = "server"
-        };
-    }
-
-    // === Base Interfaces ===
-
-    public interface IPacket : ITypedModel
-    {
-    }
-
-    /// <summary>
-    /// Base packet interface. All packets MUST serialize MessageCode at Key(0),
-    /// and shift their own fields to start at Key(1).
-    /// </summary>
-    [MessagePackFormatter(typeof(PacketBaseFormatter))]
-    public interface IPacketBase : IPacket
-    {
-        // NOTE: Do NOT put [Key] here; Key indices are defined by the concrete packet types.
-        uint MessageCode { get; set; }
-    }
-
-    // === Common Header Struct (used only on envelope) ===
-
-    [MessagePackObject]
-    public struct PacketHeader
-    {
-        [JsonPropertyName("timestamp")]
-        [Key(0)]
-        public long Timestamp { get; set; }
-
-        [JsonPropertyName("receiver")]
-        [Key(1)]
-        public string? Receiver { get; set; }
-
-        [JsonPropertyName("sender")]
-        [Key(2)]
-        public string Sender { get; set; }
-
-        public void Stamp(string sender, string receiver, DateTime tt)
-            => (Sender, Receiver, Timestamp) = (sender, receiver, tt.Ticks);
-
-        public void SetReceiver(string clientId) => Receiver = clientId;
-
-        public void SetTimestamp(DateTime tt) => Timestamp = tt.Ticks;
-    }
-
-    // === Envelope (only place with header + type) ===
-
-    [MessagePackObject]
-    public struct MessageEnvelope
-    {
-        [Key(0)]
-        [JsonPropertyName("messageCode")]
-        public uint MessageCode { get; set; }
-
-        [Key(1)]
-        [JsonPropertyName("header")]
-        public PacketHeader Header { get; set; }
-
-        [Key(2)]
-        [JsonPropertyName("message")]
-        public object? Message { get; set; }
-
-        public MessageEnvelope(PacketHeader header, IPacketBase message)
-        {
-            Header = header;
-            Message = message;
-            MessageCode = message.MessageCode;
-        }
-
-        public MessageEnvelope(IPacketBase message, string receiver)
-        {
-            Header = new PacketHeader
-            {
-                Sender = "server",
-                Receiver = receiver
-            };
-            Message = message;
-            MessageCode = message.MessageCode;
-        }
-
-        public void Stamp(string sender, string receiver, DateTime receivedAt)
-            => Header.Stamp(sender, receiver, receivedAt);
-
-        public void SetReceiver(string clientId)
-            => Header.SetReceiver(clientId);
-
-        public void SetTimestamp(DateTime receivedAt)
-            => Header.SetTimestamp(receivedAt);
-    }
-
     // === Simple Text Packet ===
 
     [MessagePackObject]

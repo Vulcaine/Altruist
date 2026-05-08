@@ -35,10 +35,7 @@ public interface IIdGenerator
     public string GenerateId();
 }
 
-public interface ITypedModel
-{
-
-}
+// ITypedModel has moved to Altruist.Protocol (still under namespace Altruist).
 
 public interface IStoredModel : ITypedModel
 {

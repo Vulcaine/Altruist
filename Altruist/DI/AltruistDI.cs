@@ -34,7 +34,9 @@ public static class AltruistDI
     {
         var cfg = AppConfigLoader.Load(args);
 
+#if !NETSTANDARD2_1
         AssemblyLoader.EnsureAllReferencedAssembliesLoaded();
+#endif
         ConfigureLogging(Services, cfg);
 
         Services.AddSingleton(cfg);

@@ -14,9 +14,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Altruist\DI\DI.csproj" />
-    <ProjectReference Include="..\Altruist\Core\Core.csproj" />
-    <ProjectReference Include="..\Altruist\Postgres\Postgres.csproj" />
+    <ProjectReference Include="..\DI\DI.csproj" />
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Postgres\Postgres.csproj" />
+    <ProjectReference Include="..\Client\Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
