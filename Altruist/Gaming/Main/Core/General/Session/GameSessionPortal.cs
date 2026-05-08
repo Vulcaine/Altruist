@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
@@ -7,19 +8,27 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
     protected readonly IAltruistRouter _router;
     private readonly int _sessionTtlMinutes;
 
+    /// <summary>
+    /// Snapshot of every <see cref="IClientSessionCleanup"/> registered in DI.
+    /// Each one's <see cref="IClientSessionCleanup.Cleanup"/> fires on every client
+    /// disconnect — see <see cref="OnDisconnectedAsync"/>.
+    /// </summary>
+    private readonly IClientSessionCleanup[] _sessionServices;
+    private readonly ILogger _logger;
+
     protected AltruistGameSessionPortal(
         IGameSessionService gameSessionService,
         IAltruistRouter router,
+        IEnumerable<IClientSessionCleanup> sessionServices,
+        ILoggerFactory loggerFactory,
         [AppConfigValue("altruist:game:session:ttl-minutes", "60")] int sessionTtlMinutes = 60)
     {
         _gameSessionService = gameSessionService;
         _router = router;
         _sessionTtlMinutes = Math.Max(1, sessionTtlMinutes);
+        _sessionServices = (sessionServices ?? Enumerable.Empty<IClientSessionCleanup>()).ToArray();
+        _logger = loggerFactory.CreateLogger(GetType());
     }
-
-    // ---------------------------
-    // Public API: fixed template
-    // ---------------------------
 
     [Gate(IngressEP.Handshake)]
     public async Task HandshakeAsync(
@@ -66,6 +75,26 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
         var session = _gameSessionService.GetSession(clientId);
         await OnSessionDisconnectingAsync(clientId, session, exception);
         _gameSessionService.ClearSession(clientId);
+
+        // Fan out to every [Service] that opted into per-client cleanup by
+        // implementing IClientSessionCleanup. One bad handler doesn't block the
+        // rest — log and continue. Runs after ClearSession so a service that
+        // also overrides OnSessionDisconnectingAsync above has had its chance
+        // to read GameSession state before the framework cleanup tears down.
+        for (int i = 0; i < _sessionServices.Length; i++)
+        {
+            try
+            {
+                await _sessionServices[i].Cleanup(clientId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "{Type}.Cleanup failed for client {ClientId}",
+                    _sessionServices[i].GetType().Name, clientId);
+            }
+        }
+
         await OnSessionDisconnectedAsync(clientId, exception);
     }
 

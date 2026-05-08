@@ -1,5 +1,6 @@
 using Altruist;
 using Altruist.Gaming;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace Tests.Gaming.Session;
@@ -46,8 +47,9 @@ public sealed class AltruistGameSessionPortalTests
         public TestSessionPortal(
             IGameSessionService gameSessionService,
             IAltruistRouter router,
-            Action? disconnecting = null)
-            : base(gameSessionService, router)
+            Action? disconnecting = null,
+            IEnumerable<IClientSessionCleanup>? sessionCleanups = null)
+            : base(gameSessionService, router, sessionCleanups ?? Enumerable.Empty<IClientSessionCleanup>(), NullLoggerFactory.Instance)
         {
             _disconnecting = disconnecting;
         }
