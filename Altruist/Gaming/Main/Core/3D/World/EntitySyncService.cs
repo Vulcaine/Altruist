@@ -53,7 +53,12 @@ public sealed class EntitySyncService : IEntitySyncService
             {
                 var obj = allObjects[i];
                 if (obj is not ISynchronizedEntity syncEntity) continue;
-                if (string.IsNullOrEmpty(syncEntity.ClientId)) continue;
+                // AI-controlled entities (monsters, NPCs) intentionally have an
+                // empty ClientId — they're not network observers — but their
+                // [Synced] state still needs to reach the players observing them
+                // through the visibility tracker. Skip only when there is no
+                // delivery path at all: no self-send target AND no observer broadcast.
+                if (string.IsNullOrEmpty(syncEntity.ClientId) && _visibilityTracker == null) continue;
 
                 var entityType = obj.GetType();
                 var syncAttr = _syncAttrCache.GetOrAdd(entityType, static t =>
@@ -77,8 +82,13 @@ public sealed class EntitySyncService : IEntitySyncService
 
     private async Task SendSyncData(ISynchronizedEntity entity, ITypelessWorldObject worldObj)
     {
+        // Delta cache must be keyed per-entity. Using entity.ClientId here
+        // collides for AI entities (monsters/NPCs) because they all share
+        // an empty ClientId — last-value tracking would be overwritten by
+        // every other monster on the same tick, producing garbage diffs.
+        // The world object's InstanceId is the stable per-entity identifier.
         using var changes = Synchronization.GetSyncChanges(
-            entity, entity.ClientId, AltruistEngine.CurrentTick);
+            entity, worldObj.InstanceId, AltruistEngine.CurrentTick);
 
         if (!changes.HasChanges) return;
 
