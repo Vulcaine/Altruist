@@ -45,19 +45,20 @@ public class SynchronizationGetChangedDataTests
     }
 
     [Fact]
-    public void UnchangedProperties_ShouldNotBeIncluded_ExceptSyncAlways()
+    public void UnchangedProperties_ShouldNotBeIncluded_AndSyncAlwaysOnlyRidesAlongOnDelta()
     {
         var entity = new TestSyncEntity { ClientId = UniqueId() };
 
-        // First sync
+        // First sync establishes baseline
         Synchronization.GetChangedData(entity, entity.ClientId, 1);
 
-        // Second sync with no changes — only SyncAlways should appear
+        // Second sync with no changes — empty data. SyncAlways doesn't fire by
+        // itself (would generate a packet per visible entity per tick = catastrophic
+        // packet rate). It only piggybacks on packets that already carry a delta.
         var (_, _, data) = Synchronization.GetChangedData(entity, entity.ClientId, 2);
 
-        Assert.Contains("Name", data.Keys); // SyncAlways
-        // Value should NOT be included (unchanged, not SyncAlways)
         Assert.DoesNotContain("Value", data.Keys);
+        Assert.DoesNotContain("Name", data.Keys);
     }
 
     [Fact]
@@ -74,12 +75,15 @@ public class SynchronizationGetChangedDataTests
     }
 
     [Fact]
-    public void ChangedString_ShouldBeDetected()
+    public void ChangedString_SyncAlwaysCarriedWhenAnotherPropChanges()
     {
         var entity = new TestSyncEntity { ClientId = UniqueId() };
         Synchronization.GetChangedData(entity, entity.ClientId, 1);
 
+        // Name is SyncAlways — by itself it doesn't trigger a sync, it rides
+        // along on packets that carry a real delta. So we also touch Value.
         entity.Name = "changed";
+        entity.Value = 99;
         var (_, _, data) = Synchronization.GetChangedData(entity, entity.ClientId, 2);
 
         Assert.Contains("Name", data.Keys);
@@ -99,12 +103,15 @@ public class SynchronizationGetChangedDataTests
     }
 
     [Fact]
-    public void SyncAlways_ShouldAlwaysBeIncluded()
+    public void SyncAlways_RidesAlongWhenAnotherPropChanges()
     {
         var entity = new TestSyncEntity { ClientId = UniqueId() };
         Synchronization.GetChangedData(entity, entity.ClientId, 1);
 
-        // No changes — SyncAlways Name should still be included
+        // SyncAlways means "include in any sync packet that's already going out",
+        // not "force a packet every tick". Trigger a delta on Value and verify
+        // Name (SyncAlways) is carried along with its current value.
+        entity.Value = 99;
         var (_, _, data) = Synchronization.GetChangedData(entity, entity.ClientId, 2);
 
         Assert.Contains("Name", data.Keys);

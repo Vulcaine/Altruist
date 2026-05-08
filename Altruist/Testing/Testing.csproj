@@ -5,6 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Testing</PackageId>
+    <!-- Default AssemblyName from project filename is "Testing" but the
+         [assembly: Xunit.TestFramework(..., "Altruist.Testing")] attribute in
+         downstream test projects looks up the framework type by assembly name.
+         If they don't match, xUnit silently falls back to its default class
+         runner and every [AltruistTest] class fails with "constructor
+         parameters did not have matching fixture data". -->
+    <AssemblyName>Altruist.Testing</AssemblyName>
+    <RootNamespace>Altruist.Testing</RootNamespace>
     <Description>xUnit test framework override that resolves test classes marked [AltruistTest] from the real Altruist DI container. Constructor parameters tagged [Mock] are replaced with Moq mocks visible to the rest of the per-class container.</Description>
     <Version>0.9.5-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>

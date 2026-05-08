@@ -40,8 +40,11 @@ internal sealed class AltruistUdpClient : IAsyncDisposable, IDisposable
     /// <summary>
     /// DI-friendly ctor. Reads the <c>altruist:client:transport:udp</c> block
     /// from <see cref="ClientTransportConfig"/> and resolves the codec via
-    /// <see cref="ClientCodecResolver"/>.
+    /// <see cref="ClientCodecResolver"/>. See <see cref="AltruistTcpClient"/>
+    /// for why <see cref="Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructorAttribute"/>
+    /// is required (same-arity ctor tie-break).
     /// </summary>
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public AltruistUdpClient(ClientTransportConfig config, ClientCodecResolver codecResolver)
         : this(BuildEndpoint(config), ResolveCodec(config, codecResolver))
     { }

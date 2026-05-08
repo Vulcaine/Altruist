@@ -4,6 +4,7 @@ Licensed under the Apache License, Version 2.0
 */
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.ThreeD
 {
@@ -38,14 +39,18 @@ namespace Altruist.Gaming.ThreeD
         public event Action<VisibilityChange>? OnEntityVisible;
         public event Action<VisibilityChange>? OnEntityInvisible;
 
+        private readonly ILogger? _logger;
+
         public VisibilityTracker3D(
             [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f,
             IEntityHibernationService? hibernation = null,
-            ISpatialCollisionDispatcher? collisionDispatcher = null)
+            ISpatialCollisionDispatcher? collisionDispatcher = null,
+            ILoggerFactory? loggerFactory = null)
         {
             ViewRange = viewRange;
             _hibernation = hibernation;
             _collisionDispatcher = collisionDispatcher;
+            _logger = loggerFactory?.CreateLogger<VisibilityTracker3D>();
         }
 
         public void SetOrganizer(IGameWorldOrganizer3D organizer)
@@ -273,6 +278,24 @@ namespace Altruist.Gaming.ThreeD
                     if (obj is IVnumProvider vnumProvider)
                         vnum = vnumProvider.Vnum;
 
+                    // If this entity is currently in any observer's visible set, hibernating
+                    // it now will trigger HandleObjectDestroyed → fires Invisible → client gets
+                    // SCharacterRemove. Then next tick WakeNearbyHibernated re-spawns it →
+                    // fires Visible → client gets SCharacterAdd. That's the per-entity flicker
+                    // we observed (vid X with 37+ ADD events suppressed in seconds).
+                    bool wasVisibleToSomeone = false;
+                    foreach (var (_, set) in _visibleSets)
+                    {
+                        if (set.Contains(obj.InstanceId)) { wasVisibleToSomeone = true; break; }
+                    }
+                    if (wasVisibleToSomeone)
+                    {
+                        _logger?.LogWarning(
+                            "[VIS-HIBERNATE-VISIBLE] entity instance={InstanceId} vnum={Vnum} pos=({X:F1},{Y:F1},{Z:F1}) " +
+                            "was in some observer's visible set when hibernated — will trigger spurious SCharacterRemove → SCharacterAdd flicker on the client",
+                            obj.InstanceId, vnum, pos.X, pos.Y, pos.Z);
+                    }
+
                     var zoneName = obj.ZoneId ?? "";
                     world.DestroyObject(obj);
                     _hibernation.Hibernate(obj.InstanceId, zoneName, pos.X, pos.Y, pos.Z, vnum, hibernatable);
@@ -483,6 +506,8 @@ namespace Altruist.Gaming.ThreeD
             _observers[worldObject.ClientId] = worldObject;
             _observerInstanceIds[worldObject.InstanceId] = worldObject.ClientId;
             RefreshObserver(worldObject.ClientId);
+            _logger?.LogInformation("[VIS-OBS-ADD] {ClientId} observer registered (instance={InstanceId}) — visible-set will rebuild from scratch this tick",
+                worldObject.ClientId, worldObject.InstanceId);
             return true;
         }
 
@@ -528,6 +553,9 @@ namespace Altruist.Gaming.ThreeD
 
         public void RemoveObserver(string clientId)
         {
+            int visibleCount = _visibleSets.TryGetValue(clientId, out var existingSet) ? existingSet.Count : 0;
+            _logger?.LogWarning("[VIS-OBS-REMOVE] {ClientId} observer removed — will fire Invisible for {Count} entities (this is the 'all mobs disappeared' signature if not from a real disconnect)",
+                clientId, visibleCount);
             if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0)
             {
                 if (_organizer is null)

@@ -38,11 +38,12 @@ public class SyncChangeMapTests
 
         using var changes = Synchronization.GetSyncChanges(entity, entity.ClientId, 2);
 
-        // SyncAlways (Name) is always present, so Data has entries,
-        // but the mask check should show HasChanges = true for SyncAlways
-        // This is by design — SyncAlways means "always send"
-        Assert.True(changes.HasChanges);
-        Assert.Contains("Name", changes.Data.Keys);
+        // No deltas → no packet. SyncAlways (Name) doesn't fire by itself —
+        // it rides along on packets that already carry a real delta. See
+        // Synchronization.GetChangedData lines 245-261 for the design rationale
+        // (per-tick SyncAlways packets would scale to 1000s × 25Hz = catastrophic).
+        Assert.False(changes.HasChanges);
+        Assert.DoesNotContain("Name", changes.Data.Keys);
     }
 
     [Fact]

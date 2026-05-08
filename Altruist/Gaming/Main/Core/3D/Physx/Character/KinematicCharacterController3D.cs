@@ -536,8 +536,23 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         float halfLength = MathF.Max(0f, (Height * 0.5f) - Radius);
         float centerToFoot = halfLength + Radius;
         float probeUp = MathF.Max(SkinWidth + GroundProbeDistance, 0.05f);
-        float probeDown = MathF.Abs(displacement.Y) + probeUp + SkinWidth;
-        var origin = new Vector3(position.X, position.Y - centerToFoot + probeUp, position.Z);
+
+        // Slope-aware probe: walking horizontally `h` units along a slope of angle θ
+        // moves the ground by `h·tanθ` per tick — UP if walking uphill, DOWN if
+        // downhill. We size the budget at tan(85°)≈11.4 ("any non-vertical slope
+        // sticks") because heightmap terrain has no genuine vertical walls, only
+        // steep ramps. Real cliffs still work: their drop is much larger than the
+        // budget, so the snap condition below treats them as a fall.
+        //
+        // The probe origin sits ABOVE the body center (not at the foot) so the
+        // downward ray clears any rising terrain. Walking UP a 60° slope at 5 m/s
+        // raises the ground by 0.35 per tick — a probe origin near the foot would
+        // start below the new ground and miss it, leaving the body embedded.
+        float horizMag = MathF.Sqrt(displacement.X * displacement.X + displacement.Z * displacement.Z);
+        const float StickSlopeTan = 11.43f; // tan(85°)
+        float slopeProbe = horizMag * StickSlopeTan;
+        float probeDown = centerToFoot + slopeProbe + probeUp + SkinWidth;
+        var origin = new Vector3(position.X, position.Y + probeUp, position.Z);
 
         foreach (var hit in QueryRayCast(
             world,
@@ -552,12 +567,21 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
                 continue;
 
             float groundedCenterY = hit.Point.Y + centerToFoot;
-            if (position.Y <= groundedCenterY)
+            // Snap to ground if body is at or below it (depenetration), OR if body
+            // is above it within the slope-step distance — this is the "follow the
+            // slope down" case. Without the second clause, walking down any slope
+            // leaves the body floating until gravity pulls it through.
+            float aboveBy = position.Y - groundedCenterY;
+            if (aboveBy <= slopeProbe + probeUp)
             {
                 position = new Vector3(position.X, groundedCenterY, position.Z);
                 if (velocity.Y < 0f)
                     velocity = new Vector3(velocity.X, 0f, velocity.Z);
             }
+            // No snap → body is above the found terrain by more than a slope-step.
+            // That's a genuine drop (jump apex, cliff, etc.); gravity will pull
+            // the body down and a future tick's larger displacement.Y will reach
+            // the terrain through this same probe.
 
             return;
         }

@@ -36,8 +36,11 @@ internal sealed class AltruistWebSocketClient : IAsyncDisposable, IDisposable
     /// <summary>
     /// DI-friendly ctor. Reads the <c>altruist:client:transport:ws</c> block
     /// from <see cref="ClientTransportConfig"/> and resolves the codec via
-    /// <see cref="ClientCodecResolver"/>.
+    /// <see cref="ClientCodecResolver"/>. See <see cref="AltruistTcpClient"/>
+    /// for why <see cref="Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructorAttribute"/>
+    /// is required (same-arity ctor tie-break).
     /// </summary>
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public AltruistWebSocketClient(ClientTransportConfig config, ClientCodecResolver codecResolver)
         : this(BuildUrl(config), ResolveCodec(config, codecResolver))
     { }

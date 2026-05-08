@@ -79,7 +79,14 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
     /// from <see cref="ClientTransportConfig"/> and resolves the codec via
     /// <see cref="ClientCodecResolver"/>. Tests use the
     /// <c>(EndpointConfig, IClientCodec)</c> ctor for explicit wiring.
+    ///
+    /// <para>Marked <see cref="Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructorAttribute"/>
+    /// so Altruist DI picks this overload — both ctors have the same arity, so
+    /// the default "widest ctor wins" tiebreaker is undefined. Without this
+    /// attribute DI may pick the explicit-args overload and fail to resolve
+    /// <c>EndpointConfig</c> (which is internal and never registered).</para>
     /// </summary>
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public AltruistTcpClient(ClientTransportConfig config, ClientCodecResolver codecResolver)
         : this(BuildEndpoint(config), ResolveCodec(config, codecResolver))
     { }
