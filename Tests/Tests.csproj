@@ -56,6 +56,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Altruist\Testing\Testing.csproj" />
     <ProjectReference Include="..\Altruist\Client\Client.csproj" />
+    <ProjectReference Include="..\Altruist\Client\Inventory\Inventory.csproj" />
     <ProjectReference Include="..\Altruist\Core\Core.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Main\Gaming.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Questing\Questing.csproj" />

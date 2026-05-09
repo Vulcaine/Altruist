@@ -19,6 +19,13 @@
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
+  <!-- Sub-projects (Inventory, ...) live in subdirectories with their own .csproj.
+       The default SDK glob would otherwise pull their .cs files into this project. -->
+  <ItemGroup>
+    <Compile Remove="Inventory\**\*.cs" />
+    <None Remove="Inventory\**\*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Protocol\Protocol.csproj" />
     <ProjectReference Include="..\DI\DI.csproj" />

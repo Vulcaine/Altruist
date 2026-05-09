@@ -72,14 +72,8 @@ public sealed class ClientPacketHandlerConfig : IAltruistConfiguration
                 }
                 catch (Exception ex)
                 {
-                    // Some [PacketHandler] types can't be DI-instantiated — most
-                    // notably Unity MonoBehaviours, which the engine constructs
-                    // when a GameObject loads. Those handlers register themselves
-                    // via dispatcher.Register(this) in their own Awake; we skip
-                    // them here without failing the rest of the discovery scan.
                     logger.LogDebug(ex,
-                        "Skipping {Type} during [PacketHandler] auto-discovery — not DI-constructible. " +
-                        "If this is a MonoBehaviour, call dispatcher.Register(this) in Awake.",
+                        "Skipping {Type} during [PacketHandler] auto-discovery — not DI-constructible.",
                         handlerType.FullName);
                     continue;
                 }

@@ -51,15 +51,18 @@ public sealed class CombatEventHandlerConfig : IAltruistConfiguration
             return Task.CompletedTask;
         }
 
-        using (var warmupProvider = services.BuildServiceProvider())
-        {
-            CombatEventHandlerDiscovery.RegisterCombatHandlers(
-                assemblies,
-                type => warmupProvider.GetService(type),
-                logger);
-        }
+        // Combat handler INSTANCE wiring is deferred to CombatHandlerInitializer's
+        // [PostConstruct] — running it here against a throwaway BuildServiceProvider()
+        // would resolve handlers with isolated singleton dependencies (their own
+        // disconnected IConnectionStore / IAltruistRouter), and once that warmup
+        // provider is disposed the handlers continue to live with dead deps —
+        // every send via `_router.Client.SendAsync(...)` then silently no-ops
+        // because the warmup-isolated connection store is empty. PostConstruct
+        // resolves against the live root container, so handlers share singletons
+        // with the rest of the app.
+        services.AddSingleton<CombatHandlerInitializer>();
 
-        logger.LogDebug("Combat event handler discovery complete. {Count} handler types wired.", registered.Count);
+        logger.LogDebug("Combat event handler types registered. {Count} handler types wired (instance discovery deferred to PostConstruct).", registered.Count);
         IsConfigured = true;
         return Task.CompletedTask;
     }

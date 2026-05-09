@@ -187,7 +187,7 @@ public class InventoryService : IInventoryService
         if (itemA == null && itemB == null)
             return Task.FromResult(new MoveItemResult(ItemStatus.ItemNotFound));
 
-        // Validate cross-container compatibility
+        // Validate cross-container compatibility (category, slot type, etc.)
         if (itemA != null && !containerB.ValidateItem(itemA))
             return Task.FromResult(new MoveItemResult(ItemStatus.ValidationFailed));
         if (itemB != null && !containerA.ValidateItem(itemB))
@@ -196,29 +196,27 @@ public class InventoryService : IInventoryService
         var countA = slotDataA.ItemCount;
         var countB = slotDataB.ItemCount;
 
-        if (itemB != null && !containerA.CanFit(itemB, slotA.X, slotA.Y, countB))
-            return Task.FromResult(new MoveItemResult(ItemStatus.NotEnoughSpace));
-
-        if (itemA != null && !containerB.CanFit(itemA, slotB.X, slotB.Y, countA))
-            return Task.FromResult(new MoveItemResult(ItemStatus.NotEnoughSpace));
-
-        // Remove both
+        // Remove both endpoints first, THEN check fit. A pre-removal CanFit always
+        // sees the source's anchor cell as occupied (by the very item we're about
+        // to swap out), so any same-size swap — sword↔sword, helmet↔helmet — would
+        // falsely return NotEnoughSpace and the equip path would fail with a deny.
         if (!slotDataA.IsEmpty) containerA.Remove(slotA.X, slotA.Y, countA);
         if (!slotDataB.IsEmpty) containerB.Remove(slotB.X, slotB.Y, countB);
 
-        // Place swapped
         var placeB = itemB == null ? ItemStatus.Success : containerA.TryPlace(itemB, slotA.X, slotA.Y, countB);
         var placeA = itemA == null ? ItemStatus.Success : containerB.TryPlace(itemA, slotB.X, slotB.Y, countA);
 
         if (placeA != ItemStatus.Success || placeB != ItemStatus.Success)
         {
-            if (itemB != null) containerA.Remove(slotA.X, slotA.Y, countB);
-            if (itemA != null) containerB.Remove(slotB.X, slotB.Y, countA);
+            // Roll back any partial placement, then restore originals.
+            if (itemB != null && placeB == ItemStatus.Success) containerA.Remove(slotA.X, slotA.Y, countB);
+            if (itemA != null && placeA == ItemStatus.Success) containerB.Remove(slotB.X, slotB.Y, countA);
 
             if (itemA != null) containerA.TryPlace(itemA, slotA.X, slotA.Y, countA);
             if (itemB != null) containerB.TryPlace(itemB, slotB.X, slotB.Y, countB);
 
-            return Task.FromResult(new MoveItemResult(ItemStatus.NotEnoughSpace));
+            return Task.FromResult(new MoveItemResult(
+                placeA != ItemStatus.Success ? placeA : placeB));
         }
 
         return Task.FromResult(new MoveItemResult(ItemStatus.Success, itemA));
