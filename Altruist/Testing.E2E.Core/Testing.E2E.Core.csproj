@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.1;net9.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>Altruist.Testing.E2E.Core</PackageId>
+    <Description>Game-engine-agnostic core of [AltruistE2ETest]. Defines the marker attribute, a reflection-based test runner, and a console reporter. Multi-targeted netstandard2.1+net9.0 so the netstandard2.1 build can drop straight into Unity's Assets/Plugins (the editor-side runner glue lives in the consuming game's project).</Description>
+    <Version>0.9.5-beta</Version>
+    <Copyright>Copyright © 2025 Aron Gere</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Altruist.Testing.E2E</RootNamespace>
+    <AssemblyName>Altruist.Testing.E2E.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- xunit.extensibility.core ships xunit.core.dll for netstandard1.1+,
+         which is forward-compatible with netstandard2.1. We use it for the
+         [Fact] / [Trait] attributes only — no runtime/runner dependency. -->
+    <PackageReference Include="xunit.extensibility.core" Version="2.9.3" />
+  </ItemGroup>
+
+</Project>

@@ -26,6 +26,8 @@
     <ProjectReference Include="..\Core\Core.csproj" />
     <ProjectReference Include="..\Postgres\Postgres.csproj" />
     <ProjectReference Include="..\Client\Client.csproj" />
+    <ProjectReference Include="..\Client\Inventory\Inventory.csproj" />
+    <ProjectReference Include="..\Testing.E2E.Core\Testing.E2E.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

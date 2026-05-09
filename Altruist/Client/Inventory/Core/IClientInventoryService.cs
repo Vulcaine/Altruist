@@ -1,4 +1,5 @@
 using Altruist.Client.Inventory.Events;
+using Altruist.Client.Inventory.Packets;
 
 namespace Altruist.Client.Inventory;
 
@@ -60,6 +61,20 @@ public interface IClientInventoryService
 
     /// <summary>All anchor snapshots for a container. Linked cells are not enumerated separately.</summary>
     IReadOnlyCollection<ItemSnapshot> GetAllItems(byte window);
+
+    /// <summary>
+    /// Apply an inbound <see cref="ItemSnapshotPacket"/>. Normally the
+    /// dispatcher calls this automatically via the <c>[Packet]</c>-decorated
+    /// handler on the concrete implementation; consumers that translate a
+    /// game-specific packet (e.g. Unity's <c>InventoryState</c> repacking
+    /// <c>ItemSetEvent</c> → <c>ItemSnapshotPacket</c>) call it directly so
+    /// the same code path updates the cache + fires <see cref="SlotChanged"/>.
+    /// </summary>
+    void OnItemSnapshot(ItemSnapshotPacket pkt);
+
+    /// <summary>Apply an inbound <see cref="ItemSlotClearedPacket"/>. See
+    /// <see cref="OnItemSnapshot"/> for the same direct-call rationale.</summary>
+    void OnSlotCleared(ItemSlotClearedPacket pkt);
 
     event Action<SlotChangedEvent>? SlotChanged;
     event Action<SlotClearedEvent>? SlotCleared;
