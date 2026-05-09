@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace Altruist.Gaming.Questing;
@@ -10,8 +11,15 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     private readonly IQuestUpdateSink<TContext> _updateSink;
     private readonly QuestRequirementRegistry<TContext> _requirements;
     private readonly Func<TContext, QuestTrigger, QuestDefinition<TContext>, long, int, QuestState, IReadOnlyList<QuestRequirementResult>, TContext> _contextFactory;
-    private readonly Dictionary<string, Dictionary<string, QuestState>> _states = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _lastUpdateFingerprints = new(StringComparer.Ordinal);
+    // ConcurrentDictionary because parallel player sessions all dispatch quests
+    // through the same QuestRuntime singleton — the prior plain Dictionary corrupted
+    // its internal buckets when two sessions called EnsureStatesLoadedAsync /
+    // GetState simultaneously, surfacing as "non-concurrent collections must have
+    // exclusive access" InvalidOperationException and silently dropping every
+    // quest's Enter dispatch for the unlucky session (including StarterGearQuest,
+    // hence "no starter inventory" symptom in parallel E2E tests).
+    private readonly ConcurrentDictionary<string, Dictionary<string, QuestState>> _states = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _lastUpdateFingerprints = new(StringComparer.Ordinal);
     private List<QuestDefinition<TContext>> _quests = new();
     private Dictionary<string, List<QuestDefinition<TContext>>> _npcBindings = new(StringComparer.OrdinalIgnoreCase);
 
@@ -231,9 +239,9 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
 
     public async Task ResetAsync(string subjectId)
     {
-        _states.Remove(subjectId);
+        _states.TryRemove(subjectId, out _);
         foreach (var key in _lastUpdateFingerprints.Keys.Where(k => k.StartsWith(subjectId + ":", StringComparison.Ordinal)).ToArray())
-            _lastUpdateFingerprints.Remove(key);
+            _lastUpdateFingerprints.TryRemove(key, out _);
         await _stateStore.ResetAsync(subjectId);
     }
 
@@ -396,12 +404,12 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
 
     private QuestState GetState(string subjectId, string questId)
     {
-        if (!_states.TryGetValue(subjectId, out var map))
-        {
-            map = new Dictionary<string, QuestState>(StringComparer.Ordinal);
-            _states[subjectId] = map;
-        }
+        var map = _states.GetOrAdd(subjectId,
+            _ => new Dictionary<string, QuestState>(StringComparer.Ordinal));
 
+        // Inner map is per-subject; per-player session activity is serialized,
+        // so a plain Dictionary is fine here. Multi-subject parallelism is the
+        // case ConcurrentDictionary on the outer is solving.
         if (!map.TryGetValue(questId, out var state))
         {
             state = new QuestState();
@@ -416,7 +424,11 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         if (_states.ContainsKey(subjectId))
             return;
 
-        _states[subjectId] = await _stateStore.LoadAsync(subjectId);
+        var loaded = await _stateStore.LoadAsync(subjectId);
+        // TryAdd is race-safe: if another concurrent EnsureStatesLoadedAsync for
+        // the same subject won the race, our just-loaded snapshot is discarded
+        // (the winner's snapshot is equivalent — same store, same subjectId).
+        _states.TryAdd(subjectId, loaded);
     }
 
     private static bool AllPassed(IReadOnlyList<QuestRequirementResult> results) =>
