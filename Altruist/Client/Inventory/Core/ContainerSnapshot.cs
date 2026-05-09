@@ -175,8 +175,10 @@ internal sealed class ContainerSnapshot
                 return true;
 
             case EquipmentLayout equip:
-                // Equipment slots are 1×1 only; multi-cell items cannot anchor here.
-                if (width != 1 || height != 1) return false;
+                // Equipment slots are by-name, not by-grid: the slot itself is
+                // intrinsic 1×1, but the item's natural Width/Height (e.g. a
+                // sword's 1×2 inventory footprint) rides along on the wire as
+                // metadata. Coverage stays a single cell — see EnumerateFootprint.
                 return anchorCell < equip.Capacity;
 
             default:

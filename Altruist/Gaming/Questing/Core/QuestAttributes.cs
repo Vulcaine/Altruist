@@ -24,6 +24,17 @@ public sealed class QuestNameAttribute : Attribute
     public QuestNameAttribute(string name) => Name = name;
 }
 
+/// <summary>
+/// Marks a <see cref="QuestBehavior{T}"/> subclass as a behavior template that
+/// should NOT be auto-discovered as a single quest by
+/// <see cref="QuestRuntime{T}.LoadFromAssembly"/>. Templates are intended to be
+/// instantiated multiple times by an <see cref="IQuestModule{T}"/> — once per
+/// tier / per data row — and registered via
+/// <see cref="QuestRuntime{T}.Register"/>.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class QuestTemplateAttribute : Attribute { }
+
 public enum QuestKind
 {
     Script,

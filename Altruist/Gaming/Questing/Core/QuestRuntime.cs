@@ -39,8 +39,49 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
             .ToList();
 
         _quests = quests;
-        _npcBindings = new Dictionary<string, List<QuestDefinition<TContext>>>(StringComparer.OrdinalIgnoreCase);
+        RebuildNpcBindings();
+    }
 
+    /// <summary>
+    /// Discovers <see cref="IQuestModule{T}"/> implementations in the assembly
+    /// and invokes their <c>Register</c> method, allowing data-driven quest
+    /// registration. Call this after <see cref="LoadFromAssembly"/>.
+    /// </summary>
+    public void LoadModulesFromAssembly(Assembly assembly)
+    {
+        var moduleType = typeof(IQuestModule<TContext>);
+        foreach (var type in assembly.GetTypes()
+            .Where(t => !t.IsAbstract && !t.ContainsGenericParameters && moduleType.IsAssignableFrom(t)))
+        {
+            var module = (IQuestModule<TContext>)Activator.CreateInstance(type)!;
+            module.Register(this);
+        }
+        _quests = _quests.OrderBy(q => q.Id, StringComparer.Ordinal).ToList();
+        RebuildNpcBindings();
+    }
+
+    /// <summary>
+    /// Adds a programmatically-built quest definition. Used by
+    /// <see cref="IQuestModule{T}"/> implementations to register N tiers / N
+    /// data rows that share one behavior-template class.
+    /// </summary>
+    public void Register(QuestDefinition<TContext> definition)
+    {
+        _quests.Add(definition);
+        foreach (var npcKey in definition.NpcKeys)
+        {
+            if (!_npcBindings.TryGetValue(npcKey, out var list))
+            {
+                list = new List<QuestDefinition<TContext>>();
+                _npcBindings[npcKey] = list;
+            }
+            list.Add(definition);
+        }
+    }
+
+    private void RebuildNpcBindings()
+    {
+        _npcBindings = new Dictionary<string, List<QuestDefinition<TContext>>>(StringComparer.OrdinalIgnoreCase);
         foreach (var quest in _quests)
         {
             foreach (var npcKey in quest.NpcKeys)
@@ -383,6 +424,12 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
 
     private static bool IsQuestType(Type type)
     {
+        // Behavior templates are instantiated explicitly by IQuestModule<T> with
+        // per-tier data — the assembly scan must skip them so they're not also
+        // registered as a single zero-arg-constructor quest.
+        if (type.GetCustomAttribute<QuestTemplateAttribute>(inherit: false) != null)
+            return false;
+
         var current = type;
         while (current != null)
         {

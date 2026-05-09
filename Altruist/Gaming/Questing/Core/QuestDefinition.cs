@@ -35,6 +35,31 @@ public sealed class QuestDefinition<TContext> where TContext : QuestContext
         HasLevelHook = HasHook(QuestHooks.Level);
     }
 
+    /// <summary>
+    /// Builds a quest definition from a behavior instance, compiling its state
+    /// dispatcher from the instance's runtime type. Used by
+    /// <see cref="IQuestModule{T}"/> registrations so a single behavior-template
+    /// class can be registered N times with different IDs / requirements / NPC
+    /// bindings.
+    /// </summary>
+    public static QuestDefinition<TContext> Create(
+        string id,
+        string name,
+        QuestKind kind,
+        IReadOnlyList<string> npcKeys,
+        IReadOnlyList<QuestRequirement> requirements,
+        QuestBehavior<TContext> instance)
+    {
+        return new QuestDefinition<TContext>(
+            id,
+            name,
+            kind.ToString(),
+            npcKeys,
+            requirements,
+            instance,
+            QuestStateDispatcher<TContext>.Compile(instance.GetType(), instance));
+    }
+
     public bool HasHook(string hookKey) =>
         !string.IsNullOrWhiteSpace(hookKey)
         && (_hookHandlers.ContainsKey(hookKey)

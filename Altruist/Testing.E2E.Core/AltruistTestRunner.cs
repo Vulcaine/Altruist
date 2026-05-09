@@ -11,11 +11,33 @@ using Xunit;
 namespace Altruist.Testing.E2E;
 
 /// <summary>
+/// One discovered test method. Yielded by <see cref="AltruistTestRunner.Discover"/>
+/// and accepted by <see cref="AltruistTestRunner.RunAsync(System.Collections.Generic.IEnumerable{TestCase}, ITestReporter, System.Threading.CancellationToken)"/>
+/// or <see cref="AltruistTestRunner.RunOneAsync"/>. Hosts (e.g. a Unity Editor
+/// panel) can show the discovered list to the user and drive runs
+/// individually.
+/// </summary>
+public sealed class TestCase
+{
+    public Type Class { get; }
+    public MethodInfo Method { get; }
+    public string FullName => $"{Class.FullName}.{Method.Name}";
+
+    public TestCase(Type cls, MethodInfo method)
+    {
+        Class = cls ?? throw new ArgumentNullException(nameof(cls));
+        Method = method ?? throw new ArgumentNullException(nameof(method));
+    }
+
+    public override string ToString() => FullName;
+}
+
+/// <summary>
 /// Reflection-based test runner for <see cref="AltruistE2ETestAttribute"/>
 /// classes. Designed to run in any host that can load .NET reflection — server
 /// CLI, console app, or Unity Editor (where xUnit's own runner doesn't
 /// function). Server-side <c>dotnet test</c> still uses xUnit; this runner is
-/// for the host where xUnit is unavailable.
+/// for hosts where xUnit is unavailable.
 ///
 /// <para><b>Discovery contract.</b> A test is any public instance method
 /// marked <c>[Fact]</c> on a class marked
@@ -25,10 +47,10 @@ namespace Altruist.Testing.E2E;
 /// <para><b>Construction.</b> Test classes are constructed via parameterless
 /// constructor. Optional <see cref="IAsyncLifetime"/> hooks
 /// (<c>InitializeAsync</c>/<c>DisposeAsync</c>) fire around each method.
-/// Class-fixture (<c>IClassFixture&lt;T&gt;</c>) is <em>not</em> implemented in
-/// this runner — server-side tests using a class fixture should run via
-/// <c>dotnet test</c> (xUnit handles it there); Unity-side tests should keep
-/// their setup logic in the test class itself or use <see cref="IAsyncLifetime"/>.</para>
+/// <c>IClassFixture&lt;T&gt;</c> is <em>not</em> implemented in this runner
+/// — server-side tests using one should run via <c>dotnet test</c>; Unity
+/// hosts should keep setup logic in the test class itself or use
+/// <see cref="IAsyncLifetime"/>.</para>
 ///
 /// <para><b>Concurrency.</b> Tests run sequentially. Parallel execution is a
 /// future enhancement; sequential matches the shared-server model the E2E
@@ -37,46 +59,15 @@ namespace Altruist.Testing.E2E;
 public sealed class AltruistTestRunner
 {
     /// <summary>
-    /// Discover and run every <see cref="AltruistE2ETestAttribute"/> class in
-    /// the given assemblies. Returns the list of <see cref="TestResult"/> for
-    /// every method invoked. Reporter callbacks fire as the run proceeds.
+    /// Reflect over <paramref name="assemblies"/> and return every test the
+    /// runner would invoke. Pure read — no side effects, safe to call on the
+    /// editor UI thread.
     /// </summary>
-    public async Task<IReadOnlyList<TestResult>> RunAsync(
-        IEnumerable<Assembly> assemblies,
-        ITestReporter reporter,
-        CancellationToken ct = default)
+    public static IReadOnlyList<TestCase> Discover(IEnumerable<Assembly> assemblies)
     {
         if (assemblies is null) throw new ArgumentNullException(nameof(assemblies));
-        if (reporter is null) throw new ArgumentNullException(nameof(reporter));
+        var cases = new List<TestCase>();
 
-        var plan = DiscoverTests(assemblies).ToList();
-        reporter.OnRunStarted(plan.Count);
-
-        var results = new List<TestResult>();
-        foreach (var (testClass, method) in plan)
-        {
-            ct.ThrowIfCancellationRequested();
-            var fullName = $"{testClass.FullName}.{method.Name}";
-            reporter.OnTestStarted(fullName);
-
-            var result = await RunOneAsync(testClass, method, fullName).ConfigureAwait(false);
-            reporter.OnTestFinished(result);
-            results.Add(result);
-        }
-
-        reporter.OnRunFinished(results);
-        return results;
-    }
-
-    /// <summary>
-    /// Synchronous wrapper for hosts that don't await (e.g. a Unity
-    /// <c>[MenuItem]</c> that fires-and-forgets). Blocks until completion.
-    /// </summary>
-    public IReadOnlyList<TestResult> Run(IEnumerable<Assembly> assemblies, ITestReporter reporter)
-        => RunAsync(assemblies, reporter).GetAwaiter().GetResult();
-
-    private static IEnumerable<(Type Class, MethodInfo Method)> DiscoverTests(IEnumerable<Assembly> assemblies)
-    {
         foreach (var asm in assemblies)
         {
             if (asm is null || asm.IsDynamic) continue;
@@ -94,13 +85,74 @@ public sealed class AltruistTestRunner
                 {
                     if (m.GetCustomAttribute<FactAttribute>(inherit: true) is null) continue;
                     if (m.GetParameters().Length != 0) continue; // skip [Theory]/[InlineData] for v0
-                    yield return (t, m);
+                    cases.Add(new TestCase(t, m));
                 }
             }
         }
+
+        return cases;
     }
 
-    private static async Task<TestResult> RunOneAsync(Type testClass, MethodInfo method, string fullName)
+    /// <summary>
+    /// Discover and run every <see cref="AltruistE2ETestAttribute"/> class in
+    /// the given assemblies. Convenience overload — equivalent to
+    /// <c>RunAsync(Discover(assemblies), reporter, ct)</c>.
+    /// </summary>
+    public Task<IReadOnlyList<TestResult>> RunAsync(
+        IEnumerable<Assembly> assemblies,
+        ITestReporter reporter,
+        CancellationToken ct = default)
+        => RunAsync(Discover(assemblies), reporter, ct);
+
+    /// <summary>
+    /// Run a specific subset of tests. Reporter callbacks fire as the run
+    /// proceeds; observe <paramref name="reporter"/> for streaming progress
+    /// in a UI.
+    /// </summary>
+    public async Task<IReadOnlyList<TestResult>> RunAsync(
+        IEnumerable<TestCase> tests,
+        ITestReporter reporter,
+        CancellationToken ct = default)
+    {
+        if (tests is null) throw new ArgumentNullException(nameof(tests));
+        if (reporter is null) throw new ArgumentNullException(nameof(reporter));
+
+        var plan = tests as IList<TestCase> ?? tests.ToList();
+        reporter.OnRunStarted(plan.Count);
+
+        var results = new List<TestResult>();
+        foreach (var tc in plan)
+        {
+            ct.ThrowIfCancellationRequested();
+            reporter.OnTestStarted(tc.FullName);
+            var result = await RunOneAsync(tc, ct).ConfigureAwait(false);
+            reporter.OnTestFinished(result);
+            results.Add(result);
+        }
+
+        reporter.OnRunFinished(results);
+        return results;
+    }
+
+    /// <summary>
+    /// Run a single test case. Callers driving a UI panel call this directly
+    /// (no reporter required) and update their own row state from the
+    /// returned <see cref="TestResult"/>.
+    /// </summary>
+    public Task<TestResult> RunOneAsync(TestCase testCase, CancellationToken ct = default)
+        => RunOneInternalAsync(testCase.Class, testCase.Method, testCase.FullName);
+
+    /// <summary>
+    /// Synchronous wrapper for hosts that don't await (e.g. a Unity
+    /// <c>[MenuItem]</c> that fires-and-forgets and doesn't drive
+    /// MonoBehaviours). Blocks until completion — do <em>not</em> use this
+    /// from a play-mode host where tests await Unity main-loop ticks; it
+    /// will deadlock.
+    /// </summary>
+    public IReadOnlyList<TestResult> Run(IEnumerable<Assembly> assemblies, ITestReporter reporter)
+        => RunAsync(assemblies, reporter).GetAwaiter().GetResult();
+
+    private static async Task<TestResult> RunOneInternalAsync(Type testClass, MethodInfo method, string fullName)
     {
         var sw = Stopwatch.StartNew();
         object? instance = null;
@@ -137,7 +189,6 @@ public sealed class AltruistTestRunner
         catch (TargetInvocationException tie)
         {
             sw.Stop();
-            // Unwrap reflection wrapping so the reporter sees the real exception.
             return new TestResult(fullName, TestOutcome.Failed, sw.Elapsed, tie.InnerException ?? tie);
         }
         catch (Exception ex)
