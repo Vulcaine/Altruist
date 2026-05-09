@@ -7,8 +7,8 @@ namespace Altruist.Client.Inventory.Packets;
 /// the only game-specific fields ride in <see cref="OpaquePayload"/>, which
 /// the mirror passes through untouched.
 ///
-/// <para><see cref="Window"/> is the consumer-defined container index
-/// (Metin2 uses 1=inventory, 2=equipment, but the framework imposes nothing).
+/// <para><see cref="Window"/> is the consumer-defined container index — the
+/// framework imposes nothing about what each value means.
 /// <see cref="Cell"/> is <c>Y*Columns+X</c> for grids, or the
 /// named-slot index for equipment. The mirror computes coverage from
 /// <see cref="Width"/>×<see cref="Height"/>, so multi-cell items only need a

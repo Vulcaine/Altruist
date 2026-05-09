@@ -9,25 +9,36 @@ using Altruist.UORM;
 
 using Npgsql;
 
-namespace Altruist.Testing.Internal;
+namespace Altruist.Persistence.Postgres;
 
 /// <summary>
-/// Postgres-specific schema lifecycle helpers used by the per-test-class runner.
-/// Operates via raw Npgsql so it doesn't have to invoke Altruist's full migration
-/// pipeline (which is keyed by <c>[Vault].Keyspace</c> at attribute level and would
-/// migrate into the production-named schemas, not our test ones).
+/// Postgres-specific schema lifecycle helpers. Operates via raw Npgsql so callers
+/// don't have to invoke Altruist's full migration pipeline (which is keyed by
+/// <c>[Vault].Keyspace</c> at attribute level and would migrate into the
+/// production-named schemas, not the isolated copies these helpers create).
 ///
 /// <para><b>Strategy.</b> The root bootstrap creates the production-named schemas
 /// (e.g. <c>player</c>, <c>account</c>) in whatever database <c>config.yml</c>
-/// points at — these become structural templates. Per test class we
-/// <c>CREATE TABLE test_X.tbl (LIKE prod.tbl INCLUDING ALL)</c>, which copies
-/// columns, defaults, indexes, and constraints. Vault queries then run against
-/// <c>test_X</c> via <see cref="TestPostgresServiceFactory"/>.</para>
+/// points at — these become structural templates. Callers ask for a fresh isolated
+/// schema (test_X, e2e_X, etc.) and this helper does
+/// <c>CREATE TABLE isolated.tbl (LIKE prod.tbl INCLUDING ALL)</c> for every
+/// <c>[Vault]</c>-marked model, which copies columns, defaults, indexes, and
+/// constraints but no data.</para>
+///
+/// <para>Two consumers:
+/// <list type="bullet">
+/// <item>The server-side <c>[AltruistTest]</c> per-class runner — clones into
+/// <c>test_&lt;classname&gt;</c> schemas at the start of each test class.</item>
+/// <item>The E2E session controller (gated by <c>altruist:e2e:enabled</c>) —
+/// resets <c>e2e_&lt;keyspace&gt;</c> schemas on demand from out-of-process
+/// tests.</item>
+/// </list>
+/// </para>
 /// </summary>
-internal static class SchemaIsolation
+public static class SchemaIsolation
 {
     /// <summary>
-    /// Compute the test schema name from a test class type. Lowercased, alphanumeric +
+    /// Compute a per-test-class schema name. Lowercased, alphanumeric +
     /// underscores only, prefixed with <c>test_</c> to avoid colliding with prod names.
     /// </summary>
     public static string SchemaNameFor(Type testClass)
@@ -39,34 +50,31 @@ internal static class SchemaIsolation
 
     /// <summary>
     /// Drop the schema if it exists, then create it fresh, then clone every
-    /// discovered <c>[Vault]</c> table from its production schema into the test
+    /// discovered <c>[Vault]</c> table from its production schema into the target
     /// schema using <c>CREATE TABLE schema.table (LIKE source.table INCLUDING ALL)</c>.
     /// </summary>
-    public static async Task EnsureFreshSchemaAsync(NpgsqlDataSource dataSource, string testSchema)
+    public static async Task EnsureFreshSchemaAsync(NpgsqlDataSource dataSource, string targetSchema)
     {
         var vaults = DiscoverVaultTables();
 
         await using var conn = await dataSource.OpenConnectionAsync();
 
-        // Purge any leftover from a previous run.
-        await Execute(conn, $"DROP SCHEMA IF EXISTS \"{testSchema}\" CASCADE");
-        await Execute(conn, $"CREATE SCHEMA \"{testSchema}\"");
+        await Execute(conn, $"DROP SCHEMA IF EXISTS \"{targetSchema}\" CASCADE");
+        await Execute(conn, $"CREATE SCHEMA \"{targetSchema}\"");
 
-        // Clone every vault table structurally. INCLUDING ALL pulls columns,
-        // defaults, indexes, constraints, etc. — but does NOT copy data.
         foreach (var (sourceSchema, table) in vaults)
         {
-            var sql = $"CREATE TABLE \"{testSchema}\".\"{table}\" " +
+            var sql = $"CREATE TABLE \"{targetSchema}\".\"{table}\" " +
                       $"(LIKE \"{sourceSchema}\".\"{table}\" INCLUDING ALL)";
             await Execute(conn, sql);
         }
     }
 
-    /// <summary>Drop the test schema and everything in it.</summary>
-    public static async Task DropSchemaAsync(NpgsqlDataSource dataSource, string testSchema)
+    /// <summary>Drop the target schema and everything in it.</summary>
+    public static async Task DropSchemaAsync(NpgsqlDataSource dataSource, string targetSchema)
     {
         await using var conn = await dataSource.OpenConnectionAsync();
-        await Execute(conn, $"DROP SCHEMA IF EXISTS \"{testSchema}\" CASCADE");
+        await Execute(conn, $"DROP SCHEMA IF EXISTS \"{targetSchema}\" CASCADE");
     }
 
     /// <summary>
