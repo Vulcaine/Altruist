@@ -149,27 +149,16 @@ public sealed class NavMeshAgent
             return;
         }
 
-        var pos = Body.Position;
-        var next = StepToward(pos, ArrivalRadius);
+        var next = StepToward(Body.Position, ArrivalRadius);
         if (next == null)
         {
             Body.LinearVelocity = Vector3.Zero;
             return;
         }
 
-        var dx = next.Value.X - pos.X;
-        var dz = next.Value.Z - pos.Z;
-        var dist = MathF.Sqrt(dx * dx + dz * dz);
-        if (dist < 1e-4f)
-        {
-            Body.LinearVelocity = Vector3.Zero;
-            return;
-        }
-
-        // Velocity in world units / sec. Y component is left at the body's
-        // current Y velocity so gravity / kinematic falls aren't clobbered.
-        var v = Body.LinearVelocity;
-        Body.LinearVelocity = new Vector3(dx / dist * Speed, v.Y, dz / dist * Speed);
+        // Y component is left at the body's current Y velocity so gravity /
+        // kinematic falls aren't clobbered.
+        Body.MoveTowardHorizontal(next.Value, Speed, dt);
     }
 }
 

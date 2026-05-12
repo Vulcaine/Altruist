@@ -5,6 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 using Altruist;
 using Altruist.Gaming.ThreeD;
+using Altruist.ThreeD.Numerics;
 using Microsoft.Extensions.Logging;
 using System.Numerics;
 
@@ -230,7 +231,7 @@ public class CombatService : ICombatService
         if (dist > query.Range || dist < 0.001f) return false;
 
         var angleToTarget = MathF.Atan2(dy, dx);
-        var angleDiff = NormalizeAngle(angleToTarget - query.Direction);
+        var angleDiff = Angle.Normalize(angleToTarget - query.Direction);
         var halfAngle = query.Angle * MathF.PI / 360f;
         return MathF.Abs(angleDiff) <= halfAngle;
     }
@@ -308,10 +309,4 @@ public class CombatService : ICombatService
     private static bool CanUseSpatialGrid(SweepQuery query)
         => query.Space is SweepSpace.PlanarXZ or SweepSpace.ThreeD;
 
-    private static float NormalizeAngle(float angle)
-    {
-        while (angle > MathF.PI) angle -= 2 * MathF.PI;
-        while (angle < -MathF.PI) angle += 2 * MathF.PI;
-        return angle;
-    }
 }

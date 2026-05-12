@@ -1,10 +1,9 @@
 using System.Numerics;
 using Altruist.Gaming.ThreeD;
-using Altruist.Physx.Contracts;
 using Altruist.Physx.ThreeD;
-using Altruist.ThreeD.Numerics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Tests.Altruist.Physx.Fakes;
 
 namespace Tests.Gaming.World.Navmesh;
 
@@ -169,30 +168,4 @@ public class NavMeshRuntimeTests
         ok.LinearVelocity.X.Should().BeGreaterThan(0f, "good agent kept moving");
     }
 
-    private class FakeBody : IPhysxBody3D
-    {
-        public Vector3 Position { get; set; }
-        public Quaternion Rotation { get; set; } = Quaternion.Identity;
-        public virtual Vector3 LinearVelocity { get; set; }
-        public Vector3 AngularVelocity { get; set; }
-        public string Id { get; } = Guid.NewGuid().ToString("N");
-        public PhysxBodyType Type { get; set; } = PhysxBodyType.Kinematic;
-        public float Mass { get; set; } = 1f;
-        public PhysxTag? PhysxTag { get; set; }
-        public void AddCollider(IPhysxCollider collider) { }
-        public bool RemoveCollider(IPhysxCollider collider) => false;
-        public ReadOnlySpan<IPhysxCollider> GetColliders() => ReadOnlySpan<IPhysxCollider>.Empty;
-        public void ApplyForce(in PhysxForce force) { }
-        public bool TryGetColliderById(string colliderId, out IPhysxCollider collider) { collider = null!; return false; }
-        public IPhysxCollider? GetColliderAt(int index) => null;
-    }
-
-    private sealed class ThrowingBody : FakeBody
-    {
-        public override Vector3 LinearVelocity
-        {
-            get => Vector3.Zero;
-            set => throw new InvalidOperationException("simulated body fault");
-        }
-    }
 }
