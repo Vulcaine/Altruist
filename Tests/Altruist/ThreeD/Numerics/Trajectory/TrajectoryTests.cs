@@ -11,15 +11,15 @@ public class TrajectoryTests
     [Fact]
     public void ParabolicY_IsZeroAtTZeroAndOne()
     {
-        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicY(0f, 5f, 0.28f, 0.55f).Should().Be(0f);
-        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicY(1f, 5f, 0.28f, 0.55f).Should().Be(0f);
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicY(0f, 5f, 0.28f, 0.55f).Should().Be(0f);
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicY(1f, 5f, 0.28f, 0.55f).Should().Be(0f);
     }
 
     [Fact]
     public void ParabolicY_PeaksDuringHangPhase()
     {
         // At t = 0.4 (between rise=0.28 and hang=0.55), Y should equal peakHeight.
-        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicY(0.4f, 10f, 0.28f, 0.55f)
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicY(0.4f, 10f, 0.28f, 0.55f)
             .Should().BeApproximately(10f, Eps);
     }
 
@@ -27,7 +27,7 @@ public class TrajectoryTests
     public void ParabolicY_ZeroPeakIsFlat()
     {
         for (float t = 0f; t <= 1f; t += 0.1f)
-            global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicY(t, 0f, 0.28f, 0.55f).Should().Be(0f);
+            global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicY(t, 0f, 0.28f, 0.55f).Should().Be(0f);
     }
 
     [Fact]
@@ -35,8 +35,8 @@ public class TrajectoryTests
     {
         var s = new Vector3(1, 2, 3);
         var e = new Vector3(11, 2, 23);
-        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicSample(s, e, 0f, 5f, 0.28f, 0.55f).Should().Be(s);
-        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicSample(s, e, 1f, 5f, 0.28f, 0.55f).Should().Be(e);
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicSample(s, e, 0f, 5f, 0.28f, 0.55f).Should().Be(s);
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicSample(s, e, 1f, 5f, 0.28f, 0.55f).Should().Be(e);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class TrajectoryTests
         var s = new Vector3(0, 0, 0);
         var e = new Vector3(10, 0, 0);
         Span<Vector3> dest = stackalloc Vector3[8];
-        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicPolyline(s, e, peakHeight: 5f,
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicPolyline(s, e, peakHeight: 5f,
             riseEndN: 0.28f, hangEndN: 0.55f, dest);
         dest[0].Should().Be(s);
         dest[7].Should().Be(e);
@@ -55,7 +55,7 @@ public class TrajectoryTests
     public void ParabolicPolyline_RisesThenFalls()
     {
         Span<Vector3> dest = stackalloc Vector3[11];
-        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicPolyline(
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicPolyline(
             new Vector3(0, 0, 0), new Vector3(10, 0, 0),
             peakHeight: 5f, riseEndN: 0.28f, hangEndN: 0.55f, dest);
 
@@ -76,9 +76,40 @@ public class TrajectoryTests
         var act = () =>
         {
             Vector3[] dest = new Vector3[1];
-            global::Altruist.ThreeD.Numerics.Trajectory.Trajectory.ParabolicPolyline(
+            global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicPolyline(
                 Vector3.Zero, Vector3.One, 1f, 0.28f, 0.55f, dest);
         };
         act.Should().Throw<ArgumentException>();
+    }
+
+    // ── Position3D overload parity ────────────────────────────────────────
+
+    [Fact]
+    public void ParabolicSample_Position3DMatchesVector3()
+    {
+        var s = new Vector3(1, 2, 3);
+        var e = new Vector3(11, 2, 23);
+        for (float t = 0f; t <= 1f; t += 0.1f)
+        {
+            global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicSample(
+                global::Altruist.ThreeD.Numerics.Position3D.From(s),
+                global::Altruist.ThreeD.Numerics.Position3D.From(e), t, 5f, 0.28f, 0.55f)
+                .Should().Be(global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicSample(s, e, t, 5f, 0.28f, 0.55f));
+        }
+    }
+
+    [Fact]
+    public void ParabolicPolyline_Position3DMatchesVector3()
+    {
+        var s = new Vector3(0, 0, 0);
+        var e = new Vector3(10, 0, 0);
+        Span<Vector3> destV = stackalloc Vector3[8];
+        Span<Vector3> destP = stackalloc Vector3[8];
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicPolyline(s, e, 5f, 0.28f, 0.55f, destV);
+        global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicPolyline(
+            global::Altruist.ThreeD.Numerics.Position3D.From(s),
+            global::Altruist.ThreeD.Numerics.Position3D.From(e), 5f, 0.28f, 0.55f, destP);
+        for (int i = 0; i < destV.Length; i++)
+            destP[i].Should().Be(destV[i]);
     }
 }

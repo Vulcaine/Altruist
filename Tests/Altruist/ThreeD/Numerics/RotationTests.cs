@@ -9,9 +9,9 @@ public class RotationTests
     private const float Eps = 1e-4f;
 
     [Fact]
-    public void Calculate_YawProducesRotationAroundY()
+    public void FromYaw_ProducesRotationAroundY()
     {
-        var q = Rotation.Calculate(MathF.PI / 2f); // 90° around Y
+        var q = Rotation3D.FromYaw(MathF.PI / 2f).ToQuaternion(); // 90° around Y
         // Forward (0,0,1) rotated by +π/2 around Y → (1, 0, 0).
         var fwd = Vector3.Transform(Vector3.UnitZ, q);
         fwd.X.Should().BeApproximately(1f, Eps);
@@ -20,25 +20,25 @@ public class RotationTests
     }
 
     [Fact]
-    public void Calculate_RoundTripThroughYaw()
+    public void FromYaw_RoundTripThroughYaw3D()
     {
-        var q = Rotation.Calculate(0.7f);
-        Yaw.Calculate(q).Should().BeApproximately(0.7f, Eps);
+        var q = Rotation3D.FromYaw(0.7f).ToQuaternion();
+        Yaw3D.Calculate(q).Should().BeApproximately(0.7f, Eps);
     }
 
     [Fact]
     public void FromAxisAngle_NormalizesAxis()
     {
-        var q1 = Rotation.FromAxisAngle(Vector3.UnitY, 1f);
-        var q2 = Rotation.FromAxisAngle(new Vector3(0, 5, 0), 1f); // non-unit axis
-        Yaw.Calculate(q1).Should().BeApproximately(Yaw.Calculate(q2), Eps);
+        var q1 = Rotation3D.FromAxisAngle(Vector3.UnitY, 1f).ToQuaternion();
+        var q2 = Rotation3D.FromAxisAngle(new Vector3(0, 5, 0), 1f).ToQuaternion(); // non-unit axis
+        Yaw3D.Calculate(q1).Should().BeApproximately(Yaw3D.Calculate(q2), Eps);
     }
 
     [Fact]
-    public void FromEuler_YawOnlyMatchesCalculate()
+    public void FromEulerRadians_YawOnlyMatchesFromYaw()
     {
-        var qEuler = Rotation.FromEuler(0.5f, 0f, 0f);
-        var qYaw = Rotation.Calculate(0.5f);
-        Yaw.Calculate(qEuler).Should().BeApproximately(Yaw.Calculate(qYaw), Eps);
+        var qEuler = Rotation3D.FromEulerRadians(0.5f, 0f, 0f).ToQuaternion();
+        var qYaw = Rotation3D.FromYaw(0.5f).ToQuaternion();
+        Yaw3D.Calculate(qEuler).Should().BeApproximately(Yaw3D.Calculate(qYaw), Eps);
     }
 }

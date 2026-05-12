@@ -60,5 +60,5 @@ public readonly record struct HitResult(
 
 public readonly record struct SweepResult(
     ICombatEntity Attacker,
-    SweepQuery Query,
+    SweepQuery3D Query,
     IReadOnlyList<HitResult> Hits);

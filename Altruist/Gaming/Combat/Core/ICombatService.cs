@@ -24,7 +24,7 @@ public interface ICombatService
     HitResult Attack(ICombatEntity attacker, ICombatEntity target, object? context = null);
 
     /// <summary>AoE sweep — finds all ICombatEntity in range, applies damage, returns all hits.</summary>
-    SweepResult Sweep(ICombatEntity attacker, SweepQuery query, int? damage = null, DamageFlags flags = DamageFlags.Normal, object? context = null);
+    SweepResult Sweep(ICombatEntity attacker, SweepQuery3D query, int? damage = null, DamageFlags flags = DamageFlags.Normal, object? context = null);
 
     /// <summary>Apply raw damage directly (bypasses calculator). Used by skills, DoTs, environment.</summary>
     HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal, object? context = null);

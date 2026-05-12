@@ -7,18 +7,18 @@ using Tests.Gaming.World.Navmesh;
 
 namespace Tests.Altruist.ThreeD.Numerics.Trajectory;
 
-public class TrajectoryRuntimeTests
+public class TrajectoryRuntime3DTests
 {
     private const float Eps = 1e-3f;
 
-    private static (TrajectoryRuntime runtime, NavMeshService nav) NewRuntime(float terrainY = 0f)
+    private static (TrajectoryRuntime3D runtime, NavMeshService nav) NewRuntime(float terrainY = 0f)
     {
         var nav = new NavMeshService(NullLoggerFactory.Instance);
         var mesh = NavMeshBuilder.Build(
             NavTestFixtures.GridFromAscii(new[] { "........", "........", "........", "........" }),
             NavTestFixtures.FlatTerrain(terrainY))!;
         nav.RegisterMesh("z", mesh);
-        return (new TrajectoryRuntime(nav, NullLoggerFactory.Instance), nav);
+        return (new TrajectoryRuntime3D(nav, NullLoggerFactory.Instance), nav);
     }
 
     [Fact]

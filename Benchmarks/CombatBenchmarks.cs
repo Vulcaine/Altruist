@@ -89,27 +89,27 @@ public class CombatBenchmarks
     public SweepResult SweepSphere()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Sphere(5000, 5000, 0, 500));
+        return _combat.Sweep(_attacker, SweepQuery3D.Sphere(5000, 5000, 0, 500));
     }
 
     [Benchmark(Description = "Sweep Sphere r=2000 (large AoE)")]
     public SweepResult SweepSphereLarge()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Sphere(5000, 5000, 0, 2000));
+        return _combat.Sweep(_attacker, SweepQuery3D.Sphere(5000, 5000, 0, 2000));
     }
 
     [Benchmark(Description = "Sweep Cone 90° r=1000")]
     public SweepResult SweepCone()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Cone(5000, 5000, 0, 1000, 0f, 90f));
+        return _combat.Sweep(_attacker, SweepQuery3D.Cone(5000, 5000, 0, 1000, 0f, 90f));
     }
 
     [Benchmark(Description = "Sweep Line r=2000")]
     public SweepResult SweepLine()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Line(5000, 5000, 0, 2000, 0f));
+        return _combat.Sweep(_attacker, SweepQuery3D.Line(5000, 5000, 0, 2000, 0f));
     }
 }

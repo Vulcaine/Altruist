@@ -20,4 +20,4 @@ public readonly record struct HitEvent(
 
 public record DeathEvent(ICombatEntity Entity, ICombatEntity? Killer, float X, float Y, float Z) : ICombatEventPayload;
 
-public readonly record struct SweepEvent(ICombatEntity Attacker, SweepQuery Query, IReadOnlyList<HitResult> Hits) : ICombatEventPayload;
+public readonly record struct SweepEvent(ICombatEntity Attacker, SweepQuery3D Query, IReadOnlyList<HitResult> Hits) : ICombatEventPayload;

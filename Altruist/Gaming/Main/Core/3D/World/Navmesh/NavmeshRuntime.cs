@@ -158,7 +158,7 @@ public sealed class NavMeshAgent
 
         // Y component is left at the body's current Y velocity so gravity /
         // kinematic falls aren't clobbered.
-        Body.MoveTowardHorizontal(next.Value, Speed, dt);
+        Body.MoveToward(next.Value, Speed, dt);
     }
 }
 

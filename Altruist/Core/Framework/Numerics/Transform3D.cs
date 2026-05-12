@@ -71,6 +71,9 @@ namespace Altruist.ThreeD.Numerics
         public static Rotation3D FromAxisAngle(Vector3 axis, float radians)
             => new(Quaternion.CreateFromAxisAngle(Vector3.Normalize(axis), radians));
 
+        public static Rotation3D FromYaw(float yawRadians)
+            => new(Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians));
+
         public Quaternion ToQuaternion() => _q;
     }
 

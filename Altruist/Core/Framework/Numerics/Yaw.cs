@@ -10,7 +10,7 @@ namespace Altruist.ThreeD.Numerics;
 /// <summary>"Which way is this entity facing?" — yaw in radians, single
 /// canonical convention (<c>Atan2(worldForwardX, worldForwardZ)</c>) that
 /// matches <see cref="Altruist.Gaming.IHasFacingYaw"/>.</summary>
-public static class Yaw
+public static class Yaw3D
 {
     /// <summary>Extract yaw from a body's <see cref="Quaternion"/>.</summary>
     public static float Calculate(Quaternion rotation)
@@ -23,6 +23,11 @@ public static class Yaw
 
     /// <summary>Yaw of the direction (dx, dz) in the XZ plane.</summary>
     public static float FromDirection(float dx, float dz) => MathF.Atan2(dx, dz);
+
+    /// <summary>Yaw that points from <paramref name="from"/> at
+    /// <paramref name="to"/> in the XZ plane.</summary>
+    public static float FromDirection(Position3D from, Position3D to)
+        => MathF.Atan2(to.X - from.X, to.Z - from.Z);
 
     /// <summary>Yaw of an XZ direction vector. Y component is ignored.</summary>
     public static float FromVector(Vector3 dirXZ) => MathF.Atan2(dirXZ.X, dirXZ.Z);

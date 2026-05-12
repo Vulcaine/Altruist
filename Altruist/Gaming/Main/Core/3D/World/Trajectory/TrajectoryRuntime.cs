@@ -13,16 +13,16 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Gaming.ThreeD;
 
 /// <summary>Per-launch handle: caller can read progress, cancel, or hook
-/// the arrival callback. Created by <see cref="ITrajectoryRuntime"/>;
+/// the arrival callback. Created by <see cref="ITrajectoryRuntime3D"/>;
 /// never instantiated directly.</summary>
-public sealed class TrajectoryAgent
+public sealed class TrajectoryAgent3D
 {
     private readonly Func<float, Vector3> _sampler;
     private readonly bool _snapY;
     private readonly string? _zone;
 
-    internal TrajectoryAgent(IPhysxBody3D body, Func<float, Vector3> sampler,
-                             float duration, bool snapYToNavMesh, string? zone)
+    internal TrajectoryAgent3D(IPhysxBody3D body, Func<float, Vector3> sampler,
+                               float duration, bool snapYToNavMesh, string? zone)
     {
         Body = body;
         _sampler = sampler;
@@ -86,68 +86,68 @@ public sealed class TrajectoryAgent
 /// Use for charge dashes, knockback flights, fixed-arc projectiles —
 /// anywhere the body follows a precomputed parametric path rather than
 /// physics or A*.</summary>
-public interface ITrajectoryRuntime
+public interface ITrajectoryRuntime3D
 {
-    TrajectoryAgent LaunchParabolic(IPhysxBody3D body, Vector3 start, Vector3 end,
-                                    float peakHeight, float durationSeconds,
-                                    float riseEndN = 0.28f, float hangEndN = 0.55f,
-                                    bool snapYToNavMesh = false, string? zone = null);
+    TrajectoryAgent3D LaunchParabolic(IPhysxBody3D body, Vector3 start, Vector3 end,
+                                      float peakHeight, float durationSeconds,
+                                      float riseEndN = 0.28f, float hangEndN = 0.55f,
+                                      bool snapYToNavMesh = false, string? zone = null);
 
-    TrajectoryAgent LaunchCurve(IPhysxBody3D body, Func<float, Vector3> sampler,
-                                float durationSeconds,
-                                bool snapYToNavMesh = false, string? zone = null);
+    TrajectoryAgent3D LaunchCurve(IPhysxBody3D body, Func<float, Vector3> sampler,
+                                  float durationSeconds,
+                                  bool snapYToNavMesh = false, string? zone = null);
 
-    void Cancel(TrajectoryAgent agent);
+    void Cancel(TrajectoryAgent3D agent);
     int  ActiveCount { get; }
     void Update(float dt);
 }
 
-[Service(typeof(ITrajectoryRuntime))]
+[Service(typeof(ITrajectoryRuntime3D))]
 [ConditionalOnConfig("altruist:game")]
-public sealed class TrajectoryRuntime : ITrajectoryRuntime
+public sealed class TrajectoryRuntime3D : ITrajectoryRuntime3D
 {
     private readonly INavMeshService _navMesh;
     private readonly ILogger _logger;
-    private readonly ConcurrentDictionary<TrajectoryAgent, byte> _agents = new();
+    private readonly ConcurrentDictionary<TrajectoryAgent3D, byte> _agents = new();
 
-    public TrajectoryRuntime(INavMeshService navMesh, ILoggerFactory loggerFactory)
+    public TrajectoryRuntime3D(INavMeshService navMesh, ILoggerFactory loggerFactory)
     {
         _navMesh = navMesh ?? throw new ArgumentNullException(nameof(navMesh));
-        _logger = loggerFactory.CreateLogger<TrajectoryRuntime>();
+        _logger = loggerFactory.CreateLogger<TrajectoryRuntime3D>();
     }
 
     public int ActiveCount => _agents.Count;
 
-    public TrajectoryAgent LaunchParabolic(IPhysxBody3D body, Vector3 start, Vector3 end,
-                                           float peakHeight, float durationSeconds,
-                                           float riseEndN = 0.28f, float hangEndN = 0.55f,
-                                           bool snapYToNavMesh = false, string? zone = null)
+    public TrajectoryAgent3D LaunchParabolic(IPhysxBody3D body, Vector3 start, Vector3 end,
+                                             float peakHeight, float durationSeconds,
+                                             float riseEndN = 0.28f, float hangEndN = 0.55f,
+                                             bool snapYToNavMesh = false, string? zone = null)
     {
         if (body == null) throw new ArgumentNullException(nameof(body));
         if (durationSeconds <= 0f) throw new ArgumentException("duration must be > 0", nameof(durationSeconds));
         if (snapYToNavMesh && zone == null) throw new ArgumentException("zone is required when snapYToNavMesh is true", nameof(zone));
 
-        Vector3 Sampler(float t) => Trajectory.ParabolicSample(start, end, t, peakHeight, riseEndN, hangEndN);
-        var agent = new TrajectoryAgent(body, Sampler, durationSeconds, snapYToNavMesh, zone);
+        Vector3 Sampler(float t) => Trajectory3D.ParabolicSample(start, end, t, peakHeight, riseEndN, hangEndN);
+        var agent = new TrajectoryAgent3D(body, Sampler, durationSeconds, snapYToNavMesh, zone);
         _agents.TryAdd(agent, 0);
         return agent;
     }
 
-    public TrajectoryAgent LaunchCurve(IPhysxBody3D body, Func<float, Vector3> sampler,
-                                       float durationSeconds,
-                                       bool snapYToNavMesh = false, string? zone = null)
+    public TrajectoryAgent3D LaunchCurve(IPhysxBody3D body, Func<float, Vector3> sampler,
+                                         float durationSeconds,
+                                         bool snapYToNavMesh = false, string? zone = null)
     {
         if (body == null) throw new ArgumentNullException(nameof(body));
         if (sampler == null) throw new ArgumentNullException(nameof(sampler));
         if (durationSeconds <= 0f) throw new ArgumentException("duration must be > 0", nameof(durationSeconds));
         if (snapYToNavMesh && zone == null) throw new ArgumentException("zone is required when snapYToNavMesh is true", nameof(zone));
 
-        var agent = new TrajectoryAgent(body, sampler, durationSeconds, snapYToNavMesh, zone);
+        var agent = new TrajectoryAgent3D(body, sampler, durationSeconds, snapYToNavMesh, zone);
         _agents.TryAdd(agent, 0);
         return agent;
     }
 
-    public void Cancel(TrajectoryAgent agent)
+    public void Cancel(TrajectoryAgent3D agent)
     {
         if (agent == null) return;
         agent.Cancel();
@@ -167,7 +167,7 @@ public sealed class TrajectoryRuntime : ITrajectoryRuntime
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[TrajectoryRuntime] agent tick threw — removing it.");
+                _logger.LogError(ex, "[TrajectoryRuntime3D] agent tick threw — removing it.");
                 _agents.TryRemove(agent, out _);
             }
         }

@@ -3,10 +3,11 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
-namespace Altruist.ThreeD.Numerics;
+namespace Altruist.Numerics;
 
 /// <summary>"Angle bookkeeping" — wrap, signed difference, clamped step,
-/// degree↔radian conversion. Pure functions over radians.</summary>
+/// degree↔radian conversion. Pure functions over radians. Dimension-agnostic
+/// (used identically by 2D and 3D consumers), hence the neutral namespace.</summary>
 public static class Angle
 {
     private const float TwoPi = MathF.PI * 2f;

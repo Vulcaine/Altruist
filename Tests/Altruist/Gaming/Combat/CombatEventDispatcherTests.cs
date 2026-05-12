@@ -179,7 +179,7 @@ public class CombatEventDispatcherTests
         var target = new CombatEventTestEntity(2, hp: 100, x: 10, y: 0);
         var service = CreateServiceWithWorld(recorder, attacker, target);
 
-        var query = SweepQuery.Sphere(0, 0, 0, 100);
+        var query = SweepQuery3D.Sphere(0, 0, 0, 100);
         service.Sweep(attacker, query, 20);
 
         Assert.Contains(recorder.Payloads, static p => p is SweepEvent);

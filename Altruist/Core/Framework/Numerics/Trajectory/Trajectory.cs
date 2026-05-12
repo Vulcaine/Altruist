@@ -11,7 +11,7 @@ namespace Altruist.ThreeD.Numerics.Trajectory;
 /// 3-phase parabolic arc (rise → hang → fall) used everywhere from
 /// knockback flights to projectile arcs to summon dives. Constants are
 /// always passed in; nothing about a specific game lives here.</summary>
-public static class Trajectory
+public static class Trajectory3D
 {
     /// <summary>Y offset above the linear XZ baseline at parameter <paramref name="t"/>
     /// (0 = start, 1 = end). Three-phase shape:
@@ -54,6 +54,11 @@ public static class Trajectory
         return new Vector3(x, y, z);
     }
 
+    /// <summary>Position3D overload of <see cref="ParabolicSample(Vector3,Vector3,float,float,float,float)"/>.</summary>
+    public static Vector3 ParabolicSample(Position3D start, Position3D end, float t,
+                                          float peakHeight, float riseEndN, float hangEndN)
+        => ParabolicSample(start.ToVector3(), end.ToVector3(), t, peakHeight, riseEndN, hangEndN);
+
     /// <summary>Allocation-free polyline emission. Writes <paramref name="dest"/>.Length
     /// samples evenly spaced over t ∈ [0, 1] inclusive (so dest[0] = start,
     /// dest[^1] = end). Length must be ≥ 2.</summary>
@@ -67,4 +72,9 @@ public static class Trajectory
         for (int i = 0; i < dest.Length; i++)
             dest[i] = ParabolicSample(start, end, i * step, peakHeight, riseEndN, hangEndN);
     }
+
+    /// <summary>Position3D overload of <see cref="ParabolicPolyline(Vector3,Vector3,float,float,float,Span{Vector3})"/>.</summary>
+    public static void ParabolicPolyline(Position3D start, Position3D end, float peakHeight,
+                                         float riseEndN, float hangEndN, Span<Vector3> dest)
+        => ParabolicPolyline(start.ToVector3(), end.ToVector3(), peakHeight, riseEndN, hangEndN, dest);
 }

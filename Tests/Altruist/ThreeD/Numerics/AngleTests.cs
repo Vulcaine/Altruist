@@ -1,4 +1,4 @@
-using Altruist.ThreeD.Numerics;
+using Altruist.Numerics;
 using FluentAssertions;
 
 namespace Tests.Altruist.ThreeD.Numerics;
