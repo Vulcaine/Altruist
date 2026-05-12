@@ -60,13 +60,14 @@ public sealed class TestPlayerSession : IAsyncDisposable
 
     /// <summary>Run the full new-player flow. After this returns, the player is
     /// in-world and both <see cref="Http"/> + <see cref="Tcp"/> can be driven
-    /// directly.</summary>
+    /// directly.
     public async Task SetupPlayerAsync(
         int race = 0, int empire = 1,
         int str = 6, int con = 4, int dex = 3, int intel = 3,
         string? characterName = null,
         string? username = null,
         string password = "pass123",
+        bool captureSpawnBurst = false,
         CancellationToken ct = default)
     {
         Username = username ?? $"t_{Guid.NewGuid():N}"[..16];
@@ -106,14 +107,10 @@ public sealed class TestPlayerSession : IAsyncDisposable
         if (!upgrade.IsSuccessStatusCode)
             throw new InvalidOperationException(
                 $"auth/upgrade failed ({(int)upgrade.StatusCode}): {await upgrade.Content.ReadAsStringAsync(ct)}");
-
-        // Send enter-world. Payload is the empty CEnterGame; we don't take a
-        // typed reference to it here (Altruist.Testing must not depend on the
-        // game project), so callers using a custom enter-world packet can call
-        // Tcp.SendAsync directly. For Valeria the server accepts a null body.
         await Tcp.SendAsync("enter-world", payload: null, ct);
         await Task.Delay(2000, ct);
-        await Tcp.DrainAsync(TimeSpan.FromSeconds(1));
+        if (!captureSpawnBurst)
+            await Tcp.DrainAsync(TimeSpan.FromSeconds(1));
     }
 
     /// <summary>Resume an existing account. Skips signup, logs in fresh,

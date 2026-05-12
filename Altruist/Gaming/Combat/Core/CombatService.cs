@@ -143,7 +143,7 @@ public class CombatService : ICombatService
     // Spatial broadphase for AoE sweep queries — avoids iterating all entities
     private readonly SpatialHashGrid _sweepGrid = new(cellSize: 500f);
     private readonly List<int> _sweepGridBuffer = new(128);
-    private IReadOnlyList<IWorldObject3D>? _cachedObjects;
+    private int _cachedSnapshotVersion = -1;
 
     private List<ICombatEntity> FindEntitiesInSweep(SweepQuery query)
     {
@@ -157,11 +157,14 @@ public class CombatService : ICombatService
         // Use spatial grid for sphere queries (most common AoE type)
         if (query.Type == SweepType.Sphere && allObjects.Count > 50 && CanUseSpatialGrid(query))
         {
-            // Rebuild grid if object list changed
-            if (_cachedObjects != allObjects)
+            // The snapshot's List reference is stable across rebuilds, so we
+            // compare the version counter instead. Without this, the grid keeps
+            // indices into a stale (larger) snapshot and crashes with an
+            // IndexOutOfRange the next time a smaller rebuild lands underneath.
+            if (_cachedSnapshotVersion != world.SnapshotVersion)
             {
                 _sweepGrid.Build(allObjects);
-                _cachedObjects = allObjects;
+                _cachedSnapshotVersion = world.SnapshotVersion;
             }
 
             _sweepGrid.QueryRadius(query.CenterX, query.CenterY, query.CenterZ, query.Range, _sweepGridBuffer);

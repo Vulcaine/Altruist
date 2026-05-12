@@ -139,10 +139,20 @@ namespace Altruist
                 if (d.ServiceType == typeof(IHostApplicationLifetime))
                     continue;
 
+                // Promote singletons (factory- AND type-based) to instance-based
+                // registrations backed by the bootstrap provider's already-built
+                // instances. Otherwise WebApplication's provider builds a fresh
+                // duplicate, and singleton-state (PortalWarmup's gate registry,
+                // ConnectionManager's connection table, CharacterService's
+                // _playersByClientId, etc.) silently diverges between the two
+                // providers — the bootstrap's instance has the [PostConstruct]
+                // wiring done, but the TCP listener (started by WebApplication's
+                // provider) ends up dispatching against the FRESH duplicate
+                // whose state is empty.
                 if (d.Lifetime == ServiceLifetime.Singleton
-                    && d.ImplementationFactory is not null
                     && !d.ServiceType.IsGenericTypeDefinition
-                    && !d.IsKeyedService)
+                    && !d.IsKeyedService
+                    && (d.ImplementationFactory is not null || d.ImplementationType is not null))
                 {
                     try
                     {
@@ -155,7 +165,7 @@ namespace Altruist
                     }
                     catch
                     {
-                        // Fall through — copy the original factory descriptor unchanged.
+                        // Fall through — copy the original descriptor unchanged.
                     }
                 }
 

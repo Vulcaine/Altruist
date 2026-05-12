@@ -22,6 +22,15 @@ namespace Altruist.Gaming.ThreeD
         IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D;
         IEnumerable<IWorldObject3D> GetAllObjects();
         (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot();
+
+        /// <summary>
+        /// Monotonically increments every time <see cref="GetCachedSnapshot"/> rebuilds
+        /// the underlying list. Callers that cache derived structures keyed by the
+        /// snapshot's indices (e.g. spatial grids) must invalidate when this changes —
+        /// the snapshot's List reference is stable across rebuilds, so reference
+        /// equality cannot detect when the contents were swapped.
+        /// </summary>
+        int SnapshotVersion { get; }
         Task<IPhysxBody3D?> SpawnObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
@@ -105,9 +114,12 @@ namespace Altruist.Gaming.ThreeD
         private readonly List<IWorldObject3D> _snapshotCache = new();
         private readonly Dictionary<string, IWorldObject3D> _snapshotLookup = new();
         private volatile bool _snapshotDirty = true;
+        private int _snapshotVersion;
 
         public event Action<IWorldObject3D>? OnObjectDestroyed;
         public event Action<IWorldObject3D>? OnObjectCreated;
+
+        public int SnapshotVersion => _snapshotVersion;
 
         public (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot()
         {
@@ -124,6 +136,7 @@ namespace Altruist.Gaming.ThreeD
                     _snapshotCache.Add(kvp.Value);
                     _snapshotLookup[kvp.Value.InstanceId] = kvp.Value;
                 }
+                _snapshotVersion++;
             }
             return (_snapshotCache, _snapshotLookup);
         }
