@@ -27,8 +27,13 @@ public sealed class TransactionalDecorator<T> : DispatchProxy
 
     private object? InvokeSync(MethodInfo method, object?[]? args, TransactionalAttribute attr)
     {
+        // Join an outer transaction instead of opening a second, independent one.
+        if (SqlAmbientTransaction.Current is not null)
+            return method.Invoke(Inner, args);
+
         using var conn = DataSource.OpenConnection();
         using var tx = conn.BeginTransaction(attr.IsolationLevel);
+        using var bound = SqlAmbientTransaction.Enter(conn, tx);
 
         try
         {
@@ -59,8 +64,17 @@ public sealed class TransactionalDecorator<T> : DispatchProxy
 
     private async Task InvokeAsyncNonGeneric(MethodInfo method, object?[]? args, TransactionalAttribute attr)
     {
+        if (SqlAmbientTransaction.Current is not null)
+        {
+            await ((Task)method.Invoke(Inner, args)!).ConfigureAwait(false);
+            return;
+        }
+
         await using var conn = await DataSource.OpenConnectionAsync().ConfigureAwait(false);
         await using var tx = await conn.BeginTransactionAsync(attr.IsolationLevel).ConfigureAwait(false);
+        // Bind the transaction to this async flow so the vault/provider calls inside the
+        // method actually run on it (previously they used their own connections: no atomicity).
+        using var bound = SqlAmbientTransaction.Enter(conn, tx);
 
         try
         {
@@ -80,8 +94,14 @@ public sealed class TransactionalDecorator<T> : DispatchProxy
         object?[]? args,
         TransactionalAttribute attr)
     {
+        if (SqlAmbientTransaction.Current is not null)
+            return await ((Task<TResult>)method.Invoke(Inner, args)!).ConfigureAwait(false);
+
         await using var conn = await DataSource.OpenConnectionAsync().ConfigureAwait(false);
         await using var tx = await conn.BeginTransactionAsync(attr.IsolationLevel).ConfigureAwait(false);
+        // Bind the transaction to this async flow so the vault/provider calls inside the
+        // method actually run on it (previously they used their own connections: no atomicity).
+        using var bound = SqlAmbientTransaction.Enter(conn, tx);
 
         try
         {

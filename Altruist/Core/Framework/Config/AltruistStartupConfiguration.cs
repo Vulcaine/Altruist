@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -134,10 +136,26 @@ namespace Altruist
             // _singletonCache provided implicitly. Test child providers (per-method
             // DI containers) still build their own fresh singletons so mocks still
             // substitute cleanly.
+            // Enumerable registrations (several descriptors for one service type, e.g. every
+            // IHostedService) must map descriptor i to instance i of GetServices: GetService
+            // returns only the LAST one, so promoting each descriptor with it registered the last
+            // implementation N times and dropped the others (two hosted services -> the last one
+            // started twice, the first never).
+            var seenOfType = new Dictionary<Type, int>();
+            var countOfType = rootServices
+                .Where(x => !x.IsKeyedService)
+                .GroupBy(x => x.ServiceType)
+                .ToDictionary(g => g.Key, g => g.Count());
             foreach (var d in rootServices)
             {
                 if (d.ServiceType == typeof(IHostApplicationLifetime))
                     continue;
+                var ordinal = 0;
+                if (!d.IsKeyedService)
+                {
+                    seenOfType.TryGetValue(d.ServiceType, out ordinal);
+                    seenOfType[d.ServiceType] = ordinal + 1;
+                }
 
                 // Promote singletons (factory- AND type-based) to instance-based
                 // registrations backed by the bootstrap provider's already-built
@@ -156,7 +174,9 @@ namespace Altruist
                 {
                     try
                     {
-                        var instance = sharingProvider.GetService(d.ServiceType);
+                        var instance = countOfType.GetValueOrDefault(d.ServiceType) > 1
+                            ? sharingProvider.GetServices(d.ServiceType).ElementAtOrDefault(ordinal)
+                            : sharingProvider.GetService(d.ServiceType);
                         if (instance is not null)
                         {
                             builder.Services.AddSingleton(d.ServiceType, instance);
@@ -173,6 +193,7 @@ namespace Altruist
             }
 
             var mvcBuilder = builder.Services.AddControllers();
+            var conditionLog = _loggerFactory.CreateLogger<AltruistStartupConfiguration>();
 
             // Automatically register all loaded assemblies that contain MVC controllers
             mvcBuilder.ConfigureApplicationPartManager(apm =>
@@ -211,12 +232,21 @@ namespace Altruist
                         }
                     }
                 }
+
+                // [ConditionalOnConfig] gates controllers too (e.g. the E2E reset endpoint, which
+                // truncates every vault table, must not exist unless altruist:e2e:enabled is true).
+                var defaultProvider = apm.FeatureProviders.OfType<ControllerFeatureProvider>().FirstOrDefault();
+                if (defaultProvider is not null)
+                    apm.FeatureProviders.Remove(defaultProvider);
+                apm.FeatureProviders.Add(new ConditionalControllerFeatureProvider(builder.Configuration, conditionLog));
             });
 
             var app = builder.Build();
             var logger = app.Logger;
 
-            app.UseDeveloperExceptionPage();
+            // Stack traces only in Development: elsewhere an unhandled error is a bare 500.
+            if (app.Environment.IsDevelopment())
+                app.UseDeveloperExceptionPage();
 
             if (_httpContextPath != "/" && !string.IsNullOrWhiteSpace(_httpContextPath))
             {
@@ -290,6 +320,10 @@ namespace Altruist
                     ValidateWebSocketShields(portals, logger);
                     foreach (var (type, path) in portals)
                     {
+                        // Disabled portals get no route: otherwise their path would accept
+                        // unauthenticated sockets that can reach every registered gate.
+                        if (!DependencyResolver.ShouldRegister(type, app.Configuration, logger))
+                            continue;
                         var wsMappedPath = NormalizePath(path);
                         transport.UseTransportEndpoints(app, type, wsMappedPath);
                     }
@@ -444,5 +478,21 @@ namespace Altruist
 
             return logBuilder.ToString();
         }
+    }
+
+    /// <summary>MVC controller discovery that honours [ConditionalOnConfig] on controller types.</summary>
+    internal sealed class ConditionalControllerFeatureProvider : ControllerFeatureProvider
+    {
+        private readonly IConfiguration _configuration;
+        private readonly ILogger _logger;
+
+        public ConditionalControllerFeatureProvider(IConfiguration configuration, ILogger logger)
+        {
+            _configuration = configuration;
+            _logger = logger;
+        }
+
+        protected override bool IsController(TypeInfo typeInfo) =>
+            base.IsController(typeInfo) && DependencyResolver.ShouldRegister(typeInfo.AsType(), _configuration, _logger);
     }
 }

@@ -36,12 +36,26 @@ public struct MessageEnvelope
         MessageCode = message.MessageCode;
     }
 
+    // Header is a struct exposed through a property, so mutating `Header.X(...)` directly would
+    // only change a temporary copy. Copy, mutate, write back.
     public void Stamp(string sender, string receiver, DateTime receivedAt)
-        => Header.Stamp(sender, receiver, receivedAt);
+    {
+        var header = Header;
+        header.Stamp(sender, receiver, receivedAt);
+        Header = header;
+    }
 
     public void SetReceiver(string clientId)
-        => Header.SetReceiver(clientId);
+    {
+        var header = Header;
+        header.SetReceiver(clientId);
+        Header = header;
+    }
 
     public void SetTimestamp(DateTime receivedAt)
-        => Header.SetTimestamp(receivedAt);
+    {
+        var header = Header;
+        header.SetTimestamp(receivedAt);
+        Header = header;
+    }
 }

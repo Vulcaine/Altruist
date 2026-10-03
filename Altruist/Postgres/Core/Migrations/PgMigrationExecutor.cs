@@ -46,8 +46,10 @@ namespace Altruist.Migrations.Postgres
         private const string DropConstraintTemplate =
             "ALTER TABLE {table_fqn} DROP CONSTRAINT IF EXISTS {constraint_name};";
 
+        // The new index name must be unqualified: Postgres always creates it in the table's schema
+        // (a schema-qualified name is a syntax error).
         private const string CreateIndexTemplate =
-            "CREATE INDEX IF NOT EXISTS {index_fqn} ON {table_fqn} ({column_ident});";
+            "CREATE INDEX IF NOT EXISTS {index_name} ON {table_fqn} ({column_ident});";
 
         private const string DropIndexTemplate =
             "DROP INDEX IF EXISTS {index_fqn};";
@@ -402,10 +404,8 @@ namespace Altruist.Migrations.Postgres
                 : createIndex.Schema;
 
             var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createIndex.Table)}";
-            var indexFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(createIndex.IndexName)}";
-
             var sql = CreateIndexTemplate
-                .Replace("{index_fqn}", indexFqn)
+                .Replace("{index_name}", QuoteIdent(createIndex.IndexName))
                 .Replace("{table_fqn}", tableFqn)
                 .Replace("{column_ident}", QuoteIdent(createIndex.Column));
 

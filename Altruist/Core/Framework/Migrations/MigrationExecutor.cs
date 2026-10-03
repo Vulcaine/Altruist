@@ -61,35 +61,34 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
 
         // Wrap all DDL in a transaction. Postgres supports transactional DDL
         // (CREATE TABLE, ALTER TABLE, etc.) so the entire migration is atomic.
+        // The transaction must be bound to one connection: issuing "BEGIN;"/"COMMIT;" through
+        // ExecuteAsync ran each statement on a different pooled connection (no atomicity at all).
+        if (_provider is not ISqlTransactionProvider transactional)
+        {
+            for (int i = 0; i < operations.Count; i++)
+                await ApplyOrWrapAsync(schema, operations, i, atomic: false);
+            return;
+        }
+
+        await transactional.InTransactionAsync(async _ =>
+        {
+            for (int i = 0; i < operations.Count; i++)
+                await ApplyOrWrapAsync(schema, operations, i, atomic: true);
+            return true;
+        });
+    }
+
+    private async Task ApplyOrWrapAsync(string schema, IReadOnlyList<MigrationOperation> operations, int i, bool atomic)
+    {
         try
         {
-            await _provider.ExecuteAsync("BEGIN;");
-
-            for (int i = 0; i < operations.Count; i++)
-            {
-                try
-                {
-                    await ApplyOperationAsync(schema, operations[i]);
-                }
-                catch (Exception ex)
-                {
-                    try { await _provider.ExecuteAsync("ROLLBACK;"); } catch { /* best effort */ }
-                    throw new MigrationException(
-                        $"Migration failed at operation {i + 1}/{operations.Count}: {operations[i].GetType().Name}. " +
-                        $"All changes rolled back. Error: {ex.Message}", ex);
-                }
-            }
-
-            await _provider.ExecuteAsync("COMMIT;");
-        }
-        catch (MigrationException)
-        {
-            throw;
+            await ApplyOperationAsync(schema, operations[i]);
         }
         catch (Exception ex)
         {
-            try { await _provider.ExecuteAsync("ROLLBACK;"); } catch { /* best effort */ }
-            throw new MigrationException($"Migration transaction failed: {ex.Message}", ex);
+            throw new MigrationException(
+                $"Migration failed at operation {i + 1}/{operations.Count}: {operations[i].GetType().Name}. " +
+                (atomic ? "All changes rolled back. " : "Earlier operations were applied. ") + $"Error: {ex.Message}", ex);
         }
     }
 

@@ -19,6 +19,7 @@ using Altruist.Engine;
 using Microsoft.Extensions.Logging;
 
 using System.Diagnostics;
+using System.Text;
 
 namespace Altruist
 {
@@ -41,6 +42,8 @@ namespace Altruist
         private readonly IDashboardNetworkRecorder? _networkRecorder;
 
         private readonly int _idleTimeout;
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<System.Reflection.MethodInfo, System.Reflection.ParameterInfo[]> ParameterCache = new();
 
         public ConnectionManager(
             ISocketManager socketManager,
@@ -89,7 +92,7 @@ namespace Altruist
             if (string.IsNullOrEmpty(packet.Event))
                 return false;
 
-            var totalWatch = Stopwatch.StartNew();
+            var totalStart = Stopwatch.GetTimestamp();
             var decodeMs = 0d;
             var handlerMs = 0d;
             string? error = null;
@@ -100,9 +103,9 @@ namespace Altruist
             if (PortalGateRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
             {
                 var data = bytes;
-                var context = new InterceptContext(@event);
+                var context = new InterceptContext(packet.Event, clientId, data.Length);
                 var handlerMethod = @delegate.Method;
-                var parameters = handlerMethod.GetParameters();
+                var parameters = ParameterCache.GetOrAdd(handlerMethod, static m => m.GetParameters());
                 var hasPacketPayload = parameters.Length >= 2 && typeof(IPacket).IsAssignableFrom(parameters[0].ParameterType);
                 var parameterType = hasPacketPayload ? parameters[0].ParameterType : null;
                 packetType = parameterType?.Name;
@@ -110,7 +113,7 @@ namespace Altruist
 
                 try
                 {
-                    var decodeWatch = Stopwatch.StartNew();
+                    var decodeStart = Stopwatch.GetTimestamp();
                     if (hasPacketPayload && parameterType is not null && data.Length > 0)
                     {
                         message = _defaultCodec.Decoder.Decode<IPacket>(data, parameterType);
@@ -119,29 +122,45 @@ namespace Altruist
                     {
                         message = (IPacket?)Activator.CreateInstance(parameterType);
                     }
-                    decodeWatch.Stop();
-                    decodeMs = decodeWatch.Elapsed.TotalMilliseconds;
+                    decodeMs = Stopwatch.GetElapsedTime(decodeStart).TotalMilliseconds;
                 }
                 catch (Exception decodeEx)
                 {
                     decodeMs = 0;
                     _logger.LogWarning("Failed to decode {Len} bytes as {Type}: {Error}", data.Length, parameterType?.Name ?? "empty", decodeEx.Message);
-                    message = parameterType is null ? null : (IPacket?)Activator.CreateInstance(parameterType);
                     error = decodeEx.Message;
+                    // Never hand a default-constructed packet to the handler: drop the message.
+                    await RecordPacketAsync(
+                        connectionId: clientId,
+                        route: @event,
+                        packet: packet,
+                        payload: null,
+                        rawPayload: data,
+                        portalName: portalName,
+                        packetType: packetType,
+                        durationMs: Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds,
+                        decodeMs: null,
+                        handlerMs: null,
+                        error: error);
+                    return false;
                 }
 
-                // Avoid LINQ allocation — pre-sized array for interceptor tasks
-                Task interceptorExecution;
-                if (_interceptors.Count == 0 || message is null)
+                // Interceptors finish before the handler runs so they can veto the packet
+                // (rate limits, size caps). A single interceptor is awaited directly (no array/WhenAll).
+                if (_interceptors.Count == 1 && message is not null)
                 {
-                    interceptorExecution = Task.CompletedTask;
+                    await _interceptors[0].Intercept(context, message);
+                    if (context.Rejected)
+                        return true;
                 }
-                else
+                else if (_interceptors.Count > 0 && message is not null)
                 {
                     var tasks = new Task[_interceptors.Count];
                     for (int i = 0; i < _interceptors.Count; i++)
                         tasks[i] = _interceptors[i].Intercept(context, message);
-                    interceptorExecution = Task.WhenAll(tasks);
+                    await Task.WhenAll(tasks);
+                    if (context.Rejected)
+                        return true;
                 }
 
                 PacketContext.Set(data);
@@ -152,7 +171,7 @@ namespace Altruist
 
                 try
                 {
-                    var handlerWatch = Stopwatch.StartNew();
+                    var handlerStart = Stopwatch.GetTimestamp();
                     Task? handlerTask = parameters.Length switch
                     {
                         0 => (Task?)@delegate.DynamicInvoke(),
@@ -165,9 +184,7 @@ namespace Altruist
                         await handlerTask;
                     }
 
-                    await interceptorExecution;
-                    handlerWatch.Stop();
-                    handlerMs = handlerWatch.Elapsed.TotalMilliseconds;
+                    handlerMs = Stopwatch.GetElapsedTime(handlerStart).TotalMilliseconds;
                 }
                 catch (Exception ex)
                 {
@@ -177,7 +194,6 @@ namespace Altruist
                 finally
                 {
                     PacketContext.Clear();
-                    totalWatch.Stop();
                     await RecordPacketAsync(
                         connectionId: clientId,
                         route: @event,
@@ -186,7 +202,7 @@ namespace Altruist
                         rawPayload: data,
                         portalName: portalName,
                         packetType: packetType,
-                        durationMs: totalWatch.Elapsed.TotalMilliseconds,
+                        durationMs: Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds,
                         decodeMs: decodeMs,
                         handlerMs: handlerMs,
                         error: error);
@@ -194,8 +210,17 @@ namespace Altruist
             }
             else
             {
-                _logger.LogWarning("No handler found for event: {Event}", packet.Event);
-                totalWatch.Stop();
+                // Unknown events still pass the interceptors (rate limits) so a client cannot spam
+                // them for free. The name is client-chosen: sanitized and logged at debug only.
+                if (_interceptors.Count > 0)
+                {
+                    var context = new InterceptContext(packet.Event, clientId, bytes.Length);
+                    var tasks = new Task[_interceptors.Count];
+                    for (int i = 0; i < _interceptors.Count; i++)
+                        tasks[i] = _interceptors[i].Intercept(context, null!);
+                    await Task.WhenAll(tasks);
+                }
+                _logger.LogDebug("No handler found for event: {Event}", SanitizeForLog(packet.Event));
                 await RecordPacketAsync(
                     connectionId: clientId,
                     route: @event,
@@ -204,7 +229,7 @@ namespace Altruist
                     rawPayload: bytes,
                     portalName: null,
                     packetType: null,
-                    durationMs: totalWatch.Elapsed.TotalMilliseconds,
+                    durationMs: Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds,
                     decodeMs: null,
                     handlerMs: null,
                     error: "No handler found.");
@@ -213,7 +238,34 @@ namespace Altruist
             return true;
         }
 
-        private async Task RecordPacketAsync(
+        /// <summary>Printable ASCII only, at most 64 chars (event names come from clients).</summary>
+        private static string SanitizeForLog(string value)
+        {
+            var span = value.AsSpan(0, Math.Min(value.Length, 64));
+            var sb = new StringBuilder(span.Length);
+            foreach (var c in span)
+                sb.Append(c is >= ' ' and <= '~' ? c : '?');
+            return sb.ToString();
+        }
+
+        // Recording is off unless the dashboard captures packets; skip the async machinery then.
+        private Task RecordPacketAsync(
+            string connectionId,
+            string route,
+            AltruistPacket packet,
+            object? payload,
+            byte[]? rawPayload,
+            string? portalName,
+            string? packetType,
+            double durationMs,
+            double? decodeMs,
+            double? handlerMs,
+            string? error)
+            => _networkRecorder is null || !_networkRecorder.CapturePackets
+                ? Task.CompletedTask
+                : RecordPacketCoreAsync(connectionId, route, packet, payload, rawPayload, portalName, packetType, durationMs, decodeMs, handlerMs, error);
+
+        private async Task RecordPacketCoreAsync(
             string connectionId,
             string route,
             AltruistPacket packet,
@@ -343,11 +395,17 @@ namespace Altruist
         private async Task RunStandardReadLoop(
             AltruistConnection connection, string @event, string clientId, TimeSpan idleTimeout)
         {
+            // One timeout source per connection, re-armed per message (a new source plus timer per
+            // message was a large share of the per-packet allocations at 60 inputs/s).
+            using var cts = new CancellationTokenSource();
+            bool isJsonCodec = _defaultCodec.GetType().Name.Contains("Json", StringComparison.OrdinalIgnoreCase);
             while (true)
             {
                 byte[] packetData;
 
-                using var cts = new CancellationTokenSource(idleTimeout);
+                if (!cts.TryReset())
+                    throw new TimeoutException($"Connection idle for {idleTimeout.TotalSeconds} seconds.");
+                cts.CancelAfter(idleTimeout);
                 try
                 {
                     packetData = await connection.ReceiveAsync(cts.Token);
@@ -367,8 +425,6 @@ namespace Altruist
                 //   → [1-byte eventLen][eventName UTF8][payload]
                 AltruistPacket packet;
                 byte[] payloadBytes;
-
-                bool isJsonCodec = _defaultCodec.GetType().Name.Contains("Json", StringComparison.OrdinalIgnoreCase);
 
                 if (!isJsonCodec && packetData.Length > 2 && packetData[0] > 0 && packetData[0] < 128)
                 {

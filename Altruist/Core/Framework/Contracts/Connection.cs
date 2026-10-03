@@ -96,6 +96,13 @@ public class AltruistConnection : StoredModel, IAltruistConnection
         throw new NotImplementedException();
     }
 
+    /// <summary>
+    /// Tears the connection down at once, without a close handshake and without waiting for a
+    /// pending send (e.g. a peer that stopped reading). The read loop then ends and the normal
+    /// disconnect path runs. Transports without an abort do nothing.
+    /// </summary>
+    public virtual void Abort() { }
+
     public virtual Task CloseAsync()
     {
         throw new NotImplementedException();
@@ -110,6 +117,12 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     {
         throw new NotImplementedException();
     }
+
+    /// <summary>
+    /// Sends one binary message from a buffer the caller may reuse once the task completes.
+    /// Transports without a native overload copy it.
+    /// </summary>
+    public virtual Task SendAsync(ReadOnlyMemory<byte> data) => SendAsync(data.ToArray());
 }
 
 public interface ITransportClient

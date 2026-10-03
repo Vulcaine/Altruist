@@ -20,13 +20,32 @@ public class InterceptContext
 {
     public string EventName { get; }
 
-    public InterceptContext(string eventName)
+    /// <summary>Connection the packet arrived on ("" when unknown).</summary>
+    public string ClientId { get; }
+
+    /// <summary>Size of the raw payload in bytes (after the event-name prefix).</summary>
+    public int PayloadLength { get; }
+
+    /// <summary>True once an interceptor rejected the packet; the gate handler is then skipped.</summary>
+    public bool Rejected { get; private set; }
+
+    public InterceptContext(string eventName, string clientId = "", int payloadLength = 0)
     {
         EventName = eventName;
+        ClientId = clientId;
+        PayloadLength = payloadLength;
     }
+
+    /// <summary>Drops the packet: the gate handler does not run (e.g. rate limits, oversize frames).</summary>
+    public void Reject() => Rejected = true;
 }
 
 
+/// <summary>
+/// Runs before every gate handler (all interceptors complete before the handler starts). An
+/// interceptor can veto the packet with <see cref="InterceptContext.Reject"/>. Packets for
+/// unknown events are intercepted too (for rate limiting), with a null <c>eventData</c>.
+/// </summary>
 public interface IInterceptor
 {
     Task Intercept(InterceptContext context, IPacket eventData);
@@ -44,6 +63,8 @@ public class RelayInterceptor : IInterceptor
 
     public async Task Intercept(InterceptContext context, IPacket eventData)
     {
+        if (eventData is null)
+            return;
         await _relayService.Relay(eventData);
         // // if (context.EventName == _relayService.RelayEvent)
         // {

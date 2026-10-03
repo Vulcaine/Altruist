@@ -69,10 +69,13 @@ public class AltruistEngine : IAltruistEngine
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
         IGameWorldOrganizer worldCoordinator,
-        [AppConfigValue("altruist:game:engine:framerateHz", "30")] int engineFrequencyHz = 30,
+        [AppConfigValue("altruist:game:engine:framerateHz")] int? framerateHz = null,
         [AppConfigValue("altruist:game:engine:unit")] CycleUnit unit = CycleUnit.Ticks,
-        [AppConfigValue("altruist:game:engine:throttle")] int? throttle = null)
+        [AppConfigValue("altruist:game:engine:throttle")] int? throttle = null,
+        // Examples and docs use `frequency`; accept it as an alias for framerateHz.
+        [AppConfigValue("altruist:game:engine:frequency")] int? frequency = null)
     {
+        var engineFrequencyHz = framerateHz ?? frequency ?? 30;
         _serviceProvider = serviceProvider;
         _appStatus = serverStatus;
         _worldCoordinator = worldCoordinator;

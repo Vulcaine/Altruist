@@ -222,13 +222,32 @@ internal static class PgQueryTranslator
 
     private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 
+    // Literals are inlined (the vault pipeline has no parameters), so every format must be
+    // culture-invariant and strings must not be able to terminate the literal.
     private static string SqlValue(object? value) => value switch
     {
         null => "NULL",
-        string s => $"'{s.Replace("'", "''")}'",
+        string s => StringLiteral(s),
+        char c => StringLiteral(c.ToString()),
         bool b => b ? "TRUE" : "FALSE",
-        DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-        Enum e => Convert.ToInt32(e).ToString(),
-        _ => value.ToString()!
+        DateTime dt => $"'{dt.ToString("yyyy-MM-dd HH:mm:ss.ffffff", System.Globalization.CultureInfo.InvariantCulture)}'",
+        DateTimeOffset dto => $"'{dto.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss.ffffff", System.Globalization.CultureInfo.InvariantCulture)}+00'",
+        Guid g => $"'{g:D}'",
+        Enum e => Convert.ToInt64(e, System.Globalization.CultureInfo.InvariantCulture).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        float f => f.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        double d => d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        decimal m => m.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        IFormattable fm => fm.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+        _ => StringLiteral(value.ToString() ?? "")
     };
+
+    internal static string StringLiteral(string s)
+    {
+        if (s.Contains('\0'))
+            throw new ArgumentException("String literals may not contain NUL characters.");
+        // Escape-string syntax with escaped backslashes and doubled quotes is exact whatever
+        // standard_conforming_strings is set to; a plain '...' literal would let a trailing
+        // backslash swallow the closing quote on a server running with it off.
+        return $"E'{s.Replace("\\", "\\\\").Replace("'", "''")}'";
+    }
 }

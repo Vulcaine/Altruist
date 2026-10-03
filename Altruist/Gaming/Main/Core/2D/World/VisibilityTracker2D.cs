@@ -12,7 +12,7 @@ namespace Altruist.Gaming.TwoD
     [ConditionalOnConfig("altruist:game")]
     public class VisibilityTracker2D : IVisibilityTracker
     {
-        private readonly IGameWorldOrganizer2D _organizer;
+        private IGameWorldOrganizer2D? _organizer;
         private readonly ConcurrentDictionary<string, HashSet<string>> _visibleSets = new();
         private readonly ConcurrentDictionary<string, IWorldObject2D> _observers = new();
         private readonly ConcurrentDictionary<string, string> _observerInstanceIds = new();
@@ -23,11 +23,23 @@ namespace Altruist.Gaming.TwoD
         public event Action<VisibilityChange>? OnEntityInvisible;
 
         public VisibilityTracker2D(
-            IGameWorldOrganizer2D organizer,
             [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f)
         {
-            _organizer = organizer;
             ViewRange = viewRange;
+        }
+
+        public void SetOrganizer(IGameWorldOrganizer2D organizer) => _organizer = organizer;
+
+        /// <summary>
+        /// Wires the tracker <-> organizer pair after both exist (a constructor dependency in both
+        /// directions is a DI cycle). Mirrors VisibilityTracker3D.WireOrganizer.
+        /// </summary>
+        [PostConstruct]
+        public void WireOrganizer(IGameWorldOrganizer2D organizer)
+        {
+            if (_organizer is not null) return;
+            organizer.SetVisibilityTracker(this);
+            SetOrganizer(organizer);
         }
 
         /// <summary>
@@ -35,6 +47,7 @@ namespace Altruist.Gaming.TwoD
         /// </summary>
         public void Tick()
         {
+            if (_organizer is null) return;
             foreach (var world in _organizer.GetAllWorlds())
             {
                 var allObjects = world.FindAllObjects<IWorldObject2D>().ToList();
@@ -169,7 +182,7 @@ namespace Altruist.Gaming.TwoD
 
         public void RemoveObserver(string clientId)
         {
-            if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0)
+            if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0 && _organizer is not null)
             {
                 foreach (var world in _organizer.GetAllWorlds())
                 {

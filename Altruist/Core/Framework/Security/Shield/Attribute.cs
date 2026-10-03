@@ -16,6 +16,7 @@ limitations under the License.
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Security;
 
@@ -31,33 +32,51 @@ public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
         _authHandlerType = authHandlerType;
     }
 
-    // HTTP-based authentication for MVC + WebSockets
+    // HTTP-based authentication for MVC + WebSockets. Fails closed: a handler that cannot be
+    // resolved or that throws denies the request (previously both silently let it through).
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
-        var serviceProvider = context.HttpContext.RequestServices;
-        if (_authHandlerType != null)
+        if (_authHandlerType is null)
+            return;
+
+        var authHandler = ResolveHandler(context.HttpContext.RequestServices);
+        if (authHandler is null)
         {
-            var authHandler = (IShieldAuth)serviceProvider.GetService(_authHandlerType)!;
-            if (authHandler != null)
+            context.Result = new UnauthorizedResult();
+            return;
+        }
+
+        try
+        {
+            var result = await authHandler.HandleAuthAsync(new HttpAuthContext(context.HttpContext));
+
+            context.HttpContext.Items["AuthResult"] = result;
+
+            if (!result.AuthorizationResult.Succeeded)
             {
-
-                try
-                {
-                    var result = await authHandler.HandleAuthAsync(new HttpAuthContext(context.HttpContext));
-
-                    context.HttpContext.Items["AuthResult"] = result;
-
-                    if (!result.AuthorizationResult.Succeeded)
-                    {
-                        context.Result = new UnauthorizedResult();
-                    }
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    context.Result = new UnauthorizedResult();
-                }
-
+                context.Result = new UnauthorizedResult();
             }
+        }
+        catch (Exception)
+        {
+            context.HttpContext.Items.Remove("AuthResult");
+            context.Result = new UnauthorizedResult();
+        }
+    }
+
+    private IShieldAuth? ResolveHandler(IServiceProvider serviceProvider)
+    {
+        if (serviceProvider.GetService(_authHandlerType!) is IShieldAuth registered)
+            return registered;
+
+        // Handlers are usually registered under IShieldAuth only; build the concrete type.
+        try
+        {
+            return ActivatorUtilities.CreateInstance(serviceProvider, _authHandlerType!) as IShieldAuth;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
         }
     }
 
@@ -66,11 +85,18 @@ public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
     {
         if (_authHandlerType != null)
         {
-            var authHandler = (IShieldAuth)serviceProvider.GetService(_authHandlerType)!;
+            var authHandler = ResolveHandler(serviceProvider);
             if (authHandler != null)
             {
-                var result = await authHandler.HandleAuthAsync(context);
-                return result.AuthorizationResult.Succeeded ? result.AuthDetails : null;
+                try
+                {
+                    var result = await authHandler.HandleAuthAsync(context);
+                    return result.AuthorizationResult.Succeeded ? result.AuthDetails : null;
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
             }
         }
         return null;

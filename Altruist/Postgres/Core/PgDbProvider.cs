@@ -82,6 +82,8 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
             Pooling = _pooling,
             MaxPoolSize = _maxPoolSize,
             SslMode = ParseSslMode(_sslModeRaw),
+            // Deterministic timestamp conversions regardless of the server's default zone.
+            Timezone = "UTC",
         };
 
         // NOTE: Do NOT set TrustServerCertificate; Npgsql marks it obsolete/no-op now.

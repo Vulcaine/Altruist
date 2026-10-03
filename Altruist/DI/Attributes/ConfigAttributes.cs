@@ -58,7 +58,10 @@ public sealed class AppConfigValueAttribute : Attribute
 public sealed class ConfigConverterAttribute : ServiceAttribute
 {
     public Type TargetType { get; }
-    public ConfigConverterAttribute(Type targetType) : base(targetType, lifetime: ServiceLifetime.Singleton) => TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
+    // Registered as the converter type itself: registering it under TargetType (e.g. List<string>)
+    // put a converter instance behind a service type it does not implement, which breaks
+    // ServiceProvider validation (WebApplication validates on build in Development).
+    public ConfigConverterAttribute(Type targetType) : base(null, lifetime: ServiceLifetime.Singleton) => TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
 }
 
 public interface IConfigConverter

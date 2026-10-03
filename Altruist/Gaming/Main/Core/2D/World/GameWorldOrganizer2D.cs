@@ -16,6 +16,7 @@ namespace Altruist.Gaming.TwoD
         IGameWorldManager2D? GetWorld(int index);
         IGameWorldManager2D? GetWorld(string name);
         IEnumerable<IGameWorldManager2D> GetAllWorlds();
+        void SetVisibilityTracker(IVisibilityTracker? tracker);
     }
 
     [Service(typeof(IGameWorldOrganizer))]
@@ -29,7 +30,7 @@ namespace Altruist.Gaming.TwoD
         private readonly IPhysxWorldEngineFactory2D _physxWorldEngineFactory;
         private readonly IPhysxBodyApiProvider2D? _bodyApi;
         private readonly IPhysxColliderApiProvider2D? _colliderApi;
-        private readonly IVisibilityTracker? _visibilityTracker;
+        private IVisibilityTracker? _visibilityTracker;
         private readonly IAIBehaviorService? _aiBehaviorService;
         private readonly IEntitySyncService? _entitySyncService;
         private float _engineFrequencyHz = 25f;
@@ -41,7 +42,6 @@ namespace Altruist.Gaming.TwoD
             IEnumerable<IWorldIndex2D> gameWorlds,
             IPhysxBodyApiProvider2D? bodyApi = null,
             IPhysxColliderApiProvider2D? colliderApi = null,
-            IVisibilityTracker? visibilityTracker = null,
             IAIBehaviorService? aiBehaviorService = null,
             IEntitySyncService? entitySyncService = null)
         {
@@ -50,7 +50,6 @@ namespace Altruist.Gaming.TwoD
             _physxWorldEngineFactory = physxWorldEngineFactory;
             _bodyApi = bodyApi;
             _colliderApi = colliderApi;
-            _visibilityTracker = visibilityTracker;
             _aiBehaviorService = aiBehaviorService;
             _entitySyncService = entitySyncService;
             _worlds = gameWorlds
@@ -59,6 +58,12 @@ namespace Altruist.Gaming.TwoD
                     new PhysxWorld2D(_physxWorldEngineFactory.Create(index2d.Gravity, index2d.FixedDeltaTime))))
                 .ToDictionary(x => x.Index.Index);
         }
+
+        /// <summary>
+        /// The tracker depends on the organizer, so it is wired after construction
+        /// (see VisibilityTracker2D.WireOrganizer) instead of via the constructor.
+        /// </summary>
+        public void SetVisibilityTracker(IVisibilityTracker? tracker) => _visibilityTracker = tracker;
 
         /// <summary>Adds a new game world and initializes it.</summary>
         public virtual IGameWorldManager2D AddWorld(IWorldIndex2D index, IPhysxWorld2D physx2D)

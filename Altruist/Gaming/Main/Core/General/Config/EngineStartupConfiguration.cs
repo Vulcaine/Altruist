@@ -49,6 +49,12 @@ public class EngineStartupConfiguration : IAltruistConfiguration
                 if (tracker is Gaming.ThreeD.VisibilityTracker3D vt3d)
                     vt3d.SetOrganizer(organizer);
             }
+            var organizer2D = serviceProvider.GetService<Gaming.TwoD.IGameWorldOrganizer2D>();
+            if (organizer2D != null && tracker is Gaming.TwoD.VisibilityTracker2D vt2d)
+            {
+                organizer2D.SetVisibilityTracker(vt2d);
+                vt2d.SetOrganizer(organizer2D);
+            }
 
             logger.LogInformation("🚀 Starting engine...");
             var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();

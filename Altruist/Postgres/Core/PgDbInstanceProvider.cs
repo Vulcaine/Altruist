@@ -93,6 +93,8 @@ public sealed class PgSqlDbInstanceProvider : GeneralSqlDatabaseProvider
             Database = _database,
             Pooling = _pooling,
             SslMode = ParseSslMode(_sslModeRaw),
+            // Deterministic timestamp conversions regardless of the server's default zone.
+            Timezone = "UTC",
         };
         return csb.ConnectionString;
     }

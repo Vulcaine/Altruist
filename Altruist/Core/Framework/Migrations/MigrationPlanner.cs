@@ -729,6 +729,10 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             }
         }
 
+        // Single-column unique keys created inline by ADD COLUMN ... UNIQUE (below); the unique
+        // constraint diff must not add a second, identical constraint for them.
+        var inlineUniqueCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // columns to add (exclude renamed columns)
         foreach (var col in desiredCols.Except(existingCols, StringComparer.OrdinalIgnoreCase)
                      .Where(c => !renamedNew.Contains(c)))
@@ -767,6 +771,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 DefaultSql: defaultSql);
 
             ops.Add(new AddColumnOperation(schemaName, tableName, def));
+            if (isSingleUnique)
+                inlineUniqueCols.Add(col);
         }
 
         // columns to drop (exclude renamed columns — they were handled above)
@@ -804,6 +810,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         foreach (var (normalized, uk) in desiredUniqueByKey)
         {
             if (existingUniqueByKey.ContainsKey(normalized))
+                continue;
+            if (uk.Columns.Count == 1 && inlineUniqueCols.Contains(uk.Columns[0]))
                 continue;
 
             var constraintName = BuildUniqueConstraintName(doc.Name, uk.Columns);
