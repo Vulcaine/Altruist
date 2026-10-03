@@ -6,6 +6,6 @@
     <RootNamespace>Altruist.Gaming.Questing</RootNamespace>
     <AssemblyName>Questing</AssemblyName>
     <PackageId>Altruist.Gaming.Questing</PackageId>
-    <Version>0.9.5-beta</Version>
+    <Version>0.9.6-beta</Version>
   </PropertyGroup>
 </Project>

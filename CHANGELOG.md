@@ -2,6 +2,31 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [0.9.6-beta] - 2026-10-03
+
+### Fixed
+- **MessagePack codec** — a structure guard rejects decode bombs (deeply nested or oversized maps/arrays) before deserialization; a map32 header with a huge count now raises `MessagePackSerializationException` instead of an `OverflowException`. New `IBufferEncoder` encodes into a reused buffer.
+- **WebSocket transport** — one reused receive buffer per connection (single-frame messages copied out at their exact size) instead of a 4 KB allocation per message; oversized frames are rejected.
+- **Per-packet overhead** — one timeout source per connection re-armed per message; no stopwatches, recorder state machine or interceptor task arrays allocated per inbound packet.
+- **Connection store** — `JoinRoomAsync` no longer deletes the waiting room when its last connection moves to another room.
+- **Persistence** — ambient transactions (`InTransactionAsync`): nested calls join the outer transaction, parallel awaits inside it are serialized. `[Transactional]` works: the decorator is no longer `sealed` and resolves interface methods to their implementation.
+- **Postgres** — query and join translator fixes, `SqlVault` ordering, provider wiring.
+- **Migrations** — adding a unique column to an existing table no longer creates two identical UNIQUE constraints; executor ordering fixes.
+- **Security, config, 2D game world** — JWT and Shield attribute fixes, config loader / converter fixes, `GameWorldOrganizer2D` / `VisibilityTracker2D` wiring, engine frequency.
+
+### Security
+- **MessagePack** 3.1.3 → 3.1.10 in every project that references it.
+- Pinned vulnerable transitive packages in Core: **Newtonsoft.Json** 13.0.4, **System.Net.Http** 4.3.4, **System.Text.RegularExpressions** 4.3.1. `dotnet list package --vulnerable` reports none.
+- **Dashboard UI** — Angular 21.2.25 and refreshed dependencies (with overrides for vite, piscina and uuid): all Dependabot advisories resolved, including the critical websocket-driver and shell-quote ones. The embedded dashboard build is regenerated.
+
+### Added
+- **105 regression tests** (82 unit, 23 Postgres integration) covering the fixes above. Integration tests run against `ALTRUIST_TEST_PG` in a throwaway `altruist_test_*` database and skip when no Postgres is reachable (`ALTRUIST_TEST_PG_REQUIRED=true` makes them fail instead, as CI does).
+- **CI** — build and tests also run on `develop`, with a Postgres 16 service; unit and integration tests run as separate steps.
+- **Reproducible benchmarks** — `Benchmarks/run.sh` runs the suites, records the machine and writes a summary that recomputes every README figure. `BENCHMARK_RESULTS.md` maps each claim to its benchmark; READMEs gained a Highlights block with the measured numbers.
+
+### Changed
+- README figures updated to fresh measurements; the CCU estimate was dropped (it was not derived from a benchmark).
+
 ## [0.9.5-beta] - 2026-04-10
 
 ### Added
