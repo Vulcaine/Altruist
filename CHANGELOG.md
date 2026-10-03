@@ -6,12 +6,13 @@ All notable changes to the Altruist framework are documented in this file.
 
 ### Fixed
 - **MessagePack codec** — a structure guard rejects decode bombs (deeply nested or oversized maps/arrays) before deserialization; a map32 header with a huge count now raises `MessagePackSerializationException` instead of an `OverflowException`. New `IBufferEncoder` encodes into a reused buffer.
-- **WebSocket transport** — one reused receive buffer per connection (single-frame messages copied out at their exact size) instead of a 4 KB allocation per message; oversized frames are rejected.
+- **WebSocket transport** — one reused receive buffer per connection (single-frame messages copied out at their exact size) instead of a 4 KB allocation per message; oversized frames are rejected. Close handshakes are bounded (5 s): a peer that never reads or never answers is aborted instead of holding the connection and its read loop open.
 - **Per-packet overhead** — one timeout source per connection re-armed per message; no stopwatches, recorder state machine or interceptor task arrays allocated per inbound packet.
 - **Connection store** — `JoinRoomAsync` no longer deletes the waiting room when its last connection moves to another room.
 - **Persistence** — ambient transactions (`InTransactionAsync`): nested calls join the outer transaction, parallel awaits inside it are serialized. `[Transactional]` works: the decorator is no longer `sealed` and resolves interface methods to their implementation.
 - **Postgres** — query and join translator fixes, `SqlVault` ordering, provider wiring.
 - **Migrations** — adding a unique column to an existing table no longer creates two identical UNIQUE constraints; executor ordering fixes.
+- **Dashboard** — production build fits its size budget again; the world scene spec and the TestApp compile against the current API.
 - **Security, config, 2D game world** — JWT and Shield attribute fixes, config loader / converter fixes, `GameWorldOrganizer2D` / `VisibilityTracker2D` wiring, engine frequency.
 
 ### Security
