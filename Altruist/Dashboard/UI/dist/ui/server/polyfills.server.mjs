@@ -8,9 +8,12 @@ var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require
 });
 
 // node_modules/zone.js/fesm2015/zone-node.js
+/**
+ * @license Angular
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var __defProp = Object.defineProperty;
-var __defProps = Object.defineProperties;
-var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __propIsEnum = Object.prototype.propertyIsEnumerable;
@@ -26,7 +29,6 @@ var __spreadValues = (a, b) => {
     }
   return a;
 };
-var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 var __require2 = /* @__PURE__ */ ((x) => typeof __require !== "undefined" ? __require : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof __require !== "undefined" ? __require : a)[b]
 }) : x)(function(x) {
@@ -40,7 +42,8 @@ var __publicField = (obj, key, value) => {
 };
 var global = globalThis;
 function __symbol__(name) {
-  const symbolPrefix = global["__Zone_symbol_prefix"] || "__zone_symbol__";
+  const rawPrefix = global["__Zone_symbol_prefix"];
+  const symbolPrefix = typeof rawPrefix === "string" ? rawPrefix : "__zone_symbol__";
   return symbolPrefix + name;
 }
 function initZone() {
@@ -82,7 +85,7 @@ function initZone() {
       return _currentTask;
     }
     static __load_patch(name, fn, ignoreDuplicate = false) {
-      if (patches.hasOwnProperty(name)) {
+      if (Object.hasOwn(patches, name)) {
         const checkDuplicate = global[__symbol__("forceDuplicateZoneCheck")] === true;
         if (!ignoreDuplicate && checkDuplicate) {
           throw Error("Already loaded patch: " + name);
@@ -108,7 +111,7 @@ function initZone() {
     getZoneWith(key) {
       let current = this;
       while (current) {
-        if (current._properties.hasOwnProperty(key)) {
+        if (Object.hasOwn(current._properties, key)) {
           return current;
         }
         current = current._parent;
@@ -279,7 +282,6 @@ function initZone() {
         "macroTask": 0,
         "eventTask": 0
       });
-      __publicField(this, "_parentDelegate");
       __publicField(this, "_forkDlgt");
       __publicField(this, "_forkZS");
       __publicField(this, "_forkCurrZone");
@@ -306,7 +308,6 @@ function initZone() {
       __publicField(this, "_hasTaskZS");
       __publicField(this, "_hasTaskCurrZone");
       this._zone = zone;
-      this._parentDelegate = parentDelegate;
       this._forkZS = zoneSpec && (zoneSpec && zoneSpec.onFork ? zoneSpec : parentDelegate._forkZS);
       this._forkDlgt = zoneSpec && (zoneSpec.onFork ? parentDelegate : parentDelegate._forkDlgt);
       this._forkCurrZone = zoneSpec && (zoneSpec.onFork ? this._zone : parentDelegate._forkCurrZone);
@@ -471,10 +472,13 @@ function initZone() {
         task.runCount++;
         return task.zone.runTask(task, target, args);
       } finally {
-        if (_numberOfNestedTaskFrames == 1) {
-          drainMicroTaskQueue();
+        try {
+          if (_numberOfNestedTaskFrames === 1 && !global[enableNativeMicrotaskDraining]) {
+            drainMicroTaskQueueSynchronously();
+          }
+        } finally {
+          _numberOfNestedTaskFrames--;
         }
-        _numberOfNestedTaskFrames--;
       }
     }
     get zone() {
@@ -518,39 +522,43 @@ function initZone() {
   const symbolSetTimeout = __symbol__("setTimeout");
   const symbolPromise = __symbol__("Promise");
   const symbolThen = __symbol__("then");
+  const enableNativeMicrotaskDraining = __symbol__("enable_native_microtask_draining");
   let _microTaskQueue = [];
   let _isDrainingMicrotaskQueue = false;
   let nativeMicroTaskQueuePromise;
   function nativeScheduleMicroTask(func) {
-    if (!nativeMicroTaskQueuePromise) {
-      if (global[symbolPromise]) {
-        nativeMicroTaskQueuePromise = global[symbolPromise].resolve(0);
-      }
+    var _a;
+    if (!nativeMicroTaskQueuePromise && global[symbolPromise]) {
+      nativeMicroTaskQueuePromise = global[symbolPromise].resolve(0);
     }
     if (nativeMicroTaskQueuePromise) {
-      let nativeThen = nativeMicroTaskQueuePromise[symbolThen];
-      if (!nativeThen) {
-        nativeThen = nativeMicroTaskQueuePromise["then"];
-      }
-      nativeThen.call(nativeMicroTaskQueuePromise, func);
+      const thenFn = (_a = nativeMicroTaskQueuePromise[symbolThen]) != null ? _a : nativeMicroTaskQueuePromise["then"];
+      thenFn.call(nativeMicroTaskQueuePromise, func);
     } else {
       global[symbolSetTimeout](func, 0);
     }
   }
   function scheduleMicroTask(task) {
-    if (_numberOfNestedTaskFrames === 0 && _microTaskQueue.length === 0) {
-      nativeScheduleMicroTask(drainMicroTaskQueue);
+    const isNativeDrainingEnabled = global[enableNativeMicrotaskDraining];
+    const shouldDrainWithNative = isNativeDrainingEnabled && _microTaskQueue.length === 0 && !_isDrainingMicrotaskQueue;
+    const shouldDrainWithoutNative = !isNativeDrainingEnabled && _numberOfNestedTaskFrames === 0 && _microTaskQueue.length === 0;
+    if (shouldDrainWithNative || shouldDrainWithoutNative) {
+      nativeScheduleMicroTask(drainMicroTaskQueueSynchronously);
     }
-    task && _microTaskQueue.push(task);
+    if (task) {
+      _microTaskQueue.push(task);
+    }
   }
-  function drainMicroTaskQueue() {
-    if (!_isDrainingMicrotaskQueue) {
-      _isDrainingMicrotaskQueue = true;
+  function drainMicroTaskQueueSynchronously() {
+    if (_isDrainingMicrotaskQueue) {
+      return;
+    }
+    _isDrainingMicrotaskQueue = true;
+    try {
       while (_microTaskQueue.length) {
         const queue = _microTaskQueue;
         _microTaskQueue = [];
-        for (let i = 0; i < queue.length; i++) {
-          const task = queue[i];
+        for (const task of queue) {
           try {
             task.zone.runTask(task, null, null);
           } catch (error) {
@@ -558,14 +566,23 @@ function initZone() {
           }
         }
       }
-      _api.microtaskDrainDone();
-      _isDrainingMicrotaskQueue = false;
+    } finally {
+      if (global[enableNativeMicrotaskDraining]) {
+        _isDrainingMicrotaskQueue = false;
+        _api.microtaskDrainDone();
+      } else {
+        try {
+          _api.microtaskDrainDone();
+        } finally {
+          _isDrainingMicrotaskQueue = false;
+        }
+      }
     }
   }
   const NO_ZONE = { name: "NO ZONE" };
   const notScheduled = "notScheduled", scheduling = "scheduling", scheduled = "scheduled", running = "running", canceling = "canceling", unknown = "unknown";
   const microTask = "microTask", macroTask = "macroTask", eventTask = "eventTask";
-  const patches = {};
+  const patches = /* @__PURE__ */ Object.create(null);
   const _api = {
     symbol: __symbol__,
     currentZoneFrame: () => _currentZoneFrame,
@@ -644,7 +661,7 @@ var isWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof Wo
 var isNode = !("nw" in _global) && typeof _global.process !== "undefined" && _global.process.toString() === "[object process]";
 var isBrowser = !isNode && !isWebWorker && !!(isWindowExists && internalWindow["HTMLElement"]);
 var isMix = typeof _global.process !== "undefined" && _global.process.toString() === "[object process]" && !isWebWorker && !!(isWindowExists && internalWindow["HTMLElement"]);
-var zoneSymbolEventNames = {};
+var zoneSymbolEventNames = /* @__PURE__ */ Object.create(null);
 var enableBeforeunloadSymbol = zoneSymbol("enable_beforeunload");
 var wrapFn = function(event) {
   event = event || _global.event;
@@ -700,7 +717,7 @@ function patchProperty(obj, prop, prototype) {
     return;
   }
   const onPropPatchedSymbol = zoneSymbol("on" + prop + "patched");
-  if (obj.hasOwnProperty(onPropPatchedSymbol) && obj[onPropPatchedSymbol]) {
+  if (Object.hasOwn(obj, onPropPatchedSymbol) && obj[onPropPatchedSymbol]) {
     return;
   }
   delete desc.writable;
@@ -802,7 +819,7 @@ function setShouldCopySymbolProperties(flag) {
 }
 function patchMethod(target, name, patchFn) {
   let proto = target;
-  while (proto && !proto.hasOwnProperty(name)) {
+  while (proto && !Object.hasOwn(proto, name)) {
     proto = ObjectGetPrototypeOf(proto);
   }
   if (!proto && target[name]) {
@@ -810,7 +827,7 @@ function patchMethod(target, name, patchFn) {
   }
   const delegateName = zoneSymbol(name);
   let delegate = null;
-  if (proto && (!(delegate = proto[delegateName]) || !proto.hasOwnProperty(delegateName))) {
+  if (proto && (!(delegate = proto[delegateName]) || !Object.hasOwn(proto, delegateName))) {
     delegate = proto[delegateName] = proto[name];
     const desc = proto && ObjectGetOwnPropertyDescriptor(proto, name);
     if (isPropertyWritable(desc)) {
@@ -893,7 +910,7 @@ function patchPromise(Zone2) {
     api.onUnhandledError = (e) => {
       if (api.showUncaughtError()) {
         const rejection = e && e.rejection;
-        if (rejection) {
+        if (rejection && e.zone && e.task) {
           console.error("Unhandled Promise rejection:", rejection instanceof Error ? rejection.message : rejection, "; Zone:", e.zone.name, "; Task:", e.task && e.task.source, "; Value:", rejection, rejection instanceof Error ? rejection.stack : void 0);
         } else {
           console.error(e);
@@ -985,7 +1002,7 @@ function patchPromise(Zone2) {
           })();
           return promise;
         }
-        if (state !== REJECTED && value instanceof ZoneAwarePromise && value.hasOwnProperty(symbolState) && value.hasOwnProperty(symbolValue) && value[symbolState] !== UNRESOLVED) {
+        if (state !== REJECTED && value instanceof ZoneAwarePromise && Object.hasOwn(value, symbolState) && Object.hasOwn(value, symbolValue) && value[symbolState] !== UNRESOLVED) {
           clearRejectedNoCatch(value);
           resolvePromise(promise, value[symbolState], value[symbolValue]);
         } else if (state !== REJECTED && typeof then === "function") {
@@ -1378,18 +1395,20 @@ function loadZone() {
 var OPTIMIZED_ZONE_EVENT_TASK_DATA = {
   useG: true
 };
-var zoneSymbolEventNames2 = {};
+var zoneSymbolEventNames2 = /* @__PURE__ */ Object.create(null);
 var globalSources = {};
 var EVENT_NAME_SYMBOL_REGX = new RegExp("^" + ZONE_SYMBOL_PREFIX + "(\\w+)(true|false)$");
 var IMMEDIATE_PROPAGATION_SYMBOL = zoneSymbol("propagationStopped");
+var KNOWN_EVENT_LISTENER_OPTIONS = ["capture", "once", "passive", "signal"];
 function prepareEventNames(eventName, eventNameToString) {
   const falseEventName = (eventNameToString ? eventNameToString(eventName) : eventName) + FALSE_STR;
   const trueEventName = (eventNameToString ? eventNameToString(eventName) : eventName) + TRUE_STR;
   const symbol = ZONE_SYMBOL_PREFIX + falseEventName;
   const symbolCapture = ZONE_SYMBOL_PREFIX + trueEventName;
-  zoneSymbolEventNames2[eventName] = {};
-  zoneSymbolEventNames2[eventName][FALSE_STR] = symbol;
-  zoneSymbolEventNames2[eventName][TRUE_STR] = symbolCapture;
+  zoneSymbolEventNames2[eventName] = {
+    [FALSE_STR]: symbol,
+    [TRUE_STR]: symbolCapture
+  };
 }
 function patchEventTarget(_global2, api, apis, patchOptions) {
   const ADD_EVENT_LISTENER = patchOptions && patchOptions.add || ADD_EVENT_LISTENER_STR;
@@ -1480,7 +1499,7 @@ function patchEventTarget(_global2, api, apis, patchOptions) {
       returnTarget = patchOptions2.rt;
     }
     let proto = obj;
-    while (proto && !proto.hasOwnProperty(ADD_EVENT_LISTENER)) {
+    while (proto && !Object.hasOwn(proto, ADD_EVENT_LISTENER)) {
       proto = ObjectGetPrototypeOf(proto);
     }
     if (!proto && obj[ADD_EVENT_LISTENER]) {
@@ -1513,7 +1532,8 @@ function patchEventTarget(_global2, api, apis, patchOptions) {
         return { passive: true };
       }
       if (typeof options === "object" && options.passive !== false) {
-        return __spreadProps(__spreadValues({}, options), { passive: true });
+        options.passive = true;
+        return options;
       }
       return options;
     }
@@ -1574,14 +1594,16 @@ function patchEventTarget(_global2, api, apis, patchOptions) {
     const unpatchedEvents = Zone[zoneSymbol("UNPATCHED_EVENTS")];
     const passiveEvents = _global2[zoneSymbol("PASSIVE_EVENTS")];
     function copyEventListenerOptions(options) {
-      if (typeof options === "object" && options !== null) {
-        const newOptions = __spreadValues({}, options);
-        if (options.signal) {
-          newOptions.signal = options.signal;
-        }
-        return newOptions;
+      if (typeof options !== "object" || options === null) {
+        return options;
       }
-      return options;
+      const newOptions = __spreadValues({}, options);
+      for (const key of KNOWN_EVENT_LISTENER_OPTIONS) {
+        if (!Object.hasOwn(newOptions, key) && key in options) {
+          newOptions[key] = options[key];
+        }
+      }
+      return newOptions;
     }
     const makeAddListener = function(nativeListener, addSource, customScheduleFn, customCancelFn, returnTarget2 = false, prepend = false) {
       return function() {
@@ -1608,7 +1630,7 @@ function patchEventTarget(_global2, api, apis, patchOptions) {
           return;
         }
         const passive = !!passiveEvents && passiveEvents.indexOf(eventName) !== -1;
-        const options = copyEventListenerOptions(buildEventListenerOptions(arguments[2], passive));
+        const options = buildEventListenerOptions(copyEventListenerOptions(arguments[2]), passive);
         const signal = options == null ? void 0 : options.signal;
         if (signal == null ? void 0 : signal.aborted) {
           return;
@@ -1884,7 +1906,7 @@ function patchTimer(window2, setName, cancelName, nameSuffix) {
       data.handleId = handleOrId;
     } else {
       data.handle = handleOrId;
-      data.isRefreshable = isFunction(handleOrId.refresh);
+      data.isRefreshable = isFunction(handleOrId == null ? void 0 : handleOrId.refresh);
     }
     return task;
   }
@@ -2827,8 +2849,17 @@ function requireNodeUtils() {
     XMP: true,
     IFRAME: true,
     NOEMBED: true,
+    NOSCRIPT: true,
     NOFRAMES: true,
     PLAINTEXT: true
+  };
+  var hasRawContentFallback = {
+    // Text in these fallback raw-content elements is inert for browser parsing,
+    // but downstream SSR post-processing may reparse it without raw-text state.
+    IFRAME: true,
+    NOEMBED: true,
+    NOSCRIPT: true,
+    NOFRAMES: true
   };
   var emptyElements = {
     area: true,
@@ -2909,24 +2940,88 @@ function requireNodeUtils() {
     }
     return a.name;
   }
+  function fallbackRawContentTags(node) {
+    const tags = [];
+    while (node) {
+      if (node.nodeType === 1) {
+        if (node.namespaceURI === NAMESPACE.HTML && hasRawContentFallback[node.tagName]) {
+          tags.push(node.localName);
+        }
+        node = node.parentNode;
+      } else if (node.nodeType === 11 && node._host) {
+        node = node._host;
+      } else {
+        node = node.parentNode;
+      }
+    }
+    return tags;
+  }
   function escapeMatchingClosingTag(rawText, parentTag) {
-    const parentClosingTag = "</" + parentTag;
+    const parentClosingTag = ("</" + parentTag).toLowerCase();
     if (!rawText.toLowerCase().includes(parentClosingTag)) {
       return rawText;
     }
-    const result = [...rawText];
-    const matches = rawText.matchAll(new RegExp(parentClosingTag, "ig"));
-    for (const match of matches) {
-      result[match.index] = "&lt;";
+    return rawText.replace(
+      new RegExp(escapeRegExp(parentClosingTag), "ig"),
+      (m) => "&lt;" + m.slice(1)
+    );
+  }
+  function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  function escapeMatchingClosingTags(rawText, parentTag, ancestorTags) {
+    let result = escapeMatchingClosingTag(rawText, parentTag);
+    if (ancestorTags) {
+      for (const ancestorTag of ancestorTags) {
+        result = escapeMatchingClosingTag(result, ancestorTag);
+      }
     }
-    return result.join("");
+    return result;
+  }
+  function escapeFallbackRawText(rawText, parentTag, ancestorTags) {
+    let result = "";
+    let index2 = 0;
+    while (index2 < rawText.length) {
+      const commentStart = rawText.indexOf("<!--", index2);
+      if (commentStart === -1) {
+        result += escape(rawText.slice(index2));
+        break;
+      }
+      result += escape(rawText.slice(index2, commentStart));
+      const commentEnd = findCommentEnd(rawText, commentStart + 4);
+      if (commentEnd === -1) {
+        result += escapeMatchingClosingTags(rawText.slice(commentStart), parentTag, ancestorTags);
+        break;
+      }
+      result += escapeMatchingClosingTags(rawText.slice(commentStart, commentEnd), parentTag, ancestorTags);
+      index2 = commentEnd;
+    }
+    return result;
+  }
+  function findCommentEnd(rawText, index2) {
+    if (rawText.charAt(index2) === ">")
+      return index2 + 1;
+    if (rawText.charAt(index2) === "-" && rawText.charAt(index2 + 1) === ">")
+      return index2 + 2;
+    const match = CLOSING_COMMENT_REGEXP.exec(rawText.slice(index2));
+    return match ? index2 + match.index + match[0].length : -1;
   }
   const CLOSING_COMMENT_REGEXP = /--!?>/;
-  function escapeClosingCommentTag(rawContent) {
-    if (!CLOSING_COMMENT_REGEXP.test(rawContent)) {
-      return rawContent;
+  function escapeAbruptClosingCommentTag(rawContent) {
+    if (rawContent.startsWith(">")) {
+      return "&gt;" + rawContent.slice(1);
     }
-    return rawContent.replace(/(--\!?)>/g, "$1&gt;");
+    if (rawContent.startsWith("->")) {
+      return "-&gt;" + rawContent.slice(2);
+    }
+    return rawContent;
+  }
+  function escapeClosingCommentTag(rawContent) {
+    const content = escapeAbruptClosingCommentTag(rawContent);
+    if (!CLOSING_COMMENT_REGEXP.test(content)) {
+      return content;
+    }
+    return content.replace(/(--\!?)>/g, "$1&gt;");
   }
   function escapeProcessingInstructionContent(rawContent) {
     return rawContent.includes(">") ? rawContent.replaceAll(">", "&gt;") : rawContent;
@@ -2947,8 +3042,13 @@ function requireNodeUtils() {
         s += ">";
         if (!(html && emptyElements[tagname])) {
           var ss = kid.serialize();
-          if (hasRawContent[tagname.toUpperCase()]) {
+          var upperTag = tagname.toUpperCase();
+          if (hasRawContent[upperTag] && !hasRawContentFallback[upperTag] && ss.includes("</")) {
             ss = escapeMatchingClosingTag(ss, tagname);
+            const fallbackTags = fallbackRawContentTags(parent);
+            for (const fallbackTag of fallbackTags) {
+              ss = escapeMatchingClosingTag(ss, fallbackTag);
+            }
           }
           if (html && extraNewLine[tagname] && ss.charAt(0) === "\n") s += "\n";
           s += ss;
@@ -2963,22 +3063,34 @@ function requireNodeUtils() {
           parenttag = parent.tagName;
         else
           parenttag = "";
-        if (hasRawContent[parenttag] || parenttag === "NOSCRIPT" && parent.ownerDocument._scripting_enabled) {
-          s += kid.data;
+        if (hasRawContent[parenttag]) {
+          s += hasRawContentFallback[parenttag] ? escapeFallbackRawText(kid.data, parent.localName, fallbackRawContentTags(parent.parentNode)) : kid.data;
         } else {
           s += escape(kid.data);
         }
         break;
       case 8:
-        s += "<!--" + escapeClosingCommentTag(kid.data) + "-->";
+        let commentData = escapeClosingCommentTag(kid.data);
+        if (commentData.includes("</")) {
+          const fallbackTags = fallbackRawContentTags(parent);
+          for (const fallbackTag of fallbackTags) {
+            commentData = escapeMatchingClosingTag(commentData, fallbackTag);
+          }
+        }
+        s += "<!--" + commentData + "-->";
         break;
       case 7:
-        const content = escapeProcessingInstructionContent(kid.data);
+        let content = escapeProcessingInstructionContent(kid.data);
+        if (content.includes("</")) {
+          const fallbackTags = fallbackRawContentTags(parent);
+          for (const fallbackTag of fallbackTags) {
+            content = escapeMatchingClosingTag(content, fallbackTag);
+          }
+        }
         s += "<?" + kid.target + " " + content + "?>";
         break;
       case 10:
-        s += "<!DOCTYPE " + kid.name;
-        s += ">";
+        s += "<!DOCTYPE " + kid.name + ">";
         break;
       default:
         utils2.InvalidStateError();
@@ -7234,6 +7346,13 @@ var hasRequiredStyle_parser;
 function requireStyle_parser() {
   if (hasRequiredStyle_parser) return style_parser;
   hasRequiredStyle_parser = 1;
+  /**
+   * @license
+   * Copyright Google LLC All Rights Reserved.
+   *
+   * Use of this source code is governed by an MIT-style license that can be
+   * found in the LICENSE file at https://angular.io/license
+   */
   Object.defineProperty(style_parser, "__esModule", { value: true });
   style_parser.hyphenate = style_parser.parse = void 0;
   function parse(value) {
@@ -8419,7 +8538,7 @@ function requireHtmlelts() {
       required: Boolean,
       readOnly: Boolean,
       checked: Boolean,
-      value: String,
+      value: { type: String, treatNullAsEmptyString: true },
       src: URL,
       defaultChecked: { name: "checked", type: Boolean },
       size: { type: "unsigned long", default: 20, min: 1, setmin: 1 },
@@ -8944,6 +9063,7 @@ function requireHtmlelts() {
     ctor: function HTMLTemplateElement(doc, localName, prefix) {
       HTMLElement.call(this, doc, localName, prefix);
       this._contentFragment = doc._templateDoc.createDocumentFragment();
+      this._contentFragment._host = this;
     },
     props: {
       content: { get: function() {
@@ -8951,7 +9071,17 @@ function requireHtmlelts() {
       } },
       serialize: { value: function() {
         return this.content.serialize();
-      } }
+      } },
+      cloneNode: {
+        value: function(deep) {
+          var clone = HTMLElement.prototype.cloneNode.call(this, deep);
+          if (deep) {
+            clone._contentFragment = this._contentFragment.cloneNode(true);
+            clone._contentFragment._host = clone;
+          }
+          return clone;
+        }
+      }
     }
   });
   define({
@@ -16061,6 +16191,7 @@ function requireHTMLParser() {
           emitDoctype();
           break;
         case -1:
+          nextchar += 1;
           forcequirks();
           emitDoctype();
           emitEOF();
@@ -18778,34 +18909,14 @@ var libExports = requireLib();
 var index = /* @__PURE__ */ getDefaultExportFromCjs(libExports);
 
 // node_modules/@angular/platform-server/fesm2022/init.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function applyShims() {
   Object.assign(globalThis, index.impl);
   globalThis["KeyboardEvent"] = index.impl.Event;
 }
 applyShims();
-/*! Bundled license information:
-
-zone.js/fesm2015/zone-node.js:
-  (**
-   * @license Angular
-   * (c) 2010-2026 Google LLC. https://angular.dev/
-   * License: MIT
-   *)
-
-@angular/platform-server/third_party/domino/bundled-domino.mjs:
-  (**
-   * @license
-   * Copyright Google LLC All Rights Reserved.
-   *
-   * Use of this source code is governed by an MIT-style license that can be
-   * found in the LICENSE file at https://angular.io/license
-   *)
-
-@angular/platform-server/fesm2022/init.mjs:
-  (**
-   * @license Angular v21.2.7
-   * (c) 2010-2026 Google LLC. https://angular.dev/
-   * License: MIT
-   *)
-*/
 //# sourceMappingURL=polyfills.server.mjs.map

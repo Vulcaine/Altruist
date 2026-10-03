@@ -51,6 +51,11 @@ var __async = (__this, __arguments, generator) => {
 };
 
 // node_modules/@angular/core/fesm2022/_effect-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var activeConsumer = null;
 var inNotificationPhase = false;
 var epoch = 1;
@@ -2197,6 +2202,11 @@ function tap(observerOrNext, error2, complete) {
 }
 
 // node_modules/@angular/core/fesm2022/_not_found-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var _currentInjector = void 0;
 function getCurrentInjector() {
   return _currentInjector;
@@ -2212,6 +2222,11 @@ function isNotFound(e) {
 }
 
 // node_modules/@angular/core/fesm2022/_untracked-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function createLinkedSignal(sourceFn, computationFn, equalityFn) {
   const node = Object.create(LINKED_SIGNAL_NODE);
   node.source = sourceFn;
@@ -2303,6 +2318,11 @@ function untracked(nonReactiveReadsFn) {
 }
 
 // node_modules/@angular/core/fesm2022/primitives-signals.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var formatter = {
   header: (sig, config2) => {
     if (!isSignal(sig) || config2?.ngSkipFormatting) return null;
@@ -2404,7 +2424,19 @@ if (typeof ngDevMode === "undefined" || ngDevMode) {
   installDevToolsSignalFormatter();
 }
 
+// node_modules/@angular/core/fesm2022/primitives-di.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
+
 // node_modules/@angular/core/fesm2022/_effect-chunk2.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var Version = class {
   full;
   major;
@@ -2418,7 +2450,7 @@ var Version = class {
     this.patch = parts.slice(2).join(".");
   }
 };
-var VERSION = /* @__PURE__ */ new Version("21.2.7");
+var VERSION = /* @__PURE__ */ new Version("21.2.25");
 var DOC_PAGE_BASE_URL = (() => {
   const full = VERSION.full;
   const isPreRelease = full.includes("-next") || full.includes("-rc") || full === "0.0.0-PLACEHOLDER";
@@ -3980,8 +4012,50 @@ function assertNodeInjector(lView, injectorIndex) {
   assertNumber(lView[injectorIndex + 7], "injectorIndex should point to a bloom filter");
   assertNumber(lView[injectorIndex + 8], "injectorIndex should point to parent injector");
 }
+var SecurityContext;
+(function(SecurityContext2) {
+  SecurityContext2[SecurityContext2["NONE"] = 0] = "NONE";
+  SecurityContext2[SecurityContext2["HTML"] = 1] = "HTML";
+  SecurityContext2[SecurityContext2["STYLE"] = 2] = "STYLE";
+  SecurityContext2[SecurityContext2["SCRIPT"] = 3] = "SCRIPT";
+  SecurityContext2[SecurityContext2["URL"] = 4] = "URL";
+  SecurityContext2[SecurityContext2["RESOURCE_URL"] = 5] = "RESOURCE_URL";
+  SecurityContext2[SecurityContext2["ATTRIBUTE_NO_BINDING"] = 6] = "ATTRIBUTE_NO_BINDING";
+})(SecurityContext || (SecurityContext = {}));
+var _SECURITY_SCHEMA;
 var SVG_NAMESPACE = "svg";
 var MATH_ML_NAMESPACE = "math";
+function SECURITY_SCHEMA() {
+  if (!_SECURITY_SCHEMA) {
+    _SECURITY_SCHEMA = {};
+    registerContext(SecurityContext.HTML, void 0, [["iframe", ["srcdoc"]], ["*", ["innerHTML", "outerHTML"]]]);
+    registerContext(SecurityContext.STYLE, void 0, [["*", ["style"]]]);
+    registerContext(SecurityContext.URL, void 0, [["*", ["formAction"]], ["area", ["href"]], ["a", ["href", "xlink:href"]], ["form", ["action"]], ["img", ["src"]], ["video", ["src"]]]);
+    registerContext(SecurityContext.URL, MATH_ML_NAMESPACE, [["*", ["href", "xlink:href"]], ["annotation", ["href", "xlink:href"]], ["annotation-xml", ["href", "xlink:href"]], ["maction", ["href", "xlink:href"]], ["malignmark", ["href", "xlink:href"]], ["math", ["href", "xlink:href"]], ["mroot", ["href", "xlink:href"]], ["msqrt", ["href", "xlink:href"]], ["merror", ["href", "xlink:href"]], ["mfrac", ["href", "xlink:href"]], ["mglyph", ["href", "xlink:href"]], ["msub", ["href", "xlink:href"]], ["msup", ["href", "xlink:href"]], ["msubsup", ["href", "xlink:href"]], ["mmultiscripts", ["href", "xlink:href"]], ["mprescripts", ["href", "xlink:href"]], ["mi", ["href", "xlink:href"]], ["mn", ["href", "xlink:href"]], ["mo", ["href", "xlink:href"]], ["mpadded", ["href", "xlink:href"]], ["mphantom", ["href", "xlink:href"]], ["mrow", ["href", "xlink:href"]], ["ms", ["href", "xlink:href"]], ["mspace", ["href", "xlink:href"]], ["mstyle", ["href", "xlink:href"]], ["mtable", ["href", "xlink:href"]], ["mtd", ["href", "xlink:href"]], ["mtr", ["href", "xlink:href"]], ["mtext", ["href", "xlink:href"]], ["mover", ["href", "xlink:href"]], ["munder", ["href", "xlink:href"]], ["munderover", ["href", "xlink:href"]], ["semantics", ["href", "xlink:href"]], ["none", ["href", "xlink:href"]]]);
+    registerContext(SecurityContext.RESOURCE_URL, void 0, [["base", ["href"]], ["embed", ["src"]], ["frame", ["src"]], ["iframe", ["src"]], ["link", ["href"]], ["object", ["codebase", "data"]]]);
+    registerContext(SecurityContext.URL, SVG_NAMESPACE, [["a", ["href", "xlink:href"]]]);
+    registerContext(SecurityContext.ATTRIBUTE_NO_BINDING, SVG_NAMESPACE, [["animate", ["attributeName", "values", "to", "from"]], ["set", ["to", "attributeName"]], ["animateMotion", ["attributeName"]], ["animateTransform", ["attributeName"]]]);
+    registerContext(SecurityContext.ATTRIBUTE_NO_BINDING, void 0, [["unknown", ["attributeName", "values", "to", "from", "sandbox", "allow", "allowFullscreen", "referrerPolicy", "csp", "fetchPriority"]], ["iframe", ["sandbox", "allow", "allowFullscreen", "referrerPolicy", "csp", "fetchPriority"]]]);
+  }
+  return _SECURITY_SCHEMA;
+}
+function registerContext(ctx, namespace, specs) {
+  for (const [element, attributeNames] of specs) {
+    let tagName = namespace && element !== "unknown" ? `:${namespace}:${element}` : element;
+    tagName = tagName.toLowerCase();
+    for (const attr of attributeNames) {
+      _SECURITY_SCHEMA[`${tagName}|${attr.toLowerCase()}`] = ctx;
+    }
+  }
+}
+function checkSecurityContext(tagName, propName, namespace) {
+  const schema = SECURITY_SCHEMA();
+  const normalizedTagName = tagName.toLowerCase();
+  const normalizedPropName = propName.toLowerCase();
+  const namespacedContext = namespace && normalizedTagName !== "*" && normalizedTagName !== "unknown" ? schema[`:${namespace}:${normalizedTagName}|${normalizedPropName}`] : void 0;
+  const namespacedWildcardContext = namespace ? schema[`:${namespace}:*|${normalizedPropName}`] : void 0;
+  return namespacedContext ?? namespacedWildcardContext ?? schema[`${normalizedTagName}|${normalizedPropName}`] ?? schema[`*|${normalizedPropName}`] ?? SecurityContext.NONE;
+}
 function unwrapRNode(value) {
   while (Array.isArray(value)) {
     value = value[HOST];
@@ -5268,11 +5342,21 @@ function createEffectFn(node, fn) {
 }
 
 // node_modules/@angular/core/fesm2022/_attribute-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var Attribute = {
   JSACTION: "jsaction"
 };
 
 // node_modules/@angular/core/fesm2022/_debug_node-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function noSideEffects(fn) {
   return {
     toString: fn
@@ -7180,12 +7264,12 @@ var TransferState = class _TransferState {
         }
       }
     }
-    return JSON.stringify(this.store).replace(/</g, "\\u003C");
+    return JSON.stringify(this.store).replace(/</g, "\\u003C").replace(/\//g, "\\u002F");
   }
 };
 function retrieveTransferredState(doc, appId) {
   const script = doc.getElementById(appId + "-state");
-  if (script?.textContent) {
+  if (script?.tagName === "SCRIPT" && script.textContent) {
     try {
       return JSON.parse(script.textContent);
     } catch (e) {
@@ -7379,9 +7463,22 @@ var removeListeners = (el) => {
 var JSACTION_EVENT_CONTRACT = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "EVENT_CONTRACT_DETAILS" : "", {
   factory: () => ({})
 });
+var handledEventElements = /* @__PURE__ */ new WeakMap();
+function markEventHandledForElement(event, element) {
+  if (event == null || typeof event !== "object") return;
+  let elements = handledEventElements.get(event);
+  if (!elements) {
+    elements = /* @__PURE__ */ new WeakSet();
+    handledEventElements.set(event, elements);
+  }
+  elements.add(element);
+}
 function invokeListeners(event, currentTarget) {
   const handlerFns = currentTarget?.__jsaction_fns?.get(event.type);
   if (!handlerFns || !currentTarget?.isConnected) {
+    return;
+  }
+  if (currentTarget && handledEventElements.get(event)?.has(currentTarget)) {
     return;
   }
   for (const handler of handlerFns) {
@@ -7832,6 +7929,12 @@ function matchingSchemas(schemas, tagName) {
   }
   return false;
 }
+var SVG_NAMESPACE2 = "svg";
+var MATH_ML_NAMESPACE2 = "math";
+var NAMESPACE_URIS = {
+  "http://www.w3.org/2000/svg": SVG_NAMESPACE2,
+  "http://www.w3.org/1998/Math/MathML": MATH_ML_NAMESPACE2
+};
 var policy$1;
 function getPolicy$1() {
   if (policy$1 === void 0) {
@@ -8022,7 +8125,6 @@ var HTML_ATTRS = tagSet("abbr,accesskey,align,alt,autoplay,axis,bgcolor,border,c
 var ARIA_ATTRS = tagSet("aria-activedescendant,aria-atomic,aria-autocomplete,aria-busy,aria-checked,aria-colcount,aria-colindex,aria-colspan,aria-controls,aria-current,aria-describedby,aria-details,aria-disabled,aria-dropeffect,aria-errormessage,aria-expanded,aria-flowto,aria-grabbed,aria-haspopup,aria-hidden,aria-invalid,aria-keyshortcuts,aria-label,aria-labelledby,aria-level,aria-live,aria-modal,aria-multiline,aria-multiselectable,aria-orientation,aria-owns,aria-placeholder,aria-posinset,aria-pressed,aria-readonly,aria-relevant,aria-required,aria-roledescription,aria-rowcount,aria-rowindex,aria-rowspan,aria-selected,aria-setsize,aria-sort,aria-valuemax,aria-valuemin,aria-valuenow,aria-valuetext");
 var VALID_ATTRS = merge(URI_ATTRS, HTML_ATTRS, ARIA_ATTRS);
 var SKIP_TRAVERSING_CONTENT_IF_INVALID_ELEMENTS = tagSet("script,style,template");
-var SENSITIVE_ATTRS = merge(URI_ATTRS, tagSet("action,formaction,data,codebase"));
 var SanitizingHtmlSerializer = class {
   sanitizedSomething = false;
   buf = [];
@@ -8239,16 +8341,24 @@ function enforceIframeSecurity(iframe) {
   iframe.srcdoc = trustedHTMLFromString("");
   nativeRemoveNode(lView[RENDERER], iframe);
 }
-var SecurityContext;
-(function(SecurityContext2) {
-  SecurityContext2[SecurityContext2["NONE"] = 0] = "NONE";
-  SecurityContext2[SecurityContext2["HTML"] = 1] = "HTML";
-  SecurityContext2[SecurityContext2["STYLE"] = 2] = "STYLE";
-  SecurityContext2[SecurityContext2["SCRIPT"] = 3] = "SCRIPT";
-  SecurityContext2[SecurityContext2["URL"] = 4] = "URL";
-  SecurityContext2[SecurityContext2["RESOURCE_URL"] = 5] = "RESOURCE_URL";
-})(SecurityContext || (SecurityContext = {}));
-function \u0275\u0275sanitizeHtml(unsafeHtml) {
+function splitNsName(elementName, fatal = true) {
+  if (elementName[0] != ":") {
+    return [null, elementName];
+  }
+  const colonIndex = elementName.indexOf(":", 1);
+  if (colonIndex === -1) {
+    if (fatal) {
+      throw new Error(`Unsupported format "${elementName}" expecting ":namespace:name"`);
+    } else {
+      return [null, elementName];
+    }
+  }
+  return [elementName.slice(1, colonIndex), elementName.slice(colonIndex + 1)];
+}
+function \u0275\u0275sanitizeHtml(unsafeHtml, tagName, propName) {
+  if (tagName !== void 0 && propName !== void 0 && getSecurityContext(tagName, propName) !== SecurityContext.HTML) {
+    return unsafeHtml;
+  }
   const sanitizer = getSanitizer();
   if (sanitizer) {
     return trustedHTMLFromStringBypass(sanitizer.sanitize(SecurityContext.HTML, unsafeHtml) || "");
@@ -8310,41 +8420,18 @@ function \u0275\u0275trustConstantResourceUrl(url) {
   }
   return trustedScriptURLFromString(url[0]);
 }
-var RESOURCE_MAP = {
-  "embed": {
-    "src": true
-  },
-  "frame": {
-    "src": true
-  },
-  "iframe": {
-    "src": true
-  },
-  "media": {
-    "src": true
-  },
-  "script": {
-    "src": true,
-    "href": true,
-    "xlink:href": true
-  },
-  "base": {
-    "href": true
-  },
-  "link": {
-    "href": true
-  },
-  "object": {
-    "data": true,
-    "codebase": true
-  }
-};
 function getUrlSanitizer(tag, prop) {
-  const isResource = RESOURCE_MAP[tag]?.[prop] === true;
-  return isResource ? \u0275\u0275sanitizeResourceUrl : \u0275\u0275sanitizeUrl;
+  switch (getSecurityContext(tag, prop)) {
+    case SecurityContext.RESOURCE_URL:
+      return \u0275\u0275sanitizeResourceUrl;
+    case SecurityContext.URL:
+      return \u0275\u0275sanitizeUrl;
+    default:
+      return null;
+  }
 }
 function \u0275\u0275sanitizeUrlOrResourceUrl(unsafeUrl, tag, prop) {
-  return getUrlSanitizer(tag, prop)(unsafeUrl);
+  return getUrlSanitizer(tag, prop)?.(unsafeUrl) ?? unsafeUrl;
 }
 function validateAgainstEventProperties(name) {
   if (name.toLowerCase().startsWith("on")) {
@@ -8353,72 +8440,91 @@ If '${name}' is a directive input, make sure the directive is imported by the cu
     throw new RuntimeError(306, errorMessage);
   }
 }
-function validateAgainstEventAttributes(name) {
-  if (name.toLowerCase().startsWith("on")) {
-    const errorMessage = `Binding to event attribute '${name}' is disallowed for security reasons, please use (${name.slice(2)})=...`;
-    throw new RuntimeError(306, errorMessage);
-  }
-}
 function getSanitizer() {
   const lView = getLView();
   return lView && lView[ENVIRONMENT].sanitizer;
 }
+function getSecurityContext(tagName, propName) {
+  const [namespace, resolvedTagName] = resolveElement(tagName);
+  return checkSecurityContext(resolvedTagName, propName, namespace);
+}
+function resolveElement(tagName) {
+  tagName = tagName.toLowerCase();
+  const splitResult = splitNsName(tagName, false);
+  if (splitResult[0]) {
+    return splitResult;
+  }
+  const index = getSelectedIndex();
+  const tNode = index === -1 ? null : getSelectedTNode();
+  let namespace = tNode?.namespace;
+  if (tagName === "#host" && tNode?.type === 2) {
+    const element = getNativeByTNode(tNode, getLView());
+    if (element.tagName) {
+      tagName = element.tagName.toLowerCase();
+    }
+    if (namespace == null) {
+      const namespaceURI = element.namespaceURI;
+      namespace = namespaceURI && NAMESPACE_URIS[namespaceURI];
+    }
+  }
+  return [namespace, tagName];
+}
 var SECURITY_SENSITIVE_ATTRIBUTE_NAMES = /* @__PURE__ */ new Set(["href", "xlink:href"]);
-var SECURITY_SENSITIVE_ELEMENTS = {
-  "iframe": {
-    "sandbox": true,
-    "allow": true,
-    "allowfullscreen": true,
-    "referrerpolicy": true,
-    "csp": true,
-    "fetchpriority": true
-  },
+var SVG_ANIMATION_SENSITIVE_STATIC_VALUES = {
   "animate": {
-    "attributename": true,
     "to": SECURITY_SENSITIVE_ATTRIBUTE_NAMES,
     "values": SECURITY_SENSITIVE_ATTRIBUTE_NAMES,
     "from": SECURITY_SENSITIVE_ATTRIBUTE_NAMES
   },
   "set": {
-    "attributename": true,
     "to": SECURITY_SENSITIVE_ATTRIBUTE_NAMES
-  },
-  "animatemotion": {
-    "attributename": true
-  },
-  "animatetransform": {
-    "attributename": true
   }
 };
 function \u0275\u0275validateAttribute(value, tagName, attributeName) {
-  const lowerCaseTagName = tagName.toLowerCase();
-  const lowerCaseAttrName = attributeName.toLowerCase();
-  const validationConfig = SECURITY_SENSITIVE_ELEMENTS[lowerCaseTagName]?.[lowerCaseAttrName];
-  if (!validationConfig) {
+  const index = getSelectedIndex();
+  const tNode = index === -1 ? null : getSelectedTNode();
+  if (tNode && tNode.type !== 2) {
     return value;
   }
-  const tNode = getSelectedTNode();
-  if (tNode.type !== 2) {
+  const [namespace, resolvedTagName] = resolveElement(tagName);
+  const securityContext = checkSecurityContext(resolvedTagName, attributeName, namespace);
+  if (securityContext !== SecurityContext.ATTRIBUTE_NO_BINDING) {
     return value;
   }
   const lView = getLView();
-  if (lowerCaseTagName === "iframe") {
-    const element = getNativeByTNode(tNode, lView);
-    enforceIframeSecurity(element);
-  }
-  if (typeof validationConfig !== "boolean") {
-    const element = getNativeByTNode(tNode, lView);
-    const attributeNameValue = element.getAttribute("attributeName");
-    if (attributeNameValue && validationConfig.has(attributeNameValue.toLowerCase())) {
-      const errorMessage2 = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${tagName}> element${getTemplateLocationDetails(lView)}. For security reasons, the \`${attributeName}\` can be set on the <${tagName}> element as a static attribute only when the "attributeName" is set to '${attributeNameValue}'. 
+  if (tNode) {
+    if (resolvedTagName === "iframe") {
+      const element = getNativeByTNode(tNode, lView);
+      enforceIframeSecurity(element);
+    } else if (namespace === SVG_NAMESPACE) {
+      const config2 = SVG_ANIMATION_SENSITIVE_STATIC_VALUES[resolvedTagName]?.[attributeName.toLowerCase()];
+      if (config2) {
+        const element = getNativeByTNode(tNode, lView);
+        const attributeNameValue = getSecuritySensitiveSVGAnimationAttributeName(element, config2);
+        if (attributeNameValue) {
+          const errorMessage2 = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${resolvedTagName}> element${getTemplateLocationDetails(lView)}. For security reasons, the \`${attributeName}\` can be set on the <${resolvedTagName}> element as a static attribute only when the "attributeName" is set to '${attributeNameValue}'. 
 To fix this, switch the \`${attributeNameValue}\` binding to a static attribute in a template or in host bindings section.`;
-      throw new RuntimeError(-910, errorMessage2);
+          throw new RuntimeError(-910, errorMessage2);
+        }
+        return value;
+      }
     }
-    return value;
   }
-  const errorMessage = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${tagName}> element${getTemplateLocationDetails(lView)}. For security reasons, the \`${attributeName}\` can be set on the <${tagName}> element as a static attribute only. 
+  const errorMessage = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${resolvedTagName}> element${tNode ? getTemplateLocationDetails(lView) : ""}. For security reasons, the \`${attributeName}\` can be set on the <${resolvedTagName}> element as a static attribute only. 
 To fix this, switch the \`${attributeName}\` binding to a static attribute in a template or in host bindings section.`;
   throw new RuntimeError(-910, errorMessage);
+}
+function getSecuritySensitiveSVGAnimationAttributeName(element, validationConfig) {
+  for (const attributeName of element.getAttributeNames()) {
+    if (attributeName.toLowerCase() !== "attributename") {
+      continue;
+    }
+    const attributeNameValue = element.getAttribute(attributeName);
+    if (attributeNameValue !== null && validationConfig.has(attributeNameValue.toLowerCase())) {
+      return attributeNameValue;
+    }
+  }
+  return null;
 }
 var NG_REFLECT_ATTRS_FLAG_DEFAULT = false;
 var NG_REFLECT_ATTRS_FLAG = new InjectionToken(typeof ngDevMode === "undefined" || ngDevMode ? "NG_REFLECT_FLAG" : "", {
@@ -10074,7 +10180,9 @@ function setDomProperty(tNode, lView, propName, value, renderer, sanitizer) {
   if (tNode.type & 3) {
     const element = getNativeByTNode(tNode, lView);
     if (ngDevMode) {
-      validateAgainstEventProperties(propName);
+      if (lView[TVIEW].firstUpdatePass) {
+        validateAgainstEventProperties(propName);
+      }
       if (!isPropertyValid(element, propName, tNode.value, lView[TVIEW].schemas)) {
         handleUnknownPropertyError(propName, tNode.value, tNode.type, lView);
       }
@@ -10216,7 +10324,6 @@ function findDirectiveDefMatches(tView, tNode) {
 function elementAttributeInternal(tNode, lView, name, value, sanitizer, namespace) {
   if (ngDevMode) {
     assertNotSame(value, NO_CHANGE, "Incoming value should never be NO_CHANGE.");
-    validateAgainstEventAttributes(name);
     assertTNodeType(tNode, 2, `Attempted to set attribute \`${name}\` on a container node. Host bindings are not valid on ng-container or ng-template.`);
   }
   const element = getNativeByTNode(tNode, lView);
@@ -11077,6 +11184,7 @@ function createTemplateRef(hostTNode, hostLView) {
   return null;
 }
 var AT_THIS_LOCATION = "<-- AT THIS LOCATION";
+var THIRD_PARTY_SCRIPTS_URL = `/guide/hydration#third-party-scripts-with-dom-manipulation`;
 function getFriendlyStringFromTNodeType(tNodeType) {
   switch (tNodeType) {
     case 4:
@@ -11132,7 +11240,12 @@ ${actualDom}
       markRNodeAsHavingHydrationMismatch(componentHostElement, expectedDom, actualDom);
     }
     const footer = getHydrationErrorFooter(componentClassName);
-    const message = header + expected + actual + getHydrationAttributeNote() + footer;
+    let message = header + expected + actual + getHydrationAttributeNote() + footer;
+    if (!node || node && isLikelyExternalSourceNode(node)) {
+      message += `Note: It looks like this mismatch may have been caused by a third-party script or browser extension that modified the DOM outside of Angular's control. Angular hydration does not support nodes injected or removed outside of the Angular-managed DOM. Note: If you know which element in the DOM this will be inserted, consider adding ngSkipHydration to prevent this error. 
+
+`;
+    }
     throw new RuntimeError(-500, message);
   }
 }
@@ -11301,9 +11414,20 @@ function getHydrationErrorFooter(componentClassName) {
   return `To fix this problem:
   * check ${componentInfo} component for hydration-related issues
   * check to see if your template has valid HTML structure
+  * check if there are any third-party scripts that manipulate the DOM. More info: ${DOC_PAGE_BASE_URL}${THIRD_PARTY_SCRIPTS_URL}
   * or skip hydration by adding the \`ngSkipHydration\` attribute to its host node in a template
 
 `;
+}
+function isLikelyExternalSourceNode(rNode) {
+  const node = rNode;
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return false;
+  }
+  if (readPatchedData(node)) {
+    return false;
+  }
+  return true;
 }
 function getHydrationAttributeNote() {
   return "Note: attributes are only displayed to better represent the DOM but have no effect on hydration mismatches.\n\n";
@@ -11416,6 +11540,7 @@ function createTNode(tView, tParent, type, index, value, attrs) {
     flags,
     providerIndexes: 0,
     value,
+    namespace: getNamespace(),
     attrs,
     mergedAttrs: null,
     localNames: null,
@@ -12627,6 +12752,10 @@ function bindingUpdated4(lView, bindingIndex, exp1, exp2, exp3, exp4) {
 }
 function wrapListener(tNode, lView, listenerFn) {
   return function wrapListenerIn_markDirtyAndPreventDefault(event) {
+    const nativeEl = wrapListenerIn_markDirtyAndPreventDefault.__ngNativeEl__;
+    if (nativeEl !== void 0) {
+      markEventHandledForElement(event, nativeEl);
+    }
     const startView = isComponentHost(tNode) ? getComponentLViewByIndex(tNode.index, lView) : lView;
     markViewDirty(startView, 5);
     const context2 = lView[CONTEXT];
@@ -12669,6 +12798,9 @@ function listenToDomEvent(tNode, tView, lView, eventTargetResolver, renderer, ev
     const native = getNativeByTNode(tNode, lView);
     const target = eventTargetResolver ? eventTargetResolver(native) : native;
     stashEventListenerImpl(lView, target, eventName, wrappedListener);
+    if (!eventTargetResolver) {
+      wrappedListener.__ngNativeEl__ = native;
+    }
     const cleanupFn = renderer.listen(target, eventName, wrappedListener);
     if (!isAnimationEventType(eventName)) {
       const idxOrTargetGetter = eventTargetResolver ? (_lView) => eventTargetResolver(unwrapRNode(_lView[tNode.index])) : tNode.index;
@@ -12951,6 +13083,11 @@ function createHostElement(componentDef, renderer) {
   const namespace = tagName === "svg" ? SVG_NAMESPACE : tagName === "math" ? MATH_ML_NAMESPACE : null;
   return createElementNode(renderer, tagName, namespace);
 }
+function assertNotScriptHostElement(tagName) {
+  if (tagName?.toLowerCase() === "script") {
+    throw new RuntimeError(905, ngDevMode && `"<script>" tag is not allowed as a component host element.`);
+  }
+}
 function inferTagNameFromDefinition(componentDef) {
   return (componentDef.selectors[0][0] || "div").toLowerCase();
 }
@@ -13003,6 +13140,7 @@ var ComponentFactory2 = class extends ComponentFactory$1 {
     const rootTView = createRootTView(rootSelectorOrNode, cmpDef, componentBindings, directives);
     const hostRenderer = environment.rendererFactory.createRenderer(null, cmpDef);
     const hostElement = rootSelectorOrNode ? locateHostElement(hostRenderer, rootSelectorOrNode, cmpDef.encapsulation, rootViewInjector) : createHostElement(cmpDef, hostRenderer);
+    assertNotScriptHostElement(hostElement?.tagName);
     const hasInputBindings = componentBindings?.some(isInputBinding) || directives?.some((d) => typeof d !== "function" && d.bindings.some(isInputBinding));
     const rootLView = createLView(null, rootTView, null, 512 | getInitialLViewFlagsFromDef(cmpDef), null, null, environment, hostRenderer, rootViewInjector, null, retrieveHydrationInfo(hostElement, rootViewInjector, true));
     rootLView[HEADER_OFFSET] = hostElement;
@@ -13035,7 +13173,7 @@ var ComponentFactory2 = class extends ComponentFactory$1 {
   }
 };
 function createRootTView(rootSelectorOrNode, componentDef, componentBindings, directives) {
-  const tAttributes = rootSelectorOrNode ? ["ng-version", "21.2.7"] : extractAttrsAndClassesFromSelector(componentDef.selectors[0]);
+  const tAttributes = rootSelectorOrNode ? ["ng-version", "21.2.25"] : extractAttrsAndClassesFromSelector(componentDef.selectors[0]);
   let creationBindings = null;
   let updateBindings = null;
   let varsToAllocate = 0;
@@ -13381,7 +13519,10 @@ function populateDehydratedViewsInLContainerImpl(lContainer, tNode, hostLView) {
   }
   const currentRNode = getSegmentHead(hydrationInfo, noOffsetIndex);
   const serializedViews = hydrationInfo.data[CONTAINERS]?.[noOffsetIndex];
-  ngDevMode && assertDefined(serializedViews, "Unexpected state: no hydration info available for a given TNode, which represents a view container.");
+  if (serializedViews === void 0) {
+    ngDevMode && console.warn("Unexpected state: no hydration info available for a given TNode, which represents a view container.");
+    return false;
+  }
   const [commentNode, dehydratedViews] = locateDehydratedViewsInContainer(currentRNode, serializedViews);
   if (ngDevMode) {
     validateMatchingNode(commentNode, Node.COMMENT_NODE, null, hostLView, tNode, true);
@@ -14347,15 +14488,17 @@ function \u0275\u0275InheritDefinitionFeature(definition) {
   let superType = getSuperType(definition.type);
   let shouldInheritFields = true;
   const inheritanceChain = [definition];
-  while (superType) {
+  while (superType && superType !== Function.prototype && superType !== Object.prototype) {
     let superDef = void 0;
+    const cmpDef = Object.hasOwn(superType, NG_COMP_DEF) ? superType[NG_COMP_DEF] : void 0;
+    const dirDef = Object.hasOwn(superType, NG_DIR_DEF) ? superType[NG_DIR_DEF] : void 0;
     if (isComponentDef(definition)) {
-      superDef = superType.\u0275cmp || superType.\u0275dir;
+      superDef = cmpDef ?? dirDef;
     } else {
-      if (superType.\u0275cmp) {
+      if (cmpDef) {
         throw new RuntimeError(903, ngDevMode && `Directives cannot inherit Components. Directive ${stringifyForError(definition.type)} is attempting to extend component ${stringifyForError(superType)}`);
       }
-      superDef = superType.\u0275dir;
+      superDef = dirDef;
     }
     if (superDef) {
       if (shouldInheritFields) {
@@ -16782,9 +16925,11 @@ function triggerResourceLoading(tDetails, lView, tNode) {
   }
   tDetails.loadingPromise = Promise.allSettled(dependenciesFn()).then((results) => {
     let failed = false;
+    let failedReason = null;
     const directiveDefs = [];
     const pipeDefs = [];
-    for (const result of results) {
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
       if (result.status === "fulfilled") {
         const dependency = result.value;
         const directiveDef = getComponentDef(dependency) || getDirectiveDef(dependency);
@@ -16798,6 +16943,7 @@ function triggerResourceLoading(tDetails, lView, tNode) {
         }
       } else {
         failed = true;
+        failedReason = result.reason instanceof Error ? result.reason : new Error(String(result.reason));
         break;
       }
     }
@@ -16805,7 +16951,32 @@ function triggerResourceLoading(tDetails, lView, tNode) {
       tDetails.loadingState = DeferDependenciesLoadingState.FAILED;
       if (tDetails.errorTmplIndex === null) {
         const templateLocation = ngDevMode ? getTemplateLocationDetails(lView) : "";
-        const error2 = new RuntimeError(-750, ngDevMode && `Loading dependencies for \`@defer\` block failed, but no \`@error\` block was configured${templateLocation}. Consider using the \`@error\` block to render an error state.`);
+        let errorMsg = "";
+        if (ngDevMode) {
+          errorMsg = `Loading dependencies for \`@defer\` block failed, but no \`@error\` block was configured${templateLocation}. Consider using the \`@error\` block to render an error state.`;
+          const depsFn = tDetails.dependencyResolverFn;
+          const errorReason = failedReason?.message;
+          if (depsFn) {
+            errorMsg += `
+
+Angular tried to invoke the following dependency function (compiler-generated):
+\`\`\`
+${depsFn.toString()}
+\`\`\``;
+          }
+          if (errorReason) {
+            errorMsg += depsFn ? `
+
+but it resulted in the following error:
+
+${errorReason}` : `
+
+The loading resulted in the following error:
+
+${errorReason}`;
+          }
+        }
+        const error2 = new RuntimeError(-750, errorMsg);
         handleUncaughtError(lView, error2);
       }
     } else {
@@ -18451,7 +18622,7 @@ function plural(val) {
   return 5;
 }
 var localeEn = ["en", [["a", "p"], ["AM", "PM"]], [["AM", "PM"]], [["S", "M", "T", "W", "T", "F", "S"], ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]], u, [["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"], ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]], u, [["B", "A"], ["BC", "AD"], ["Before Christ", "Anno Domini"]], 0, [6, 0], ["M/d/yy", "MMM d, y", "MMMM d, y", "EEEE, MMMM d, y"], ["h:mm\u202Fa", "h:mm:ss\u202Fa", "h:mm:ss\u202Fa z", "h:mm:ss\u202Fa zzzz"], ["{1}, {0}", u, u, u], [".", ",", ";", "%", "+", "-", "E", "\xD7", "\u2030", "\u221E", "NaN", ":"], ["#,##0.###", "#,##0%", "\xA4#,##0.00", "#E0"], "USD", "$", "US Dollar", {}, "ltr", plural];
-var LOCALE_DATA = {};
+var LOCALE_DATA = /* @__PURE__ */ Object.create(null);
 function findLocaleData(locale) {
   const normalizedLocale = normalizeLocale(locale);
   let match2 = getLocaleData(normalizedLocale);
@@ -18474,7 +18645,11 @@ function getLocalePluralCase(locale) {
 }
 function getLocaleData(normalizedLocale) {
   if (!(normalizedLocale in LOCALE_DATA)) {
-    LOCALE_DATA[normalizedLocale] = _global.ng && _global.ng.common && _global.ng.common.locales && _global.ng.common.locales[normalizedLocale];
+    const globalLocaleData = _global.ng && _global.ng.common && _global.ng.common.locales && _global.ng.common.locales[normalizedLocale];
+    if (globalLocaleData !== void 0) {
+      LOCALE_DATA[normalizedLocale] = globalLocaleData;
+    }
+    return globalLocaleData;
   }
   return LOCALE_DATA[normalizedLocale];
 }
@@ -18545,15 +18720,18 @@ function setMaskBit(hasChange) {
   changeMaskCounter++;
 }
 function applyI18n(tView, lView, index) {
-  if (changeMaskCounter > 0) {
-    ngDevMode && assertDefined(tView, `tView should be defined`);
-    const tI18n = tView.data[index];
-    const updateOpCodes = Array.isArray(tI18n) ? tI18n : tI18n.update;
-    const bindingsStartIndex = getBindingIndex() - changeMaskCounter - 1;
-    applyUpdateOpCodes(tView, lView, updateOpCodes, bindingsStartIndex, changeMask);
+  try {
+    if (changeMaskCounter > 0) {
+      ngDevMode && assertDefined(tView, `tView should be defined`);
+      const tI18n = tView.data[index];
+      const updateOpCodes = Array.isArray(tI18n) ? tI18n : tI18n.update;
+      const bindingsStartIndex = getBindingIndex() - changeMaskCounter - 1;
+      applyUpdateOpCodes(tView, lView, updateOpCodes, bindingsStartIndex, changeMask);
+    }
+  } finally {
+    changeMask = 0;
+    changeMaskCounter = 0;
   }
-  changeMask = 0;
-  changeMaskCounter = 0;
 }
 function createNodeWithoutHydration(lView, textOrName, nodeType) {
   const renderer = lView[RENDERER];
@@ -18699,7 +18877,13 @@ function applyUpdateOpCodes(tView, lView, updateOpCodes, bindingsStartIndex, cha
                 if (typeof tNodeOrTagName === "string") {
                   setElementAttribute(lView[RENDERER], lView[nodeIndex], null, tNodeOrTagName, propName, value, sanitizeFn);
                 } else {
-                  setPropertyAndInputs(tNodeOrTagName, lView, propName, value, lView[RENDERER], sanitizeFn);
+                  const prevSelectedIndex = getSelectedIndex();
+                  setSelectedIndex(nodeIndex);
+                  try {
+                    setPropertyAndInputs(tNodeOrTagName, lView, propName, value, lView[RENDERER], sanitizeFn);
+                  } finally {
+                    setSelectedIndex(prevSelectedIndex);
+                  }
                 }
                 break;
               case 0:
@@ -19083,7 +19267,8 @@ function i18nAttributesFirstPass(tView, index, values) {
         if (ICU_REGEXP.test(message)) {
           throw new Error(`ICU expressions are not supported in attributes. Message: "${message}".`);
         }
-        generateBindingUpdateOpCodes(updateOpCodes, message, previousElementIndex, attrName, countBindings(updateOpCodes), SENSITIVE_ATTRS[attrName.toLowerCase()] ? _sanitizeUrl : null);
+        const tagName = previousElement.namespace ? `:${previousElement.namespace}:${previousElement.value}` : previousElement.value;
+        generateBindingUpdateOpCodes(updateOpCodes, message, previousElementIndex, attrName, countBindings(updateOpCodes), i18nResolveSanitizer(attrName, tagName));
       }
     }
     tView.data[index] = updateOpCodes;
@@ -19313,20 +19498,25 @@ function walkIcuTree(ast, tView, tIcu, lView, sharedUpdateOpCodes, create, remov
             const attr = elAttrs.item(i);
             const lowerAttrName = attr.name.toLowerCase();
             const hasBinding2 = !!attr.value.match(BINDING_REGEXP);
+            const namespaceUri = element.namespaceURI;
+            const namespace = namespaceUri && NAMESPACE_URIS[namespaceUri];
+            const tagNameWithNamespace = namespace ? `:${namespace}:${tagName}` : tagName;
             if (hasBinding2) {
               if (VALID_ATTRS.hasOwnProperty(lowerAttrName)) {
-                generateBindingUpdateOpCodes(update, attr.value, newIndex, attr.name, 0, SENSITIVE_ATTRS[lowerAttrName] ? _sanitizeUrl : null);
+                generateBindingUpdateOpCodes(update, attr.value, newIndex, attr.name, 0, i18nResolveSanitizer(lowerAttrName, tagNameWithNamespace));
               } else {
                 ngDevMode && console.warn(`WARNING: ignoring unsafe attribute value ${lowerAttrName} on element ${tagName} (see ${XSS_SECURITY_URL})`);
               }
             } else if (VALID_ATTRS[lowerAttrName]) {
-              if (SENSITIVE_ATTRS[lowerAttrName]) {
+              let val = attr.value;
+              const sanitizer = i18nResolveSanitizer(lowerAttrName, tagNameWithNamespace);
+              if (sanitizer) {
                 if (typeof ngDevMode !== "undefined" && ngDevMode) {
                   console.warn(`WARNING: ignoring unsafe attribute ${lowerAttrName} on element ${tagName} (see ${XSS_SECURITY_URL})`);
                 }
                 addCreateAttribute(create, newIndex, attr.name, "unsafe:blocked");
               } else {
-                addCreateAttribute(create, newIndex, attr.name, attr.value);
+                addCreateAttribute(create, newIndex, attr.name, val);
               }
             } else {
               if (typeof ngDevMode !== "undefined" && ngDevMode) {
@@ -19397,6 +19587,34 @@ function addCreateNodeAndAppend(create, marker, text, appendToParentIdx, createA
 }
 function addCreateAttribute(create, newIndex, attrName, attrValue) {
   create.push(newIndex << 1 | 1, attrName, attrValue);
+}
+function normalizeTagName(tagName) {
+  const tagNameLower = tagName.toLowerCase();
+  const [ns, name] = splitNsName(tagNameLower, false);
+  return ns === SVG_NAMESPACE2 || ns === MATH_ML_NAMESPACE2 ? `:${ns}:${name}` : name;
+}
+function i18nResolveSanitizer(attrName, tagName) {
+  const lowerAttrName = attrName.toLowerCase();
+  const lowerTagName = tagName ? normalizeTagName(tagName) : "*";
+  const [namespace] = splitNsName(lowerTagName, false);
+  const schema = SECURITY_SCHEMA();
+  const schemaContext = schema[`${lowerTagName}|${lowerAttrName}`] || (namespace ? schema[`:${namespace}:*|${lowerAttrName}`] : void 0) || schema[`*|${lowerAttrName}`] || SecurityContext.NONE;
+  switch (schemaContext) {
+    case SecurityContext.HTML:
+      return \u0275\u0275sanitizeHtml;
+    case SecurityContext.STYLE:
+      return \u0275\u0275sanitizeStyle;
+    case SecurityContext.SCRIPT:
+      return \u0275\u0275sanitizeScript;
+    case SecurityContext.URL:
+      return _sanitizeUrl;
+    case SecurityContext.RESOURCE_URL:
+      return \u0275\u0275sanitizeResourceUrl;
+    case SecurityContext.ATTRIBUTE_NO_BINDING:
+      return \u0275\u0275validateAttribute;
+    default:
+      return null;
+  }
 }
 var ROOT_TEMPLATE_ID = 0;
 var PP_MULTI_VALUE_PLACEHOLDERS_REGEXP = /\[(�.+?�?)\]/;
@@ -21876,7 +22094,8 @@ function convertToR3QueryMetadata(propertyName, ann) {
   };
 }
 function extractQueriesMetadata(type, propMetadata, isQueryAnn) {
-  const queriesMeta = [];
+  const signalQueriesMeta = [];
+  const decoratorQueriesMeta = [];
   for (const field in propMetadata) {
     if (propMetadata.hasOwnProperty(field)) {
       const annotations = propMetadata[field];
@@ -21888,12 +22107,17 @@ function extractQueriesMetadata(type, propMetadata, isQueryAnn) {
           if (annotations.some(isInputAnnotation)) {
             throw new Error(`Cannot combine @Input decorators with query decorators`);
           }
-          queriesMeta.push(convertToR3QueryMetadata(field, ann));
+          const queryMeta = convertToR3QueryMetadata(field, ann);
+          if (queryMeta.isSignal) {
+            signalQueriesMeta.push(queryMeta);
+          } else {
+            decoratorQueriesMeta.push(queryMeta);
+          }
         }
       });
     }
   }
-  return queriesMeta;
+  return [...signalQueriesMeta, ...decoratorQueriesMeta];
 }
 function extractExportAs(exportAs) {
   return exportAs === void 0 ? null : splitByComma(exportAs);
@@ -22292,6 +22516,11 @@ var MissingTranslationStrategy;
 })(MissingTranslationStrategy || (MissingTranslationStrategy = {}));
 
 // node_modules/@angular/core/fesm2022/_resource-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var OutputEmitterRef = class {
   destroyed = false;
   listeners = null;
@@ -22652,6 +22881,11 @@ var ResourceWrappedError = class extends Error {
 };
 
 // node_modules/@angular/core/fesm2022/primitives-event-dispatch.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var Property = {
   JSACTION: "__jsaction",
   OWNER: "__owner"
@@ -22781,7 +23015,6 @@ function createMouseSpecialEvent(e, target) {
   copy["_originalEvent"] = e;
   return copy;
 }
-var isIos = typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
 var EventContractContainer = class {
   element;
   handlerInfos = [];
@@ -22789,9 +23022,6 @@ var EventContractContainer = class {
     this.element = element;
   }
   addEventListener(eventType, getHandler, passive) {
-    if (isIos) {
-      this.element.style.cursor = "pointer";
-    }
     this.handlerInfos.push(addEventListener(this.element, eventType, getHandler(this.element), passive));
   }
   cleanUp() {
@@ -23346,6 +23576,11 @@ function clearAppScopedEarlyEventContract(appId, dataContainer = window) {
 }
 
 // node_modules/@angular/core/fesm2022/core.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var REQUIRED_UNSET_VALUE = /* @__PURE__ */ Symbol("InputSignalNode#UNSET");
 var INPUT_SIGNAL_NODE = /* @__PURE__ */ (() => {
   return __spreadProps(__spreadValues({}, SIGNAL_NODE), {
@@ -25280,6 +25515,11 @@ var REQUEST_CONTEXT = new InjectionToken(typeof ngDevMode === "undefined" || ngD
 });
 
 // node_modules/@angular/common/fesm2022/_platform_location-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var _DOM = null;
 function getDOM() {
   return _DOM;
@@ -25396,6 +25636,11 @@ var BrowserPlatformLocation = class _BrowserPlatformLocation extends PlatformLoc
 })();
 
 // node_modules/@angular/common/fesm2022/_location-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function joinWithSlash(start, end) {
   if (!start) return end;
   if (!end) return start;
@@ -25689,7 +25934,7 @@ function _stripBasePath(basePath, url) {
   return url;
 }
 function _stripIndexHtml(url) {
-  return url.replace(/\/index.html$/, "");
+  return url.replace(/\/index\.html$/, "");
 }
 function _stripOrigin(baseHref) {
   const isAbsoluteUrl2 = new RegExp("^(https?:)?//").test(baseHref);
@@ -25701,6 +25946,11 @@ function _stripOrigin(baseHref) {
 }
 
 // node_modules/@angular/common/fesm2022/_common_module-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var HashLocationStrategy = class _HashLocationStrategy extends LocationStrategy {
   _platformLocation;
   _baseHref = "";
@@ -26097,8 +26347,10 @@ function getNumberOfCurrencyDigits(code) {
 var ISO8601_DATE_REGEX = /^(\d{4,})-?(\d\d)-?(\d\d)(?:T(\d\d)(?::?(\d\d)(?::?(\d\d)(?:\.(\d+))?)?)?(Z|([+-])(\d\d):?(\d\d))?)?$/;
 var NAMED_FORMATS = {};
 var DATE_FORMATS_SPLIT = /((?:[^BEGHLMOSWYZabcdhmswyz']+)|(?:'(?:[^']|'')*')|(?:G{1,5}|y{1,4}|Y{1,4}|M{1,5}|L{1,5}|w{1,2}|W{1}|d{1,2}|E{1,6}|c{1,6}|a{1,5}|b{1,5}|B{1,5}|h{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}|z{1,4}|Z{1,5}|O{1,4}))([\s\S]*)/;
+var MAX_DATE_FORMAT_LENGTH = 256;
 function formatDate(value, format, locale, timezone) {
   let date = toDate(value);
+  assertValidDateFormatLength(format);
   const namedFormat = getNamedFormat(locale, format);
   format = namedFormat || format;
   let parts = [];
@@ -26131,6 +26383,11 @@ function formatDate(value, format, locale, timezone) {
     text += dateFormatter ? dateFormatter(date, locale, dateTimezoneOffset) : value2 === "''" ? "'" : value2.replace(/(^'|'$)/g, "").replace(/''/g, "'");
   });
   return text;
+}
+function assertValidDateFormatLength(format) {
+  if (format.length > MAX_DATE_FORMAT_LENGTH) {
+    throw new RuntimeError(2300, ngDevMode && `Date format is too long. Exceeded maximum length of ${MAX_DATE_FORMAT_LENGTH} characters.`);
+  }
 }
 function assertValidDateFormat(parts) {
   if (parts.some((part) => /^Y+$/.test(part)) && !parts.some((part) => /^w+$/.test(part))) {
@@ -26692,6 +26949,10 @@ function formatNumberToLocaleString(value, pattern, locale, groupSymbol, decimal
         maxFraction = parseIntAutoRadix(maxFractionPart);
       } else if (minFractionPart != null && minFraction > maxFraction) {
         maxFraction = minFraction;
+      }
+      const MAX_ALLOWED_DIGITS = 100;
+      if (minInt > MAX_ALLOWED_DIGITS || minFraction > MAX_ALLOWED_DIGITS || maxFraction > MAX_ALLOWED_DIGITS) {
+        throw new RuntimeError(2306, ngDevMode && `${digitsInfo} is not a valid digit info. Exceeded maximum limits of ${MAX_ALLOWED_DIGITS} digits.`);
       }
     }
     roundNumber(parsedNumber, minFraction, maxFraction);
@@ -28503,6 +28764,11 @@ var CommonModule = class _CommonModule {
 })();
 
 // node_modules/@angular/common/fesm2022/_platform_navigation-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var PRECOMMIT_HANDLER_SUPPORTED = new InjectionToken("", {
   factory: () => {
     return typeof window !== "undefined" && typeof window.NavigationPrecommitController !== "undefined";
@@ -28529,6 +28795,11 @@ var PlatformNavigation = class _PlatformNavigation {
 })();
 
 // node_modules/@angular/common/fesm2022/_xhr-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function parseCookieValue(cookieStr, name) {
   name = encodeURIComponent(name);
   for (const cookie of cookieStr.split(";")) {
@@ -28544,6 +28815,11 @@ var XhrFactory = class {
 };
 
 // node_modules/@angular/common/fesm2022/common.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var NavigationAdapterForLocation = class _NavigationAdapterForLocation extends Location {
   navigation = inject2(PlatformNavigation);
   destroyRef = inject2(DestroyRef);
@@ -28642,7 +28918,9 @@ var BrowserViewportScroller = class {
     const elSelected = findAnchorFromDocument(this.document, target);
     if (elSelected) {
       this.scrollToElement(elSelected, options);
-      elSelected.focus();
+      elSelected.focus({
+        preventScroll: true
+      });
     }
   }
   setHistoryScrollRestoration(scrollRestoration) {
@@ -29376,13 +29654,13 @@ var NgOptimizedImage = class _NgOptimizedImage {
       placeholderResolution
     } = this.config;
     if (placeholderInput === true) {
-      return `url(${this.callImageLoader({
+      return `url("${escapeCssUrl(this.callImageLoader({
         src: this.ngSrc,
         width: placeholderResolution,
         isPlaceholder: true
-      })})`;
+      }))}")`;
     } else if (typeof placeholderInput === "string") {
-      return `url(${placeholderInput})`;
+      return `url("${escapeCssUrl(placeholderInput)}")`;
     }
     return null;
   }
@@ -29817,6 +30095,9 @@ function unwrapSafeUrl(value) {
   }
   return unwrapSafeValue(value);
 }
+function escapeCssUrl(input2) {
+  return input2.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
 function booleanOrUrlAttribute(value) {
   if (typeof value === "string" && value !== "true" && value !== "false" && value !== "") {
     return value;
@@ -29825,6 +30106,11 @@ function booleanOrUrlAttribute(value) {
 }
 
 // node_modules/@angular/platform-browser/fesm2022/_dom_renderer-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var EventManagerPlugin = class {
   _doc;
   constructor(_doc) {
@@ -30081,7 +30367,7 @@ var SharedStylesHost = class _SharedStylesHost {
     }]
   }], null);
 })();
-var NAMESPACE_URIS = {
+var NAMESPACE_URIS2 = {
   "svg": "http://www.w3.org/2000/svg",
   "xhtml": "http://www.w3.org/1999/xhtml",
   "xlink": "http://www.w3.org/1999/xlink",
@@ -30268,7 +30554,7 @@ var DefaultDomRenderer2 = class {
   destroyNode = null;
   createElement(name, namespace) {
     if (namespace) {
-      return this.doc.createElementNS(NAMESPACE_URIS[namespace] || namespace, name);
+      return this.doc.createElementNS(NAMESPACE_URIS2[namespace] || namespace, name);
     }
     return this.doc.createElement(name);
   }
@@ -30310,7 +30596,7 @@ var DefaultDomRenderer2 = class {
   setAttribute(el, name, value, namespace) {
     if (namespace) {
       name = namespace + ":" + name;
-      const namespaceUri = NAMESPACE_URIS[namespace];
+      const namespaceUri = NAMESPACE_URIS2[namespace];
       if (namespaceUri) {
         el.setAttributeNS(namespaceUri, name, value);
       } else {
@@ -30322,7 +30608,7 @@ var DefaultDomRenderer2 = class {
   }
   removeAttribute(el, name, namespace) {
     if (namespace) {
-      const namespaceUri = NAMESPACE_URIS[namespace];
+      const namespaceUri = NAMESPACE_URIS2[namespace];
       if (namespaceUri) {
         el.removeAttributeNS(namespaceUri, name);
       } else {
@@ -30510,6 +30796,11 @@ var EmulatedEncapsulationDomRenderer2 = class extends NoneEncapsulationDomRender
 };
 
 // node_modules/@angular/platform-browser/fesm2022/_browser-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var BrowserDomAdapter = class _BrowserDomAdapter extends DomAdapter {
   supportsDOMEvents = true;
   static makeCurrent() {
@@ -30868,6 +31159,11 @@ var BrowserModule = class _BrowserModule {
 })();
 
 // node_modules/@angular/common/fesm2022/_module-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var HttpHeaders = class _HttpHeaders {
   headers;
   normalizedNames = /* @__PURE__ */ new Map();
@@ -30964,10 +31260,10 @@ var HttpHeaders = class _HttpHeaders {
   }
   copyFrom(other) {
     other.init();
-    Array.from(other.headers.keys()).forEach((key) => {
-      this.headers.set(key, other.headers.get(key));
+    for (const [key, values] of other.headers.entries()) {
+      this.headers.set(key, values);
       this.normalizedNames.set(key, other.normalizedNames.get(key));
-    });
+    }
   }
   clone(update) {
     const clone = new _HttpHeaders();
@@ -30988,21 +31284,22 @@ var HttpHeaders = class _HttpHeaders {
           return;
         }
         this.maybeSetNormalizedName(update.name, key);
-        const base = (update.op === "a" ? this.headers.get(key) : void 0) || [];
+        const base = update.op === "a" ? (this.headers.get(key) || []).slice() : [];
         base.push(...value);
         this.headers.set(key, base);
         break;
       case "d":
         const toDelete = update.value;
-        if (!toDelete) {
+        if (toDelete === void 0) {
           this.headers.delete(key);
           this.normalizedNames.delete(key);
         } else {
+          const valuesToDelete = Array.isArray(toDelete) ? toDelete : [toDelete];
           let existing = this.headers.get(key);
           if (!existing) {
             return;
           }
-          existing = existing.filter((value2) => toDelete.indexOf(value2) === -1);
+          existing = existing.filter((value2) => valuesToDelete.indexOf(value2) === -1);
           if (existing.length === 0) {
             this.headers.delete(key);
             this.normalizedNames.delete(key);
@@ -31212,18 +31509,20 @@ var HttpParams = class _HttpParams {
     }
     if (this.cloneFrom !== null) {
       this.cloneFrom.init();
-      this.cloneFrom.keys().forEach((key) => this.map.set(key, this.cloneFrom.map.get(key)));
+      for (const [key, values] of this.cloneFrom.map.entries()) {
+        this.map.set(key, values);
+      }
       this.updates.forEach((update) => {
         switch (update.op) {
           case "a":
           case "s":
-            const base = (update.op === "a" ? this.map.get(update.param) : void 0) || [];
+            const base = update.op === "a" ? (this.map.get(update.param) || []).slice() : [];
             base.push(valueToString(update.value));
             this.map.set(update.param, base);
             break;
           case "d":
             if (update.value !== void 0) {
-              let base2 = this.map.get(update.param) || [];
+              const base2 = (this.map.get(update.param) || []).slice();
               const idx = base2.indexOf(valueToString(update.value));
               if (idx !== -1) {
                 base2.splice(idx, 1);
@@ -31344,7 +31643,7 @@ var HttpRequest = class _HttpRequest {
       if (options.integrity) {
         this.integrity = options.integrity;
       }
-      if (options.referrer) {
+      if (options.referrer !== void 0) {
         this.referrer = options.referrer;
       }
       if (options.referrerPolicy) {
@@ -31417,7 +31716,7 @@ var HttpRequest = class _HttpRequest {
     const mode = update.mode || this.mode;
     const redirect = update.redirect || this.redirect;
     const credentials = update.credentials || this.credentials;
-    const referrer = update.referrer || this.referrer;
+    const referrer = update.referrer ?? this.referrer;
     const integrity = update.integrity || this.integrity;
     const referrerPolicy = update.referrerPolicy || this.referrerPolicy;
     const transferCache = update.transferCache ?? this.transferCache;
@@ -32099,6 +32398,124 @@ var HttpXhrBackend = class _HttpXhrBackend {
     type: XhrFactory
   }], null);
 })();
+var XSRF_ENABLED = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_ENABLED" : "", {
+  factory: () => true
+});
+var XSRF_DEFAULT_COOKIE_NAME = "XSRF-TOKEN";
+var XSRF_COOKIE_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_COOKIE_NAME" : "", {
+  factory: () => XSRF_DEFAULT_COOKIE_NAME
+});
+var XSRF_DEFAULT_HEADER_NAME = "X-XSRF-TOKEN";
+var XSRF_HEADER_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_HEADER_NAME" : "", {
+  factory: () => XSRF_DEFAULT_HEADER_NAME
+});
+var HttpXsrfCookieExtractor = class _HttpXsrfCookieExtractor {
+  cookieName = inject2(XSRF_COOKIE_NAME);
+  doc = inject2(DOCUMENT);
+  lastCookieString = "";
+  lastToken = null;
+  parseCount = 0;
+  getToken() {
+    if (false) {
+      return null;
+    }
+    const cookieString = this.doc.cookie || "";
+    if (cookieString !== this.lastCookieString) {
+      this.parseCount++;
+      this.lastToken = parseCookieValue(cookieString, this.cookieName);
+      this.lastCookieString = cookieString;
+    }
+    return this.lastToken;
+  }
+  static \u0275fac = function HttpXsrfCookieExtractor_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _HttpXsrfCookieExtractor)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
+    token: _HttpXsrfCookieExtractor,
+    factory: _HttpXsrfCookieExtractor.\u0275fac,
+    providedIn: "root"
+  });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfCookieExtractor, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root"
+    }]
+  }], null, null);
+})();
+var HttpXsrfTokenExtractor = class _HttpXsrfTokenExtractor {
+  static \u0275fac = function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
+    token: _HttpXsrfTokenExtractor,
+    factory: function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
+      let __ngConditionalFactory__ = null;
+      if (__ngFactoryType__) {
+        __ngConditionalFactory__ = new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
+      } else {
+        __ngConditionalFactory__ = \u0275\u0275inject(HttpXsrfCookieExtractor);
+      }
+      return __ngConditionalFactory__;
+    },
+    providedIn: "root"
+  });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfTokenExtractor, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root",
+      useExisting: HttpXsrfCookieExtractor
+    }]
+  }], null, null);
+})();
+function xsrfInterceptorFn(req, next) {
+  if (!inject2(XSRF_ENABLED) || req.method === "GET" || req.method === "HEAD") {
+    return next(req);
+  }
+  try {
+    const locationHref = inject2(PlatformLocation).href;
+    const {
+      origin: locationOrigin
+    } = new URL(locationHref);
+    const {
+      origin: requestOrigin
+    } = new URL(req.url, locationOrigin);
+    if (locationOrigin !== requestOrigin) {
+      return next(req);
+    }
+  } catch (e) {
+    return next(req);
+  }
+  const token = inject2(HttpXsrfTokenExtractor).getToken();
+  const headerName = inject2(XSRF_HEADER_NAME);
+  if (token != null && !req.headers.has(headerName)) {
+    req = req.clone({
+      headers: req.headers.set(headerName, token)
+    });
+  }
+  return next(req);
+}
+var HttpXsrfInterceptor = class _HttpXsrfInterceptor {
+  injector = inject2(EnvironmentInjector);
+  intercept(initialRequest, next) {
+    return runInInjectionContext(this.injector, () => xsrfInterceptorFn(initialRequest, (downstreamRequest) => next.handle(downstreamRequest)));
+  }
+  static \u0275fac = function HttpXsrfInterceptor_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _HttpXsrfInterceptor)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
+    token: _HttpXsrfInterceptor,
+    factory: _HttpXsrfInterceptor.\u0275fac
+  });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfInterceptor, [{
+    type: Injectable
+  }], null, null);
+})();
 function interceptorChainEndFn(req, finalHandlerFn) {
   return finalHandlerFn(req);
 }
@@ -32112,7 +32529,7 @@ function chainedInterceptorFn(chainTailFn, interceptorFn, injector) {
 }
 var HTTP_INTERCEPTORS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_INTERCEPTORS" : "");
 var HTTP_INTERCEPTOR_FNS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_INTERCEPTOR_FNS" : "", {
-  factory: () => []
+  factory: () => [xsrfInterceptorFn]
 });
 var HTTP_ROOT_INTERCEPTOR_FNS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_ROOT_INTERCEPTOR_FNS" : "");
 var REQUESTS_CONTRIBUTE_TO_STABILITY = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "REQUESTS_CONTRIBUTE_TO_STABILITY" : "", {
@@ -32184,7 +32601,14 @@ var HttpInterceptorHandler = class _HttpInterceptorHandler {
   }
   handle(initialRequest) {
     if (this.chain === null) {
-      const dedupedInterceptorFns = Array.from(/* @__PURE__ */ new Set([...this.injector.get(HTTP_INTERCEPTOR_FNS), ...this.injector.get(HTTP_ROOT_INTERCEPTOR_FNS, [])]));
+      const parentHandler = this.injector.get(HttpHandler, null, {
+        skipSelf: true
+      });
+      const isDelegating = parentHandler !== null && this.backend === parentHandler;
+      const rootInterceptorFns = this.injector.get(HTTP_ROOT_INTERCEPTOR_FNS, [], isDelegating ? {
+        self: true
+      } : void 0);
+      const dedupedInterceptorFns = Array.from(/* @__PURE__ */ new Set([...this.injector.get(HTTP_INTERCEPTOR_FNS), ...rootInterceptorFns]));
       this.chain = dedupedInterceptorFns.reduceRight((nextSequencedFn, interceptorFn) => chainedInterceptorFn(nextSequencedFn, interceptorFn, this.injector), interceptorChainEndFn);
     }
     if (this.contributeToStability) {
@@ -32403,6 +32827,7 @@ var JSONP_ERR_NO_CALLBACK = "JSONP injected script did not invoke callback.";
 var JSONP_ERR_WRONG_METHOD = "JSONP requests must use JSONP request method.";
 var JSONP_ERR_WRONG_RESPONSE_TYPE = "JSONP requests must use Json response type.";
 var JSONP_ERR_HEADERS_NOT_SUPPORTED = "JSONP requests do not support headers.";
+var JSONP_ERR_UNSAFE_URL = "JSONP requests only support absolute URLs with HTTP(S) protocols.";
 var JsonpCallbackContext = class {
 };
 function jsonpCallbackContext() {
@@ -32415,6 +32840,9 @@ var JsonpClientBackend = class _JsonpClientBackend {
   callbackMap;
   document;
   resolvedPromise = Promise.resolve();
+  nonce = inject2(CSP_NONCE, {
+    optional: true
+  });
   constructor(callbackMap, document2) {
     this.callbackMap = callbackMap;
     this.document = document2;
@@ -32431,11 +32859,17 @@ var JsonpClientBackend = class _JsonpClientBackend {
     if (req.headers.keys().length > 0) {
       throw new RuntimeError(2812, ngDevMode && JSONP_ERR_HEADERS_NOT_SUPPORTED);
     }
+    if (!this.isAllowedJsonpUrl(req.urlWithParams)) {
+      throw new RuntimeError(2826, ngDevMode && JSONP_ERR_UNSAFE_URL);
+    }
     return new Observable((observer) => {
       const callback = this.nextCallback();
       const url = req.urlWithParams.replace(/=JSONP_CALLBACK(&|$)/, `=${callback}$1`);
       const node = this.document.createElement("script");
       node.src = url;
+      if (this.nonce) {
+        node.setAttribute("nonce", this.nonce);
+      }
       let body = null;
       let finished = false;
       this.callbackMap[callback] = (data) => {
@@ -32497,6 +32931,9 @@ var JsonpClientBackend = class _JsonpClientBackend {
     foreignDocument ??= this.document.implementation.createHTMLDocument();
     foreignDocument.adoptNode(script);
   }
+  isAllowedJsonpUrl(url) {
+    return /^https?:\/\//i.test(url);
+  }
   static \u0275fac = function JsonpClientBackend_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _JsonpClientBackend)(\u0275\u0275inject(JsonpCallbackContext), \u0275\u0275inject(DOCUMENT));
   };
@@ -32547,124 +32984,6 @@ var JsonpInterceptor = class _JsonpInterceptor {
     type: EnvironmentInjector
   }], null);
 })();
-var XSRF_ENABLED = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_ENABLED" : "", {
-  factory: () => true
-});
-var XSRF_DEFAULT_COOKIE_NAME = "XSRF-TOKEN";
-var XSRF_COOKIE_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_COOKIE_NAME" : "", {
-  factory: () => XSRF_DEFAULT_COOKIE_NAME
-});
-var XSRF_DEFAULT_HEADER_NAME = "X-XSRF-TOKEN";
-var XSRF_HEADER_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_HEADER_NAME" : "", {
-  factory: () => XSRF_DEFAULT_HEADER_NAME
-});
-var HttpXsrfCookieExtractor = class _HttpXsrfCookieExtractor {
-  cookieName = inject2(XSRF_COOKIE_NAME);
-  doc = inject2(DOCUMENT);
-  lastCookieString = "";
-  lastToken = null;
-  parseCount = 0;
-  getToken() {
-    if (false) {
-      return null;
-    }
-    const cookieString = this.doc.cookie || "";
-    if (cookieString !== this.lastCookieString) {
-      this.parseCount++;
-      this.lastToken = parseCookieValue(cookieString, this.cookieName);
-      this.lastCookieString = cookieString;
-    }
-    return this.lastToken;
-  }
-  static \u0275fac = function HttpXsrfCookieExtractor_Factory(__ngFactoryType__) {
-    return new (__ngFactoryType__ || _HttpXsrfCookieExtractor)();
-  };
-  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
-    token: _HttpXsrfCookieExtractor,
-    factory: _HttpXsrfCookieExtractor.\u0275fac,
-    providedIn: "root"
-  });
-};
-(() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfCookieExtractor, [{
-    type: Injectable,
-    args: [{
-      providedIn: "root"
-    }]
-  }], null, null);
-})();
-var HttpXsrfTokenExtractor = class _HttpXsrfTokenExtractor {
-  static \u0275fac = function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
-    return new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
-  };
-  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
-    token: _HttpXsrfTokenExtractor,
-    factory: function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
-      let __ngConditionalFactory__ = null;
-      if (__ngFactoryType__) {
-        __ngConditionalFactory__ = new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
-      } else {
-        __ngConditionalFactory__ = \u0275\u0275inject(HttpXsrfCookieExtractor);
-      }
-      return __ngConditionalFactory__;
-    },
-    providedIn: "root"
-  });
-};
-(() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfTokenExtractor, [{
-    type: Injectable,
-    args: [{
-      providedIn: "root",
-      useExisting: HttpXsrfCookieExtractor
-    }]
-  }], null, null);
-})();
-function xsrfInterceptorFn(req, next) {
-  if (!inject2(XSRF_ENABLED) || req.method === "GET" || req.method === "HEAD") {
-    return next(req);
-  }
-  try {
-    const locationHref = inject2(PlatformLocation).href;
-    const {
-      origin: locationOrigin
-    } = new URL(locationHref);
-    const {
-      origin: requestOrigin
-    } = new URL(req.url, locationOrigin);
-    if (locationOrigin !== requestOrigin) {
-      return next(req);
-    }
-  } catch (e) {
-    return next(req);
-  }
-  const token = inject2(HttpXsrfTokenExtractor).getToken();
-  const headerName = inject2(XSRF_HEADER_NAME);
-  if (token != null && !req.headers.has(headerName)) {
-    req = req.clone({
-      headers: req.headers.set(headerName, token)
-    });
-  }
-  return next(req);
-}
-var HttpXsrfInterceptor = class _HttpXsrfInterceptor {
-  injector = inject2(EnvironmentInjector);
-  intercept(initialRequest, next) {
-    return runInInjectionContext(this.injector, () => xsrfInterceptorFn(initialRequest, (downstreamRequest) => next.handle(downstreamRequest)));
-  }
-  static \u0275fac = function HttpXsrfInterceptor_Factory(__ngFactoryType__) {
-    return new (__ngFactoryType__ || _HttpXsrfInterceptor)();
-  };
-  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
-    token: _HttpXsrfInterceptor,
-    factory: _HttpXsrfInterceptor.\u0275fac
-  });
-};
-(() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfInterceptor, [{
-    type: Injectable
-  }], null, null);
-})();
 var HttpFeatureKind;
 (function(HttpFeatureKind2) {
   HttpFeatureKind2[HttpFeatureKind2["Interceptors"] = 0] = "Interceptors";
@@ -32685,7 +33004,10 @@ function provideHttpClient(...features) {
   if (ngDevMode) {
     const featureKinds = new Set(features.map((f) => f.\u0275kind));
     if (featureKinds.has(HttpFeatureKind.NoXsrfProtection) && featureKinds.has(HttpFeatureKind.CustomXsrfConfiguration)) {
-      throw new Error(ngDevMode ? `Configuration error: found both withXsrfConfiguration() and withNoXsrfProtection() in the same call to provideHttpClient(), which is a contradiction.` : "");
+      throw new Error(`Configuration error: found both withXsrfConfiguration() and withNoXsrfProtection() in the same call to provideHttpClient(), which is a contradiction.`);
+    }
+    if (featureKinds.has(HttpFeatureKind.RequestsMadeViaParent) && featureKinds.has(HttpFeatureKind.Fetch)) {
+      throw new Error(`Configuration error: withRequestsMadeViaParent() cannot be combined with withFetch() in the same call to provideHttpClient().`);
     }
   }
   const providers = [HttpClient, HttpInterceptorHandler, {
@@ -32851,6 +33173,11 @@ var HttpClientJsonpModule = class _HttpClientJsonpModule {
 })();
 
 // node_modules/@angular/common/fesm2022/http.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var HTTP_TRANSFER_CACHE_ORIGIN_MAP = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_TRANSFER_CACHE_ORIGIN_MAP" : "");
 var BODY = "b";
 var HEADERS = "h";
@@ -32860,7 +33187,7 @@ var REQ_URL = "u";
 var RESPONSE_TYPE = "rt";
 var CACHE_OPTIONS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_TRANSFER_STATE_CACHE_OPTIONS" : "");
 var ALLOWED_METHODS = ["GET", "HEAD"];
-function shouldCacheRequest(req, options) {
+function canUseOrCacheRequest(req, options) {
   const _a = options, {
     isCacheActive
   } = _a, globalOptions = __objRest(_a, [
@@ -32870,97 +33197,102 @@ function shouldCacheRequest(req, options) {
     transferCache: requestOptions,
     method: requestMethod
   } = req;
-  if (!isCacheActive || requestOptions === false || requestMethod === "POST" && !globalOptions.includePostRequests && !requestOptions || requestMethod !== "POST" && !ALLOWED_METHODS.includes(requestMethod) || !globalOptions.includeRequestsWithAuthHeaders && hasAuthHeaders(req) || globalOptions.filter?.(req) === false) {
+  if (!isCacheActive || requestOptions === false || hasOutgoingCredentials(req) || requestMethod === "POST" && !globalOptions.includePostRequests && !requestOptions || requestMethod !== "POST" && !ALLOWED_METHODS.includes(requestMethod) || !globalOptions.includeRequestsWithAuthHeaders && hasAuthHeaders(req) || hasUncacheableCacheControl(req.headers) || isNonCacheableRequest(req.cache) || globalOptions.filter?.(req) === false) {
     return false;
   }
   return true;
 }
 function getHeadersToInclude(options, requestOptions) {
-  const {
-    includeHeaders: globalHeaders
-  } = options;
-  let headersToInclude = globalHeaders;
-  if (typeof requestOptions === "object" && requestOptions.includeHeaders) {
-    headersToInclude = requestOptions.includeHeaders;
-  }
-  return headersToInclude;
+  return typeof requestOptions === "object" && requestOptions.includeHeaders ? requestOptions.includeHeaders : options.includeHeaders;
 }
-function retrieveStateFromCache(req, options, transferState, originMap) {
-  const {
-    transferCache: requestOptions
-  } = req;
-  if (!shouldCacheRequest(req, options)) {
+function retrieveStateFromCache(req, options, transferState, originMap, storeKey, skipUseCacheChecks = false) {
+  if (!skipUseCacheChecks && !canUseOrCacheRequest(req, options)) {
     return null;
   }
   if (originMap) {
     throw new RuntimeError(2803, ngDevMode && "Angular detected that the `HTTP_TRANSFER_CACHE_ORIGIN_MAP` token is configured and present in the client side code. Please ensure that this token is only provided in the server code of the application.");
   }
-  const requestUrl = false ? mapRequestOriginUrl(req.url, originMap) : req.url;
-  const storeKey = makeCacheKey(req, requestUrl);
-  const response = transferState.get(storeKey, null);
-  const headersToInclude = getHeadersToInclude(options, requestOptions);
-  if (response) {
-    const {
-      [BODY]: undecodedBody,
-      [RESPONSE_TYPE]: responseType,
-      [HEADERS]: httpHeaders,
-      [STATUS]: status,
-      [STATUS_TEXT]: statusText,
-      [REQ_URL]: url
-    } = response;
-    let body = undecodedBody;
-    switch (responseType) {
-      case "arraybuffer":
-        body = fromBase64(undecodedBody);
-        break;
-      case "blob":
-        body = new Blob([fromBase64(undecodedBody)]);
-        break;
-    }
-    let headers = new HttpHeaders(httpHeaders);
-    if (typeof ngDevMode === "undefined" || ngDevMode) {
-      headers = appendMissingHeadersDetection(req.url, headers, headersToInclude ?? []);
-    }
-    return new HttpResponse({
-      body,
-      headers,
-      status,
-      statusText,
-      url
-    });
+  if (!storeKey) {
+    const requestUrl = false ? mapRequestOriginUrl(req.url, originMap) : req.url;
+    storeKey = makeCacheKey(req, requestUrl);
   }
-  return null;
+  const response = transferState.get(storeKey, null);
+  if (!response) {
+    return null;
+  }
+  const {
+    [BODY]: undecodedBody,
+    [RESPONSE_TYPE]: responseType,
+    [HEADERS]: httpHeaders,
+    [STATUS]: status,
+    [STATUS_TEXT]: statusText,
+    [REQ_URL]: url
+  } = response;
+  let body = undecodedBody;
+  switch (responseType) {
+    case "arraybuffer":
+      body = fromBase64(undecodedBody);
+      break;
+    case "blob":
+      body = new Blob([fromBase64(undecodedBody)]);
+      break;
+  }
+  let headers = new HttpHeaders(httpHeaders);
+  if (typeof ngDevMode === "undefined" || ngDevMode) {
+    const {
+      transferCache: requestOptions
+    } = req;
+    const headersToInclude = getHeadersToInclude(options, requestOptions);
+    headers = appendMissingHeadersDetection(req.url, headers, headersToInclude ?? []);
+  }
+  return new HttpResponse({
+    body,
+    headers,
+    status,
+    statusText,
+    url
+  });
 }
 function transferCacheInterceptorFn(req, next) {
   const options = inject2(CACHE_OPTIONS);
+  if (!canUseOrCacheRequest(req, options)) {
+    return next(req);
+  }
   const transferState = inject2(TransferState);
   const originMap = inject2(HTTP_TRANSFER_CACHE_ORIGIN_MAP, {
     optional: true
   });
-  const cachedResponse = retrieveStateFromCache(req, options, transferState, originMap);
-  if (cachedResponse) {
-    return of(cachedResponse);
-  }
-  const {
-    transferCache: requestOptions
-  } = req;
-  const headersToInclude = getHeadersToInclude(options, requestOptions);
   const requestUrl = false ? mapRequestOriginUrl(req.url, originMap) : req.url;
   const storeKey = makeCacheKey(req, requestUrl);
-  if (!shouldCacheRequest(req, options)) {
-    return next(req);
+  const cachedResponse = retrieveStateFromCache(req, options, transferState, null, storeKey, true);
+  if (cachedResponse) {
+    return of(cachedResponse);
   }
   const event$ = next(req);
   if (false) {
     return event$.pipe(tap((event) => {
       if (event instanceof HttpResponse) {
+        const {
+          headers,
+          body,
+          status,
+          statusText
+        } = event;
+        if (hasUncacheableCacheControl(headers) || hasSetCookieHeader(headers)) {
+          return;
+        }
+        const {
+          transferCache: requestOptions,
+          responseType
+        } = req;
+        const headersToInclude = getHeadersToInclude(options, requestOptions);
         transferState.set(storeKey, {
-          [BODY]: req.responseType === "arraybuffer" || req.responseType === "blob" ? toBase64(event.body) : event.body,
-          [HEADERS]: getFilteredHeaders(event.headers, headersToInclude),
-          [STATUS]: event.status,
-          [STATUS_TEXT]: event.statusText,
+          [BODY]: responseType === "arraybuffer" || responseType === "blob" ? toBase64(body) : body,
+          [HEADERS]: getFilteredHeaders(headers, headersToInclude),
+          [STATUS]: status,
+          [STATUS_TEXT]: statusText,
           [REQ_URL]: requestUrl,
-          [RESPONSE_TYPE]: req.responseType
+          [RESPONSE_TYPE]: responseType
         });
       }
     }));
@@ -32968,10 +33300,34 @@ function transferCacheInterceptorFn(req, next) {
   return event$;
 }
 function hasAuthHeaders(req) {
-  return req.headers.has("authorization") || req.headers.has("proxy-authorization");
+  const headers = req.headers;
+  return headers.has("authorization") || headers.has("proxy-authorization") || headers.has("cookie");
+}
+function hasOutgoingCredentials(req) {
+  const {
+    withCredentials,
+    credentials
+  } = req;
+  return withCredentials || credentials === "include" || credentials === "same-origin";
+}
+var UNCACHEABLE_CACHE_CONTROL_DIRECTIVES = /* @__PURE__ */ new Set(["no-store", "private", "no-cache"]);
+function hasUncacheableCacheControl(headers) {
+  const cacheControl = headers.get("cache-control");
+  if (!cacheControl) {
+    return false;
+  }
+  return cacheControl.split(",").some((directive) => {
+    const directiveName = directive.split("=", 1)[0].trim().toLowerCase();
+    return UNCACHEABLE_CACHE_CONTROL_DIRECTIVES.has(directiveName);
+  });
+}
+function isNonCacheableRequest(cache) {
+  return cache === "no-cache" || cache === "no-store";
 }
 function sortAndConcatParams(params) {
-  return [...params.keys()].sort().map((k) => `${k}=${params.getAll(k)}`).join("&");
+  const searchParams = new URLSearchParams(params instanceof URLSearchParams ? params : params.toString());
+  searchParams.sort();
+  return searchParams.toString();
 }
 function makeCacheKey(request, mappedRequestUrl) {
   const {
@@ -32989,14 +33345,6 @@ function makeCacheKey(request, mappedRequestUrl) {
   const key = [method, responseType, mappedRequestUrl, serializedBody, encodedParams].join("|");
   const hash = generateHash(key);
   return makeStateKey(hash);
-}
-function generateHash(value) {
-  let hash = 0;
-  for (const char of value) {
-    hash = Math.imul(31, hash) + char.charCodeAt(0) << 0;
-  }
-  hash += 2147483647 + 1;
-  return hash.toString();
 }
 function fromBase64(base64) {
   const binary = atob(base64);
@@ -33050,6 +33398,76 @@ function appendMissingHeadersDetection(url, headers, headersToInclude) {
       };
     }
   });
+}
+var SHA256_ROUND_CONSTANTS = /* @__PURE__ */ new Uint32Array([1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221, 3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580, 3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986, 2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037, 2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344, 430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779, 1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298]);
+var textEncoder;
+function generateHash(value) {
+  textEncoder ??= new TextEncoder();
+  const inputBytes = textEncoder.encode(value);
+  let hashState0 = 1779033703;
+  let hashState1 = 3144134277;
+  let hashState2 = 1013904242;
+  let hashState3 = 2773480762;
+  let hashState4 = 1359893119;
+  let hashState5 = 2600822924;
+  let hashState6 = 528734635;
+  let hashState7 = 1541459225;
+  const messageLengthInBits = inputBytes.length * 8;
+  const paddedLengthInBytes = (inputBytes.length + 8 >> 6) + 1 << 6;
+  const paddedBytes = new Uint8Array(paddedLengthInBytes);
+  paddedBytes.set(inputBytes);
+  paddedBytes[inputBytes.length] = 128;
+  const paddedBytesView = new DataView(paddedBytes.buffer);
+  const lowBits = messageLengthInBits >>> 0;
+  const highBits = messageLengthInBits / 4294967296 >>> 0;
+  paddedBytesView.setUint32(paddedLengthInBytes - 8, highBits, false);
+  paddedBytesView.setUint32(paddedLengthInBytes - 4, lowBits, false);
+  const messageSchedule = new Uint32Array(64);
+  for (let chunkOffset = 0; chunkOffset < paddedLengthInBytes; chunkOffset += 64) {
+    for (let i = 0; i < 16; i++) {
+      messageSchedule[i] = paddedBytesView.getUint32(chunkOffset + i * 4, false);
+    }
+    for (let i = 16; i < 64; i++) {
+      const prevWord15 = messageSchedule[i - 15];
+      const sigma0 = ((prevWord15 >>> 7 | prevWord15 << 25) ^ (prevWord15 >>> 18 | prevWord15 << 14) ^ prevWord15 >>> 3) >>> 0;
+      const prevWord2 = messageSchedule[i - 2];
+      const sigma1 = ((prevWord2 >>> 17 | prevWord2 << 15) ^ (prevWord2 >>> 19 | prevWord2 << 13) ^ prevWord2 >>> 10) >>> 0;
+      messageSchedule[i] = messageSchedule[i - 16] + sigma0 + messageSchedule[i - 7] + sigma1 >>> 0;
+    }
+    let workingStateA = hashState0;
+    let workingStateB = hashState1;
+    let workingStateC = hashState2;
+    let workingStateD = hashState3;
+    let workingStateE = hashState4;
+    let workingStateF = hashState5;
+    let workingStateG = hashState6;
+    let workingStateH = hashState7;
+    for (let i = 0; i < 64; i++) {
+      const capitalSigma1 = ((workingStateE >>> 6 | workingStateE << 26) ^ (workingStateE >>> 11 | workingStateE << 21) ^ (workingStateE >>> 25 | workingStateE << 7)) >>> 0;
+      const chFunction = (workingStateE & workingStateF ^ ~workingStateE & workingStateG) >>> 0;
+      const temp1 = workingStateH + capitalSigma1 + chFunction + SHA256_ROUND_CONSTANTS[i] + messageSchedule[i] >>> 0;
+      const capitalSigma0 = ((workingStateA >>> 2 | workingStateA << 30) ^ (workingStateA >>> 13 | workingStateA << 19) ^ (workingStateA >>> 22 | workingStateA << 10)) >>> 0;
+      const majFunction = (workingStateA & workingStateB ^ workingStateA & workingStateC ^ workingStateB & workingStateC) >>> 0;
+      const temp2 = capitalSigma0 + majFunction >>> 0;
+      workingStateH = workingStateG;
+      workingStateG = workingStateF;
+      workingStateF = workingStateE;
+      workingStateE = workingStateD + temp1 >>> 0;
+      workingStateD = workingStateC;
+      workingStateC = workingStateB;
+      workingStateB = workingStateA;
+      workingStateA = temp1 + temp2 >>> 0;
+    }
+    hashState0 = hashState0 + workingStateA >>> 0;
+    hashState1 = hashState1 + workingStateB >>> 0;
+    hashState2 = hashState2 + workingStateC >>> 0;
+    hashState3 = hashState3 + workingStateD >>> 0;
+    hashState4 = hashState4 + workingStateE >>> 0;
+    hashState5 = hashState5 + workingStateF >>> 0;
+    hashState6 = hashState6 + workingStateG >>> 0;
+    hashState7 = hashState7 + workingStateH >>> 0;
+  }
+  return [hashState0, hashState1, hashState2, hashState3, hashState4, hashState5, hashState6, hashState7].map((x) => x.toString(16).padStart(8, "0")).join("");
 }
 var httpResource = (() => {
   const jsonFn = makeHttpResourceFn("json");
@@ -33226,6 +33644,11 @@ var HttpResourceImpl = class extends ResourceImpl {
 };
 
 // node_modules/@angular/platform-browser/fesm2022/platform-browser.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var Meta = class _Meta {
   _doc;
   _dom;
@@ -33248,15 +33671,17 @@ var Meta = class _Meta {
   }
   getTag(attrSelector) {
     if (!attrSelector) return null;
-    return this._doc.querySelector(`meta[${attrSelector}]`) || null;
+    const meta = this._doc.querySelector(`meta[${attrSelector}]`);
+    return meta?.nodeName.toLowerCase() === "meta" ? meta : null;
   }
   getTags(attrSelector) {
     if (!attrSelector) return [];
     const list = this._doc.querySelectorAll(`meta[${attrSelector}]`);
-    return list ? [].slice.call(list) : [];
+    return list ? [].slice.call(list).filter((elem) => elem.nodeName.toLowerCase() === "meta") : [];
   }
   updateTag(tag, selector) {
     if (!tag) return null;
+    this._validateMetaDefinition(tag);
     selector = selector || this._parseSelector(tag);
     const meta = this.getTag(selector);
     if (meta) {
@@ -33273,6 +33698,7 @@ var Meta = class _Meta {
     }
   }
   _getOrCreateElement(meta, forceCreation = false) {
+    this._validateMetaDefinition(meta);
     if (!forceCreation) {
       const selector = this._parseSelector(meta);
       const elem = this.getTags(selector).filter((elem2) => this._containsAttributes(meta, elem2))[0];
@@ -33290,13 +33716,24 @@ var Meta = class _Meta {
   }
   _parseSelector(tag) {
     const attr = tag.name ? "name" : "property";
-    return `${attr}="${tag[attr]}"`;
+    return `${attr}=${this._escapeSelectorValue(String(tag[attr]))}`;
+  }
+  _escapeSelectorValue(value) {
+    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  _validateMetaDefinition(tag) {
+    for (const prop of Object.keys(tag)) {
+      const attributeName = this._getMetaKeyMap(prop);
+      if (attributeName.toLowerCase().startsWith("on")) {
+        throw new RuntimeError(5203, (typeof ngDevMode === "undefined" || ngDevMode) && `The Meta service does not allow setting event handler attribute '${attributeName}' for security reasons.`);
+      }
+    }
   }
   _containsAttributes(tag, elem) {
     return Object.keys(tag).every((key) => elem.getAttribute(this._getMetaKeyMap(key)) === tag[key]);
   }
   _getMetaKeyMap(prop) {
-    return META_KEYS_MAP[prop] || prop;
+    return Object.hasOwn(META_KEYS_MAP, prop) ? META_KEYS_MAP[prop] : prop;
   }
   static \u0275fac = function Meta_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _Meta)(\u0275\u0275inject(DOCUMENT));
@@ -33727,6 +34164,11 @@ function provideClientHydration(...features) {
 }
 
 // node_modules/@angular/router/fesm2022/_router-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var PRIMARY_OUTLET = "primary";
 var RouteTitleKey = /* @__PURE__ */ Symbol("RouteTitle");
 var ParamsAsMap = class {
@@ -34125,6 +34567,14 @@ function serializeQueryParams(params) {
   }).filter((s) => s);
   return strParams.length ? `?${strParams.join("&")}` : "";
 }
+var SLOW_ELEMENTS_SENTINEL = 1073741824;
+function setUrlDerivedKey(target, key, value) {
+  if (Number(key) >= 32 && !Object.hasOwn(target, SLOW_ELEMENTS_SENTINEL)) {
+    target[SLOW_ELEMENTS_SENTINEL] = value;
+    delete target[SLOW_ELEMENTS_SENTINEL];
+  }
+  target[key] = value;
+}
 var SEGMENT_RE = /^[^\/()?;#]+/;
 function matchSegments(str) {
   const match2 = str.match(SEGMENT_RE);
@@ -34153,7 +34603,8 @@ var UrlParser = class {
     this.remaining = url;
   }
   parseRootSegment() {
-    this.consumeOptional("/");
+    while (this.consumeOptional("/")) {
+    }
     if (this.remaining === "" || this.peekStartsWith("?") || this.peekStartsWith("#")) {
       return new UrlSegmentGroup([], {});
     }
@@ -34230,7 +34681,7 @@ var UrlParser = class {
         this.capture(value);
       }
     }
-    params[decode(key)] = decode(value);
+    setUrlDerivedKey(params, decode(key), decode(value));
   }
   parseQueryParam(params) {
     const key = matchQueryParams(this.remaining);
@@ -34277,7 +34728,8 @@ var UrlParser = class {
         outletName = PRIMARY_OUTLET;
       }
       const children = this.parseChildren(depth + 1);
-      segments[outletName ?? PRIMARY_OUTLET] = Object.keys(children).length === 1 && children[PRIMARY_OUTLET] ? children[PRIMARY_OUTLET] : new UrlSegmentGroup([], children);
+      const child = Object.keys(children).length === 1 && children[PRIMARY_OUTLET] ? children[PRIMARY_OUTLET] : new UrlSegmentGroup([], children);
+      setUrlDerivedKey(segments, outletName ?? PRIMARY_OUTLET, child);
       this.consumeOptional("//");
     }
     return segments;
@@ -34309,10 +34761,10 @@ function squashSegmentGroup(segmentGroup) {
     const childCandidate = squashSegmentGroup(child);
     if (childOutlet === PRIMARY_OUTLET && childCandidate.segments.length === 0 && childCandidate.hasChildren()) {
       for (const [grandChildOutlet, grandChild] of Object.entries(childCandidate.children)) {
-        newChildren[grandChildOutlet] = grandChild;
+        setUrlDerivedKey(newChildren, grandChildOutlet, grandChild);
       }
     } else if (childCandidate.segments.length > 0 || childCandidate.hasChildren()) {
-      newChildren[childOutlet] = childCandidate;
+      setUrlDerivedKey(newChildren, childOutlet, childCandidate);
     }
   }
   const s = new UrlSegmentGroup(segmentGroup.segments, newChildren);
@@ -35185,14 +35637,14 @@ function getInherited(route, parent, paramsInheritanceStrategy = "emptyOnly") {
   } = route;
   if (parent !== null && (paramsInheritanceStrategy === "always" || routeConfig?.path === "" || !parent.component && !parent.routeConfig?.loadComponent)) {
     inherited = {
-      params: __spreadValues(__spreadValues({}, parent.params), route.params),
-      data: __spreadValues(__spreadValues({}, parent.data), route.data),
+      params: Object.keys(route.params).length === 0 ? parent.params : Object.freeze(__spreadValues(__spreadValues({}, parent.params), route.params)),
+      data: Object.freeze(__spreadValues(__spreadValues({}, parent.data), route.data)),
       resolve: __spreadValues(__spreadValues(__spreadValues(__spreadValues({}, route.data), parent.data), routeConfig?.data), route._resolvedData)
     };
   } else {
     inherited = {
-      params: __spreadValues({}, route.params),
-      data: __spreadValues({}, route.data),
+      params: Object.freeze(__spreadValues({}, route.params)),
+      data: Object.freeze(__spreadValues({}, route.data)),
       resolve: __spreadValues(__spreadValues({}, route.data), route._resolvedData ?? {})
     };
   }
@@ -36469,7 +36921,7 @@ function emptyPathMatch(segmentGroup, slicedSegments, r) {
   return r.path === "";
 }
 function noLeftoversInUrl(segmentGroup, segments, outlet) {
-  return segments.length === 0 && !segmentGroup.children[outlet];
+  return segments.length === 0 && !segmentGroup.hasChildren();
 }
 var NoLeftoversInUrl = class {
 };
@@ -36491,6 +36943,7 @@ var Recognizer = class {
   applyRedirects;
   absoluteRedirectCount = 0;
   allowRedirects = true;
+  queryParams;
   constructor(injector, configLoader, rootComponentType, config2, urlTree, paramsInheritanceStrategy, urlSerializer, abortSignal) {
     this.injector = injector;
     this.configLoader = configLoader;
@@ -36501,6 +36954,7 @@ var Recognizer = class {
     this.urlSerializer = urlSerializer;
     this.abortSignal = abortSignal;
     this.applyRedirects = new ApplyRedirects(this.urlSerializer, this.urlTree);
+    this.queryParams = Object.freeze(__spreadValues({}, this.urlTree.queryParams));
   }
   noMatchError(e) {
     return new RuntimeError(4002, typeof ngDevMode === "undefined" || ngDevMode ? `Cannot match any routes. URL Segment: '${e.segmentGroup}'` : `'${e.segmentGroup}'`);
@@ -36525,7 +36979,7 @@ var Recognizer = class {
   }
   match(rootSegmentGroup) {
     return __async(this, null, function* () {
-      const rootSnapshot = new ActivatedRouteSnapshot([], Object.freeze({}), Object.freeze(__spreadValues({}, this.urlTree.queryParams)), this.urlTree.fragment, Object.freeze({}), PRIMARY_OUTLET, this.rootComponentType, null, {}, this.injector);
+      const rootSnapshot = new ActivatedRouteSnapshot([], Object.freeze({}), this.queryParams, this.urlTree.fragment, Object.freeze({}), PRIMARY_OUTLET, this.rootComponentType, null, {}, this.injector);
       try {
         const children = yield this.processSegmentGroup(this.injector, this.config, rootSegmentGroup, PRIMARY_OUTLET, rootSnapshot);
         return {
@@ -36535,6 +36989,7 @@ var Recognizer = class {
       } catch (e) {
         if (e instanceof AbsoluteRedirect) {
           this.urlTree = e.urlTree;
+          this.queryParams = Object.freeze(__spreadValues({}, this.urlTree.queryParams));
           return this.match(e.urlTree.root);
         }
         if (e instanceof NoMatch) {
@@ -36567,13 +37022,12 @@ var Recognizer = class {
       for (const childOutlet of childOutlets) {
         const child = segmentGroup.children[childOutlet];
         const sortedConfig = sortByMatchingOutlets(config2, childOutlet);
-        const outletChildren = yield this.processSegmentGroup(injector, sortedConfig, child, childOutlet, parentRoute);
-        children.push(...outletChildren);
+        const outletChild = yield this.processSegment(injector, sortedConfig, child, child.segments, childOutlet, true, parentRoute);
+        if (outletChild instanceof TreeNode) {
+          children.push(outletChild);
+        }
       }
       const mergedChildren = mergeEmptyPathMatches(children);
-      if (typeof ngDevMode === "undefined" || ngDevMode) {
-        checkOutletNameUniqueness(mergedChildren);
-      }
       sortActivatedRouteSnapshots(mergedChildren);
       return mergedChildren;
     });
@@ -36590,7 +37044,7 @@ var Recognizer = class {
           throw e;
         }
       }
-      if (noLeftoversInUrl(segmentGroup, segments, outlet)) {
+      if (noLeftoversInUrl(segmentGroup, segments)) {
         return new NoLeftoversInUrl();
       }
       throw new NoMatch(segmentGroup);
@@ -36598,7 +37052,7 @@ var Recognizer = class {
   }
   processSegmentAgainstRoute(injector, routes2, route, rawSegment, segments, outlet, allowRedirects, parentRoute) {
     return __async(this, null, function* () {
-      if (getOutlet(route) !== outlet && (outlet === PRIMARY_OUTLET || !emptyPathMatch(rawSegment, segments, route))) {
+      if (getOutlet(route) !== outlet && (outlet === PRIMARY_OUTLET || !emptyPathMatch(rawSegment, segments, route) || !route.children?.length && !route.loadChildren || segments.length === 0 && !rawSegment.hasChildren())) {
         throw new NoMatch(rawSegment);
       }
       if (route.redirectTo === void 0) {
@@ -36640,10 +37094,10 @@ This is currently a dev mode only error but will become a call stack size exceed
     });
   }
   createSnapshot(injector, route, segments, parameters, parentRoute) {
-    const snapshot = new ActivatedRouteSnapshot(segments, parameters, Object.freeze(__spreadValues({}, this.urlTree.queryParams)), this.urlTree.fragment, getData(route), getOutlet(route), route.component ?? route._loadedComponent ?? null, route, getResolve(route), injector);
+    const snapshot = new ActivatedRouteSnapshot(segments, parameters, this.queryParams, this.urlTree.fragment, getData(route), getOutlet(route), route.component ?? route._loadedComponent ?? null, route, getResolve(route), injector);
     const inherited = getInherited(snapshot, parentRoute, this.paramsInheritanceStrategy);
-    snapshot.params = Object.freeze(inherited.params);
-    snapshot.data = Object.freeze(inherited.data);
+    snapshot.params = inherited.params;
+    snapshot.data = inherited.data;
     return snapshot;
   }
   matchSegmentAgainstRoute(injector, rawSegment, route, segments, outlet, parentRoute) {
@@ -36674,15 +37128,18 @@ This is currently a dev mode only error but will become a call stack size exceed
         segmentGroup,
         slicedSegments
       } = split(rawSegment, consumedSegments, remainingSegments, childConfig, outlet);
-      if (slicedSegments.length === 0 && segmentGroup.hasChildren()) {
+      const matchedOnOutlet = getOutlet(route) === outlet;
+      if (matchedOnOutlet && slicedSegments.length === 0 && segmentGroup.hasChildren()) {
         const children = yield this.processChildren(childInjector, childConfig, segmentGroup, snapshot);
         return new TreeNode(snapshot, children);
       }
-      if (childConfig.length === 0 && slicedSegments.length === 0) {
+      if (matchedOnOutlet && childConfig.length === 0 && slicedSegments.length === 0) {
         return new TreeNode(snapshot, []);
       }
-      const matchedOnOutlet = getOutlet(route) === outlet;
       const child = yield this.processSegment(childInjector, childConfig, segmentGroup, slicedSegments, matchedOnOutlet ? PRIMARY_OUTLET : outlet, true, snapshot);
+      if (!matchedOnOutlet && !(child instanceof TreeNode)) {
+        throw new NoMatch(rawSegment);
+      }
       return new TreeNode(snapshot, child instanceof TreeNode ? [child] : []);
     });
   }
@@ -36756,10 +37213,12 @@ function mergeEmptyPathMatches(nodes) {
     const mergedChildren = mergeEmptyPathMatches(mergedNode.children);
     result.push(new TreeNode(mergedNode.value, mergedChildren));
   }
-  return result.filter((n) => !mergedNodes.has(n));
+  const merged = result.filter((n) => !mergedNodes.has(n));
+  checkOutletNameUniqueness(merged);
+  return merged;
 }
 function checkOutletNameUniqueness(nodes) {
-  const names = {};
+  const names = /* @__PURE__ */ Object.create(null);
   nodes.forEach((n) => {
     const routeWithSameOutletName = names[n.value.outlet];
     if (routeWithSameOutletName) {
@@ -37597,6 +38056,14 @@ var StateManager = class _StateManager {
     const path = url instanceof UrlTree ? this.urlSerializer.serialize(url) : url;
     return path;
   }
+  routerUrlState(navigation) {
+    if (navigation?.targetBrowserUrl === void 0 || navigation?.finalUrl === void 0) {
+      return {};
+    }
+    return {
+      \u0275routerUrl: this.urlSerializer.serialize(navigation.finalUrl)
+    };
+  }
   commitTransition({
     targetRouterState,
     finalUrl,
@@ -37694,20 +38161,21 @@ var HistoryStateManager = class _HistoryStateManager extends StateManager {
       this.currentPageId = this.browserPageId;
     }
   }
-  setBrowserUrl(path, {
-    extras,
-    id
-  }) {
+  setBrowserUrl(path, navigation) {
+    const {
+      extras,
+      id
+    } = navigation;
     const {
       replaceUrl,
       state
     } = extras;
     if (this.location.isCurrentPathEqualTo(path) || !!replaceUrl) {
       const currentBrowserPageId = this.browserPageId;
-      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, currentBrowserPageId));
+      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, currentBrowserPageId, navigation));
       this.location.replaceState(path, "", newState);
     } else {
-      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, this.browserPageId + 1));
+      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, this.browserPageId + 1, navigation));
       this.location.go(path, "", newState);
     }
   }
@@ -37738,16 +38206,16 @@ var HistoryStateManager = class _HistoryStateManager extends StateManager {
   resetUrlToCurrentUrlTree() {
     this.location.replaceState(this.urlSerializer.serialize(this.getRawUrlTree()), "", this.generateNgRouterState(this.lastSuccessfulId, this.currentPageId));
   }
-  generateNgRouterState(navigationId, routerPageId) {
+  generateNgRouterState(navigationId, routerPageId, navigation) {
     if (this.canceledNavigationResolution === "computed") {
-      return {
+      return __spreadValues({
         navigationId,
         \u0275routerPageId: routerPageId
-      };
+      }, this.routerUrlState(navigation));
     }
-    return {
+    return __spreadValues({
       navigationId
-    };
+    }, this.routerUrlState(navigation));
   }
   static \u0275fac = /* @__PURE__ */ (() => {
     let \u0275HistoryStateManager_BaseFactory;
@@ -37887,15 +38355,22 @@ var Router = class _Router {
   }
   navigateToSyncWithBrowser(url, source, state, extras) {
     const restoredState = state?.navigationId ? state : null;
+    const routerUrl = state?.\u0275routerUrl ?? url;
+    if (state?.\u0275routerUrl) {
+      extras = __spreadProps(__spreadValues({}, extras), {
+        browserUrl: url
+      });
+    }
     if (state) {
       const stateCopy = __spreadValues({}, state);
       delete stateCopy.navigationId;
       delete stateCopy.\u0275routerPageId;
+      delete stateCopy.\u0275routerUrl;
       if (Object.keys(stateCopy).length !== 0) {
         extras.state = stateCopy;
       }
     }
-    const urlTree = this.parseUrl(url);
+    const urlTree = this.parseUrl(routerUrl);
     this.scheduleNavigation(urlTree, source, restoredState, extras).catch((e) => {
       if (this.disposed) {
         return;
@@ -38074,6 +38549,11 @@ function validateCommands(commands) {
 }
 
 // node_modules/@angular/router/fesm2022/_router_module-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var ReactiveRouterState = class _ReactiveRouterState {
   router = inject2(Router);
   stateManager = inject2(StateManager);
@@ -38136,7 +38616,15 @@ var RouterLink = class _RouterLink {
     if (!this.isAnchorElement) {
       return this.hrefAttributeValue;
     }
-    return this.computeHref(this._urlTree());
+    this.reactiveRouterState.path();
+    if (this._preserveFragment()) {
+      this.reactiveRouterState.fragment();
+    }
+    const shouldTrackParams = (handling) => handling === "preserve" || handling === "merge";
+    if (shouldTrackParams(this._queryParamsHandling()) || shouldTrackParams(this.options?.defaultQueryParamsHandling)) {
+      this.reactiveRouterState.queryParams();
+    }
+    return this.computeHref(this.createUrlTree());
   }, ...ngDevMode ? [{
     debugName: "reactiveHref"
   }] : []);
@@ -38292,7 +38780,7 @@ var RouterLink = class _RouterLink {
     }
   }
   onClick(button, ctrlKey, shiftKey, altKey, metaKey) {
-    const urlTree = this._urlTree();
+    const urlTree = this.urlTree;
     if (urlTree === null) {
       return true;
     }
@@ -38326,15 +38814,7 @@ var RouterLink = class _RouterLink {
       renderer.removeAttribute(nativeElement, attrName);
     }
   }
-  _urlTree = computed(() => {
-    this.reactiveRouterState.path();
-    if (this._preserveFragment()) {
-      this.reactiveRouterState.fragment();
-    }
-    const shouldTrackParams = (handling) => handling === "preserve" || handling === "merge";
-    if (shouldTrackParams(this._queryParamsHandling()) || shouldTrackParams(this.options?.defaultQueryParamsHandling)) {
-      this.reactiveRouterState.queryParams();
-    }
+  createUrlTree() {
     const routerLinkInput = this.routerLinkInput();
     if (routerLinkInput === null || !this.router.createUrlTree) {
       return null;
@@ -38348,13 +38828,9 @@ var RouterLink = class _RouterLink {
       queryParamsHandling: this._queryParamsHandling(),
       preserveFragment: this._preserveFragment()
     });
-  }, __spreadProps(__spreadValues({}, ngDevMode ? {
-    debugName: "_urlTree"
-  } : {}), {
-    equal: (a, b) => this.computeHref(a) === this.computeHref(b)
-  }));
+  }
   get urlTree() {
-    return untracked2(this._urlTree);
+    return untracked2(() => this.createUrlTree());
   }
   computeHref(urlTree) {
     return urlTree !== null && this.locationStrategy ? this.locationStrategy?.prepareExternalUrl(this.router.serializeUrl(urlTree)) ?? "" : null;
@@ -38774,6 +39250,9 @@ var RouterScroller = class _RouterScroller {
   lastSource = IMPERATIVE_NAVIGATION;
   restoredId = 0;
   store = {};
+  isHydrating = inject2(IS_HYDRATION_DOM_REUSE_ENABLED, {
+    optional: true
+  }) ?? false;
   urlSerializer = inject2(UrlSerializer);
   zone = inject2(NgZone);
   viewportScroller = inject2(ViewportScroller);
@@ -38782,6 +39261,11 @@ var RouterScroller = class _RouterScroller {
     this.options = options;
     this.options.scrollPositionRestoration ||= "disabled";
     this.options.anchorScrolling ||= "disabled";
+    if (this.isHydrating) {
+      inject2(ApplicationRef).whenStable().then(() => {
+        this.isHydrating = false;
+      });
+    }
   }
   init() {
     if (this.options.scrollPositionRestoration !== "disabled") {
@@ -38828,6 +39312,7 @@ var RouterScroller = class _RouterScroller {
     });
   }
   scheduleScrollEvent(routerEvent, anchor) {
+    if (this.isHydrating) return;
     const scroll = untracked2(this.transitions.currentNavigation)?.extras.scroll;
     this.zone.runOutsideAngular(() => __async(this, null, function* () {
       yield new Promise((resolve) => {
@@ -38984,9 +39469,7 @@ var NavigationStateManager = class _NavigationStateManager extends StateManager 
   }
   navigate(internalPath, transition) {
     const path = transition.extras.skipLocationChange ? this.navigation.currentEntry.url : this.location.prepareExternalUrl(internalPath);
-    const state = __spreadProps(__spreadValues({}, transition.extras.state), {
-      navigationId: transition.id
-    });
+    const state = __spreadValues(__spreadValues({}, transition.extras.state), this.generateNgRouterState(transition));
     const info = {
       \u0275routerInfo: {
         intercept: true
@@ -39123,9 +39606,7 @@ var NavigationStateManager = class _NavigationStateManager extends StateManager 
         if (transition && !transition.extras.skipLocationChange) {
           const internalPath = this.createBrowserPath(transition);
           const history = this.location.isCurrentPathEqualTo(internalPath) || !!transition.extras.replaceUrl ? "replace" : "push";
-          const state = __spreadProps(__spreadValues({}, transition.extras.state), {
-            navigationId: transition.id
-          });
+          const state = __spreadValues(__spreadValues({}, transition.extras.state), this.generateNgRouterState(transition));
           const pathOrUrl = this.location.prepareExternalUrl(internalPath);
           (yield redirect)(pathOrUrl, {
             state,
@@ -39154,6 +39635,11 @@ var NavigationStateManager = class _NavigationStateManager extends StateManager 
     const eventDestination = new URL(navigateEvent.destination.url);
     const routerDestination = this.location.prepareExternalUrl(internalPath);
     return new URL(routerDestination, eventDestination.origin).href === eventDestination.href;
+  }
+  generateNgRouterState(transition) {
+    return __spreadProps(__spreadValues({}, this.routerUrlState(transition)), {
+      navigationId: transition.id
+    });
   }
   deferredCommitSupported(event) {
     return this.precommitHandlerSupported && event.cancelable;
@@ -39456,7 +39942,19 @@ function provideRouterInitializer() {
   }];
 }
 
+// node_modules/@angular/router/fesm2022/router.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
+
 // node_modules/@angular/forms/fesm2022/forms.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var BaseControlValueAccessor = class _BaseControlValueAccessor {
   _renderer;
   _elementRef;
@@ -40113,7 +40611,7 @@ var ngModelWithFormGroupExample = `
       <input [(ngModel)]="showMoreControls" [ngModelOptions]="{standalone: true}">
   </div>
 `;
-var VERSION2 = /* @__PURE__ */ new Version("21.2.7");
+var VERSION2 = /* @__PURE__ */ new Version("21.2.25");
 function controlParentException(nameOrIndex) {
   return new RuntimeError(1050, `formControlName must be used with a parent formGroup or formArray directive. You'll want to add a formGroup/formArray
       directive and pass it an existing FormGroup/FormArray instance (you can create one in your class).
@@ -40313,7 +40811,7 @@ function assertControlPresent(parent, isGroup, key) {
 function assertAllValuesPresent(control, isGroup, value) {
   control._forEachChild((_, key) => {
     if (value[key] === void 0) {
-      throw new RuntimeError(1002, typeof ngDevMode === "undefined" || ngDevMode ? missingControlValueError(isGroup, key) : "");
+      throw new RuntimeError(-1002, typeof ngDevMode === "undefined" || ngDevMode ? missingControlValueError(isGroup, key) : "");
     }
   });
 }
@@ -43265,11 +43763,11 @@ var SelectMultipleControlValueAccessor = class _SelectMultipleControlValueAccess
     let optionSelectedStateSetter;
     if (Array.isArray(value)) {
       const ids = value.map((v) => this._getOptionId(v));
-      optionSelectedStateSetter = (opt, o) => {
-        opt._setSelected(ids.indexOf(o.toString()) > -1);
+      optionSelectedStateSetter = (opt, id) => {
+        opt._setSelected(ids.indexOf(id) > -1);
       };
     } else {
-      optionSelectedStateSetter = (opt, o) => {
+      optionSelectedStateSetter = (opt) => {
         opt._setSelected(false);
       };
     }
@@ -44616,7 +45114,7 @@ var CacheViewComponent = class _CacheViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(CacheViewComponent, [{
     type: Component,
-    args: [{ selector: "app-cache-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="cache-view">\r\n  <header class="cache-header">\r\n    <div class="title">\r\n      <h2>\u{1F9E0} Cache Dashboard</h2>\r\n      <span class="status">{{ statusHint }}</span>\r\n    </div>\r\n\r\n    <div class="controls">\r\n      <input\r\n        type="text"\r\n        placeholder="Filter by type, group, key or content\u2026"\r\n        [(ngModel)]="filterText"\r\n        (ngModelChange)="onFilterChange($event)"\r\n      />\r\n      <button type="button" (click)="loadEntries()" [disabled]="isLoading">\r\n        Refresh\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  <section class="cache-body" *ngIf="!error; else errorTpl">\r\n    <div class="table-wrapper" *ngIf="hasData; else emptyTpl">\r\n      <table class="cache-table">\r\n        <thead>\r\n          <tr>\r\n            <th>Type</th>\r\n            <th>Group</th>\r\n            <th>Key</th>\r\n            <th>Preview</th>\r\n            <th class="actions-col"></th>\r\n          </tr>\r\n        </thead>\r\n        <tbody>\r\n          <tr\r\n            *ngFor="let entry of pagedEntries"\r\n            (dblclick)="onRowDoubleClick(entry)"\r\n          >\r\n            <td class="type-cell">\r\n              <span class="type-pill">{{ entry.typeShortName }}</span>\r\n            </td>\r\n            <td>{{ entry.groupId || "\u2014" }}</td>\r\n            <td class="key-cell" [title]="entry.key">{{ entry.key }}</td>\r\n            <td class="preview-cell">\r\n              <code>{{ entry.preview || (entry.value | json) }}</code>\r\n            </td>\r\n            <td class="actions-col">\r\n              <button\r\n                type="button"\r\n                class="btn-danger"\r\n                (click)="deleteEntry(entry, $event)"\r\n              >\r\n                Delete\r\n              </button>\r\n            </td>\r\n          </tr>\r\n        </tbody>\r\n      </table>\r\n\r\n      <!-- Page size + paginator -->\r\n      <div class="cache-pagination" *ngIf="showPager">\r\n        <div class="page-size">\r\n          <label>\r\n            Page size\r\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\r\n              <option *ngFor="let size of pageSizeOptions" [value]="size">\r\n                {{ size }}\r\n              </option>\r\n            </select>\r\n          </label>\r\n        </div>\r\n\r\n        <div class="page-nav">\r\n          <button\r\n            type="button"\r\n            (click)="goPrevPage()"\r\n            [disabled]="currentPage === 0"\r\n          >\r\n            \u2039\r\n          </button>\r\n          <span> Page {{ currentPage + 1 }} / {{ totalPages }} </span>\r\n          <button\r\n            type="button"\r\n            (click)="goNextPage()"\r\n            [disabled]="currentPage >= totalPages - 1"\r\n          >\r\n            \u203A\r\n          </button>\r\n        </div>\r\n      </div>\r\n    </div>\r\n  </section>\r\n\r\n  <ng-template #emptyTpl>\r\n    <div class="empty-state">\r\n      <p>No cache entries found.</p>\r\n    </div>\r\n  </ng-template>\r\n\r\n  <ng-template #errorTpl>\r\n    <div class="error-state">\r\n      <p>{{ error }}</p>\r\n      <button type="button" (click)="loadEntries()">Retry</button>\r\n    </div>\r\n  </ng-template>\r\n\r\n  <!-- JSON editor modal -->\r\n  <div class="modal-backdrop" *ngIf="editorVisible">\r\n    <div class="modal">\r\n      <header class="modal-header">\r\n        <h3>\r\n          Edit cache entry\r\n          <small *ngIf="selectedEntry">\r\n            ({{ selectedEntry.typeShortName }} /\r\n            {{ selectedEntry.groupId || "default" }} / {{ selectedEntry.key }})\r\n          </small>\r\n        </h3>\r\n      </header>\r\n\r\n      <section class="modal-body">\r\n        <textarea\r\n          [(ngModel)]="editorJson"\r\n          spellcheck="false"\r\n          class="json-editor"\r\n        ></textarea>\r\n\r\n        <p class="error-text" *ngIf="editorError">{{ editorError }}</p>\r\n      </section>\r\n\r\n      <footer class="modal-footer">\r\n        <button type="button" (click)="closeEditor()">Cancel</button>\r\n        <button type="button" class="btn-primary" (click)="saveEditor()">\r\n          Save\r\n        </button>\r\n      </footer>\r\n    </div>\r\n  </div>\r\n</div>\r\n', styles: ["/* src/app/cache/cache-view.component.scss */\n.cache-view {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n  height: 100%;\n  padding: 1rem;\n  background: #020617;\n  color: #e5e7eb;\n}\n.cache-view .cache-pagination {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  padding: 0.5rem 0.75rem;\n  font-size: 0.8rem;\n}\n.cache-view .cache-pagination .page-size label {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.25rem;\n}\n.cache-view .cache-pagination .page-size label select {\n  padding: 0.15rem 0.4rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n}\n.cache-view .cache-pagination .page-nav {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.cache-view .cache-pagination .page-nav button {\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  cursor: pointer;\n}\n.cache-view .cache-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 1rem;\n  padding: 10px 12px;\n  border-radius: 10px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #1e293b,\n      #020617);\n  border: 1px solid rgba(51, 65, 85, 0.9);\n}\n.cache-view .cache-header .title {\n  display: flex;\n  flex-direction: column;\n}\n.cache-view .cache-header .title h2 {\n  margin: 0;\n  font-size: 18px;\n  font-weight: 600;\n}\n.cache-view .cache-header .title .status {\n  font-size: 0.85rem;\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls {\n  display: flex;\n  gap: 0.5rem;\n  align-items: center;\n}\n.cache-view .cache-header .controls input[type=text] {\n  min-width: 250px;\n  padding: 0.3rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.cache-view .cache-header .controls input[type=text]::placeholder {\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls input[type=text]:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .cache-header .controls button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-header .controls button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-header .controls button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-header .controls button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .table-wrapper {\n  flex: 1;\n  overflow: auto;\n  border-radius: 10px;\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  background: rgba(15, 23, 42, 0.9);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.9rem;\n}\n.cache-view .cache-table thead {\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .cache-table thead th {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n  padding: 0.5rem 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  font-weight: 600;\n  font-size: 0.8rem;\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.cache-view .cache-table tbody tr {\n  cursor: pointer;\n  transition:\n    background 0.12s ease,\n    transform 0.08s ease,\n    box-shadow 0.12s ease;\n}\n.cache-view .cache-table tbody tr:nth-child(even) {\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .cache-table tbody tr:nth-child(odd) {\n  background: rgba(15, 23, 42, 0.96);\n}\n.cache-view .cache-table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table td {\n  padding: 0.4rem 0.75rem;\n  border-bottom: 1px solid rgba(15, 23, 42, 0.9);\n  vertical-align: top;\n}\n.cache-view .cache-table .type-cell .type-pill {\n  display: inline-block;\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  background: rgba(37, 99, 235, 0.15);\n  border: 1px solid rgba(37, 99, 235, 0.4);\n  font-size: 0.75rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .key-cell {\n  max-width: 250px;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  font-family: monospace;\n  font-size: 0.8rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .preview-cell {\n  max-width: 400px;\n}\n.cache-view .cache-table .preview-cell code {\n  display: block;\n  font-family: monospace;\n  font-size: 0.78rem;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  color: #9ca3af;\n}\n.cache-view .cache-table .actions-col {\n  width: 90px;\n  text-align: right;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-table .actions-col .btn-danger:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-table .actions-col .btn-danger:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-color: rgba(248, 113, 113, 0.7);\n  background: rgba(248, 113, 113, 0.16);\n  color: #fecaca;\n  font-size: 0.8rem;\n  padding: 4px 10px;\n}\n.cache-view .empty-state,\n.cache-view .error-state {\n  padding: 2rem;\n  text-align: center;\n  color: #9ca3af;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .empty-state button:hover,\n.cache-view .error-state button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .empty-state button:disabled,\n.cache-view .error-state button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n  margin-top: 0.5rem;\n}\n.cache-view .modal-backdrop {\n  position: fixed;\n  inset: 0;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 999;\n  -webkit-backdrop-filter: blur(2px);\n  backdrop-filter: blur(2px);\n}\n.cache-view .modal {\n  width: min(900px, 90vw);\n  height: min(600px, 80vh);\n  background: rgba(15, 23, 42, 0.9);\n  border-radius: 8px;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n}\n.cache-view .modal .modal-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .modal .modal-header h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-weight: 500;\n}\n.cache-view .modal .modal-header h3 small {\n  display: block;\n  font-size: 0.8rem;\n  color: #9ca3af;\n  margin-top: 0.2rem;\n}\n.cache-view .modal .modal-body {\n  flex: 1;\n  padding: 0.75rem 1rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-body .json-editor {\n  flex: 1;\n  width: 100%;\n  font-family: monospace;\n  font-size: 0.85rem;\n  padding: 0.5rem;\n  border-radius: 6px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  resize: none;\n  white-space: pre;\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n}\n.cache-view .modal .modal-body .json-editor:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .modal .modal-body .error-text {\n  margin: 0;\n  font-size: 0.8rem;\n  color: #fecaca;\n}\n.cache-view .modal .modal-footer {\n  padding: 0.6rem 1rem;\n  border-top: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-footer button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n}\n.cache-view .modal .modal-footer .btn-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer .btn-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer .btn-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer .btn-primary {\n  background:\n    linear-gradient(\n      135deg,\n      #4f46e5,\n      #7c3aed);\n  border-color: rgba(129, 140, 248, 0.9);\n}\n/*# sourceMappingURL=cache-view.component.css.map */\n"] }]
+    args: [{ selector: "app-cache-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="cache-view">\n  <header class="cache-header">\n    <div class="title">\n      <h2>\u{1F9E0} Cache Dashboard</h2>\n      <span class="status">{{ statusHint }}</span>\n    </div>\n\n    <div class="controls">\n      <input\n        type="text"\n        placeholder="Filter by type, group, key or content\u2026"\n        [(ngModel)]="filterText"\n        (ngModelChange)="onFilterChange($event)"\n      />\n      <button type="button" (click)="loadEntries()" [disabled]="isLoading">\n        Refresh\n      </button>\n    </div>\n  </header>\n\n  <section class="cache-body" *ngIf="!error; else errorTpl">\n    <div class="table-wrapper" *ngIf="hasData; else emptyTpl">\n      <table class="cache-table">\n        <thead>\n          <tr>\n            <th>Type</th>\n            <th>Group</th>\n            <th>Key</th>\n            <th>Preview</th>\n            <th class="actions-col"></th>\n          </tr>\n        </thead>\n        <tbody>\n          <tr\n            *ngFor="let entry of pagedEntries"\n            (dblclick)="onRowDoubleClick(entry)"\n          >\n            <td class="type-cell">\n              <span class="type-pill">{{ entry.typeShortName }}</span>\n            </td>\n            <td>{{ entry.groupId || "\u2014" }}</td>\n            <td class="key-cell" [title]="entry.key">{{ entry.key }}</td>\n            <td class="preview-cell">\n              <code>{{ entry.preview || (entry.value | json) }}</code>\n            </td>\n            <td class="actions-col">\n              <button\n                type="button"\n                class="btn-danger"\n                (click)="deleteEntry(entry, $event)"\n              >\n                Delete\n              </button>\n            </td>\n          </tr>\n        </tbody>\n      </table>\n\n      <!-- Page size + paginator -->\n      <div class="cache-pagination" *ngIf="showPager">\n        <div class="page-size">\n          <label>\n            Page size\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\n              <option *ngFor="let size of pageSizeOptions" [value]="size">\n                {{ size }}\n              </option>\n            </select>\n          </label>\n        </div>\n\n        <div class="page-nav">\n          <button\n            type="button"\n            (click)="goPrevPage()"\n            [disabled]="currentPage === 0"\n          >\n            \u2039\n          </button>\n          <span> Page {{ currentPage + 1 }} / {{ totalPages }} </span>\n          <button\n            type="button"\n            (click)="goNextPage()"\n            [disabled]="currentPage >= totalPages - 1"\n          >\n            \u203A\n          </button>\n        </div>\n      </div>\n    </div>\n  </section>\n\n  <ng-template #emptyTpl>\n    <div class="empty-state">\n      <p>No cache entries found.</p>\n    </div>\n  </ng-template>\n\n  <ng-template #errorTpl>\n    <div class="error-state">\n      <p>{{ error }}</p>\n      <button type="button" (click)="loadEntries()">Retry</button>\n    </div>\n  </ng-template>\n\n  <!-- JSON editor modal -->\n  <div class="modal-backdrop" *ngIf="editorVisible">\n    <div class="modal">\n      <header class="modal-header">\n        <h3>\n          Edit cache entry\n          <small *ngIf="selectedEntry">\n            ({{ selectedEntry.typeShortName }} /\n            {{ selectedEntry.groupId || "default" }} / {{ selectedEntry.key }})\n          </small>\n        </h3>\n      </header>\n\n      <section class="modal-body">\n        <textarea\n          [(ngModel)]="editorJson"\n          spellcheck="false"\n          class="json-editor"\n        ></textarea>\n\n        <p class="error-text" *ngIf="editorError">{{ editorError }}</p>\n      </section>\n\n      <footer class="modal-footer">\n        <button type="button" (click)="closeEditor()">Cancel</button>\n        <button type="button" class="btn-primary" (click)="saveEditor()">\n          Save\n        </button>\n      </footer>\n    </div>\n  </div>\n</div>\n', styles: ["/* src/app/cache/cache-view.component.scss */\n.cache-view {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n  height: 100%;\n  padding: 1rem;\n  background: #020617;\n  color: #e5e7eb;\n}\n.cache-view .cache-pagination {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  padding: 0.5rem 0.75rem;\n  font-size: 0.8rem;\n}\n.cache-view .cache-pagination .page-size label {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.25rem;\n}\n.cache-view .cache-pagination .page-size label select {\n  padding: 0.15rem 0.4rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n}\n.cache-view .cache-pagination .page-nav {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.cache-view .cache-pagination .page-nav button {\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  cursor: pointer;\n}\n.cache-view .cache-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 1rem;\n  padding: 10px 12px;\n  border-radius: 10px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #1e293b,\n      #020617);\n  border: 1px solid rgba(51, 65, 85, 0.9);\n}\n.cache-view .cache-header .title {\n  display: flex;\n  flex-direction: column;\n}\n.cache-view .cache-header .title h2 {\n  margin: 0;\n  font-size: 18px;\n  font-weight: 600;\n}\n.cache-view .cache-header .title .status {\n  font-size: 0.85rem;\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls {\n  display: flex;\n  gap: 0.5rem;\n  align-items: center;\n}\n.cache-view .cache-header .controls input[type=text] {\n  min-width: 250px;\n  padding: 0.3rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.cache-view .cache-header .controls input[type=text]::placeholder {\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls input[type=text]:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .cache-header .controls button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-header .controls button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-header .controls button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-header .controls button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .table-wrapper {\n  flex: 1;\n  overflow: auto;\n  border-radius: 10px;\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  background: rgba(15, 23, 42, 0.9);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.9rem;\n}\n.cache-view .cache-table thead {\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .cache-table thead th {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n  padding: 0.5rem 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  font-weight: 600;\n  font-size: 0.8rem;\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.cache-view .cache-table tbody tr {\n  cursor: pointer;\n  transition:\n    background 0.12s ease,\n    transform 0.08s ease,\n    box-shadow 0.12s ease;\n}\n.cache-view .cache-table tbody tr:nth-child(even) {\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .cache-table tbody tr:nth-child(odd) {\n  background: rgba(15, 23, 42, 0.96);\n}\n.cache-view .cache-table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table td {\n  padding: 0.4rem 0.75rem;\n  border-bottom: 1px solid rgba(15, 23, 42, 0.9);\n  vertical-align: top;\n}\n.cache-view .cache-table .type-cell .type-pill {\n  display: inline-block;\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  background: rgba(37, 99, 235, 0.15);\n  border: 1px solid rgba(37, 99, 235, 0.4);\n  font-size: 0.75rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .key-cell {\n  max-width: 250px;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  font-family: monospace;\n  font-size: 0.8rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .preview-cell {\n  max-width: 400px;\n}\n.cache-view .cache-table .preview-cell code {\n  display: block;\n  font-family: monospace;\n  font-size: 0.78rem;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  color: #9ca3af;\n}\n.cache-view .cache-table .actions-col {\n  width: 90px;\n  text-align: right;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-table .actions-col .btn-danger:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-table .actions-col .btn-danger:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-color: rgba(248, 113, 113, 0.7);\n  background: rgba(248, 113, 113, 0.16);\n  color: #fecaca;\n  font-size: 0.8rem;\n  padding: 4px 10px;\n}\n.cache-view .empty-state,\n.cache-view .error-state {\n  padding: 2rem;\n  text-align: center;\n  color: #9ca3af;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .empty-state button:hover,\n.cache-view .error-state button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .empty-state button:disabled,\n.cache-view .error-state button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n  margin-top: 0.5rem;\n}\n.cache-view .modal-backdrop {\n  position: fixed;\n  inset: 0;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 999;\n  -webkit-backdrop-filter: blur(2px);\n  backdrop-filter: blur(2px);\n}\n.cache-view .modal {\n  width: min(900px, 90vw);\n  height: min(600px, 80vh);\n  background: rgba(15, 23, 42, 0.9);\n  border-radius: 8px;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n}\n.cache-view .modal .modal-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .modal .modal-header h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-weight: 500;\n}\n.cache-view .modal .modal-header h3 small {\n  display: block;\n  font-size: 0.8rem;\n  color: #9ca3af;\n  margin-top: 0.2rem;\n}\n.cache-view .modal .modal-body {\n  flex: 1;\n  padding: 0.75rem 1rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-body .json-editor {\n  flex: 1;\n  width: 100%;\n  font-family: monospace;\n  font-size: 0.85rem;\n  padding: 0.5rem;\n  border-radius: 6px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  resize: none;\n  white-space: pre;\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n}\n.cache-view .modal .modal-body .json-editor:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .modal .modal-body .error-text {\n  margin: 0;\n  font-size: 0.8rem;\n  color: #fecaca;\n}\n.cache-view .modal .modal-footer {\n  padding: 0.6rem 1rem;\n  border-top: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-footer button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n}\n.cache-view .modal .modal-footer .btn-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer .btn-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer .btn-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer .btn-primary {\n  background:\n    linear-gradient(\n      135deg,\n      #4f46e5,\n      #7c3aed);\n  border-color: rgba(129, 140, 248, 0.9);\n}\n/*# sourceMappingURL=cache-view.component.css.map */\n"] }]
   }], () => [{ type: CacheDashboardService }], null);
 })();
 (() => {
@@ -44624,6 +45122,11 @@ var CacheViewComponent = class _CacheViewComponent {
 })();
 
 // node_modules/three/build/three.core.js
+/**
+ * @license
+ * Copyright 2010-2025 Three.js Authors
+ * SPDX-License-Identifier: MIT
+ */
 var REVISION = "181";
 var MOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATE: 0, DOLLY: 1, PAN: 2 };
 var TOUCH = { ROTATE: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATE: 3 };
@@ -60572,6 +61075,11 @@ if (typeof window !== "undefined") {
 }
 
 // node_modules/three/build/three.module.js
+/**
+ * @license
+ * Copyright 2010-2025 Three.js Authors
+ * SPDX-License-Identifier: MIT
+ */
 function WebGLAnimation() {
   let context2 = null;
   let isAnimating = false;
@@ -73910,7 +74418,7 @@ var GlobeSceneComponent = class _GlobeSceneComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(GlobeSceneComponent, [{
     type: Component,
-    args: [{ selector: "app-globe-scene", template: '<div #container class="globe-container"></div>\r\n', styles: ["/* src/app/scene/globe-scene/globe-scene.component.scss */\n:host {\n  display: block;\n  flex: 1 1 auto;\n}\n.globe-container {\n  width: 100%;\n  height: 100%;\n  min-height: 240px;\n  display: block;\n  border-radius: 0 0 10px 10px;\n  overflow: hidden;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617,\n      #000);\n}\n/*# sourceMappingURL=globe-scene.component.css.map */\n"] }]
+    args: [{ selector: "app-globe-scene", template: '<div #container class="globe-container"></div>\n', styles: ["/* src/app/scene/globe-scene/globe-scene.component.scss */\n:host {\n  display: block;\n  flex: 1 1 auto;\n}\n.globe-container {\n  width: 100%;\n  height: 100%;\n  min-height: 240px;\n  display: block;\n  border-radius: 0 0 10px 10px;\n  overflow: hidden;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617,\n      #000);\n}\n/*# sourceMappingURL=globe-scene.component.css.map */\n"] }]
   }], () => [{ type: NgZone }, { type: Object, decorators: [{
     type: Inject,
     args: [PLATFORM_ID]
@@ -75558,7 +76066,7 @@ var SceneViewComponent = class _SceneViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(SceneViewComponent, [{
     type: Component,
-    args: [{ selector: "app-scene-view", standalone: true, imports: [CommonModule, GlobeSceneComponent, WorldSceneComponent], template: '<div class="scene-root">\r\n  <header class="scene-header">\r\n    <div>\r\n      <h1>Scene View</h1>\r\n      <p>Visualize the current world state from your Altruist server.</p>\r\n    </div>\r\n\r\n    <div class="scene-header-actions">\r\n      <button class="button-base" (click)="onRefresh()">Refresh</button>\r\n\r\n      <button\r\n        class="button-primary"\r\n        type="button"\r\n        [class.is-on]="autoUpdate"\r\n        (click)="toggleAutoUpdate()"\r\n      >\r\n        Auto-Update: {{ autoUpdate ? "On" : "Off" }}\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  <section class="scene-layout">\r\n    <aside class="scene-sidebar">\r\n      <h2>Worlds</h2>\r\n\r\n      @if (isLoadingWorlds && worlds.length === 0) {\r\n        <div>Loading worlds\u2026</div>\r\n      } @else if (!isLoadingWorlds && worlds.length === 0) {\r\n        <div>No worlds available.</div>\r\n      } @else {\r\n        <ul class="list">\r\n          @for (world of worlds; track world.index) {\r\n            <li>\r\n              <button\r\n                class="sidebar-group"\r\n                (click)="onSelectWorld(world)"\r\n                [class.active]="world === selectedWorld"\r\n              >\r\n                <span\r\n                  class="chevron"\r\n                  (click)="toggleWorld(); $event.stopPropagation()"\r\n                  [class.collapsed]="worldCollapsed && world === selectedWorld"\r\n                >\r\n                  \u25B6\r\n                </span>\r\n\r\n                <span>#{{ world.index }} \u2014 {{ world.name || "Unnamed" }}</span>\r\n\r\n                @if (world === selectedWorld) {\r\n                  <span class="world-meta">\r\n                    {{ world.partitionCount }} partitions \xB7\r\n                    {{ world.objectCount }} objects\r\n                  </span>\r\n                }\r\n              </button>\r\n\r\n              @if (world === selectedWorld && !worldCollapsed) {\r\n                <ul class="sublist">\r\n                  @for (\r\n                    p of partitions;\r\n                    track p.indexX + ":" + p.indexY + ":" + p.indexZ\r\n                  ) {\r\n                    <li>\r\n                      <button\r\n                        class="sidebar-group"\r\n                        (click)="onSelectPartition(p)"\r\n                        [class.active]="p === selectedPartition"\r\n                      >\r\n                        <span\r\n                          class="chevron"\r\n                          (click)="togglePartition(p, $event)"\r\n                          [class.collapsed]="p.collapsed"\r\n                        >\r\n                          \u25B6\r\n                        </span>\r\n\r\n                        <span>\r\n                          Partition [{{ p.indexX }}, {{ p.indexY }},\r\n                          {{ p.indexZ }}]\r\n                        </span>\r\n\r\n                        <span class="partition-meta">\r\n                          {{ p.objects.length }} objects\r\n                        </span>\r\n                      </button>\r\n\r\n                      @if (!p.collapsed && p.objects.length > 0) {\r\n                        <ul class="sublist">\r\n                          @for (obj of p.objects; track obj.instanceId) {\r\n                            <li>\r\n                              <button\r\n                                class="sidebar-item"\r\n                                [class.active]="obj === selectedObject"\r\n                                (click)="onSelectObject(obj)"\r\n                              >\r\n                                <div class="world-object-name">\r\n                                  {{ obj.archetype || "Object" }}\r\n                                </div>\r\n\r\n                                <div class="world-object-id">\r\n                                  #{{ obj.instanceId.slice(0, 6) }}\r\n                                </div>\r\n                              </button>\r\n                            </li>\r\n                          }\r\n                        </ul>\r\n                      }\r\n                    </li>\r\n                  }\r\n                </ul>\r\n              }\r\n            </li>\r\n          }\r\n        </ul>\r\n      }\r\n    </aside>\r\n\r\n    <section class="scene-canvas">\r\n      <div class="canvas-toolbar">\n        <span class="canvas-title">3D Scene</span>\n        <span class="canvas-hint">{{ statusHint }}</span>\n        <span class="canvas-controls">\n          RMB look \xB7 WASD move \xB7 RMB+Wheel speed \xB7 Q/E up-down \xB7 MMB pan \xB7 Alt+LMB orbit \xB7 Wheel zoom \xB7 F focus\n        </span>\n      </div>\n\r\n      <div class="canvas-body">\r\n        @if (!selectedWorld || (isInitialLoading && !hasData)) {\r\n          <app-globe-scene></app-globe-scene>\r\n        } @else {\r\n          <app-world-scene\r\n            [world]="selectedWorld"\r\n            [objects]="visibleObjects"\r\n            [selectedObject]="selectedObject"\r\n            [isLoading]="false"\r\n            (cameraChanged)="onCameraChanged($event)"\r\n            (lastUpdateChanged)="onWorldLastUpdate($event)"\r\n          >\r\n          </app-world-scene>\r\n\r\n          @if (cameraInfo) {\r\n            <div class="camera-hud">\r\n              <div class="camera-hud-title">Camera</div>\r\n\r\n              <div>\r\n                Pos:\r\n                {{ cameraInfo.position.x | number: "1.1-2" }},\r\n                {{ cameraInfo.position.y | number: "1.1-2" }},\r\n                {{ cameraInfo.position.z | number: "1.1-2" }}\r\n              </div>\r\n\r\n              <div>\r\n                Rot: Y {{ cameraInfo.rotation.yaw | number: "1.0-1" }}\xB0 P\r\n                {{ cameraInfo.rotation.pitch | number: "1.0-1" }}\xB0 R\r\n                {{ cameraInfo.rotation.roll | number: "1.0-1" }}\xB0\r\n              </div>\r\n\r\n              @if (selectedObject) {\r\n                <div class="camera-hud-divider"></div>\r\n\r\n                <div class="camera-hud-title">Selected</div>\r\n\r\n                <div class="camera-hud-sub">\r\n                  {{ selectedObject.archetype || "Object" }} \xB7 #{{\r\n                    selectedObject.instanceId.slice(0, 6)\r\n                  }}\r\n                </div>\r\n\r\n                <div>\r\n                  Pos:\r\n                  {{ selectedObject.transform.position.x | number: "1.1-2" }},\r\n                  {{ selectedObject.transform.position.y | number: "1.1-2" }},\r\n                  {{ selectedObject.transform.position.z | number: "1.1-2" }}\r\n                </div>\r\n              }\r\n            </div>\r\n          }\r\n        }\r\n      </div>\r\n    </section>\r\n  </section>\r\n</div>\r\n', styles: ['@charset "UTF-8";\n\n/* src/app/scene/scene-view/scene-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.scene-header,\n.scene-sidebar,\n.scene-canvas {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.scene-root {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  height: 100%;\n}\n.scene-header {\n  padding: 10px 12px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.scene-layout {\n  flex: 1;\n  display: grid;\n  grid-template-columns: minmax(260px, 340px) 1fr;\n  gap: 12px;\n  align-items: start;\n  min-height: 0;\n}\n.scene-sidebar {\n  padding: 10px 12px;\n  display: flex;\n  flex-direction: column;\n  max-height: calc(100vh - 120px);\n  overflow: auto;\n}\n.scene-canvas {\n  display: flex;\n  flex-direction: column;\n  position: sticky;\n  top: 12px;\n  height: calc(100vh - 120px);\n  min-height: 520px;\n  overflow: hidden;\n}\n.canvas-toolbar {\n  padding: 10px 12px;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n}\n.canvas-controls {\n  margin-left: auto;\n  opacity: 0.78;\n  font-size: 12px;\n  white-space: nowrap;\n}\n.canvas-body {\n  flex: 1;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n}\n.camera-hud {\n  position: absolute;\n  left: 12px;\n  bottom: 12px;\n  z-index: 20;\n  pointer-events: none;\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: rgba(2, 6, 23, 0.78);\n  border: 1px solid rgba(255, 255, 255, 0.1);\n  font-size: 13px;\n  line-height: 1.4;\n  color: rgba(255, 255, 255, 0.92);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.camera-hud-title {\n  font-weight: 700;\n  margin-bottom: 4px;\n  opacity: 0.95;\n}\n.camera-hud-divider {\n  margin: 8px 0;\n  height: 1px;\n  opacity: 0.25;\n  background: white;\n}\n.camera-hud-sub {\n  opacity: 0.85;\n  margin-bottom: 4px;\n}\n/*# sourceMappingURL=scene-view.component.css.map */\n'] }]
+    args: [{ selector: "app-scene-view", standalone: true, imports: [CommonModule, GlobeSceneComponent, WorldSceneComponent], template: '<div class="scene-root">\n  <header class="scene-header">\n    <div>\n      <h1>Scene View</h1>\n      <p>Visualize the current world state from your Altruist server.</p>\n    </div>\n\n    <div class="scene-header-actions">\n      <button class="button-base" (click)="onRefresh()">Refresh</button>\n\n      <button\n        class="button-primary"\n        type="button"\n        [class.is-on]="autoUpdate"\n        (click)="toggleAutoUpdate()"\n      >\n        Auto-Update: {{ autoUpdate ? "On" : "Off" }}\n      </button>\n    </div>\n  </header>\n\n  <section class="scene-layout">\n    <aside class="scene-sidebar">\n      <h2>Worlds</h2>\n\n      @if (isLoadingWorlds && worlds.length === 0) {\n        <div>Loading worlds\u2026</div>\n      } @else if (!isLoadingWorlds && worlds.length === 0) {\n        <div>No worlds available.</div>\n      } @else {\n        <ul class="list">\n          @for (world of worlds; track world.index) {\n            <li>\n              <button\n                class="sidebar-group"\n                (click)="onSelectWorld(world)"\n                [class.active]="world === selectedWorld"\n              >\n                <span\n                  class="chevron"\n                  (click)="toggleWorld(); $event.stopPropagation()"\n                  [class.collapsed]="worldCollapsed && world === selectedWorld"\n                >\n                  \u25B6\n                </span>\n\n                <span>#{{ world.index }} \u2014 {{ world.name || "Unnamed" }}</span>\n\n                @if (world === selectedWorld) {\n                  <span class="world-meta">\n                    {{ world.partitionCount }} partitions \xB7\n                    {{ world.objectCount }} objects\n                  </span>\n                }\n              </button>\n\n              @if (world === selectedWorld && !worldCollapsed) {\n                <ul class="sublist">\n                  @for (\n                    p of partitions;\n                    track p.indexX + ":" + p.indexY + ":" + p.indexZ\n                  ) {\n                    <li>\n                      <button\n                        class="sidebar-group"\n                        (click)="onSelectPartition(p)"\n                        [class.active]="p === selectedPartition"\n                      >\n                        <span\n                          class="chevron"\n                          (click)="togglePartition(p, $event)"\n                          [class.collapsed]="p.collapsed"\n                        >\n                          \u25B6\n                        </span>\n\n                        <span>\n                          Partition [{{ p.indexX }}, {{ p.indexY }},\n                          {{ p.indexZ }}]\n                        </span>\n\n                        <span class="partition-meta">\n                          {{ p.objects.length }} objects\n                        </span>\n                      </button>\n\n                      @if (!p.collapsed && p.objects.length > 0) {\n                        <ul class="sublist">\n                          @for (obj of p.objects; track obj.instanceId) {\n                            <li>\n                              <button\n                                class="sidebar-item"\n                                [class.active]="obj === selectedObject"\n                                (click)="onSelectObject(obj)"\n                              >\n                                <div class="world-object-name">\n                                  {{ obj.archetype || "Object" }}\n                                </div>\n\n                                <div class="world-object-id">\n                                  #{{ obj.instanceId.slice(0, 6) }}\n                                </div>\n                              </button>\n                            </li>\n                          }\n                        </ul>\n                      }\n                    </li>\n                  }\n                </ul>\n              }\n            </li>\n          }\n        </ul>\n      }\n    </aside>\n\n    <section class="scene-canvas">\n      <div class="canvas-toolbar">\n        <span class="canvas-title">3D Scene</span>\n        <span class="canvas-hint">{{ statusHint }}</span>\n        <span class="canvas-controls">\n          RMB look \xB7 WASD move \xB7 RMB+Wheel speed \xB7 Q/E up-down \xB7 MMB pan \xB7 Alt+LMB orbit \xB7 Wheel zoom \xB7 F focus\n        </span>\n      </div>\n\n      <div class="canvas-body">\n        @if (!selectedWorld || (isInitialLoading && !hasData)) {\n          <app-globe-scene></app-globe-scene>\n        } @else {\n          <app-world-scene\n            [world]="selectedWorld"\n            [objects]="visibleObjects"\n            [selectedObject]="selectedObject"\n            [isLoading]="false"\n            (cameraChanged)="onCameraChanged($event)"\n            (lastUpdateChanged)="onWorldLastUpdate($event)"\n          >\n          </app-world-scene>\n\n          @if (cameraInfo) {\n            <div class="camera-hud">\n              <div class="camera-hud-title">Camera</div>\n\n              <div>\n                Pos:\n                {{ cameraInfo.position.x | number: "1.1-2" }},\n                {{ cameraInfo.position.y | number: "1.1-2" }},\n                {{ cameraInfo.position.z | number: "1.1-2" }}\n              </div>\n\n              <div>\n                Rot: Y {{ cameraInfo.rotation.yaw | number: "1.0-1" }}\xB0 P\n                {{ cameraInfo.rotation.pitch | number: "1.0-1" }}\xB0 R\n                {{ cameraInfo.rotation.roll | number: "1.0-1" }}\xB0\n              </div>\n\n              @if (selectedObject) {\n                <div class="camera-hud-divider"></div>\n\n                <div class="camera-hud-title">Selected</div>\n\n                <div class="camera-hud-sub">\n                  {{ selectedObject.archetype || "Object" }} \xB7 #{{\n                    selectedObject.instanceId.slice(0, 6)\n                  }}\n                </div>\n\n                <div>\n                  Pos:\n                  {{ selectedObject.transform.position.x | number: "1.1-2" }},\n                  {{ selectedObject.transform.position.y | number: "1.1-2" }},\n                  {{ selectedObject.transform.position.z | number: "1.1-2" }}\n                </div>\n              }\n            </div>\n          }\n        }\n      </div>\n    </section>\n  </section>\n</div>\n', styles: ['@charset "UTF-8";\n\n/* src/app/scene/scene-view/scene-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.scene-header,\n.scene-sidebar,\n.scene-canvas {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.scene-root {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  height: 100%;\n}\n.scene-header {\n  padding: 10px 12px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.scene-layout {\n  flex: 1;\n  display: grid;\n  grid-template-columns: minmax(260px, 340px) 1fr;\n  gap: 12px;\n  align-items: start;\n  min-height: 0;\n}\n.scene-sidebar {\n  padding: 10px 12px;\n  display: flex;\n  flex-direction: column;\n  max-height: calc(100vh - 120px);\n  overflow: auto;\n}\n.scene-canvas {\n  display: flex;\n  flex-direction: column;\n  position: sticky;\n  top: 12px;\n  height: calc(100vh - 120px);\n  min-height: 520px;\n  overflow: hidden;\n}\n.canvas-toolbar {\n  padding: 10px 12px;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n}\n.canvas-controls {\n  margin-left: auto;\n  opacity: 0.78;\n  font-size: 12px;\n  white-space: nowrap;\n}\n.canvas-body {\n  flex: 1;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n}\n.camera-hud {\n  position: absolute;\n  left: 12px;\n  bottom: 12px;\n  z-index: 20;\n  pointer-events: none;\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: rgba(2, 6, 23, 0.78);\n  border: 1px solid rgba(255, 255, 255, 0.1);\n  font-size: 13px;\n  line-height: 1.4;\n  color: rgba(255, 255, 255, 0.92);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.camera-hud-title {\n  font-weight: 700;\n  margin-bottom: 4px;\n  opacity: 0.95;\n}\n.camera-hud-divider {\n  margin: 8px 0;\n  height: 1px;\n  opacity: 0.25;\n  background: white;\n}\n.camera-hud-sub {\n  opacity: 0.85;\n  margin-bottom: 4px;\n}\n/*# sourceMappingURL=scene-view.component.css.map */\n'] }]
   }], () => [{ type: WorldDashboardService }], null);
 })();
 (() => {
@@ -76065,218 +76573,218 @@ var SessionComponent = class _SessionComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(SessionComponent, [{
     type: Component,
-    args: [{ selector: "app-session", standalone: true, imports: [CommonModule], template: `<div class="session-root">\r
-  <header class="session-header">\r
-    <div>\r
-      <h1>Sessions</h1>\r
-      <p>Inspect live rooms and connections on your Altruist server.</p>\r
-    </div>\r
-    <div class="session-header-actions">\r
-      <button\r
-        class="btn btn-secondary"\r
-        type="button"\r
-        (click)="onRefresh()"\r
-        [disabled]="isLoading || isMutating"\r
-      >\r
-        Refresh\r
-      </button>\r
-    </div>\r
-  </header>\r
-\r
-  @if (errorMessage) {\r
-  <div class="session-error">\r
-    {{ errorMessage }}\r
-  </div>\r
-  }\r
-\r
-  <section class="session-layout">\r
-    <section class="session-panel session-panel--rooms">\r
-      <header class="panel-header">\r
-        <h2>Rooms</h2>\r
-        <span class="panel-meta">\r
-          @if (isLoading) { Loading\u2026 } @else { {{ rooms.length }} room(s) }\r
-        </span>\r
-      </header>\r
-\r
-      @if (!isLoading && !hasRooms) {\r
-      <div class="panel-empty">No rooms currently active.</div>\r
-      } @else {\r
-      <div class="table-wrapper">\r
-        <table class="session-table">\r
-          <thead>\r
-            <tr>\r
-              <th>Room</th>\r
-              <th>Connections</th>\r
-              <th class="col-actions">Actions</th>\r
-            </tr>\r
-          </thead>\r
-          <tbody>\r
-            @for (room of rooms; track room.roomId) {\r
-            <tr\r
-              class="room-row"\r
-              [class.room-row--active]="room === selectedRoom"\r
-              (click)="onSelectRoom(room)"\r
-            >\r
-              <td>\r
-                <div class="room-id">\r
-                  {{ room.roomId }}\r
-                </div>\r
-              </td>\r
-              <td>\r
-                <span class="badge">\r
-                  {{ room.connectionCount }}\r
-                </span>\r
-              </td>\r
-              <td class="col-actions">\r
-                @if (room.roomId !== 'waiting_room') {\r
-                <button\r
-                  class="btn btn-link"\r
-                  type="button"\r
-                  (click)="onDeleteRoom(room); $event.stopPropagation()"\r
-                  [disabled]="isMutating"\r
-                >\r
-                  Delete room\r
-                </button>\r
-                }\r
-              </td>\r
-            </tr>\r
-            }\r
-          </tbody>\r
-        </table>\r
-      </div>\r
-      }\r
-    </section>\r
-\r
-    <section class="session-panel session-panel--connections">\r
-      <header class="panel-header">\r
-        <h2>Connections</h2>\r
-        <span class="panel-meta">\r
-          @if (!hasSelection) { Select a room to inspect its connections. }\r
-          @else { Room: {{ selectedRoom?.roomId }} \xB7\r
-          {{ selectedRoom?.connectionCount }} connection(s) }\r
-        </span>\r
-      </header>\r
-\r
-      @if (!hasSelection) {\r
-      <div class="panel-empty panel-empty--muted">\r
-        Select a room on the left to see its connections.\r
-      </div>\r
-      } @else { @if (selectedRoom?.connections?.length === 0) {\r
-      <div class="panel-empty">No connections in this room.</div>\r
-      } @else {\r
-      <div class="table-wrapper">\r
-        <table class="session-table">\r
-          <thead>\r
-            <tr>\r
-              <th>Connection ID</th>\r
-              <th class="col-actions">Actions</th>\r
-            </tr>\r
-          </thead>\r
-          <tbody>\r
-            @for (conn of selectedRoom!.connections; track conn.connectionId) {\r
-            <tr>\r
-              <td>\r
-                <code class="conn-id">\r
-                  {{ conn.connectionId }}\r
-                </code>\r
-              </td>\r
-              <td class="col-actions">\r
-                <button\r
-                  class="btn btn-secondary"\r
-                  type="button"\r
-                  (click)="onRemoveConnection(selectedRoom!, conn)"\r
-                  [disabled]="isMutating"\r
-                >\r
-                  Remove from room\r
-                </button>\r
-                <button\r
-                  class="btn btn-solid-danger"\r
-                  type="button"\r
-                  (click)="onCloseSession(conn)"\r
-                  [disabled]="isMutating"\r
-                >\r
-                  Close session\r
-                </button>\r
-              </td>\r
-            </tr>\r
-            }\r
-          </tbody>\r
-        </table>\r
-      </div>\r
-      } }\r
-    </section>\r
-  </section>\r
-\r
-  <!-- All connections panel (always visible, even if there are 0 rooms) -->\r
-  <section class="session-panel session-panel--all-connections">\r
-    <header class="panel-header">\r
-      <h2>All Connections</h2>\r
-      <span class="panel-meta">\r
-        @if (isLoading) { Loading\u2026 } @else {\r
-        {{ allConnections.length }} connection(s) }\r
-      </span>\r
-    </header>\r
-\r
-    @if (!isLoading && allConnections.length === 0) {\r
-    <div class="panel-empty">No active connections.</div>\r
-    } @else {\r
-    <div class="table-wrapper">\r
-      <table class="session-table">\r
-        <thead>\r
-          <tr>\r
-            <th>#</th>\r
-            <th>Connection ID</th>\r
-            <th>IP address</th>\r
-            <th>Room</th>\r
-            <th class="col-actions">Actions</th>\r
-          </tr>\r
-        </thead>\r
-        <tbody>\r
-          @for (conn of allConnections; track conn.connectionId; let i = $index)\r
-          {\r
-          <tr>\r
-            <td>{{ i + 1 }}</td>\r
-            <td>\r
-              <code class="conn-id">\r
-                {{ conn.connectionId }}\r
-              </code>\r
-            </td>\r
-            <td>\r
-              @if (conn.ipAddress) {\r
-              <code class="conn-id">\r
-                {{ conn.ipAddress }}\r
-              </code>\r
-              } @else {\r
-              <span class="badge">Unknown</span>\r
-              }\r
-            </td>\r
-            <td>\r
-              @if (conn.roomId) {\r
-              <span class="room-id">\r
-                {{ conn.roomId }}\r
-              </span>\r
-              } @else {\r
-              <span class="badge">No room</span>\r
-              }\r
-            </td>\r
-            <td class="col-actions">\r
-              <button\r
-                class="btn btn-solid-danger"\r
-                type="button"\r
-                (click)="onCloseSession(conn)"\r
-                [disabled]="isMutating"\r
-              >\r
-                Close session\r
-              </button>\r
-            </td>\r
-          </tr>\r
-          }\r
-        </tbody>\r
-      </table>\r
-    </div>\r
-    }\r
-  </section>\r
-</div>\r
+    args: [{ selector: "app-session", standalone: true, imports: [CommonModule], template: `<div class="session-root">
+  <header class="session-header">
+    <div>
+      <h1>Sessions</h1>
+      <p>Inspect live rooms and connections on your Altruist server.</p>
+    </div>
+    <div class="session-header-actions">
+      <button
+        class="btn btn-secondary"
+        type="button"
+        (click)="onRefresh()"
+        [disabled]="isLoading || isMutating"
+      >
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (errorMessage) {
+  <div class="session-error">
+    {{ errorMessage }}
+  </div>
+  }
+
+  <section class="session-layout">
+    <section class="session-panel session-panel--rooms">
+      <header class="panel-header">
+        <h2>Rooms</h2>
+        <span class="panel-meta">
+          @if (isLoading) { Loading\u2026 } @else { {{ rooms.length }} room(s) }
+        </span>
+      </header>
+
+      @if (!isLoading && !hasRooms) {
+      <div class="panel-empty">No rooms currently active.</div>
+      } @else {
+      <div class="table-wrapper">
+        <table class="session-table">
+          <thead>
+            <tr>
+              <th>Room</th>
+              <th>Connections</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (room of rooms; track room.roomId) {
+            <tr
+              class="room-row"
+              [class.room-row--active]="room === selectedRoom"
+              (click)="onSelectRoom(room)"
+            >
+              <td>
+                <div class="room-id">
+                  {{ room.roomId }}
+                </div>
+              </td>
+              <td>
+                <span class="badge">
+                  {{ room.connectionCount }}
+                </span>
+              </td>
+              <td class="col-actions">
+                @if (room.roomId !== 'waiting_room') {
+                <button
+                  class="btn btn-link"
+                  type="button"
+                  (click)="onDeleteRoom(room); $event.stopPropagation()"
+                  [disabled]="isMutating"
+                >
+                  Delete room
+                </button>
+                }
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+    <section class="session-panel session-panel--connections">
+      <header class="panel-header">
+        <h2>Connections</h2>
+        <span class="panel-meta">
+          @if (!hasSelection) { Select a room to inspect its connections. }
+          @else { Room: {{ selectedRoom?.roomId }} \xB7
+          {{ selectedRoom?.connectionCount }} connection(s) }
+        </span>
+      </header>
+
+      @if (!hasSelection) {
+      <div class="panel-empty panel-empty--muted">
+        Select a room on the left to see its connections.
+      </div>
+      } @else { @if (selectedRoom?.connections?.length === 0) {
+      <div class="panel-empty">No connections in this room.</div>
+      } @else {
+      <div class="table-wrapper">
+        <table class="session-table">
+          <thead>
+            <tr>
+              <th>Connection ID</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (conn of selectedRoom!.connections; track conn.connectionId) {
+            <tr>
+              <td>
+                <code class="conn-id">
+                  {{ conn.connectionId }}
+                </code>
+              </td>
+              <td class="col-actions">
+                <button
+                  class="btn btn-secondary"
+                  type="button"
+                  (click)="onRemoveConnection(selectedRoom!, conn)"
+                  [disabled]="isMutating"
+                >
+                  Remove from room
+                </button>
+                <button
+                  class="btn btn-solid-danger"
+                  type="button"
+                  (click)="onCloseSession(conn)"
+                  [disabled]="isMutating"
+                >
+                  Close session
+                </button>
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      } }
+    </section>
+  </section>
+
+  <!-- All connections panel (always visible, even if there are 0 rooms) -->
+  <section class="session-panel session-panel--all-connections">
+    <header class="panel-header">
+      <h2>All Connections</h2>
+      <span class="panel-meta">
+        @if (isLoading) { Loading\u2026 } @else {
+        {{ allConnections.length }} connection(s) }
+      </span>
+    </header>
+
+    @if (!isLoading && allConnections.length === 0) {
+    <div class="panel-empty">No active connections.</div>
+    } @else {
+    <div class="table-wrapper">
+      <table class="session-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Connection ID</th>
+            <th>IP address</th>
+            <th>Room</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (conn of allConnections; track conn.connectionId; let i = $index)
+          {
+          <tr>
+            <td>{{ i + 1 }}</td>
+            <td>
+              <code class="conn-id">
+                {{ conn.connectionId }}
+              </code>
+            </td>
+            <td>
+              @if (conn.ipAddress) {
+              <code class="conn-id">
+                {{ conn.ipAddress }}
+              </code>
+              } @else {
+              <span class="badge">Unknown</span>
+              }
+            </td>
+            <td>
+              @if (conn.roomId) {
+              <span class="room-id">
+                {{ conn.roomId }}
+              </span>
+              } @else {
+              <span class="badge">No room</span>
+              }
+            </td>
+            <td class="col-actions">
+              <button
+                class="btn btn-solid-danger"
+                type="button"
+                (click)="onCloseSession(conn)"
+                [disabled]="isMutating"
+              >
+                Close session
+              </button>
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+  </section>
+</div>
 `, styles: ['@charset "UTF-8";\n\n/* src/app/session/session.component.scss */\n.session-root {\n  display: flex;\n  flex-direction: column;\n  gap: 1.5rem;\n  padding: 1.5rem;\n  box-sizing: border-box;\n  background: #020617;\n  color: #e5e7eb;\n}\n.session-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 1rem;\n}\n.session-header h1 {\n  margin: 0;\n  font-size: 1.5rem;\n}\n.session-header p {\n  margin: 0.25rem 0 0;\n  opacity: 0.8;\n  font-size: 0.875rem;\n  color: #9ca3af;\n}\n.session-header-actions {\n  display: flex;\n  gap: 0.5rem;\n}\n.session-header-actions .btn {\n  cursor: pointer;\n}\n.session-error {\n  padding: 0.75rem 1rem;\n  border-radius: 0.5rem;\n  background: rgba(248, 113, 113, 0.12);\n  color: #fecaca;\n  font-size: 0.875rem;\n}\n.session-layout {\n  display: grid;\n  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);\n  gap: 1.5rem;\n}\n.session-panel {\n  display: flex;\n  flex-direction: column;\n  background: rgba(15, 23, 42, 0.6);\n  border-radius: 0.75rem;\n  padding: 1rem;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n}\n.panel-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 0.5rem;\n  margin-bottom: 0.75rem;\n}\n.panel-header h2 {\n  margin: 0;\n  font-size: 1rem;\n  font-weight: 600;\n}\n.panel-header .panel-meta {\n  font-size: 0.75rem;\n  opacity: 0.7;\n  color: #9ca3af;\n}\n.panel-empty {\n  padding: 1rem;\n  font-size: 0.875rem;\n  border-radius: 0.5rem;\n  background: rgba(15, 23, 42, 0.7);\n  border: 1px dashed rgba(148, 163, 184, 0.5);\n}\n.panel-empty--muted {\n  opacity: 0.8;\n}\n.table-wrapper {\n  flex: 0 0 auto;\n  max-height: none;\n  overflow: visible;\n}\n.session-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.875rem;\n}\n.session-table th,\n.session-table td {\n  padding: 0.5rem 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(148, 163, 184, 0.5);\n  vertical-align: middle;\n}\n.session-table thead th {\n  font-size: 0.75rem;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n  opacity: 0.7;\n  color: #9ca3af;\n}\n.session-table tbody tr:hover {\n  background: rgba(15, 23, 42, 0.9);\n}\n.session-table .col-actions {\n  text-align: right;\n  white-space: nowrap;\n}\n.room-row {\n  cursor: pointer;\n}\n.room-row--active {\n  background: rgba(59, 130, 246, 0.12);\n}\n.room-row--active:hover {\n  background: rgba(59, 130, 246, 0.18);\n}\n.room-id,\n.conn-id {\n  font-family:\n    ui-monospace,\n    SFMono-Regular,\n    Menlo,\n    Monaco,\n    Consolas,\n    "Liberation Mono",\n    "Courier New",\n    monospace;\n  font-size: 0.8rem;\n  word-break: break-all;\n}\n.badge {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 1.5rem;\n  padding: 0.1rem 0.4rem;\n  border-radius: 999px;\n  background: rgba(59, 130, 246, 0.15);\n  color: #bfdbfe;\n  font-size: 0.75rem;\n}\n.btn {\n  border: none;\n  font: inherit;\n  cursor: pointer;\n}\n.btn.btn-secondary,\n.btn.btn-primary {\n  padding: 0.4rem 0.8rem;\n  border-radius: 999px;\n}\n.btn.btn-secondary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.btn.btn-secondary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.btn.btn-secondary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.btn.btn-secondary {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n  padding: 0.4rem 0.8rem;\n}\n.btn.btn-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.btn.btn-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.btn.btn-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.btn.btn-primary {\n  background:\n    linear-gradient(\n      135deg,\n      #4f46e5,\n      #7c3aed);\n  border-color: rgba(129, 140, 248, 0.9);\n  padding: 0.4rem 0.8rem;\n}\n.btn.btn-link {\n  background: none;\n  color: #93c5fd;\n  padding: 0;\n  margin-left: 0.2rem;\n  border: none;\n}\n.btn.btn-link--danger {\n  color: #fecaca;\n}\n.btn {\n}\n.btn.btn-solid-danger {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.btn.btn-solid-danger:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.btn.btn-solid-danger:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.btn.btn-solid-danger {\n  border-color: rgba(248, 113, 113, 0.7);\n  background: rgba(248, 113, 113, 0.16);\n  color: #fecaca;\n  padding: 0.3rem 0.7rem;\n}\n.btn:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n/*# sourceMappingURL=session.component.css.map */\n'] }]
   }], () => [{ type: HttpClient }], null);
 })();
@@ -77004,7 +77512,7 @@ var SummaryViewComponent = class _SummaryViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(SummaryViewComponent, [{
     type: Component,
-    args: [{ selector: "app-summary-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="summary-root">\r\n  <!-- PAGE HEADER -->\r\n  <header class="summary-header">\r\n    <div class="header-main">\r\n      <h1>\u2728 Altruist Dashboard</h1>\r\n      <p>\r\n        High-level overview of configuration, engine state, and discovered\r\n        services.\r\n      </p>\r\n    </div>\r\n\r\n    <div class="header-actions">\r\n      <button\r\n        class="button-base"\r\n        type="button"\r\n        (click)="loadSummary()"\r\n        [disabled]="isLoading"\r\n      >\r\n        Refresh\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  @if (error) {\r\n  <div class="summary-error">{{ error }}</div>\r\n  } @if (isLoading && !summary) {\r\n  <div class="summary-loading">Loading summary\u2026</div>\r\n  } @if (summary) {\r\n\r\n  <!-- ENGINE + OVERVIEW -->\r\n  <section class="summary-top">\r\n    <article class="engine-card">\r\n      <h2>\u{1F3AE} Engine</h2>\r\n\r\n      @if (!engine) {\r\n\r\n      <p class="muted">Engine configuration not available.</p>\r\n\r\n      } @else {\r\n\r\n      <div class="engine-grid">\r\n        <div class="engine-stat">\r\n          <span class="label">Diagnostics</span>\r\n          <span class="value">{{\r\n            engine.diagnostics ? "Enabled" : "Disabled"\r\n          }}</span>\r\n        </div>\r\n\r\n        <div class="engine-stat">\r\n          <span class="label">Framerate</span>\r\n          <span class="value">{{ engine.framerateHz }} {{ engine.unit }}</span>\r\n        </div>\r\n\r\n        <div class="engine-stat">\r\n          <span class="label">Throttle</span>\r\n          <span class="value">{{ engine.throttle ?? "\u2014" }}</span>\r\n        </div>\r\n\r\n        <div class="engine-stat">\r\n          <span class="label">Gravity</span>\r\n          <span class="value">\r\n            @if (engine.gravity) { ({{ engine.gravity.x }},\r\n            {{ engine.gravity.y }}, {{ engine.gravity.z }}) } @else { \u2014 }\r\n          </span>\r\n        </div>\r\n      </div>\r\n\r\n      }\r\n    </article>\r\n\r\n    <article class="stats-card">\r\n      <h2>\u{1F4CA} Overview</h2>\r\n\r\n      <div class="stats-grid">\r\n        <div class="stat">\r\n          <span class="label">Config entries: </span>\r\n          <span class="value">{{ configCount }}</span>\r\n        </div>\r\n        <div class="stat">\r\n          <span class="label">Discovered services: </span>\r\n          <span class="value">{{ serviceCount }}</span>\r\n        </div>\r\n        <div class="stat">\r\n          <span class="label">Portals: </span>\r\n          <span class="value">{{ portals.length }}</span>\r\n        </div>\r\n        <div class="stat">\r\n          <span class="label">Altruist services: </span>\r\n          <span class="value">{{ altruistServices.length }}</span>\r\n        </div>\r\n      </div>\r\n    </article>\r\n  </section>\r\n\r\n  <!-- CONFIGURATION -->\r\n  <section class="summary-configs">\r\n    <header class="panel-header sticky-header">\r\n      <div>\r\n        <h2>\u{1F527} Configuration</h2>\r\n        <p class="panel-meta">Editable entries are marked with \u270F\uFE0F</p>\r\n      </div>\r\n\r\n      <div class="panel-controls">\r\n        <input\r\n          type="text"\r\n          class="input"\r\n          placeholder="Filter configuration\u2026"\r\n          [(ngModel)]="configFilter"\r\n        />\r\n      </div>\r\n    </header>\r\n\r\n    @if (hasPendingConfigChanges) {\r\n    <div class="save-bar">\r\n      <button class="button-primary" (click)="saveConfigChanges()">\r\n        \u{1F4BE} Save Changes\r\n      </button>\r\n      <button class="button-base muted" (click)="cancelEdit()">Cancel</button>\r\n    </div>\r\n    }\r\n\r\n    <div class="config-list">\r\n      @if (!configEntries.length) {\r\n\r\n      <p class="muted">No configuration entries match your filter.</p>\r\n\r\n      } @else {\r\n\r\n      <table class="table config-table">\r\n        <thead>\r\n          <tr>\r\n            <th>Key</th>\r\n            <th>Value</th>\r\n          </tr>\r\n        </thead>\r\n\r\n        <tbody>\r\n          @for (c of configEntries; track c.key) {\r\n          <tr>\r\n            <td class="config-key">\r\n              <code>{{ c.key }}</code>\r\n              @if (c.modifiable) { <span class="pencil">\u270F\uFE0F</span> }\r\n            </td>\r\n\r\n            <td class="config-value">\r\n              @if (editingKey === c.key) {\r\n              <input\r\n                class="input config-edit-input"\r\n                [(ngModel)]="editBuffer[c.key]"\r\n                (ngModelChange)="onEditInput(c.key, $event)"\r\n              />\r\n              } @else {\r\n              <code class="modifiable" (dblclick)="beginEdit(c.key, c.value)">\r\n                {{ c.value ?? "null" }}\r\n              </code>\r\n              }\r\n            </td>\r\n          </tr>\r\n          }\r\n        </tbody>\r\n      </table>\r\n\r\n      }\r\n    </div>\r\n  </section>\r\n\r\n  <!-- SERVICES -->\r\n  <section class="summary-services">\r\n    <header class="panel-header sticky-header">\r\n      <div>\r\n        <h2>\u{1F9E9} Services & Portals</h2>\r\n        <p class="panel-meta">\r\n          Discovered services grouped by role and attributes.\r\n        </p>\r\n      </div>\r\n\r\n      <div class="panel-controls">\r\n        <input\r\n          type="text"\r\n          class="input"\r\n          placeholder="Filter\u2026"\r\n          [(ngModel)]="serviceFilter"\r\n        />\r\n      </div>\r\n    </header>\r\n\r\n    <div class="services-table-wrapper">\r\n      @if (!services.length) {\r\n\r\n      <p class="muted">No services match your filter.</p>\r\n\r\n      } @else {\r\n\r\n      <table class="table services-table">\r\n        <thead>\r\n          <tr>\r\n            <th>Name</th>\r\n            <th>Type</th>\r\n            <th>Details</th>\r\n            <th>Assembly</th>\r\n          </tr>\r\n        </thead>\r\n\r\n        <tbody>\r\n          <!-- PORTALS -->\r\n          @if (portals.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Portals</td>\r\n          </tr>\r\n\r\n          @for (p of portals; track p.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ p.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ p.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details">\r\n              <div class="pill-row">\r\n                @if (p.endpoint) {\r\n                <span class="pill pill-endpoint">{{ p.endpoint }}</span> } @if\r\n                (p.context) {\r\n                <span class="pill pill-context">{{ p.context }}</span> }\r\n              </div>\r\n            </td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ p.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n\r\n          <!-- ALTRUIST SERVICES -->\r\n          @if (altruistServices.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Altruist services</td>\r\n          </tr>\r\n\r\n          @for (s of altruistServices; track s.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ s.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ s.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details">\r\n              <div class="pill-row">\r\n                @if (s.lifetime) {\r\n                <span class="pill pill-lifetime">{{ s.lifetime }}</span> } @if\r\n                (s.serviceType) {\r\n                <span class="pill pill-service-type">{{ s.serviceType }}</span>\r\n                }\r\n              </div>\r\n            </td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ s.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n\r\n          <!-- FACTORIES -->\r\n          @if (serviceFactories.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Service factories</td>\r\n          </tr>\r\n\r\n          @for (f of serviceFactories; track f.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ f.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ f.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details"></td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ f.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n\r\n          <!-- SERVICE CONFIGS -->\r\n          @if (serviceConfigs.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Service configurations</td>\r\n          </tr>\r\n\r\n          @for (c of serviceConfigs; track c.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ c.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ c.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details"></td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ c.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n        </tbody>\r\n      </table>\r\n\r\n      }\r\n    </div>\r\n  </section>\r\n\r\n  }\r\n</div>\r\n', styles: ["/* src/app/summary/summary-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.summary-header,\n.engine-card,\n.stats-card,\n.summary-configs,\n.summary-services {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.summary-root {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n  height: auto;\n}\n.summary-header {\n  flex-shrink: 0;\n}\n.summary-top {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 1rem;\n  flex-shrink: 0;\n  min-height: 180px;\n}\n.engine-card,\n.stats-card {\n  flex: 1 1 300px;\n  min-width: 260px;\n}\n.summary-configs,\n.summary-services {\n  min-height: 300px;\n  display: flex;\n  flex-direction: column;\n  overflow: auto;\n}\n.sticky-header {\n  position: sticky;\n  top: 0;\n  z-index: 10;\n  background: rgba(15, 23, 42, 0.9);\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n}\n.config-list,\n.services-table-wrapper {\n  flex: 1;\n  overflow: auto;\n}\n.config-table,\n.services-table {\n  width: 100%;\n}\n/*# sourceMappingURL=summary-view.component.css.map */\n"] }]
+    args: [{ selector: "app-summary-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="summary-root">\n  <!-- PAGE HEADER -->\n  <header class="summary-header">\n    <div class="header-main">\n      <h1>\u2728 Altruist Dashboard</h1>\n      <p>\n        High-level overview of configuration, engine state, and discovered\n        services.\n      </p>\n    </div>\n\n    <div class="header-actions">\n      <button\n        class="button-base"\n        type="button"\n        (click)="loadSummary()"\n        [disabled]="isLoading"\n      >\n        Refresh\n      </button>\n    </div>\n  </header>\n\n  @if (error) {\n  <div class="summary-error">{{ error }}</div>\n  } @if (isLoading && !summary) {\n  <div class="summary-loading">Loading summary\u2026</div>\n  } @if (summary) {\n\n  <!-- ENGINE + OVERVIEW -->\n  <section class="summary-top">\n    <article class="engine-card">\n      <h2>\u{1F3AE} Engine</h2>\n\n      @if (!engine) {\n\n      <p class="muted">Engine configuration not available.</p>\n\n      } @else {\n\n      <div class="engine-grid">\n        <div class="engine-stat">\n          <span class="label">Diagnostics</span>\n          <span class="value">{{\n            engine.diagnostics ? "Enabled" : "Disabled"\n          }}</span>\n        </div>\n\n        <div class="engine-stat">\n          <span class="label">Framerate</span>\n          <span class="value">{{ engine.framerateHz }} {{ engine.unit }}</span>\n        </div>\n\n        <div class="engine-stat">\n          <span class="label">Throttle</span>\n          <span class="value">{{ engine.throttle ?? "\u2014" }}</span>\n        </div>\n\n        <div class="engine-stat">\n          <span class="label">Gravity</span>\n          <span class="value">\n            @if (engine.gravity) { ({{ engine.gravity.x }},\n            {{ engine.gravity.y }}, {{ engine.gravity.z }}) } @else { \u2014 }\n          </span>\n        </div>\n      </div>\n\n      }\n    </article>\n\n    <article class="stats-card">\n      <h2>\u{1F4CA} Overview</h2>\n\n      <div class="stats-grid">\n        <div class="stat">\n          <span class="label">Config entries: </span>\n          <span class="value">{{ configCount }}</span>\n        </div>\n        <div class="stat">\n          <span class="label">Discovered services: </span>\n          <span class="value">{{ serviceCount }}</span>\n        </div>\n        <div class="stat">\n          <span class="label">Portals: </span>\n          <span class="value">{{ portals.length }}</span>\n        </div>\n        <div class="stat">\n          <span class="label">Altruist services: </span>\n          <span class="value">{{ altruistServices.length }}</span>\n        </div>\n      </div>\n    </article>\n  </section>\n\n  <!-- CONFIGURATION -->\n  <section class="summary-configs">\n    <header class="panel-header sticky-header">\n      <div>\n        <h2>\u{1F527} Configuration</h2>\n        <p class="panel-meta">Editable entries are marked with \u270F\uFE0F</p>\n      </div>\n\n      <div class="panel-controls">\n        <input\n          type="text"\n          class="input"\n          placeholder="Filter configuration\u2026"\n          [(ngModel)]="configFilter"\n        />\n      </div>\n    </header>\n\n    @if (hasPendingConfigChanges) {\n    <div class="save-bar">\n      <button class="button-primary" (click)="saveConfigChanges()">\n        \u{1F4BE} Save Changes\n      </button>\n      <button class="button-base muted" (click)="cancelEdit()">Cancel</button>\n    </div>\n    }\n\n    <div class="config-list">\n      @if (!configEntries.length) {\n\n      <p class="muted">No configuration entries match your filter.</p>\n\n      } @else {\n\n      <table class="table config-table">\n        <thead>\n          <tr>\n            <th>Key</th>\n            <th>Value</th>\n          </tr>\n        </thead>\n\n        <tbody>\n          @for (c of configEntries; track c.key) {\n          <tr>\n            <td class="config-key">\n              <code>{{ c.key }}</code>\n              @if (c.modifiable) { <span class="pencil">\u270F\uFE0F</span> }\n            </td>\n\n            <td class="config-value">\n              @if (editingKey === c.key) {\n              <input\n                class="input config-edit-input"\n                [(ngModel)]="editBuffer[c.key]"\n                (ngModelChange)="onEditInput(c.key, $event)"\n              />\n              } @else {\n              <code class="modifiable" (dblclick)="beginEdit(c.key, c.value)">\n                {{ c.value ?? "null" }}\n              </code>\n              }\n            </td>\n          </tr>\n          }\n        </tbody>\n      </table>\n\n      }\n    </div>\n  </section>\n\n  <!-- SERVICES -->\n  <section class="summary-services">\n    <header class="panel-header sticky-header">\n      <div>\n        <h2>\u{1F9E9} Services & Portals</h2>\n        <p class="panel-meta">\n          Discovered services grouped by role and attributes.\n        </p>\n      </div>\n\n      <div class="panel-controls">\n        <input\n          type="text"\n          class="input"\n          placeholder="Filter\u2026"\n          [(ngModel)]="serviceFilter"\n        />\n      </div>\n    </header>\n\n    <div class="services-table-wrapper">\n      @if (!services.length) {\n\n      <p class="muted">No services match your filter.</p>\n\n      } @else {\n\n      <table class="table services-table">\n        <thead>\n          <tr>\n            <th>Name</th>\n            <th>Type</th>\n            <th>Details</th>\n            <th>Assembly</th>\n          </tr>\n        </thead>\n\n        <tbody>\n          <!-- PORTALS -->\n          @if (portals.length) {\n          <tr class="group-row">\n            <td colspan="4">Portals</td>\n          </tr>\n\n          @for (p of portals; track p.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ p.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ p.fullName }}</code>\n            </td>\n            <td class="cell-details">\n              <div class="pill-row">\n                @if (p.endpoint) {\n                <span class="pill pill-endpoint">{{ p.endpoint }}</span> } @if\n                (p.context) {\n                <span class="pill pill-context">{{ p.context }}</span> }\n              </div>\n            </td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ p.assembly }}</span>\n            </td>\n          </tr>\n          } }\n\n          <!-- ALTRUIST SERVICES -->\n          @if (altruistServices.length) {\n          <tr class="group-row">\n            <td colspan="4">Altruist services</td>\n          </tr>\n\n          @for (s of altruistServices; track s.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ s.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ s.fullName }}</code>\n            </td>\n            <td class="cell-details">\n              <div class="pill-row">\n                @if (s.lifetime) {\n                <span class="pill pill-lifetime">{{ s.lifetime }}</span> } @if\n                (s.serviceType) {\n                <span class="pill pill-service-type">{{ s.serviceType }}</span>\n                }\n              </div>\n            </td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ s.assembly }}</span>\n            </td>\n          </tr>\n          } }\n\n          <!-- FACTORIES -->\n          @if (serviceFactories.length) {\n          <tr class="group-row">\n            <td colspan="4">Service factories</td>\n          </tr>\n\n          @for (f of serviceFactories; track f.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ f.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ f.fullName }}</code>\n            </td>\n            <td class="cell-details"></td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ f.assembly }}</span>\n            </td>\n          </tr>\n          } }\n\n          <!-- SERVICE CONFIGS -->\n          @if (serviceConfigs.length) {\n          <tr class="group-row">\n            <td colspan="4">Service configurations</td>\n          </tr>\n\n          @for (c of serviceConfigs; track c.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ c.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ c.fullName }}</code>\n            </td>\n            <td class="cell-details"></td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ c.assembly }}</span>\n            </td>\n          </tr>\n          } }\n        </tbody>\n      </table>\n\n      }\n    </div>\n  </section>\n\n  }\n</div>\n', styles: ["/* src/app/summary/summary-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.summary-header,\n.engine-card,\n.stats-card,\n.summary-configs,\n.summary-services {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.summary-root {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n  height: auto;\n}\n.summary-header {\n  flex-shrink: 0;\n}\n.summary-top {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 1rem;\n  flex-shrink: 0;\n  min-height: 180px;\n}\n.engine-card,\n.stats-card {\n  flex: 1 1 300px;\n  min-width: 260px;\n}\n.summary-configs,\n.summary-services {\n  min-height: 300px;\n  display: flex;\n  flex-direction: column;\n  overflow: auto;\n}\n.sticky-header {\n  position: sticky;\n  top: 0;\n  z-index: 10;\n  background: rgba(15, 23, 42, 0.9);\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n}\n.config-list,\n.services-table-wrapper {\n  flex: 1;\n  overflow: auto;\n}\n.config-table,\n.services-table {\n  width: 100%;\n}\n/*# sourceMappingURL=summary-view.component.css.map */\n"] }]
   }], () => [{ type: SummaryDashboardService }], null);
 })();
 (() => {
@@ -77712,7 +78220,7 @@ var VaultViewComponent = class _VaultViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(VaultViewComponent, [{
     type: Component,
-    args: [{ selector: "app-vault-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="vault-view">\r\n\r\n  <!-- HEADER -->\r\n  <header class="panel vault-header">\r\n    <div class="vault-header-main">\r\n      <h2>\u{1F510} Vault Dashboard</h2>\r\n      <p class="vault-status">{{ statusText }}</p>\r\n    </div>\r\n\r\n    <div class="vault-header-actions">\r\n      <input type="text" class="input" [(ngModel)]="vaultFilter" (ngModelChange)="applyVaultFilter()"\r\n        placeholder="Filter vaults\u2026" />\r\n\r\n      @if (hasPendingChanges) {\r\n      <button type="button" class="button-primary commit-button" (click)="commitChanges()">\r\n        \u2B06\uFE0F Commit ({{ dirtyItems.size }})\r\n      </button>\r\n      }\r\n\r\n      <button type="button" class="button-base" (click)="loadVaults()" [disabled]="isLoadingVaults">\r\n        Refresh\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  @if (error) {\r\n  <div class="panel vault-error">{{ error }}</div>\r\n  }\r\n\r\n  <!-- GRID LAYOUT -->\r\n  <section class="vault-layout">\r\n\r\n    <!-- SIDEBAR (PANEL) -->\r\n    <aside class="panel vault-sidebar">\r\n      <h3>Vaults</h3>\r\n\r\n      @if (!hasVaults && !isLoadingVaults) {\r\n\r\n      <p class="vault-empty">No vaults registered.</p>\r\n\r\n      } @else {\r\n\r\n      <ul class="list">\r\n\r\n        @for (group of groupedVaults; track group.keyspace) {\r\n\r\n        <li>\r\n\r\n          <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">\r\n            <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">\u25B6</span>\r\n            <span>{{ group.keyspace }}</span>\r\n          </button>\r\n\r\n          @if (!collapsedKeyspaces.has(group.keyspace)) {\r\n\r\n          <ul class="sublist">\r\n\r\n            @for (v of group.vaults; track v.typeKey) {\r\n\r\n            <li>\r\n              <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"\r\n                (click)="onSelectVault(v)">\r\n                <div class="vault-item-type">{{ v.clrTypeShort }}</div>\r\n                <div class="vault-item-meta">\r\n                  {{ v.tableName }}\r\n                  @if (v.storeHistory) { <span class="vault-item-tag">History</span> }\r\n                </div>\r\n              </button>\r\n            </li>\r\n\r\n            }\r\n\r\n          </ul>\r\n\r\n          }\r\n\r\n        </li>\r\n\r\n        }\r\n\r\n      </ul>\r\n\r\n      }\r\n\r\n    </aside>\r\n\r\n    <!-- MAIN PANEL -->\r\n    <main class="panel vault-main">\r\n\r\n      @if (!selectedVault) {\r\n\r\n      <div class="vault-main-empty">\r\n        <p>Select a vault.</p>\r\n      </div>\r\n\r\n      } @else {\r\n\r\n      <!-- TABLE HEADER -->\r\n      <header class="panel-header vault-table-header">\r\n        <div>\r\n          <h3>{{ selectedVault.clrTypeShort }}</h3>\r\n          <p class="muted">\r\n            {{ selectedVault.typeKey }} \xB7\r\n            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> \xB7\r\n            <span class="vault-table-name">{{ selectedVault.tableName }}</span>\r\n          </p>\r\n        </div>\r\n\r\n        <div class="vault-table-controls">\r\n\r\n          <label>\r\n            Page size\r\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\r\n              @for (sz of pageSizeOptions; track sz) {\r\n              <option [value]="sz">{{ sz }}</option>\r\n              }\r\n            </select>\r\n          </label>\r\n\r\n          <div class="vault-pagination">\r\n            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">\r\n              \u2039\r\n            </button>\r\n\r\n            <span>Page {{ displayPage }} / {{ totalPages }}</span>\r\n\r\n            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">\r\n              \u203A\r\n            </button>\r\n          </div>\r\n\r\n        </div>\r\n      </header>\r\n\r\n      <!-- TABLE AREA -->\r\n      <section class="vault-table-section">\r\n\r\n        @if (isLoadingItems) {\r\n\r\n        <div class="vault-main-empty">\r\n          <p>Loading items\u2026</p>\r\n        </div>\r\n\r\n        } @else if (!hasItems) {\r\n\r\n        <div class="vault-main-empty">\r\n          <p>No items.</p>\r\n        </div>\r\n\r\n        } @else {\r\n\r\n        <div class="vault-table-wrapper">\r\n\r\n          <table class="table vault-table">\r\n\r\n            <thead>\r\n              <tr>\r\n                @for (col of orderedColumns; track col.fieldName) {\r\n                <th [class.pk-header]="col.isPrimaryKey">\r\n                  {{ col.fieldName }}\r\n\r\n                  @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }\r\n                  @if (col.isUnique) { <span class="col-meta">UQ</span> }\r\n                  @if (col.isIndexed) { <span class="col-meta">IDX</span> }\r\n                  @if (col.isForeignKey) { <span class="col-meta">FK</span> }\r\n                </th>\r\n                }\r\n              </tr>\r\n            </thead>\r\n\r\n            <tbody>\r\n              @for (item of items; let row = $index; track row) {\r\n              <tr>\r\n\r\n                @for (col of orderedColumns; track col.fieldName) {\r\n\r\n                <td [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">\r\n\r\n                  @if (isEditing(row, col.fieldName)) {\r\n\r\n                  <input class="input vault-cell-input" [value]="item[col.fieldName]"\r\n                    (input)="onCellEdit(row, col.fieldName, $any($event.target).value)"\r\n                    (blur)="onCellBlur(row, col.fieldName)" autofocus />\r\n\r\n                  } @else {\r\n\r\n                  <code>{{ item[col.fieldName] }}</code>\r\n\r\n                  }\r\n\r\n                </td>\r\n\r\n                }\r\n\r\n              </tr>\r\n              }\r\n            </tbody>\r\n\r\n          </table>\r\n\r\n        </div>\r\n\r\n        }\r\n\r\n      </section>\r\n\r\n      }\r\n\r\n    </main>\r\n\r\n  </section>\r\n</div>', styles: ["/* src/app/vault/vault-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.vault-main {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.vault-layout {\n  display: grid;\n  grid-template-columns: 280px 1fr;\n  gap: 1rem;\n  flex: 1;\n  min-height: 0;\n}\n.vault-main {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  overflow: hidden;\n}\n.vault-table-section {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n}\n.vault-table-wrapper {\n  width: max-content;\n  min-width: 100%;\n}\n/*# sourceMappingURL=vault-view.component.css.map */\n"] }]
+    args: [{ selector: "app-vault-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="vault-view">\n\n  <!-- HEADER -->\n  <header class="panel vault-header">\n    <div class="vault-header-main">\n      <h2>\u{1F510} Vault Dashboard</h2>\n      <p class="vault-status">{{ statusText }}</p>\n    </div>\n\n    <div class="vault-header-actions">\n      <input type="text" class="input" [(ngModel)]="vaultFilter" (ngModelChange)="applyVaultFilter()"\n        placeholder="Filter vaults\u2026" />\n\n      @if (hasPendingChanges) {\n      <button type="button" class="button-primary commit-button" (click)="commitChanges()">\n        \u2B06\uFE0F Commit ({{ dirtyItems.size }})\n      </button>\n      }\n\n      <button type="button" class="button-base" (click)="loadVaults()" [disabled]="isLoadingVaults">\n        Refresh\n      </button>\n    </div>\n  </header>\n\n  @if (error) {\n  <div class="panel vault-error">{{ error }}</div>\n  }\n\n  <!-- GRID LAYOUT -->\n  <section class="vault-layout">\n\n    <!-- SIDEBAR (PANEL) -->\n    <aside class="panel vault-sidebar">\n      <h3>Vaults</h3>\n\n      @if (!hasVaults && !isLoadingVaults) {\n\n      <p class="vault-empty">No vaults registered.</p>\n\n      } @else {\n\n      <ul class="list">\n\n        @for (group of groupedVaults; track group.keyspace) {\n\n        <li>\n\n          <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">\n            <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">\u25B6</span>\n            <span>{{ group.keyspace }}</span>\n          </button>\n\n          @if (!collapsedKeyspaces.has(group.keyspace)) {\n\n          <ul class="sublist">\n\n            @for (v of group.vaults; track v.typeKey) {\n\n            <li>\n              <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"\n                (click)="onSelectVault(v)">\n                <div class="vault-item-type">{{ v.clrTypeShort }}</div>\n                <div class="vault-item-meta">\n                  {{ v.tableName }}\n                  @if (v.storeHistory) { <span class="vault-item-tag">History</span> }\n                </div>\n              </button>\n            </li>\n\n            }\n\n          </ul>\n\n          }\n\n        </li>\n\n        }\n\n      </ul>\n\n      }\n\n    </aside>\n\n    <!-- MAIN PANEL -->\n    <main class="panel vault-main">\n\n      @if (!selectedVault) {\n\n      <div class="vault-main-empty">\n        <p>Select a vault.</p>\n      </div>\n\n      } @else {\n\n      <!-- TABLE HEADER -->\n      <header class="panel-header vault-table-header">\n        <div>\n          <h3>{{ selectedVault.clrTypeShort }}</h3>\n          <p class="muted">\n            {{ selectedVault.typeKey }} \xB7\n            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> \xB7\n            <span class="vault-table-name">{{ selectedVault.tableName }}</span>\n          </p>\n        </div>\n\n        <div class="vault-table-controls">\n\n          <label>\n            Page size\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\n              @for (sz of pageSizeOptions; track sz) {\n              <option [value]="sz">{{ sz }}</option>\n              }\n            </select>\n          </label>\n\n          <div class="vault-pagination">\n            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">\n              \u2039\n            </button>\n\n            <span>Page {{ displayPage }} / {{ totalPages }}</span>\n\n            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">\n              \u203A\n            </button>\n          </div>\n\n        </div>\n      </header>\n\n      <!-- TABLE AREA -->\n      <section class="vault-table-section">\n\n        @if (isLoadingItems) {\n\n        <div class="vault-main-empty">\n          <p>Loading items\u2026</p>\n        </div>\n\n        } @else if (!hasItems) {\n\n        <div class="vault-main-empty">\n          <p>No items.</p>\n        </div>\n\n        } @else {\n\n        <div class="vault-table-wrapper">\n\n          <table class="table vault-table">\n\n            <thead>\n              <tr>\n                @for (col of orderedColumns; track col.fieldName) {\n                <th [class.pk-header]="col.isPrimaryKey">\n                  {{ col.fieldName }}\n\n                  @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }\n                  @if (col.isUnique) { <span class="col-meta">UQ</span> }\n                  @if (col.isIndexed) { <span class="col-meta">IDX</span> }\n                  @if (col.isForeignKey) { <span class="col-meta">FK</span> }\n                </th>\n                }\n              </tr>\n            </thead>\n\n            <tbody>\n              @for (item of items; let row = $index; track row) {\n              <tr>\n\n                @for (col of orderedColumns; track col.fieldName) {\n\n                <td [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">\n\n                  @if (isEditing(row, col.fieldName)) {\n\n                  <input class="input vault-cell-input" [value]="item[col.fieldName]"\n                    (input)="onCellEdit(row, col.fieldName, $any($event.target).value)"\n                    (blur)="onCellBlur(row, col.fieldName)" autofocus />\n\n                  } @else {\n\n                  <code>{{ item[col.fieldName] }}</code>\n\n                  }\n\n                </td>\n\n                }\n\n              </tr>\n              }\n            </tbody>\n\n          </table>\n\n        </div>\n\n        }\n\n      </section>\n\n      }\n\n    </main>\n\n  </section>\n</div>', styles: ["/* src/app/vault/vault-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.vault-main {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.vault-layout {\n  display: grid;\n  grid-template-columns: 280px 1fr;\n  gap: 1rem;\n  flex: 1;\n  min-height: 0;\n}\n.vault-main {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  overflow: hidden;\n}\n.vault-table-section {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n}\n.vault-table-wrapper {\n  width: max-content;\n  min-width: 100%;\n}\n/*# sourceMappingURL=vault-view.component.css.map */\n"] }]
   }], () => [{ type: VaultDashboardService }], null);
 })();
 (() => {
@@ -77794,7 +78302,7 @@ var AppComponent = class _AppComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(AppComponent, [{
     type: Component,
-    args: [{ selector: "app-root", imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive], template: '<div class="dashboard-root">\r\n  <!-- Top bar -->\r\n  <header class="topbar">\r\n    <div class="topbar-left">\r\n      <a routerLink="/summary-view" class="brand-link">\r\n        <span class="brand">Altruist</span>\r\n        <span class="brand-sub">Server Dashboard</span>\r\n      </a>\r\n    </div>\r\n    <div class="topbar-right">\r\n      <!-- Later: env selector, auth user, etc -->\r\n      <span class="badge env">3D</span>\r\n    </div>\r\n  </header>\r\n\r\n  <div class="layout">\r\n    <!-- Sidebar -->\r\n    <nav class="sidebar">\r\n      <div class="sidebar-section sidebar-title">Management</div>\r\n\r\n      <a routerLink="scene" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F5FA}\uFE0F</span>\r\n        <span class="nav-label">Scene View</span>\r\n      </a>\r\n\r\n      <a routerLink="cache-view" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F4BE}</span>\r\n        <span class="nav-label">Cache View</span>\r\n      </a>\r\n\r\n      <a routerLink="vault-view" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F6E2}\uFE0F</span>\r\n        <span class="nav-label">Vault View</span>\r\n      </a>\r\n\r\n      <a routerLink="sessions" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F4E1}</span>\r\n        <span class="nav-label">Sessions</span>\r\n      </a>\r\n\r\n      <a routerLink="metrics" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F4CA}</span>\r\n        <span class="nav-label">Metrics</span>\r\n      </a>\r\n    </nav>\r\n\r\n    <!-- Main content -->\r\n    <main class="content">\r\n      <router-outlet></router-outlet>\r\n    </main>\r\n  </div>\r\n</div>\r\n', styles: ["/* src/app/app.component.scss */\n.dashboard-root {\n  min-height: 100vh;\n  display: flex;\n  flex-direction: column;\n  background: #020617;\n  color: #e5e7eb;\n}\n.topbar {\n  height: 48px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 0 16px;\n  background:\n    linear-gradient(\n      90deg,\n      #111827,\n      #020617);\n  border-bottom: 1px solid rgba(148, 163, 184, 0.3);\n}\n.topbar-left {\n  display: flex;\n  align-items: baseline;\n  gap: 8px;\n}\n.brand {\n  font-weight: 600;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  font-size: 13px;\n  color: #38bdf8;\n}\n.brand-sub {\n  font-size: 13px;\n  color: #9ca3af;\n}\n.topbar-right {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n.badge {\n  font-size: 11px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  padding: 4px 8px;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n}\n.badge.env {\n  color: #a855f7;\n  border-color: rgba(168, 85, 247, 0.7);\n}\n.layout {\n  flex: 1 0 auto;\n  display: flex;\n}\n.sidebar {\n  width: 220px;\n  padding: 12px 8px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #111827,\n      #020617 60%);\n  border-right: 1px solid rgba(31, 41, 55, 0.9);\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  font-size: 13px;\n}\n.sidebar-section {\n  padding: 8px 10px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  font-size: 11px;\n  color: #6b7280;\n}\n.sidebar-title {\n  margin-bottom: 4px;\n}\n.nav-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 6px 10px;\n  border-radius: 6px;\n  color: #9ca3af;\n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    color 120ms ease,\n    transform 80ms ease;\n}\n.nav-item:hover {\n  background: rgba(15, 23, 42, 0.8);\n  color: #e5e7eb;\n  transform: translateX(1px);\n}\n.nav-item.active {\n  background:\n    linear-gradient(\n      90deg,\n      #1d283a,\n      #0f172a);\n  color: #e5e7eb;\n  border: 1px solid rgba(55, 65, 81, 0.9);\n}\n.nav-icon {\n  width: 18px;\n  text-align: center;\n}\n.content {\n  flex: 1 1 auto;\n  padding: 12px 16px;\n  overflow: visible;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617 0,\n      #020617 40%,\n      #000 100%);\n}\n/*# sourceMappingURL=app.component.css.map */\n"] }]
+    args: [{ selector: "app-root", imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive], template: '<div class="dashboard-root">\n  <!-- Top bar -->\n  <header class="topbar">\n    <div class="topbar-left">\n      <a routerLink="/summary-view" class="brand-link">\n        <span class="brand">Altruist</span>\n        <span class="brand-sub">Server Dashboard</span>\n      </a>\n    </div>\n    <div class="topbar-right">\n      <!-- Later: env selector, auth user, etc -->\n      <span class="badge env">3D</span>\n    </div>\n  </header>\n\n  <div class="layout">\n    <!-- Sidebar -->\n    <nav class="sidebar">\n      <div class="sidebar-section sidebar-title">Management</div>\n\n      <a routerLink="scene" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F5FA}\uFE0F</span>\n        <span class="nav-label">Scene View</span>\n      </a>\n\n      <a routerLink="cache-view" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F4BE}</span>\n        <span class="nav-label">Cache View</span>\n      </a>\n\n      <a routerLink="vault-view" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F6E2}\uFE0F</span>\n        <span class="nav-label">Vault View</span>\n      </a>\n\n      <a routerLink="sessions" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F4E1}</span>\n        <span class="nav-label">Sessions</span>\n      </a>\n\n      <a routerLink="metrics" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F4CA}</span>\n        <span class="nav-label">Metrics</span>\n      </a>\n    </nav>\n\n    <!-- Main content -->\n    <main class="content">\n      <router-outlet></router-outlet>\n    </main>\n  </div>\n</div>\n', styles: ["/* src/app/app.component.scss */\n.dashboard-root {\n  min-height: 100vh;\n  display: flex;\n  flex-direction: column;\n  background: #020617;\n  color: #e5e7eb;\n}\n.topbar {\n  height: 48px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 0 16px;\n  background:\n    linear-gradient(\n      90deg,\n      #111827,\n      #020617);\n  border-bottom: 1px solid rgba(148, 163, 184, 0.3);\n}\n.topbar-left {\n  display: flex;\n  align-items: baseline;\n  gap: 8px;\n}\n.brand {\n  font-weight: 600;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  font-size: 13px;\n  color: #38bdf8;\n}\n.brand-sub {\n  font-size: 13px;\n  color: #9ca3af;\n}\n.topbar-right {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n.badge {\n  font-size: 11px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  padding: 4px 8px;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n}\n.badge.env {\n  color: #a855f7;\n  border-color: rgba(168, 85, 247, 0.7);\n}\n.layout {\n  flex: 1 0 auto;\n  display: flex;\n}\n.sidebar {\n  width: 220px;\n  padding: 12px 8px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #111827,\n      #020617 60%);\n  border-right: 1px solid rgba(31, 41, 55, 0.9);\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  font-size: 13px;\n}\n.sidebar-section {\n  padding: 8px 10px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  font-size: 11px;\n  color: #6b7280;\n}\n.sidebar-title {\n  margin-bottom: 4px;\n}\n.nav-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 6px 10px;\n  border-radius: 6px;\n  color: #9ca3af;\n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    color 120ms ease,\n    transform 80ms ease;\n}\n.nav-item:hover {\n  background: rgba(15, 23, 42, 0.8);\n  color: #e5e7eb;\n  transform: translateX(1px);\n}\n.nav-item.active {\n  background:\n    linear-gradient(\n      90deg,\n      #1d283a,\n      #0f172a);\n  color: #e5e7eb;\n  border: 1px solid rgba(55, 65, 81, 0.9);\n}\n.nav-icon {\n  width: 18px;\n  text-align: center;\n}\n.content {\n  flex: 1 1 auto;\n  padding: 12px 16px;\n  overflow: visible;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617 0,\n      #020617 40%,\n      #000 100%);\n}\n/*# sourceMappingURL=app.component.css.map */\n"] }]
   }], null, null);
 })();
 (() => {
@@ -77803,46 +78311,4 @@ var AppComponent = class _AppComponent {
 
 // src/main.ts
 bootstrapApplication(AppComponent, appConfig).catch((err) => console.error(err));
-/*! Bundled license information:
-
-@angular/core/fesm2022/_effect-chunk.mjs:
-@angular/core/fesm2022/_not_found-chunk.mjs:
-@angular/core/fesm2022/_untracked-chunk.mjs:
-@angular/core/fesm2022/primitives-signals.mjs:
-@angular/core/fesm2022/primitives-di.mjs:
-@angular/core/fesm2022/_effect-chunk2.mjs:
-@angular/core/fesm2022/_attribute-chunk.mjs:
-@angular/core/fesm2022/_debug_node-chunk.mjs:
-@angular/core/fesm2022/_resource-chunk.mjs:
-@angular/core/fesm2022/primitives-event-dispatch.mjs:
-@angular/core/fesm2022/core.mjs:
-@angular/common/fesm2022/_platform_location-chunk.mjs:
-@angular/common/fesm2022/_location-chunk.mjs:
-@angular/common/fesm2022/_common_module-chunk.mjs:
-@angular/common/fesm2022/_platform_navigation-chunk.mjs:
-@angular/common/fesm2022/_xhr-chunk.mjs:
-@angular/common/fesm2022/common.mjs:
-@angular/platform-browser/fesm2022/_dom_renderer-chunk.mjs:
-@angular/platform-browser/fesm2022/_browser-chunk.mjs:
-@angular/common/fesm2022/_module-chunk.mjs:
-@angular/common/fesm2022/http.mjs:
-@angular/platform-browser/fesm2022/platform-browser.mjs:
-@angular/router/fesm2022/_router-chunk.mjs:
-@angular/router/fesm2022/_router_module-chunk.mjs:
-@angular/router/fesm2022/router.mjs:
-@angular/forms/fesm2022/forms.mjs:
-  (**
-   * @license Angular v21.2.7
-   * (c) 2010-2026 Google LLC. https://angular.dev/
-   * License: MIT
-   *)
-
-three/build/three.core.js:
-three/build/three.module.js:
-  (**
-   * @license
-   * Copyright 2010-2025 Three.js Authors
-   * SPDX-License-Identifier: MIT
-   *)
-*/
 //# sourceMappingURL=main.js.map

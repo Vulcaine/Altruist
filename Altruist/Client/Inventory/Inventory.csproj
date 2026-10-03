@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Client.Inventory</PackageId>
     <Description>Client-side inventory mirror for the Altruist wire protocol. Receives ItemSnapshotPacket frames, maintains per-container state with multi-cell coverage tracking, and surfaces SlotChanged / SlotCleared events for UI consumers. Game-specific item fields ride in an opaque payload; the framework never inspects them. Drop-in for Unity, Godot, or any .NET client that already speaks Altruist.</Description>
-    <Version>0.9.5-beta</Version>
+    <Version>0.9.6-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MessagePack" Version="3.1.3" />
+    <PackageReference Include="MessagePack" Version="3.1.10" />
   </ItemGroup>
 
   <ItemGroup>

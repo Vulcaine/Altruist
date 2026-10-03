@@ -1,3 +1,10 @@
 {
-  "routes": {}
+  "routes": {
+    "/": {},
+    "/cache-view": {},
+    "/scene": {},
+    "/sessions": {},
+    "/summary-view": {},
+    "/vault-view": {}
+  }
 }

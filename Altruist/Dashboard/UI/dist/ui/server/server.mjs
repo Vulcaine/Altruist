@@ -7,7 +7,7 @@ import {
   renderApplication,
   renderModule,
   validateUrl
-} from "./chunk-QJM5J7X5.mjs";
+} from "./chunk-YQZNOHDG.mjs";
 import {
   __async,
   __commonJS,
@@ -15,7 +15,7 @@ import {
   __spreadProps,
   __spreadValues,
   __toESM
-} from "./chunk-AKHAU2FS.mjs";
+} from "./chunk-O4G2H6JP.mjs";
 
 // node_modules/ms/index.js
 var require_ms = __commonJS({
@@ -789,7 +789,12 @@ var require_src = __commonJS({
 var require_depd = __commonJS({
   "node_modules/depd/index.js"(exports, module) {
     "use strict";
-    var relative = __require("path").relative;
+    /*!
+     * depd
+     * Copyright(c) 2014-2018 Douglas Christopher Wilson
+     * MIT Licensed
+     */
+    var relative2 = __require("path").relative;
     module.exports = depd;
     var basePath = process.cwd();
     function containsNamespace(str, namespace) {
@@ -981,7 +986,7 @@ var require_depd = __commonJS({
       return formatted;
     }
     function formatLocation(callSite) {
-      return relative(basePath, callSite[0]) + ":" + callSite[1] + ":" + callSite[2];
+      return relative2(basePath, callSite[0]) + ":" + callSite[1] + ":" + callSite[2];
     }
     function getStack() {
       var limit = Error.stackTraceLimit;
@@ -1187,6 +1192,12 @@ var require_codes = __commonJS({
 var require_statuses = __commonJS({
   "node_modules/statuses/index.js"(exports, module) {
     "use strict";
+    /*!
+     * statuses
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var codes = require_codes();
     module.exports = status;
     status.message = codes;
@@ -1306,6 +1317,11 @@ var require_inherits = __commonJS({
 var require_toidentifier = __commonJS({
   "node_modules/toidentifier/index.js"(exports, module) {
     "use strict";
+    /*!
+     * toidentifier
+     * Copyright(c) 2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = toIdentifier;
     function toIdentifier(str) {
       return str.split(" ").map(function(token) {
@@ -1319,6 +1335,12 @@ var require_toidentifier = __commonJS({
 var require_http_errors = __commonJS({
   "node_modules/http-errors/index.js"(exports, module) {
     "use strict";
+    /*!
+     * http-errors
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var deprecate = require_depd()("http-errors");
     var setPrototypeOf = require_setprototypeof();
     var statuses = require_statuses();
@@ -1483,6 +1505,12 @@ var require_http_errors = __commonJS({
 var require_bytes = __commonJS({
   "node_modules/bytes/index.js"(exports, module) {
     "use strict";
+    /*!
+     * bytes
+     * Copyright(c) 2012-2014 TJ Holowaychuk
+     * Copyright(c) 2015 Jed Watson
+     * MIT Licensed
+     */
     module.exports = bytes;
     module.exports.format = format;
     module.exports.parse = parse;
@@ -1902,7 +1930,7 @@ var require_utf32 = __commonJS({
     }
     Utf32Encoder.prototype.write = function(str) {
       var src = Buffer2.from(str, "ucs2");
-      var dst = Buffer2.alloc(src.length * 2);
+      var dst = Buffer2.alloc(src.length * 2 + 4);
       var write32 = this.isLE ? dst.writeUInt32LE : dst.writeUInt32BE;
       var offset = 0;
       for (var i = 0; i < src.length; i += 2) {
@@ -1969,9 +1997,9 @@ var require_utf32 = __commonJS({
         }
         if (overflow.length === 4) {
           if (isLE) {
-            codepoint = overflow[i] | overflow[i + 1] << 8 | overflow[i + 2] << 16 | overflow[i + 3] << 24;
+            codepoint = overflow[0] | overflow[1] << 8 | overflow[2] << 16 | overflow[3] << 24;
           } else {
-            codepoint = overflow[i + 3] | overflow[i + 2] << 8 | overflow[i + 1] << 16 | overflow[i] << 24;
+            codepoint = overflow[3] | overflow[2] << 8 | overflow[1] << 16 | overflow[0] << 24;
           }
           overflow.length = 0;
           offset = _writeCodepoint(dst, offset, codepoint, badChar);
@@ -2006,7 +2034,11 @@ var require_utf32 = __commonJS({
       return offset;
     }
     Utf32Decoder.prototype.end = function() {
+      if (this.overflow.length === 0) {
+        return;
+      }
       this.overflow.length = 0;
+      return String.fromCharCode(this.badChar);
     };
     exports.utf32 = Utf32AutoCodec;
     exports.ucs4 = "utf32";
@@ -2631,6 +2663,8 @@ var require_sbcs_data = __commonJS({
       elot928: "iso88597",
       hebrew: "iso88598",
       hebrew8: "iso88598",
+      iso88598i: "iso88598",
+      iso88598e: "iso88598",
       turkish: "iso88599",
       turkish8: "iso88599",
       thai: "iso885911",
@@ -5354,6 +5388,11 @@ var require_lib = __commonJS({
 var require_unpipe = __commonJS({
   "node_modules/unpipe/index.js"(exports, module) {
     "use strict";
+    /*!
+     * unpipe
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = unpipe;
     function hasPipeDataListeners(stream) {
       var listeners = stream.listeners("data");
@@ -5392,6 +5431,12 @@ var require_unpipe = __commonJS({
 var require_raw_body = __commonJS({
   "node_modules/raw-body/index.js"(exports, module) {
     "use strict";
+    /*!
+     * raw-body
+     * Copyright(c) 2013-2014 Jonathan Ong
+     * Copyright(c) 2014-2022 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var asyncHooks = tryRequireAsyncHooks();
     var bytes = require_bytes();
     var createError = require_http_errors();
@@ -5581,6 +5626,11 @@ var require_raw_body = __commonJS({
 var require_ee_first = __commonJS({
   "node_modules/ee-first/index.js"(exports, module) {
     "use strict";
+    /*!
+     * ee-first
+     * Copyright(c) 2014 Jonathan Ong
+     * MIT Licensed
+     */
     module.exports = first;
     function first(stuff, done) {
       if (!Array.isArray(stuff))
@@ -5637,6 +5687,12 @@ var require_ee_first = __commonJS({
 var require_on_finished = __commonJS({
   "node_modules/on-finished/index.js"(exports, module) {
     "use strict";
+    /*!
+     * on-finished
+     * Copyright(c) 2013 Jonathan Ong
+     * Copyright(c) 2014 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = onFinished;
     module.exports.isFinished = isFinished;
     var asyncHooks = tryRequireAsyncHooks();
@@ -5737,106 +5793,146 @@ var require_on_finished = __commonJS({
   }
 });
 
-// node_modules/content-type/index.js
-var require_content_type = __commonJS({
-  "node_modules/content-type/index.js"(exports) {
+// node_modules/type-is/node_modules/content-type/dist/index.js
+var require_dist = __commonJS({
+  "node_modules/type-is/node_modules/content-type/dist/index.js"(exports) {
     "use strict";
-    var PARAM_REGEXP = /; *([!#$%&'*+.^_`|~0-9A-Za-z-]+) *= *("(?:[\u000b\u0020\u0021\u0023-\u005b\u005d-\u007e\u0080-\u00ff]|\\[\u000b\u0020-\u00ff])*"|[!#$%&'*+.^_`|~0-9A-Za-z-]+) */g;
-    var TEXT_REGEXP = /^[\u000b\u0020-\u007e\u0080-\u00ff]+$/;
-    var TOKEN_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-    var QESC_REGEXP = /\\([\u000b\u0020-\u00ff])/g;
-    var QUOTE_REGEXP = /([\\"])/g;
-    var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    /*!
+     * content-type
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
+    Object.defineProperty(exports, "__esModule", { value: true });
     exports.format = format;
     exports.parse = parse;
+    var TEXT_REGEXP = /^[\u0009\u0020-\u007e\u0080-\u00ff]*$/;
+    var TOKEN_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    var QUOTE_REGEXP = /[\\"]/g;
+    var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    var NullObject = /* @__PURE__ */ (() => {
+      const C = function() {
+      };
+      C.prototype = /* @__PURE__ */ Object.create(null);
+      return C;
+    })();
     function format(obj) {
-      if (!obj || typeof obj !== "object") {
-        throw new TypeError("argument obj is required");
-      }
-      var parameters = obj.parameters;
-      var type = obj.type;
+      const { type, parameters } = obj;
       if (!type || !TYPE_REGEXP.test(type)) {
-        throw new TypeError("invalid type");
+        throw new TypeError(`Invalid type: ${type}`);
       }
-      var string = type;
-      if (parameters && typeof parameters === "object") {
-        var param;
-        var params = Object.keys(parameters).sort();
-        for (var i = 0; i < params.length; i++) {
-          param = params[i];
+      let result = type;
+      if (parameters) {
+        for (const param of Object.keys(parameters)) {
           if (!TOKEN_REGEXP.test(param)) {
-            throw new TypeError("invalid parameter name");
+            throw new TypeError(`Invalid parameter name: ${param}`);
           }
-          string += "; " + param + "=" + qstring(parameters[param]);
+          result += `; ${param}=${qstring(parameters[param])}`;
         }
       }
-      return string;
+      return result;
     }
-    function parse(string) {
-      if (!string) {
-        throw new TypeError("argument string is required");
+    function parse(header, options) {
+      const stopChar = options?.comma === true ? COMMA : 65536;
+      const len = header.length;
+      let index = skipOWS(header, options?.start ?? 0, len);
+      const valueStart = index;
+      index = skipValue(header, index, len, stopChar);
+      const valueEnd = trailingOWS(header, valueStart, index);
+      const type = header.slice(valueStart, valueEnd).toLowerCase();
+      if (options?.parameters === false) {
+        return { type, index, parameters: new NullObject() };
       }
-      var header = typeof string === "object" ? getcontenttype(string) : string;
-      if (typeof header !== "string") {
-        throw new TypeError("argument string is required to be a string");
-      }
-      var index = header.indexOf(";");
-      var type = index !== -1 ? header.slice(0, index).trim() : header.trim();
-      if (!TYPE_REGEXP.test(type)) {
-        throw new TypeError("invalid media type");
-      }
-      var obj = new ContentType(type.toLowerCase());
-      if (index !== -1) {
-        var key;
-        var match;
-        var value;
-        PARAM_REGEXP.lastIndex = index;
-        while (match = PARAM_REGEXP.exec(header)) {
-          if (match.index !== index) {
-            throw new TypeError("invalid parameter format");
-          }
-          index += match[0].length;
-          key = match[1].toLowerCase();
-          value = match[2];
-          if (value.charCodeAt(0) === 34) {
-            value = value.slice(1, -1);
-            if (value.indexOf("\\") !== -1) {
-              value = value.replace(QESC_REGEXP, "$1");
+      return parseParameters(header, type, index, len, stopChar);
+    }
+    var SP = 32;
+    var HTAB = 9;
+    var SEMI = 59;
+    var EQ = 61;
+    var DQUOTE = 34;
+    var BSLASH = 92;
+    var COMMA = 44;
+    function parseParameters(header, type, index, len, stopChar) {
+      const parameters = new NullObject();
+      parameter: while (index < len) {
+        if (header.charCodeAt(index) === stopChar)
+          break;
+        index = skipOWS(header, index + 1, len);
+        const keyStart = index;
+        while (index < len) {
+          const code = header.charCodeAt(index);
+          if (code === stopChar)
+            break parameter;
+          if (code === SEMI)
+            continue parameter;
+          if (code === EQ) {
+            const keyEnd = trailingOWS(header, keyStart, index);
+            const key = header.slice(keyStart, keyEnd).toLowerCase();
+            index = skipOWS(header, index + 1, len);
+            if (index < len && header.charCodeAt(index) === DQUOTE) {
+              index++;
+              let value = "";
+              while (index < len) {
+                const code2 = header.charCodeAt(index++);
+                if (code2 === DQUOTE) {
+                  index = skipValue(header, index, len, stopChar);
+                  if (parameters[key] === void 0)
+                    parameters[key] = value;
+                  break;
+                }
+                if (code2 === BSLASH && index < len) {
+                  value += header[index++];
+                  continue;
+                }
+                value += String.fromCharCode(code2);
+              }
+              continue parameter;
             }
+            const valueStart = index;
+            index = skipValue(header, index, len, stopChar);
+            if (parameters[key] === void 0) {
+              const valueEnd = trailingOWS(header, valueStart, index);
+              parameters[key] = header.slice(valueStart, valueEnd);
+            }
+            continue parameter;
           }
-          obj.parameters[key] = value;
-        }
-        if (index !== header.length) {
-          throw new TypeError("invalid parameter format");
+          index++;
         }
       }
-      return obj;
+      return { type, index, parameters };
     }
-    function getcontenttype(obj) {
-      var header;
-      if (typeof obj.getHeader === "function") {
-        header = obj.getHeader("content-type");
-      } else if (typeof obj.headers === "object") {
-        header = obj.headers && obj.headers["content-type"];
+    function skipValue(str, index, len, stopChar) {
+      while (index < len) {
+        const code = str.charCodeAt(index);
+        if (code === SEMI || code === stopChar)
+          break;
+        index++;
       }
-      if (typeof header !== "string") {
-        throw new TypeError("content-type header is missing from object");
-      }
-      return header;
+      return index;
     }
-    function qstring(val) {
-      var str = String(val);
-      if (TOKEN_REGEXP.test(str)) {
+    function skipOWS(header, index, len) {
+      while (index < len) {
+        const char = header.charCodeAt(index);
+        if (char !== SP && char !== HTAB)
+          break;
+        index++;
+      }
+      return index;
+    }
+    function trailingOWS(header, start, end) {
+      while (end > start) {
+        const char = header.charCodeAt(end - 1);
+        if (char !== SP && char !== HTAB)
+          break;
+        end--;
+      }
+      return end;
+    }
+    function qstring(str) {
+      if (TOKEN_REGEXP.test(str))
         return str;
-      }
-      if (str.length > 0 && !TEXT_REGEXP.test(str)) {
-        throw new TypeError("invalid parameter value");
-      }
-      return '"' + str.replace(QUOTE_REGEXP, "\\$1") + '"';
-    }
-    function ContentType(type) {
-      this.parameters = /* @__PURE__ */ Object.create(null);
-      this.type = type;
+      if (TEXT_REGEXP.test(str))
+        return `"${str.replace(QUOTE_REGEXP, "\\$&")}"`;
+      throw new TypeError(`Invalid parameter value: ${str}`);
     }
   }
 });
@@ -15193,6 +15289,12 @@ var require_db = __commonJS({
 var require_mime_db = __commonJS({
   "node_modules/mime-db/index.js"(exports, module) {
     "use strict";
+    /*!
+     * mime-db
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2015-2022 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = require_db();
   }
 });
@@ -15246,6 +15348,12 @@ var require_mimeScore = __commonJS({
 var require_mime_types = __commonJS({
   "node_modules/mime-types/index.js"(exports) {
     "use strict";
+    /*!
+     * mime-types
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var db = require_mime_db();
     var extname = __require("path").extname;
     var mimeScore = require_mimeScore();
@@ -15352,6 +15460,11 @@ var require_mime_types = __commonJS({
 var require_media_typer = __commonJS({
   "node_modules/media-typer/index.js"(exports) {
     "use strict";
+    /*!
+     * media-typer
+     * Copyright(c) 2014-2017 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var SUBTYPE_NAME_REGEXP = /^[A-Za-z0-9][A-Za-z0-9!#$&^_.-]{0,126}$/;
     var TYPE_NAME_REGEXP = /^[A-Za-z0-9][A-Za-z0-9!#$&^_-]{0,126}$/;
     var TYPE_REGEXP = /^ *([A-Za-z0-9][A-Za-z0-9!#$&^_-]{0,126})\/([A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}) *$/;
@@ -15381,18 +15494,12 @@ var require_media_typer = __commonJS({
       return string;
     }
     function test(string) {
-      if (!string) {
-        throw new TypeError("argument string is required");
-      }
       if (typeof string !== "string") {
         throw new TypeError("argument string is required to be a string");
       }
       return TYPE_REGEXP.test(string.toLowerCase());
     }
     function parse(string) {
-      if (!string) {
-        throw new TypeError("argument string is required");
-      }
       if (typeof string !== "string") {
         throw new TypeError("argument string is required to be a string");
       }
@@ -15422,18 +15529,27 @@ var require_media_typer = __commonJS({
 var require_type_is = __commonJS({
   "node_modules/type-is/index.js"(exports, module) {
     "use strict";
-    var contentType = require_content_type();
+    /*!
+     * type-is
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
+    var contentType = require_dist();
     var mime = require_mime_types();
     var typer = require_media_typer();
     module.exports = typeofrequest;
     module.exports.is = typeis;
     module.exports.hasBody = hasbody;
-    module.exports.normalize = normalize2;
+    module.exports.normalize = normalize;
     module.exports.match = mimeMatch;
     function typeis(value, types_) {
+      if (value && typeof value === "object") {
+        value = value.headers["content-type"];
+      }
       var i;
       var types = types_;
-      var val = tryNormalizeType(value);
+      var val = normalizeType(value);
       if (!val) {
         return false;
       }
@@ -15448,7 +15564,7 @@ var require_type_is = __commonJS({
       }
       var type;
       for (i = 0; i < types.length; i++) {
-        if (mimeMatch(normalize2(type = types[i]), val)) {
+        if (mimeMatch(normalize(type = types[i]), val)) {
           return type[0] === "+" || type.indexOf("*") !== -1 ? val : type;
         }
       }
@@ -15463,7 +15579,7 @@ var require_type_is = __commonJS({
       var value = req.headers["content-type"];
       return typeis(value, types);
     }
-    function normalize2(type) {
+    function normalize(type) {
       if (typeof type !== "string") {
         return false;
       }
@@ -15499,15 +15615,153 @@ var require_type_is = __commonJS({
       return true;
     }
     function normalizeType(value) {
-      var type = contentType.parse(value).type;
+      if (!value) return null;
+      var type = contentType.parse(value, { parameters: false }).type;
       return typer.test(type) ? type : null;
     }
-    function tryNormalizeType(value) {
-      try {
-        return value ? normalizeType(value) : null;
-      } catch (err) {
-        return null;
+  }
+});
+
+// node_modules/body-parser/node_modules/content-type/dist/index.js
+var require_dist2 = __commonJS({
+  "node_modules/body-parser/node_modules/content-type/dist/index.js"(exports) {
+    "use strict";
+    /*!
+     * content-type
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.format = format;
+    exports.parse = parse;
+    var TEXT_REGEXP = /^[\u0009\u0020-\u007e\u0080-\u00ff]*$/;
+    var TOKEN_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    var QUOTE_REGEXP = /[\\"]/g;
+    var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    var NullObject = /* @__PURE__ */ (() => {
+      const C = function() {
+      };
+      C.prototype = /* @__PURE__ */ Object.create(null);
+      return C;
+    })();
+    function format(obj) {
+      const { type, parameters } = obj;
+      if (!type || !TYPE_REGEXP.test(type)) {
+        throw new TypeError(`Invalid type: ${type}`);
       }
+      let result = type;
+      if (parameters) {
+        for (const param of Object.keys(parameters)) {
+          if (!TOKEN_REGEXP.test(param)) {
+            throw new TypeError(`Invalid parameter name: ${param}`);
+          }
+          result += `; ${param}=${qstring(parameters[param])}`;
+        }
+      }
+      return result;
+    }
+    function parse(header, options) {
+      const stopChar = options?.comma === true ? COMMA : 65536;
+      const len = header.length;
+      let index = skipOWS(header, options?.start ?? 0, len);
+      const valueStart = index;
+      index = skipValue(header, index, len, stopChar);
+      const valueEnd = trailingOWS(header, valueStart, index);
+      const type = header.slice(valueStart, valueEnd).toLowerCase();
+      if (options?.parameters === false) {
+        return { type, index, parameters: new NullObject() };
+      }
+      return parseParameters(header, type, index, len, stopChar);
+    }
+    var SP = 32;
+    var HTAB = 9;
+    var SEMI = 59;
+    var EQ = 61;
+    var DQUOTE = 34;
+    var BSLASH = 92;
+    var COMMA = 44;
+    function parseParameters(header, type, index, len, stopChar) {
+      const parameters = new NullObject();
+      parameter: while (index < len) {
+        if (header.charCodeAt(index) === stopChar)
+          break;
+        index = skipOWS(header, index + 1, len);
+        const keyStart = index;
+        while (index < len) {
+          const code = header.charCodeAt(index);
+          if (code === stopChar)
+            break parameter;
+          if (code === SEMI)
+            continue parameter;
+          if (code === EQ) {
+            const keyEnd = trailingOWS(header, keyStart, index);
+            const key = header.slice(keyStart, keyEnd).toLowerCase();
+            index = skipOWS(header, index + 1, len);
+            if (index < len && header.charCodeAt(index) === DQUOTE) {
+              index++;
+              let value = "";
+              while (index < len) {
+                const code2 = header.charCodeAt(index++);
+                if (code2 === DQUOTE) {
+                  index = skipValue(header, index, len, stopChar);
+                  if (parameters[key] === void 0)
+                    parameters[key] = value;
+                  break;
+                }
+                if (code2 === BSLASH && index < len) {
+                  value += header[index++];
+                  continue;
+                }
+                value += String.fromCharCode(code2);
+              }
+              continue parameter;
+            }
+            const valueStart = index;
+            index = skipValue(header, index, len, stopChar);
+            if (parameters[key] === void 0) {
+              const valueEnd = trailingOWS(header, valueStart, index);
+              parameters[key] = header.slice(valueStart, valueEnd);
+            }
+            continue parameter;
+          }
+          index++;
+        }
+      }
+      return { type, index, parameters };
+    }
+    function skipValue(str, index, len, stopChar) {
+      while (index < len) {
+        const code = str.charCodeAt(index);
+        if (code === SEMI || code === stopChar)
+          break;
+        index++;
+      }
+      return index;
+    }
+    function skipOWS(header, index, len) {
+      while (index < len) {
+        const char = header.charCodeAt(index);
+        if (char !== SP && char !== HTAB)
+          break;
+        index++;
+      }
+      return index;
+    }
+    function trailingOWS(header, start, end) {
+      while (end > start) {
+        const char = header.charCodeAt(end - 1);
+        if (char !== SP && char !== HTAB)
+          break;
+        end--;
+      }
+      return end;
+    }
+    function qstring(str) {
+      if (TOKEN_REGEXP.test(str))
+        return str;
+      if (TEXT_REGEXP.test(str))
+        return `"${str.replace(QUOTE_REGEXP, "\\$&")}"`;
+      throw new TypeError(`Invalid parameter value: ${str}`);
     }
   }
 });
@@ -15517,7 +15771,7 @@ var require_utils = __commonJS({
   "node_modules/body-parser/lib/utils.js"(exports, module) {
     "use strict";
     var bytes = require_bytes();
-    var contentType = require_content_type();
+    var contentType = require_dist2();
     var typeis = require_type_is();
     module.exports = {
       getCharset,
@@ -15525,11 +15779,9 @@ var require_utils = __commonJS({
       passthrough
     };
     function getCharset(req) {
-      try {
-        return (contentType.parse(req).parameters.charset || "").toLowerCase();
-      } catch (e) {
-        return void 0;
-      }
+      const header = req.headers["content-type"];
+      if (!header) return void 0;
+      return contentType.parse(header).parameters.charset?.toLowerCase();
     }
     function typeChecker(type) {
       return function checkType(req) {
@@ -15540,15 +15792,18 @@ var require_utils = __commonJS({
       if (!defaultType) {
         throw new TypeError("defaultType must be provided");
       }
-      var inflate = options?.inflate !== false;
-      var limit = typeof options?.limit !== "number" ? bytes.parse(options?.limit || "100kb") : options?.limit;
-      var type = options?.type || defaultType;
-      var verify = options?.verify || false;
-      var defaultCharset = options?.defaultCharset || "utf-8";
+      const inflate = options?.inflate !== false;
+      const limit = typeof options?.limit === "undefined" || options?.limit === null ? 102400 : bytes.parse(options.limit);
+      const type = options?.type || defaultType;
+      const verify = options?.verify || false;
+      const defaultCharset = options?.defaultCharset || "utf-8";
+      if (limit === null) {
+        throw new TypeError(`option limit "${String(options.limit)}" is invalid`);
+      }
       if (verify !== false && typeof verify !== "function") {
         throw new TypeError("option verify must be function");
       }
-      var shouldParse = typeof type !== "function" ? typeChecker(type) : type;
+      const shouldParse = typeof type !== "function" ? typeChecker(type) : type;
       return {
         inflate,
         limit,
@@ -15567,6 +15822,11 @@ var require_utils = __commonJS({
 var require_read = __commonJS({
   "node_modules/body-parser/lib/read.js"(exports, module) {
     "use strict";
+    /*!
+     * body-parser
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var createError = require_http_errors();
     var getBody = require_raw_body();
     var iconv = require_lib();
@@ -15595,7 +15855,7 @@ var require_read = __commonJS({
         next();
         return;
       }
-      var encoding = null;
+      let encoding = null;
       if (options?.skipCharset !== true) {
         encoding = getCharset(req) || options.defaultCharset;
         if (!!options?.isValidCharset && !options.isValidCharset(encoding)) {
@@ -15607,10 +15867,10 @@ var require_read = __commonJS({
           return;
         }
       }
-      var length;
-      var opts = options;
-      var stream;
-      var verify = opts.verify;
+      let length;
+      const opts = options;
+      let stream;
+      const verify = opts.verify;
       try {
         stream = contentstream(req, debug, opts.inflate);
         length = stream.length;
@@ -15629,7 +15889,7 @@ var require_read = __commonJS({
       debug("read body");
       getBody(stream, opts, function(error, body) {
         if (error) {
-          var _error;
+          let _error;
           if (error.type === "encoding.unsupported") {
             _error = createError(415, 'unsupported charset "' + encoding.toUpperCase() + '"', {
               charset: encoding.toLowerCase(),
@@ -15659,7 +15919,7 @@ var require_read = __commonJS({
             return;
           }
         }
-        var str = body;
+        let str = body;
         try {
           debug("parse body");
           str = typeof body !== "string" && encoding !== null ? iconv.decode(body, encoding) : body;
@@ -15675,8 +15935,8 @@ var require_read = __commonJS({
       });
     }
     function contentstream(req, debug, inflate) {
-      var encoding = (req.headers["content-encoding"] || "identity").toLowerCase();
-      var length = req.headers["content-length"];
+      const encoding = (req.headers["content-encoding"] || "identity").toLowerCase();
+      const length = req.headers["content-length"];
       debug('content-encoding "%s"', encoding);
       if (inflate === false && encoding !== "identity") {
         throw createError(415, "content encoding unsupported", {
@@ -15688,7 +15948,7 @@ var require_read = __commonJS({
         req.length = length;
         return req;
       }
-      var stream = createDecompressionStream(encoding, debug);
+      const stream = createDecompressionStream(encoding, debug);
       req.pipe(stream);
       return stream;
     }
@@ -15725,6 +15985,12 @@ var require_read = __commonJS({
 var require_json = __commonJS({
   "node_modules/body-parser/lib/types/json.js"(exports, module) {
     "use strict";
+    /*!
+     * body-parser
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var debug = require_src()("body-parser:json");
     var read = require_read();
     var { normalizeOptions } = require_utils();
@@ -15734,18 +16000,42 @@ var require_json = __commonJS({
     var JSON_SYNTAX_REGEXP = /#+/g;
     function json(options) {
       const normalizedOptions = normalizeOptions(options, "application/json");
-      var reviver = options?.reviver;
-      var strict = options?.strict !== false;
-      function parse(body) {
-        if (body.length === 0) {
-          return {};
-        }
-        if (strict) {
-          var first = firstchar(body);
+      const parse = createJsonParser(options);
+      const readOptions = __spreadProps(__spreadValues({}, normalizedOptions), {
+        // assert charset per RFC 7159 sec 8.1
+        isValidCharset: (charset) => charset.slice(0, 4) === "utf-"
+      });
+      return function jsonParser(req, res, next) {
+        read(req, res, next, parse, debug, readOptions);
+      };
+    }
+    function createJsonParser(options) {
+      const reviver = options?.reviver;
+      const strict = options?.strict !== false;
+      if (strict) {
+        return function parse(body) {
+          if (body.length === 0) {
+            return {};
+          }
+          const first = firstchar(body);
           if (first !== "{" && first !== "[") {
             debug("strict violation");
             throw createStrictSyntaxError(body, first);
           }
+          try {
+            debug("parse json");
+            return JSON.parse(body, reviver);
+          } catch (e) {
+            throw normalizeJsonSyntaxError(e, {
+              message: e.message,
+              stack: e.stack
+            });
+          }
+        };
+      }
+      return function parse(body) {
+        if (body.length === 0) {
+          return {};
         }
         try {
           debug("parse json");
@@ -15756,18 +16046,11 @@ var require_json = __commonJS({
             stack: e.stack
           });
         }
-      }
-      const readOptions = __spreadProps(__spreadValues({}, normalizedOptions), {
-        // assert charset per RFC 7159 sec 8.1
-        isValidCharset: (charset) => charset.slice(0, 4) === "utf-"
-      });
-      return function jsonParser(req, res, next) {
-        read(req, res, next, parse, debug, readOptions);
       };
     }
     function createStrictSyntaxError(str, char) {
-      var index = str.indexOf(char);
-      var partial = "";
+      const index = str.indexOf(char);
+      let partial = "";
       if (index !== -1) {
         partial = str.substring(0, index) + JSON_SYNTAX_CHAR.repeat(str.length - index);
       }
@@ -15784,13 +16067,13 @@ var require_json = __commonJS({
       }
     }
     function firstchar(str) {
-      var match = FIRST_CHAR_REGEXP.exec(str);
+      const match = FIRST_CHAR_REGEXP.exec(str);
       return match ? match[1] : void 0;
     }
     function normalizeJsonSyntaxError(error, obj) {
-      var keys = Object.getOwnPropertyNames(error);
-      for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
+      const keys = Object.getOwnPropertyNames(error);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
         if (key !== "stack" && key !== "message") {
           delete error[key];
         }
@@ -15806,6 +16089,11 @@ var require_json = __commonJS({
 var require_raw = __commonJS({
   "node_modules/body-parser/lib/types/raw.js"(exports, module) {
     "use strict";
+    /*!
+     * body-parser
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var debug = require_src()("body-parser:raw");
     var read = require_read();
     var { normalizeOptions, passthrough } = require_utils();
@@ -15827,6 +16115,11 @@ var require_raw = __commonJS({
 var require_text = __commonJS({
   "node_modules/body-parser/lib/types/text.js"(exports, module) {
     "use strict";
+    /*!
+     * body-parser
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var debug = require_src()("body-parser:text");
     var read = require_read();
     var { normalizeOptions, passthrough } = require_utils();
@@ -16450,9 +16743,8 @@ var require_side_channel_list = __commonJS({
           }
         },
         "delete": function(key) {
-          var root = $o && $o.next;
           var deletedNode = listDelete($o, key);
-          if (deletedNode && root && root === deletedNode) {
+          if (deletedNode && $o && !$o.next) {
             $o = void 0;
           }
           return !!deletedNode;
@@ -17444,7 +17736,8 @@ var require_side_channel = __commonJS({
       var channel = {
         assert: function(key) {
           if (!channel.has(key)) {
-            throw new $TypeError("Side channel does not contain " + inspect(key));
+            var keyDesc = key && Object(key) === key ? "the given object key" : inspect(key);
+            throw new $TypeError("Side channel does not contain " + keyDesc);
           }
         },
         "delete": function(key) {
@@ -17500,6 +17793,7 @@ var require_utils2 = __commonJS({
     "use strict";
     var formats = require_formats();
     var getSideChannel = require_side_channel();
+    var defineProperty = require_es_define_property();
     var has = Object.prototype.hasOwnProperty;
     var isArray = Array.isArray;
     var overflowChannel = getSideChannel();
@@ -17547,6 +17841,18 @@ var require_utils2 = __commonJS({
       }
       return obj;
     };
+    var setProperty = function setProperty2(obj, key, value) {
+      if (key === "__proto__" && defineProperty) {
+        defineProperty(obj, key, {
+          configurable: true,
+          enumerable: true,
+          value,
+          writable: true
+        });
+      } else {
+        obj[key] = value;
+      }
+    };
     var merge = function merge2(target, source, options) {
       if (!source) {
         return target;
@@ -17554,7 +17860,10 @@ var require_utils2 = __commonJS({
       if (typeof source !== "object" && typeof source !== "function") {
         if (isArray(target)) {
           var nextIndex = target.length;
-          if (options && typeof options.arrayLimit === "number" && nextIndex > options.arrayLimit) {
+          if (options && typeof options.arrayLimit === "number" && nextIndex >= options.arrayLimit) {
+            if (options.throwOnLimitExceeded) {
+              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+            }
             return markOverflow(arrayToObject(target.concat(source), options), nextIndex);
           }
           target[nextIndex] = source;
@@ -17585,6 +17894,9 @@ var require_utils2 = __commonJS({
         }
         var combined = [target].concat(source);
         if (options && typeof options.arrayLimit === "number" && combined.length > options.arrayLimit) {
+          if (options.throwOnLimitExceeded) {
+            throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+          }
           return markOverflow(arrayToObject(combined, options), combined.length - 1);
         }
         return combined;
@@ -17606,14 +17918,20 @@ var require_utils2 = __commonJS({
             target[i] = item;
           }
         });
+        if (options && typeof options.arrayLimit === "number" && target.length > options.arrayLimit) {
+          if (options.throwOnLimitExceeded) {
+            throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+          }
+          return markOverflow(arrayToObject(target, options), target.length - 1);
+        }
         return target;
       }
       return Object.keys(source).reduce(function(acc, key) {
         var value = source[key];
         if (has.call(acc, key)) {
-          acc[key] = merge2(acc[key], value, options);
+          setProperty(acc, key, merge2(acc[key], value, options));
         } else {
-          acc[key] = value;
+          setProperty(acc, key, value);
         }
         if (isOverflow(source) && !isOverflow(acc)) {
           markOverflow(acc, getMaxIndex(source));
@@ -17629,7 +17947,7 @@ var require_utils2 = __commonJS({
     };
     var assign = function assignSingleSource(target, source) {
       return Object.keys(source).reduce(function(acc, key) {
-        acc[key] = source[key];
+        setProperty(acc, key, source[key]);
         return acc;
       }, target);
     };
@@ -17663,6 +17981,13 @@ var require_utils2 = __commonJS({
       var out = "";
       for (var j = 0; j < string.length; j += limit) {
         var segment = string.length >= limit ? string.slice(j, j + limit) : string;
+        if (j + limit < string.length) {
+          var last = segment.charCodeAt(segment.length - 1);
+          if (last >= 55296 && last <= 56319) {
+            segment = segment.slice(0, -1);
+            j -= 1;
+          }
+        }
         var arr = [];
         for (var i = 0; i < segment.length; ++i) {
           var c = segment.charCodeAt(i);
@@ -17692,7 +18017,7 @@ var require_utils2 = __commonJS({
     };
     var compact = function compact2(value) {
       var queue = [{ obj: { o: value }, prop: "o" }];
-      var refs = [];
+      var refs = getSideChannel();
       for (var i = 0; i < queue.length; ++i) {
         var item = queue[i];
         var obj = item.obj[item.prop];
@@ -17700,9 +18025,9 @@ var require_utils2 = __commonJS({
         for (var j = 0; j < keys.length; ++j) {
           var key = keys[j];
           var val = obj[key];
-          if (typeof val === "object" && val !== null && refs.indexOf(val) === -1) {
+          if (typeof val === "object" && val !== null && !refs.has(val)) {
             queue[queue.length] = { obj, prop: key };
-            refs[refs.length] = val;
+            refs.set(val, true);
           }
         }
       }
@@ -17716,17 +18041,27 @@ var require_utils2 = __commonJS({
       if (!obj || typeof obj !== "object") {
         return false;
       }
-      return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
+      return !!(obj.constructor && typeof obj.constructor.isBuffer === "function" && obj.constructor.isBuffer(obj));
     };
-    var combine = function combine2(a, b, arrayLimit, plainObjects) {
+    var combine = function combine2(a, b, arrayLimit, plainObjects, throwOnLimitExceeded) {
       if (isOverflow(a)) {
-        var newIndex = getMaxIndex(a) + 1;
-        a[newIndex] = b;
+        if (throwOnLimitExceeded) {
+          throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+        }
+        var bValues = isArray(b) ? b : [b];
+        var newIndex = getMaxIndex(a);
+        for (var i = 0; i < bValues.length; ++i) {
+          newIndex += 1;
+          a[newIndex] = bValues[i];
+        }
         setMaxIndex(a, newIndex);
         return a;
       }
       var result = [].concat(a, b);
       if (result.length > arrayLimit) {
+        if (throwOnLimitExceeded) {
+          throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+        }
         return markOverflow(arrayToObject(result, { plainObjects }), result.length - 1);
       }
       return result;
@@ -17794,6 +18129,7 @@ var require_stringify = __commonJS({
       charsetSentinel: false,
       commaRoundTrip: false,
       delimiter: "&",
+      depth: Infinity,
       encode: true,
       encodeDotInKeys: false,
       encoder: utils.encode,
@@ -17813,8 +18149,11 @@ var require_stringify = __commonJS({
       return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "symbol" || typeof v === "bigint";
     };
     var sentinel = {};
-    var stringify = function stringify2(object, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel) {
+    var stringify = function stringify2(object, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel, depth, currentDepth) {
       var obj = object;
+      if (currentDepth > depth) {
+        throw new RangeError("Input depth exceeded depth option of " + depth);
+      }
       var tmpSc = sideChannel;
       var step = 0;
       var findFlag = false;
@@ -17832,9 +18171,8 @@ var require_stringify = __commonJS({
           step = 0;
         }
       }
-      if (typeof filter === "function") {
-        obj = filter(prefix, obj);
-      } else if (obj instanceof Date) {
+      obj = typeof filter === "function" ? filter(prefix, obj) : obj;
+      if (obj instanceof Date) {
         obj = serializeDate(obj);
       } else if (generateArrayPrefix === "comma" && isArray(obj)) {
         obj = utils.maybeMap(obj, function(value2) {
@@ -17846,7 +18184,7 @@ var require_stringify = __commonJS({
       }
       if (obj === null) {
         if (strictNullHandling) {
-          return encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, "key", format) : prefix;
+          return formatter(encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, "key", format) : prefix);
         }
         obj = "";
       }
@@ -17864,7 +18202,9 @@ var require_stringify = __commonJS({
       var objKeys;
       if (generateArrayPrefix === "comma" && isArray(obj)) {
         if (encodeValuesOnly && encoder) {
-          obj = utils.maybeMap(obj, encoder);
+          obj = utils.maybeMap(obj, function(v) {
+            return v == null ? v : encoder(v);
+          });
         }
         objKeys = [{ value: obj.length > 0 ? obj.join(",") || null : void 0 }];
       } else if (isArray(filter)) {
@@ -17875,7 +18215,7 @@ var require_stringify = __commonJS({
       }
       var encodedPrefix = encodeDotInKeys ? String(prefix).replace(/\./g, "%2E") : String(prefix);
       var adjustedPrefix = commaRoundTrip && isArray(obj) && obj.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
-      if (allowEmptyArrays && isArray(obj) && obj.length === 0) {
+      if (allowEmptyArrays && isArray(obj) && obj.length === 0 && Object.keys(obj).length === 0) {
         return adjustedPrefix + "[]";
       }
       for (var j = 0; j < objKeys.length; ++j) {
@@ -17907,7 +18247,9 @@ var require_stringify = __commonJS({
           formatter,
           encodeValuesOnly,
           charset,
-          valueSideChannel
+          valueSideChannel,
+          depth,
+          currentDepth + 1
         ));
       }
       return values;
@@ -17962,6 +18304,7 @@ var require_stringify = __commonJS({
         charsetSentinel: typeof opts.charsetSentinel === "boolean" ? opts.charsetSentinel : defaults.charsetSentinel,
         commaRoundTrip: !!opts.commaRoundTrip,
         delimiter: typeof opts.delimiter === "undefined" ? defaults.delimiter : opts.delimiter,
+        depth: typeof opts.depth === "number" ? opts.depth : defaults.depth,
         encode: typeof opts.encode === "boolean" ? opts.encode : defaults.encode,
         encodeDotInKeys: typeof opts.encodeDotInKeys === "boolean" ? opts.encodeDotInKeys : defaults.encodeDotInKeys,
         encoder: typeof opts.encoder === "function" ? opts.encoder : defaults.encoder,
@@ -18002,13 +18345,17 @@ var require_stringify = __commonJS({
       var sideChannel = getSideChannel();
       for (var i = 0; i < objKeys.length; ++i) {
         var key = objKeys[i];
+        if (typeof key === "undefined" || key === null) {
+          continue;
+        }
         var value = obj[key];
         if (options.skipNulls && value === null) {
           continue;
         }
+        var encodedKey = options.encodeDotInKeys ? String(key).replace(/\./g, "%2E") : String(key);
         pushToArray(keys, stringify(
           value,
-          key,
+          encodedKey,
           generateArrayPrefix,
           commaRoundTrip,
           options.allowEmptyArrays,
@@ -18024,16 +18371,18 @@ var require_stringify = __commonJS({
           options.formatter,
           options.encodeValuesOnly,
           options.charset,
-          sideChannel
+          sideChannel,
+          options.depth,
+          0
         ));
       }
       var joined = keys.join(options.delimiter);
       var prefix = options.addQueryPrefix === true ? "?" : "";
       if (options.charsetSentinel) {
         if (options.charset === "iso-8859-1") {
-          prefix += "utf8=%26%2310003%3B&";
+          prefix += "utf8=%26%2310003%3B" + options.delimiter;
         } else {
-          prefix += "utf8=%E2%9C%93&";
+          prefix += "utf8=%E2%9C%93" + options.delimiter;
         }
       }
       return joined.length > 0 ? prefix + joined : "";
@@ -18079,6 +18428,17 @@ var require_parse = __commonJS({
     };
     var parseArrayValue = function(val, options, currentArrayLength) {
       if (val && typeof val === "string" && options.comma && val.indexOf(",") > -1) {
+        if (options.throwOnLimitExceeded) {
+          var commaCount = 0;
+          var commaIndex = val.indexOf(",");
+          while (commaIndex > -1) {
+            commaCount += 1;
+            if (commaCount >= options.arrayLimit) {
+              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+            }
+            commaIndex = val.indexOf(",", commaIndex + 1);
+          }
+        }
         return val.split(",");
       }
       if (options.throwOnLimitExceeded && currentArrayLength >= options.arrayLimit) {
@@ -18095,9 +18455,9 @@ var require_parse = __commonJS({
       var limit = options.parameterLimit === Infinity ? void 0 : options.parameterLimit;
       var parts = cleanStr.split(
         options.delimiter,
-        options.throwOnLimitExceeded ? limit + 1 : limit
+        options.throwOnLimitExceeded && typeof limit !== "undefined" ? limit + 1 : limit
       );
-      if (options.throwOnLimitExceeded && parts.length > limit) {
+      if (options.throwOnLimitExceeded && typeof limit !== "undefined" && parts.length > limit) {
         throw new RangeError("Parameter limit exceeded. Only " + limit + " parameter" + (limit === 1 ? "" : "s") + " allowed.");
       }
       var skipIndex = -1;
@@ -18150,10 +18510,7 @@ var require_parse = __commonJS({
           val = isArray(val) ? [val] : val;
         }
         if (options.comma && isArray(val) && val.length > options.arrayLimit) {
-          if (options.throwOnLimitExceeded) {
-            throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
-          }
-          val = utils.combine([], val, options.arrayLimit, options.plainObjects);
+          val = utils.combine([], val, options.arrayLimit, options.plainObjects, options.throwOnLimitExceeded);
         }
         if (key !== null) {
           var existing = has.call(obj, key);
@@ -18162,7 +18519,8 @@ var require_parse = __commonJS({
               obj[key],
               val,
               options.arrayLimit,
-              options.plainObjects
+              options.plainObjects,
+              options.throwOnLimitExceeded
             );
           } else if (!existing || options.duplicates === "last") {
             obj[key] = val;
@@ -18189,7 +18547,8 @@ var require_parse = __commonJS({
               [],
               leaf,
               options.arrayLimit,
-              options.plainObjects
+              options.plainObjects,
+              options.throwOnLimitExceeded
             );
           }
         } else {
@@ -18216,8 +18575,8 @@ var require_parse = __commonJS({
       }
       return leaf;
     };
-    var splitKeyIntoSegments = function splitKeyIntoSegments2(givenKey, options) {
-      var key = options.allowDots ? givenKey.replace(/\.([^.[]+)/g, "[$1]") : givenKey;
+    var splitKeyIntoSegments = function splitKeyIntoSegments2(originalKey, options) {
+      var key = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
       if (options.depth <= 0) {
         if (!options.plainObjects && has.call(Object.prototype, key)) {
           if (!options.allowPrototypes) {
@@ -18226,37 +18585,56 @@ var require_parse = __commonJS({
         }
         return [key];
       }
-      var brackets = /(\[[^[\]]*])/;
-      var child = /(\[[^[\]]*])/g;
-      var segment = brackets.exec(key);
-      var parent = segment ? key.slice(0, segment.index) : key;
-      var keys = [];
+      var segments = [];
+      var first = key.indexOf("[");
+      var parent = first >= 0 ? key.slice(0, first) : key;
       if (parent) {
         if (!options.plainObjects && has.call(Object.prototype, parent)) {
           if (!options.allowPrototypes) {
             return;
           }
         }
-        keys[keys.length] = parent;
+        segments[segments.length] = parent;
       }
-      var i = 0;
-      while ((segment = child.exec(key)) !== null && i < options.depth) {
-        i += 1;
-        var segmentContent = segment[1].slice(1, -1);
-        if (!options.plainObjects && has.call(Object.prototype, segmentContent)) {
-          if (!options.allowPrototypes) {
-            return;
+      var n = key.length;
+      var open = first;
+      var collected = 0;
+      while (open >= 0 && collected < options.depth) {
+        var level = 1;
+        var i = open + 1;
+        var close = -1;
+        while (i < n && close < 0) {
+          var cu = key.charCodeAt(i);
+          if (cu === 91) {
+            level += 1;
+          } else if (cu === 93) {
+            level -= 1;
+            if (level === 0) {
+              close = i;
+            }
           }
+          i += 1;
         }
-        keys[keys.length] = segment[1];
+        if (close < 0) {
+          segments[segments.length] = "[" + key.slice(open) + "]";
+          return segments;
+        }
+        var seg = key.slice(open, close + 1);
+        var content = seg.slice(1, -1);
+        if (!options.plainObjects && has.call(Object.prototype, content) && !options.allowPrototypes) {
+          return;
+        }
+        segments[segments.length] = seg;
+        collected += 1;
+        open = key.indexOf("[", close + 1);
       }
-      if (segment) {
+      if (open >= 0) {
         if (options.strictDepth === true) {
           throw new RangeError("Input depth exceeded depth option of " + options.depth + " and strictDepth is true");
         }
-        keys[keys.length] = "[" + key.slice(segment.index) + "]";
+        segments[segments.length] = "[" + key.slice(open) + "]";
       }
-      return keys;
+      return segments;
     };
     var parseKeys = function parseQueryStringKeys(givenKey, val, options, valuesParsed) {
       if (!givenKey) {
@@ -18359,6 +18737,12 @@ var require_lib2 = __commonJS({
 var require_urlencoded = __commonJS({
   "node_modules/body-parser/lib/types/urlencoded.js"(exports, module) {
     "use strict";
+    /*!
+     * body-parser
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var createError = require_http_errors();
     var debug = require_src()("body-parser:urlencoded");
     var read = require_read();
@@ -18370,10 +18754,7 @@ var require_urlencoded = __commonJS({
       if (normalizedOptions.defaultCharset !== "utf-8" && normalizedOptions.defaultCharset !== "iso-8859-1") {
         throw new TypeError("option defaultCharset must be either utf-8 or iso-8859-1");
       }
-      var queryparse = createQueryParser(options);
-      function parse(body, encoding) {
-        return body.length ? queryparse(body, encoding) : {};
-      }
+      const parse = createQueryParser(options);
       const readOptions = __spreadProps(__spreadValues({}, normalizedOptions), {
         // assert charset
         isValidCharset: (charset) => charset === "utf-8" || charset === "iso-8859-1"
@@ -18383,11 +18764,11 @@ var require_urlencoded = __commonJS({
       };
     }
     function createQueryParser(options) {
-      var extended = Boolean(options?.extended);
-      var parameterLimit = options?.parameterLimit !== void 0 ? options?.parameterLimit : 1e3;
-      var charsetSentinel = options?.charsetSentinel;
-      var interpretNumericEntities = options?.interpretNumericEntities;
-      var depth = extended ? options?.depth !== void 0 ? options?.depth : 32 : 0;
+      const extended = Boolean(options?.extended);
+      let parameterLimit = options?.parameterLimit !== void 0 ? options?.parameterLimit : 1e3;
+      const charsetSentinel = options?.charsetSentinel;
+      const interpretNumericEntities = options?.interpretNumericEntities;
+      const depth = extended ? options?.depth !== void 0 ? options?.depth : 32 : 0;
       if (isNaN(parameterLimit) || parameterLimit < 1) {
         throw new TypeError("option parameterLimit must be a positive number");
       }
@@ -18397,15 +18778,16 @@ var require_urlencoded = __commonJS({
       if (isFinite(parameterLimit)) {
         parameterLimit = parameterLimit | 0;
       }
-      return function queryparse(body, encoding) {
-        var paramCount = parameterCount(body, parameterLimit);
+      return function parse(body, encoding) {
+        if (!body.length) return {};
+        const paramCount = parameterCount(body, parameterLimit);
         if (paramCount === void 0) {
           debug("too many parameters");
           throw createError(413, "too many parameters", {
             type: "parameters.too.many"
           });
         }
-        var arrayLimit = extended ? Math.max(100, paramCount) : paramCount;
+        const arrayLimit = extended ? Math.max(100, paramCount) : paramCount;
         debug("parse " + (extended ? "extended " : "") + "urlencoding");
         try {
           return qs.parse(body, {
@@ -18446,27 +18828,16 @@ var require_urlencoded = __commonJS({
 var require_body_parser = __commonJS({
   "node_modules/body-parser/index.js"(exports, module) {
     "use strict";
+    /*!
+     * body-parser
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     exports = module.exports = bodyParser;
-    Object.defineProperty(exports, "json", {
-      configurable: true,
-      enumerable: true,
-      get: () => require_json()
-    });
-    Object.defineProperty(exports, "raw", {
-      configurable: true,
-      enumerable: true,
-      get: () => require_raw()
-    });
-    Object.defineProperty(exports, "text", {
-      configurable: true,
-      enumerable: true,
-      get: () => require_text()
-    });
-    Object.defineProperty(exports, "urlencoded", {
-      configurable: true,
-      enumerable: true,
-      get: () => require_urlencoded()
-    });
+    exports.json = require_json();
+    exports.raw = require_raw();
+    exports.text = require_text();
+    exports.urlencoded = require_urlencoded();
     function bodyParser() {
       throw new Error("The bodyParser() generic has been split into individual middleware to use instead.");
     }
@@ -18501,6 +18872,11 @@ var require_merge_descriptors = __commonJS({
 var require_encodeurl = __commonJS({
   "node_modules/encodeurl/index.js"(exports, module) {
     "use strict";
+    /*!
+     * encodeurl
+     * Copyright(c) 2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = encodeUrl;
     var ENCODE_CHARS_REGEXP = /(?:[^\x21\x23-\x3B\x3D\x3F-\x5F\x61-\x7A\x7C\x7E]|%(?:[^0-9A-Fa-f]|[0-9A-Fa-f][^0-9A-Fa-f]|$))+/g;
     var UNMATCHED_SURROGATE_PAIR_REGEXP = /(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]|[\uD800-\uDBFF]([^\uDC00-\uDFFF]|$)/g;
@@ -18515,6 +18891,13 @@ var require_encodeurl = __commonJS({
 var require_escape_html = __commonJS({
   "node_modules/escape-html/index.js"(exports, module) {
     "use strict";
+    /*!
+     * escape-html
+     * Copyright(c) 2012-2013 TJ Holowaychuk
+     * Copyright(c) 2015 Andreas Lubbe
+     * Copyright(c) 2015 Tiancheng "Timothy" Gu
+     * MIT Licensed
+     */
     var matchHtmlRegExp = /["'&<>]/;
     module.exports = escapeHtml;
     function escapeHtml(string) {
@@ -18562,6 +18945,12 @@ var require_escape_html = __commonJS({
 var require_parseurl = __commonJS({
   "node_modules/parseurl/index.js"(exports, module) {
     "use strict";
+    /*!
+     * parseurl
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2014-2017 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var url = __require("url");
     var parse = url.parse;
     var Url = url.Url;
@@ -18646,6 +19035,11 @@ var require_parseurl = __commonJS({
 var require_finalhandler = __commonJS({
   "node_modules/finalhandler/index.js"(exports, module) {
     "use strict";
+    /*!
+     * finalhandler
+     * Copyright(c) 2014-2022 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var debug = require_src()("finalhandler");
     var encodeUrl = require_encodeurl();
     var escapeHtml = require_escape_html();
@@ -18773,6 +19167,13 @@ var require_finalhandler = __commonJS({
 var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports, module) {
     "use strict";
+    /*!
+     * express
+     * Copyright(c) 2009-2013 TJ Holowaychuk
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var debug = require_src()("express:view");
     var path = __require("path");
     var fs2 = __require("fs");
@@ -18863,10 +19264,124 @@ var require_view = __commonJS({
   }
 });
 
+// node_modules/content-type/index.js
+var require_content_type = __commonJS({
+  "node_modules/content-type/index.js"(exports) {
+    "use strict";
+    /*!
+     * content-type
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
+    var PARAM_REGEXP = /; *([!#$%&'*+.^_`|~0-9A-Za-z-]+) *= *("(?:[\u000b\u0020\u0021\u0023-\u005b\u005d-\u007e\u0080-\u00ff]|\\[\u000b\u0020-\u00ff])*"|[!#$%&'*+.^_`|~0-9A-Za-z-]+) */g;
+    var TEXT_REGEXP = /^[\u000b\u0020-\u007e\u0080-\u00ff]+$/;
+    var TOKEN_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    var QESC_REGEXP = /\\([\u000b\u0020-\u00ff])/g;
+    var QUOTE_REGEXP = /([\\"])/g;
+    var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    exports.format = format;
+    exports.parse = parse;
+    function format(obj) {
+      if (!obj || typeof obj !== "object") {
+        throw new TypeError("argument obj is required");
+      }
+      var parameters = obj.parameters;
+      var type = obj.type;
+      if (!type || !TYPE_REGEXP.test(type)) {
+        throw new TypeError("invalid type");
+      }
+      var string = type;
+      if (parameters && typeof parameters === "object") {
+        var param;
+        var params = Object.keys(parameters).sort();
+        for (var i = 0; i < params.length; i++) {
+          param = params[i];
+          if (!TOKEN_REGEXP.test(param)) {
+            throw new TypeError("invalid parameter name");
+          }
+          string += "; " + param + "=" + qstring(parameters[param]);
+        }
+      }
+      return string;
+    }
+    function parse(string) {
+      if (!string) {
+        throw new TypeError("argument string is required");
+      }
+      var header = typeof string === "object" ? getcontenttype(string) : string;
+      if (typeof header !== "string") {
+        throw new TypeError("argument string is required to be a string");
+      }
+      var index = header.indexOf(";");
+      var type = index !== -1 ? header.slice(0, index).trim() : header.trim();
+      if (!TYPE_REGEXP.test(type)) {
+        throw new TypeError("invalid media type");
+      }
+      var obj = new ContentType(type.toLowerCase());
+      if (index !== -1) {
+        var key;
+        var match;
+        var value;
+        PARAM_REGEXP.lastIndex = index;
+        while (match = PARAM_REGEXP.exec(header)) {
+          if (match.index !== index) {
+            throw new TypeError("invalid parameter format");
+          }
+          index += match[0].length;
+          key = match[1].toLowerCase();
+          value = match[2];
+          if (value.charCodeAt(0) === 34) {
+            value = value.slice(1, -1);
+            if (value.indexOf("\\") !== -1) {
+              value = value.replace(QESC_REGEXP, "$1");
+            }
+          }
+          obj.parameters[key] = value;
+        }
+        if (index !== header.length) {
+          throw new TypeError("invalid parameter format");
+        }
+      }
+      return obj;
+    }
+    function getcontenttype(obj) {
+      var header;
+      if (typeof obj.getHeader === "function") {
+        header = obj.getHeader("content-type");
+      } else if (typeof obj.headers === "object") {
+        header = obj.headers && obj.headers["content-type"];
+      }
+      if (typeof header !== "string") {
+        throw new TypeError("content-type header is missing from object");
+      }
+      return header;
+    }
+    function qstring(val) {
+      var str = String(val);
+      if (TOKEN_REGEXP.test(str)) {
+        return str;
+      }
+      if (str.length > 0 && !TEXT_REGEXP.test(str)) {
+        throw new TypeError("invalid parameter value");
+      }
+      return '"' + str.replace(QUOTE_REGEXP, "\\$1") + '"';
+    }
+    function ContentType(type) {
+      this.parameters = /* @__PURE__ */ Object.create(null);
+      this.type = type;
+    }
+  }
+});
+
 // node_modules/etag/index.js
 var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
+    /*!
+     * etag
+     * Copyright(c) 2014-2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = etag;
     var crypto = __require("crypto");
     var Stats = __require("fs").Stats;
@@ -18909,6 +19424,11 @@ var require_etag = __commonJS({
 var require_forwarded = __commonJS({
   "node_modules/forwarded/index.js"(exports, module) {
     "use strict";
+    /*!
+     * forwarded
+     * Copyright(c) 2014-2017 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = forwarded;
     function forwarded(req) {
       if (!req) {
@@ -19579,6 +20099,11 @@ var require_ipaddr = __commonJS({
 var require_proxy_addr = __commonJS({
   "node_modules/proxy-addr/index.js"(exports, module) {
     "use strict";
+    /*!
+     * proxy-addr
+     * Copyright(c) 2014-2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = proxyaddr;
     module.exports.all = alladdrs;
     module.exports.compile = compile;
@@ -19689,6 +20214,9 @@ var require_proxy_addr = __commonJS({
       return function trust(addr) {
         if (!isip(addr)) return false;
         var ip = parseip(addr);
+        if (ip.kind() === "ipv6" && ip.isIPv4MappedAddress()) {
+          ip = ip.toIPv4Address();
+        }
         var ipconv;
         var kind = ip.kind();
         for (var i = 0; i < subnets.length; i++) {
@@ -19701,10 +20229,15 @@ var require_proxy_addr = __commonJS({
             if (subnetkind === "ipv4" && !ip.isIPv4MappedAddress()) {
               continue;
             }
+            if (subnetkind !== "ipv4" && !(subnetrange >= 96 && subnetip.isIPv4MappedAddress())) {
+              continue;
+            }
             if (!ipconv) {
               ipconv = subnetkind === "ipv4" ? ip.toIPv4Address() : ip.toIPv4MappedAddress();
             }
             trusted = ipconv;
+          } else if (kind === "ipv6" && subnetip.isIPv4MappedAddress()) {
+            continue;
           }
           if (trusted.match(subnetip, subnetrange)) {
             return true;
@@ -19721,12 +20254,20 @@ var require_proxy_addr = __commonJS({
       return function trust(addr) {
         if (!isip(addr)) return false;
         var ip = parseip(addr);
+        if (ip.kind() === "ipv6" && ip.isIPv4MappedAddress()) {
+          ip = ip.toIPv4Address();
+        }
         var kind = ip.kind();
         if (kind !== subnetkind) {
           if (subnetisipv4 && !ip.isIPv4MappedAddress()) {
             return false;
           }
+          if (!subnetisipv4 && !(subnetrange >= 96 && subnetip.isIPv4MappedAddress())) {
+            return false;
+          }
           ip = subnetisipv4 ? ip.toIPv4Address() : ip.toIPv4MappedAddress();
+        } else if (kind === "ipv6" && subnetip.isIPv4MappedAddress()) {
+          return false;
         }
         return ip.match(subnetip, subnetrange);
       };
@@ -19738,6 +20279,12 @@ var require_proxy_addr = __commonJS({
 var require_utils3 = __commonJS({
   "node_modules/express/lib/utils.js"(exports) {
     "use strict";
+    /*!
+     * express
+     * Copyright(c) 2009-2013 TJ Holowaychuk
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var { METHODS } = __require("http");
     var contentType = require_content_type();
     var etag = require_etag();
@@ -19950,7 +20497,7 @@ var require_is_promise = __commonJS({
 });
 
 // node_modules/path-to-regexp/dist/index.js
-var require_dist = __commonJS({
+var require_dist3 = __commonJS({
   "node_modules/path-to-regexp/dist/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -20322,8 +20869,14 @@ var require_dist = __commonJS({
 var require_layer = __commonJS({
   "node_modules/router/lib/layer.js"(exports, module) {
     "use strict";
+    /*!
+     * router
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2022 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var isPromise = require_is_promise();
-    var pathRegexp = require_dist();
+    var pathRegexp = require_dist3();
     var debug = require_src()("router:layer");
     var deprecate = require_depd()("router");
     var TRAILING_SLASH_REGEXP = /\/+$/;
@@ -20472,6 +21025,12 @@ var require_layer = __commonJS({
 var require_route = __commonJS({
   "node_modules/router/lib/route.js"(exports, module) {
     "use strict";
+    /*!
+     * router
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2022 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var debug = require_src()("router:route");
     var Layer = require_layer();
     var { METHODS } = __require("http");
@@ -20592,6 +21151,12 @@ var require_route = __commonJS({
 var require_router = __commonJS({
   "node_modules/router/index.js"(exports, module) {
     "use strict";
+    /*!
+     * router
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2022 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var isPromise = require_is_promise();
     var Layer = require_layer();
     var { METHODS } = __require("http");
@@ -20990,6 +21555,13 @@ var require_router = __commonJS({
 var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports, module) {
     "use strict";
+    /*!
+     * express
+     * Copyright(c) 2009-2013 TJ Holowaychuk
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var finalhandler = require_finalhandler();
     var debug = require_src()("express:application");
     var View = require_view();
@@ -21247,42 +21819,204 @@ var require_application = __commonJS({
   }
 });
 
+// node_modules/negotiator/node_modules/content-type/dist/index.js
+var require_dist4 = __commonJS({
+  "node_modules/negotiator/node_modules/content-type/dist/index.js"(exports) {
+    "use strict";
+    /*!
+     * content-type
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.format = format;
+    exports.parse = parse;
+    var TEXT_REGEXP = /^[\u0009\u0020-\u007e\u0080-\u00ff]*$/;
+    var TOKEN_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    var QUOTE_REGEXP = /[\\"]/g;
+    var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    var NullObject = /* @__PURE__ */ (() => {
+      const C = function() {
+      };
+      C.prototype = /* @__PURE__ */ Object.create(null);
+      return C;
+    })();
+    function format(obj) {
+      const { type, parameters } = obj;
+      if (!type || !TYPE_REGEXP.test(type)) {
+        throw new TypeError(`Invalid type: ${type}`);
+      }
+      let result = type;
+      if (parameters) {
+        for (const param of Object.keys(parameters)) {
+          if (!TOKEN_REGEXP.test(param)) {
+            throw new TypeError(`Invalid parameter name: ${param}`);
+          }
+          result += `; ${param}=${qstring(parameters[param])}`;
+        }
+      }
+      return result;
+    }
+    function parse(header, options) {
+      const stopChar = options?.comma === true ? COMMA : 65536;
+      const len = header.length;
+      let index = skipOWS(header, options?.start ?? 0, len);
+      const valueStart = index;
+      index = skipValue(header, index, len, stopChar);
+      const valueEnd = trailingOWS(header, valueStart, index);
+      const type = header.slice(valueStart, valueEnd).toLowerCase();
+      if (options?.parameters === false) {
+        return { type, index, parameters: new NullObject() };
+      }
+      return parseParameters(header, type, index, len, stopChar);
+    }
+    var SP = 32;
+    var HTAB = 9;
+    var SEMI = 59;
+    var EQ = 61;
+    var DQUOTE = 34;
+    var BSLASH = 92;
+    var COMMA = 44;
+    function parseParameters(header, type, index, len, stopChar) {
+      const parameters = new NullObject();
+      parameter: while (index < len) {
+        if (header.charCodeAt(index) === stopChar)
+          break;
+        index = skipOWS(header, index + 1, len);
+        const keyStart = index;
+        while (index < len) {
+          const code = header.charCodeAt(index);
+          if (code === stopChar)
+            break parameter;
+          if (code === SEMI)
+            continue parameter;
+          if (code === EQ) {
+            const keyEnd = trailingOWS(header, keyStart, index);
+            const key = header.slice(keyStart, keyEnd).toLowerCase();
+            index = skipOWS(header, index + 1, len);
+            if (index < len && header.charCodeAt(index) === DQUOTE) {
+              index++;
+              let value = "";
+              while (index < len) {
+                const code2 = header.charCodeAt(index++);
+                if (code2 === DQUOTE) {
+                  index = skipValue(header, index, len, stopChar);
+                  if (parameters[key] === void 0)
+                    parameters[key] = value;
+                  break;
+                }
+                if (code2 === BSLASH && index < len) {
+                  value += header[index++];
+                  continue;
+                }
+                value += String.fromCharCode(code2);
+              }
+              continue parameter;
+            }
+            const valueStart = index;
+            index = skipValue(header, index, len, stopChar);
+            if (parameters[key] === void 0) {
+              const valueEnd = trailingOWS(header, valueStart, index);
+              parameters[key] = header.slice(valueStart, valueEnd);
+            }
+            continue parameter;
+          }
+          index++;
+        }
+      }
+      return { type, index, parameters };
+    }
+    function skipValue(str, index, len, stopChar) {
+      while (index < len) {
+        const code = str.charCodeAt(index);
+        if (code === SEMI || code === stopChar)
+          break;
+        index++;
+      }
+      return index;
+    }
+    function skipOWS(header, index, len) {
+      while (index < len) {
+        const char = header.charCodeAt(index);
+        if (char !== SP && char !== HTAB)
+          break;
+        index++;
+      }
+      return index;
+    }
+    function trailingOWS(header, start, end) {
+      while (end > start) {
+        const char = header.charCodeAt(end - 1);
+        if (char !== SP && char !== HTAB)
+          break;
+        end--;
+      }
+      return end;
+    }
+    function qstring(str) {
+      if (TOKEN_REGEXP.test(str))
+        return str;
+      if (TEXT_REGEXP.test(str))
+        return `"${str.replace(QUOTE_REGEXP, "\\$&")}"`;
+      throw new TypeError(`Invalid parameter value: ${str}`);
+    }
+  }
+});
+
+// node_modules/negotiator/lib/accept.js
+var require_accept = __commonJS({
+  "node_modules/negotiator/lib/accept.js"(exports, module) {
+    "use strict";
+    /*!
+     * negotiator
+     * Copyright(c) 2026 Blake Embrey
+     * MIT Licensed
+     */
+    var contentType = require_dist4();
+    module.exports = parseAccept;
+    function parseAccept(header) {
+      var values = [];
+      var index = 0;
+      while (index < header.length) {
+        var start = skipOptionalWhitespace(header, index);
+        var parsed = contentType.parse(header, { comma: true, start });
+        parsed.type = header.slice(start, start + parsed.type.length);
+        values.push(parsed);
+        index = parsed.index + 1;
+      }
+      return values;
+    }
+    function skipOptionalWhitespace(header, index) {
+      var cursor = index;
+      while (header.charCodeAt(cursor) === 32 || header.charCodeAt(cursor) === 9) {
+        cursor++;
+      }
+      return cursor;
+    }
+  }
+});
+
 // node_modules/negotiator/lib/charset.js
 var require_charset = __commonJS({
   "node_modules/negotiator/lib/charset.js"(exports, module) {
     "use strict";
+    var parseAccept = require_accept();
     module.exports = preferredCharsets;
     module.exports.preferredCharsets = preferredCharsets;
-    var simpleCharsetRegExp = /^\s*([^\s;]+)\s*(?:;(.*))?$/;
     function parseAcceptCharset(accept) {
-      var accepts = accept.split(",");
+      var accepts = parseAccept(accept);
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var charset = parseCharset(accepts[i].trim(), i);
-        if (charset) {
-          accepts[j++] = charset;
-        }
+        var charset = formatCharset(accepts[i], i);
+        if (charset) accepts[j++] = charset;
       }
       accepts.length = j;
       return accepts;
     }
-    function parseCharset(str, i) {
-      var match = simpleCharsetRegExp.exec(str);
-      if (!match) return null;
-      var charset = match[1];
-      var q = 1;
-      if (match[2]) {
-        var params = match[2].split(";");
-        for (var j = 0; j < params.length; j++) {
-          var p = params[j].trim().split("=");
-          if (p[0] === "q") {
-            q = parseFloat(p[1]);
-            break;
-          }
-        }
-      }
+    function formatCharset(parsed, i) {
+      if (!parsed.type) return null;
       return {
-        charset,
-        q,
+        charset: parsed.type,
+        q: parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1,
         i
       };
     }
@@ -21338,15 +22072,15 @@ var require_charset = __commonJS({
 var require_encoding = __commonJS({
   "node_modules/negotiator/lib/encoding.js"(exports, module) {
     "use strict";
+    var parseAccept = require_accept();
     module.exports = preferredEncodings;
     module.exports.preferredEncodings = preferredEncodings;
-    var simpleEncodingRegExp = /^\s*([^\s;]+)\s*(?:;(.*))?$/;
     function parseAcceptEncoding(accept) {
-      var accepts = accept.split(",");
+      var accepts = parseAccept(accept);
       var hasIdentity = false;
       var minQuality = 1;
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var encoding = parseEncoding(accepts[i].trim(), i);
+        var encoding = formatEncoding(accepts[i], i);
         if (encoding) {
           accepts[j++] = encoding;
           hasIdentity = hasIdentity || specify("identity", encoding);
@@ -21363,24 +22097,11 @@ var require_encoding = __commonJS({
       accepts.length = j;
       return accepts;
     }
-    function parseEncoding(str, i) {
-      var match = simpleEncodingRegExp.exec(str);
-      if (!match) return null;
-      var encoding = match[1];
-      var q = 1;
-      if (match[2]) {
-        var params = match[2].split(";");
-        for (var j = 0; j < params.length; j++) {
-          var p = params[j].trim().split("=");
-          if (p[0] === "q") {
-            q = parseFloat(p[1]);
-            break;
-          }
-        }
-      }
+    function formatEncoding(parsed, i) {
+      if (!parsed.type) return null;
       return {
-        encoding,
-        q,
+        encoding: parsed.type,
+        q: parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1,
         i
       };
     }
@@ -21451,41 +22172,30 @@ var require_encoding = __commonJS({
 var require_language = __commonJS({
   "node_modules/negotiator/lib/language.js"(exports, module) {
     "use strict";
+    var contentType = require_dist4();
+    var parseAccept = require_accept();
     module.exports = preferredLanguages;
     module.exports.preferredLanguages = preferredLanguages;
-    var simpleLanguageRegExp = /^\s*([^\s\-;]+)(?:-([^\s;]+))?\s*(?:;(.*))?$/;
     function parseAcceptLanguage(accept) {
-      var accepts = accept.split(",");
+      var accepts = parseAccept(accept);
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var language = parseLanguage(accepts[i].trim(), i);
-        if (language) {
-          accepts[j++] = language;
-        }
+        var language = formatLanguage(accepts[i], i);
+        if (language) accepts[j++] = language;
       }
       accepts.length = j;
       return accepts;
     }
-    function parseLanguage(str, i) {
-      var match = simpleLanguageRegExp.exec(str);
-      if (!match) return null;
-      var prefix = match[1];
-      var suffix = match[2];
-      var full = prefix;
-      if (suffix) full += "-" + suffix;
-      var q = 1;
-      if (match[3]) {
-        var params = match[3].split(";");
-        for (var j = 0; j < params.length; j++) {
-          var p = params[j].split("=");
-          if (p[0] === "q") q = parseFloat(p[1]);
-        }
-      }
+    function formatLanguage(parsed, i) {
+      if (!parsed.type) return null;
+      var hyphen = parsed.type.indexOf("-");
+      var prefix = hyphen === -1 ? parsed.type : parsed.type.slice(0, hyphen);
+      var suffix = hyphen === -1 ? void 0 : parsed.type.slice(hyphen + 1);
       return {
         prefix,
         suffix,
-        q,
+        q: parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1,
         i,
-        full
+        full: parsed.type
       };
     }
     function getLanguagePriority(language, accepted, index) {
@@ -21499,7 +22209,7 @@ var require_language = __commonJS({
       return priority;
     }
     function specify(language, spec, index) {
-      var p = parseLanguage(language);
+      var p = formatLanguage(contentType.parse(language), 0);
       if (!p) return null;
       var s = 0;
       if (spec.full.toLowerCase() === p.full.toLowerCase()) {
@@ -21546,45 +22256,28 @@ var require_language = __commonJS({
 var require_mediaType = __commonJS({
   "node_modules/negotiator/lib/mediaType.js"(exports, module) {
     "use strict";
+    var contentType = require_dist4();
+    var parseAcceptHeader = require_accept();
     module.exports = preferredMediaTypes;
     module.exports.preferredMediaTypes = preferredMediaTypes;
-    var simpleMediaTypeRegExp = /^\s*([^\s\/;]+)\/([^;\s]+)\s*(?:;(.*))?$/;
     function parseAccept(accept) {
-      var accepts = splitMediaTypes(accept);
+      var accepts = parseAcceptHeader(accept);
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var mediaType = parseMediaType(accepts[i].trim(), i);
-        if (mediaType) {
-          accepts[j++] = mediaType;
-        }
+        var mediaType = formatMediaType(accepts[i], i);
+        if (mediaType) accepts[j++] = mediaType;
       }
       accepts.length = j;
       return accepts;
     }
-    function parseMediaType(str, i) {
-      var match = simpleMediaTypeRegExp.exec(str);
-      if (!match) return null;
-      var params = /* @__PURE__ */ Object.create(null);
-      var q = 1;
-      var subtype = match[2];
-      var type = match[1];
-      if (match[3]) {
-        var kvps = splitParameters(match[3]).map(splitKeyValuePair);
-        for (var j = 0; j < kvps.length; j++) {
-          var pair = kvps[j];
-          var key = pair[0].toLowerCase();
-          var val = pair[1];
-          var value = val && val[0] === '"' && val[val.length - 1] === '"' ? val.slice(1, -1) : val;
-          if (key === "q") {
-            q = parseFloat(value);
-            break;
-          }
-          params[key] = value;
-        }
-      }
+    function formatMediaType(parsed, i) {
+      var slash = parsed.type.indexOf("/");
+      if (slash === -1) return null;
+      var q = parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1;
+      delete parsed.parameters.q;
       return {
-        type,
-        subtype,
-        params,
+        type: parsed.type.slice(0, slash),
+        subtype: parsed.type.slice(slash + 1),
+        params: parsed.parameters,
         q,
         i
       };
@@ -21600,7 +22293,7 @@ var require_mediaType = __commonJS({
       return priority;
     }
     function specify(type, spec, index) {
-      var p = parseMediaType(type);
+      var p = formatMediaType(contentType.parse(type), 0);
       var s = 0;
       if (!p) {
         return null;
@@ -21653,54 +22346,6 @@ var require_mediaType = __commonJS({
     function isQuality(spec) {
       return spec.q > 0;
     }
-    function quoteCount(string) {
-      var count = 0;
-      var index = 0;
-      while ((index = string.indexOf('"', index)) !== -1) {
-        count++;
-        index++;
-      }
-      return count;
-    }
-    function splitKeyValuePair(str) {
-      var index = str.indexOf("=");
-      var key;
-      var val;
-      if (index === -1) {
-        key = str;
-      } else {
-        key = str.slice(0, index);
-        val = str.slice(index + 1);
-      }
-      return [key, val];
-    }
-    function splitMediaTypes(accept) {
-      var accepts = accept.split(",");
-      for (var i = 1, j = 0; i < accepts.length; i++) {
-        if (quoteCount(accepts[j]) % 2 == 0) {
-          accepts[++j] = accepts[i];
-        } else {
-          accepts[j] += "," + accepts[i];
-        }
-      }
-      accepts.length = j + 1;
-      return accepts;
-    }
-    function splitParameters(str) {
-      var parameters = str.split(";");
-      for (var i = 1, j = 0; i < parameters.length; i++) {
-        if (quoteCount(parameters[j]) % 2 == 0) {
-          parameters[++j] = parameters[i];
-        } else {
-          parameters[j] += ";" + parameters[i];
-        }
-      }
-      parameters.length = j + 1;
-      for (var i = 0; i < parameters.length; i++) {
-        parameters[i] = parameters[i].trim();
-      }
-      return parameters;
-    }
   }
 });
 
@@ -21708,6 +22353,13 @@ var require_mediaType = __commonJS({
 var require_negotiator = __commonJS({
   "node_modules/negotiator/index.js"(exports, module) {
     "use strict";
+    /*!
+     * negotiator
+     * Copyright(c) 2012 Federico Romero
+     * Copyright(c) 2012-2014 Isaac Z. Schlueter
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var preferredCharsets = require_charset();
     var preferredEncodings = require_encoding();
     var preferredLanguages = require_language();
@@ -21764,6 +22416,12 @@ var require_negotiator = __commonJS({
 var require_accepts = __commonJS({
   "node_modules/accepts/index.js"(exports, module) {
     "use strict";
+    /*!
+     * accepts
+     * Copyright(c) 2014 Jonathan Ong
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var Negotiator = require_negotiator();
     var mime = require_mime_types();
     module.exports = Accepts;
@@ -21845,6 +22503,12 @@ var require_accepts = __commonJS({
 var require_fresh = __commonJS({
   "node_modules/fresh/index.js"(exports, module) {
     "use strict";
+    /*!
+     * fresh
+     * Copyright(c) 2012 TJ Holowaychuk
+     * Copyright(c) 2016-2017 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var CACHE_CONTROL_NO_CACHE_REGEXP = /(?:^|,)\s*?no-cache\s*?(?:,|$)/;
     module.exports = fresh;
     function fresh(reqHeaders, resHeaders) {
@@ -21917,6 +22581,12 @@ var require_fresh = __commonJS({
 var require_range_parser = __commonJS({
   "node_modules/range-parser/index.js"(exports, module) {
     "use strict";
+    /*!
+     * range-parser
+     * Copyright(c) 2012-2014 TJ Holowaychuk
+     * Copyright(c) 2015-2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = rangeParser;
     function rangeParser(size, str, options) {
       if (typeof str !== "string") {
@@ -21930,19 +22600,27 @@ var require_range_parser = __commonJS({
       var ranges = [];
       ranges.type = str.slice(0, index);
       for (var i = 0; i < arr.length; i++) {
-        var range = arr[i].split("-");
-        var start = parseInt(range[0], 10);
-        var end = parseInt(range[1], 10);
-        if (isNaN(start)) {
+        var indexOf = arr[i].indexOf("-");
+        if (indexOf === -1) {
+          return -2;
+        }
+        var startStr = arr[i].slice(0, indexOf).trim();
+        var endStr = arr[i].slice(indexOf + 1).trim();
+        var start = parsePos(startStr);
+        var end = parsePos(endStr);
+        if (startStr.length === 0) {
           start = size - end;
           end = size - 1;
-        } else if (isNaN(end)) {
+        } else if (endStr.length === 0) {
           end = size - 1;
         }
         if (end > size - 1) {
           end = size - 1;
         }
-        if (isNaN(start) || isNaN(end) || start > end || start < 0) {
+        if (isNaN(start) || isNaN(end)) {
+          return -2;
+        }
+        if (start > end || start < 0) {
           continue;
         }
         ranges.push({
@@ -21954,6 +22632,10 @@ var require_range_parser = __commonJS({
         return -1;
       }
       return options && options.combine ? combineRanges(ranges) : ranges;
+    }
+    function parsePos(str) {
+      if (/^\d+$/.test(str)) return Number(str);
+      return NaN;
     }
     function combineRanges(ranges) {
       var ordered = ranges.map(mapWithIndex).sort(sortByRangeStart);
@@ -21998,6 +22680,13 @@ var require_range_parser = __commonJS({
 var require_request = __commonJS({
   "node_modules/express/lib/request.js"(exports, module) {
     "use strict";
+    /*!
+     * express
+     * Copyright(c) 2009-2013 TJ Holowaychuk
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var accepts = require_accepts();
     var isIP = __require("net").isIP;
     var typeis = require_type_is();
@@ -22146,6 +22835,11 @@ var require_request = __commonJS({
 var require_content_disposition = __commonJS({
   "node_modules/content-disposition/index.js"(exports, module) {
     "use strict";
+    /*!
+     * content-disposition
+     * Copyright(c) 2014-2017 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = contentDisposition;
     module.exports.parse = parse;
     var utf8Decoder = new TextDecoder("utf-8");
@@ -22374,6 +23068,12 @@ var require_cookie_signature = __commonJS({
 var require_cookie = __commonJS({
   "node_modules/cookie/index.js"(exports) {
     "use strict";
+    /*!
+     * cookie
+     * Copyright(c) 2012-2014 Roman Shtylman
+     * Copyright(c) 2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     exports.parse = parse;
     exports.serialize = serialize;
     var __toString = Object.prototype.toString;
@@ -22540,6 +23240,12 @@ var require_cookie = __commonJS({
 var require_send = __commonJS({
   "node_modules/send/index.js"(exports, module) {
     "use strict";
+    /*!
+     * send
+     * Copyright(c) 2012 TJ Holowaychuk
+     * Copyright(c) 2014-2022 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var createError = require_http_errors();
     var debug = require_src()("send");
     var encodeUrl = require_encodeurl();
@@ -22557,7 +23263,7 @@ var require_send = __commonJS({
     var util = __require("util");
     var extname = path.extname;
     var join3 = path.join;
-    var normalize2 = path.normalize;
+    var normalize = path.normalize;
     var resolve3 = path.resolve;
     var sep = path.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
@@ -22720,7 +23426,7 @@ var require_send = __commonJS({
       var parts;
       if (root !== null) {
         if (path2) {
-          path2 = normalize2("." + sep + path2);
+          path2 = normalize("." + sep + path2);
         }
         if (UP_PATH_REGEXP.test(path2)) {
           debug('malicious path "%s"', path2);
@@ -22728,14 +23434,14 @@ var require_send = __commonJS({
           return res;
         }
         parts = path2.split(sep);
-        path2 = normalize2(join3(root, path2));
+        path2 = normalize(join3(root, path2));
       } else {
         if (UP_PATH_REGEXP.test(path2)) {
           debug('malicious path "%s"', path2);
           this.error(403);
           return res;
         }
-        parts = normalize2(path2).split(sep);
+        parts = normalize(path2).split(sep);
         path2 = resolve3(path2);
       }
       if (containsDotFile(parts)) {
@@ -23023,6 +23729,11 @@ var require_send = __commonJS({
 var require_vary = __commonJS({
   "node_modules/vary/index.js"(exports, module) {
     "use strict";
+    /*!
+     * vary
+     * Copyright(c) 2014-2017 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = vary;
     module.exports.append = append;
     var FIELD_NAME_REGEXP = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -23096,6 +23807,12 @@ var require_vary = __commonJS({
 var require_response = __commonJS({
   "node_modules/express/lib/response.js"(exports, module) {
     "use strict";
+    /*!
+     * express
+     * Copyright(c) 2009-2013 TJ Holowaychuk
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var contentDisposition = require_content_disposition();
     var createError = require_http_errors();
     var deprecate = require_depd()("express");
@@ -23566,6 +24283,13 @@ var require_response = __commonJS({
 var require_serve_static = __commonJS({
   "node_modules/serve-static/index.js"(exports, module) {
     "use strict";
+    /*!
+     * serve-static
+     * Copyright(c) 2010 Sencha Inc.
+     * Copyright(c) 2011 TJ Holowaychuk
+     * Copyright(c) 2014-2016 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var encodeUrl = require_encodeurl();
     var escapeHtml = require_escape_html();
     var parseUrl = require_parseurl();
@@ -23670,6 +24394,13 @@ var require_serve_static = __commonJS({
 var require_express = __commonJS({
   "node_modules/express/lib/express.js"(exports, module) {
     "use strict";
+    /*!
+     * express
+     * Copyright(c) 2009-2013 TJ Holowaychuk
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     var bodyParser = require_body_parser();
     var EventEmitter = __require("events").EventEmitter;
     var mixin = require_merge_descriptors();
@@ -23710,30 +24441,39 @@ var require_express = __commonJS({
 var require_express2 = __commonJS({
   "node_modules/express/index.js"(exports, module) {
     "use strict";
+    /*!
+     * express
+     * Copyright(c) 2009-2013 TJ Holowaychuk
+     * Copyright(c) 2013 Roman Shtylman
+     * Copyright(c) 2014-2015 Douglas Christopher Wilson
+     * MIT Licensed
+     */
     module.exports = require_express();
   }
 });
 
 // node_modules/@angular/ssr/fesm2022/node.mjs
 import * as fs from "fs";
-import { dirname, join, normalize, resolve } from "path";
+import { dirname, join, relative, isAbsolute, resolve } from "path";
 import { URL as URL$1, fileURLToPath } from "url";
 import { readFile } from "fs/promises";
 import { argv } from "process";
 function getAllowedHostsFromEnv() {
-  const allowedHosts = [];
-  const envNgAllowedHosts = process.env["NG_ALLOWED_HOSTS"];
-  if (!envNgAllowedHosts) {
-    return allowedHosts;
+  return getArrayFromEnv("NG_ALLOWED_HOSTS");
+}
+function getArrayFromEnv(envName) {
+  const envValue = process.env[envName];
+  if (!envValue) {
+    return void 0;
   }
-  const hosts = envNgAllowedHosts.split(",");
-  for (const host of hosts) {
-    const trimmed = host.trim();
+  const values = [];
+  for (const value of envValue.split(",")) {
+    const trimmed = value.trim();
     if (trimmed.length > 0) {
-      allowedHosts.push(trimmed);
+      values.push(trimmed);
     }
   }
-  return allowedHosts;
+  return values;
 }
 function attachNodeGlobalErrorHandlers() {
   if (typeof Zone !== "undefined") {
@@ -23815,7 +24555,7 @@ var CommonEngine = class {
   allowedHosts;
   constructor(options) {
     this.options = options;
-    this.allowedHosts = /* @__PURE__ */ new Set([...getAllowedHostsFromEnv(), ...this.options?.allowedHosts ?? []]);
+    this.allowedHosts = new Set(getAllowedHostsFromEnv() ?? this.options?.allowedHosts ?? []);
     attachNodeGlobalErrorHandlers();
   }
   render(opts) {
@@ -23876,11 +24616,13 @@ var CommonEngine = class {
         pathname
       } = new URL$1(url, "resolve://");
       const pagePath = join(publicPath, pathname, "index.html");
+      const relativePath = relative(publicPath, pagePath);
+      const isOutside = relativePath === ".." || relativePath.startsWith("../") || relativePath.startsWith("..\\");
+      if (isOutside || isAbsolute(relativePath)) {
+        return void 0;
+      }
       if (this.pageIsSSG.get(pagePath)) {
         return fs.promises.readFile(pagePath, "utf-8");
-      }
-      if (!pagePath.startsWith(normalize(publicPath))) {
-        return void 0;
       }
       if (pagePath === resolve(documentFilePath) || !(yield exists(pagePath))) {
         this.pageIsSSG.set(pagePath, false);
@@ -23908,7 +24650,8 @@ var CommonEngine = class {
       }
       const commonRenderingOptions = {
         url: opts.url,
-        document: document2
+        document: document2,
+        allowedHosts: ["*"]
       };
       return isBootstrapFn(moduleOrFactory) ? renderApplication(moduleOrFactory, __spreadValues({
         platformProviders: extraProviders
@@ -23978,287 +24721,4 @@ var server_default = app;
 export {
   server_default as default
 };
-/*! Bundled license information:
-
-depd/index.js:
-  (*!
-   * depd
-   * Copyright(c) 2014-2018 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-statuses/index.js:
-  (*!
-   * statuses
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-toidentifier/index.js:
-  (*!
-   * toidentifier
-   * Copyright(c) 2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-http-errors/index.js:
-  (*!
-   * http-errors
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-bytes/index.js:
-  (*!
-   * bytes
-   * Copyright(c) 2012-2014 TJ Holowaychuk
-   * Copyright(c) 2015 Jed Watson
-   * MIT Licensed
-   *)
-
-unpipe/index.js:
-  (*!
-   * unpipe
-   * Copyright(c) 2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-raw-body/index.js:
-  (*!
-   * raw-body
-   * Copyright(c) 2013-2014 Jonathan Ong
-   * Copyright(c) 2014-2022 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-ee-first/index.js:
-  (*!
-   * ee-first
-   * Copyright(c) 2014 Jonathan Ong
-   * MIT Licensed
-   *)
-
-on-finished/index.js:
-  (*!
-   * on-finished
-   * Copyright(c) 2013 Jonathan Ong
-   * Copyright(c) 2014 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-content-type/index.js:
-  (*!
-   * content-type
-   * Copyright(c) 2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-mime-db/index.js:
-  (*!
-   * mime-db
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2015-2022 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-mime-types/index.js:
-  (*!
-   * mime-types
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-media-typer/index.js:
-  (*!
-   * media-typer
-   * Copyright(c) 2014-2017 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-type-is/index.js:
-  (*!
-   * type-is
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2014-2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-body-parser/lib/read.js:
-body-parser/lib/types/raw.js:
-body-parser/lib/types/text.js:
-body-parser/index.js:
-  (*!
-   * body-parser
-   * Copyright(c) 2014-2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-body-parser/lib/types/json.js:
-body-parser/lib/types/urlencoded.js:
-  (*!
-   * body-parser
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2014-2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-encodeurl/index.js:
-  (*!
-   * encodeurl
-   * Copyright(c) 2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-escape-html/index.js:
-  (*!
-   * escape-html
-   * Copyright(c) 2012-2013 TJ Holowaychuk
-   * Copyright(c) 2015 Andreas Lubbe
-   * Copyright(c) 2015 Tiancheng "Timothy" Gu
-   * MIT Licensed
-   *)
-
-parseurl/index.js:
-  (*!
-   * parseurl
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2014-2017 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-finalhandler/index.js:
-  (*!
-   * finalhandler
-   * Copyright(c) 2014-2022 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-express/lib/view.js:
-express/lib/application.js:
-express/lib/request.js:
-express/lib/express.js:
-express/index.js:
-  (*!
-   * express
-   * Copyright(c) 2009-2013 TJ Holowaychuk
-   * Copyright(c) 2013 Roman Shtylman
-   * Copyright(c) 2014-2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-etag/index.js:
-  (*!
-   * etag
-   * Copyright(c) 2014-2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-forwarded/index.js:
-  (*!
-   * forwarded
-   * Copyright(c) 2014-2017 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-proxy-addr/index.js:
-  (*!
-   * proxy-addr
-   * Copyright(c) 2014-2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-express/lib/utils.js:
-express/lib/response.js:
-  (*!
-   * express
-   * Copyright(c) 2009-2013 TJ Holowaychuk
-   * Copyright(c) 2014-2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-router/lib/layer.js:
-router/lib/route.js:
-router/index.js:
-  (*!
-   * router
-   * Copyright(c) 2013 Roman Shtylman
-   * Copyright(c) 2014-2022 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-negotiator/index.js:
-  (*!
-   * negotiator
-   * Copyright(c) 2012 Federico Romero
-   * Copyright(c) 2012-2014 Isaac Z. Schlueter
-   * Copyright(c) 2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-accepts/index.js:
-  (*!
-   * accepts
-   * Copyright(c) 2014 Jonathan Ong
-   * Copyright(c) 2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-fresh/index.js:
-  (*!
-   * fresh
-   * Copyright(c) 2012 TJ Holowaychuk
-   * Copyright(c) 2016-2017 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-range-parser/index.js:
-  (*!
-   * range-parser
-   * Copyright(c) 2012-2014 TJ Holowaychuk
-   * Copyright(c) 2015-2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-content-disposition/index.js:
-  (*!
-   * content-disposition
-   * Copyright(c) 2014-2017 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-cookie/index.js:
-  (*!
-   * cookie
-   * Copyright(c) 2012-2014 Roman Shtylman
-   * Copyright(c) 2015 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-send/index.js:
-  (*!
-   * send
-   * Copyright(c) 2012 TJ Holowaychuk
-   * Copyright(c) 2014-2022 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-vary/index.js:
-  (*!
-   * vary
-   * Copyright(c) 2014-2017 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
-serve-static/index.js:
-  (*!
-   * serve-static
-   * Copyright(c) 2010 Sencha Inc.
-   * Copyright(c) 2011 TJ Holowaychuk
-   * Copyright(c) 2014-2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-*/
 //# sourceMappingURL=server.mjs.map

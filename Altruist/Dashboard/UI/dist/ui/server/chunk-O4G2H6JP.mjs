@@ -46,7 +46,11 @@ var __objRest = (source, exclude) => {
   return target;
 };
 var __commonJS = (cb, mod) => function __require2() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -97,7 +101,7 @@ var __asyncGenerator = (__this, __arguments, generator) => {
     } catch (e) {
       no(e);
     }
-  }, method = (k) => it[k] = (x) => new Promise((yes, no) => resume(k, x, yes, no)), it = {};
+  }, method = (k, call, wait, clear) => it[k] = (x) => (call = new Promise((yes, no, run) => (run = () => resume(k, x, yes, no), q ? q.then(run) : run())), clear = () => q === wait && (q = 0), q = wait = call.then(clear, clear), call), q, it = {};
   return generator = generator.apply(__this, __arguments), it[__knownSymbol("asyncIterator")] = () => it, method("next"), method("throw"), method("return"), it;
 };
 var __yieldStar = (value) => {
@@ -144,4 +148,4 @@ export {
   __yieldStar,
   __forAwait
 };
-//# sourceMappingURL=chunk-AKHAU2FS.mjs.map
+//# sourceMappingURL=chunk-O4G2H6JP.mjs.map

@@ -11,7 +11,7 @@ import {
   __superGet,
   __toESM,
   __yieldStar
-} from "./chunk-AKHAU2FS.mjs";
+} from "./chunk-O4G2H6JP.mjs";
 
 // node_modules/tslib/tslib.js
 var require_tslib = __commonJS({
@@ -552,6 +552,11 @@ var require_tslib = __commonJS({
 });
 
 // node_modules/@angular/core/fesm2022/_effect-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var activeConsumer = null;
 var inNotificationPhase = false;
 var epoch = 1;
@@ -2632,6 +2637,11 @@ function tap(observerOrNext, error2, complete) {
 }
 
 // node_modules/@angular/core/fesm2022/_not_found-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var _currentInjector = void 0;
 function getCurrentInjector() {
   return _currentInjector;
@@ -2647,6 +2657,11 @@ function isNotFound(e) {
 }
 
 // node_modules/@angular/core/fesm2022/_untracked-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function createLinkedSignal(sourceFn, computationFn, equalityFn) {
   const node2 = Object.create(LINKED_SIGNAL_NODE);
   node2.source = sourceFn;
@@ -2738,6 +2753,11 @@ function untracked(nonReactiveReadsFn) {
 }
 
 // node_modules/@angular/core/fesm2022/primitives-signals.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var formatter = {
   header: (sig, config4) => {
     if (!isSignal(sig) || config4?.ngSkipFormatting) return null;
@@ -2839,7 +2859,19 @@ if (typeof ngDevMode === "undefined" || ngDevMode) {
   installDevToolsSignalFormatter();
 }
 
+// node_modules/@angular/core/fesm2022/primitives-di.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
+
 // node_modules/@angular/core/fesm2022/_effect-chunk2.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var Version = class {
   full;
   major;
@@ -2853,7 +2885,7 @@ var Version = class {
     this.patch = parts.slice(2).join(".");
   }
 };
-var VERSION = /* @__PURE__ */ new Version("21.2.7");
+var VERSION = /* @__PURE__ */ new Version("21.2.25");
 var DOC_PAGE_BASE_URL = (() => {
   const full = VERSION.full;
   const isPreRelease = full.includes("-next") || full.includes("-rc") || full === "0.0.0-PLACEHOLDER";
@@ -4421,8 +4453,50 @@ function assertNodeInjector(lView, injectorIndex) {
   assertNumber(lView[injectorIndex + 7], "injectorIndex should point to a bloom filter");
   assertNumber(lView[injectorIndex + 8], "injectorIndex should point to parent injector");
 }
+var SecurityContext;
+(function(SecurityContext2) {
+  SecurityContext2[SecurityContext2["NONE"] = 0] = "NONE";
+  SecurityContext2[SecurityContext2["HTML"] = 1] = "HTML";
+  SecurityContext2[SecurityContext2["STYLE"] = 2] = "STYLE";
+  SecurityContext2[SecurityContext2["SCRIPT"] = 3] = "SCRIPT";
+  SecurityContext2[SecurityContext2["URL"] = 4] = "URL";
+  SecurityContext2[SecurityContext2["RESOURCE_URL"] = 5] = "RESOURCE_URL";
+  SecurityContext2[SecurityContext2["ATTRIBUTE_NO_BINDING"] = 6] = "ATTRIBUTE_NO_BINDING";
+})(SecurityContext || (SecurityContext = {}));
+var _SECURITY_SCHEMA;
 var SVG_NAMESPACE = "svg";
 var MATH_ML_NAMESPACE = "math";
+function SECURITY_SCHEMA() {
+  if (!_SECURITY_SCHEMA) {
+    _SECURITY_SCHEMA = {};
+    registerContext(SecurityContext.HTML, void 0, [["iframe", ["srcdoc"]], ["*", ["innerHTML", "outerHTML"]]]);
+    registerContext(SecurityContext.STYLE, void 0, [["*", ["style"]]]);
+    registerContext(SecurityContext.URL, void 0, [["*", ["formAction"]], ["area", ["href"]], ["a", ["href", "xlink:href"]], ["form", ["action"]], ["img", ["src"]], ["video", ["src"]]]);
+    registerContext(SecurityContext.URL, MATH_ML_NAMESPACE, [["*", ["href", "xlink:href"]], ["annotation", ["href", "xlink:href"]], ["annotation-xml", ["href", "xlink:href"]], ["maction", ["href", "xlink:href"]], ["malignmark", ["href", "xlink:href"]], ["math", ["href", "xlink:href"]], ["mroot", ["href", "xlink:href"]], ["msqrt", ["href", "xlink:href"]], ["merror", ["href", "xlink:href"]], ["mfrac", ["href", "xlink:href"]], ["mglyph", ["href", "xlink:href"]], ["msub", ["href", "xlink:href"]], ["msup", ["href", "xlink:href"]], ["msubsup", ["href", "xlink:href"]], ["mmultiscripts", ["href", "xlink:href"]], ["mprescripts", ["href", "xlink:href"]], ["mi", ["href", "xlink:href"]], ["mn", ["href", "xlink:href"]], ["mo", ["href", "xlink:href"]], ["mpadded", ["href", "xlink:href"]], ["mphantom", ["href", "xlink:href"]], ["mrow", ["href", "xlink:href"]], ["ms", ["href", "xlink:href"]], ["mspace", ["href", "xlink:href"]], ["mstyle", ["href", "xlink:href"]], ["mtable", ["href", "xlink:href"]], ["mtd", ["href", "xlink:href"]], ["mtr", ["href", "xlink:href"]], ["mtext", ["href", "xlink:href"]], ["mover", ["href", "xlink:href"]], ["munder", ["href", "xlink:href"]], ["munderover", ["href", "xlink:href"]], ["semantics", ["href", "xlink:href"]], ["none", ["href", "xlink:href"]]]);
+    registerContext(SecurityContext.RESOURCE_URL, void 0, [["base", ["href"]], ["embed", ["src"]], ["frame", ["src"]], ["iframe", ["src"]], ["link", ["href"]], ["object", ["codebase", "data"]]]);
+    registerContext(SecurityContext.URL, SVG_NAMESPACE, [["a", ["href", "xlink:href"]]]);
+    registerContext(SecurityContext.ATTRIBUTE_NO_BINDING, SVG_NAMESPACE, [["animate", ["attributeName", "values", "to", "from"]], ["set", ["to", "attributeName"]], ["animateMotion", ["attributeName"]], ["animateTransform", ["attributeName"]]]);
+    registerContext(SecurityContext.ATTRIBUTE_NO_BINDING, void 0, [["unknown", ["attributeName", "values", "to", "from", "sandbox", "allow", "allowFullscreen", "referrerPolicy", "csp", "fetchPriority"]], ["iframe", ["sandbox", "allow", "allowFullscreen", "referrerPolicy", "csp", "fetchPriority"]]]);
+  }
+  return _SECURITY_SCHEMA;
+}
+function registerContext(ctx, namespace, specs) {
+  for (const [element, attributeNames2] of specs) {
+    let tagName = namespace && element !== "unknown" ? `:${namespace}:${element}` : element;
+    tagName = tagName.toLowerCase();
+    for (const attr of attributeNames2) {
+      _SECURITY_SCHEMA[`${tagName}|${attr.toLowerCase()}`] = ctx;
+    }
+  }
+}
+function checkSecurityContext(tagName, propName, namespace) {
+  const schema = SECURITY_SCHEMA();
+  const normalizedTagName = tagName.toLowerCase();
+  const normalizedPropName = propName.toLowerCase();
+  const namespacedContext = namespace && normalizedTagName !== "*" && normalizedTagName !== "unknown" ? schema[`:${namespace}:${normalizedTagName}|${normalizedPropName}`] : void 0;
+  const namespacedWildcardContext = namespace ? schema[`:${namespace}:*|${normalizedPropName}`] : void 0;
+  return namespacedContext ?? namespacedWildcardContext ?? schema[`${normalizedTagName}|${normalizedPropName}`] ?? schema[`*|${normalizedPropName}`] ?? SecurityContext.NONE;
+}
 function unwrapRNode(value) {
   while (Array.isArray(value)) {
     value = value[HOST];
@@ -5709,11 +5783,21 @@ function createEffectFn(node2, fn) {
 }
 
 // node_modules/@angular/core/fesm2022/_attribute-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var Attribute = {
   JSACTION: "jsaction"
 };
 
 // node_modules/@angular/core/fesm2022/_debug_node-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function noSideEffects(fn) {
   return {
     toString: fn
@@ -7627,12 +7711,12 @@ var TransferState = class _TransferState {
         }
       }
     }
-    return JSON.stringify(this.store).replace(/</g, "\\u003C");
+    return JSON.stringify(this.store).replace(/</g, "\\u003C").replace(/\//g, "\\u002F");
   }
 };
 function retrieveTransferredState(doc, appId) {
   const script = doc.getElementById(appId + "-state");
-  if (script?.textContent) {
+  if (script?.tagName === "SCRIPT" && script.textContent) {
     try {
       return JSON.parse(script.textContent);
     } catch (e) {
@@ -7820,6 +7904,16 @@ function setJSActionAttributes(nativeElement, eventTypes, parentDeferBlockId = n
 var JSACTION_EVENT_CONTRACT = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "EVENT_CONTRACT_DETAILS" : "", {
   factory: () => ({})
 });
+var handledEventElements = /* @__PURE__ */ new WeakMap();
+function markEventHandledForElement(event, element) {
+  if (event == null || typeof event !== "object") return;
+  let elements = handledEventElements.get(event);
+  if (!elements) {
+    elements = /* @__PURE__ */ new WeakSet();
+    handledEventElements.set(event, elements);
+  }
+  elements.add(element);
+}
 var _stashEventListenerImpl = (lView, target, eventName, wrappedListener) => {
 };
 function stashEventListenerImpl(lView, target, eventName, wrappedListener) {
@@ -8235,6 +8329,12 @@ function matchingSchemas(schemas, tagName) {
   }
   return false;
 }
+var SVG_NAMESPACE2 = "svg";
+var MATH_ML_NAMESPACE2 = "math";
+var NAMESPACE_URIS = {
+  "http://www.w3.org/2000/svg": SVG_NAMESPACE2,
+  "http://www.w3.org/1998/Math/MathML": MATH_ML_NAMESPACE2
+};
 var policy$1;
 function getPolicy$1() {
   if (policy$1 === void 0) {
@@ -8425,7 +8525,6 @@ var HTML_ATTRS = tagSet("abbr,accesskey,align,alt,autoplay,axis,bgcolor,border,c
 var ARIA_ATTRS = tagSet("aria-activedescendant,aria-atomic,aria-autocomplete,aria-busy,aria-checked,aria-colcount,aria-colindex,aria-colspan,aria-controls,aria-current,aria-describedby,aria-details,aria-disabled,aria-dropeffect,aria-errormessage,aria-expanded,aria-flowto,aria-grabbed,aria-haspopup,aria-hidden,aria-invalid,aria-keyshortcuts,aria-label,aria-labelledby,aria-level,aria-live,aria-modal,aria-multiline,aria-multiselectable,aria-orientation,aria-owns,aria-placeholder,aria-posinset,aria-pressed,aria-readonly,aria-relevant,aria-required,aria-roledescription,aria-rowcount,aria-rowindex,aria-rowspan,aria-selected,aria-setsize,aria-sort,aria-valuemax,aria-valuemin,aria-valuenow,aria-valuetext");
 var VALID_ATTRS = merge(URI_ATTRS, HTML_ATTRS, ARIA_ATTRS);
 var SKIP_TRAVERSING_CONTENT_IF_INVALID_ELEMENTS = tagSet("script,style,template");
-var SENSITIVE_ATTRS = merge(URI_ATTRS, tagSet("action,formaction,data,codebase"));
 var SanitizingHtmlSerializer = class {
   sanitizedSomething = false;
   buf = [];
@@ -8642,16 +8741,24 @@ function enforceIframeSecurity(iframe) {
   iframe.srcdoc = trustedHTMLFromString("");
   nativeRemoveNode(lView[RENDERER], iframe);
 }
-var SecurityContext;
-(function(SecurityContext2) {
-  SecurityContext2[SecurityContext2["NONE"] = 0] = "NONE";
-  SecurityContext2[SecurityContext2["HTML"] = 1] = "HTML";
-  SecurityContext2[SecurityContext2["STYLE"] = 2] = "STYLE";
-  SecurityContext2[SecurityContext2["SCRIPT"] = 3] = "SCRIPT";
-  SecurityContext2[SecurityContext2["URL"] = 4] = "URL";
-  SecurityContext2[SecurityContext2["RESOURCE_URL"] = 5] = "RESOURCE_URL";
-})(SecurityContext || (SecurityContext = {}));
-function \u0275\u0275sanitizeHtml(unsafeHtml) {
+function splitNsName(elementName, fatal = true) {
+  if (elementName[0] != ":") {
+    return [null, elementName];
+  }
+  const colonIndex = elementName.indexOf(":", 1);
+  if (colonIndex === -1) {
+    if (fatal) {
+      throw new Error(`Unsupported format "${elementName}" expecting ":namespace:name"`);
+    } else {
+      return [null, elementName];
+    }
+  }
+  return [elementName.slice(1, colonIndex), elementName.slice(colonIndex + 1)];
+}
+function \u0275\u0275sanitizeHtml(unsafeHtml, tagName, propName) {
+  if (tagName !== void 0 && propName !== void 0 && getSecurityContext(tagName, propName) !== SecurityContext.HTML) {
+    return unsafeHtml;
+  }
   const sanitizer = getSanitizer();
   if (sanitizer) {
     return trustedHTMLFromStringBypass(sanitizer.sanitize(SecurityContext.HTML, unsafeHtml) || "");
@@ -8713,41 +8820,18 @@ function \u0275\u0275trustConstantResourceUrl(url) {
   }
   return trustedScriptURLFromString(url[0]);
 }
-var RESOURCE_MAP = {
-  "embed": {
-    "src": true
-  },
-  "frame": {
-    "src": true
-  },
-  "iframe": {
-    "src": true
-  },
-  "media": {
-    "src": true
-  },
-  "script": {
-    "src": true,
-    "href": true,
-    "xlink:href": true
-  },
-  "base": {
-    "href": true
-  },
-  "link": {
-    "href": true
-  },
-  "object": {
-    "data": true,
-    "codebase": true
-  }
-};
 function getUrlSanitizer(tag, prop) {
-  const isResource = RESOURCE_MAP[tag]?.[prop] === true;
-  return isResource ? \u0275\u0275sanitizeResourceUrl : \u0275\u0275sanitizeUrl;
+  switch (getSecurityContext(tag, prop)) {
+    case SecurityContext.RESOURCE_URL:
+      return \u0275\u0275sanitizeResourceUrl;
+    case SecurityContext.URL:
+      return \u0275\u0275sanitizeUrl;
+    default:
+      return null;
+  }
 }
 function \u0275\u0275sanitizeUrlOrResourceUrl(unsafeUrl, tag, prop) {
-  return getUrlSanitizer(tag, prop)(unsafeUrl);
+  return getUrlSanitizer(tag, prop)?.(unsafeUrl) ?? unsafeUrl;
 }
 function validateAgainstEventProperties(name) {
   if (name.toLowerCase().startsWith("on")) {
@@ -8756,72 +8840,91 @@ If '${name}' is a directive input, make sure the directive is imported by the cu
     throw new RuntimeError(306, errorMessage);
   }
 }
-function validateAgainstEventAttributes(name) {
-  if (name.toLowerCase().startsWith("on")) {
-    const errorMessage = `Binding to event attribute '${name}' is disallowed for security reasons, please use (${name.slice(2)})=...`;
-    throw new RuntimeError(306, errorMessage);
-  }
-}
 function getSanitizer() {
   const lView = getLView();
   return lView && lView[ENVIRONMENT].sanitizer;
 }
+function getSecurityContext(tagName, propName) {
+  const [namespace, resolvedTagName] = resolveElement(tagName);
+  return checkSecurityContext(resolvedTagName, propName, namespace);
+}
+function resolveElement(tagName) {
+  tagName = tagName.toLowerCase();
+  const splitResult = splitNsName(tagName, false);
+  if (splitResult[0]) {
+    return splitResult;
+  }
+  const index2 = getSelectedIndex();
+  const tNode = index2 === -1 ? null : getSelectedTNode();
+  let namespace = tNode?.namespace;
+  if (tagName === "#host" && tNode?.type === 2) {
+    const element = getNativeByTNode(tNode, getLView());
+    if (element.tagName) {
+      tagName = element.tagName.toLowerCase();
+    }
+    if (namespace == null) {
+      const namespaceURI = element.namespaceURI;
+      namespace = namespaceURI && NAMESPACE_URIS[namespaceURI];
+    }
+  }
+  return [namespace, tagName];
+}
 var SECURITY_SENSITIVE_ATTRIBUTE_NAMES = /* @__PURE__ */ new Set(["href", "xlink:href"]);
-var SECURITY_SENSITIVE_ELEMENTS = {
-  "iframe": {
-    "sandbox": true,
-    "allow": true,
-    "allowfullscreen": true,
-    "referrerpolicy": true,
-    "csp": true,
-    "fetchpriority": true
-  },
+var SVG_ANIMATION_SENSITIVE_STATIC_VALUES = {
   "animate": {
-    "attributename": true,
     "to": SECURITY_SENSITIVE_ATTRIBUTE_NAMES,
     "values": SECURITY_SENSITIVE_ATTRIBUTE_NAMES,
     "from": SECURITY_SENSITIVE_ATTRIBUTE_NAMES
   },
   "set": {
-    "attributename": true,
     "to": SECURITY_SENSITIVE_ATTRIBUTE_NAMES
-  },
-  "animatemotion": {
-    "attributename": true
-  },
-  "animatetransform": {
-    "attributename": true
   }
 };
 function \u0275\u0275validateAttribute(value, tagName, attributeName) {
-  const lowerCaseTagName = tagName.toLowerCase();
-  const lowerCaseAttrName = attributeName.toLowerCase();
-  const validationConfig = SECURITY_SENSITIVE_ELEMENTS[lowerCaseTagName]?.[lowerCaseAttrName];
-  if (!validationConfig) {
+  const index2 = getSelectedIndex();
+  const tNode = index2 === -1 ? null : getSelectedTNode();
+  if (tNode && tNode.type !== 2) {
     return value;
   }
-  const tNode = getSelectedTNode();
-  if (tNode.type !== 2) {
+  const [namespace, resolvedTagName] = resolveElement(tagName);
+  const securityContext = checkSecurityContext(resolvedTagName, attributeName, namespace);
+  if (securityContext !== SecurityContext.ATTRIBUTE_NO_BINDING) {
     return value;
   }
   const lView = getLView();
-  if (lowerCaseTagName === "iframe") {
-    const element = getNativeByTNode(tNode, lView);
-    enforceIframeSecurity(element);
-  }
-  if (typeof validationConfig !== "boolean") {
-    const element = getNativeByTNode(tNode, lView);
-    const attributeNameValue = element.getAttribute("attributeName");
-    if (attributeNameValue && validationConfig.has(attributeNameValue.toLowerCase())) {
-      const errorMessage2 = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${tagName}> element${getTemplateLocationDetails(lView)}. For security reasons, the \`${attributeName}\` can be set on the <${tagName}> element as a static attribute only when the "attributeName" is set to '${attributeNameValue}'. 
+  if (tNode) {
+    if (resolvedTagName === "iframe") {
+      const element = getNativeByTNode(tNode, lView);
+      enforceIframeSecurity(element);
+    } else if (namespace === SVG_NAMESPACE) {
+      const config4 = SVG_ANIMATION_SENSITIVE_STATIC_VALUES[resolvedTagName]?.[attributeName.toLowerCase()];
+      if (config4) {
+        const element = getNativeByTNode(tNode, lView);
+        const attributeNameValue = getSecuritySensitiveSVGAnimationAttributeName(element, config4);
+        if (attributeNameValue) {
+          const errorMessage2 = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${resolvedTagName}> element${getTemplateLocationDetails(lView)}. For security reasons, the \`${attributeName}\` can be set on the <${resolvedTagName}> element as a static attribute only when the "attributeName" is set to '${attributeNameValue}'. 
 To fix this, switch the \`${attributeNameValue}\` binding to a static attribute in a template or in host bindings section.`;
-      throw new RuntimeError(-910, errorMessage2);
+          throw new RuntimeError(-910, errorMessage2);
+        }
+        return value;
+      }
     }
-    return value;
   }
-  const errorMessage = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${tagName}> element${getTemplateLocationDetails(lView)}. For security reasons, the \`${attributeName}\` can be set on the <${tagName}> element as a static attribute only. 
+  const errorMessage = ngDevMode && `Angular has detected that the \`${attributeName}\` was applied as a binding to the <${resolvedTagName}> element${tNode ? getTemplateLocationDetails(lView) : ""}. For security reasons, the \`${attributeName}\` can be set on the <${resolvedTagName}> element as a static attribute only. 
 To fix this, switch the \`${attributeName}\` binding to a static attribute in a template or in host bindings section.`;
   throw new RuntimeError(-910, errorMessage);
+}
+function getSecuritySensitiveSVGAnimationAttributeName(element, validationConfig) {
+  for (const attributeName of element.getAttributeNames()) {
+    if (attributeName.toLowerCase() !== "attributename") {
+      continue;
+    }
+    const attributeNameValue = element.getAttribute(attributeName);
+    if (attributeNameValue !== null && validationConfig.has(attributeNameValue.toLowerCase())) {
+      return attributeNameValue;
+    }
+  }
+  return null;
 }
 var NG_REFLECT_ATTRS_FLAG_DEFAULT = false;
 var NG_REFLECT_ATTRS_FLAG = new InjectionToken(typeof ngDevMode === "undefined" || ngDevMode ? "NG_REFLECT_FLAG" : "", {
@@ -10481,7 +10584,9 @@ function setDomProperty(tNode, lView, propName, value, renderer, sanitizer) {
   if (tNode.type & 3) {
     const element = getNativeByTNode(tNode, lView);
     if (ngDevMode) {
-      validateAgainstEventProperties(propName);
+      if (lView[TVIEW].firstUpdatePass) {
+        validateAgainstEventProperties(propName);
+      }
       if (!isPropertyValid(element, propName, tNode.value, lView[TVIEW].schemas)) {
         handleUnknownPropertyError(propName, tNode.value, tNode.type, lView);
       }
@@ -10623,7 +10728,6 @@ function findDirectiveDefMatches(tView, tNode) {
 function elementAttributeInternal(tNode, lView, name, value, sanitizer, namespace) {
   if (ngDevMode) {
     assertNotSame(value, NO_CHANGE, "Incoming value should never be NO_CHANGE.");
-    validateAgainstEventAttributes(name);
     assertTNodeType(tNode, 2, `Attempted to set attribute \`${name}\` on a container node. Host bindings are not valid on ng-container or ng-template.`);
   }
   const element = getNativeByTNode(tNode, lView);
@@ -11484,6 +11588,7 @@ function createTemplateRef(hostTNode, hostLView) {
   return null;
 }
 var AT_THIS_LOCATION = "<-- AT THIS LOCATION";
+var THIRD_PARTY_SCRIPTS_URL = `/guide/hydration#third-party-scripts-with-dom-manipulation`;
 function getFriendlyStringFromTNodeType(tNodeType) {
   switch (tNodeType) {
     case 4:
@@ -11539,7 +11644,12 @@ ${actualDom}
       markRNodeAsHavingHydrationMismatch(componentHostElement, expectedDom, actualDom);
     }
     const footer = getHydrationErrorFooter(componentClassName);
-    const message = header + expected + actual + getHydrationAttributeNote() + footer;
+    let message = header + expected + actual + getHydrationAttributeNote() + footer;
+    if (!node2 || node2 && isLikelyExternalSourceNode(node2)) {
+      message += `Note: It looks like this mismatch may have been caused by a third-party script or browser extension that modified the DOM outside of Angular's control. Angular hydration does not support nodes injected or removed outside of the Angular-managed DOM. Note: If you know which element in the DOM this will be inserted, consider adding ngSkipHydration to prevent this error. 
+
+`;
+    }
     throw new RuntimeError(-500, message);
   }
 }
@@ -11724,9 +11834,20 @@ function getHydrationErrorFooter(componentClassName) {
   return `To fix this problem:
   * check ${componentInfo} component for hydration-related issues
   * check to see if your template has valid HTML structure
+  * check if there are any third-party scripts that manipulate the DOM. More info: ${DOC_PAGE_BASE_URL}${THIRD_PARTY_SCRIPTS_URL}
   * or skip hydration by adding the \`ngSkipHydration\` attribute to its host node in a template
 
 `;
+}
+function isLikelyExternalSourceNode(rNode) {
+  const node2 = rNode;
+  if (node2.nodeType !== Node.ELEMENT_NODE) {
+    return false;
+  }
+  if (readPatchedData(node2)) {
+    return false;
+  }
+  return true;
 }
 function getHydrationAttributeNote() {
   return "Note: attributes are only displayed to better represent the DOM but have no effect on hydration mismatches.\n\n";
@@ -11839,6 +11960,7 @@ function createTNode(tView, tParent, type, index2, value, attrs) {
     flags,
     providerIndexes: 0,
     value,
+    namespace: getNamespace(),
     attrs,
     mergedAttrs: null,
     localNames: null,
@@ -13232,6 +13354,10 @@ function bindingUpdated4(lView, bindingIndex, exp1, exp2, exp3, exp4) {
 }
 function wrapListener(tNode, lView, listenerFn) {
   return function wrapListenerIn_markDirtyAndPreventDefault(event) {
+    const nativeEl = wrapListenerIn_markDirtyAndPreventDefault.__ngNativeEl__;
+    if (nativeEl !== void 0) {
+      markEventHandledForElement(event, nativeEl);
+    }
     const startView = isComponentHost(tNode) ? getComponentLViewByIndex(tNode.index, lView) : lView;
     markViewDirty(startView, 5);
     const context2 = lView[CONTEXT];
@@ -13274,6 +13400,9 @@ function listenToDomEvent(tNode, tView, lView, eventTargetResolver, renderer, ev
     const native = getNativeByTNode(tNode, lView);
     const target = eventTargetResolver ? eventTargetResolver(native) : native;
     stashEventListenerImpl(lView, target, eventName, wrappedListener);
+    if (!eventTargetResolver) {
+      wrappedListener.__ngNativeEl__ = native;
+    }
     const cleanupFn = renderer.listen(target, eventName, wrappedListener);
     if (!isAnimationEventType(eventName)) {
       const idxOrTargetGetter = eventTargetResolver ? (_lView) => eventTargetResolver(unwrapRNode(_lView[tNode.index])) : tNode.index;
@@ -13556,6 +13685,11 @@ function createHostElement(componentDef, renderer) {
   const namespace = tagName === "svg" ? SVG_NAMESPACE : tagName === "math" ? MATH_ML_NAMESPACE : null;
   return createElementNode(renderer, tagName, namespace);
 }
+function assertNotScriptHostElement(tagName) {
+  if (tagName?.toLowerCase() === "script") {
+    throw new RuntimeError(905, ngDevMode && `"<script>" tag is not allowed as a component host element.`);
+  }
+}
 function inferTagNameFromDefinition(componentDef) {
   return (componentDef.selectors[0][0] || "div").toLowerCase();
 }
@@ -13608,6 +13742,7 @@ var ComponentFactory2 = class extends ComponentFactory$1 {
     const rootTView = createRootTView(rootSelectorOrNode, cmpDef, componentBindings, directives);
     const hostRenderer = environment.rendererFactory.createRenderer(null, cmpDef);
     const hostElement = rootSelectorOrNode ? locateHostElement(hostRenderer, rootSelectorOrNode, cmpDef.encapsulation, rootViewInjector) : createHostElement(cmpDef, hostRenderer);
+    assertNotScriptHostElement(hostElement?.tagName);
     const hasInputBindings = componentBindings?.some(isInputBinding) || directives?.some((d) => typeof d !== "function" && d.bindings.some(isInputBinding));
     const rootLView = createLView(null, rootTView, null, 512 | getInitialLViewFlagsFromDef(cmpDef), null, null, environment, hostRenderer, rootViewInjector, null, retrieveHydrationInfo(hostElement, rootViewInjector, true));
     rootLView[HEADER_OFFSET] = hostElement;
@@ -13640,7 +13775,7 @@ var ComponentFactory2 = class extends ComponentFactory$1 {
   }
 };
 function createRootTView(rootSelectorOrNode, componentDef, componentBindings, directives) {
-  const tAttributes = rootSelectorOrNode ? ["ng-version", "21.2.7"] : extractAttrsAndClassesFromSelector(componentDef.selectors[0]);
+  const tAttributes = rootSelectorOrNode ? ["ng-version", "21.2.25"] : extractAttrsAndClassesFromSelector(componentDef.selectors[0]);
   let creationBindings = null;
   let updateBindings = null;
   let varsToAllocate = 0;
@@ -13986,7 +14121,10 @@ function populateDehydratedViewsInLContainerImpl(lContainer, tNode, hostLView) {
   }
   const currentRNode = getSegmentHead(hydrationInfo, noOffsetIndex);
   const serializedViews = hydrationInfo.data[CONTAINERS]?.[noOffsetIndex];
-  ngDevMode && assertDefined(serializedViews, "Unexpected state: no hydration info available for a given TNode, which represents a view container.");
+  if (serializedViews === void 0) {
+    ngDevMode && console.warn("Unexpected state: no hydration info available for a given TNode, which represents a view container.");
+    return false;
+  }
   const [commentNode, dehydratedViews] = locateDehydratedViewsInContainer(currentRNode, serializedViews);
   if (ngDevMode) {
     validateMatchingNode(commentNode, Node.COMMENT_NODE, null, hostLView, tNode, true);
@@ -14952,15 +15090,17 @@ function \u0275\u0275InheritDefinitionFeature(definition) {
   let superType = getSuperType(definition.type);
   let shouldInheritFields = true;
   const inheritanceChain = [definition];
-  while (superType) {
+  while (superType && superType !== Function.prototype && superType !== Object.prototype) {
     let superDef = void 0;
+    const cmpDef = Object.hasOwn(superType, NG_COMP_DEF) ? superType[NG_COMP_DEF] : void 0;
+    const dirDef = Object.hasOwn(superType, NG_DIR_DEF) ? superType[NG_DIR_DEF] : void 0;
     if (isComponentDef(definition)) {
-      superDef = superType.\u0275cmp || superType.\u0275dir;
+      superDef = cmpDef ?? dirDef;
     } else {
-      if (superType.\u0275cmp) {
+      if (cmpDef) {
         throw new RuntimeError(903, ngDevMode && `Directives cannot inherit Components. Directive ${stringifyForError(definition.type)} is attempting to extend component ${stringifyForError(superType)}`);
       }
-      superDef = superType.\u0275dir;
+      superDef = dirDef;
     }
     if (superDef) {
       if (shouldInheritFields) {
@@ -17386,9 +17526,11 @@ function triggerResourceLoading(tDetails, lView, tNode) {
   }
   tDetails.loadingPromise = Promise.allSettled(dependenciesFn()).then((results) => {
     let failed = false;
+    let failedReason = null;
     const directiveDefs = [];
     const pipeDefs = [];
-    for (const result2 of results) {
+    for (let i = 0; i < results.length; i++) {
+      const result2 = results[i];
       if (result2.status === "fulfilled") {
         const dependency = result2.value;
         const directiveDef = getComponentDef(dependency) || getDirectiveDef(dependency);
@@ -17402,6 +17544,7 @@ function triggerResourceLoading(tDetails, lView, tNode) {
         }
       } else {
         failed = true;
+        failedReason = result2.reason instanceof Error ? result2.reason : new Error(String(result2.reason));
         break;
       }
     }
@@ -17409,7 +17552,32 @@ function triggerResourceLoading(tDetails, lView, tNode) {
       tDetails.loadingState = DeferDependenciesLoadingState.FAILED;
       if (tDetails.errorTmplIndex === null) {
         const templateLocation = ngDevMode ? getTemplateLocationDetails(lView) : "";
-        const error2 = new RuntimeError(-750, ngDevMode && `Loading dependencies for \`@defer\` block failed, but no \`@error\` block was configured${templateLocation}. Consider using the \`@error\` block to render an error state.`);
+        let errorMsg = "";
+        if (ngDevMode) {
+          errorMsg = `Loading dependencies for \`@defer\` block failed, but no \`@error\` block was configured${templateLocation}. Consider using the \`@error\` block to render an error state.`;
+          const depsFn = tDetails.dependencyResolverFn;
+          const errorReason = failedReason?.message;
+          if (depsFn) {
+            errorMsg += `
+
+Angular tried to invoke the following dependency function (compiler-generated):
+\`\`\`
+${depsFn.toString()}
+\`\`\``;
+          }
+          if (errorReason) {
+            errorMsg += depsFn ? `
+
+but it resulted in the following error:
+
+${errorReason}` : `
+
+The loading resulted in the following error:
+
+${errorReason}`;
+          }
+        }
+        const error2 = new RuntimeError(-750, errorMsg);
         handleUncaughtError(lView, error2);
       }
     } else {
@@ -18947,7 +19115,7 @@ function plural(val) {
   return 5;
 }
 var localeEn = ["en", [["a", "p"], ["AM", "PM"]], [["AM", "PM"]], [["S", "M", "T", "W", "T", "F", "S"], ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]], u, [["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"], ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]], u, [["B", "A"], ["BC", "AD"], ["Before Christ", "Anno Domini"]], 0, [6, 0], ["M/d/yy", "MMM d, y", "MMMM d, y", "EEEE, MMMM d, y"], ["h:mm\u202Fa", "h:mm:ss\u202Fa", "h:mm:ss\u202Fa z", "h:mm:ss\u202Fa zzzz"], ["{1}, {0}", u, u, u], [".", ",", ";", "%", "+", "-", "E", "\xD7", "\u2030", "\u221E", "NaN", ":"], ["#,##0.###", "#,##0%", "\xA4#,##0.00", "#E0"], "USD", "$", "US Dollar", {}, "ltr", plural];
-var LOCALE_DATA = {};
+var LOCALE_DATA = /* @__PURE__ */ Object.create(null);
 function findLocaleData(locale) {
   const normalizedLocale = normalizeLocale(locale);
   let match2 = getLocaleData(normalizedLocale);
@@ -18970,7 +19138,11 @@ function getLocalePluralCase(locale) {
 }
 function getLocaleData(normalizedLocale) {
   if (!(normalizedLocale in LOCALE_DATA)) {
-    LOCALE_DATA[normalizedLocale] = _global.ng && _global.ng.common && _global.ng.common.locales && _global.ng.common.locales[normalizedLocale];
+    const globalLocaleData = _global.ng && _global.ng.common && _global.ng.common.locales && _global.ng.common.locales[normalizedLocale];
+    if (globalLocaleData !== void 0) {
+      LOCALE_DATA[normalizedLocale] = globalLocaleData;
+    }
+    return globalLocaleData;
   }
   return LOCALE_DATA[normalizedLocale];
 }
@@ -19041,15 +19213,18 @@ function setMaskBit(hasChange) {
   changeMaskCounter++;
 }
 function applyI18n(tView, lView, index2) {
-  if (changeMaskCounter > 0) {
-    ngDevMode && assertDefined(tView, `tView should be defined`);
-    const tI18n = tView.data[index2];
-    const updateOpCodes = Array.isArray(tI18n) ? tI18n : tI18n.update;
-    const bindingsStartIndex = getBindingIndex() - changeMaskCounter - 1;
-    applyUpdateOpCodes(tView, lView, updateOpCodes, bindingsStartIndex, changeMask);
+  try {
+    if (changeMaskCounter > 0) {
+      ngDevMode && assertDefined(tView, `tView should be defined`);
+      const tI18n = tView.data[index2];
+      const updateOpCodes = Array.isArray(tI18n) ? tI18n : tI18n.update;
+      const bindingsStartIndex = getBindingIndex() - changeMaskCounter - 1;
+      applyUpdateOpCodes(tView, lView, updateOpCodes, bindingsStartIndex, changeMask);
+    }
+  } finally {
+    changeMask = 0;
+    changeMaskCounter = 0;
   }
-  changeMask = 0;
-  changeMaskCounter = 0;
 }
 function createNodeWithoutHydration(lView, textOrName, nodeType) {
   const renderer = lView[RENDERER];
@@ -19195,7 +19370,13 @@ function applyUpdateOpCodes(tView, lView, updateOpCodes, bindingsStartIndex, cha
                 if (typeof tNodeOrTagName === "string") {
                   setElementAttribute(lView[RENDERER], lView[nodeIndex], null, tNodeOrTagName, propName, value, sanitizeFn);
                 } else {
-                  setPropertyAndInputs(tNodeOrTagName, lView, propName, value, lView[RENDERER], sanitizeFn);
+                  const prevSelectedIndex = getSelectedIndex();
+                  setSelectedIndex(nodeIndex);
+                  try {
+                    setPropertyAndInputs(tNodeOrTagName, lView, propName, value, lView[RENDERER], sanitizeFn);
+                  } finally {
+                    setSelectedIndex(prevSelectedIndex);
+                  }
                 }
                 break;
               case 0:
@@ -19579,7 +19760,8 @@ function i18nAttributesFirstPass(tView, index2, values) {
         if (ICU_REGEXP.test(message)) {
           throw new Error(`ICU expressions are not supported in attributes. Message: "${message}".`);
         }
-        generateBindingUpdateOpCodes(updateOpCodes, message, previousElementIndex, attrName, countBindings(updateOpCodes), SENSITIVE_ATTRS[attrName.toLowerCase()] ? _sanitizeUrl : null);
+        const tagName = previousElement.namespace ? `:${previousElement.namespace}:${previousElement.value}` : previousElement.value;
+        generateBindingUpdateOpCodes(updateOpCodes, message, previousElementIndex, attrName, countBindings(updateOpCodes), i18nResolveSanitizer(attrName, tagName));
       }
     }
     tView.data[index2] = updateOpCodes;
@@ -19809,20 +19991,25 @@ function walkIcuTree(ast, tView, tIcu, lView, sharedUpdateOpCodes, create, remov
             const attr = elAttrs.item(i);
             const lowerAttrName = attr.name.toLowerCase();
             const hasBinding2 = !!attr.value.match(BINDING_REGEXP);
+            const namespaceUri = element.namespaceURI;
+            const namespace = namespaceUri && NAMESPACE_URIS[namespaceUri];
+            const tagNameWithNamespace = namespace ? `:${namespace}:${tagName}` : tagName;
             if (hasBinding2) {
               if (VALID_ATTRS.hasOwnProperty(lowerAttrName)) {
-                generateBindingUpdateOpCodes(update, attr.value, newIndex, attr.name, 0, SENSITIVE_ATTRS[lowerAttrName] ? _sanitizeUrl : null);
+                generateBindingUpdateOpCodes(update, attr.value, newIndex, attr.name, 0, i18nResolveSanitizer(lowerAttrName, tagNameWithNamespace));
               } else {
                 ngDevMode && console.warn(`WARNING: ignoring unsafe attribute value ${lowerAttrName} on element ${tagName} (see ${XSS_SECURITY_URL})`);
               }
             } else if (VALID_ATTRS[lowerAttrName]) {
-              if (SENSITIVE_ATTRS[lowerAttrName]) {
+              let val = attr.value;
+              const sanitizer = i18nResolveSanitizer(lowerAttrName, tagNameWithNamespace);
+              if (sanitizer) {
                 if (typeof ngDevMode !== "undefined" && ngDevMode) {
                   console.warn(`WARNING: ignoring unsafe attribute ${lowerAttrName} on element ${tagName} (see ${XSS_SECURITY_URL})`);
                 }
                 addCreateAttribute(create, newIndex, attr.name, "unsafe:blocked");
               } else {
-                addCreateAttribute(create, newIndex, attr.name, attr.value);
+                addCreateAttribute(create, newIndex, attr.name, val);
               }
             } else {
               if (typeof ngDevMode !== "undefined" && ngDevMode) {
@@ -19893,6 +20080,34 @@ function addCreateNodeAndAppend(create, marker, text, appendToParentIdx, createA
 }
 function addCreateAttribute(create, newIndex, attrName, attrValue) {
   create.push(newIndex << 1 | 1, attrName, attrValue);
+}
+function normalizeTagName(tagName) {
+  const tagNameLower = tagName.toLowerCase();
+  const [ns, name] = splitNsName(tagNameLower, false);
+  return ns === SVG_NAMESPACE2 || ns === MATH_ML_NAMESPACE2 ? `:${ns}:${name}` : name;
+}
+function i18nResolveSanitizer(attrName, tagName) {
+  const lowerAttrName = attrName.toLowerCase();
+  const lowerTagName = tagName ? normalizeTagName(tagName) : "*";
+  const [namespace] = splitNsName(lowerTagName, false);
+  const schema = SECURITY_SCHEMA();
+  const schemaContext = schema[`${lowerTagName}|${lowerAttrName}`] || (namespace ? schema[`:${namespace}:*|${lowerAttrName}`] : void 0) || schema[`*|${lowerAttrName}`] || SecurityContext.NONE;
+  switch (schemaContext) {
+    case SecurityContext.HTML:
+      return \u0275\u0275sanitizeHtml;
+    case SecurityContext.STYLE:
+      return \u0275\u0275sanitizeStyle;
+    case SecurityContext.SCRIPT:
+      return \u0275\u0275sanitizeScript;
+    case SecurityContext.URL:
+      return _sanitizeUrl;
+    case SecurityContext.RESOURCE_URL:
+      return \u0275\u0275sanitizeResourceUrl;
+    case SecurityContext.ATTRIBUTE_NO_BINDING:
+      return \u0275\u0275validateAttribute;
+    default:
+      return null;
+  }
 }
 var ROOT_TEMPLATE_ID = 0;
 var PP_MULTI_VALUE_PLACEHOLDERS_REGEXP = /\[(�.+?�?)\]/;
@@ -22378,7 +22593,8 @@ function convertToR3QueryMetadata(propertyName, ann) {
   };
 }
 function extractQueriesMetadata(type, propMetadata, isQueryAnn) {
-  const queriesMeta = [];
+  const signalQueriesMeta = [];
+  const decoratorQueriesMeta = [];
   for (const field in propMetadata) {
     if (propMetadata.hasOwnProperty(field)) {
       const annotations = propMetadata[field];
@@ -22390,12 +22606,17 @@ function extractQueriesMetadata(type, propMetadata, isQueryAnn) {
           if (annotations.some(isInputAnnotation)) {
             throw new Error(`Cannot combine @Input decorators with query decorators`);
           }
-          queriesMeta.push(convertToR3QueryMetadata(field, ann));
+          const queryMeta = convertToR3QueryMetadata(field, ann);
+          if (queryMeta.isSignal) {
+            signalQueriesMeta.push(queryMeta);
+          } else {
+            decoratorQueriesMeta.push(queryMeta);
+          }
         }
       });
     }
   }
-  return queriesMeta;
+  return [...signalQueriesMeta, ...decoratorQueriesMeta];
 }
 function extractExportAs(exportAs) {
   return exportAs === void 0 ? null : splitByComma(exportAs);
@@ -22794,6 +23015,11 @@ var MissingTranslationStrategy;
 })(MissingTranslationStrategy || (MissingTranslationStrategy = {}));
 
 // node_modules/@angular/core/fesm2022/_resource-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var OutputEmitterRef = class {
   destroyed = false;
   listeners = null;
@@ -23154,6 +23380,11 @@ var ResourceWrappedError = class extends Error {
 };
 
 // node_modules/@angular/core/fesm2022/primitives-event-dispatch.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var EventType = {
   CLICK: "click",
   CLICKMOD: "clickmod",
@@ -23188,7 +23419,6 @@ var isCaptureEventType = (eventType) => CAPTURE_EVENT_TYPES.indexOf(eventType) >
 var EARLY_EVENT_TYPES = BUBBLE_EVENT_TYPES.concat(CAPTURE_EVENT_TYPES);
 var isEarlyEventType = (eventType) => EARLY_EVENT_TYPES.indexOf(eventType) >= 0;
 var isMac = typeof navigator !== "undefined" && /Macintosh/.test(navigator.userAgent);
-var isIos = typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
 var DEFAULT_EVENT_TYPE = EventType.CLICK;
 var Restriction;
 (function(Restriction2) {
@@ -23196,6 +23426,11 @@ var Restriction;
 })(Restriction || (Restriction = {}));
 
 // node_modules/@angular/core/fesm2022/core.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var REQUIRED_UNSET_VALUE = /* @__PURE__ */ Symbol("InputSignalNode#UNSET");
 var INPUT_SIGNAL_NODE = /* @__PURE__ */ (() => {
   return __spreadProps(__spreadValues({}, SIGNAL_NODE), {
@@ -25200,7 +25435,10 @@ function serializeLContainer(lContainer, tNode, lView, parentDeferBlockId, conte
         serializedView[DEFER_BLOCK_STATE$1] = lDetails[DEFER_BLOCK_STATE];
       }
       if (!isHydrateNeverBlock) {
-        Object.assign(serializedView, serializeLView(lContainer[i], parentDeferBlockId, context2));
+        const childHostElement = unwrapRNode(childLView[HOST]);
+        if (childLView[TVIEW].type !== 1 || childHostElement === null || !childHostElement.hasAttribute(SKIP_HYDRATION_ATTR_NAME)) {
+          Object.assign(serializedView, serializeLView(lContainer[i], parentDeferBlockId, context2));
+        }
       }
     }
     const currentViewAsString = JSON.stringify(serializedView);
@@ -25493,6 +25731,11 @@ var REQUEST_CONTEXT = new InjectionToken(typeof ngDevMode === "undefined" || ngD
 });
 
 // node_modules/@angular/common/fesm2022/_platform_location-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var _DOM = null;
 function getDOM() {
   return _DOM;
@@ -25609,6 +25852,11 @@ var BrowserPlatformLocation = class _BrowserPlatformLocation extends PlatformLoc
 })();
 
 // node_modules/@angular/common/fesm2022/_location-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function joinWithSlash(start, end) {
   if (!start) return end;
   if (!end) return start;
@@ -25902,7 +26150,7 @@ function _stripBasePath(basePath, url) {
   return url;
 }
 function _stripIndexHtml(url) {
-  return url.replace(/\/index.html$/, "");
+  return url.replace(/\/index\.html$/, "");
 }
 function _stripOrigin(baseHref) {
   const isAbsoluteUrl2 = new RegExp("^(https?:)?//").test(baseHref);
@@ -25914,6 +26162,11 @@ function _stripOrigin(baseHref) {
 }
 
 // node_modules/@angular/common/fesm2022/_common_module-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var HashLocationStrategy = class _HashLocationStrategy extends LocationStrategy {
   _platformLocation;
   _baseHref = "";
@@ -26310,8 +26563,10 @@ function getNumberOfCurrencyDigits(code) {
 var ISO8601_DATE_REGEX = /^(\d{4,})-?(\d\d)-?(\d\d)(?:T(\d\d)(?::?(\d\d)(?::?(\d\d)(?:\.(\d+))?)?)?(Z|([+-])(\d\d):?(\d\d))?)?$/;
 var NAMED_FORMATS = {};
 var DATE_FORMATS_SPLIT = /((?:[^BEGHLMOSWYZabcdhmswyz']+)|(?:'(?:[^']|'')*')|(?:G{1,5}|y{1,4}|Y{1,4}|M{1,5}|L{1,5}|w{1,2}|W{1}|d{1,2}|E{1,6}|c{1,6}|a{1,5}|b{1,5}|B{1,5}|h{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}|z{1,4}|Z{1,5}|O{1,4}))([\s\S]*)/;
+var MAX_DATE_FORMAT_LENGTH = 256;
 function formatDate(value, format2, locale, timezone) {
   let date = toDate(value);
+  assertValidDateFormatLength(format2);
   const namedFormat = getNamedFormat(locale, format2);
   format2 = namedFormat || format2;
   let parts = [];
@@ -26344,6 +26599,11 @@ function formatDate(value, format2, locale, timezone) {
     text += dateFormatter ? dateFormatter(date, locale, dateTimezoneOffset) : value2 === "''" ? "'" : value2.replace(/(^'|'$)/g, "").replace(/''/g, "'");
   });
   return text;
+}
+function assertValidDateFormatLength(format2) {
+  if (format2.length > MAX_DATE_FORMAT_LENGTH) {
+    throw new RuntimeError(2300, ngDevMode && `Date format is too long. Exceeded maximum length of ${MAX_DATE_FORMAT_LENGTH} characters.`);
+  }
 }
 function assertValidDateFormat(parts) {
   if (parts.some((part) => /^Y+$/.test(part)) && !parts.some((part) => /^w+$/.test(part))) {
@@ -26905,6 +27165,10 @@ function formatNumberToLocaleString(value, pattern, locale, groupSymbol, decimal
         maxFraction = parseIntAutoRadix(maxFractionPart);
       } else if (minFractionPart != null && minFraction > maxFraction) {
         maxFraction = minFraction;
+      }
+      const MAX_ALLOWED_DIGITS = 100;
+      if (minInt > MAX_ALLOWED_DIGITS || minFraction > MAX_ALLOWED_DIGITS || maxFraction > MAX_ALLOWED_DIGITS) {
+        throw new RuntimeError(2306, ngDevMode && `${digitsInfo} is not a valid digit info. Exceeded maximum limits of ${MAX_ALLOWED_DIGITS} digits.`);
       }
     }
     roundNumber(parsedNumber, minFraction, maxFraction);
@@ -28716,6 +28980,11 @@ var CommonModule = class _CommonModule {
 })();
 
 // node_modules/@angular/common/fesm2022/_platform_navigation-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var PRECOMMIT_HANDLER_SUPPORTED = new InjectionToken("", {
   factory: () => {
     return typeof window !== "undefined" && typeof window.NavigationPrecommitController !== "undefined";
@@ -28742,6 +29011,11 @@ var PlatformNavigation = class _PlatformNavigation {
 })();
 
 // node_modules/@angular/common/fesm2022/_xhr-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function parseCookieValue(cookieStr, name) {
   name = encodeURIComponent(name);
   for (const cookie of cookieStr.split(";")) {
@@ -28757,6 +29031,11 @@ var XhrFactory = class {
 };
 
 // node_modules/@angular/common/fesm2022/common.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var NavigationAdapterForLocation = class _NavigationAdapterForLocation extends Location {
   navigation = inject2(PlatformNavigation);
   destroyRef = inject2(DestroyRef);
@@ -28836,7 +29115,7 @@ var NullViewportScroller = class {
   }
   scrollToPosition(position) {
   }
-  scrollToAnchor(anchor) {
+  scrollToAnchor(anchor, options) {
   }
   setHistoryScrollRestoration(scrollRestoration) {
   }
@@ -29530,13 +29809,13 @@ var NgOptimizedImage = class _NgOptimizedImage {
       placeholderResolution
     } = this.config;
     if (placeholderInput === true) {
-      return `url(${this.callImageLoader({
+      return `url("${escapeCssUrl(this.callImageLoader({
         src: this.ngSrc,
         width: placeholderResolution,
         isPlaceholder: true
-      })})`;
+      }))}")`;
     } else if (typeof placeholderInput === "string") {
-      return `url(${placeholderInput})`;
+      return `url("${escapeCssUrl(placeholderInput)}")`;
     }
     return null;
   }
@@ -29950,6 +30229,9 @@ function unwrapSafeUrl(value) {
   }
   return unwrapSafeValue(value);
 }
+function escapeCssUrl(input3) {
+  return input3.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
 function booleanOrUrlAttribute(value) {
   if (typeof value === "string" && value !== "true" && value !== "false" && value !== "") {
     return value;
@@ -29958,16 +30240,16 @@ function booleanOrUrlAttribute(value) {
 }
 
 // node_modules/@angular/ssr/fesm2022/_validation-chunk.mjs
-var HOST_HEADERS_TO_VALIDATE = /* @__PURE__ */ new Set(["host", "x-forwarded-host"]);
+var X_FORWARDED_HEADERS = /* @__PURE__ */ new Set(["x-forwarded-for", "x-forwarded-host", "x-forwarded-port", "x-forwarded-proto", "x-forwarded-prefix"]);
+var HOST_HEADERS_TO_VALIDATE = ["host", "x-forwarded-host"];
 var VALID_PORT_REGEX = /^\d+$/;
 var VALID_PROTO_REGEX = /^https?$/i;
-var VALID_HOST_REGEX = /^[a-z0-9_.-]+(:[0-9]+)?$/i;
-var INVALID_PREFIX_REGEX = /^(?:\\|\/[/\\])|(?:^|[/\\])\.\.?(?:[/\\]|$)/;
+var VALID_PREFIX_REGEX = /^\/([a-z0-9_-]+\/)*[a-z0-9_-]*$/i;
 function getFirstHeaderValue(value) {
   return value?.toString().split(",", 1)[0]?.trim();
 }
 function validateRequest(request, allowedHosts, disableHostCheck) {
-  validateHeaders(request);
+  validateHeaders(request, allowedHosts, disableHostCheck);
   if (!disableHostCheck) {
     validateUrl(new URL(request.url), allowedHosts);
   }
@@ -29980,89 +30262,54 @@ function validateUrl(url, allowedHosts) {
     throw new Error(`URL with hostname "${hostname}" is not allowed.`);
   }
 }
-function cloneRequestAndPatchHeaders(request, allowedHosts) {
-  let onError;
-  const onErrorPromise = new Promise((resolve2) => {
-    onError = resolve2;
-  });
+function sanitizeRequestHeaders(request, trustProxyHeaders) {
+  const keysToDelete = [];
+  let deoptToCSR = false;
+  for (const [key] of request.headers) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.startsWith("x-forwarded-") && !isProxyHeaderAllowed(lowerKey, trustProxyHeaders)) {
+      console.warn(`Received "${key}" header but "trustProxyHeaders" was not set up to allow it.
+For more information, see https://angular.dev/best-practices/security#configuring-trusted-proxy-headers`);
+      deoptToCSR = true;
+      keysToDelete.push(key);
+    }
+  }
+  if (keysToDelete.length === 0) {
+    return {
+      request,
+      deoptToCSR
+    };
+  }
   const clonedReq = new Request(request.clone(), {
     signal: request.signal
   });
   const headers = clonedReq.headers;
-  const originalGet = headers.get;
-  headers.get = function(name) {
-    const value = originalGet.call(headers, name);
-    if (!value) {
-      return value;
-    }
-    validateHeader(name, value, allowedHosts, onError);
-    return value;
-  };
-  const originalValues = headers.values;
-  headers.values = function() {
-    for (const name of HOST_HEADERS_TO_VALIDATE) {
-      validateHeader(name, originalGet.call(headers, name), allowedHosts, onError);
-    }
-    return originalValues.call(headers);
-  };
-  const originalEntries = headers.entries;
-  headers.entries = function() {
-    const iterator2 = originalEntries.call(headers);
-    return {
-      next() {
-        const result2 = iterator2.next();
-        if (!result2.done) {
-          const [key, value] = result2.value;
-          validateHeader(key, value, allowedHosts, onError);
-        }
-        return result2;
-      },
-      [Symbol.iterator]() {
-        return this;
-      }
-    };
-  };
-  const originalForEach = headers.forEach;
-  headers.forEach = function(callback, thisArg) {
-    originalForEach.call(headers, (value, key, parent) => {
-      validateHeader(key, value, allowedHosts, onError);
-      callback.call(thisArg, value, key, parent);
-    }, thisArg);
-  };
-  headers[Symbol.iterator] = headers.entries;
+  for (const key of keysToDelete) {
+    headers.delete(key);
+  }
   return {
     request: clonedReq,
-    onError: onErrorPromise
+    deoptToCSR
   };
 }
-function validateHeader(name, value, allowedHosts, onError) {
-  if (!value) {
-    return;
-  }
-  if (!HOST_HEADERS_TO_VALIDATE.has(name.toLowerCase())) {
-    return;
-  }
-  try {
-    verifyHostAllowed(name, value, allowedHosts);
-  } catch (error2) {
-    onError(error2);
-    throw error2;
-  }
-}
 function verifyHostAllowed(headerName, headerValue, allowedHosts) {
-  const value = getFirstHeaderValue(headerValue);
-  if (!value) {
-    return;
-  }
-  const url = `http://${value}`;
+  const url = `http://${headerValue}`;
   if (!URL.canParse(url)) {
     throw new Error(`Header "${headerName}" contains an invalid value and cannot be parsed.`);
   }
   const {
-    hostname
+    hostname,
+    pathname,
+    search,
+    hash,
+    username,
+    password
   } = new URL(url);
+  if (pathname !== "/" || search || hash || username || password) {
+    throw new Error(`Header "${headerName}" with value "${headerValue}" contains characters that are not allowed.`);
+  }
   if (!isHostAllowed(hostname, allowedHosts)) {
-    throw new Error(`Header "${headerName}" with value "${value}" is not allowed.`);
+    throw new Error(`Header "${headerName}" with value "${headerValue}" is not allowed.`);
   }
 }
 function isHostAllowed(hostname, allowedHosts) {
@@ -30080,12 +30327,12 @@ function isHostAllowed(hostname, allowedHosts) {
   }
   return false;
 }
-function validateHeaders(request) {
+function validateHeaders(request, allowedHosts, disableHostCheck) {
   const headers = request.headers;
   for (const headerName of HOST_HEADERS_TO_VALIDATE) {
     const headerValue = getFirstHeaderValue(headers.get(headerName));
-    if (headerValue && !VALID_HOST_REGEX.test(headerValue)) {
-      throw new Error(`Header "${headerName}" contains characters that are not allowed.`);
+    if (headerValue && !disableHostCheck) {
+      verifyHostAllowed(headerName, headerValue, allowedHosts);
     }
   }
   const xForwardedPort = getFirstHeaderValue(headers.get("x-forwarded-port"));
@@ -30097,12 +30344,32 @@ function validateHeaders(request) {
     throw new Error('Header "x-forwarded-proto" must be either "http" or "https".');
   }
   const xForwardedPrefix = getFirstHeaderValue(headers.get("x-forwarded-prefix"));
-  if (xForwardedPrefix && INVALID_PREFIX_REGEX.test(xForwardedPrefix)) {
-    throw new Error('Header "x-forwarded-prefix" must not start with "\\" or multiple "/" or contain ".", ".." path segments.');
+  if (xForwardedPrefix && !VALID_PREFIX_REGEX.test(xForwardedPrefix)) {
+    throw new Error('Header "x-forwarded-prefix" is invalid. It must start with a "/" and contain only alphanumeric characters, hyphens, and underscores, separated by single slashes.');
   }
+}
+function isProxyHeaderAllowed(headerName, trustProxyHeaders) {
+  return trustProxyHeaders.has(headerName.toLowerCase());
+}
+function normalizeTrustProxyHeaders(trustProxyHeaders) {
+  if (trustProxyHeaders === void 0) {
+    return /* @__PURE__ */ new Set(["x-forwarded-host", "x-forwarded-proto"]);
+  }
+  if (trustProxyHeaders === false) {
+    return /* @__PURE__ */ new Set();
+  }
+  if (trustProxyHeaders === true) {
+    return X_FORWARDED_HEADERS;
+  }
+  return new Set(trustProxyHeaders.map((h) => h.toLowerCase()));
 }
 
 // node_modules/@angular/platform-browser/fesm2022/_dom_renderer-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var EventManagerPlugin = class {
   _doc;
   constructor(_doc) {
@@ -30359,7 +30626,7 @@ var SharedStylesHost = class _SharedStylesHost {
     }]
   }], null);
 })();
-var NAMESPACE_URIS = {
+var NAMESPACE_URIS2 = {
   "svg": "http://www.w3.org/2000/svg",
   "xhtml": "http://www.w3.org/1999/xhtml",
   "xlink": "http://www.w3.org/1999/xlink",
@@ -30546,7 +30813,7 @@ var DefaultDomRenderer2 = class {
   destroyNode = null;
   createElement(name, namespace) {
     if (namespace) {
-      return this.doc.createElementNS(NAMESPACE_URIS[namespace] || namespace, name);
+      return this.doc.createElementNS(NAMESPACE_URIS2[namespace] || namespace, name);
     }
     return this.doc.createElement(name);
   }
@@ -30588,7 +30855,7 @@ var DefaultDomRenderer2 = class {
   setAttribute(el, name, value, namespace) {
     if (namespace) {
       name = namespace + ":" + name;
-      const namespaceUri = NAMESPACE_URIS[namespace];
+      const namespaceUri = NAMESPACE_URIS2[namespace];
       if (namespaceUri) {
         el.setAttributeNS(namespaceUri, name, value);
       } else {
@@ -30600,7 +30867,7 @@ var DefaultDomRenderer2 = class {
   }
   removeAttribute(el, name, namespace) {
     if (namespace) {
-      const namespaceUri = NAMESPACE_URIS[namespace];
+      const namespaceUri = NAMESPACE_URIS2[namespace];
       if (namespaceUri) {
         el.removeAttributeNS(namespaceUri, name);
       } else {
@@ -30788,6 +31055,11 @@ var EmulatedEncapsulationDomRenderer2 = class extends NoneEncapsulationDomRender
 };
 
 // node_modules/@angular/platform-browser/fesm2022/_browser-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var BrowserDomAdapter = class _BrowserDomAdapter extends DomAdapter {
   supportsDOMEvents = true;
   static makeCurrent() {
@@ -31146,6 +31418,11 @@ var BrowserModule = class _BrowserModule {
 })();
 
 // node_modules/@angular/common/fesm2022/_module-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var HttpHeaders = class _HttpHeaders {
   headers;
   normalizedNames = /* @__PURE__ */ new Map();
@@ -31242,10 +31519,10 @@ var HttpHeaders = class _HttpHeaders {
   }
   copyFrom(other) {
     other.init();
-    Array.from(other.headers.keys()).forEach((key) => {
-      this.headers.set(key, other.headers.get(key));
+    for (const [key, values] of other.headers.entries()) {
+      this.headers.set(key, values);
       this.normalizedNames.set(key, other.normalizedNames.get(key));
-    });
+    }
   }
   clone(update) {
     const clone = new _HttpHeaders();
@@ -31266,21 +31543,22 @@ var HttpHeaders = class _HttpHeaders {
           return;
         }
         this.maybeSetNormalizedName(update.name, key);
-        const base = (update.op === "a" ? this.headers.get(key) : void 0) || [];
+        const base = update.op === "a" ? (this.headers.get(key) || []).slice() : [];
         base.push(...value);
         this.headers.set(key, base);
         break;
       case "d":
         const toDelete = update.value;
-        if (!toDelete) {
+        if (toDelete === void 0) {
           this.headers.delete(key);
           this.normalizedNames.delete(key);
         } else {
+          const valuesToDelete = Array.isArray(toDelete) ? toDelete : [toDelete];
           let existing = this.headers.get(key);
           if (!existing) {
             return;
           }
-          existing = existing.filter((value2) => toDelete.indexOf(value2) === -1);
+          existing = existing.filter((value2) => valuesToDelete.indexOf(value2) === -1);
           if (existing.length === 0) {
             this.headers.delete(key);
             this.normalizedNames.delete(key);
@@ -31490,18 +31768,20 @@ var HttpParams = class _HttpParams {
     }
     if (this.cloneFrom !== null) {
       this.cloneFrom.init();
-      this.cloneFrom.keys().forEach((key) => this.map.set(key, this.cloneFrom.map.get(key)));
+      for (const [key, values] of this.cloneFrom.map.entries()) {
+        this.map.set(key, values);
+      }
       this.updates.forEach((update) => {
         switch (update.op) {
           case "a":
           case "s":
-            const base = (update.op === "a" ? this.map.get(update.param) : void 0) || [];
+            const base = update.op === "a" ? (this.map.get(update.param) || []).slice() : [];
             base.push(valueToString(update.value));
             this.map.set(update.param, base);
             break;
           case "d":
             if (update.value !== void 0) {
-              let base2 = this.map.get(update.param) || [];
+              const base2 = (this.map.get(update.param) || []).slice();
               const idx = base2.indexOf(valueToString(update.value));
               if (idx !== -1) {
                 base2.splice(idx, 1);
@@ -31622,7 +31902,7 @@ var HttpRequest = class _HttpRequest {
       if (options.integrity) {
         this.integrity = options.integrity;
       }
-      if (options.referrer) {
+      if (options.referrer !== void 0) {
         this.referrer = options.referrer;
       }
       if (options.referrerPolicy) {
@@ -31695,7 +31975,7 @@ var HttpRequest = class _HttpRequest {
     const mode = update.mode || this.mode;
     const redirect = update.redirect || this.redirect;
     const credentials = update.credentials || this.credentials;
-    const referrer = update.referrer || this.referrer;
+    const referrer = update.referrer ?? this.referrer;
     const integrity = update.integrity || this.integrity;
     const referrerPolicy = update.referrerPolicy || this.referrerPolicy;
     const transferCache = update.transferCache ?? this.transferCache;
@@ -32377,6 +32657,124 @@ var HttpXhrBackend = class _HttpXhrBackend {
     type: XhrFactory
   }], null);
 })();
+var XSRF_ENABLED = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_ENABLED" : "", {
+  factory: () => true
+});
+var XSRF_DEFAULT_COOKIE_NAME = "XSRF-TOKEN";
+var XSRF_COOKIE_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_COOKIE_NAME" : "", {
+  factory: () => XSRF_DEFAULT_COOKIE_NAME
+});
+var XSRF_DEFAULT_HEADER_NAME = "X-XSRF-TOKEN";
+var XSRF_HEADER_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_HEADER_NAME" : "", {
+  factory: () => XSRF_DEFAULT_HEADER_NAME
+});
+var HttpXsrfCookieExtractor = class _HttpXsrfCookieExtractor {
+  cookieName = inject2(XSRF_COOKIE_NAME);
+  doc = inject2(DOCUMENT);
+  lastCookieString = "";
+  lastToken = null;
+  parseCount = 0;
+  getToken() {
+    if (true) {
+      return null;
+    }
+    const cookieString = this.doc.cookie || "";
+    if (cookieString !== this.lastCookieString) {
+      this.parseCount++;
+      this.lastToken = parseCookieValue(cookieString, this.cookieName);
+      this.lastCookieString = cookieString;
+    }
+    return this.lastToken;
+  }
+  static \u0275fac = function HttpXsrfCookieExtractor_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _HttpXsrfCookieExtractor)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
+    token: _HttpXsrfCookieExtractor,
+    factory: _HttpXsrfCookieExtractor.\u0275fac,
+    providedIn: "root"
+  });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfCookieExtractor, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root"
+    }]
+  }], null, null);
+})();
+var HttpXsrfTokenExtractor = class _HttpXsrfTokenExtractor {
+  static \u0275fac = function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
+    token: _HttpXsrfTokenExtractor,
+    factory: function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
+      let __ngConditionalFactory__ = null;
+      if (__ngFactoryType__) {
+        __ngConditionalFactory__ = new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
+      } else {
+        __ngConditionalFactory__ = \u0275\u0275inject(HttpXsrfCookieExtractor);
+      }
+      return __ngConditionalFactory__;
+    },
+    providedIn: "root"
+  });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfTokenExtractor, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root",
+      useExisting: HttpXsrfCookieExtractor
+    }]
+  }], null, null);
+})();
+function xsrfInterceptorFn(req, next) {
+  if (!inject2(XSRF_ENABLED) || req.method === "GET" || req.method === "HEAD") {
+    return next(req);
+  }
+  try {
+    const locationHref = inject2(PlatformLocation).href;
+    const {
+      origin: locationOrigin
+    } = new URL(locationHref);
+    const {
+      origin: requestOrigin
+    } = new URL(req.url, locationOrigin);
+    if (locationOrigin !== requestOrigin) {
+      return next(req);
+    }
+  } catch (e) {
+    return next(req);
+  }
+  const token = inject2(HttpXsrfTokenExtractor).getToken();
+  const headerName = inject2(XSRF_HEADER_NAME);
+  if (token != null && !req.headers.has(headerName)) {
+    req = req.clone({
+      headers: req.headers.set(headerName, token)
+    });
+  }
+  return next(req);
+}
+var HttpXsrfInterceptor = class _HttpXsrfInterceptor {
+  injector = inject2(EnvironmentInjector);
+  intercept(initialRequest, next) {
+    return runInInjectionContext(this.injector, () => xsrfInterceptorFn(initialRequest, (downstreamRequest) => next.handle(downstreamRequest)));
+  }
+  static \u0275fac = function HttpXsrfInterceptor_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _HttpXsrfInterceptor)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
+    token: _HttpXsrfInterceptor,
+    factory: _HttpXsrfInterceptor.\u0275fac
+  });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfInterceptor, [{
+    type: Injectable
+  }], null, null);
+})();
 function interceptorChainEndFn(req, finalHandlerFn) {
   return finalHandlerFn(req);
 }
@@ -32390,7 +32788,7 @@ function chainedInterceptorFn(chainTailFn, interceptorFn, injector) {
 }
 var HTTP_INTERCEPTORS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_INTERCEPTORS" : "");
 var HTTP_INTERCEPTOR_FNS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_INTERCEPTOR_FNS" : "", {
-  factory: () => []
+  factory: () => [xsrfInterceptorFn]
 });
 var HTTP_ROOT_INTERCEPTOR_FNS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_ROOT_INTERCEPTOR_FNS" : "");
 var REQUESTS_CONTRIBUTE_TO_STABILITY = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "REQUESTS_CONTRIBUTE_TO_STABILITY" : "", {
@@ -32462,7 +32860,14 @@ var HttpInterceptorHandler = class _HttpInterceptorHandler {
   }
   handle(initialRequest) {
     if (this.chain === null) {
-      const dedupedInterceptorFns = Array.from(/* @__PURE__ */ new Set([...this.injector.get(HTTP_INTERCEPTOR_FNS), ...this.injector.get(HTTP_ROOT_INTERCEPTOR_FNS, [])]));
+      const parentHandler = this.injector.get(HttpHandler, null, {
+        skipSelf: true
+      });
+      const isDelegating = parentHandler !== null && this.backend === parentHandler;
+      const rootInterceptorFns = this.injector.get(HTTP_ROOT_INTERCEPTOR_FNS, [], isDelegating ? {
+        self: true
+      } : void 0);
+      const dedupedInterceptorFns = Array.from(/* @__PURE__ */ new Set([...this.injector.get(HTTP_INTERCEPTOR_FNS), ...rootInterceptorFns]));
       this.chain = dedupedInterceptorFns.reduceRight((nextSequencedFn, interceptorFn) => chainedInterceptorFn(nextSequencedFn, interceptorFn, this.injector), interceptorChainEndFn);
     }
     if (this.contributeToStability) {
@@ -32681,6 +33086,7 @@ var JSONP_ERR_NO_CALLBACK = "JSONP injected script did not invoke callback.";
 var JSONP_ERR_WRONG_METHOD = "JSONP requests must use JSONP request method.";
 var JSONP_ERR_WRONG_RESPONSE_TYPE = "JSONP requests must use Json response type.";
 var JSONP_ERR_HEADERS_NOT_SUPPORTED = "JSONP requests do not support headers.";
+var JSONP_ERR_UNSAFE_URL = "JSONP requests only support absolute URLs with HTTP(S) protocols.";
 var JsonpCallbackContext = class {
 };
 function jsonpCallbackContext() {
@@ -32693,6 +33099,9 @@ var JsonpClientBackend = class _JsonpClientBackend {
   callbackMap;
   document;
   resolvedPromise = Promise.resolve();
+  nonce = inject2(CSP_NONCE, {
+    optional: true
+  });
   constructor(callbackMap, document3) {
     this.callbackMap = callbackMap;
     this.document = document3;
@@ -32709,11 +33118,17 @@ var JsonpClientBackend = class _JsonpClientBackend {
     if (req.headers.keys().length > 0) {
       throw new RuntimeError(2812, ngDevMode && JSONP_ERR_HEADERS_NOT_SUPPORTED);
     }
+    if (!this.isAllowedJsonpUrl(req.urlWithParams)) {
+      throw new RuntimeError(2826, ngDevMode && JSONP_ERR_UNSAFE_URL);
+    }
     return new Observable((observer) => {
       const callback = this.nextCallback();
       const url = req.urlWithParams.replace(/=JSONP_CALLBACK(&|$)/, `=${callback}$1`);
       const node2 = this.document.createElement("script");
       node2.src = url;
+      if (this.nonce) {
+        node2.setAttribute("nonce", this.nonce);
+      }
       let body = null;
       let finished = false;
       this.callbackMap[callback] = (data) => {
@@ -32775,6 +33190,9 @@ var JsonpClientBackend = class _JsonpClientBackend {
     foreignDocument ??= this.document.implementation.createHTMLDocument();
     foreignDocument.adoptNode(script);
   }
+  isAllowedJsonpUrl(url) {
+    return /^https?:\/\//i.test(url);
+  }
   static \u0275fac = function JsonpClientBackend_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _JsonpClientBackend)(\u0275\u0275inject(JsonpCallbackContext), \u0275\u0275inject(DOCUMENT));
   };
@@ -32825,124 +33243,6 @@ var JsonpInterceptor = class _JsonpInterceptor {
     type: EnvironmentInjector
   }], null);
 })();
-var XSRF_ENABLED = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_ENABLED" : "", {
-  factory: () => true
-});
-var XSRF_DEFAULT_COOKIE_NAME = "XSRF-TOKEN";
-var XSRF_COOKIE_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_COOKIE_NAME" : "", {
-  factory: () => XSRF_DEFAULT_COOKIE_NAME
-});
-var XSRF_DEFAULT_HEADER_NAME = "X-XSRF-TOKEN";
-var XSRF_HEADER_NAME = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "XSRF_HEADER_NAME" : "", {
-  factory: () => XSRF_DEFAULT_HEADER_NAME
-});
-var HttpXsrfCookieExtractor = class _HttpXsrfCookieExtractor {
-  cookieName = inject2(XSRF_COOKIE_NAME);
-  doc = inject2(DOCUMENT);
-  lastCookieString = "";
-  lastToken = null;
-  parseCount = 0;
-  getToken() {
-    if (true) {
-      return null;
-    }
-    const cookieString = this.doc.cookie || "";
-    if (cookieString !== this.lastCookieString) {
-      this.parseCount++;
-      this.lastToken = parseCookieValue(cookieString, this.cookieName);
-      this.lastCookieString = cookieString;
-    }
-    return this.lastToken;
-  }
-  static \u0275fac = function HttpXsrfCookieExtractor_Factory(__ngFactoryType__) {
-    return new (__ngFactoryType__ || _HttpXsrfCookieExtractor)();
-  };
-  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
-    token: _HttpXsrfCookieExtractor,
-    factory: _HttpXsrfCookieExtractor.\u0275fac,
-    providedIn: "root"
-  });
-};
-(() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfCookieExtractor, [{
-    type: Injectable,
-    args: [{
-      providedIn: "root"
-    }]
-  }], null, null);
-})();
-var HttpXsrfTokenExtractor = class _HttpXsrfTokenExtractor {
-  static \u0275fac = function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
-    return new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
-  };
-  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
-    token: _HttpXsrfTokenExtractor,
-    factory: function HttpXsrfTokenExtractor_Factory(__ngFactoryType__) {
-      let __ngConditionalFactory__ = null;
-      if (__ngFactoryType__) {
-        __ngConditionalFactory__ = new (__ngFactoryType__ || _HttpXsrfTokenExtractor)();
-      } else {
-        __ngConditionalFactory__ = \u0275\u0275inject(HttpXsrfCookieExtractor);
-      }
-      return __ngConditionalFactory__;
-    },
-    providedIn: "root"
-  });
-};
-(() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfTokenExtractor, [{
-    type: Injectable,
-    args: [{
-      providedIn: "root",
-      useExisting: HttpXsrfCookieExtractor
-    }]
-  }], null, null);
-})();
-function xsrfInterceptorFn(req, next) {
-  if (!inject2(XSRF_ENABLED) || req.method === "GET" || req.method === "HEAD") {
-    return next(req);
-  }
-  try {
-    const locationHref = inject2(PlatformLocation).href;
-    const {
-      origin: locationOrigin
-    } = new URL(locationHref);
-    const {
-      origin: requestOrigin
-    } = new URL(req.url, locationOrigin);
-    if (locationOrigin !== requestOrigin) {
-      return next(req);
-    }
-  } catch (e) {
-    return next(req);
-  }
-  const token = inject2(HttpXsrfTokenExtractor).getToken();
-  const headerName = inject2(XSRF_HEADER_NAME);
-  if (token != null && !req.headers.has(headerName)) {
-    req = req.clone({
-      headers: req.headers.set(headerName, token)
-    });
-  }
-  return next(req);
-}
-var HttpXsrfInterceptor = class _HttpXsrfInterceptor {
-  injector = inject2(EnvironmentInjector);
-  intercept(initialRequest, next) {
-    return runInInjectionContext(this.injector, () => xsrfInterceptorFn(initialRequest, (downstreamRequest) => next.handle(downstreamRequest)));
-  }
-  static \u0275fac = function HttpXsrfInterceptor_Factory(__ngFactoryType__) {
-    return new (__ngFactoryType__ || _HttpXsrfInterceptor)();
-  };
-  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({
-    token: _HttpXsrfInterceptor,
-    factory: _HttpXsrfInterceptor.\u0275fac
-  });
-};
-(() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(HttpXsrfInterceptor, [{
-    type: Injectable
-  }], null, null);
-})();
 var HttpFeatureKind;
 (function(HttpFeatureKind2) {
   HttpFeatureKind2[HttpFeatureKind2["Interceptors"] = 0] = "Interceptors";
@@ -32963,7 +33263,10 @@ function provideHttpClient(...features) {
   if (ngDevMode) {
     const featureKinds = new Set(features.map((f) => f.\u0275kind));
     if (featureKinds.has(HttpFeatureKind.NoXsrfProtection) && featureKinds.has(HttpFeatureKind.CustomXsrfConfiguration)) {
-      throw new Error(ngDevMode ? `Configuration error: found both withXsrfConfiguration() and withNoXsrfProtection() in the same call to provideHttpClient(), which is a contradiction.` : "");
+      throw new Error(`Configuration error: found both withXsrfConfiguration() and withNoXsrfProtection() in the same call to provideHttpClient(), which is a contradiction.`);
+    }
+    if (featureKinds.has(HttpFeatureKind.RequestsMadeViaParent) && featureKinds.has(HttpFeatureKind.Fetch)) {
+      throw new Error(`Configuration error: withRequestsMadeViaParent() cannot be combined with withFetch() in the same call to provideHttpClient().`);
     }
   }
   const providers = [HttpClient, HttpInterceptorHandler, {
@@ -33129,6 +33432,11 @@ var HttpClientJsonpModule = class _HttpClientJsonpModule {
 })();
 
 // node_modules/@angular/common/fesm2022/http.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var HTTP_TRANSFER_CACHE_ORIGIN_MAP = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_TRANSFER_CACHE_ORIGIN_MAP" : "");
 var BODY = "b";
 var HEADERS = "h";
@@ -33138,7 +33446,7 @@ var REQ_URL = "u";
 var RESPONSE_TYPE = "rt";
 var CACHE_OPTIONS = new InjectionToken(typeof ngDevMode !== "undefined" && ngDevMode ? "HTTP_TRANSFER_STATE_CACHE_OPTIONS" : "");
 var ALLOWED_METHODS = ["GET", "HEAD"];
-function shouldCacheRequest(req, options) {
+function canUseOrCacheRequest(req, options) {
   const _a2 = options, {
     isCacheActive
   } = _a2, globalOptions = __objRest(_a2, [
@@ -33148,97 +33456,102 @@ function shouldCacheRequest(req, options) {
     transferCache: requestOptions,
     method: requestMethod
   } = req;
-  if (!isCacheActive || requestOptions === false || requestMethod === "POST" && !globalOptions.includePostRequests && !requestOptions || requestMethod !== "POST" && !ALLOWED_METHODS.includes(requestMethod) || !globalOptions.includeRequestsWithAuthHeaders && hasAuthHeaders(req) || globalOptions.filter?.(req) === false) {
+  if (!isCacheActive || requestOptions === false || hasOutgoingCredentials(req) || requestMethod === "POST" && !globalOptions.includePostRequests && !requestOptions || requestMethod !== "POST" && !ALLOWED_METHODS.includes(requestMethod) || !globalOptions.includeRequestsWithAuthHeaders && hasAuthHeaders(req) || hasUncacheableCacheControl(req.headers) || isNonCacheableRequest(req.cache) || globalOptions.filter?.(req) === false) {
     return false;
   }
   return true;
 }
 function getHeadersToInclude(options, requestOptions) {
-  const {
-    includeHeaders: globalHeaders
-  } = options;
-  let headersToInclude = globalHeaders;
-  if (typeof requestOptions === "object" && requestOptions.includeHeaders) {
-    headersToInclude = requestOptions.includeHeaders;
-  }
-  return headersToInclude;
+  return typeof requestOptions === "object" && requestOptions.includeHeaders ? requestOptions.includeHeaders : options.includeHeaders;
 }
-function retrieveStateFromCache(req, options, transferState, originMap) {
-  const {
-    transferCache: requestOptions
-  } = req;
-  if (!shouldCacheRequest(req, options)) {
+function retrieveStateFromCache(req, options, transferState, originMap, storeKey, skipUseCacheChecks = false) {
+  if (!skipUseCacheChecks && !canUseOrCacheRequest(req, options)) {
     return null;
   }
   if (false) {
     throw new RuntimeError(2803, ngDevMode && "Angular detected that the `HTTP_TRANSFER_CACHE_ORIGIN_MAP` token is configured and present in the client side code. Please ensure that this token is only provided in the server code of the application.");
   }
-  const requestUrl = originMap ? mapRequestOriginUrl(req.url, originMap) : req.url;
-  const storeKey = makeCacheKey(req, requestUrl);
-  const response = transferState.get(storeKey, null);
-  const headersToInclude = getHeadersToInclude(options, requestOptions);
-  if (response) {
-    const {
-      [BODY]: undecodedBody,
-      [RESPONSE_TYPE]: responseType,
-      [HEADERS]: httpHeaders,
-      [STATUS]: status,
-      [STATUS_TEXT]: statusText,
-      [REQ_URL]: url
-    } = response;
-    let body = undecodedBody;
-    switch (responseType) {
-      case "arraybuffer":
-        body = fromBase64(undecodedBody);
-        break;
-      case "blob":
-        body = new Blob([fromBase64(undecodedBody)]);
-        break;
-    }
-    let headers = new HttpHeaders(httpHeaders);
-    if (typeof ngDevMode === "undefined" || ngDevMode) {
-      headers = appendMissingHeadersDetection(req.url, headers, headersToInclude ?? []);
-    }
-    return new HttpResponse({
-      body,
-      headers,
-      status,
-      statusText,
-      url
-    });
+  if (!storeKey) {
+    const requestUrl = originMap ? mapRequestOriginUrl(req.url, originMap) : req.url;
+    storeKey = makeCacheKey(req, requestUrl);
   }
-  return null;
+  const response = transferState.get(storeKey, null);
+  if (!response) {
+    return null;
+  }
+  const {
+    [BODY]: undecodedBody,
+    [RESPONSE_TYPE]: responseType,
+    [HEADERS]: httpHeaders,
+    [STATUS]: status,
+    [STATUS_TEXT]: statusText,
+    [REQ_URL]: url
+  } = response;
+  let body = undecodedBody;
+  switch (responseType) {
+    case "arraybuffer":
+      body = fromBase64(undecodedBody);
+      break;
+    case "blob":
+      body = new Blob([fromBase64(undecodedBody)]);
+      break;
+  }
+  let headers = new HttpHeaders(httpHeaders);
+  if (typeof ngDevMode === "undefined" || ngDevMode) {
+    const {
+      transferCache: requestOptions
+    } = req;
+    const headersToInclude = getHeadersToInclude(options, requestOptions);
+    headers = appendMissingHeadersDetection(req.url, headers, headersToInclude ?? []);
+  }
+  return new HttpResponse({
+    body,
+    headers,
+    status,
+    statusText,
+    url
+  });
 }
 function transferCacheInterceptorFn(req, next) {
   const options = inject2(CACHE_OPTIONS);
+  if (!canUseOrCacheRequest(req, options)) {
+    return next(req);
+  }
   const transferState = inject2(TransferState);
   const originMap = inject2(HTTP_TRANSFER_CACHE_ORIGIN_MAP, {
     optional: true
   });
-  const cachedResponse = retrieveStateFromCache(req, options, transferState, originMap);
-  if (cachedResponse) {
-    return of(cachedResponse);
-  }
-  const {
-    transferCache: requestOptions
-  } = req;
-  const headersToInclude = getHeadersToInclude(options, requestOptions);
   const requestUrl = originMap ? mapRequestOriginUrl(req.url, originMap) : req.url;
   const storeKey = makeCacheKey(req, requestUrl);
-  if (!shouldCacheRequest(req, options)) {
-    return next(req);
+  const cachedResponse = retrieveStateFromCache(req, options, transferState, null, storeKey, true);
+  if (cachedResponse) {
+    return of(cachedResponse);
   }
   const event$ = next(req);
   if (true) {
     return event$.pipe(tap((event) => {
       if (event instanceof HttpResponse) {
+        const {
+          headers,
+          body,
+          status,
+          statusText
+        } = event;
+        if (hasUncacheableCacheControl(headers) || hasSetCookieHeader(headers)) {
+          return;
+        }
+        const {
+          transferCache: requestOptions,
+          responseType
+        } = req;
+        const headersToInclude = getHeadersToInclude(options, requestOptions);
         transferState.set(storeKey, {
-          [BODY]: req.responseType === "arraybuffer" || req.responseType === "blob" ? toBase64(event.body) : event.body,
-          [HEADERS]: getFilteredHeaders(event.headers, headersToInclude),
-          [STATUS]: event.status,
-          [STATUS_TEXT]: event.statusText,
+          [BODY]: responseType === "arraybuffer" || responseType === "blob" ? toBase64(body) : body,
+          [HEADERS]: getFilteredHeaders(headers, headersToInclude),
+          [STATUS]: status,
+          [STATUS_TEXT]: statusText,
           [REQ_URL]: requestUrl,
-          [RESPONSE_TYPE]: req.responseType
+          [RESPONSE_TYPE]: responseType
         });
       }
     }));
@@ -33246,7 +33559,32 @@ function transferCacheInterceptorFn(req, next) {
   return event$;
 }
 function hasAuthHeaders(req) {
-  return req.headers.has("authorization") || req.headers.has("proxy-authorization");
+  const headers = req.headers;
+  return headers.has("authorization") || headers.has("proxy-authorization") || headers.has("cookie");
+}
+function hasOutgoingCredentials(req) {
+  const {
+    withCredentials,
+    credentials
+  } = req;
+  return withCredentials || credentials === "include" || credentials === "same-origin";
+}
+var UNCACHEABLE_CACHE_CONTROL_DIRECTIVES = /* @__PURE__ */ new Set(["no-store", "private", "no-cache"]);
+function hasUncacheableCacheControl(headers) {
+  const cacheControl = headers.get("cache-control");
+  if (!cacheControl) {
+    return false;
+  }
+  return cacheControl.split(",").some((directive) => {
+    const directiveName = directive.split("=", 1)[0].trim().toLowerCase();
+    return UNCACHEABLE_CACHE_CONTROL_DIRECTIVES.has(directiveName);
+  });
+}
+function hasSetCookieHeader(headers) {
+  return headers.has("set-cookie");
+}
+function isNonCacheableRequest(cache) {
+  return cache === "no-cache" || cache === "no-store";
 }
 function getFilteredHeaders(headers, includeHeaders) {
   if (!includeHeaders) {
@@ -33262,7 +33600,9 @@ function getFilteredHeaders(headers, includeHeaders) {
   return headersMap;
 }
 function sortAndConcatParams(params) {
-  return [...params.keys()].sort().map((k) => `${k}=${params.getAll(k)}`).join("&");
+  const searchParams = new URLSearchParams(params instanceof URLSearchParams ? params : params.toString());
+  searchParams.sort();
+  return searchParams.toString();
 }
 function makeCacheKey(request, mappedRequestUrl) {
   const {
@@ -33280,14 +33620,6 @@ function makeCacheKey(request, mappedRequestUrl) {
   const key = [method, responseType, mappedRequestUrl, serializedBody, encodedParams].join("|");
   const hash = generateHash(key);
   return makeStateKey(hash);
-}
-function generateHash(value) {
-  let hash = 0;
-  for (const char of value) {
-    hash = Math.imul(31, hash) + char.charCodeAt(0) << 0;
-  }
-  hash += 2147483647 + 1;
-  return hash.toString();
 }
 function toBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -33367,6 +33699,76 @@ function verifyMappedOrigin(url) {
   if (new URL(url, "resolve://").pathname !== "/") {
     throw new RuntimeError(2804, `Angular detected a URL with a path segment in the value provided for the \`HTTP_TRANSFER_CACHE_ORIGIN_MAP\` token: ${url}. The map should only contain origins without any other segments.`);
   }
+}
+var SHA256_ROUND_CONSTANTS = /* @__PURE__ */ new Uint32Array([1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221, 3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580, 3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986, 2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037, 2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344, 430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779, 1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298]);
+var textEncoder;
+function generateHash(value) {
+  textEncoder ??= new TextEncoder();
+  const inputBytes = textEncoder.encode(value);
+  let hashState0 = 1779033703;
+  let hashState1 = 3144134277;
+  let hashState2 = 1013904242;
+  let hashState3 = 2773480762;
+  let hashState4 = 1359893119;
+  let hashState5 = 2600822924;
+  let hashState6 = 528734635;
+  let hashState7 = 1541459225;
+  const messageLengthInBits = inputBytes.length * 8;
+  const paddedLengthInBytes = (inputBytes.length + 8 >> 6) + 1 << 6;
+  const paddedBytes = new Uint8Array(paddedLengthInBytes);
+  paddedBytes.set(inputBytes);
+  paddedBytes[inputBytes.length] = 128;
+  const paddedBytesView = new DataView(paddedBytes.buffer);
+  const lowBits = messageLengthInBits >>> 0;
+  const highBits = messageLengthInBits / 4294967296 >>> 0;
+  paddedBytesView.setUint32(paddedLengthInBytes - 8, highBits, false);
+  paddedBytesView.setUint32(paddedLengthInBytes - 4, lowBits, false);
+  const messageSchedule = new Uint32Array(64);
+  for (let chunkOffset = 0; chunkOffset < paddedLengthInBytes; chunkOffset += 64) {
+    for (let i = 0; i < 16; i++) {
+      messageSchedule[i] = paddedBytesView.getUint32(chunkOffset + i * 4, false);
+    }
+    for (let i = 16; i < 64; i++) {
+      const prevWord15 = messageSchedule[i - 15];
+      const sigma0 = ((prevWord15 >>> 7 | prevWord15 << 25) ^ (prevWord15 >>> 18 | prevWord15 << 14) ^ prevWord15 >>> 3) >>> 0;
+      const prevWord2 = messageSchedule[i - 2];
+      const sigma1 = ((prevWord2 >>> 17 | prevWord2 << 15) ^ (prevWord2 >>> 19 | prevWord2 << 13) ^ prevWord2 >>> 10) >>> 0;
+      messageSchedule[i] = messageSchedule[i - 16] + sigma0 + messageSchedule[i - 7] + sigma1 >>> 0;
+    }
+    let workingStateA = hashState0;
+    let workingStateB = hashState1;
+    let workingStateC = hashState2;
+    let workingStateD = hashState3;
+    let workingStateE = hashState4;
+    let workingStateF = hashState5;
+    let workingStateG = hashState6;
+    let workingStateH = hashState7;
+    for (let i = 0; i < 64; i++) {
+      const capitalSigma1 = ((workingStateE >>> 6 | workingStateE << 26) ^ (workingStateE >>> 11 | workingStateE << 21) ^ (workingStateE >>> 25 | workingStateE << 7)) >>> 0;
+      const chFunction = (workingStateE & workingStateF ^ ~workingStateE & workingStateG) >>> 0;
+      const temp1 = workingStateH + capitalSigma1 + chFunction + SHA256_ROUND_CONSTANTS[i] + messageSchedule[i] >>> 0;
+      const capitalSigma0 = ((workingStateA >>> 2 | workingStateA << 30) ^ (workingStateA >>> 13 | workingStateA << 19) ^ (workingStateA >>> 22 | workingStateA << 10)) >>> 0;
+      const majFunction = (workingStateA & workingStateB ^ workingStateA & workingStateC ^ workingStateB & workingStateC) >>> 0;
+      const temp2 = capitalSigma0 + majFunction >>> 0;
+      workingStateH = workingStateG;
+      workingStateG = workingStateF;
+      workingStateF = workingStateE;
+      workingStateE = workingStateD + temp1 >>> 0;
+      workingStateD = workingStateC;
+      workingStateC = workingStateB;
+      workingStateB = workingStateA;
+      workingStateA = temp1 + temp2 >>> 0;
+    }
+    hashState0 = hashState0 + workingStateA >>> 0;
+    hashState1 = hashState1 + workingStateB >>> 0;
+    hashState2 = hashState2 + workingStateC >>> 0;
+    hashState3 = hashState3 + workingStateD >>> 0;
+    hashState4 = hashState4 + workingStateE >>> 0;
+    hashState5 = hashState5 + workingStateF >>> 0;
+    hashState6 = hashState6 + workingStateG >>> 0;
+    hashState7 = hashState7 + workingStateH >>> 0;
+  }
+  return [hashState0, hashState1, hashState2, hashState3, hashState4, hashState5, hashState6, hashState7].map((x) => x.toString(16).padStart(8, "0")).join("");
 }
 var httpResource = (() => {
   const jsonFn = makeHttpResourceFn("json");
@@ -33543,6 +33945,11 @@ var HttpResourceImpl = class extends ResourceImpl {
 };
 
 // node_modules/@angular/platform-browser/fesm2022/platform-browser.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var Meta = class _Meta {
   _doc;
   _dom;
@@ -33565,15 +33972,17 @@ var Meta = class _Meta {
   }
   getTag(attrSelector) {
     if (!attrSelector) return null;
-    return this._doc.querySelector(`meta[${attrSelector}]`) || null;
+    const meta = this._doc.querySelector(`meta[${attrSelector}]`);
+    return meta?.nodeName.toLowerCase() === "meta" ? meta : null;
   }
   getTags(attrSelector) {
     if (!attrSelector) return [];
     const list = this._doc.querySelectorAll(`meta[${attrSelector}]`);
-    return list ? [].slice.call(list) : [];
+    return list ? [].slice.call(list).filter((elem) => elem.nodeName.toLowerCase() === "meta") : [];
   }
   updateTag(tag, selector) {
     if (!tag) return null;
+    this._validateMetaDefinition(tag);
     selector = selector || this._parseSelector(tag);
     const meta = this.getTag(selector);
     if (meta) {
@@ -33590,6 +33999,7 @@ var Meta = class _Meta {
     }
   }
   _getOrCreateElement(meta, forceCreation = false) {
+    this._validateMetaDefinition(meta);
     if (!forceCreation) {
       const selector = this._parseSelector(meta);
       const elem = this.getTags(selector).filter((elem2) => this._containsAttributes(meta, elem2))[0];
@@ -33607,13 +34017,24 @@ var Meta = class _Meta {
   }
   _parseSelector(tag) {
     const attr = tag.name ? "name" : "property";
-    return `${attr}="${tag[attr]}"`;
+    return `${attr}=${this._escapeSelectorValue(String(tag[attr]))}`;
+  }
+  _escapeSelectorValue(value) {
+    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  _validateMetaDefinition(tag) {
+    for (const prop of Object.keys(tag)) {
+      const attributeName = this._getMetaKeyMap(prop);
+      if (attributeName.toLowerCase().startsWith("on")) {
+        throw new RuntimeError(5203, (typeof ngDevMode === "undefined" || ngDevMode) && `The Meta service does not allow setting event handler attribute '${attributeName}' for security reasons.`);
+      }
+    }
   }
   _containsAttributes(tag, elem) {
     return Object.keys(tag).every((key) => elem.getAttribute(this._getMetaKeyMap(key)) === tag[key]);
   }
   _getMetaKeyMap(prop) {
-    return META_KEYS_MAP[prop] || prop;
+    return Object.hasOwn(META_KEYS_MAP, prop) ? META_KEYS_MAP[prop] : prop;
   }
   static \u0275fac = function Meta_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _Meta)(\u0275\u0275inject(DOCUMENT));
@@ -34649,8 +35070,17 @@ function requireNodeUtils() {
     XMP: true,
     IFRAME: true,
     NOEMBED: true,
+    NOSCRIPT: true,
     NOFRAMES: true,
     PLAINTEXT: true
+  };
+  var hasRawContentFallback = {
+    // Text in these fallback raw-content elements is inert for browser parsing,
+    // but downstream SSR post-processing may reparse it without raw-text state.
+    IFRAME: true,
+    NOEMBED: true,
+    NOSCRIPT: true,
+    NOFRAMES: true
   };
   var emptyElements = {
     area: true,
@@ -34731,24 +35161,88 @@ function requireNodeUtils() {
     }
     return a.name;
   }
+  function fallbackRawContentTags(node2) {
+    const tags = [];
+    while (node2) {
+      if (node2.nodeType === 1) {
+        if (node2.namespaceURI === NAMESPACE.HTML && hasRawContentFallback[node2.tagName]) {
+          tags.push(node2.localName);
+        }
+        node2 = node2.parentNode;
+      } else if (node2.nodeType === 11 && node2._host) {
+        node2 = node2._host;
+      } else {
+        node2 = node2.parentNode;
+      }
+    }
+    return tags;
+  }
   function escapeMatchingClosingTag(rawText, parentTag) {
-    const parentClosingTag = "</" + parentTag;
+    const parentClosingTag = ("</" + parentTag).toLowerCase();
     if (!rawText.toLowerCase().includes(parentClosingTag)) {
       return rawText;
     }
-    const result2 = [...rawText];
-    const matches = rawText.matchAll(new RegExp(parentClosingTag, "ig"));
-    for (const match2 of matches) {
-      result2[match2.index] = "&lt;";
+    return rawText.replace(
+      new RegExp(escapeRegExp(parentClosingTag), "ig"),
+      (m) => "&lt;" + m.slice(1)
+    );
+  }
+  function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  function escapeMatchingClosingTags(rawText, parentTag, ancestorTags) {
+    let result2 = escapeMatchingClosingTag(rawText, parentTag);
+    if (ancestorTags) {
+      for (const ancestorTag of ancestorTags) {
+        result2 = escapeMatchingClosingTag(result2, ancestorTag);
+      }
     }
-    return result2.join("");
+    return result2;
+  }
+  function escapeFallbackRawText(rawText, parentTag, ancestorTags) {
+    let result2 = "";
+    let index2 = 0;
+    while (index2 < rawText.length) {
+      const commentStart = rawText.indexOf("<!--", index2);
+      if (commentStart === -1) {
+        result2 += escape(rawText.slice(index2));
+        break;
+      }
+      result2 += escape(rawText.slice(index2, commentStart));
+      const commentEnd = findCommentEnd(rawText, commentStart + 4);
+      if (commentEnd === -1) {
+        result2 += escapeMatchingClosingTags(rawText.slice(commentStart), parentTag, ancestorTags);
+        break;
+      }
+      result2 += escapeMatchingClosingTags(rawText.slice(commentStart, commentEnd), parentTag, ancestorTags);
+      index2 = commentEnd;
+    }
+    return result2;
+  }
+  function findCommentEnd(rawText, index2) {
+    if (rawText.charAt(index2) === ">")
+      return index2 + 1;
+    if (rawText.charAt(index2) === "-" && rawText.charAt(index2 + 1) === ">")
+      return index2 + 2;
+    const match2 = CLOSING_COMMENT_REGEXP.exec(rawText.slice(index2));
+    return match2 ? index2 + match2.index + match2[0].length : -1;
   }
   const CLOSING_COMMENT_REGEXP = /--!?>/;
-  function escapeClosingCommentTag(rawContent) {
-    if (!CLOSING_COMMENT_REGEXP.test(rawContent)) {
-      return rawContent;
+  function escapeAbruptClosingCommentTag(rawContent) {
+    if (rawContent.startsWith(">")) {
+      return "&gt;" + rawContent.slice(1);
     }
-    return rawContent.replace(/(--\!?)>/g, "$1&gt;");
+    if (rawContent.startsWith("->")) {
+      return "-&gt;" + rawContent.slice(2);
+    }
+    return rawContent;
+  }
+  function escapeClosingCommentTag(rawContent) {
+    const content = escapeAbruptClosingCommentTag(rawContent);
+    if (!CLOSING_COMMENT_REGEXP.test(content)) {
+      return content;
+    }
+    return content.replace(/(--\!?)>/g, "$1&gt;");
   }
   function escapeProcessingInstructionContent(rawContent) {
     return rawContent.includes(">") ? rawContent.replaceAll(">", "&gt;") : rawContent;
@@ -34769,8 +35263,13 @@ function requireNodeUtils() {
         s += ">";
         if (!(html && emptyElements[tagname])) {
           var ss = kid.serialize();
-          if (hasRawContent[tagname.toUpperCase()]) {
+          var upperTag = tagname.toUpperCase();
+          if (hasRawContent[upperTag] && !hasRawContentFallback[upperTag] && ss.includes("</")) {
             ss = escapeMatchingClosingTag(ss, tagname);
+            const fallbackTags = fallbackRawContentTags(parent);
+            for (const fallbackTag of fallbackTags) {
+              ss = escapeMatchingClosingTag(ss, fallbackTag);
+            }
           }
           if (html && extraNewLine[tagname] && ss.charAt(0) === "\n") s += "\n";
           s += ss;
@@ -34785,22 +35284,34 @@ function requireNodeUtils() {
           parenttag = parent.tagName;
         else
           parenttag = "";
-        if (hasRawContent[parenttag] || parenttag === "NOSCRIPT" && parent.ownerDocument._scripting_enabled) {
-          s += kid.data;
+        if (hasRawContent[parenttag]) {
+          s += hasRawContentFallback[parenttag] ? escapeFallbackRawText(kid.data, parent.localName, fallbackRawContentTags(parent.parentNode)) : kid.data;
         } else {
           s += escape(kid.data);
         }
         break;
       case 8:
-        s += "<!--" + escapeClosingCommentTag(kid.data) + "-->";
+        let commentData = escapeClosingCommentTag(kid.data);
+        if (commentData.includes("</")) {
+          const fallbackTags = fallbackRawContentTags(parent);
+          for (const fallbackTag of fallbackTags) {
+            commentData = escapeMatchingClosingTag(commentData, fallbackTag);
+          }
+        }
+        s += "<!--" + commentData + "-->";
         break;
       case 7:
-        const content = escapeProcessingInstructionContent(kid.data);
+        let content = escapeProcessingInstructionContent(kid.data);
+        if (content.includes("</")) {
+          const fallbackTags = fallbackRawContentTags(parent);
+          for (const fallbackTag of fallbackTags) {
+            content = escapeMatchingClosingTag(content, fallbackTag);
+          }
+        }
         s += "<?" + kid.target + " " + content + "?>";
         break;
       case 10:
-        s += "<!DOCTYPE " + kid.name;
-        s += ">";
+        s += "<!DOCTYPE " + kid.name + ">";
         break;
       default:
         utils2.InvalidStateError();
@@ -39056,6 +39567,13 @@ var hasRequiredStyle_parser;
 function requireStyle_parser() {
   if (hasRequiredStyle_parser) return style_parser;
   hasRequiredStyle_parser = 1;
+  /**
+   * @license
+   * Copyright Google LLC All Rights Reserved.
+   *
+   * Use of this source code is governed by an MIT-style license that can be
+   * found in the LICENSE file at https://angular.io/license
+   */
   Object.defineProperty(style_parser, "__esModule", { value: true });
   style_parser.hyphenate = style_parser.parse = void 0;
   function parse2(value) {
@@ -40241,7 +40759,7 @@ function requireHtmlelts() {
       required: Boolean,
       readOnly: Boolean,
       checked: Boolean,
-      value: String,
+      value: { type: String, treatNullAsEmptyString: true },
       src: URL2,
       defaultChecked: { name: "checked", type: Boolean },
       size: { type: "unsigned long", default: 20, min: 1, setmin: 1 },
@@ -40766,6 +41284,7 @@ function requireHtmlelts() {
     ctor: function HTMLTemplateElement(doc, localName, prefix) {
       HTMLElement.call(this, doc, localName, prefix);
       this._contentFragment = doc._templateDoc.createDocumentFragment();
+      this._contentFragment._host = this;
     },
     props: {
       content: { get: function() {
@@ -40773,7 +41292,17 @@ function requireHtmlelts() {
       } },
       serialize: { value: function() {
         return this.content.serialize();
-      } }
+      } },
+      cloneNode: {
+        value: function(deep) {
+          var clone = HTMLElement.prototype.cloneNode.call(this, deep);
+          if (deep) {
+            clone._contentFragment = this._contentFragment.cloneNode(true);
+            clone._contentFragment._host = clone;
+          }
+          return clone;
+        }
+      }
     }
   });
   define2({
@@ -47883,6 +48412,7 @@ function requireHTMLParser() {
           emitDoctype();
           break;
         case -1:
+          nextchar += 1;
           forcequirks();
           emitDoctype();
           emitEOF();
@@ -50600,6 +51130,11 @@ var libExports = requireLib();
 var index = /* @__PURE__ */ getDefaultExportFromCjs(libExports);
 
 // node_modules/@angular/platform-server/fesm2022/_server-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function setDomTypes() {
   Object.assign(globalThis, index.impl);
   globalThis["KeyboardEvent"] = index.impl.Event;
@@ -50668,7 +51203,7 @@ var DominoAdapter = class _DominoAdapter extends BrowserDomAdapter {
     return "Fake user agent";
   }
   getCookie(name) {
-    throw new Error("getCookie has not been implemented");
+    throw new RuntimeError(5700, (typeof ngDevMode === "undefined" || ngDevMode) && "getCookie has not been implemented");
   }
 };
 var INITIAL_CONFIG = new InjectionToken("Server.INITIAL_CONFIG");
@@ -50682,7 +51217,7 @@ var PlatformState = class _PlatformState {
   }
   renderToString() {
     if (ngDevMode && !this._enableDomEmulation && !window?.document) {
-      throw new Error("Disabled DOM emulation should only run in browser environments");
+      throw new RuntimeError(5704, (typeof ngDevMode === "undefined" || ngDevMode) && "Disabled DOM emulation should only run in browser environments");
     }
     const measuringLabel = "renderToString";
     startMeasuring(measuringLabel);
@@ -50715,14 +51250,80 @@ var PlatformState = class _PlatformState {
 function enableDomEmulation(injector) {
   return injector.get(ENABLE_DOM_EMULATION, true);
 }
+var HTTP_OR_HTTPS_PROTOCOL_REGEX = /^https?:/i;
+function resolveUrl(urlStr, origin, options = {}) {
+  const originUrl = typeof origin === "string" ? new URL("/", origin) : origin;
+  if (!urlStr) {
+    return originUrl || null;
+  }
+  let resolved;
+  try {
+    resolved = new URL(urlStr);
+  } catch (e) {
+  }
+  const {
+    allowProtocolRelative = false,
+    allowOriginChange = true
+  } = options;
+  if (resolved) {
+    if (isDisallowedProtocolRelative(resolved, allowProtocolRelative)) {
+      throwProtocolRelativeUrlError(urlStr);
+    }
+    if (originUrl && !isSafeOriginChange(resolved, originUrl, urlStr, allowOriginChange)) {
+      throwSuspiciousUrlError(urlStr);
+    }
+    return resolved;
+  }
+  if (!URL.canParse(urlStr, "http://fake")) {
+    throw new RuntimeError(5701, typeof ngDevMode === "undefined" || ngDevMode ? `Invalid URL: ${urlStr}` : urlStr);
+  }
+  if (!originUrl) {
+    return null;
+  }
+  if (urlStr.startsWith("//")) {
+    if (!allowProtocolRelative) {
+      throwProtocolRelativeUrlError(urlStr);
+    }
+    return new URL(urlStr, origin);
+  }
+  resolved = new URL(urlStr, origin);
+  if (isDisallowedProtocolRelative(resolved, allowProtocolRelative)) {
+    throwProtocolRelativeUrlError(urlStr);
+  }
+  if (!isSafeOriginChange(resolved, originUrl, urlStr, allowOriginChange)) {
+    throwSuspiciousUrlError(urlStr);
+  }
+  return resolved;
+}
+function isDisallowedProtocolRelative(resolved, allowProtocolRelative) {
+  return !allowProtocolRelative && resolved.pathname.startsWith("//");
+}
+function throwProtocolRelativeUrlError(urlStr) {
+  throw new RuntimeError(5702, typeof ngDevMode === "undefined" || ngDevMode ? `Protocol relative URLs are not allowed in this context. URL: ${urlStr}` : urlStr);
+}
+function throwSuspiciousUrlError(urlStr) {
+  throw new RuntimeError(5703, typeof ngDevMode === "undefined" || ngDevMode ? `URL ${urlStr} changed origin unexpectedly. This is suspicious and may indicate a security bypass attempt.` : urlStr);
+}
+function isSafeOriginChange(resolved, origin, urlStr, allowOriginChange) {
+  if (origin.origin === resolved.origin) {
+    return true;
+  }
+  if (!allowOriginChange) {
+    return false;
+  }
+  return HTTP_OR_HTTPS_PROTOCOL_REGEX.test(urlStr);
+}
 var ServerXhr = class _ServerXhr {
   xhrImpl;
   \u0275loadImpl() {
     return __async(this, null, function* () {
       if (!this.xhrImpl) {
+        if (typeof ngDevMode === "undefined" || ngDevMode) {
+          console.warn("XHR support in `@angular/platform-server` is deprecated and will be removed in a future version of Angular. It has known security and performance issues in server environments, such as forwarding `Authorization` headers on cross-origin redirects and susceptibility to denial-of-service (DoS) via redirect loops. Please enable the HttpClient fetch backend instead by using `withFetch()`.");
+        }
         const {
           default: xhr
-        } = yield import("./chunk-HKIAL7SM.mjs");
+        } = yield import("./chunk-76D2ICKR.mjs");
         this.xhrImpl = xhr;
       }
     });
@@ -50730,7 +51331,7 @@ var ServerXhr = class _ServerXhr {
   build() {
     const impl2 = this.xhrImpl;
     if (!impl2) {
-      throw new Error("Unexpected state in ServerXhr: XHR implementation is not loaded.");
+      throw new RuntimeError(5705, (typeof ngDevMode === "undefined" || ngDevMode) && "Unexpected state in ServerXhr: XHR implementation is not loaded.");
     }
     return new impl2.XMLHttpRequest();
   }
@@ -50747,7 +51348,12 @@ var ServerXhr = class _ServerXhr {
     type: Injectable
   }], null, null);
 })();
+var URL_SCHEMA_REGEXP = /^(?:[a-zA-Z][a-zA-Z0-9+\-.]*:)/;
 function relativeUrlsTransformerInterceptorFn(request, next) {
+  const trimmedUrl = request.url.trim();
+  if (URL_SCHEMA_REGEXP.test(trimmedUrl)) {
+    return next(request);
+  }
   const platformLocation = inject2(PlatformLocation);
   const {
     href,
@@ -50764,9 +51370,11 @@ function relativeUrlsTransformerInterceptorFn(request, next) {
   }
   const baseHref = platformLocation.getBaseHrefFromDOM() || href;
   const baseUrl = new URL(baseHref, urlPrefix);
-  const newUrl = new URL(request.url, baseUrl).toString();
+  const parsedUrl = resolveUrl(request.url, baseUrl, {
+    allowProtocolRelative: true
+  });
   return next(request.clone({
-    url: newUrl
+    url: parsedUrl.toString()
   }));
 }
 var SERVER_HTTP_PROVIDERS = [{
@@ -50777,26 +51385,6 @@ var SERVER_HTTP_PROVIDERS = [{
   useValue: relativeUrlsTransformerInterceptorFn,
   multi: true
 }];
-function parseUrl(urlStr, origin) {
-  const {
-    hostname,
-    protocol,
-    port,
-    pathname,
-    search,
-    hash,
-    href
-  } = new URL(urlStr, origin);
-  return {
-    hostname,
-    href,
-    protocol,
-    port,
-    pathname,
-    search,
-    hash
-  };
-}
 var ServerPlatformLocation = class _ServerPlatformLocation {
   href = "/";
   hostname = "/";
@@ -50807,6 +51395,7 @@ var ServerPlatformLocation = class _ServerPlatformLocation {
   hash = "";
   _hashUpdate = new Subject();
   _doc = inject2(DOCUMENT);
+  origin = this._doc.location.origin;
   constructor() {
     const config4 = inject2(INITIAL_CONFIG, {
       optional: true
@@ -50815,14 +51404,24 @@ var ServerPlatformLocation = class _ServerPlatformLocation {
       return;
     }
     if (config4.url) {
-      const url = parseUrl(config4.url, this._doc.location.origin);
-      this.protocol = url.protocol;
-      this.hostname = url.hostname;
-      this.port = url.port;
-      this.pathname = url.pathname;
-      this.search = url.search;
-      this.hash = url.hash;
-      this.href = url.href;
+      const {
+        protocol,
+        hostname,
+        port,
+        pathname,
+        search,
+        hash,
+        href,
+        origin
+      } = resolveUrl(config4.url, this.origin);
+      this.protocol = protocol;
+      this.hostname = hostname;
+      this.port = port;
+      this.pathname = pathname;
+      this.search = search;
+      this.hash = hash;
+      this.href = href;
+      this.origin = origin;
     }
   }
   getBaseHrefFromDOM() {
@@ -50854,12 +51453,21 @@ var ServerPlatformLocation = class _ServerPlatformLocation {
   }
   replaceState(state, title, newUrl) {
     const oldUrl = this.url;
-    const parsedUrl = parseUrl(newUrl, this._doc.location.origin);
-    this.pathname = parsedUrl.pathname;
-    this.search = parsedUrl.search;
-    this.href = parsedUrl.href;
-    this.protocol = parsedUrl.protocol;
-    this.setHash(parsedUrl.hash, oldUrl);
+    const {
+      pathname,
+      search,
+      hash,
+      href,
+      protocol
+    } = resolveUrl(newUrl, this.origin, {
+      allowOriginChange: false
+    });
+    const writableThis = this;
+    writableThis.pathname = pathname;
+    writableThis.search = search;
+    writableThis.href = href;
+    writableThis.protocol = protocol;
+    this.setHash(hash, oldUrl);
   }
   pushState(state, title, newUrl) {
     this.replaceState(state, title, newUrl);
@@ -51043,7 +51651,7 @@ function _document2() {
   const _enableDomEmulation = enableDomEmulation(injector);
   let document3;
   if (config4 && config4.document) {
-    document3 = typeof config4.document === "string" ? _enableDomEmulation ? parseDocument(config4.document, config4.url) : window.document : config4.document;
+    document3 = typeof config4.document === "string" ? _enableDomEmulation ? parseDocument(config4.document, config4.url !== void 0 ? resolveUrl(config4.url, "http://localhost").href : void 0) : window.document : config4.document;
   } else {
     document3 = getDOM().createHtmlDocument();
   }
@@ -51065,6 +51673,11 @@ function platformServer(extraProviders) {
 }
 
 // node_modules/@angular/platform-server/fesm2022/platform-server.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 function provideServerRendering() {
   if (false) {
     globalThis["ngServerMode"] = true;
@@ -51076,11 +51689,15 @@ function createServerPlatform(options) {
   const extraProviders = options.platformProviders ?? [];
   const measuringLabel = "createServerPlatform";
   startMeasuring(measuringLabel);
+  const {
+    document: document3,
+    url
+  } = options;
   const platform = platformServer([{
     provide: INITIAL_CONFIG,
     useValue: {
-      document: options.document,
-      url: options.url
+      document: document3,
+      url
     }
   }, extraProviders]);
   stopMeasuring(measuringLabel);
@@ -51146,6 +51763,7 @@ function renderInternal(platformRef, applicationRef) {
     prepareForHydration(platformState, applicationRef);
     appendServerContextInfo(applicationRef);
     const environmentInjector = applicationRef.injector;
+    const errorHandler2 = environmentInjector.get(INTERNAL_APPLICATION_ERROR_HANDLER);
     const callbacks = environmentInjector.get(BEFORE_APP_SERIALIZED, null);
     if (callbacks) {
       const asyncCallbacks = [];
@@ -51156,13 +51774,13 @@ function renderInternal(platformRef, applicationRef) {
             asyncCallbacks.push(callbackResult);
           }
         } catch (e) {
-          console.warn("Ignoring BEFORE_APP_SERIALIZED Exception: ", e);
+          errorHandler2(e);
         }
       }
       if (asyncCallbacks.length) {
         for (const result2 of yield Promise.allSettled(asyncCallbacks)) {
           if (result2.status === "rejected") {
-            console.warn("Ignoring BEFORE_APP_SERIALIZED Exception: ", result2.reason);
+            errorHandler2(result2.reason);
           }
         }
       }
@@ -51189,8 +51807,10 @@ function renderModule(moduleType, options) {
     const {
       document: document3,
       url,
-      extraProviders: platformProviders
+      extraProviders: platformProviders,
+      allowedHosts
     } = options;
+    validateAllowedHosts(url, allowedHosts);
     const platformRef = createServerPlatform({
       document: document3,
       url,
@@ -51214,6 +51834,11 @@ function renderApplication(bootstrap3, options) {
     const renderAppLabel = "renderApplication";
     const bootstrapLabel = "bootstrap";
     const _renderLabel = "_render";
+    const {
+      url,
+      allowedHosts
+    } = options;
+    validateAllowedHosts(url, allowedHosts);
     startMeasuring(renderAppLabel);
     const platformRef = createServerPlatform(options);
     try {
@@ -51236,8 +51861,40 @@ function renderApplication(bootstrap3, options) {
     }
   });
 }
+function validateAllowedHosts(url, allowedHosts) {
+  if (typeof url === "string") {
+    const parsedUrl = resolveUrl(url);
+    if (parsedUrl !== null) {
+      const hostname = parsedUrl.hostname;
+      const allowedHostsSet = new Set(allowedHosts);
+      if (!isHostAllowed2(hostname, allowedHostsSet)) {
+        throw new RuntimeError(5706, typeof ngDevMode === "undefined" || ngDevMode ? `Host ${url} is not allowed. You can configure \`allowedHosts\` option.` : url);
+      }
+    }
+  }
+}
+function isHostAllowed2(hostname, allowedHosts) {
+  if (allowedHosts.has("*") || allowedHosts.has(hostname)) {
+    return true;
+  }
+  for (const allowedHost of allowedHosts) {
+    if (!allowedHost.startsWith("*.")) {
+      continue;
+    }
+    const domain = allowedHost.slice(1);
+    if (hostname.endsWith(domain)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // node_modules/@angular/router/fesm2022/_router-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var PRIMARY_OUTLET = "primary";
 var RouteTitleKey = /* @__PURE__ */ Symbol("RouteTitle");
 var ParamsAsMap = class {
@@ -51636,6 +52293,14 @@ function serializeQueryParams(params) {
   }).filter((s) => s);
   return strParams.length ? `?${strParams.join("&")}` : "";
 }
+var SLOW_ELEMENTS_SENTINEL = 1073741824;
+function setUrlDerivedKey(target, key, value) {
+  if (Number(key) >= 32 && !Object.hasOwn(target, SLOW_ELEMENTS_SENTINEL)) {
+    target[SLOW_ELEMENTS_SENTINEL] = value;
+    delete target[SLOW_ELEMENTS_SENTINEL];
+  }
+  target[key] = value;
+}
 var SEGMENT_RE = /^[^\/()?;#]+/;
 function matchSegments(str) {
   const match2 = str.match(SEGMENT_RE);
@@ -51664,7 +52329,8 @@ var UrlParser = class {
     this.remaining = url;
   }
   parseRootSegment() {
-    this.consumeOptional("/");
+    while (this.consumeOptional("/")) {
+    }
     if (this.remaining === "" || this.peekStartsWith("?") || this.peekStartsWith("#")) {
       return new UrlSegmentGroup([], {});
     }
@@ -51741,7 +52407,7 @@ var UrlParser = class {
         this.capture(value);
       }
     }
-    params[decode(key)] = decode(value);
+    setUrlDerivedKey(params, decode(key), decode(value));
   }
   parseQueryParam(params) {
     const key = matchQueryParams(this.remaining);
@@ -51788,7 +52454,8 @@ var UrlParser = class {
         outletName = PRIMARY_OUTLET;
       }
       const children = this.parseChildren(depth + 1);
-      segments[outletName ?? PRIMARY_OUTLET] = Object.keys(children).length === 1 && children[PRIMARY_OUTLET] ? children[PRIMARY_OUTLET] : new UrlSegmentGroup([], children);
+      const child = Object.keys(children).length === 1 && children[PRIMARY_OUTLET] ? children[PRIMARY_OUTLET] : new UrlSegmentGroup([], children);
+      setUrlDerivedKey(segments, outletName ?? PRIMARY_OUTLET, child);
       this.consumeOptional("//");
     }
     return segments;
@@ -51820,10 +52487,10 @@ function squashSegmentGroup(segmentGroup) {
     const childCandidate = squashSegmentGroup(child);
     if (childOutlet === PRIMARY_OUTLET && childCandidate.segments.length === 0 && childCandidate.hasChildren()) {
       for (const [grandChildOutlet, grandChild] of Object.entries(childCandidate.children)) {
-        newChildren[grandChildOutlet] = grandChild;
+        setUrlDerivedKey(newChildren, grandChildOutlet, grandChild);
       }
     } else if (childCandidate.segments.length > 0 || childCandidate.hasChildren()) {
-      newChildren[childOutlet] = childCandidate;
+      setUrlDerivedKey(newChildren, childOutlet, childCandidate);
     }
   }
   const s = new UrlSegmentGroup(segmentGroup.segments, newChildren);
@@ -52696,14 +53363,14 @@ function getInherited(route, parent, paramsInheritanceStrategy = "emptyOnly") {
   } = route;
   if (parent !== null && (paramsInheritanceStrategy === "always" || routeConfig?.path === "" || !parent.component && !parent.routeConfig?.loadComponent)) {
     inherited = {
-      params: __spreadValues(__spreadValues({}, parent.params), route.params),
-      data: __spreadValues(__spreadValues({}, parent.data), route.data),
+      params: Object.keys(route.params).length === 0 ? parent.params : Object.freeze(__spreadValues(__spreadValues({}, parent.params), route.params)),
+      data: Object.freeze(__spreadValues(__spreadValues({}, parent.data), route.data)),
       resolve: __spreadValues(__spreadValues(__spreadValues(__spreadValues({}, route.data), parent.data), routeConfig?.data), route._resolvedData)
     };
   } else {
     inherited = {
-      params: __spreadValues({}, route.params),
-      data: __spreadValues({}, route.data),
+      params: Object.freeze(__spreadValues({}, route.params)),
+      data: Object.freeze(__spreadValues({}, route.data)),
       resolve: __spreadValues(__spreadValues({}, route.data), route._resolvedData ?? {})
     };
   }
@@ -53980,7 +54647,7 @@ function emptyPathMatch(segmentGroup, slicedSegments, r) {
   return r.path === "";
 }
 function noLeftoversInUrl(segmentGroup, segments, outlet) {
-  return segments.length === 0 && !segmentGroup.children[outlet];
+  return segments.length === 0 && !segmentGroup.hasChildren();
 }
 var NoLeftoversInUrl = class {
 };
@@ -54002,6 +54669,7 @@ var Recognizer = class {
   applyRedirects;
   absoluteRedirectCount = 0;
   allowRedirects = true;
+  queryParams;
   constructor(injector, configLoader, rootComponentType, config4, urlTree, paramsInheritanceStrategy, urlSerializer, abortSignal) {
     this.injector = injector;
     this.configLoader = configLoader;
@@ -54012,6 +54680,7 @@ var Recognizer = class {
     this.urlSerializer = urlSerializer;
     this.abortSignal = abortSignal;
     this.applyRedirects = new ApplyRedirects(this.urlSerializer, this.urlTree);
+    this.queryParams = Object.freeze(__spreadValues({}, this.urlTree.queryParams));
   }
   noMatchError(e) {
     return new RuntimeError(4002, typeof ngDevMode === "undefined" || ngDevMode ? `Cannot match any routes. URL Segment: '${e.segmentGroup}'` : `'${e.segmentGroup}'`);
@@ -54036,7 +54705,7 @@ var Recognizer = class {
   }
   match(rootSegmentGroup) {
     return __async(this, null, function* () {
-      const rootSnapshot = new ActivatedRouteSnapshot([], Object.freeze({}), Object.freeze(__spreadValues({}, this.urlTree.queryParams)), this.urlTree.fragment, Object.freeze({}), PRIMARY_OUTLET, this.rootComponentType, null, {}, this.injector);
+      const rootSnapshot = new ActivatedRouteSnapshot([], Object.freeze({}), this.queryParams, this.urlTree.fragment, Object.freeze({}), PRIMARY_OUTLET, this.rootComponentType, null, {}, this.injector);
       try {
         const children = yield this.processSegmentGroup(this.injector, this.config, rootSegmentGroup, PRIMARY_OUTLET, rootSnapshot);
         return {
@@ -54046,6 +54715,7 @@ var Recognizer = class {
       } catch (e) {
         if (e instanceof AbsoluteRedirect) {
           this.urlTree = e.urlTree;
+          this.queryParams = Object.freeze(__spreadValues({}, this.urlTree.queryParams));
           return this.match(e.urlTree.root);
         }
         if (e instanceof NoMatch) {
@@ -54078,13 +54748,12 @@ var Recognizer = class {
       for (const childOutlet of childOutlets) {
         const child = segmentGroup.children[childOutlet];
         const sortedConfig = sortByMatchingOutlets(config4, childOutlet);
-        const outletChildren = yield this.processSegmentGroup(injector, sortedConfig, child, childOutlet, parentRoute);
-        children.push(...outletChildren);
+        const outletChild = yield this.processSegment(injector, sortedConfig, child, child.segments, childOutlet, true, parentRoute);
+        if (outletChild instanceof TreeNode) {
+          children.push(outletChild);
+        }
       }
       const mergedChildren = mergeEmptyPathMatches(children);
-      if (typeof ngDevMode === "undefined" || ngDevMode) {
-        checkOutletNameUniqueness(mergedChildren);
-      }
       sortActivatedRouteSnapshots(mergedChildren);
       return mergedChildren;
     });
@@ -54101,7 +54770,7 @@ var Recognizer = class {
           throw e;
         }
       }
-      if (noLeftoversInUrl(segmentGroup, segments, outlet)) {
+      if (noLeftoversInUrl(segmentGroup, segments)) {
         return new NoLeftoversInUrl();
       }
       throw new NoMatch(segmentGroup);
@@ -54109,7 +54778,7 @@ var Recognizer = class {
   }
   processSegmentAgainstRoute(injector, routes2, route, rawSegment, segments, outlet, allowRedirects, parentRoute) {
     return __async(this, null, function* () {
-      if (getOutlet(route) !== outlet && (outlet === PRIMARY_OUTLET || !emptyPathMatch(rawSegment, segments, route))) {
+      if (getOutlet(route) !== outlet && (outlet === PRIMARY_OUTLET || !emptyPathMatch(rawSegment, segments, route) || !route.children?.length && !route.loadChildren || segments.length === 0 && !rawSegment.hasChildren())) {
         throw new NoMatch(rawSegment);
       }
       if (route.redirectTo === void 0) {
@@ -54151,10 +54820,10 @@ This is currently a dev mode only error but will become a call stack size exceed
     });
   }
   createSnapshot(injector, route, segments, parameters, parentRoute) {
-    const snapshot = new ActivatedRouteSnapshot(segments, parameters, Object.freeze(__spreadValues({}, this.urlTree.queryParams)), this.urlTree.fragment, getData(route), getOutlet(route), route.component ?? route._loadedComponent ?? null, route, getResolve(route), injector);
+    const snapshot = new ActivatedRouteSnapshot(segments, parameters, this.queryParams, this.urlTree.fragment, getData(route), getOutlet(route), route.component ?? route._loadedComponent ?? null, route, getResolve(route), injector);
     const inherited = getInherited(snapshot, parentRoute, this.paramsInheritanceStrategy);
-    snapshot.params = Object.freeze(inherited.params);
-    snapshot.data = Object.freeze(inherited.data);
+    snapshot.params = inherited.params;
+    snapshot.data = inherited.data;
     return snapshot;
   }
   matchSegmentAgainstRoute(injector, rawSegment, route, segments, outlet, parentRoute) {
@@ -54185,15 +54854,18 @@ This is currently a dev mode only error but will become a call stack size exceed
         segmentGroup,
         slicedSegments
       } = split(rawSegment, consumedSegments, remainingSegments, childConfig, outlet);
-      if (slicedSegments.length === 0 && segmentGroup.hasChildren()) {
+      const matchedOnOutlet = getOutlet(route) === outlet;
+      if (matchedOnOutlet && slicedSegments.length === 0 && segmentGroup.hasChildren()) {
         const children = yield this.processChildren(childInjector, childConfig, segmentGroup, snapshot);
         return new TreeNode(snapshot, children);
       }
-      if (childConfig.length === 0 && slicedSegments.length === 0) {
+      if (matchedOnOutlet && childConfig.length === 0 && slicedSegments.length === 0) {
         return new TreeNode(snapshot, []);
       }
-      const matchedOnOutlet = getOutlet(route) === outlet;
       const child = yield this.processSegment(childInjector, childConfig, segmentGroup, slicedSegments, matchedOnOutlet ? PRIMARY_OUTLET : outlet, true, snapshot);
+      if (!matchedOnOutlet && !(child instanceof TreeNode)) {
+        throw new NoMatch(rawSegment);
+      }
       return new TreeNode(snapshot, child instanceof TreeNode ? [child] : []);
     });
   }
@@ -54267,10 +54939,12 @@ function mergeEmptyPathMatches(nodes) {
     const mergedChildren = mergeEmptyPathMatches(mergedNode.children);
     result2.push(new TreeNode(mergedNode.value, mergedChildren));
   }
-  return result2.filter((n) => !mergedNodes.has(n));
+  const merged = result2.filter((n) => !mergedNodes.has(n));
+  checkOutletNameUniqueness(merged);
+  return merged;
 }
 function checkOutletNameUniqueness(nodes) {
-  const names = {};
+  const names = /* @__PURE__ */ Object.create(null);
   nodes.forEach((n) => {
     const routeWithSameOutletName = names[n.value.outlet];
     if (routeWithSameOutletName) {
@@ -55108,6 +55782,14 @@ var StateManager = class _StateManager {
     const path2 = url instanceof UrlTree ? this.urlSerializer.serialize(url) : url;
     return path2;
   }
+  routerUrlState(navigation) {
+    if (navigation?.targetBrowserUrl === void 0 || navigation?.finalUrl === void 0) {
+      return {};
+    }
+    return {
+      \u0275routerUrl: this.urlSerializer.serialize(navigation.finalUrl)
+    };
+  }
   commitTransition({
     targetRouterState,
     finalUrl,
@@ -55205,20 +55887,21 @@ var HistoryStateManager = class _HistoryStateManager extends StateManager {
       this.currentPageId = this.browserPageId;
     }
   }
-  setBrowserUrl(path2, {
-    extras,
-    id
-  }) {
+  setBrowserUrl(path2, navigation) {
+    const {
+      extras,
+      id
+    } = navigation;
     const {
       replaceUrl,
       state
     } = extras;
     if (this.location.isCurrentPathEqualTo(path2) || !!replaceUrl) {
       const currentBrowserPageId = this.browserPageId;
-      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, currentBrowserPageId));
+      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, currentBrowserPageId, navigation));
       this.location.replaceState(path2, "", newState);
     } else {
-      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, this.browserPageId + 1));
+      const newState = __spreadValues(__spreadValues({}, state), this.generateNgRouterState(id, this.browserPageId + 1, navigation));
       this.location.go(path2, "", newState);
     }
   }
@@ -55249,16 +55932,16 @@ var HistoryStateManager = class _HistoryStateManager extends StateManager {
   resetUrlToCurrentUrlTree() {
     this.location.replaceState(this.urlSerializer.serialize(this.getRawUrlTree()), "", this.generateNgRouterState(this.lastSuccessfulId, this.currentPageId));
   }
-  generateNgRouterState(navigationId, routerPageId) {
+  generateNgRouterState(navigationId, routerPageId, navigation) {
     if (this.canceledNavigationResolution === "computed") {
-      return {
+      return __spreadValues({
         navigationId,
         \u0275routerPageId: routerPageId
-      };
+      }, this.routerUrlState(navigation));
     }
-    return {
+    return __spreadValues({
       navigationId
-    };
+    }, this.routerUrlState(navigation));
   }
   static \u0275fac = /* @__PURE__ */ (() => {
     let \u0275HistoryStateManager_BaseFactory;
@@ -55398,15 +56081,22 @@ var Router = class _Router {
   }
   navigateToSyncWithBrowser(url, source, state, extras) {
     const restoredState = state?.navigationId ? state : null;
+    const routerUrl = state?.\u0275routerUrl ?? url;
+    if (state?.\u0275routerUrl) {
+      extras = __spreadProps(__spreadValues({}, extras), {
+        browserUrl: url
+      });
+    }
     if (state) {
       const stateCopy = __spreadValues({}, state);
       delete stateCopy.navigationId;
       delete stateCopy.\u0275routerPageId;
+      delete stateCopy.\u0275routerUrl;
       if (Object.keys(stateCopy).length !== 0) {
         extras.state = stateCopy;
       }
     }
-    const urlTree = this.parseUrl(url);
+    const urlTree = this.parseUrl(routerUrl);
     this.scheduleNavigation(urlTree, source, restoredState, extras).catch((e) => {
       if (this.disposed) {
         return;
@@ -55585,6 +56275,11 @@ function validateCommands(commands) {
 }
 
 // node_modules/@angular/router/fesm2022/_router_module-chunk.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var ReactiveRouterState = class _ReactiveRouterState {
   router = inject2(Router);
   stateManager = inject2(StateManager);
@@ -55647,7 +56342,15 @@ var RouterLink = class _RouterLink {
     if (!this.isAnchorElement) {
       return this.hrefAttributeValue;
     }
-    return this.computeHref(this._urlTree());
+    this.reactiveRouterState.path();
+    if (this._preserveFragment()) {
+      this.reactiveRouterState.fragment();
+    }
+    const shouldTrackParams = (handling) => handling === "preserve" || handling === "merge";
+    if (shouldTrackParams(this._queryParamsHandling()) || shouldTrackParams(this.options?.defaultQueryParamsHandling)) {
+      this.reactiveRouterState.queryParams();
+    }
+    return this.computeHref(this.createUrlTree());
   }, ...ngDevMode ? [{
     debugName: "reactiveHref"
   }] : []);
@@ -55803,7 +56506,7 @@ var RouterLink = class _RouterLink {
     }
   }
   onClick(button, ctrlKey, shiftKey, altKey, metaKey) {
-    const urlTree = this._urlTree();
+    const urlTree = this.urlTree;
     if (urlTree === null) {
       return true;
     }
@@ -55837,15 +56540,7 @@ var RouterLink = class _RouterLink {
       renderer.removeAttribute(nativeElement, attrName);
     }
   }
-  _urlTree = computed(() => {
-    this.reactiveRouterState.path();
-    if (this._preserveFragment()) {
-      this.reactiveRouterState.fragment();
-    }
-    const shouldTrackParams = (handling) => handling === "preserve" || handling === "merge";
-    if (shouldTrackParams(this._queryParamsHandling()) || shouldTrackParams(this.options?.defaultQueryParamsHandling)) {
-      this.reactiveRouterState.queryParams();
-    }
+  createUrlTree() {
     const routerLinkInput = this.routerLinkInput();
     if (routerLinkInput === null || !this.router.createUrlTree) {
       return null;
@@ -55859,13 +56554,9 @@ var RouterLink = class _RouterLink {
       queryParamsHandling: this._queryParamsHandling(),
       preserveFragment: this._preserveFragment()
     });
-  }, __spreadProps(__spreadValues({}, ngDevMode ? {
-    debugName: "_urlTree"
-  } : {}), {
-    equal: (a, b) => this.computeHref(a) === this.computeHref(b)
-  }));
+  }
   get urlTree() {
-    return untracked2(this._urlTree);
+    return untracked2(() => this.createUrlTree());
   }
   computeHref(urlTree) {
     return urlTree !== null && this.locationStrategy ? this.locationStrategy?.prepareExternalUrl(this.router.serializeUrl(urlTree)) ?? "" : null;
@@ -56285,6 +56976,9 @@ var RouterScroller = class _RouterScroller {
   lastSource = IMPERATIVE_NAVIGATION;
   restoredId = 0;
   store = {};
+  isHydrating = inject2(IS_HYDRATION_DOM_REUSE_ENABLED, {
+    optional: true
+  }) ?? false;
   urlSerializer = inject2(UrlSerializer);
   zone = inject2(NgZone);
   viewportScroller = inject2(ViewportScroller);
@@ -56293,6 +56987,11 @@ var RouterScroller = class _RouterScroller {
     this.options = options;
     this.options.scrollPositionRestoration ||= "disabled";
     this.options.anchorScrolling ||= "disabled";
+    if (this.isHydrating) {
+      inject2(ApplicationRef).whenStable().then(() => {
+        this.isHydrating = false;
+      });
+    }
   }
   init() {
     if (this.options.scrollPositionRestoration !== "disabled") {
@@ -56339,6 +57038,7 @@ var RouterScroller = class _RouterScroller {
     });
   }
   scheduleScrollEvent(routerEvent, anchor) {
+    if (this.isHydrating) return;
     const scroll = untracked2(this.transitions.currentNavigation)?.extras.scroll;
     this.zone.runOutsideAngular(() => __async(this, null, function* () {
       yield new Promise((resolve2) => {
@@ -56495,9 +57195,7 @@ var NavigationStateManager = class _NavigationStateManager extends StateManager 
   }
   navigate(internalPath, transition) {
     const path2 = transition.extras.skipLocationChange ? this.navigation.currentEntry.url : this.location.prepareExternalUrl(internalPath);
-    const state = __spreadProps(__spreadValues({}, transition.extras.state), {
-      navigationId: transition.id
-    });
+    const state = __spreadValues(__spreadValues({}, transition.extras.state), this.generateNgRouterState(transition));
     const info = {
       \u0275routerInfo: {
         intercept: true
@@ -56634,9 +57332,7 @@ var NavigationStateManager = class _NavigationStateManager extends StateManager 
         if (transition && !transition.extras.skipLocationChange) {
           const internalPath = this.createBrowserPath(transition);
           const history = this.location.isCurrentPathEqualTo(internalPath) || !!transition.extras.replaceUrl ? "replace" : "push";
-          const state = __spreadProps(__spreadValues({}, transition.extras.state), {
-            navigationId: transition.id
-          });
+          const state = __spreadValues(__spreadValues({}, transition.extras.state), this.generateNgRouterState(transition));
           const pathOrUrl = this.location.prepareExternalUrl(internalPath);
           (yield redirect)(pathOrUrl, {
             state,
@@ -56665,6 +57361,11 @@ var NavigationStateManager = class _NavigationStateManager extends StateManager 
     const eventDestination = new URL(navigateEvent.destination.url);
     const routerDestination = this.location.prepareExternalUrl(internalPath);
     return new URL(routerDestination, eventDestination.origin).href === eventDestination.href;
+  }
+  generateNgRouterState(transition) {
+    return __spreadProps(__spreadValues({}, this.routerUrlState(transition)), {
+      navigationId: transition.id
+    });
   }
   deferredCommitSupported(event) {
     return this.precommitHandlerSupported && event.cancelable;
@@ -56966,6 +57667,13 @@ function provideRouterInitializer() {
     useExisting: ROUTER_INITIALIZER
   }];
 }
+
+// node_modules/@angular/router/fesm2022/router.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 
 // node_modules/@angular/ssr/third_party/beasties/index.js
 function createNotImplementedError(name) {
@@ -57510,6 +58218,14 @@ var hasRequiredStringifier;
 function requireStringifier() {
   if (hasRequiredStringifier) return stringifier;
   hasRequiredStringifier = 1;
+  const STYLE_TAG = /(<)(\/?style\b)/gi;
+  const COMMENT_OPEN = /(<)(!--)/g;
+  const AT_NAME_END = /[\t\n\f\r "#'()/;[\\\]{}]/;
+  function escapeHTMLInCSS(str) {
+    if (typeof str !== "string") return str;
+    if (!str.includes("<")) return str;
+    return str.replace(STYLE_TAG, "\\3c $2").replace(COMMENT_OPEN, "\\3c $2");
+  }
   const DEFAULT_RAW = {
     after: "\n",
     beforeClose: "\n",
@@ -57527,23 +58243,69 @@ function requireStringifier() {
   function capitalize(str) {
     return str[0].toUpperCase() + str.slice(1);
   }
+  function atruleStart(str, node2) {
+    let name = "@" + node2.name;
+    let params = node2.params ? str.rawValue(node2, "params") : "";
+    let afterName = node2.raws.afterName;
+    if (typeof afterName === "undefined") {
+      afterName = params ? " " : "";
+    } else if (afterName === "" && params && !AT_NAME_END.test(params[0])) {
+      afterName = " ";
+    }
+    return name + afterName + params;
+  }
+  function pushBody(str, stack, node2) {
+    let nodes = node2.nodes;
+    let last3 = nodes.length - 1;
+    while (last3 > 0) {
+      if (nodes[last3].type !== "comment") break;
+      last3 -= 1;
+    }
+    let semicolon = str.raw(node2, "semicolon");
+    let isDocument2 = node2.type === "document";
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      let child = nodes[i];
+      let childSemicolon = last3 !== i || semicolon;
+      if (!childSemicolon && i < nodes.length - 1 && (child.type === "atrule" && !child.nodes || child.type === "decl" && child.prop.startsWith("--"))) {
+        childSemicolon = true;
+      }
+      stack.push({
+        document: isDocument2,
+        node: child,
+        semicolon: childSemicolon
+      });
+    }
+  }
+  function pushBlock(str, stack, node2, start) {
+    let between = str.raw(node2, "between", "beforeOpen");
+    str.builder(escapeHTMLInCSS(start + between) + "{", node2, "start");
+    let hasNodes = node2.nodes && node2.nodes.length;
+    let close = () => {
+      let after = hasNodes ? str.raw(node2, "after") : str.raw(node2, "after", "emptyBody");
+      if (after) str.builder(escapeHTMLInCSS(after));
+      str.builder("}", node2, "end");
+      if (node2.type === "rule" && node2.raws.ownSemicolon) {
+        str.builder(escapeHTMLInCSS(node2.raws.ownSemicolon), node2, "end");
+      }
+    };
+    if (hasNodes) {
+      stack.push(close);
+      pushBody(str, stack, node2);
+    } else {
+      close();
+    }
+  }
   class Stringifier {
     constructor(builder) {
       this.builder = builder;
     }
     atrule(node2, semicolon) {
-      let name = "@" + node2.name;
-      let params = node2.params ? this.rawValue(node2, "params") : "";
-      if (typeof node2.raws.afterName !== "undefined") {
-        name += node2.raws.afterName;
-      } else if (params) {
-        name += " ";
-      }
+      let start = atruleStart(this, node2);
       if (node2.nodes) {
-        this.block(node2, name + params);
+        this.block(node2, start);
       } else {
         let end = (node2.raws.between || "") + (semicolon ? ";" : "");
-        this.builder(name + params + end, node2);
+        this.builder(escapeHTMLInCSS(start + end), node2);
       }
     }
     beforeAfter(node2, detect) {
@@ -57573,7 +58335,7 @@ function requireStringifier() {
     }
     block(node2, start) {
       let between = this.raw(node2, "between", "beforeOpen");
-      this.builder(start + between + "{", node2, "start");
+      this.builder(escapeHTMLInCSS(start + between) + "{", node2, "start");
       let after;
       if (node2.nodes && node2.nodes.length) {
         this.body(node2);
@@ -57581,36 +58343,50 @@ function requireStringifier() {
       } else {
         after = this.raw(node2, "after", "emptyBody");
       }
-      if (after) this.builder(after);
+      if (after) this.builder(escapeHTMLInCSS(after));
       this.builder("}", node2, "end");
     }
     body(node2) {
-      let last3 = node2.nodes.length - 1;
-      while (last3 > 0) {
-        if (node2.nodes[last3].type !== "comment") break;
-        last3 -= 1;
-      }
-      let semicolon = this.raw(node2, "semicolon");
-      for (let i = 0; i < node2.nodes.length; i++) {
-        let child = node2.nodes[i];
+      let proto = Stringifier.prototype;
+      let expandable = ["atrule", "block", "body", "rule", "stringify"].every(
+        (method) => this[method] === proto[method]
+      );
+      let stack = [];
+      pushBody(this, stack, node2);
+      while (stack.length > 0) {
+        let entry = stack.pop();
+        if (typeof entry === "function") {
+          entry();
+          continue;
+        }
+        let child = entry.node;
         let before = this.raw(child, "before");
-        if (before) this.builder(before);
-        this.stringify(child, last3 !== i || semicolon);
+        if (before) {
+          this.builder(entry.document ? before : escapeHTMLInCSS(before));
+        }
+        if (expandable && child.type === "rule") {
+          pushBlock(this, stack, child, this.rawValue(child, "selector"));
+        } else if (expandable && child.type === "atrule" && child.nodes) {
+          pushBlock(this, stack, child, atruleStart(this, child));
+        } else {
+          this.stringify(child, entry.semicolon);
+        }
       }
     }
     comment(node2) {
       let left = this.raw(node2, "left", "commentLeft");
       let right = this.raw(node2, "right", "commentRight");
-      this.builder("/*" + left + node2.text + right + "*/", node2);
+      this.builder(escapeHTMLInCSS("/*" + left + node2.text + right + "*/"), node2);
     }
     decl(node2, semicolon) {
+      let raws = node2.raws;
       let between = this.raw(node2, "between", "colon");
       let string = node2.prop + between + this.rawValue(node2, "value");
       if (node2.important) {
-        string += node2.raws.important || " !important";
+        string += raws.important || " !important";
       }
       if (semicolon) string += ";";
-      this.builder(string, node2);
+      this.builder(escapeHTMLInCSS(string), node2);
     }
     document(node2) {
       this.body(node2);
@@ -57633,9 +58409,9 @@ function requireStringifier() {
       }
       if (!parent) return DEFAULT_RAW[detect];
       let root2 = node2.root();
-      if (!root2.rawCache) root2.rawCache = {};
-      if (typeof root2.rawCache[detect] !== "undefined") {
-        return root2.rawCache[detect];
+      let cache = root2.rawCache || (root2.rawCache = {});
+      if (typeof cache[detect] !== "undefined") {
+        return cache[detect];
       }
       if (detect === "before" || detect === "after") {
         return this.beforeAfter(node2, detect);
@@ -57651,7 +58427,7 @@ function requireStringifier() {
         }
       }
       if (typeof value === "undefined") value = DEFAULT_RAW[detect];
-      root2.rawCache[detect] = value;
+      cache[detect] = value;
       return value;
     }
     rawBeforeClose(root2) {
@@ -57788,12 +58564,16 @@ function requireStringifier() {
     }
     root(node2) {
       this.body(node2);
-      if (node2.raws.after) this.builder(node2.raws.after);
+      if (node2.raws.after) {
+        let after = node2.raws.after;
+        let isDocument2 = node2.parent && node2.parent.type === "document";
+        this.builder(isDocument2 ? after : escapeHTMLInCSS(after));
+      }
     }
     rule(node2) {
       this.block(node2, this.rawValue(node2, "selector"));
       if (node2.raws.ownSemicolon) {
-        this.builder(node2.raws.ownSemicolon, node2, "end");
+        this.builder(escapeHTMLInCSS(node2.raws.ownSemicolon), node2, "end");
       }
     }
     stringify(node2, semicolon) {
@@ -57843,22 +58623,36 @@ function requireNode$1() {
   let { isClean, my } = requireSymbols();
   function cloneNode2(obj, parent) {
     let cloned = new obj.constructor();
-    for (let i in obj) {
-      if (!Object.prototype.hasOwnProperty.call(obj, i)) {
-        continue;
-      }
-      if (i === "proxyCache") continue;
-      let value = obj[i];
-      let type = typeof value;
-      if (i === "parent" && type === "object") {
-        if (parent) cloned[i] = parent;
-      } else if (i === "source") {
-        cloned[i] = value;
-      } else if (Array.isArray(value)) {
-        cloned[i] = value.map((j) => cloneNode2(j, cloned));
-      } else {
-        if (type === "object" && value !== null) value = cloneNode2(value);
-        cloned[i] = value;
+    let stack = [[obj, cloned, parent]];
+    while (stack.length > 0) {
+      let [source, target, targetParent] = stack.pop();
+      for (let i in source) {
+        if (!Object.prototype.hasOwnProperty.call(source, i)) {
+          continue;
+        }
+        if (i === "proxyCache") continue;
+        let value = source[i];
+        let type = typeof value;
+        if (i === "parent" && type === "object") {
+          if (targetParent) target[i] = targetParent;
+        } else if (i === "source") {
+          target[i] = value;
+        } else if (Array.isArray(value)) {
+          let children = [];
+          target[i] = children;
+          for (let j of value) {
+            let childClone = new j.constructor();
+            children.push(childClone);
+            stack.push([j, childClone, target]);
+          }
+        } else {
+          if (type === "object" && value !== null) {
+            let valueClone = new value.constructor();
+            stack.push([value, valueClone, void 0]);
+            value = valueClone;
+          }
+          target[i] = value;
+        }
       }
     }
     return cloned;
@@ -57892,11 +58686,12 @@ function requireNode$1() {
       this.raws = {};
       this[isClean] = false;
       this[my] = true;
-      for (let name in defaults) {
+      for (let name of Object.keys(defaults)) {
+        if (name === "__proto__") continue;
         if (name === "nodes") {
           this.nodes = [];
           for (let node2 of defaults[name]) {
-            if (typeof node2.clone === "function") {
+            if (typeof node2.clone === "function" && node2.parent) {
               this.append(node2.clone());
             } else {
               this.append(node2);
@@ -58007,11 +58802,15 @@ function requireNode$1() {
       return this.parent.nodes[index2 + 1];
     }
     positionBy(opts = {}) {
-      let pos = this.source.start;
+      let inputString = "document" in this.source.input ? this.source.input.document : this.source.input.css;
+      let pos = {
+        column: this.source.start.column,
+        line: this.source.start.line,
+        offset: sourceOffset(inputString, this.source.start)
+      };
       if (opts.index) {
         pos = this.positionInside(opts.index);
       } else if (opts.word) {
-        let inputString = "document" in this.source.input ? this.source.input.document : this.source.input.css;
         let stringRepresentation = inputString.slice(
           sourceOffset(inputString, this.source.start),
           sourceOffset(inputString, this.source.end)
@@ -58083,7 +58882,7 @@ function requireNode$1() {
             line: opts.start.line,
             offset: sourceOffset(inputString, opts.start)
           };
-        } else if (opts.index) {
+        } else if (typeof opts.index === "number") {
           start = this.positionInside(opts.index);
         }
         if (opts.end) {
@@ -58094,7 +58893,7 @@ function requireNode$1() {
           };
         } else if (typeof opts.endIndex === "number") {
           end = this.positionInside(opts.endIndex);
-        } else if (opts.index) {
+        } else if (typeof opts.index === "number") {
           end = this.positionInside(opts.index + 1);
         }
       }
@@ -58146,43 +58945,59 @@ function requireNode$1() {
       return result2;
     }
     toJSON(_, inputs) {
-      let fixed = {};
       let emitInputs = inputs == null;
       inputs = inputs || /* @__PURE__ */ new Map();
-      let inputsNextIndex = 0;
-      for (let name in this) {
-        if (!Object.prototype.hasOwnProperty.call(this, name)) {
-          continue;
-        }
-        if (name === "parent" || name === "proxyCache") continue;
-        let value = this[name];
-        if (Array.isArray(value)) {
-          fixed[name] = value.map((i) => {
-            if (typeof i === "object" && i.toJSON) {
-              return i.toJSON(null, inputs);
-            } else {
-              return i;
-            }
-          });
-        } else if (typeof value === "object" && value.toJSON) {
-          fixed[name] = value.toJSON(null, inputs);
-        } else if (name === "source") {
-          if (value == null) continue;
-          let inputId = inputs.get(value.input);
-          if (inputId == null) {
-            inputId = inputsNextIndex;
-            inputs.set(value.input, inputsNextIndex);
-            inputsNextIndex++;
+      let holderOfRoot = [];
+      let queue = [[this, holderOfRoot, 0]];
+      for (let step = 0; step < queue.length; step++) {
+        let [node2, holder, key] = queue[step];
+        let fixed2 = {};
+        holder[key] = fixed2;
+        for (let name in node2) {
+          if (!Object.prototype.hasOwnProperty.call(node2, name)) {
+            continue;
           }
-          fixed[name] = {
-            end: value.end,
-            inputId,
-            start: value.start
-          };
-        } else {
-          fixed[name] = value;
+          if (name === "parent" || name === "proxyCache") continue;
+          let value = node2[name];
+          if (Array.isArray(value)) {
+            let fixedArray = [];
+            fixed2[name] = fixedArray;
+            for (let i = 0; i < value.length; i++) {
+              let item = value[i];
+              if (typeof item === "object" && item.toJSON) {
+                if (item.toJSON === Node3.prototype.toJSON) {
+                  queue.push([item, fixedArray, i]);
+                } else {
+                  fixedArray[i] = item.toJSON(null, inputs);
+                }
+              } else {
+                fixedArray[i] = item;
+              }
+            }
+          } else if (typeof value === "object" && value.toJSON) {
+            if (value.toJSON === Node3.prototype.toJSON) {
+              queue.push([value, fixed2, name]);
+            } else {
+              fixed2[name] = value.toJSON(null, inputs);
+            }
+          } else if (name === "source") {
+            if (value == null) continue;
+            let inputId = inputs.get(value.input);
+            if (inputId == null) {
+              inputId = inputs.size;
+              inputs.set(value.input, inputId);
+            }
+            fixed2[name] = {
+              end: value.end,
+              inputId,
+              start: value.start
+            };
+          } else {
+            fixed2[name] = value;
+          }
         }
       }
+      let fixed = holderOfRoot[0];
       if (emitInputs) {
         fixed.inputs = [...inputs.keys()].map((input3) => input3.toJSON());
       }
@@ -58261,17 +59076,24 @@ function requireContainer$1() {
   let { isClean, my } = requireSymbols();
   let AtRule, parse2, Root2, Rule;
   function cleanSource(nodes) {
-    return nodes.map((i) => {
-      if (i.nodes) i.nodes = cleanSource(i.nodes);
-      delete i.source;
-      return i;
-    });
+    let stack = nodes.slice();
+    while (stack.length > 0) {
+      let node2 = stack.pop();
+      delete node2.source;
+      if (node2.nodes) {
+        node2.nodes = node2.nodes.slice();
+        for (let i of node2.nodes) stack.push(i);
+      }
+    }
+    return nodes.slice();
   }
   function markTreeDirty(node2) {
-    node2[isClean] = false;
-    if (node2.proxyOf.nodes) {
-      for (let i of node2.proxyOf.nodes) {
-        markTreeDirty(i);
+    let stack = [node2];
+    while (stack.length > 0) {
+      let next = stack.pop();
+      next[isClean] = false;
+      if (next.proxyOf.nodes) {
+        for (let i of next.proxyOf.nodes) stack.push(i);
       }
     }
   }
@@ -58293,9 +59115,17 @@ function requireContainer$1() {
       return this;
     }
     cleanRaws(keepBetween) {
-      super.cleanRaws(keepBetween);
-      if (this.nodes) {
-        for (let node2 of this.nodes) node2.cleanRaws(keepBetween);
+      let stack = [this];
+      while (stack.length > 0) {
+        let node2 = stack.pop();
+        if (node2 !== this && node2.cleanRaws !== Container2.prototype.cleanRaws) {
+          node2.cleanRaws(keepBetween);
+          continue;
+        }
+        Node3.prototype.cleanRaws.call(node2, keepBetween);
+        if (node2.nodes) {
+          for (let child of node2.nodes) stack.push(child);
+        }
       }
     }
     each(callback) {
@@ -58510,18 +59340,38 @@ function requireContainer$1() {
       return this.nodes.some(condition);
     }
     walk(callback) {
-      return this.each((child, i) => {
+      if (!this.proxyOf.nodes) return void 0;
+      let stack = [{ iterator: this.getIterator(), node: this.proxyOf }];
+      while (stack.length > 0) {
+        let { iterator: iterator2, node: node2 } = stack[stack.length - 1];
+        let index2 = node2.indexes[iterator2];
+        if (index2 >= node2.proxyOf.nodes.length) {
+          delete node2.indexes[iterator2];
+          stack.pop();
+          let parent = stack[stack.length - 1];
+          if (parent) parent.node.indexes[parent.iterator] += 1;
+          continue;
+        }
+        let child = node2.proxyOf.nodes[index2];
         let result2;
         try {
-          result2 = callback(child, i);
+          result2 = callback(child, index2);
         } catch (e) {
           throw child.addToError(e);
         }
-        if (result2 !== false && child.walk) {
-          result2 = child.walk(callback);
+        if (result2 === false) {
+          for (let opened of stack) {
+            delete opened.node.indexes[opened.iterator];
+          }
+          return false;
         }
-        return result2;
-      });
+        if (child.walk && child.proxyOf.nodes) {
+          stack.push({ iterator: child.getIterator(), node: child });
+        } else {
+          node2.indexes[iterator2] += 1;
+        }
+      }
+      return void 0;
     }
     walkAtRules(name, callback) {
       if (!callback) {
@@ -58612,22 +59462,24 @@ function requireContainer$1() {
   container = Container2;
   Container2.default = Container2;
   Container2.rebuild = (node2) => {
-    if (node2.type === "atrule") {
-      Object.setPrototypeOf(node2, AtRule.prototype);
-    } else if (node2.type === "rule") {
-      Object.setPrototypeOf(node2, Rule.prototype);
-    } else if (node2.type === "decl") {
-      Object.setPrototypeOf(node2, Declaration.prototype);
-    } else if (node2.type === "comment") {
-      Object.setPrototypeOf(node2, Comment2.prototype);
-    } else if (node2.type === "root") {
-      Object.setPrototypeOf(node2, Root2.prototype);
-    }
-    node2[my] = true;
-    if (node2.nodes) {
-      node2.nodes.forEach((child) => {
-        Container2.rebuild(child);
-      });
+    let stack = [node2];
+    while (stack.length > 0) {
+      let next = stack.pop();
+      if (next.type === "atrule") {
+        Object.setPrototypeOf(next, AtRule.prototype);
+      } else if (next.type === "rule") {
+        Object.setPrototypeOf(next, Rule.prototype);
+      } else if (next.type === "decl") {
+        Object.setPrototypeOf(next, Declaration.prototype);
+      } else if (next.type === "comment") {
+        Object.setPrototypeOf(next, Comment2.prototype);
+      } else if (next.type === "root") {
+        Object.setPrototypeOf(next, Root2.prototype);
+      }
+      next[my] = true;
+      if (next.nodes) {
+        for (let child of next.nodes) stack.push(child);
+      }
     }
   };
   return container;
@@ -58696,7 +59548,7 @@ function requireNonSecure() {
     return (size = defaultSize) => {
       let id = "";
       let i = size | 0;
-      while (i--) {
+      while (i-- > 0) {
         id += alphabet[Math.random() * alphabet.length | 0];
       }
       return id;
@@ -58705,7 +59557,7 @@ function requireNonSecure() {
   let nanoid = (size = 21) => {
     let id = "";
     let i = size | 0;
-    while (i--) {
+    while (i-- > 0) {
       id += urlAlphabet[Math.random() * 64 | 0];
     }
     return id;
@@ -58719,7 +59571,7 @@ function requirePreviousMap() {
   if (hasRequiredPreviousMap) return previousMap;
   hasRequiredPreviousMap = 1;
   let { existsSync, readFileSync } = require$$2;
-  let { dirname: dirname2, join: join2 } = require$$2;
+  let { dirname: dirname2, isAbsolute: isAbsolute2, join: join2, relative: relative2, sep: sep2 } = require$$2;
   let { SourceMapConsumer, SourceMapGenerator } = require$$2;
   function fromBase642(str) {
     if (Buffer) {
@@ -58731,6 +59583,7 @@ function requirePreviousMap() {
   class PreviousMap {
     constructor(css, opts) {
       if (opts.map === false) return;
+      if (opts.unsafeMap) this.unsafeMap = true;
       this.loadAnnotation(css);
       this.inline = this.startWith(this.annotation, "data:");
       let prev = opts.map ? opts.map.prev : void 0;
@@ -58743,7 +59596,7 @@ function requirePreviousMap() {
     }
     consumer() {
       if (!this.consumerCache) {
-        this.consumerCache = new SourceMapConsumer(this.text);
+        this.consumerCache = new SourceMapConsumer(this.json || this.text);
       }
       return this.consumerCache;
     }
@@ -58760,7 +59613,8 @@ function requirePreviousMap() {
       if (baseUriMatch) {
         return fromBase642(text.substr(baseUriMatch[0].length));
       }
-      let encoding = text.match(/data:application\/json;([^,]+),/)[1];
+      let encoding = text.slice("data:application/json;".length);
+      encoding = encoding.slice(0, encoding.indexOf(","));
       throw new Error("Unsupported source map encoding " + encoding);
     }
     getAnnotationURL(sourceMapString) {
@@ -58779,7 +59633,15 @@ function requirePreviousMap() {
         this.annotation = this.getAnnotationURL(css.substring(start, end));
       }
     }
-    loadFile(path2) {
+    loadFile(path2, cssFile, trusted) {
+      if (!trusted && !this.unsafeMap) {
+        if (!/\.map$/i.test(path2)) return void 0;
+        if (!cssFile) return void 0;
+        let rel = relative2(dirname2(cssFile), path2);
+        if (rel === ".." || rel.startsWith(".." + sep2) || isAbsolute2(rel)) {
+          return void 0;
+        }
+      }
       this.root = dirname2(path2);
       if (existsSync(path2)) {
         this.mapFile = path2;
@@ -58794,7 +59656,7 @@ function requirePreviousMap() {
         } else if (typeof prev === "function") {
           let prevPath = prev(file);
           if (prevPath) {
-            let map2 = this.loadFile(prevPath);
+            let map2 = this.loadFile(prevPath, file, true);
             if (!map2) {
               throw new Error(
                 "Unable to load previous source map: " + prevPath.toString()
@@ -58818,7 +59680,15 @@ function requirePreviousMap() {
       } else if (this.annotation) {
         let map2 = this.annotation;
         if (file) map2 = join2(dirname2(file), map2);
-        return this.loadFile(map2);
+        let unknown = this.loadFile(map2, file, false);
+        if (unknown) {
+          try {
+            this.json = JSON.parse(unknown.replace(/^\)]}'[^\n]*\n/, ""));
+          } catch (e) {
+            return void 0;
+          }
+        }
+        return unknown;
       }
     }
     startWith(string, start) {
@@ -58950,7 +59820,15 @@ function requireInput() {
           opts.plugin
         );
       }
-      result2.input = { column, endColumn, endLine, endOffset, line, offset, source: this.css };
+      result2.input = {
+        column,
+        endColumn,
+        endLine,
+        endOffset,
+        line,
+        offset,
+        source: this.css
+      };
       if (this.file) {
         if (pathToFileURL) {
           result2.input.url = pathToFileURL(this.file).toString();
@@ -58999,11 +59877,15 @@ function requireInput() {
     origin(line, column, endLine, endColumn) {
       if (!this.map) return false;
       let consumer = this.map.consumer();
-      let from2 = consumer.originalPositionFor({ column, line });
+      let from2 = consumer.originalPositionFor({ column: column - 1, line });
       if (!from2.source) return false;
       let to;
       if (typeof endLine === "number") {
-        to = consumer.originalPositionFor({ column: endColumn, line: endLine });
+        let toPosition = consumer.originalPositionFor({
+          column: endColumn - 1,
+          line: endLine
+        });
+        if (toPosition.source) to = toPosition;
       }
       let fromUrl;
       if (isAbsolute2(from2.source)) {
@@ -59015,8 +59897,8 @@ function requireInput() {
         );
       }
       let result2 = {
-        column: from2.column,
-        endColumn: to && to.column,
+        column: from2.column + 1,
+        endColumn: to && to.column + 1,
         endLine: to && to.line,
         line: from2.line,
         url: fromUrl.toString()
@@ -59069,6 +59951,12 @@ function requireRoot() {
       if (!this.nodes) this.nodes = [];
     }
     normalize(child, sample, type) {
+      let keepBefore = /* @__PURE__ */ new Set();
+      for (let node2 of Array.isArray(child) ? child : [child]) {
+        if (node2 && typeof node2 === "object" && !node2.parent && node2.raws && typeof node2.raws.before !== "undefined") {
+          keepBefore.add(node2.raws);
+        }
+      }
       let nodes = super.normalize(child);
       if (sample) {
         if (type === "prepend") {
@@ -59079,7 +59967,9 @@ function requireRoot() {
           }
         } else if (this.first !== sample) {
           for (let node2 of nodes) {
-            node2.raws.before = sample.raws.before;
+            if (!keepBefore.has(node2.raws)) {
+              node2.raws.before = sample.raws.before;
+            }
           }
         }
       }
@@ -59203,44 +60093,82 @@ function requireFromJSON() {
   let PreviousMap = requirePreviousMap();
   let Root2 = requireRoot();
   let Rule = requireRule();
-  function fromJSON(json, inputs) {
-    if (Array.isArray(json)) return json.map((n) => fromJSON(n));
-    let _a2 = json, { inputs: ownInputs } = _a2, defaults = __objRest(_a2, ["inputs"]);
-    if (ownInputs) {
-      inputs = [];
-      for (let input3 of ownInputs) {
-        let inputHydrated = __spreadProps(__spreadValues({}, input3), { __proto__: Input2.prototype });
-        if (inputHydrated.map) {
-          inputHydrated.map = __spreadProps(__spreadValues({}, inputHydrated.map), {
-            __proto__: PreviousMap.prototype
-          });
-        }
-        inputs.push(inputHydrated);
+  function hydrateInputs(json, inputs) {
+    if (!json.inputs) return inputs;
+    return json.inputs.map((input3) => {
+      let inputHydrated = __spreadProps(__spreadValues({}, input3), { __proto__: Input2.prototype });
+      if (inputHydrated.map) {
+        inputHydrated.map = __spreadProps(__spreadValues({}, inputHydrated.map), {
+          __proto__: PreviousMap.prototype
+        });
       }
-    }
-    if (defaults.nodes) {
-      defaults.nodes = json.nodes.map((n) => fromJSON(n, inputs));
-    }
+      return inputHydrated;
+    });
+  }
+  function constructNode(json, inputs, children) {
+    let defaults = __spreadValues({}, json);
+    delete defaults.inputs;
+    delete defaults.nodes;
     if (defaults.source) {
-      let _b = defaults.source, { inputId } = _b, source = __objRest(_b, ["inputId"]);
+      let _a2 = defaults.source, { inputId } = _a2, source = __objRest(_a2, ["inputId"]);
       defaults.source = source;
       if (inputId != null) {
         defaults.source.input = inputs[inputId];
       }
     }
+    let node2;
     if (defaults.type === "root") {
-      return new Root2(defaults);
+      node2 = new Root2(defaults);
     } else if (defaults.type === "decl") {
-      return new Declaration(defaults);
+      node2 = new Declaration(defaults);
     } else if (defaults.type === "rule") {
-      return new Rule(defaults);
+      node2 = new Rule(defaults);
     } else if (defaults.type === "comment") {
-      return new Comment2(defaults);
+      node2 = new Comment2(defaults);
     } else if (defaults.type === "atrule") {
-      return new AtRule(defaults);
+      node2 = new AtRule(defaults);
     } else {
       throw new Error("Unknown node type: " + json.type);
     }
+    if (children) {
+      node2.nodes = children;
+      for (let child of children) child.parent = node2;
+    }
+    return node2;
+  }
+  function fromJSON(json, inputs) {
+    if (Array.isArray(json)) return json.map((n) => fromJSON(n));
+    let result2;
+    let stack = [
+      { childIndex: 0, children: [], inputs: hydrateInputs(json, inputs), json }
+    ];
+    while (stack.length > 0) {
+      let frame = stack[stack.length - 1];
+      let jsonNodes = frame.json.nodes;
+      if (jsonNodes && frame.childIndex < jsonNodes.length) {
+        let childJson = jsonNodes[frame.childIndex];
+        frame.childIndex += 1;
+        stack.push({
+          childIndex: 0,
+          children: [],
+          inputs: hydrateInputs(childJson, frame.inputs),
+          json: childJson
+        });
+        continue;
+      }
+      stack.pop();
+      let node2 = constructNode(
+        frame.json,
+        frame.inputs,
+        jsonNodes ? frame.children : void 0
+      );
+      if (stack.length > 0) {
+        stack[stack.length - 1].children.push(node2);
+      } else {
+        result2 = node2;
+      }
+    }
+    return result2;
   }
   fromJSON_1 = fromJSON;
   fromJSON.default = fromJSON;
@@ -59313,7 +60241,15 @@ function requireMapGenerator() {
           }
         }
       } else if (this.css) {
-        this.css = this.css.replace(/\n*\/\*#[\S\s]*?\*\/$/gm, "");
+        let startIndex;
+        while ((startIndex = this.css.lastIndexOf("/*#")) !== -1) {
+          let endIndex = this.css.indexOf("*/", startIndex + 3);
+          if (endIndex === -1) break;
+          while (startIndex > 0 && this.css[startIndex - 1] === "\n") {
+            startIndex--;
+          }
+          this.css = this.css.slice(0, startIndex) + this.css.slice(endIndex + 2);
+        }
       }
     }
     generate() {
@@ -59600,6 +60536,7 @@ function requireTokenize() {
     let pos = 0;
     let buffer = [];
     let returned = [];
+    let lastBadParen = -1;
     function position() {
       return pos;
     }
@@ -59664,10 +60601,13 @@ function requireTokenize() {
             } while (escaped);
             currentToken = ["brackets", css.slice(pos, next + 1), pos, next];
             pos = next;
+          } else if (pos <= lastBadParen) {
+            currentToken = ["(", "(", pos];
           } else {
             next = css.indexOf(")", pos + 1);
             content = css.slice(pos, next + 1);
             if (next === -1 || RE_BAD_BRACKET.test(content)) {
+              lastBadParen = next === -1 ? length : next;
               currentToken = ["(", "(", pos];
             } else {
               currentToken = ["brackets", content, pos, next];
@@ -59799,6 +60739,11 @@ function requireParser() {
       let pos = token[3] || token[2];
       if (pos) return pos;
     }
+  }
+  function tokensToString(tokens, from2, to) {
+    let result2 = "";
+    for (let i = from2; i < to; i++) result2 += tokens[i][1];
+    return result2;
   }
   class Parser2 {
     constructor(input3) {
@@ -59936,7 +60881,7 @@ function requireParser() {
       node2.source.end = this.getPosition(token[3] || token[2]);
       node2.source.end.offset++;
       let text = token[1].slice(2, -2);
-      if (/^\s*$/.test(text)) {
+      if (!text.trim()) {
         node2.text = "";
         node2.raws.left = text;
         node2.raws.right = "";
@@ -59962,44 +60907,45 @@ function requireParser() {
         last3[3] || last3[2] || findLastWithPosition(tokens)
       );
       node2.source.end.offset++;
-      while (tokens[0][0] !== "word") {
-        if (tokens.length === 1) this.unknownWord(tokens);
-        node2.raws.before += tokens.shift()[1];
+      let start = 0;
+      while (tokens[start][0] !== "word") {
+        if (start === tokens.length - 1) this.unknownWord([tokens[start]]);
+        start++;
       }
-      node2.source.start = this.getPosition(tokens[0][2]);
-      node2.prop = "";
-      while (tokens.length) {
-        let type = tokens[0][0];
+      node2.raws.before += tokensToString(tokens, 0, start);
+      node2.source.start = this.getPosition(tokens[start][2]);
+      let propStart = start;
+      while (start < tokens.length) {
+        let type = tokens[start][0];
         if (type === ":" || type === "space" || type === "comment") {
           break;
         }
-        node2.prop += tokens.shift()[1];
+        start++;
       }
-      node2.raws.between = "";
+      node2.prop = tokensToString(tokens, propStart, start);
+      let betweenStart = start;
       let token;
-      while (tokens.length) {
-        token = tokens.shift();
-        if (token[0] === ":") {
-          node2.raws.between += token[1];
-          break;
-        } else {
-          if (token[0] === "word" && /\w/.test(token[1])) {
-            this.unknownWord([token]);
-          }
-          node2.raws.between += token[1];
+      while (start < tokens.length) {
+        token = tokens[start];
+        start++;
+        if (token[0] === ":") break;
+        if (token[0] === "word" && /\w/.test(token[1])) {
+          this.unknownWord([token]);
         }
       }
+      node2.raws.between = tokensToString(tokens, betweenStart, start);
       if (node2.prop[0] === "_" || node2.prop[0] === "*") {
         node2.raws.before += node2.prop[0];
         node2.prop = node2.prop.slice(1);
       }
-      let firstSpaces = [];
-      let next;
-      while (tokens.length) {
-        next = tokens[0][0];
+      let firstSpacesStart = start;
+      while (start < tokens.length) {
+        let next = tokens[start][0];
         if (next !== "space" && next !== "comment") break;
-        firstSpaces.push(tokens.shift());
+        start++;
       }
+      let firstSpaces = tokens.slice(firstSpacesStart, start);
+      tokens = tokens.slice(start);
       this.precheckMissedSemicolon(tokens);
       for (let i = tokens.length - 1; i >= 0; i--) {
         token = tokens[i];
@@ -60351,11 +61297,16 @@ var hasRequiredWarning;
 function requireWarning() {
   if (hasRequiredWarning) return warning;
   hasRequiredWarning = 1;
+  let Container2 = requireContainer$1();
+  let { my } = requireSymbols();
   class Warning {
     constructor(text, opts = {}) {
       this.type = "warning";
       this.text = text;
       if (opts.node && opts.node.source) {
+        if (!opts.node[my]) {
+          Container2.rebuild(opts.node);
+        }
         let range = opts.node.rangeBy(opts);
         this.line = range.start.line;
         this.column = range.start.column;
@@ -60528,8 +61479,14 @@ function requireLazyResult() {
     };
   }
   function cleanMarks(node2) {
-    node2[isClean] = false;
-    if (node2.nodes) node2.nodes.forEach((i) => cleanMarks(i));
+    let stack = [node2];
+    while (stack.length > 0) {
+      let next = stack.pop();
+      next[isClean] = false;
+      if (next.nodes) {
+        for (let i of next.nodes) stack.push(i);
+      }
+    }
     return node2;
   }
   let postcss2 = {};
@@ -60761,6 +61718,15 @@ function requireLazyResult() {
       if (opts.syntax) str = opts.syntax.stringify;
       if (opts.stringifier) str = opts.stringifier;
       if (str.stringify) str = str.stringify;
+      let rootSource = this.result.root.source;
+      if (opts.map === void 0 && !(rootSource && rootSource.input && rootSource.input.map)) {
+        let result2 = "";
+        str(this.result.root, (i) => {
+          result2 += i;
+        });
+        this.result.css = result2;
+        return this.result;
+      }
       let map2 = new MapGenerator(str, this.result.root, this.result.opts);
       let data = map2.generate();
       this.result.css = data[0];
@@ -60883,20 +61849,48 @@ function requireLazyResult() {
     }
     walkSync(node2) {
       node2[isClean] = true;
-      let events2 = getEvents(node2);
-      for (let event of events2) {
-        if (event === CHILDREN) {
-          if (node2.nodes) {
-            node2.each((child) => {
-              if (!child[isClean]) this.walkSync(child);
-            });
+      let stack = [{ eventIndex: 0, events: getEvents(node2), iterator: 0, node: node2 }];
+      while (stack.length > 0) {
+        let visit = stack[stack.length - 1];
+        let visitNode = visit.node;
+        if (visit.iterator !== 0) {
+          let iterator2 = visit.iterator;
+          let child;
+          let descended = false;
+          while (child = visitNode.nodes[visitNode.indexes[iterator2]]) {
+            visitNode.indexes[iterator2] += 1;
+            if (!child[isClean]) {
+              child[isClean] = true;
+              stack.push({
+                eventIndex: 0,
+                events: getEvents(child),
+                iterator: 0,
+                node: child
+              });
+              descended = true;
+              break;
+            }
           }
-        } else {
-          let visitors = this.listeners[event];
-          if (visitors) {
-            if (this.visitSync(visitors, node2.toProxy())) return;
-          }
+          if (descended) continue;
+          visit.iterator = 0;
+          delete visitNode.indexes[iterator2];
         }
+        if (visit.eventIndex < visit.events.length) {
+          let event = visit.events[visit.eventIndex];
+          visit.eventIndex += 1;
+          if (event === CHILDREN) {
+            if (visitNode.nodes && visitNode.nodes.length) {
+              visit.iterator = visitNode.getIterator();
+            }
+          } else {
+            let visitors = this.listeners[event];
+            if (visitors) {
+              if (this.visitSync(visitors, visitNode.toProxy())) stack.pop();
+            }
+          }
+          continue;
+        }
+        stack.pop();
       }
     }
     warnings() {
@@ -60919,7 +61913,7 @@ function requireNoWorkResult() {
   hasRequiredNoWorkResult = 1;
   let MapGenerator = requireMapGenerator();
   let parse2 = requireParse();
-  const Result = requireResult();
+  let Result = requireResult();
   let stringify4 = requireStringify();
   let warnOnce3 = requireWarnOnce();
   class NoWorkResult {
@@ -60969,9 +61963,8 @@ function requireNoWorkResult() {
       this._css = css;
       this._opts = opts;
       this._map = void 0;
-      let root2;
       let str = stringify4;
-      this.result = new Result(this._processor, root2, this._opts);
+      this.result = new Result(this._processor, void 0, this._opts);
       this.result.css = css;
       let self2 = this;
       Object.defineProperty(this.result, "root", {
@@ -60979,7 +61972,7 @@ function requireNoWorkResult() {
           return self2.root;
         }
       });
-      let map2 = new MapGenerator(str, root2, this._opts, css);
+      let map2 = new MapGenerator(str, void 0, this._opts, css);
       if (map2.isMap()) {
         let [generatedCSS, generatedMap] = map2.generate();
         if (generatedCSS) {
@@ -61039,7 +62032,7 @@ function requireProcessor() {
   let Root2 = requireRoot();
   class Processor {
     constructor(plugins = []) {
-      this.version = "8.5.6";
+      this.version = "8.5.23";
       this.plugins = this.normalize(plugins);
     }
     normalize(plugins) {
@@ -67200,12 +68193,12 @@ function renderAngular(html, bootstrap3, url, platformProviders, serverContext) 
           search,
           hash
         } = envInjector.get(PlatformLocation);
-        const finalUrl = constructDecodedUrl({
+        const finalUrl = constructSerializedUrl(router, {
           pathname,
           search,
           hash
         }, requestPrefix);
-        const urlToRenderString = constructDecodedUrl(urlToRender, requestPrefix);
+        const urlToRenderString = constructSerializedUrl(router, urlToRender, requestPrefix);
         if (urlToRenderString !== finalUrl) {
           redirectTo = [pathname, search, hash].join("");
         }
@@ -67242,7 +68235,7 @@ function asyncDestroyPlatform2(platformRef) {
     }, 0);
   });
 }
-function constructDecodedUrl(url, prefix) {
+function constructSerializedUrl(router, url, prefix) {
   const {
     pathname,
     hash,
@@ -67255,7 +68248,8 @@ function constructDecodedUrl(url, prefix) {
     urlParts.push(stripTrailingSlash2(pathname));
   }
   urlParts.push(search, hash);
-  return decodeURIComponent(urlParts.join(""));
+  const urlTree = router.parseUrl(urlParts.join(""));
+  return router.serializeUrl(urlTree);
 }
 function promiseWithAbort(promise, signal2, errorMessagePrefix) {
   return new Promise((resolve2, reject) => {
@@ -67368,7 +68362,7 @@ var RouteTree = class _RouteTree {
     }
   }
   getPathSegments(route) {
-    return route.split("/").filter(Boolean);
+    return route.split("/").filter(Boolean).map(decodeURIComponent);
   }
   traverseBySegments(segments, node2 = this.root, currentIndex = 0) {
     if (currentIndex >= segments.length) {
@@ -67406,7 +68400,8 @@ var IS_DISCOVERING_ROUTES = new InjectionToken(typeof ngDevMode === "undefined" 
 });
 var MODULE_PRELOAD_MAX = 10;
 var CATCH_ALL_REGEXP = /\/(\*\*)$/;
-var URL_PARAMETER_REGEXP = /(?<!\\):([^/]+)/g;
+var URL_PARAMETER_REGEXP = /(?<!\\):([^/]+)/;
+var URL_PARAMETER_GLOBAL_REGEXP = new RegExp(URL_PARAMETER_REGEXP, "g");
 function handleRoute(options) {
   return __asyncGenerator(this, null, function* () {
     try {
@@ -67623,7 +68618,7 @@ function handleSSGRoute(serverConfigRouteTree, redirectTo, metadata, parentInjec
       try {
         for (const params of parameters) {
           const replacer = handlePrerenderParamsReplacement(params, currentRoutePath);
-          const routeWithResolvedParams = currentRoutePath.replace(URL_PARAMETER_REGEXP, replacer).replace(CATCH_ALL_REGEXP, replacer);
+          const routeWithResolvedParams = currentRoutePath.replace(URL_PARAMETER_GLOBAL_REGEXP, replacer).replace(CATCH_ALL_REGEXP, replacer);
           yield __spreadProps(__spreadValues({}, meta), {
             route: routeWithResolvedParams,
             redirectTo: redirectTo === void 0 ? void 0 : resolveRedirectTo(routeWithResolvedParams, redirectTo)
@@ -67934,7 +68929,6 @@ var ServerRouter = class _ServerRouter {
       pathname
     } = stripIndexHtmlFromURL(url);
     pathname = stripMatrixParams(pathname);
-    pathname = decodeURIComponent(pathname);
     return this.routeTree.match(pathname);
   }
 };
@@ -68496,9 +69490,11 @@ var AngularAppEngine = class _AngularAppEngine {
   manifest = getAngularAppEngineManifest();
   allowedHosts;
   supportedLocales = Object.keys(this.manifest.supportedLocales);
+  trustProxyHeaders;
   entryPointsCache = /* @__PURE__ */ new Map();
   constructor(options) {
     this.allowedHosts = this.getAllowedHosts(options);
+    this.trustProxyHeaders = normalizeTrustProxyHeaders(options?.trustProxyHeaders);
   }
   getAllowedHosts(options) {
     const allowedHosts = /* @__PURE__ */ new Set([...options?.allowedHosts ?? [], ...this.manifest.allowedHosts]);
@@ -68510,27 +69506,21 @@ var AngularAppEngine = class _AngularAppEngine {
   handle(request, requestContext) {
     return __async(this, null, function* () {
       const allowedHost = this.allowedHosts;
-      const disableAllowedHostsCheck = _AngularAppEngine.\u0275disableAllowedHostsCheck;
-      try {
-        validateRequest(request, allowedHost, disableAllowedHostsCheck);
-      } catch (error2) {
-        return this.handleValidationError(error2, request);
-      }
       const {
         request: securedRequest,
-        onError: onHeaderValidationError
-      } = disableAllowedHostsCheck ? {
-        request,
-        onError: null
-      } : cloneRequestAndPatchHeaders(request, allowedHost);
+        deoptToCSR
+      } = sanitizeRequestHeaders(request, this.trustProxyHeaders);
+      try {
+        validateRequest(securedRequest, allowedHost, _AngularAppEngine.\u0275disableAllowedHostsCheck);
+      } catch (error2) {
+        return this.handleValidationError(error2, securedRequest);
+      }
       const serverApp = yield this.getAngularServerAppForRequest(securedRequest);
       if (serverApp) {
-        const promises = [];
-        if (onHeaderValidationError) {
-          promises.push(onHeaderValidationError.then((error2) => this.handleValidationError(error2, securedRequest)));
+        if (deoptToCSR) {
+          return serverApp.serveClientSidePage();
         }
-        promises.push(serverApp.handle(securedRequest, requestContext));
-        return Promise.race(promises);
+        return serverApp.handle(securedRequest, requestContext);
       }
       if (this.supportedLocales.length > 1) {
         return this.redirectBasedOnAcceptLanguage(securedRequest);
@@ -68683,7 +69673,7 @@ var AppComponent = class _AppComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(AppComponent, [{
     type: Component,
-    args: [{ selector: "app-root", imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive], template: '<div class="dashboard-root">\r\n  <!-- Top bar -->\r\n  <header class="topbar">\r\n    <div class="topbar-left">\r\n      <a routerLink="/summary-view" class="brand-link">\r\n        <span class="brand">Altruist</span>\r\n        <span class="brand-sub">Server Dashboard</span>\r\n      </a>\r\n    </div>\r\n    <div class="topbar-right">\r\n      <!-- Later: env selector, auth user, etc -->\r\n      <span class="badge env">3D</span>\r\n    </div>\r\n  </header>\r\n\r\n  <div class="layout">\r\n    <!-- Sidebar -->\r\n    <nav class="sidebar">\r\n      <div class="sidebar-section sidebar-title">Management</div>\r\n\r\n      <a routerLink="scene" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F5FA}\uFE0F</span>\r\n        <span class="nav-label">Scene View</span>\r\n      </a>\r\n\r\n      <a routerLink="cache-view" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F4BE}</span>\r\n        <span class="nav-label">Cache View</span>\r\n      </a>\r\n\r\n      <a routerLink="vault-view" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F6E2}\uFE0F</span>\r\n        <span class="nav-label">Vault View</span>\r\n      </a>\r\n\r\n      <a routerLink="sessions" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F4E1}</span>\r\n        <span class="nav-label">Sessions</span>\r\n      </a>\r\n\r\n      <a routerLink="metrics" routerLinkActive="active" class="nav-item">\r\n        <span class="nav-icon">\u{1F4CA}</span>\r\n        <span class="nav-label">Metrics</span>\r\n      </a>\r\n    </nav>\r\n\r\n    <!-- Main content -->\r\n    <main class="content">\r\n      <router-outlet></router-outlet>\r\n    </main>\r\n  </div>\r\n</div>\r\n', styles: ["/* src/app/app.component.scss */\n.dashboard-root {\n  min-height: 100vh;\n  display: flex;\n  flex-direction: column;\n  background: #020617;\n  color: #e5e7eb;\n}\n.topbar {\n  height: 48px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 0 16px;\n  background:\n    linear-gradient(\n      90deg,\n      #111827,\n      #020617);\n  border-bottom: 1px solid rgba(148, 163, 184, 0.3);\n}\n.topbar-left {\n  display: flex;\n  align-items: baseline;\n  gap: 8px;\n}\n.brand {\n  font-weight: 600;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  font-size: 13px;\n  color: #38bdf8;\n}\n.brand-sub {\n  font-size: 13px;\n  color: #9ca3af;\n}\n.topbar-right {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n.badge {\n  font-size: 11px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  padding: 4px 8px;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n}\n.badge.env {\n  color: #a855f7;\n  border-color: rgba(168, 85, 247, 0.7);\n}\n.layout {\n  flex: 1 0 auto;\n  display: flex;\n}\n.sidebar {\n  width: 220px;\n  padding: 12px 8px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #111827,\n      #020617 60%);\n  border-right: 1px solid rgba(31, 41, 55, 0.9);\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  font-size: 13px;\n}\n.sidebar-section {\n  padding: 8px 10px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  font-size: 11px;\n  color: #6b7280;\n}\n.sidebar-title {\n  margin-bottom: 4px;\n}\n.nav-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 6px 10px;\n  border-radius: 6px;\n  color: #9ca3af;\n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    color 120ms ease,\n    transform 80ms ease;\n}\n.nav-item:hover {\n  background: rgba(15, 23, 42, 0.8);\n  color: #e5e7eb;\n  transform: translateX(1px);\n}\n.nav-item.active {\n  background:\n    linear-gradient(\n      90deg,\n      #1d283a,\n      #0f172a);\n  color: #e5e7eb;\n  border: 1px solid rgba(55, 65, 81, 0.9);\n}\n.nav-icon {\n  width: 18px;\n  text-align: center;\n}\n.content {\n  flex: 1 1 auto;\n  padding: 12px 16px;\n  overflow: visible;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617 0,\n      #020617 40%,\n      #000 100%);\n}\n/*# sourceMappingURL=app.component.css.map */\n"] }]
+    args: [{ selector: "app-root", imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive], template: '<div class="dashboard-root">\n  <!-- Top bar -->\n  <header class="topbar">\n    <div class="topbar-left">\n      <a routerLink="/summary-view" class="brand-link">\n        <span class="brand">Altruist</span>\n        <span class="brand-sub">Server Dashboard</span>\n      </a>\n    </div>\n    <div class="topbar-right">\n      <!-- Later: env selector, auth user, etc -->\n      <span class="badge env">3D</span>\n    </div>\n  </header>\n\n  <div class="layout">\n    <!-- Sidebar -->\n    <nav class="sidebar">\n      <div class="sidebar-section sidebar-title">Management</div>\n\n      <a routerLink="scene" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F5FA}\uFE0F</span>\n        <span class="nav-label">Scene View</span>\n      </a>\n\n      <a routerLink="cache-view" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F4BE}</span>\n        <span class="nav-label">Cache View</span>\n      </a>\n\n      <a routerLink="vault-view" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F6E2}\uFE0F</span>\n        <span class="nav-label">Vault View</span>\n      </a>\n\n      <a routerLink="sessions" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F4E1}</span>\n        <span class="nav-label">Sessions</span>\n      </a>\n\n      <a routerLink="metrics" routerLinkActive="active" class="nav-item">\n        <span class="nav-icon">\u{1F4CA}</span>\n        <span class="nav-label">Metrics</span>\n      </a>\n    </nav>\n\n    <!-- Main content -->\n    <main class="content">\n      <router-outlet></router-outlet>\n    </main>\n  </div>\n</div>\n', styles: ["/* src/app/app.component.scss */\n.dashboard-root {\n  min-height: 100vh;\n  display: flex;\n  flex-direction: column;\n  background: #020617;\n  color: #e5e7eb;\n}\n.topbar {\n  height: 48px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 0 16px;\n  background:\n    linear-gradient(\n      90deg,\n      #111827,\n      #020617);\n  border-bottom: 1px solid rgba(148, 163, 184, 0.3);\n}\n.topbar-left {\n  display: flex;\n  align-items: baseline;\n  gap: 8px;\n}\n.brand {\n  font-weight: 600;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  font-size: 13px;\n  color: #38bdf8;\n}\n.brand-sub {\n  font-size: 13px;\n  color: #9ca3af;\n}\n.topbar-right {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n.badge {\n  font-size: 11px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  padding: 4px 8px;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n}\n.badge.env {\n  color: #a855f7;\n  border-color: rgba(168, 85, 247, 0.7);\n}\n.layout {\n  flex: 1 0 auto;\n  display: flex;\n}\n.sidebar {\n  width: 220px;\n  padding: 12px 8px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #111827,\n      #020617 60%);\n  border-right: 1px solid rgba(31, 41, 55, 0.9);\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  font-size: 13px;\n}\n.sidebar-section {\n  padding: 8px 10px;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  font-size: 11px;\n  color: #6b7280;\n}\n.sidebar-title {\n  margin-bottom: 4px;\n}\n.nav-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 6px 10px;\n  border-radius: 6px;\n  color: #9ca3af;\n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    color 120ms ease,\n    transform 80ms ease;\n}\n.nav-item:hover {\n  background: rgba(15, 23, 42, 0.8);\n  color: #e5e7eb;\n  transform: translateX(1px);\n}\n.nav-item.active {\n  background:\n    linear-gradient(\n      90deg,\n      #1d283a,\n      #0f172a);\n  color: #e5e7eb;\n  border: 1px solid rgba(55, 65, 81, 0.9);\n}\n.nav-icon {\n  width: 18px;\n  text-align: center;\n}\n.content {\n  flex: 1 1 auto;\n  padding: 12px 16px;\n  overflow: visible;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617 0,\n      #020617 40%,\n      #000 100%);\n}\n/*# sourceMappingURL=app.component.css.map */\n"] }]
   }], null, null);
 })();
 (() => {
@@ -68691,6 +69681,11 @@ var AppComponent = class _AppComponent {
 })();
 
 // node_modules/@angular/forms/fesm2022/forms.mjs
+/**
+ * @license Angular v21.2.25
+ * (c) 2010-2026 Google LLC. https://angular.dev/
+ * License: MIT
+ */
 var BaseControlValueAccessor = class _BaseControlValueAccessor {
   _renderer;
   _elementRef;
@@ -69347,7 +70342,7 @@ var ngModelWithFormGroupExample = `
       <input [(ngModel)]="showMoreControls" [ngModelOptions]="{standalone: true}">
   </div>
 `;
-var VERSION2 = /* @__PURE__ */ new Version("21.2.7");
+var VERSION2 = /* @__PURE__ */ new Version("21.2.25");
 function controlParentException(nameOrIndex) {
   return new RuntimeError(1050, `formControlName must be used with a parent formGroup or formArray directive. You'll want to add a formGroup/formArray
       directive and pass it an existing FormGroup/FormArray instance (you can create one in your class).
@@ -69547,7 +70542,7 @@ function assertControlPresent(parent, isGroup, key) {
 function assertAllValuesPresent(control, isGroup, value) {
   control._forEachChild((_, key) => {
     if (value[key] === void 0) {
-      throw new RuntimeError(1002, typeof ngDevMode === "undefined" || ngDevMode ? missingControlValueError(isGroup, key) : "");
+      throw new RuntimeError(-1002, typeof ngDevMode === "undefined" || ngDevMode ? missingControlValueError(isGroup, key) : "");
     }
   });
 }
@@ -72499,11 +73494,11 @@ var SelectMultipleControlValueAccessor = class _SelectMultipleControlValueAccess
     let optionSelectedStateSetter;
     if (Array.isArray(value)) {
       const ids = value.map((v) => this._getOptionId(v));
-      optionSelectedStateSetter = (opt, o) => {
-        opt._setSelected(ids.indexOf(o.toString()) > -1);
+      optionSelectedStateSetter = (opt, id) => {
+        opt._setSelected(ids.indexOf(id) > -1);
       };
     } else {
-      optionSelectedStateSetter = (opt, o) => {
+      optionSelectedStateSetter = (opt) => {
         opt._setSelected(false);
       };
     }
@@ -73850,7 +74845,7 @@ var CacheViewComponent = class _CacheViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(CacheViewComponent, [{
     type: Component,
-    args: [{ selector: "app-cache-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="cache-view">\r\n  <header class="cache-header">\r\n    <div class="title">\r\n      <h2>\u{1F9E0} Cache Dashboard</h2>\r\n      <span class="status">{{ statusHint }}</span>\r\n    </div>\r\n\r\n    <div class="controls">\r\n      <input\r\n        type="text"\r\n        placeholder="Filter by type, group, key or content\u2026"\r\n        [(ngModel)]="filterText"\r\n        (ngModelChange)="onFilterChange($event)"\r\n      />\r\n      <button type="button" (click)="loadEntries()" [disabled]="isLoading">\r\n        Refresh\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  <section class="cache-body" *ngIf="!error; else errorTpl">\r\n    <div class="table-wrapper" *ngIf="hasData; else emptyTpl">\r\n      <table class="cache-table">\r\n        <thead>\r\n          <tr>\r\n            <th>Type</th>\r\n            <th>Group</th>\r\n            <th>Key</th>\r\n            <th>Preview</th>\r\n            <th class="actions-col"></th>\r\n          </tr>\r\n        </thead>\r\n        <tbody>\r\n          <tr\r\n            *ngFor="let entry of pagedEntries"\r\n            (dblclick)="onRowDoubleClick(entry)"\r\n          >\r\n            <td class="type-cell">\r\n              <span class="type-pill">{{ entry.typeShortName }}</span>\r\n            </td>\r\n            <td>{{ entry.groupId || "\u2014" }}</td>\r\n            <td class="key-cell" [title]="entry.key">{{ entry.key }}</td>\r\n            <td class="preview-cell">\r\n              <code>{{ entry.preview || (entry.value | json) }}</code>\r\n            </td>\r\n            <td class="actions-col">\r\n              <button\r\n                type="button"\r\n                class="btn-danger"\r\n                (click)="deleteEntry(entry, $event)"\r\n              >\r\n                Delete\r\n              </button>\r\n            </td>\r\n          </tr>\r\n        </tbody>\r\n      </table>\r\n\r\n      <!-- Page size + paginator -->\r\n      <div class="cache-pagination" *ngIf="showPager">\r\n        <div class="page-size">\r\n          <label>\r\n            Page size\r\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\r\n              <option *ngFor="let size of pageSizeOptions" [value]="size">\r\n                {{ size }}\r\n              </option>\r\n            </select>\r\n          </label>\r\n        </div>\r\n\r\n        <div class="page-nav">\r\n          <button\r\n            type="button"\r\n            (click)="goPrevPage()"\r\n            [disabled]="currentPage === 0"\r\n          >\r\n            \u2039\r\n          </button>\r\n          <span> Page {{ currentPage + 1 }} / {{ totalPages }} </span>\r\n          <button\r\n            type="button"\r\n            (click)="goNextPage()"\r\n            [disabled]="currentPage >= totalPages - 1"\r\n          >\r\n            \u203A\r\n          </button>\r\n        </div>\r\n      </div>\r\n    </div>\r\n  </section>\r\n\r\n  <ng-template #emptyTpl>\r\n    <div class="empty-state">\r\n      <p>No cache entries found.</p>\r\n    </div>\r\n  </ng-template>\r\n\r\n  <ng-template #errorTpl>\r\n    <div class="error-state">\r\n      <p>{{ error }}</p>\r\n      <button type="button" (click)="loadEntries()">Retry</button>\r\n    </div>\r\n  </ng-template>\r\n\r\n  <!-- JSON editor modal -->\r\n  <div class="modal-backdrop" *ngIf="editorVisible">\r\n    <div class="modal">\r\n      <header class="modal-header">\r\n        <h3>\r\n          Edit cache entry\r\n          <small *ngIf="selectedEntry">\r\n            ({{ selectedEntry.typeShortName }} /\r\n            {{ selectedEntry.groupId || "default" }} / {{ selectedEntry.key }})\r\n          </small>\r\n        </h3>\r\n      </header>\r\n\r\n      <section class="modal-body">\r\n        <textarea\r\n          [(ngModel)]="editorJson"\r\n          spellcheck="false"\r\n          class="json-editor"\r\n        ></textarea>\r\n\r\n        <p class="error-text" *ngIf="editorError">{{ editorError }}</p>\r\n      </section>\r\n\r\n      <footer class="modal-footer">\r\n        <button type="button" (click)="closeEditor()">Cancel</button>\r\n        <button type="button" class="btn-primary" (click)="saveEditor()">\r\n          Save\r\n        </button>\r\n      </footer>\r\n    </div>\r\n  </div>\r\n</div>\r\n', styles: ["/* src/app/cache/cache-view.component.scss */\n.cache-view {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n  height: 100%;\n  padding: 1rem;\n  background: #020617;\n  color: #e5e7eb;\n}\n.cache-view .cache-pagination {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  padding: 0.5rem 0.75rem;\n  font-size: 0.8rem;\n}\n.cache-view .cache-pagination .page-size label {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.25rem;\n}\n.cache-view .cache-pagination .page-size label select {\n  padding: 0.15rem 0.4rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n}\n.cache-view .cache-pagination .page-nav {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.cache-view .cache-pagination .page-nav button {\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  cursor: pointer;\n}\n.cache-view .cache-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 1rem;\n  padding: 10px 12px;\n  border-radius: 10px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #1e293b,\n      #020617);\n  border: 1px solid rgba(51, 65, 85, 0.9);\n}\n.cache-view .cache-header .title {\n  display: flex;\n  flex-direction: column;\n}\n.cache-view .cache-header .title h2 {\n  margin: 0;\n  font-size: 18px;\n  font-weight: 600;\n}\n.cache-view .cache-header .title .status {\n  font-size: 0.85rem;\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls {\n  display: flex;\n  gap: 0.5rem;\n  align-items: center;\n}\n.cache-view .cache-header .controls input[type=text] {\n  min-width: 250px;\n  padding: 0.3rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.cache-view .cache-header .controls input[type=text]::placeholder {\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls input[type=text]:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .cache-header .controls button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-header .controls button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-header .controls button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-header .controls button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .table-wrapper {\n  flex: 1;\n  overflow: auto;\n  border-radius: 10px;\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  background: rgba(15, 23, 42, 0.9);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.9rem;\n}\n.cache-view .cache-table thead {\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .cache-table thead th {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n  padding: 0.5rem 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  font-weight: 600;\n  font-size: 0.8rem;\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.cache-view .cache-table tbody tr {\n  cursor: pointer;\n  transition:\n    background 0.12s ease,\n    transform 0.08s ease,\n    box-shadow 0.12s ease;\n}\n.cache-view .cache-table tbody tr:nth-child(even) {\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .cache-table tbody tr:nth-child(odd) {\n  background: rgba(15, 23, 42, 0.96);\n}\n.cache-view .cache-table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table td {\n  padding: 0.4rem 0.75rem;\n  border-bottom: 1px solid rgba(15, 23, 42, 0.9);\n  vertical-align: top;\n}\n.cache-view .cache-table .type-cell .type-pill {\n  display: inline-block;\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  background: rgba(37, 99, 235, 0.15);\n  border: 1px solid rgba(37, 99, 235, 0.4);\n  font-size: 0.75rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .key-cell {\n  max-width: 250px;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  font-family: monospace;\n  font-size: 0.8rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .preview-cell {\n  max-width: 400px;\n}\n.cache-view .cache-table .preview-cell code {\n  display: block;\n  font-family: monospace;\n  font-size: 0.78rem;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  color: #9ca3af;\n}\n.cache-view .cache-table .actions-col {\n  width: 90px;\n  text-align: right;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-table .actions-col .btn-danger:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-table .actions-col .btn-danger:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-color: rgba(248, 113, 113, 0.7);\n  background: rgba(248, 113, 113, 0.16);\n  color: #fecaca;\n  font-size: 0.8rem;\n  padding: 4px 10px;\n}\n.cache-view .empty-state,\n.cache-view .error-state {\n  padding: 2rem;\n  text-align: center;\n  color: #9ca3af;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .empty-state button:hover,\n.cache-view .error-state button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .empty-state button:disabled,\n.cache-view .error-state button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n  margin-top: 0.5rem;\n}\n.cache-view .modal-backdrop {\n  position: fixed;\n  inset: 0;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 999;\n  -webkit-backdrop-filter: blur(2px);\n  backdrop-filter: blur(2px);\n}\n.cache-view .modal {\n  width: min(900px, 90vw);\n  height: min(600px, 80vh);\n  background: rgba(15, 23, 42, 0.9);\n  border-radius: 8px;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n}\n.cache-view .modal .modal-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .modal .modal-header h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-weight: 500;\n}\n.cache-view .modal .modal-header h3 small {\n  display: block;\n  font-size: 0.8rem;\n  color: #9ca3af;\n  margin-top: 0.2rem;\n}\n.cache-view .modal .modal-body {\n  flex: 1;\n  padding: 0.75rem 1rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-body .json-editor {\n  flex: 1;\n  width: 100%;\n  font-family: monospace;\n  font-size: 0.85rem;\n  padding: 0.5rem;\n  border-radius: 6px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  resize: none;\n  white-space: pre;\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n}\n.cache-view .modal .modal-body .json-editor:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .modal .modal-body .error-text {\n  margin: 0;\n  font-size: 0.8rem;\n  color: #fecaca;\n}\n.cache-view .modal .modal-footer {\n  padding: 0.6rem 1rem;\n  border-top: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-footer button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n}\n.cache-view .modal .modal-footer .btn-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer .btn-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer .btn-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer .btn-primary {\n  background:\n    linear-gradient(\n      135deg,\n      #4f46e5,\n      #7c3aed);\n  border-color: rgba(129, 140, 248, 0.9);\n}\n/*# sourceMappingURL=cache-view.component.css.map */\n"] }]
+    args: [{ selector: "app-cache-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="cache-view">\n  <header class="cache-header">\n    <div class="title">\n      <h2>\u{1F9E0} Cache Dashboard</h2>\n      <span class="status">{{ statusHint }}</span>\n    </div>\n\n    <div class="controls">\n      <input\n        type="text"\n        placeholder="Filter by type, group, key or content\u2026"\n        [(ngModel)]="filterText"\n        (ngModelChange)="onFilterChange($event)"\n      />\n      <button type="button" (click)="loadEntries()" [disabled]="isLoading">\n        Refresh\n      </button>\n    </div>\n  </header>\n\n  <section class="cache-body" *ngIf="!error; else errorTpl">\n    <div class="table-wrapper" *ngIf="hasData; else emptyTpl">\n      <table class="cache-table">\n        <thead>\n          <tr>\n            <th>Type</th>\n            <th>Group</th>\n            <th>Key</th>\n            <th>Preview</th>\n            <th class="actions-col"></th>\n          </tr>\n        </thead>\n        <tbody>\n          <tr\n            *ngFor="let entry of pagedEntries"\n            (dblclick)="onRowDoubleClick(entry)"\n          >\n            <td class="type-cell">\n              <span class="type-pill">{{ entry.typeShortName }}</span>\n            </td>\n            <td>{{ entry.groupId || "\u2014" }}</td>\n            <td class="key-cell" [title]="entry.key">{{ entry.key }}</td>\n            <td class="preview-cell">\n              <code>{{ entry.preview || (entry.value | json) }}</code>\n            </td>\n            <td class="actions-col">\n              <button\n                type="button"\n                class="btn-danger"\n                (click)="deleteEntry(entry, $event)"\n              >\n                Delete\n              </button>\n            </td>\n          </tr>\n        </tbody>\n      </table>\n\n      <!-- Page size + paginator -->\n      <div class="cache-pagination" *ngIf="showPager">\n        <div class="page-size">\n          <label>\n            Page size\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\n              <option *ngFor="let size of pageSizeOptions" [value]="size">\n                {{ size }}\n              </option>\n            </select>\n          </label>\n        </div>\n\n        <div class="page-nav">\n          <button\n            type="button"\n            (click)="goPrevPage()"\n            [disabled]="currentPage === 0"\n          >\n            \u2039\n          </button>\n          <span> Page {{ currentPage + 1 }} / {{ totalPages }} </span>\n          <button\n            type="button"\n            (click)="goNextPage()"\n            [disabled]="currentPage >= totalPages - 1"\n          >\n            \u203A\n          </button>\n        </div>\n      </div>\n    </div>\n  </section>\n\n  <ng-template #emptyTpl>\n    <div class="empty-state">\n      <p>No cache entries found.</p>\n    </div>\n  </ng-template>\n\n  <ng-template #errorTpl>\n    <div class="error-state">\n      <p>{{ error }}</p>\n      <button type="button" (click)="loadEntries()">Retry</button>\n    </div>\n  </ng-template>\n\n  <!-- JSON editor modal -->\n  <div class="modal-backdrop" *ngIf="editorVisible">\n    <div class="modal">\n      <header class="modal-header">\n        <h3>\n          Edit cache entry\n          <small *ngIf="selectedEntry">\n            ({{ selectedEntry.typeShortName }} /\n            {{ selectedEntry.groupId || "default" }} / {{ selectedEntry.key }})\n          </small>\n        </h3>\n      </header>\n\n      <section class="modal-body">\n        <textarea\n          [(ngModel)]="editorJson"\n          spellcheck="false"\n          class="json-editor"\n        ></textarea>\n\n        <p class="error-text" *ngIf="editorError">{{ editorError }}</p>\n      </section>\n\n      <footer class="modal-footer">\n        <button type="button" (click)="closeEditor()">Cancel</button>\n        <button type="button" class="btn-primary" (click)="saveEditor()">\n          Save\n        </button>\n      </footer>\n    </div>\n  </div>\n</div>\n', styles: ["/* src/app/cache/cache-view.component.scss */\n.cache-view {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n  height: 100%;\n  padding: 1rem;\n  background: #020617;\n  color: #e5e7eb;\n}\n.cache-view .cache-pagination {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  padding: 0.5rem 0.75rem;\n  font-size: 0.8rem;\n}\n.cache-view .cache-pagination .page-size label {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.25rem;\n}\n.cache-view .cache-pagination .page-size label select {\n  padding: 0.15rem 0.4rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n}\n.cache-view .cache-pagination .page-nav {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.cache-view .cache-pagination .page-nav button {\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  cursor: pointer;\n}\n.cache-view .cache-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 1rem;\n  padding: 10px 12px;\n  border-radius: 10px;\n  background:\n    radial-gradient(\n      circle at top left,\n      #1e293b,\n      #020617);\n  border: 1px solid rgba(51, 65, 85, 0.9);\n}\n.cache-view .cache-header .title {\n  display: flex;\n  flex-direction: column;\n}\n.cache-view .cache-header .title h2 {\n  margin: 0;\n  font-size: 18px;\n  font-weight: 600;\n}\n.cache-view .cache-header .title .status {\n  font-size: 0.85rem;\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls {\n  display: flex;\n  gap: 0.5rem;\n  align-items: center;\n}\n.cache-view .cache-header .controls input[type=text] {\n  min-width: 250px;\n  padding: 0.3rem 0.5rem;\n  border-radius: 999px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.cache-view .cache-header .controls input[type=text]::placeholder {\n  color: #9ca3af;\n}\n.cache-view .cache-header .controls input[type=text]:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .cache-header .controls button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-header .controls button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-header .controls button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-header .controls button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .table-wrapper {\n  flex: 1;\n  overflow: auto;\n  border-radius: 10px;\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  background: rgba(15, 23, 42, 0.9);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.9rem;\n}\n.cache-view .cache-table thead {\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .cache-table thead th {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n  padding: 0.5rem 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  font-weight: 600;\n  font-size: 0.8rem;\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.cache-view .cache-table tbody tr {\n  cursor: pointer;\n  transition:\n    background 0.12s ease,\n    transform 0.08s ease,\n    box-shadow 0.12s ease;\n}\n.cache-view .cache-table tbody tr:nth-child(even) {\n  background: rgba(15, 23, 42, 0.9);\n}\n.cache-view .cache-table tbody tr:nth-child(odd) {\n  background: rgba(15, 23, 42, 0.96);\n}\n.cache-view .cache-table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.cache-view .cache-table td {\n  padding: 0.4rem 0.75rem;\n  border-bottom: 1px solid rgba(15, 23, 42, 0.9);\n  vertical-align: top;\n}\n.cache-view .cache-table .type-cell .type-pill {\n  display: inline-block;\n  padding: 0.15rem 0.5rem;\n  border-radius: 999px;\n  background: rgba(37, 99, 235, 0.15);\n  border: 1px solid rgba(37, 99, 235, 0.4);\n  font-size: 0.75rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .key-cell {\n  max-width: 250px;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  font-family: monospace;\n  font-size: 0.8rem;\n  color: #e5e7eb;\n}\n.cache-view .cache-table .preview-cell {\n  max-width: 400px;\n}\n.cache-view .cache-table .preview-cell code {\n  display: block;\n  font-family: monospace;\n  font-size: 0.78rem;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  color: #9ca3af;\n}\n.cache-view .cache-table .actions-col {\n  width: 90px;\n  text-align: right;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .cache-table .actions-col .btn-danger:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .cache-table .actions-col .btn-danger:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .cache-table .actions-col .btn-danger {\n  border-color: rgba(248, 113, 113, 0.7);\n  background: rgba(248, 113, 113, 0.16);\n  color: #fecaca;\n  font-size: 0.8rem;\n  padding: 4px 10px;\n}\n.cache-view .empty-state,\n.cache-view .error-state {\n  padding: 2rem;\n  text-align: center;\n  color: #9ca3af;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .empty-state button:hover,\n.cache-view .error-state button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .empty-state button:disabled,\n.cache-view .error-state button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .empty-state button,\n.cache-view .error-state button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n  margin-top: 0.5rem;\n}\n.cache-view .modal-backdrop {\n  position: fixed;\n  inset: 0;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 999;\n  -webkit-backdrop-filter: blur(2px);\n  backdrop-filter: blur(2px);\n}\n.cache-view .modal {\n  width: min(900px, 90vw);\n  height: min(600px, 80vh);\n  background: rgba(15, 23, 42, 0.9);\n  border-radius: 8px;\n  display: flex;\n  flex-direction: column;\n  overflow: hidden;\n  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n}\n.cache-view .modal .modal-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  background: rgba(15, 23, 42, 0.98);\n}\n.cache-view .modal .modal-header h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-weight: 500;\n}\n.cache-view .modal .modal-header h3 small {\n  display: block;\n  font-size: 0.8rem;\n  color: #9ca3af;\n  margin-top: 0.2rem;\n}\n.cache-view .modal .modal-body {\n  flex: 1;\n  padding: 0.75rem 1rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-body .json-editor {\n  flex: 1;\n  width: 100%;\n  font-family: monospace;\n  font-size: 0.85rem;\n  padding: 0.5rem;\n  border-radius: 6px;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  resize: none;\n  white-space: pre;\n  background: rgba(15, 23, 42, 0.95);\n  color: #e5e7eb;\n}\n.cache-view .modal .modal-body .json-editor:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.cache-view .modal .modal-body .error-text {\n  margin: 0;\n  font-size: 0.8rem;\n  color: #fecaca;\n}\n.cache-view .modal .modal-footer {\n  padding: 0.6rem 1rem;\n  border-top: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n}\n.cache-view .modal .modal-footer button {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer button:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer button:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer button {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n}\n.cache-view .modal .modal-footer .btn-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.cache-view .modal .modal-footer .btn-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.cache-view .modal .modal-footer .btn-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.cache-view .modal .modal-footer .btn-primary {\n  background:\n    linear-gradient(\n      135deg,\n      #4f46e5,\n      #7c3aed);\n  border-color: rgba(129, 140, 248, 0.9);\n}\n/*# sourceMappingURL=cache-view.component.css.map */\n"] }]
   }], () => [{ type: CacheDashboardService }], null);
 })();
 (() => {
@@ -73858,6 +74853,11 @@ var CacheViewComponent = class _CacheViewComponent {
 })();
 
 // node_modules/three/build/three.core.js
+/**
+ * @license
+ * Copyright 2010-2025 Three.js Authors
+ * SPDX-License-Identifier: MIT
+ */
 var REVISION = "181";
 var MOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATE: 0, DOLLY: 1, PAN: 2 };
 var TOUCH = { ROTATE: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATE: 3 };
@@ -89806,6 +90806,11 @@ if (typeof window !== "undefined") {
 }
 
 // node_modules/three/build/three.module.js
+/**
+ * @license
+ * Copyright 2010-2025 Three.js Authors
+ * SPDX-License-Identifier: MIT
+ */
 function WebGLAnimation() {
   let context2 = null;
   let isAnimating = false;
@@ -103144,7 +104149,7 @@ var GlobeSceneComponent = class _GlobeSceneComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(GlobeSceneComponent, [{
     type: Component,
-    args: [{ selector: "app-globe-scene", template: '<div #container class="globe-container"></div>\r\n', styles: ["/* src/app/scene/globe-scene/globe-scene.component.scss */\n:host {\n  display: block;\n  flex: 1 1 auto;\n}\n.globe-container {\n  width: 100%;\n  height: 100%;\n  min-height: 240px;\n  display: block;\n  border-radius: 0 0 10px 10px;\n  overflow: hidden;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617,\n      #000);\n}\n/*# sourceMappingURL=globe-scene.component.css.map */\n"] }]
+    args: [{ selector: "app-globe-scene", template: '<div #container class="globe-container"></div>\n', styles: ["/* src/app/scene/globe-scene/globe-scene.component.scss */\n:host {\n  display: block;\n  flex: 1 1 auto;\n}\n.globe-container {\n  width: 100%;\n  height: 100%;\n  min-height: 240px;\n  display: block;\n  border-radius: 0 0 10px 10px;\n  overflow: hidden;\n  background:\n    radial-gradient(\n      circle at top,\n      #020617,\n      #000);\n}\n/*# sourceMappingURL=globe-scene.component.css.map */\n"] }]
   }], () => [{ type: NgZone }, { type: Object, decorators: [{
     type: Inject,
     args: [PLATFORM_ID]
@@ -104792,7 +105797,7 @@ var SceneViewComponent = class _SceneViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(SceneViewComponent, [{
     type: Component,
-    args: [{ selector: "app-scene-view", standalone: true, imports: [CommonModule, GlobeSceneComponent, WorldSceneComponent], template: '<div class="scene-root">\r\n  <header class="scene-header">\r\n    <div>\r\n      <h1>Scene View</h1>\r\n      <p>Visualize the current world state from your Altruist server.</p>\r\n    </div>\r\n\r\n    <div class="scene-header-actions">\r\n      <button class="button-base" (click)="onRefresh()">Refresh</button>\r\n\r\n      <button\r\n        class="button-primary"\r\n        type="button"\r\n        [class.is-on]="autoUpdate"\r\n        (click)="toggleAutoUpdate()"\r\n      >\r\n        Auto-Update: {{ autoUpdate ? "On" : "Off" }}\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  <section class="scene-layout">\r\n    <aside class="scene-sidebar">\r\n      <h2>Worlds</h2>\r\n\r\n      @if (isLoadingWorlds && worlds.length === 0) {\r\n        <div>Loading worlds\u2026</div>\r\n      } @else if (!isLoadingWorlds && worlds.length === 0) {\r\n        <div>No worlds available.</div>\r\n      } @else {\r\n        <ul class="list">\r\n          @for (world of worlds; track world.index) {\r\n            <li>\r\n              <button\r\n                class="sidebar-group"\r\n                (click)="onSelectWorld(world)"\r\n                [class.active]="world === selectedWorld"\r\n              >\r\n                <span\r\n                  class="chevron"\r\n                  (click)="toggleWorld(); $event.stopPropagation()"\r\n                  [class.collapsed]="worldCollapsed && world === selectedWorld"\r\n                >\r\n                  \u25B6\r\n                </span>\r\n\r\n                <span>#{{ world.index }} \u2014 {{ world.name || "Unnamed" }}</span>\r\n\r\n                @if (world === selectedWorld) {\r\n                  <span class="world-meta">\r\n                    {{ world.partitionCount }} partitions \xB7\r\n                    {{ world.objectCount }} objects\r\n                  </span>\r\n                }\r\n              </button>\r\n\r\n              @if (world === selectedWorld && !worldCollapsed) {\r\n                <ul class="sublist">\r\n                  @for (\r\n                    p of partitions;\r\n                    track p.indexX + ":" + p.indexY + ":" + p.indexZ\r\n                  ) {\r\n                    <li>\r\n                      <button\r\n                        class="sidebar-group"\r\n                        (click)="onSelectPartition(p)"\r\n                        [class.active]="p === selectedPartition"\r\n                      >\r\n                        <span\r\n                          class="chevron"\r\n                          (click)="togglePartition(p, $event)"\r\n                          [class.collapsed]="p.collapsed"\r\n                        >\r\n                          \u25B6\r\n                        </span>\r\n\r\n                        <span>\r\n                          Partition [{{ p.indexX }}, {{ p.indexY }},\r\n                          {{ p.indexZ }}]\r\n                        </span>\r\n\r\n                        <span class="partition-meta">\r\n                          {{ p.objects.length }} objects\r\n                        </span>\r\n                      </button>\r\n\r\n                      @if (!p.collapsed && p.objects.length > 0) {\r\n                        <ul class="sublist">\r\n                          @for (obj of p.objects; track obj.instanceId) {\r\n                            <li>\r\n                              <button\r\n                                class="sidebar-item"\r\n                                [class.active]="obj === selectedObject"\r\n                                (click)="onSelectObject(obj)"\r\n                              >\r\n                                <div class="world-object-name">\r\n                                  {{ obj.archetype || "Object" }}\r\n                                </div>\r\n\r\n                                <div class="world-object-id">\r\n                                  #{{ obj.instanceId.slice(0, 6) }}\r\n                                </div>\r\n                              </button>\r\n                            </li>\r\n                          }\r\n                        </ul>\r\n                      }\r\n                    </li>\r\n                  }\r\n                </ul>\r\n              }\r\n            </li>\r\n          }\r\n        </ul>\r\n      }\r\n    </aside>\r\n\r\n    <section class="scene-canvas">\r\n      <div class="canvas-toolbar">\n        <span class="canvas-title">3D Scene</span>\n        <span class="canvas-hint">{{ statusHint }}</span>\n        <span class="canvas-controls">\n          RMB look \xB7 WASD move \xB7 RMB+Wheel speed \xB7 Q/E up-down \xB7 MMB pan \xB7 Alt+LMB orbit \xB7 Wheel zoom \xB7 F focus\n        </span>\n      </div>\n\r\n      <div class="canvas-body">\r\n        @if (!selectedWorld || (isInitialLoading && !hasData)) {\r\n          <app-globe-scene></app-globe-scene>\r\n        } @else {\r\n          <app-world-scene\r\n            [world]="selectedWorld"\r\n            [objects]="visibleObjects"\r\n            [selectedObject]="selectedObject"\r\n            [isLoading]="false"\r\n            (cameraChanged)="onCameraChanged($event)"\r\n            (lastUpdateChanged)="onWorldLastUpdate($event)"\r\n          >\r\n          </app-world-scene>\r\n\r\n          @if (cameraInfo) {\r\n            <div class="camera-hud">\r\n              <div class="camera-hud-title">Camera</div>\r\n\r\n              <div>\r\n                Pos:\r\n                {{ cameraInfo.position.x | number: "1.1-2" }},\r\n                {{ cameraInfo.position.y | number: "1.1-2" }},\r\n                {{ cameraInfo.position.z | number: "1.1-2" }}\r\n              </div>\r\n\r\n              <div>\r\n                Rot: Y {{ cameraInfo.rotation.yaw | number: "1.0-1" }}\xB0 P\r\n                {{ cameraInfo.rotation.pitch | number: "1.0-1" }}\xB0 R\r\n                {{ cameraInfo.rotation.roll | number: "1.0-1" }}\xB0\r\n              </div>\r\n\r\n              @if (selectedObject) {\r\n                <div class="camera-hud-divider"></div>\r\n\r\n                <div class="camera-hud-title">Selected</div>\r\n\r\n                <div class="camera-hud-sub">\r\n                  {{ selectedObject.archetype || "Object" }} \xB7 #{{\r\n                    selectedObject.instanceId.slice(0, 6)\r\n                  }}\r\n                </div>\r\n\r\n                <div>\r\n                  Pos:\r\n                  {{ selectedObject.transform.position.x | number: "1.1-2" }},\r\n                  {{ selectedObject.transform.position.y | number: "1.1-2" }},\r\n                  {{ selectedObject.transform.position.z | number: "1.1-2" }}\r\n                </div>\r\n              }\r\n            </div>\r\n          }\r\n        }\r\n      </div>\r\n    </section>\r\n  </section>\r\n</div>\r\n', styles: ['@charset "UTF-8";\n\n/* src/app/scene/scene-view/scene-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.scene-header,\n.scene-sidebar,\n.scene-canvas {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.scene-root {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  height: 100%;\n}\n.scene-header {\n  padding: 10px 12px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.scene-layout {\n  flex: 1;\n  display: grid;\n  grid-template-columns: minmax(260px, 340px) 1fr;\n  gap: 12px;\n  align-items: start;\n  min-height: 0;\n}\n.scene-sidebar {\n  padding: 10px 12px;\n  display: flex;\n  flex-direction: column;\n  max-height: calc(100vh - 120px);\n  overflow: auto;\n}\n.scene-canvas {\n  display: flex;\n  flex-direction: column;\n  position: sticky;\n  top: 12px;\n  height: calc(100vh - 120px);\n  min-height: 520px;\n  overflow: hidden;\n}\n.canvas-toolbar {\n  padding: 10px 12px;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n}\n.canvas-controls {\n  margin-left: auto;\n  opacity: 0.78;\n  font-size: 12px;\n  white-space: nowrap;\n}\n.canvas-body {\n  flex: 1;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n}\n.camera-hud {\n  position: absolute;\n  left: 12px;\n  bottom: 12px;\n  z-index: 20;\n  pointer-events: none;\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: rgba(2, 6, 23, 0.78);\n  border: 1px solid rgba(255, 255, 255, 0.1);\n  font-size: 13px;\n  line-height: 1.4;\n  color: rgba(255, 255, 255, 0.92);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.camera-hud-title {\n  font-weight: 700;\n  margin-bottom: 4px;\n  opacity: 0.95;\n}\n.camera-hud-divider {\n  margin: 8px 0;\n  height: 1px;\n  opacity: 0.25;\n  background: white;\n}\n.camera-hud-sub {\n  opacity: 0.85;\n  margin-bottom: 4px;\n}\n/*# sourceMappingURL=scene-view.component.css.map */\n'] }]
+    args: [{ selector: "app-scene-view", standalone: true, imports: [CommonModule, GlobeSceneComponent, WorldSceneComponent], template: '<div class="scene-root">\n  <header class="scene-header">\n    <div>\n      <h1>Scene View</h1>\n      <p>Visualize the current world state from your Altruist server.</p>\n    </div>\n\n    <div class="scene-header-actions">\n      <button class="button-base" (click)="onRefresh()">Refresh</button>\n\n      <button\n        class="button-primary"\n        type="button"\n        [class.is-on]="autoUpdate"\n        (click)="toggleAutoUpdate()"\n      >\n        Auto-Update: {{ autoUpdate ? "On" : "Off" }}\n      </button>\n    </div>\n  </header>\n\n  <section class="scene-layout">\n    <aside class="scene-sidebar">\n      <h2>Worlds</h2>\n\n      @if (isLoadingWorlds && worlds.length === 0) {\n        <div>Loading worlds\u2026</div>\n      } @else if (!isLoadingWorlds && worlds.length === 0) {\n        <div>No worlds available.</div>\n      } @else {\n        <ul class="list">\n          @for (world of worlds; track world.index) {\n            <li>\n              <button\n                class="sidebar-group"\n                (click)="onSelectWorld(world)"\n                [class.active]="world === selectedWorld"\n              >\n                <span\n                  class="chevron"\n                  (click)="toggleWorld(); $event.stopPropagation()"\n                  [class.collapsed]="worldCollapsed && world === selectedWorld"\n                >\n                  \u25B6\n                </span>\n\n                <span>#{{ world.index }} \u2014 {{ world.name || "Unnamed" }}</span>\n\n                @if (world === selectedWorld) {\n                  <span class="world-meta">\n                    {{ world.partitionCount }} partitions \xB7\n                    {{ world.objectCount }} objects\n                  </span>\n                }\n              </button>\n\n              @if (world === selectedWorld && !worldCollapsed) {\n                <ul class="sublist">\n                  @for (\n                    p of partitions;\n                    track p.indexX + ":" + p.indexY + ":" + p.indexZ\n                  ) {\n                    <li>\n                      <button\n                        class="sidebar-group"\n                        (click)="onSelectPartition(p)"\n                        [class.active]="p === selectedPartition"\n                      >\n                        <span\n                          class="chevron"\n                          (click)="togglePartition(p, $event)"\n                          [class.collapsed]="p.collapsed"\n                        >\n                          \u25B6\n                        </span>\n\n                        <span>\n                          Partition [{{ p.indexX }}, {{ p.indexY }},\n                          {{ p.indexZ }}]\n                        </span>\n\n                        <span class="partition-meta">\n                          {{ p.objects.length }} objects\n                        </span>\n                      </button>\n\n                      @if (!p.collapsed && p.objects.length > 0) {\n                        <ul class="sublist">\n                          @for (obj of p.objects; track obj.instanceId) {\n                            <li>\n                              <button\n                                class="sidebar-item"\n                                [class.active]="obj === selectedObject"\n                                (click)="onSelectObject(obj)"\n                              >\n                                <div class="world-object-name">\n                                  {{ obj.archetype || "Object" }}\n                                </div>\n\n                                <div class="world-object-id">\n                                  #{{ obj.instanceId.slice(0, 6) }}\n                                </div>\n                              </button>\n                            </li>\n                          }\n                        </ul>\n                      }\n                    </li>\n                  }\n                </ul>\n              }\n            </li>\n          }\n        </ul>\n      }\n    </aside>\n\n    <section class="scene-canvas">\n      <div class="canvas-toolbar">\n        <span class="canvas-title">3D Scene</span>\n        <span class="canvas-hint">{{ statusHint }}</span>\n        <span class="canvas-controls">\n          RMB look \xB7 WASD move \xB7 RMB+Wheel speed \xB7 Q/E up-down \xB7 MMB pan \xB7 Alt+LMB orbit \xB7 Wheel zoom \xB7 F focus\n        </span>\n      </div>\n\n      <div class="canvas-body">\n        @if (!selectedWorld || (isInitialLoading && !hasData)) {\n          <app-globe-scene></app-globe-scene>\n        } @else {\n          <app-world-scene\n            [world]="selectedWorld"\n            [objects]="visibleObjects"\n            [selectedObject]="selectedObject"\n            [isLoading]="false"\n            (cameraChanged)="onCameraChanged($event)"\n            (lastUpdateChanged)="onWorldLastUpdate($event)"\n          >\n          </app-world-scene>\n\n          @if (cameraInfo) {\n            <div class="camera-hud">\n              <div class="camera-hud-title">Camera</div>\n\n              <div>\n                Pos:\n                {{ cameraInfo.position.x | number: "1.1-2" }},\n                {{ cameraInfo.position.y | number: "1.1-2" }},\n                {{ cameraInfo.position.z | number: "1.1-2" }}\n              </div>\n\n              <div>\n                Rot: Y {{ cameraInfo.rotation.yaw | number: "1.0-1" }}\xB0 P\n                {{ cameraInfo.rotation.pitch | number: "1.0-1" }}\xB0 R\n                {{ cameraInfo.rotation.roll | number: "1.0-1" }}\xB0\n              </div>\n\n              @if (selectedObject) {\n                <div class="camera-hud-divider"></div>\n\n                <div class="camera-hud-title">Selected</div>\n\n                <div class="camera-hud-sub">\n                  {{ selectedObject.archetype || "Object" }} \xB7 #{{\n                    selectedObject.instanceId.slice(0, 6)\n                  }}\n                </div>\n\n                <div>\n                  Pos:\n                  {{ selectedObject.transform.position.x | number: "1.1-2" }},\n                  {{ selectedObject.transform.position.y | number: "1.1-2" }},\n                  {{ selectedObject.transform.position.z | number: "1.1-2" }}\n                </div>\n              }\n            </div>\n          }\n        }\n      </div>\n    </section>\n  </section>\n</div>\n', styles: ['@charset "UTF-8";\n\n/* src/app/scene/scene-view/scene-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.scene-header,\n.scene-sidebar,\n.scene-canvas {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.scene-root {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  height: 100%;\n}\n.scene-header {\n  padding: 10px 12px;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.scene-layout {\n  flex: 1;\n  display: grid;\n  grid-template-columns: minmax(260px, 340px) 1fr;\n  gap: 12px;\n  align-items: start;\n  min-height: 0;\n}\n.scene-sidebar {\n  padding: 10px 12px;\n  display: flex;\n  flex-direction: column;\n  max-height: calc(100vh - 120px);\n  overflow: auto;\n}\n.scene-canvas {\n  display: flex;\n  flex-direction: column;\n  position: sticky;\n  top: 12px;\n  height: calc(100vh - 120px);\n  min-height: 520px;\n  overflow: hidden;\n}\n.canvas-toolbar {\n  padding: 10px 12px;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n}\n.canvas-controls {\n  margin-left: auto;\n  opacity: 0.78;\n  font-size: 12px;\n  white-space: nowrap;\n}\n.canvas-body {\n  flex: 1;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n}\n.camera-hud {\n  position: absolute;\n  left: 12px;\n  bottom: 12px;\n  z-index: 20;\n  pointer-events: none;\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: rgba(2, 6, 23, 0.78);\n  border: 1px solid rgba(255, 255, 255, 0.1);\n  font-size: 13px;\n  line-height: 1.4;\n  color: rgba(255, 255, 255, 0.92);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.camera-hud-title {\n  font-weight: 700;\n  margin-bottom: 4px;\n  opacity: 0.95;\n}\n.camera-hud-divider {\n  margin: 8px 0;\n  height: 1px;\n  opacity: 0.25;\n  background: white;\n}\n.camera-hud-sub {\n  opacity: 0.85;\n  margin-bottom: 4px;\n}\n/*# sourceMappingURL=scene-view.component.css.map */\n'] }]
   }], () => [{ type: WorldDashboardService }], null);
 })();
 (() => {
@@ -105299,218 +106304,218 @@ var SessionComponent = class _SessionComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(SessionComponent, [{
     type: Component,
-    args: [{ selector: "app-session", standalone: true, imports: [CommonModule], template: `<div class="session-root">\r
-  <header class="session-header">\r
-    <div>\r
-      <h1>Sessions</h1>\r
-      <p>Inspect live rooms and connections on your Altruist server.</p>\r
-    </div>\r
-    <div class="session-header-actions">\r
-      <button\r
-        class="btn btn-secondary"\r
-        type="button"\r
-        (click)="onRefresh()"\r
-        [disabled]="isLoading || isMutating"\r
-      >\r
-        Refresh\r
-      </button>\r
-    </div>\r
-  </header>\r
-\r
-  @if (errorMessage) {\r
-  <div class="session-error">\r
-    {{ errorMessage }}\r
-  </div>\r
-  }\r
-\r
-  <section class="session-layout">\r
-    <section class="session-panel session-panel--rooms">\r
-      <header class="panel-header">\r
-        <h2>Rooms</h2>\r
-        <span class="panel-meta">\r
-          @if (isLoading) { Loading\u2026 } @else { {{ rooms.length }} room(s) }\r
-        </span>\r
-      </header>\r
-\r
-      @if (!isLoading && !hasRooms) {\r
-      <div class="panel-empty">No rooms currently active.</div>\r
-      } @else {\r
-      <div class="table-wrapper">\r
-        <table class="session-table">\r
-          <thead>\r
-            <tr>\r
-              <th>Room</th>\r
-              <th>Connections</th>\r
-              <th class="col-actions">Actions</th>\r
-            </tr>\r
-          </thead>\r
-          <tbody>\r
-            @for (room of rooms; track room.roomId) {\r
-            <tr\r
-              class="room-row"\r
-              [class.room-row--active]="room === selectedRoom"\r
-              (click)="onSelectRoom(room)"\r
-            >\r
-              <td>\r
-                <div class="room-id">\r
-                  {{ room.roomId }}\r
-                </div>\r
-              </td>\r
-              <td>\r
-                <span class="badge">\r
-                  {{ room.connectionCount }}\r
-                </span>\r
-              </td>\r
-              <td class="col-actions">\r
-                @if (room.roomId !== 'waiting_room') {\r
-                <button\r
-                  class="btn btn-link"\r
-                  type="button"\r
-                  (click)="onDeleteRoom(room); $event.stopPropagation()"\r
-                  [disabled]="isMutating"\r
-                >\r
-                  Delete room\r
-                </button>\r
-                }\r
-              </td>\r
-            </tr>\r
-            }\r
-          </tbody>\r
-        </table>\r
-      </div>\r
-      }\r
-    </section>\r
-\r
-    <section class="session-panel session-panel--connections">\r
-      <header class="panel-header">\r
-        <h2>Connections</h2>\r
-        <span class="panel-meta">\r
-          @if (!hasSelection) { Select a room to inspect its connections. }\r
-          @else { Room: {{ selectedRoom?.roomId }} \xB7\r
-          {{ selectedRoom?.connectionCount }} connection(s) }\r
-        </span>\r
-      </header>\r
-\r
-      @if (!hasSelection) {\r
-      <div class="panel-empty panel-empty--muted">\r
-        Select a room on the left to see its connections.\r
-      </div>\r
-      } @else { @if (selectedRoom?.connections?.length === 0) {\r
-      <div class="panel-empty">No connections in this room.</div>\r
-      } @else {\r
-      <div class="table-wrapper">\r
-        <table class="session-table">\r
-          <thead>\r
-            <tr>\r
-              <th>Connection ID</th>\r
-              <th class="col-actions">Actions</th>\r
-            </tr>\r
-          </thead>\r
-          <tbody>\r
-            @for (conn of selectedRoom!.connections; track conn.connectionId) {\r
-            <tr>\r
-              <td>\r
-                <code class="conn-id">\r
-                  {{ conn.connectionId }}\r
-                </code>\r
-              </td>\r
-              <td class="col-actions">\r
-                <button\r
-                  class="btn btn-secondary"\r
-                  type="button"\r
-                  (click)="onRemoveConnection(selectedRoom!, conn)"\r
-                  [disabled]="isMutating"\r
-                >\r
-                  Remove from room\r
-                </button>\r
-                <button\r
-                  class="btn btn-solid-danger"\r
-                  type="button"\r
-                  (click)="onCloseSession(conn)"\r
-                  [disabled]="isMutating"\r
-                >\r
-                  Close session\r
-                </button>\r
-              </td>\r
-            </tr>\r
-            }\r
-          </tbody>\r
-        </table>\r
-      </div>\r
-      } }\r
-    </section>\r
-  </section>\r
-\r
-  <!-- All connections panel (always visible, even if there are 0 rooms) -->\r
-  <section class="session-panel session-panel--all-connections">\r
-    <header class="panel-header">\r
-      <h2>All Connections</h2>\r
-      <span class="panel-meta">\r
-        @if (isLoading) { Loading\u2026 } @else {\r
-        {{ allConnections.length }} connection(s) }\r
-      </span>\r
-    </header>\r
-\r
-    @if (!isLoading && allConnections.length === 0) {\r
-    <div class="panel-empty">No active connections.</div>\r
-    } @else {\r
-    <div class="table-wrapper">\r
-      <table class="session-table">\r
-        <thead>\r
-          <tr>\r
-            <th>#</th>\r
-            <th>Connection ID</th>\r
-            <th>IP address</th>\r
-            <th>Room</th>\r
-            <th class="col-actions">Actions</th>\r
-          </tr>\r
-        </thead>\r
-        <tbody>\r
-          @for (conn of allConnections; track conn.connectionId; let i = $index)\r
-          {\r
-          <tr>\r
-            <td>{{ i + 1 }}</td>\r
-            <td>\r
-              <code class="conn-id">\r
-                {{ conn.connectionId }}\r
-              </code>\r
-            </td>\r
-            <td>\r
-              @if (conn.ipAddress) {\r
-              <code class="conn-id">\r
-                {{ conn.ipAddress }}\r
-              </code>\r
-              } @else {\r
-              <span class="badge">Unknown</span>\r
-              }\r
-            </td>\r
-            <td>\r
-              @if (conn.roomId) {\r
-              <span class="room-id">\r
-                {{ conn.roomId }}\r
-              </span>\r
-              } @else {\r
-              <span class="badge">No room</span>\r
-              }\r
-            </td>\r
-            <td class="col-actions">\r
-              <button\r
-                class="btn btn-solid-danger"\r
-                type="button"\r
-                (click)="onCloseSession(conn)"\r
-                [disabled]="isMutating"\r
-              >\r
-                Close session\r
-              </button>\r
-            </td>\r
-          </tr>\r
-          }\r
-        </tbody>\r
-      </table>\r
-    </div>\r
-    }\r
-  </section>\r
-</div>\r
+    args: [{ selector: "app-session", standalone: true, imports: [CommonModule], template: `<div class="session-root">
+  <header class="session-header">
+    <div>
+      <h1>Sessions</h1>
+      <p>Inspect live rooms and connections on your Altruist server.</p>
+    </div>
+    <div class="session-header-actions">
+      <button
+        class="btn btn-secondary"
+        type="button"
+        (click)="onRefresh()"
+        [disabled]="isLoading || isMutating"
+      >
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  @if (errorMessage) {
+  <div class="session-error">
+    {{ errorMessage }}
+  </div>
+  }
+
+  <section class="session-layout">
+    <section class="session-panel session-panel--rooms">
+      <header class="panel-header">
+        <h2>Rooms</h2>
+        <span class="panel-meta">
+          @if (isLoading) { Loading\u2026 } @else { {{ rooms.length }} room(s) }
+        </span>
+      </header>
+
+      @if (!isLoading && !hasRooms) {
+      <div class="panel-empty">No rooms currently active.</div>
+      } @else {
+      <div class="table-wrapper">
+        <table class="session-table">
+          <thead>
+            <tr>
+              <th>Room</th>
+              <th>Connections</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (room of rooms; track room.roomId) {
+            <tr
+              class="room-row"
+              [class.room-row--active]="room === selectedRoom"
+              (click)="onSelectRoom(room)"
+            >
+              <td>
+                <div class="room-id">
+                  {{ room.roomId }}
+                </div>
+              </td>
+              <td>
+                <span class="badge">
+                  {{ room.connectionCount }}
+                </span>
+              </td>
+              <td class="col-actions">
+                @if (room.roomId !== 'waiting_room') {
+                <button
+                  class="btn btn-link"
+                  type="button"
+                  (click)="onDeleteRoom(room); $event.stopPropagation()"
+                  [disabled]="isMutating"
+                >
+                  Delete room
+                </button>
+                }
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </section>
+
+    <section class="session-panel session-panel--connections">
+      <header class="panel-header">
+        <h2>Connections</h2>
+        <span class="panel-meta">
+          @if (!hasSelection) { Select a room to inspect its connections. }
+          @else { Room: {{ selectedRoom?.roomId }} \xB7
+          {{ selectedRoom?.connectionCount }} connection(s) }
+        </span>
+      </header>
+
+      @if (!hasSelection) {
+      <div class="panel-empty panel-empty--muted">
+        Select a room on the left to see its connections.
+      </div>
+      } @else { @if (selectedRoom?.connections?.length === 0) {
+      <div class="panel-empty">No connections in this room.</div>
+      } @else {
+      <div class="table-wrapper">
+        <table class="session-table">
+          <thead>
+            <tr>
+              <th>Connection ID</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (conn of selectedRoom!.connections; track conn.connectionId) {
+            <tr>
+              <td>
+                <code class="conn-id">
+                  {{ conn.connectionId }}
+                </code>
+              </td>
+              <td class="col-actions">
+                <button
+                  class="btn btn-secondary"
+                  type="button"
+                  (click)="onRemoveConnection(selectedRoom!, conn)"
+                  [disabled]="isMutating"
+                >
+                  Remove from room
+                </button>
+                <button
+                  class="btn btn-solid-danger"
+                  type="button"
+                  (click)="onCloseSession(conn)"
+                  [disabled]="isMutating"
+                >
+                  Close session
+                </button>
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      } }
+    </section>
+  </section>
+
+  <!-- All connections panel (always visible, even if there are 0 rooms) -->
+  <section class="session-panel session-panel--all-connections">
+    <header class="panel-header">
+      <h2>All Connections</h2>
+      <span class="panel-meta">
+        @if (isLoading) { Loading\u2026 } @else {
+        {{ allConnections.length }} connection(s) }
+      </span>
+    </header>
+
+    @if (!isLoading && allConnections.length === 0) {
+    <div class="panel-empty">No active connections.</div>
+    } @else {
+    <div class="table-wrapper">
+      <table class="session-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Connection ID</th>
+            <th>IP address</th>
+            <th>Room</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (conn of allConnections; track conn.connectionId; let i = $index)
+          {
+          <tr>
+            <td>{{ i + 1 }}</td>
+            <td>
+              <code class="conn-id">
+                {{ conn.connectionId }}
+              </code>
+            </td>
+            <td>
+              @if (conn.ipAddress) {
+              <code class="conn-id">
+                {{ conn.ipAddress }}
+              </code>
+              } @else {
+              <span class="badge">Unknown</span>
+              }
+            </td>
+            <td>
+              @if (conn.roomId) {
+              <span class="room-id">
+                {{ conn.roomId }}
+              </span>
+              } @else {
+              <span class="badge">No room</span>
+              }
+            </td>
+            <td class="col-actions">
+              <button
+                class="btn btn-solid-danger"
+                type="button"
+                (click)="onCloseSession(conn)"
+                [disabled]="isMutating"
+              >
+                Close session
+              </button>
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+  </section>
+</div>
 `, styles: ['@charset "UTF-8";\n\n/* src/app/session/session.component.scss */\n.session-root {\n  display: flex;\n  flex-direction: column;\n  gap: 1.5rem;\n  padding: 1.5rem;\n  box-sizing: border-box;\n  background: #020617;\n  color: #e5e7eb;\n}\n.session-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 1rem;\n}\n.session-header h1 {\n  margin: 0;\n  font-size: 1.5rem;\n}\n.session-header p {\n  margin: 0.25rem 0 0;\n  opacity: 0.8;\n  font-size: 0.875rem;\n  color: #9ca3af;\n}\n.session-header-actions {\n  display: flex;\n  gap: 0.5rem;\n}\n.session-header-actions .btn {\n  cursor: pointer;\n}\n.session-error {\n  padding: 0.75rem 1rem;\n  border-radius: 0.5rem;\n  background: rgba(248, 113, 113, 0.12);\n  color: #fecaca;\n  font-size: 0.875rem;\n}\n.session-layout {\n  display: grid;\n  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);\n  gap: 1.5rem;\n}\n.session-panel {\n  display: flex;\n  flex-direction: column;\n  background: rgba(15, 23, 42, 0.6);\n  border-radius: 0.75rem;\n  padding: 1rem;\n  border: 1px solid rgba(148, 163, 184, 0.5);\n}\n.panel-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 0.5rem;\n  margin-bottom: 0.75rem;\n}\n.panel-header h2 {\n  margin: 0;\n  font-size: 1rem;\n  font-weight: 600;\n}\n.panel-header .panel-meta {\n  font-size: 0.75rem;\n  opacity: 0.7;\n  color: #9ca3af;\n}\n.panel-empty {\n  padding: 1rem;\n  font-size: 0.875rem;\n  border-radius: 0.5rem;\n  background: rgba(15, 23, 42, 0.7);\n  border: 1px dashed rgba(148, 163, 184, 0.5);\n}\n.panel-empty--muted {\n  opacity: 0.8;\n}\n.table-wrapper {\n  flex: 0 0 auto;\n  max-height: none;\n  overflow: visible;\n}\n.session-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.875rem;\n}\n.session-table th,\n.session-table td {\n  padding: 0.5rem 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(148, 163, 184, 0.5);\n  vertical-align: middle;\n}\n.session-table thead th {\n  font-size: 0.75rem;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n  opacity: 0.7;\n  color: #9ca3af;\n}\n.session-table tbody tr:hover {\n  background: rgba(15, 23, 42, 0.9);\n}\n.session-table .col-actions {\n  text-align: right;\n  white-space: nowrap;\n}\n.room-row {\n  cursor: pointer;\n}\n.room-row--active {\n  background: rgba(59, 130, 246, 0.12);\n}\n.room-row--active:hover {\n  background: rgba(59, 130, 246, 0.18);\n}\n.room-id,\n.conn-id {\n  font-family:\n    ui-monospace,\n    SFMono-Regular,\n    Menlo,\n    Monaco,\n    Consolas,\n    "Liberation Mono",\n    "Courier New",\n    monospace;\n  font-size: 0.8rem;\n  word-break: break-all;\n}\n.badge {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 1.5rem;\n  padding: 0.1rem 0.4rem;\n  border-radius: 999px;\n  background: rgba(59, 130, 246, 0.15);\n  color: #bfdbfe;\n  font-size: 0.75rem;\n}\n.btn {\n  border: none;\n  font: inherit;\n  cursor: pointer;\n}\n.btn.btn-secondary,\n.btn.btn-primary {\n  padding: 0.4rem 0.8rem;\n  border-radius: 999px;\n}\n.btn.btn-secondary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.btn.btn-secondary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.btn.btn-secondary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.btn.btn-secondary {\n  border-color: rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.8);\n  padding: 0.4rem 0.8rem;\n}\n.btn.btn-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.btn.btn-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.btn.btn-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.btn.btn-primary {\n  background:\n    linear-gradient(\n      135deg,\n      #4f46e5,\n      #7c3aed);\n  border-color: rgba(129, 140, 248, 0.9);\n  padding: 0.4rem 0.8rem;\n}\n.btn.btn-link {\n  background: none;\n  color: #93c5fd;\n  padding: 0;\n  margin-left: 0.2rem;\n  border: none;\n}\n.btn.btn-link--danger {\n  color: #fecaca;\n}\n.btn {\n}\n.btn.btn-solid-danger {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.btn.btn-solid-danger:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.btn.btn-solid-danger:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.btn.btn-solid-danger {\n  border-color: rgba(248, 113, 113, 0.7);\n  background: rgba(248, 113, 113, 0.16);\n  color: #fecaca;\n  padding: 0.3rem 0.7rem;\n}\n.btn:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n/*# sourceMappingURL=session.component.css.map */\n'] }]
   }], () => [{ type: HttpClient }], null);
 })();
@@ -106238,7 +107243,7 @@ var SummaryViewComponent = class _SummaryViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(SummaryViewComponent, [{
     type: Component,
-    args: [{ selector: "app-summary-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="summary-root">\r\n  <!-- PAGE HEADER -->\r\n  <header class="summary-header">\r\n    <div class="header-main">\r\n      <h1>\u2728 Altruist Dashboard</h1>\r\n      <p>\r\n        High-level overview of configuration, engine state, and discovered\r\n        services.\r\n      </p>\r\n    </div>\r\n\r\n    <div class="header-actions">\r\n      <button\r\n        class="button-base"\r\n        type="button"\r\n        (click)="loadSummary()"\r\n        [disabled]="isLoading"\r\n      >\r\n        Refresh\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  @if (error) {\r\n  <div class="summary-error">{{ error }}</div>\r\n  } @if (isLoading && !summary) {\r\n  <div class="summary-loading">Loading summary\u2026</div>\r\n  } @if (summary) {\r\n\r\n  <!-- ENGINE + OVERVIEW -->\r\n  <section class="summary-top">\r\n    <article class="engine-card">\r\n      <h2>\u{1F3AE} Engine</h2>\r\n\r\n      @if (!engine) {\r\n\r\n      <p class="muted">Engine configuration not available.</p>\r\n\r\n      } @else {\r\n\r\n      <div class="engine-grid">\r\n        <div class="engine-stat">\r\n          <span class="label">Diagnostics</span>\r\n          <span class="value">{{\r\n            engine.diagnostics ? "Enabled" : "Disabled"\r\n          }}</span>\r\n        </div>\r\n\r\n        <div class="engine-stat">\r\n          <span class="label">Framerate</span>\r\n          <span class="value">{{ engine.framerateHz }} {{ engine.unit }}</span>\r\n        </div>\r\n\r\n        <div class="engine-stat">\r\n          <span class="label">Throttle</span>\r\n          <span class="value">{{ engine.throttle ?? "\u2014" }}</span>\r\n        </div>\r\n\r\n        <div class="engine-stat">\r\n          <span class="label">Gravity</span>\r\n          <span class="value">\r\n            @if (engine.gravity) { ({{ engine.gravity.x }},\r\n            {{ engine.gravity.y }}, {{ engine.gravity.z }}) } @else { \u2014 }\r\n          </span>\r\n        </div>\r\n      </div>\r\n\r\n      }\r\n    </article>\r\n\r\n    <article class="stats-card">\r\n      <h2>\u{1F4CA} Overview</h2>\r\n\r\n      <div class="stats-grid">\r\n        <div class="stat">\r\n          <span class="label">Config entries: </span>\r\n          <span class="value">{{ configCount }}</span>\r\n        </div>\r\n        <div class="stat">\r\n          <span class="label">Discovered services: </span>\r\n          <span class="value">{{ serviceCount }}</span>\r\n        </div>\r\n        <div class="stat">\r\n          <span class="label">Portals: </span>\r\n          <span class="value">{{ portals.length }}</span>\r\n        </div>\r\n        <div class="stat">\r\n          <span class="label">Altruist services: </span>\r\n          <span class="value">{{ altruistServices.length }}</span>\r\n        </div>\r\n      </div>\r\n    </article>\r\n  </section>\r\n\r\n  <!-- CONFIGURATION -->\r\n  <section class="summary-configs">\r\n    <header class="panel-header sticky-header">\r\n      <div>\r\n        <h2>\u{1F527} Configuration</h2>\r\n        <p class="panel-meta">Editable entries are marked with \u270F\uFE0F</p>\r\n      </div>\r\n\r\n      <div class="panel-controls">\r\n        <input\r\n          type="text"\r\n          class="input"\r\n          placeholder="Filter configuration\u2026"\r\n          [(ngModel)]="configFilter"\r\n        />\r\n      </div>\r\n    </header>\r\n\r\n    @if (hasPendingConfigChanges) {\r\n    <div class="save-bar">\r\n      <button class="button-primary" (click)="saveConfigChanges()">\r\n        \u{1F4BE} Save Changes\r\n      </button>\r\n      <button class="button-base muted" (click)="cancelEdit()">Cancel</button>\r\n    </div>\r\n    }\r\n\r\n    <div class="config-list">\r\n      @if (!configEntries.length) {\r\n\r\n      <p class="muted">No configuration entries match your filter.</p>\r\n\r\n      } @else {\r\n\r\n      <table class="table config-table">\r\n        <thead>\r\n          <tr>\r\n            <th>Key</th>\r\n            <th>Value</th>\r\n          </tr>\r\n        </thead>\r\n\r\n        <tbody>\r\n          @for (c of configEntries; track c.key) {\r\n          <tr>\r\n            <td class="config-key">\r\n              <code>{{ c.key }}</code>\r\n              @if (c.modifiable) { <span class="pencil">\u270F\uFE0F</span> }\r\n            </td>\r\n\r\n            <td class="config-value">\r\n              @if (editingKey === c.key) {\r\n              <input\r\n                class="input config-edit-input"\r\n                [(ngModel)]="editBuffer[c.key]"\r\n                (ngModelChange)="onEditInput(c.key, $event)"\r\n              />\r\n              } @else {\r\n              <code class="modifiable" (dblclick)="beginEdit(c.key, c.value)">\r\n                {{ c.value ?? "null" }}\r\n              </code>\r\n              }\r\n            </td>\r\n          </tr>\r\n          }\r\n        </tbody>\r\n      </table>\r\n\r\n      }\r\n    </div>\r\n  </section>\r\n\r\n  <!-- SERVICES -->\r\n  <section class="summary-services">\r\n    <header class="panel-header sticky-header">\r\n      <div>\r\n        <h2>\u{1F9E9} Services & Portals</h2>\r\n        <p class="panel-meta">\r\n          Discovered services grouped by role and attributes.\r\n        </p>\r\n      </div>\r\n\r\n      <div class="panel-controls">\r\n        <input\r\n          type="text"\r\n          class="input"\r\n          placeholder="Filter\u2026"\r\n          [(ngModel)]="serviceFilter"\r\n        />\r\n      </div>\r\n    </header>\r\n\r\n    <div class="services-table-wrapper">\r\n      @if (!services.length) {\r\n\r\n      <p class="muted">No services match your filter.</p>\r\n\r\n      } @else {\r\n\r\n      <table class="table services-table">\r\n        <thead>\r\n          <tr>\r\n            <th>Name</th>\r\n            <th>Type</th>\r\n            <th>Details</th>\r\n            <th>Assembly</th>\r\n          </tr>\r\n        </thead>\r\n\r\n        <tbody>\r\n          <!-- PORTALS -->\r\n          @if (portals.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Portals</td>\r\n          </tr>\r\n\r\n          @for (p of portals; track p.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ p.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ p.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details">\r\n              <div class="pill-row">\r\n                @if (p.endpoint) {\r\n                <span class="pill pill-endpoint">{{ p.endpoint }}</span> } @if\r\n                (p.context) {\r\n                <span class="pill pill-context">{{ p.context }}</span> }\r\n              </div>\r\n            </td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ p.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n\r\n          <!-- ALTRUIST SERVICES -->\r\n          @if (altruistServices.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Altruist services</td>\r\n          </tr>\r\n\r\n          @for (s of altruistServices; track s.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ s.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ s.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details">\r\n              <div class="pill-row">\r\n                @if (s.lifetime) {\r\n                <span class="pill pill-lifetime">{{ s.lifetime }}</span> } @if\r\n                (s.serviceType) {\r\n                <span class="pill pill-service-type">{{ s.serviceType }}</span>\r\n                }\r\n              </div>\r\n            </td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ s.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n\r\n          <!-- FACTORIES -->\r\n          @if (serviceFactories.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Service factories</td>\r\n          </tr>\r\n\r\n          @for (f of serviceFactories; track f.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ f.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ f.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details"></td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ f.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n\r\n          <!-- SERVICE CONFIGS -->\r\n          @if (serviceConfigs.length) {\r\n          <tr class="group-row">\r\n            <td colspan="4">Service configurations</td>\r\n          </tr>\r\n\r\n          @for (c of serviceConfigs; track c.fullName) {\r\n          <tr class="service-row">\r\n            <td class="cell-name">\r\n              <div class="service-name">{{ c.name }}</div>\r\n            </td>\r\n            <td class="cell-type">\r\n              <code>{{ c.fullName }}</code>\r\n            </td>\r\n            <td class="cell-details"></td>\r\n            <td class="cell-assembly">\r\n              <span class="pill pill-assembly">{{ c.assembly }}</span>\r\n            </td>\r\n          </tr>\r\n          } }\r\n        </tbody>\r\n      </table>\r\n\r\n      }\r\n    </div>\r\n  </section>\r\n\r\n  }\r\n</div>\r\n', styles: ["/* src/app/summary/summary-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.summary-header,\n.engine-card,\n.stats-card,\n.summary-configs,\n.summary-services {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.summary-root {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n  height: auto;\n}\n.summary-header {\n  flex-shrink: 0;\n}\n.summary-top {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 1rem;\n  flex-shrink: 0;\n  min-height: 180px;\n}\n.engine-card,\n.stats-card {\n  flex: 1 1 300px;\n  min-width: 260px;\n}\n.summary-configs,\n.summary-services {\n  min-height: 300px;\n  display: flex;\n  flex-direction: column;\n  overflow: auto;\n}\n.sticky-header {\n  position: sticky;\n  top: 0;\n  z-index: 10;\n  background: rgba(15, 23, 42, 0.9);\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n}\n.config-list,\n.services-table-wrapper {\n  flex: 1;\n  overflow: auto;\n}\n.config-table,\n.services-table {\n  width: 100%;\n}\n/*# sourceMappingURL=summary-view.component.css.map */\n"] }]
+    args: [{ selector: "app-summary-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="summary-root">\n  <!-- PAGE HEADER -->\n  <header class="summary-header">\n    <div class="header-main">\n      <h1>\u2728 Altruist Dashboard</h1>\n      <p>\n        High-level overview of configuration, engine state, and discovered\n        services.\n      </p>\n    </div>\n\n    <div class="header-actions">\n      <button\n        class="button-base"\n        type="button"\n        (click)="loadSummary()"\n        [disabled]="isLoading"\n      >\n        Refresh\n      </button>\n    </div>\n  </header>\n\n  @if (error) {\n  <div class="summary-error">{{ error }}</div>\n  } @if (isLoading && !summary) {\n  <div class="summary-loading">Loading summary\u2026</div>\n  } @if (summary) {\n\n  <!-- ENGINE + OVERVIEW -->\n  <section class="summary-top">\n    <article class="engine-card">\n      <h2>\u{1F3AE} Engine</h2>\n\n      @if (!engine) {\n\n      <p class="muted">Engine configuration not available.</p>\n\n      } @else {\n\n      <div class="engine-grid">\n        <div class="engine-stat">\n          <span class="label">Diagnostics</span>\n          <span class="value">{{\n            engine.diagnostics ? "Enabled" : "Disabled"\n          }}</span>\n        </div>\n\n        <div class="engine-stat">\n          <span class="label">Framerate</span>\n          <span class="value">{{ engine.framerateHz }} {{ engine.unit }}</span>\n        </div>\n\n        <div class="engine-stat">\n          <span class="label">Throttle</span>\n          <span class="value">{{ engine.throttle ?? "\u2014" }}</span>\n        </div>\n\n        <div class="engine-stat">\n          <span class="label">Gravity</span>\n          <span class="value">\n            @if (engine.gravity) { ({{ engine.gravity.x }},\n            {{ engine.gravity.y }}, {{ engine.gravity.z }}) } @else { \u2014 }\n          </span>\n        </div>\n      </div>\n\n      }\n    </article>\n\n    <article class="stats-card">\n      <h2>\u{1F4CA} Overview</h2>\n\n      <div class="stats-grid">\n        <div class="stat">\n          <span class="label">Config entries: </span>\n          <span class="value">{{ configCount }}</span>\n        </div>\n        <div class="stat">\n          <span class="label">Discovered services: </span>\n          <span class="value">{{ serviceCount }}</span>\n        </div>\n        <div class="stat">\n          <span class="label">Portals: </span>\n          <span class="value">{{ portals.length }}</span>\n        </div>\n        <div class="stat">\n          <span class="label">Altruist services: </span>\n          <span class="value">{{ altruistServices.length }}</span>\n        </div>\n      </div>\n    </article>\n  </section>\n\n  <!-- CONFIGURATION -->\n  <section class="summary-configs">\n    <header class="panel-header sticky-header">\n      <div>\n        <h2>\u{1F527} Configuration</h2>\n        <p class="panel-meta">Editable entries are marked with \u270F\uFE0F</p>\n      </div>\n\n      <div class="panel-controls">\n        <input\n          type="text"\n          class="input"\n          placeholder="Filter configuration\u2026"\n          [(ngModel)]="configFilter"\n        />\n      </div>\n    </header>\n\n    @if (hasPendingConfigChanges) {\n    <div class="save-bar">\n      <button class="button-primary" (click)="saveConfigChanges()">\n        \u{1F4BE} Save Changes\n      </button>\n      <button class="button-base muted" (click)="cancelEdit()">Cancel</button>\n    </div>\n    }\n\n    <div class="config-list">\n      @if (!configEntries.length) {\n\n      <p class="muted">No configuration entries match your filter.</p>\n\n      } @else {\n\n      <table class="table config-table">\n        <thead>\n          <tr>\n            <th>Key</th>\n            <th>Value</th>\n          </tr>\n        </thead>\n\n        <tbody>\n          @for (c of configEntries; track c.key) {\n          <tr>\n            <td class="config-key">\n              <code>{{ c.key }}</code>\n              @if (c.modifiable) { <span class="pencil">\u270F\uFE0F</span> }\n            </td>\n\n            <td class="config-value">\n              @if (editingKey === c.key) {\n              <input\n                class="input config-edit-input"\n                [(ngModel)]="editBuffer[c.key]"\n                (ngModelChange)="onEditInput(c.key, $event)"\n              />\n              } @else {\n              <code class="modifiable" (dblclick)="beginEdit(c.key, c.value)">\n                {{ c.value ?? "null" }}\n              </code>\n              }\n            </td>\n          </tr>\n          }\n        </tbody>\n      </table>\n\n      }\n    </div>\n  </section>\n\n  <!-- SERVICES -->\n  <section class="summary-services">\n    <header class="panel-header sticky-header">\n      <div>\n        <h2>\u{1F9E9} Services & Portals</h2>\n        <p class="panel-meta">\n          Discovered services grouped by role and attributes.\n        </p>\n      </div>\n\n      <div class="panel-controls">\n        <input\n          type="text"\n          class="input"\n          placeholder="Filter\u2026"\n          [(ngModel)]="serviceFilter"\n        />\n      </div>\n    </header>\n\n    <div class="services-table-wrapper">\n      @if (!services.length) {\n\n      <p class="muted">No services match your filter.</p>\n\n      } @else {\n\n      <table class="table services-table">\n        <thead>\n          <tr>\n            <th>Name</th>\n            <th>Type</th>\n            <th>Details</th>\n            <th>Assembly</th>\n          </tr>\n        </thead>\n\n        <tbody>\n          <!-- PORTALS -->\n          @if (portals.length) {\n          <tr class="group-row">\n            <td colspan="4">Portals</td>\n          </tr>\n\n          @for (p of portals; track p.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ p.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ p.fullName }}</code>\n            </td>\n            <td class="cell-details">\n              <div class="pill-row">\n                @if (p.endpoint) {\n                <span class="pill pill-endpoint">{{ p.endpoint }}</span> } @if\n                (p.context) {\n                <span class="pill pill-context">{{ p.context }}</span> }\n              </div>\n            </td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ p.assembly }}</span>\n            </td>\n          </tr>\n          } }\n\n          <!-- ALTRUIST SERVICES -->\n          @if (altruistServices.length) {\n          <tr class="group-row">\n            <td colspan="4">Altruist services</td>\n          </tr>\n\n          @for (s of altruistServices; track s.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ s.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ s.fullName }}</code>\n            </td>\n            <td class="cell-details">\n              <div class="pill-row">\n                @if (s.lifetime) {\n                <span class="pill pill-lifetime">{{ s.lifetime }}</span> } @if\n                (s.serviceType) {\n                <span class="pill pill-service-type">{{ s.serviceType }}</span>\n                }\n              </div>\n            </td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ s.assembly }}</span>\n            </td>\n          </tr>\n          } }\n\n          <!-- FACTORIES -->\n          @if (serviceFactories.length) {\n          <tr class="group-row">\n            <td colspan="4">Service factories</td>\n          </tr>\n\n          @for (f of serviceFactories; track f.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ f.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ f.fullName }}</code>\n            </td>\n            <td class="cell-details"></td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ f.assembly }}</span>\n            </td>\n          </tr>\n          } }\n\n          <!-- SERVICE CONFIGS -->\n          @if (serviceConfigs.length) {\n          <tr class="group-row">\n            <td colspan="4">Service configurations</td>\n          </tr>\n\n          @for (c of serviceConfigs; track c.fullName) {\n          <tr class="service-row">\n            <td class="cell-name">\n              <div class="service-name">{{ c.name }}</div>\n            </td>\n            <td class="cell-type">\n              <code>{{ c.fullName }}</code>\n            </td>\n            <td class="cell-details"></td>\n            <td class="cell-assembly">\n              <span class="pill pill-assembly">{{ c.assembly }}</span>\n            </td>\n          </tr>\n          } }\n        </tbody>\n      </table>\n\n      }\n    </div>\n  </section>\n\n  }\n</div>\n', styles: ["/* src/app/summary/summary-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.summary-header,\n.engine-card,\n.stats-card,\n.summary-configs,\n.summary-services {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.summary-root {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n  height: auto;\n}\n.summary-header {\n  flex-shrink: 0;\n}\n.summary-top {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 1rem;\n  flex-shrink: 0;\n  min-height: 180px;\n}\n.engine-card,\n.stats-card {\n  flex: 1 1 300px;\n  min-width: 260px;\n}\n.summary-configs,\n.summary-services {\n  min-height: 300px;\n  display: flex;\n  flex-direction: column;\n  overflow: auto;\n}\n.sticky-header {\n  position: sticky;\n  top: 0;\n  z-index: 10;\n  background: rgba(15, 23, 42, 0.9);\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n}\n.config-list,\n.services-table-wrapper {\n  flex: 1;\n  overflow: auto;\n}\n.config-table,\n.services-table {\n  width: 100%;\n}\n/*# sourceMappingURL=summary-view.component.css.map */\n"] }]
   }], () => [{ type: SummaryDashboardService }], null);
 })();
 (() => {
@@ -106946,7 +107951,7 @@ var VaultViewComponent = class _VaultViewComponent {
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(VaultViewComponent, [{
     type: Component,
-    args: [{ selector: "app-vault-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="vault-view">\r\n\r\n  <!-- HEADER -->\r\n  <header class="panel vault-header">\r\n    <div class="vault-header-main">\r\n      <h2>\u{1F510} Vault Dashboard</h2>\r\n      <p class="vault-status">{{ statusText }}</p>\r\n    </div>\r\n\r\n    <div class="vault-header-actions">\r\n      <input type="text" class="input" [(ngModel)]="vaultFilter" (ngModelChange)="applyVaultFilter()"\r\n        placeholder="Filter vaults\u2026" />\r\n\r\n      @if (hasPendingChanges) {\r\n      <button type="button" class="button-primary commit-button" (click)="commitChanges()">\r\n        \u2B06\uFE0F Commit ({{ dirtyItems.size }})\r\n      </button>\r\n      }\r\n\r\n      <button type="button" class="button-base" (click)="loadVaults()" [disabled]="isLoadingVaults">\r\n        Refresh\r\n      </button>\r\n    </div>\r\n  </header>\r\n\r\n  @if (error) {\r\n  <div class="panel vault-error">{{ error }}</div>\r\n  }\r\n\r\n  <!-- GRID LAYOUT -->\r\n  <section class="vault-layout">\r\n\r\n    <!-- SIDEBAR (PANEL) -->\r\n    <aside class="panel vault-sidebar">\r\n      <h3>Vaults</h3>\r\n\r\n      @if (!hasVaults && !isLoadingVaults) {\r\n\r\n      <p class="vault-empty">No vaults registered.</p>\r\n\r\n      } @else {\r\n\r\n      <ul class="list">\r\n\r\n        @for (group of groupedVaults; track group.keyspace) {\r\n\r\n        <li>\r\n\r\n          <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">\r\n            <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">\u25B6</span>\r\n            <span>{{ group.keyspace }}</span>\r\n          </button>\r\n\r\n          @if (!collapsedKeyspaces.has(group.keyspace)) {\r\n\r\n          <ul class="sublist">\r\n\r\n            @for (v of group.vaults; track v.typeKey) {\r\n\r\n            <li>\r\n              <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"\r\n                (click)="onSelectVault(v)">\r\n                <div class="vault-item-type">{{ v.clrTypeShort }}</div>\r\n                <div class="vault-item-meta">\r\n                  {{ v.tableName }}\r\n                  @if (v.storeHistory) { <span class="vault-item-tag">History</span> }\r\n                </div>\r\n              </button>\r\n            </li>\r\n\r\n            }\r\n\r\n          </ul>\r\n\r\n          }\r\n\r\n        </li>\r\n\r\n        }\r\n\r\n      </ul>\r\n\r\n      }\r\n\r\n    </aside>\r\n\r\n    <!-- MAIN PANEL -->\r\n    <main class="panel vault-main">\r\n\r\n      @if (!selectedVault) {\r\n\r\n      <div class="vault-main-empty">\r\n        <p>Select a vault.</p>\r\n      </div>\r\n\r\n      } @else {\r\n\r\n      <!-- TABLE HEADER -->\r\n      <header class="panel-header vault-table-header">\r\n        <div>\r\n          <h3>{{ selectedVault.clrTypeShort }}</h3>\r\n          <p class="muted">\r\n            {{ selectedVault.typeKey }} \xB7\r\n            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> \xB7\r\n            <span class="vault-table-name">{{ selectedVault.tableName }}</span>\r\n          </p>\r\n        </div>\r\n\r\n        <div class="vault-table-controls">\r\n\r\n          <label>\r\n            Page size\r\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\r\n              @for (sz of pageSizeOptions; track sz) {\r\n              <option [value]="sz">{{ sz }}</option>\r\n              }\r\n            </select>\r\n          </label>\r\n\r\n          <div class="vault-pagination">\r\n            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">\r\n              \u2039\r\n            </button>\r\n\r\n            <span>Page {{ displayPage }} / {{ totalPages }}</span>\r\n\r\n            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">\r\n              \u203A\r\n            </button>\r\n          </div>\r\n\r\n        </div>\r\n      </header>\r\n\r\n      <!-- TABLE AREA -->\r\n      <section class="vault-table-section">\r\n\r\n        @if (isLoadingItems) {\r\n\r\n        <div class="vault-main-empty">\r\n          <p>Loading items\u2026</p>\r\n        </div>\r\n\r\n        } @else if (!hasItems) {\r\n\r\n        <div class="vault-main-empty">\r\n          <p>No items.</p>\r\n        </div>\r\n\r\n        } @else {\r\n\r\n        <div class="vault-table-wrapper">\r\n\r\n          <table class="table vault-table">\r\n\r\n            <thead>\r\n              <tr>\r\n                @for (col of orderedColumns; track col.fieldName) {\r\n                <th [class.pk-header]="col.isPrimaryKey">\r\n                  {{ col.fieldName }}\r\n\r\n                  @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }\r\n                  @if (col.isUnique) { <span class="col-meta">UQ</span> }\r\n                  @if (col.isIndexed) { <span class="col-meta">IDX</span> }\r\n                  @if (col.isForeignKey) { <span class="col-meta">FK</span> }\r\n                </th>\r\n                }\r\n              </tr>\r\n            </thead>\r\n\r\n            <tbody>\r\n              @for (item of items; let row = $index; track row) {\r\n              <tr>\r\n\r\n                @for (col of orderedColumns; track col.fieldName) {\r\n\r\n                <td [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">\r\n\r\n                  @if (isEditing(row, col.fieldName)) {\r\n\r\n                  <input class="input vault-cell-input" [value]="item[col.fieldName]"\r\n                    (input)="onCellEdit(row, col.fieldName, $any($event.target).value)"\r\n                    (blur)="onCellBlur(row, col.fieldName)" autofocus />\r\n\r\n                  } @else {\r\n\r\n                  <code>{{ item[col.fieldName] }}</code>\r\n\r\n                  }\r\n\r\n                </td>\r\n\r\n                }\r\n\r\n              </tr>\r\n              }\r\n            </tbody>\r\n\r\n          </table>\r\n\r\n        </div>\r\n\r\n        }\r\n\r\n      </section>\r\n\r\n      }\r\n\r\n    </main>\r\n\r\n  </section>\r\n</div>', styles: ["/* src/app/vault/vault-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.vault-main {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.vault-layout {\n  display: grid;\n  grid-template-columns: 280px 1fr;\n  gap: 1rem;\n  flex: 1;\n  min-height: 0;\n}\n.vault-main {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  overflow: hidden;\n}\n.vault-table-section {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n}\n.vault-table-wrapper {\n  width: max-content;\n  min-width: 100%;\n}\n/*# sourceMappingURL=vault-view.component.css.map */\n"] }]
+    args: [{ selector: "app-vault-view", standalone: true, imports: [CommonModule, FormsModule], template: '<div class="vault-view">\n\n  <!-- HEADER -->\n  <header class="panel vault-header">\n    <div class="vault-header-main">\n      <h2>\u{1F510} Vault Dashboard</h2>\n      <p class="vault-status">{{ statusText }}</p>\n    </div>\n\n    <div class="vault-header-actions">\n      <input type="text" class="input" [(ngModel)]="vaultFilter" (ngModelChange)="applyVaultFilter()"\n        placeholder="Filter vaults\u2026" />\n\n      @if (hasPendingChanges) {\n      <button type="button" class="button-primary commit-button" (click)="commitChanges()">\n        \u2B06\uFE0F Commit ({{ dirtyItems.size }})\n      </button>\n      }\n\n      <button type="button" class="button-base" (click)="loadVaults()" [disabled]="isLoadingVaults">\n        Refresh\n      </button>\n    </div>\n  </header>\n\n  @if (error) {\n  <div class="panel vault-error">{{ error }}</div>\n  }\n\n  <!-- GRID LAYOUT -->\n  <section class="vault-layout">\n\n    <!-- SIDEBAR (PANEL) -->\n    <aside class="panel vault-sidebar">\n      <h3>Vaults</h3>\n\n      @if (!hasVaults && !isLoadingVaults) {\n\n      <p class="vault-empty">No vaults registered.</p>\n\n      } @else {\n\n      <ul class="list">\n\n        @for (group of groupedVaults; track group.keyspace) {\n\n        <li>\n\n          <button type="button" class="sidebar-group" (click)="toggleKeyspace(group.keyspace)">\n            <span class="chevron" [class.collapsed]="collapsedKeyspaces.has(group.keyspace)">\u25B6</span>\n            <span>{{ group.keyspace }}</span>\n          </button>\n\n          @if (!collapsedKeyspaces.has(group.keyspace)) {\n\n          <ul class="sublist">\n\n            @for (v of group.vaults; track v.typeKey) {\n\n            <li>\n              <button type="button" class="sidebar-item" [class.active]="selectedVault?.typeKey === v.typeKey"\n                (click)="onSelectVault(v)">\n                <div class="vault-item-type">{{ v.clrTypeShort }}</div>\n                <div class="vault-item-meta">\n                  {{ v.tableName }}\n                  @if (v.storeHistory) { <span class="vault-item-tag">History</span> }\n                </div>\n              </button>\n            </li>\n\n            }\n\n          </ul>\n\n          }\n\n        </li>\n\n        }\n\n      </ul>\n\n      }\n\n    </aside>\n\n    <!-- MAIN PANEL -->\n    <main class="panel vault-main">\n\n      @if (!selectedVault) {\n\n      <div class="vault-main-empty">\n        <p>Select a vault.</p>\n      </div>\n\n      } @else {\n\n      <!-- TABLE HEADER -->\n      <header class="panel-header vault-table-header">\n        <div>\n          <h3>{{ selectedVault.clrTypeShort }}</h3>\n          <p class="muted">\n            {{ selectedVault.typeKey }} \xB7\n            <span class="vault-keyspace">{{ selectedVault.keyspace }}</span> \xB7\n            <span class="vault-table-name">{{ selectedVault.tableName }}</span>\n          </p>\n        </div>\n\n        <div class="vault-table-controls">\n\n          <label>\n            Page size\n            <select [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">\n              @for (sz of pageSizeOptions; track sz) {\n              <option [value]="sz">{{ sz }}</option>\n              }\n            </select>\n          </label>\n\n          <div class="vault-pagination">\n            <button type="button" (click)="goPrevPage()" [disabled]="currentPage === 0">\n              \u2039\n            </button>\n\n            <span>Page {{ displayPage }} / {{ totalPages }}</span>\n\n            <button type="button" (click)="goNextPage()" [disabled]="currentPage >= totalPages - 1">\n              \u203A\n            </button>\n          </div>\n\n        </div>\n      </header>\n\n      <!-- TABLE AREA -->\n      <section class="vault-table-section">\n\n        @if (isLoadingItems) {\n\n        <div class="vault-main-empty">\n          <p>Loading items\u2026</p>\n        </div>\n\n        } @else if (!hasItems) {\n\n        <div class="vault-main-empty">\n          <p>No items.</p>\n        </div>\n\n        } @else {\n\n        <div class="vault-table-wrapper">\n\n          <table class="table vault-table">\n\n            <thead>\n              <tr>\n                @for (col of orderedColumns; track col.fieldName) {\n                <th [class.pk-header]="col.isPrimaryKey">\n                  {{ col.fieldName }}\n\n                  @if (col.isPrimaryKey) { <span class="col-meta pk-tag">PK</span> }\n                  @if (col.isUnique) { <span class="col-meta">UQ</span> }\n                  @if (col.isIndexed) { <span class="col-meta">IDX</span> }\n                  @if (col.isForeignKey) { <span class="col-meta">FK</span> }\n                </th>\n                }\n              </tr>\n            </thead>\n\n            <tbody>\n              @for (item of items; let row = $index; track row) {\n              <tr>\n\n                @for (col of orderedColumns; track col.fieldName) {\n\n                <td [class.pk-cell]="col.isPrimaryKey" (dblclick)="startEdit(row, col.fieldName)">\n\n                  @if (isEditing(row, col.fieldName)) {\n\n                  <input class="input vault-cell-input" [value]="item[col.fieldName]"\n                    (input)="onCellEdit(row, col.fieldName, $any($event.target).value)"\n                    (blur)="onCellBlur(row, col.fieldName)" autofocus />\n\n                  } @else {\n\n                  <code>{{ item[col.fieldName] }}</code>\n\n                  }\n\n                </td>\n\n                }\n\n              </tr>\n              }\n            </tbody>\n\n          </table>\n\n        </div>\n\n        }\n\n      </section>\n\n      }\n\n    </main>\n\n  </section>\n</div>', styles: ["/* src/app/vault/vault-view.component.scss */\n* {\n  box-sizing: border-box;\n}\nhtml,\nbody {\n  height: 100%;\n  margin: 0;\n}\nbody {\n  overflow: auto;\n}\n#app-root {\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n::-webkit-scrollbar-thumb {\n  background: rgba(70, 90, 150, 0.45);\n  border-radius: 6px;\n}\n::-webkit-scrollbar-track {\n  background: rgba(10, 15, 30, 0.4);\n}\n.panel,\n.vault-main {\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(30, 64, 175, 0.7);\n  border-radius: 10px;\n  padding: 5px;\n  margin: 5px;\n}\n.panel-header {\n  padding: 0.75rem 1rem;\n  border-bottom: 1px solid rgba(51, 65, 85, 0.9);\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border-radius: 999px;\n  padding: 6px 12px;\n  font-size: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  color: #e5e7eb;\n  cursor: pointer;\n  transition:\n    background 120ms ease,\n    border-color 120ms ease,\n    transform 80ms ease,\n    filter 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  filter: brightness(1.05);\n}\n.button-base:disabled,\n.button-danger:disabled,\n.button-primary:disabled {\n  opacity: 0.6;\n  cursor: default;\n  transform: none;\n  filter: none;\n}\n.button-base,\n.button-danger,\n.button-primary {\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  background: rgba(15, 23, 42, 0.9);\n  color: #e5e7eb;\n  cursor: pointer;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n.button-base:hover,\n.button-danger:hover,\n.button-primary:hover {\n  transform: translateY(-1px);\n  opacity: 1;\n}\n.button-primary {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n}\n.button-primary:hover {\n  filter: brightness(1.05);\n}\n.button-danger {\n  background: #ef4444;\n  border-color: #b91c1c;\n  color: white;\n}\n.table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.85rem;\n}\n.table thead {\n  background: rgba(10, 20, 40, 0.9);\n  position: sticky;\n  top: 0;\n  z-index: 5;\n}\n.table thead th {\n  padding: 0.55rem 0.65rem;\n  font-weight: 600;\n  font-size: 0.75rem;\n  text-align: left;\n  border-bottom: 1px solid rgba(30, 64, 175, 0.7);\n  color: rgba(255, 255, 255, 0.7);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n}\n.table thead th .col-meta {\n  margin-left: 0.3rem;\n  border-radius: 999px;\n  padding: 0.05rem 0.35rem;\n  background: rgba(15, 25, 45, 0.85);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  font-size: 0.7rem;\n  color: #9ca3af;\n}\n.table tbody tr {\n  transition: background 120ms ease, transform 80ms ease;\n}\n.table tbody tr:nth-child(odd) {\n  background: rgba(12, 20, 45, 0.95);\n}\n.table tbody tr:nth-child(even) {\n  background: rgba(16, 25, 55, 0.95);\n}\n.table tbody tr:hover {\n  background: #1e293b;\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n}\n.table td {\n  padding: 0.45rem 0.65rem;\n  border-bottom: 1px solid rgba(30, 40, 70, 0.35);\n  vertical-align: top;\n}\n.table td code {\n  font-family:\n    ui-monospace,\n    SF Mono,\n    Consolas,\n    monospace;\n  font-size: 0.78rem;\n  color: rgba(255, 255, 255, 0.7);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  overflow: hidden;\n  display: block;\n}\n.pk-header {\n  background: rgba(255, 230, 150, 0.25);\n}\n.pk-cell {\n  background: rgba(255, 230, 150, 0.35) !important;\n  border-right: 2px solid #e0b132;\n  font-weight: 600;\n}\n.pk-tag {\n  color: #b87500 !important;\n  font-weight: bold;\n}\n.sidebar-group {\n  background: rgba(25, 35, 60, 0.35);\n  border-radius: 999px;\n  border: none;\n  padding: 0.35rem 0.65rem;\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n  margin: 2.5px;\n  font-size: 0.78rem;\n  cursor: pointer;\n  color: #e5e7eb;\n  transition: background 120ms ease;\n}\n.sidebar-group:hover {\n  background: rgba(40, 60, 110, 0.45);\n}\n.sidebar-group .chevron {\n  transition: transform 150ms ease;\n}\n.sidebar-group .chevron.collapsed {\n  transform: rotate(-90deg);\n}\n.sidebar-item {\n  border-radius: 0.55rem;\n  background: rgba(15, 25, 50, 0.65);\n  border: none;\n  padding: 0.55rem 0.7rem;\n  display: flex;\n  flex-direction: column;\n  gap: 0.15rem;\n  cursor: pointer;\n  opacity: 0.9;\n  transition: 120ms ease;\n  width: 100%;\n  text-align: left;\n}\n.sidebar-item:hover {\n  background: rgba(20, 30, 70, 0.75);\n  transform: translateY(-1px);\n  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);\n  opacity: 1;\n  border: 1px solid rgba(40, 60, 110, 0.4);\n}\n.sidebar-item.active {\n  background: #2563eb;\n  border-color: rgba(37, 99, 235, 0.18);\n  color: white;\n  opacity: 1;\n}\n.input {\n  padding: 0.35rem 0.55rem;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.9);\n  border: 1px solid rgba(148, 163, 184, 0.5);\n  color: #e5e7eb;\n  font-size: 0.85rem;\n}\n.input:focus {\n  outline: none;\n  border-color: #2563eb;\n}\n.flex {\n  display: flex;\n}\n.flex-col {\n  display: flex;\n  flex-direction: column;\n}\n.flex-between {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n}\n.gap-sm {\n  gap: 0.25rem;\n}\n.gap-md {\n  gap: 0.5rem;\n}\n.gap-lg {\n  gap: 1rem;\n}\n.w-full {\n  width: 100%;\n}\n.h-full {\n  height: 100%;\n}\n.list,\n.sublist {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 0.35rem;\n}\n.sublist {\n  margin-left: 0.75rem;\n  padding-left: 0.25rem;\n  border-left: 1px solid rgba(80, 100, 150, 0.35);\n}\n.vault-layout {\n  display: grid;\n  grid-template-columns: 280px 1fr;\n  gap: 1rem;\n  flex: 1;\n  min-height: 0;\n}\n.vault-main {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  overflow: hidden;\n}\n.vault-table-section {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n}\n.vault-table-wrapper {\n  width: max-content;\n  min-width: 100%;\n}\n/*# sourceMappingURL=vault-view.component.css.map */\n"] }]
   }], () => [{ type: VaultDashboardService }], null);
 })();
 (() => {
@@ -106995,57 +108000,4 @@ export {
   destroyAngularServerApp,
   main_server_default
 };
-/*! Bundled license information:
-
-@angular/core/fesm2022/_effect-chunk.mjs:
-@angular/core/fesm2022/_not_found-chunk.mjs:
-@angular/core/fesm2022/_untracked-chunk.mjs:
-@angular/core/fesm2022/primitives-signals.mjs:
-@angular/core/fesm2022/primitives-di.mjs:
-@angular/core/fesm2022/_effect-chunk2.mjs:
-@angular/core/fesm2022/_attribute-chunk.mjs:
-@angular/core/fesm2022/_debug_node-chunk.mjs:
-@angular/core/fesm2022/_resource-chunk.mjs:
-@angular/core/fesm2022/primitives-event-dispatch.mjs:
-@angular/core/fesm2022/core.mjs:
-@angular/common/fesm2022/_platform_location-chunk.mjs:
-@angular/common/fesm2022/_location-chunk.mjs:
-@angular/common/fesm2022/_common_module-chunk.mjs:
-@angular/common/fesm2022/_platform_navigation-chunk.mjs:
-@angular/common/fesm2022/_xhr-chunk.mjs:
-@angular/common/fesm2022/common.mjs:
-@angular/platform-browser/fesm2022/_dom_renderer-chunk.mjs:
-@angular/platform-browser/fesm2022/_browser-chunk.mjs:
-@angular/common/fesm2022/_module-chunk.mjs:
-@angular/common/fesm2022/http.mjs:
-@angular/platform-browser/fesm2022/platform-browser.mjs:
-@angular/platform-server/fesm2022/_server-chunk.mjs:
-@angular/platform-server/fesm2022/platform-server.mjs:
-@angular/router/fesm2022/_router-chunk.mjs:
-@angular/router/fesm2022/_router_module-chunk.mjs:
-@angular/router/fesm2022/router.mjs:
-@angular/forms/fesm2022/forms.mjs:
-  (**
-   * @license Angular v21.2.7
-   * (c) 2010-2026 Google LLC. https://angular.dev/
-   * License: MIT
-   *)
-
-@angular/platform-server/third_party/domino/bundled-domino.mjs:
-  (**
-   * @license
-   * Copyright Google LLC All Rights Reserved.
-   *
-   * Use of this source code is governed by an MIT-style license that can be
-   * found in the LICENSE file at https://angular.io/license
-   *)
-
-three/build/three.core.js:
-three/build/three.module.js:
-  (**
-   * @license
-   * Copyright 2010-2025 Three.js Authors
-   * SPDX-License-Identifier: MIT
-   *)
-*/
-//# sourceMappingURL=chunk-QJM5J7X5.mjs.map
+//# sourceMappingURL=chunk-YQZNOHDG.mjs.map
