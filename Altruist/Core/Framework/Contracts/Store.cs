@@ -315,7 +315,10 @@ public abstract class AbstractConnectionStore : IConnectionStore
                 {
                     if (existingRoom.ConnectionIds.Remove(connectionId))
                     {
-                        if (existingRoom.ConnectionIds.Count == 0)
+                        // Like every other removal path: the waiting room is never deleted (new
+                        // connections could no longer join it once everyone had moved on).
+                        if (existingRoom.ConnectionIds.Count == 0
+                            && !string.Equals(existingRoomId, StoreConstants.WaitingRoomId, StringComparison.Ordinal))
                         {
                             await _memoryCache.RemoveAndForgetAsync<RoomPacket>(existingRoomId);
                         }

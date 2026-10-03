@@ -42,30 +42,30 @@ public sealed class EquipmentLayoutTests
     }
 
     [Fact]
-    public void EquipmentSlots_RejectMultiCellItems()
+    public void EquipmentSlots_AcceptMultiCellItems_AsSingleCellCoverage()
     {
         var (svc, _) = NewEquipment();
 
-        // The mirror's CanAnchorItemAt must say "no" for any W>1 or H>1
-        // against an equipment layout — the wire would never deliver a
-        // multi-cell equipment slot, and a misrouted packet shouldn't
-        // corrupt state.
-        Assert.False(svc.CanAnchorItemAt(Window, 0, 1, 2));
-        Assert.False(svc.CanAnchorItemAt(Window, 0, 2, 1));
+        // Equipment slots are by-name and intrinsically 1x1: an item's natural
+        // inventory footprint (e.g. a 1x3 weapon) rides along as metadata only
+        // (see ContainerSnapshot.IsAnchorValid / EnumerateFootprint).
+        Assert.True(svc.CanAnchorItemAt(Window, 0, 1, 2));
+        Assert.True(svc.CanAnchorItemAt(Window, 0, 2, 1));
 
-        // ApplySnapshot itself must reject the multi-cell shape — sending
-        // it should NOT populate the cell.
         svc.OnItemSnapshot(new ItemSnapshotPacket
         {
             Window = Window,
             Cell = 0,
-            ItemKey = "broken_multicell_weapon",
+            ItemKey = "long_weapon",
             Count = 1,
             Width = 1,
             Height = 3,
         });
 
-        Assert.Null(svc.GetSnapshot(Window, 0));
+        Assert.Equal("long_weapon", svc.GetSnapshot(Window, 0)!.ItemKey);
+        // Coverage stays a single cell: the neighbouring slot is still free.
+        Assert.Null(svc.GetSnapshot(Window, 1));
+        Assert.True(svc.CanAnchorItemAt(Window, 1, 1, 1));
     }
 
     [Fact]

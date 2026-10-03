@@ -1,18 +1,24 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 
 using Npgsql;
 
 namespace Altruist.Persistence;
 
-public sealed class TransactionalDecorator<T> : DispatchProxy
+// Not sealed: DispatchProxy.Create rejects a sealed proxy base type ("cannot be sealed").
+public class TransactionalDecorator<T> : DispatchProxy
 {
+    // The proxy is invoked with the interface's MethodInfo, while TransactionalRegistry holds the
+    // implementation's [Transactional] methods; map one to the other once per method.
+    private static readonly ConcurrentDictionary<(Type Impl, MethodInfo Method), MethodInfo?> ImplementationMethods = new();
+
     public T Inner = default!;
     public NpgsqlDataSource DataSource = default!;
 
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
     {
         // Fast O(1) lookup instead of GetCustomAttribute on every call
-        if (!TransactionalRegistry.TryGet(targetMethod!, out var meta))
+        if (!TryGetMetadata(targetMethod!, out var meta))
             return targetMethod!.Invoke(Inner, args);
 
         // Decide sync/async
@@ -23,6 +29,23 @@ public sealed class TransactionalDecorator<T> : DispatchProxy
         }
 
         return InvokeSync(targetMethod, args, meta.Attribute);
+    }
+
+    private bool TryGetMetadata(MethodInfo method, out TransactionalMetadata meta)
+    {
+        if (TransactionalRegistry.TryGet(method, out meta))
+            return true;
+        if (Inner is null || method.DeclaringType is not { IsInterface: true })
+            return false;
+
+        var impl = ImplementationMethods.GetOrAdd((Inner.GetType(), method), static key =>
+        {
+            var lookup = key.Method.IsGenericMethod ? key.Method.GetGenericMethodDefinition() : key.Method;
+            var map = key.Impl.GetInterfaceMap(lookup.DeclaringType!);
+            var index = Array.IndexOf(map.InterfaceMethods, lookup);
+            return index >= 0 ? map.TargetMethods[index] : null;
+        });
+        return impl is not null && TransactionalRegistry.TryGet(impl, out meta);
     }
 
     private object? InvokeSync(MethodInfo method, object?[]? args, TransactionalAttribute attr)

@@ -23,7 +23,8 @@ public class VisibilityTracker2DTests
     {
         var organizer = new Mock<IGameWorldOrganizer2D>();
         organizer.Setup(o => o.GetAllWorlds()).Returns([world.Object]);
-        var tracker = new VisibilityTracker2D(organizer.Object, viewRange);
+        var tracker = new VisibilityTracker2D(viewRange);
+        tracker.SetOrganizer(organizer.Object);
         return (tracker, organizer);
     }
 

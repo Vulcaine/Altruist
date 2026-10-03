@@ -118,6 +118,11 @@ public static class MessagePackStructureGuard
         {
             throw new MessagePackSerializationException("Truncated payload.", ex);
         }
+        catch (OverflowException ex)
+        {
+            // Some MessagePack versions reject huge map32 headers (count * 2) with an overflow.
+            throw new MessagePackSerializationException("Declared collection length exceeds the payload.", ex);
+        }
     }
 }
 
