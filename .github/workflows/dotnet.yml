@@ -6,13 +6,36 @@ permissions:
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [ "main", "staging" ]
+    branches: [ "main", "staging", "develop" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # Throwaway Postgres for the integration tests (Category=Integration). The tests create and
+    # drop their own altruist_test_* database (locally they skip when no server is reachable).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: altruist
+          POSTGRES_PASSWORD: altruist
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U altruist"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ALTRUIST_TEST_PG: "Host=localhost;Port=5432;Username=altruist;Password=altruist;Database=postgres"
+      # In CI an unreachable database is an error, not a reason to skip.
+      ALTRUIST_TEST_PG_REQUIRED: "true"
+
     steps:
     - uses: actions/checkout@v4
 
@@ -27,8 +50,11 @@ jobs:
     - name: Build Tests project
       run: dotnet build ./Tests/Tests.csproj --no-restore
 
-    - name: Run Tests
-      run: dotnet test ./Tests/Tests.csproj --no-build --verbosity normal
+    - name: Run unit tests
+      run: dotnet test ./Tests/Tests.csproj --no-build --verbosity normal --filter "Category!=Integration" --blame-hang-timeout 5m
+
+    - name: Run Postgres integration tests
+      run: dotnet test ./Tests/Tests.csproj --no-build --verbosity normal --filter "Category=Integration" --blame-hang-timeout 5m
 
   validate_version:
     runs-on: ubuntu-latest
