@@ -1,6 +1,5 @@
 using Altruist.Gaming;
 using BenchmarkDotNet.Attributes;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Altruist.Benchmarks;
 
@@ -9,7 +8,6 @@ namespace Altruist.Benchmarks;
 /// Measures: FSM tick (compiled delegates), state transitions, discovery.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class AIBenchmarks
 {
     private AIStateMachine _fsm = null!;
@@ -28,6 +26,12 @@ public class AIBenchmarks
     {
         public ITypelessWorldObject Entity { get; set; } = new BenchWorldObj();
         public float TimeInState { get; set; }
+        public float StateDuration { get; set; }
+        public string CurrentStateTag { get; set; } = "";
+        public IReadOnlyDictionary<string, StateWindow>? ActiveWindows { get; set; }
+        public object? CurrentStateData { get; set; }
+        public StateMotionProfile? CurrentStateMotion { get; set; }
+        public float PreviousProgress { get; set; }
         public bool ShouldChase { get; set; }
         public bool ShouldAttack { get; set; }
     }
@@ -57,18 +61,7 @@ public class AIBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        // Reset and discover
-        var discoveredField = typeof(AIBehaviorDiscovery)
-            .GetField("_discovered", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        discoveredField?.SetValue(null, false);
-        var templatesField = typeof(AIBehaviorDiscovery)
-            .GetField("_templates", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        if (templatesField?.GetValue(null) is System.Collections.IDictionary dict) dict.Clear();
-
-        AIBehaviorDiscovery.DiscoverBehaviors(
-            [typeof(BenchBehavior).Assembly],
-            t => Activator.CreateInstance(t)!,
-            NullLoggerFactory.Instance.CreateLogger("bench"));
+        BenchmarkHelpers.DiscoverAIBehaviors(typeof(BenchBehavior).Assembly);
 
         _fsm = AIBehaviorDiscovery.CreateStateMachine("bench_ai")!;
         _ctx = new BenchAIContext();
