@@ -170,6 +170,43 @@ public sealed class WebSocketConnectionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_oversized_message_from_a_peer_that_never_reads_does_not_hang_the_read_loop()
+    {
+        var server = await ServerAsync();
+        var chunk = new byte[64 * 1024];
+        // The peer only sends: it never reads, so it never answers a close handshake.
+        var sender = Task.Run(async () =>
+        {
+            try
+            {
+                for (var sent = 0; sent <= WebSocketConnection.MaxMessageBytes + chunk.Length; sent += chunk.Length)
+                    await _client.SendAsync(chunk, WebSocketMessageType.Binary, endOfMessage: false, Timeout(10));
+            }
+            catch (WebSocketException) { }
+            catch (OperationCanceledException) { }
+            catch (InvalidOperationException) { }
+        });
+
+        var started = DateTime.UtcNow;
+        var result = await server.ReceiveAsync(Timeout(30)).WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Empty(result);
+        Assert.False(server.IsConnected);
+        Assert.True(DateTime.UtcNow - started < WebSocketConnection.CloseTimeout + TimeSpan.FromSeconds(5));
+        await sender.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task A_server_close_to_a_peer_that_never_answers_gives_up_after_the_timeout()
+    {
+        var server = await ServerAsync();
+        var started = DateTime.UtcNow;
+        // The client never reads, so the close handshake can't complete: the server must not wait forever.
+        await server.CloseAsync().WaitAsync(WebSocketConnection.CloseTimeout + TimeSpan.FromSeconds(5));
+        Assert.False(server.IsConnected);
+        Assert.True(DateTime.UtcNow - started >= WebSocketConnection.CloseTimeout - TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
     public async Task A_peer_close_is_acknowledged_so_the_peer_sees_a_clean_close()
     {
         var server = await ServerAsync();
