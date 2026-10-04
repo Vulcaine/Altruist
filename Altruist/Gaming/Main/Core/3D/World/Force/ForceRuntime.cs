@@ -127,17 +127,26 @@ public interface IForceRuntime3D
     int ActiveCount { get; }
 
     /// <summary>Advance every active agent by <paramref name="dt"/> seconds.
-    /// Tests drive this manually; production wires it into the engine's
-    /// per-frame [Cycle] dispatch via
-    /// <see cref="ForceRuntime3D.TickFrame"/>.</summary>
+    /// Tests drive this manually; in production the world coordinator calls it
+    /// at a fixed 25 Hz (<see cref="ForceRuntime3D.FixedStep"/>).</summary>
     void Update(float dt);
 }
 
+/// <summary>
+/// Advances the active force agents at a fixed 25 Hz (dt = 0.04 s), independent of the engine
+/// frame rate: a fixed-mode <see cref="IWorldStepper"/> driven by the <see cref="WorldCoordinator"/>
+/// (on the world step, after the frame's next-tick queue, cycles and effects in inline mode).
+/// </summary>
 [Service(typeof(IForceRuntime3D))]
+[Service(typeof(IWorldStepper))]
 [ConditionalOnConfig("altruist:game")]
-public sealed class ForceRuntime3D : IForceRuntime3D
+public sealed class ForceRuntime3D : IForceRuntime3D, IWorldStepper
 {
-    private const float TickHz = 25f;
+    private const int TickHz = 25;
+
+    public StepMode Mode => StepMode.Fixed;
+    public int FixedHz => TickHz;
+    public void FixedStep(in FixedStep step) => Update(step.Dt);
 
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<ForceAgent3D, byte> _agents = new();
@@ -199,9 +208,7 @@ public sealed class ForceRuntime3D : IForceRuntime3D
         }
     }
 
-    /// <summary>Engine [Cycle] hook — fixed-rate driver at <see cref="TickHz"/>.
-    /// Auto-discovered by the main engine's startup scan.</summary>
-    [Cycle]
+    /// <summary>Advances every agent by one 25 Hz step (the coordinator calls <see cref="FixedStep"/>).</summary>
     public void TickFrame() => Update(1f / TickHz);
 
     public void Update(float dt)

@@ -109,7 +109,22 @@ public class CycleAttribute : Attribute
     public bool Realtime { get; }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CycleAttribute"/> class, marking the method for real-time execution, which means it will match the Engine's update frequency.
+    /// Configuration key holding the rate (e.g. <c>"mygame:matchmaking:tick-hz"</c>), read when the
+    /// method is registered. Combine with <see cref="Default"/> and <see cref="Unit"/>:
+    /// <c>[Cycle(Config = "mygame:matchmaking:tick-hz", Default = 10, Unit = CycleUnit.Hz)]</c>.
+    /// A missing or non-positive value uses <see cref="Default"/>; without a default the method runs every frame.
+    /// </summary>
+    public string? Config { get; set; }
+
+    /// <summary>Rate used when <see cref="Config"/> is missing or not positive (0 = every frame).</summary>
+    public int Default { get; set; }
+
+    /// <summary>Unit of the configured rate (<see cref="Config"/>); frames (<see cref="CycleUnit.Ticks"/>) by default.</summary>
+    public CycleUnit Unit { get; set; } = CycleUnit.Ticks;
+
+    /// <summary>
+    /// Marks the method for real-time execution: it runs every engine frame
+    /// (or at the configured rate when <see cref="Config"/> is set).
     /// </summary>
     public CycleAttribute()
     {
@@ -157,6 +172,9 @@ public class CycleAttribute : Attribute
     /// <returns>True if the method is to execute in real-time; otherwise, false.</returns>
     public bool IsRealTime() => Realtime;
 
+    /// <summary>True when the rate comes from configuration (<see cref="Config"/>).</summary>
+    public bool IsConfigured() => !IsCron() && !string.IsNullOrWhiteSpace(Config);
+
     public override string ToString()
     {
         if (IsCron())
@@ -170,6 +188,9 @@ public class CycleAttribute : Attribute
                 _ => "⚡ " + Rate.Frequency + "Hz",
             };
 
-        return "⚡ Realtime";
+        if (IsConfigured())
+            return $"⚙ {Config} (default {(Default > 0 ? Default + " " + Unit : "every frame")})";
+
+        return "⚡ every frame";
     }
 }

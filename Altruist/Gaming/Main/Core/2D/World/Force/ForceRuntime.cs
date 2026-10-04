@@ -74,11 +74,21 @@ public interface IForceRuntime2D
     void Update(float dt);
 }
 
+/// <summary>
+/// Advances the active force agents at a fixed 25 Hz (dt = 0.04 s), independent of the engine
+/// frame rate: a fixed-mode <see cref="IWorldStepper"/> driven by the <see cref="WorldCoordinator"/>
+/// (on the world step, after the frame's next-tick queue, cycles and effects in inline mode).
+/// </summary>
 [Service(typeof(IForceRuntime2D))]
+[Service(typeof(IWorldStepper))]
 [ConditionalOnConfig("altruist:game")]
-public sealed class ForceRuntime2D : IForceRuntime2D
+public sealed class ForceRuntime2D : IForceRuntime2D, IWorldStepper
 {
-    private const float TickHz = 25f;
+    private const int TickHz = 25;
+
+    public StepMode Mode => StepMode.Fixed;
+    public int FixedHz => TickHz;
+    public void FixedStep(in FixedStep step) => Update(step.Dt);
 
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<ForceAgent2D, byte> _agents = new();
@@ -138,7 +148,7 @@ public sealed class ForceRuntime2D : IForceRuntime2D
         }
     }
 
-    [Cycle]
+    /// <summary>Advances every agent by one 25 Hz step (the coordinator calls <see cref="FixedStep"/>).</summary>
     public void TickFrame() => Update(1f / TickHz);
 
     public void Update(float dt)

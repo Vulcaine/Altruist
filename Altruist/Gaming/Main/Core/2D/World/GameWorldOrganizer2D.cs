@@ -19,10 +19,11 @@ namespace Altruist.Gaming.TwoD
         void SetVisibilityTracker(IVisibilityTracker? tracker);
     }
 
-    [Service(typeof(IGameWorldOrganizer))]
+    // Stepped by the WorldCoordinator (the engine's IGameWorldOrganizer) with the variable frame time.
+    [Service(typeof(IWorldStepper))]
     [Service(typeof(IGameWorldOrganizer2D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
-    public class GameWorldOrganizer2D : IGameWorldOrganizer2D
+    public class GameWorldOrganizer2D : IGameWorldOrganizer2D, IWorldStepper
     {
         private readonly Dictionary<int, IGameWorldManager2D> _worlds = new();
         private readonly IWorldPartitioner2D _partitioner;

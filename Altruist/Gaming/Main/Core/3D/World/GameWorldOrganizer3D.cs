@@ -19,11 +19,12 @@ namespace Altruist.Gaming.ThreeD
         void SetVisibilityTracker(IVisibilityTracker? tracker);
     }
 
-    [Service(typeof(IGameWorldOrganizer))]
+    // Stepped by the WorldCoordinator (the engine's IGameWorldOrganizer) with the variable frame time.
+    [Service(typeof(IWorldStepper))]
     [Service(typeof(IGameWorldOrganizer3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [ConditionalOnConfig("altruist:game")]
-    public class GameWorldOrganizer3D : IGameWorldOrganizer3D
+    public class GameWorldOrganizer3D : IGameWorldOrganizer3D, IWorldStepper
     {
         private readonly Dictionary<int, IGameWorldManager3D> _worlds = new();
         private readonly IWorldLoader3D _worldLoader;

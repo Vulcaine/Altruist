@@ -17,6 +17,7 @@ limitations under the License.
 using System.Diagnostics;
 using System.Reflection;
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -151,14 +152,18 @@ public class MethodScheduler
                 {
                     RegisterCronJob(method, attr.Cron!, serviceInstance);
                 }
+                else if (attr.IsConfigured())
+                {
+                    RegisterFrequencyJob(method, ResolveConfiguredRate(attr), serviceInstance);
+                }
                 else if (attr.IsFrequency())
                 {
                     RegisterFrequencyJob(method, attr.Rate, serviceInstance);
                 }
                 else if (attr.IsRealTime())
                 {
-                    var engine = _serviceProvider.GetService<IAltruistEngine>();
-                    RegisterFrequencyJob(method, engine!.Rate, serviceInstance);
+                    // Every engine frame.
+                    RegisterFrequencyJob(method, null, serviceInstance);
                 }
             }
         }
@@ -166,6 +171,21 @@ public class MethodScheduler
         return _registeredMethodsByType.Values.SelectMany(x => x.Item2).ToList();
     }
 
+
+    /// <summary>
+    /// <c>[Cycle(Config = "key", Default = n, Unit = ...)]</c>: the rate is read from configuration
+    /// at registration; a missing, empty or non-positive value falls back to <c>Default</c>, and
+    /// without a usable default the method runs every frame.
+    /// </summary>
+    private CycleRate? ResolveConfiguredRate(CycleAttribute attr)
+    {
+        var cfg = _serviceProvider.GetService<IConfiguration>();
+        var raw = cfg?[attr.Config!];
+        var value = int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsed) && parsed > 0
+            ? parsed
+            : attr.Default;
+        return value > 0 ? new CycleRate(value, attr.Unit) : null;
+    }
 
     private void RegisterMethod(MethodInfo method, object? serviceInstance)
     {
@@ -348,6 +368,12 @@ public class EngineWithoutDiagnostics : IAltruistEngine
     public void SyncCommit(Action commit) => _core.SyncCommit(commit);
     public Task<T> SyncCommit<T>(Func<T> commit) => _core.SyncCommit(commit);
 
+    public long Frame => _core.Frame;
+    public TaskIdentifier ScheduleOnce(TimeSpan delay, Action action) => _core.ScheduleOnce(delay, action);
+    public TaskIdentifier ScheduleAtFrame(long frame, Action action) => _core.ScheduleAtFrame(frame, action);
+    public void RunOffTick<T>(Func<CancellationToken, Task<T>> work, Action<T?, Exception?> onTick) => _core.RunOffTick(work, onTick);
+    public void RunOffTick(Func<CancellationToken, Task> work, Action<Exception?> onTick) => _core.RunOffTick(work, onTick);
+
     [Service(typeof(IAltruistEngine))]
     [ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
     public class EngineWithDiagnostics : IAltruistEngine
@@ -470,7 +496,8 @@ public class EngineWithoutDiagnostics : IAltruistEngine
 
         public void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null)
         {
-            var actualHz = cycleRate ?? _wrappedEngine.Rate;
+            // null = every frame (resolved by the wrapped engine).
+            var actualHz = cycleRate;
 
             if (taskDelegate is Func<Task> asyncDelegate)
             {
@@ -541,6 +568,12 @@ public class EngineWithoutDiagnostics : IAltruistEngine
         {
             return _wrappedEngine.SyncCommit(commit);
         }
+
+        public long Frame => _wrappedEngine.Frame;
+        public TaskIdentifier ScheduleOnce(TimeSpan delay, Action action) => _wrappedEngine.ScheduleOnce(delay, action);
+        public TaskIdentifier ScheduleAtFrame(long frame, Action action) => _wrappedEngine.ScheduleAtFrame(frame, action);
+        public void RunOffTick<T>(Func<CancellationToken, Task<T>> work, Action<T?, Exception?> onTick) => _wrappedEngine.RunOffTick(work, onTick);
+        public void RunOffTick(Func<CancellationToken, Task> work, Action<Exception?> onTick) => _wrappedEngine.RunOffTick(work, onTick);
     }
 
 }

@@ -17,7 +17,23 @@ namespace Altruist.Engine;
 [ConditionalOnConfig("altruist:game:engine")]
 public class AltruistEngine : IAltruistEngine
 {
+    /// <summary>Frame counter of the most recently started engine frame (any engine instance).</summary>
     public static long CurrentTick { get; private set; } = 0;
+
+    private static readonly CycleRate EveryFrame = new(1, CycleUnit.Ticks);
+
+    /// <summary>Engine frames run by this instance (the frame being run, while inside one).</summary>
+    public long Frame => Interlocked.Read(ref _frame);
+    private long _frame;
+
+    private readonly IEngineClock _clock;
+
+    /// <summary>
+    /// <c>altruist:game:engine:world-step</c>: <c>inline</c> steps the world on the engine loop after
+    /// the next-tick queue, the <c>[Cycle]</c> tasks, the dynamic tasks and the effects of each frame;
+    /// <c>worker</c> (default) steps it on a separate world-worker task with the summed frame time.
+    /// </summary>
+    public WorldStepMode WorldStep { get; }
 
     private readonly int _engineHz;
     private TimeSpan EngineTickPeriod => TimeSpan.FromSeconds(1.0 / _engineHz);
@@ -64,8 +80,12 @@ public class AltruistEngine : IAltruistEngine
     private readonly Dictionary<TaskIdentifier, long> _staticLastRunFrame = new();     // for frame-based
     private readonly Dictionary<TaskIdentifier, Task> _staticInFlight = new();
 
-    // -------- Effects --------
+    // -------- Effects (repeating effects and one-shot timers) --------
+    // _effects is the lookup for cancellation; the engine loop runs them in scheduling order
+    // (_effectOrder, adopted from _pendingEffects at the start of the effect phase).
     private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effects = new();
+    private readonly ConcurrentQueue<DynamicEffectTask> _pendingEffects = new();
+    private readonly List<DynamicEffectTask> _effectOrder = new();
 
     // -------- Dynamic tasks (requested at runtime; each request must run at least once; never overlap per id) --------
     private sealed class DynamicTaskState
@@ -99,12 +119,16 @@ public class AltruistEngine : IAltruistEngine
         [AppConfigValue("altruist:game:engine:unit")] CycleUnit unit = CycleUnit.Ticks,
         [AppConfigValue("altruist:game:engine:throttle")] int? throttle = null,
         // Examples and docs use `frequency`; accept it as an alias for framerateHz.
-        [AppConfigValue("altruist:game:engine:frequency")] int? frequency = null)
+        [AppConfigValue("altruist:game:engine:frequency")] int? frequency = null,
+        [AppConfigValue("altruist:game:engine:world-step", "worker")] string? worldStep = null,
+        IEngineClock? clock = null)
     {
         var engineFrequencyHz = framerateHz ?? frequency ?? 30;
         _serviceProvider = serviceProvider;
         _appStatus = serverStatus;
         _worldCoordinator = worldCoordinator;
+        _clock = clock ?? StopwatchEngineClock.Instance;
+        WorldStep = ParseWorldStep(worldStep);
 
         _engineHz = Math.Max(1, engineFrequencyHz);
         _engineRate = new CycleRate(engineFrequencyHz, unit); // visibility/config only
@@ -114,6 +138,16 @@ public class AltruistEngine : IAltruistEngine
 
     public void Enable() => Enabled = true;
     public void Disable() => Enabled = false;
+
+    public static WorldStepMode ParseWorldStep(string? value)
+    {
+        var v = (value ?? "").Trim();
+        if (v.Length == 0 || v.Equals("worker", StringComparison.OrdinalIgnoreCase))
+            return WorldStepMode.Worker;
+        if (v.Equals("inline", StringComparison.OrdinalIgnoreCase))
+            return WorldStepMode.Inline;
+        throw new ArgumentException($"Unknown altruist:game:engine:world-step '{value}'. Use worker or inline.", nameof(value));
+    }
 
     // ---------------- Public scheduling APIs ----------------
 
@@ -169,7 +203,7 @@ public class AltruistEngine : IAltruistEngine
 
         var id = new TaskIdentifier("Effect_" + Guid.NewGuid());
 
-        long nowStopwatch = FrameTime.NowTicks;
+        long nowStopwatch = _clock.NowTicks;
 
         var effect = new DynamicEffectTask(
             id: id,
@@ -178,10 +212,12 @@ public class AltruistEngine : IAltruistEngine
             step: step,
             startTime: nowStopwatch
         );
+        // Expiry is measured on the engine clock (same instant as the UTC deadline in production).
+        effect.ExpiresAtTicks = ToClockDeadline(nowStopwatch, expiresAtUtc - DateTime.UtcNow);
 
         if (cycleRate.Unit == CycleUnit.Ticks)
         {
-            effect.NextExecuteFrame = CurrentTick + Math.Max(1, cycleRate.Value);
+            effect.NextExecuteFrame = Frame + Math.Max(1, cycleRate.Value);
             effect.NextExecuteTimeTicks = 0;
         }
         else
@@ -190,11 +226,51 @@ public class AltruistEngine : IAltruistEngine
             effect.NextExecuteFrame = 0;
         }
 
-        _effects[id] = effect;
+        AddEffect(effect);
         return id;
     }
 
+    public TaskIdentifier ScheduleOnce(TimeSpan delay, Action action)
+    {
+        if (action is null)
+            throw new ArgumentNullException(nameof(action));
+        if (delay < TimeSpan.Zero)
+            delay = TimeSpan.Zero;
+
+        var now = _clock.NowTicks;
+        var effect = DynamicEffectTask.OneShot(new TaskIdentifier("Once_" + Guid.NewGuid()), action);
+        effect.NextExecuteTimeTicks = ToClockDeadline(now, delay);
+        AddEffect(effect);
+        return effect.Id;
+    }
+
+    public TaskIdentifier ScheduleAtFrame(long frame, Action action)
+    {
+        if (action is null)
+            throw new ArgumentNullException(nameof(action));
+
+        var effect = DynamicEffectTask.OneShot(new TaskIdentifier("AtFrame_" + Guid.NewGuid()), action, atFrame: true);
+        effect.NextExecuteFrame = frame;
+        AddEffect(effect);
+        return effect.Id;
+    }
+
     public bool CancelEffect(TaskIdentifier id) => _effects.TryRemove(id, out _);
+
+    private void AddEffect(DynamicEffectTask effect)
+    {
+        _effects[effect.Id] = effect;
+        _pendingEffects.Enqueue(effect);
+    }
+
+    private static long ToClockDeadline(long nowTicks, TimeSpan delay)
+    {
+        var seconds = delay.TotalSeconds;
+        if (seconds <= 0)
+            return nowTicks;
+        var ticks = seconds * Stopwatch.Frequency;
+        return ticks >= long.MaxValue - (double)nowTicks ? long.MaxValue : nowTicks + (long)ticks;
+    }
 
     // ---------------- Dynamic tasks ----------------
 
@@ -253,8 +329,9 @@ public class AltruistEngine : IAltruistEngine
 
         Logger.LogInformation("🚀 Starting engine...");
 
-        // Physics worker runs as a Task
-        _ = Task.Run(() => RunPhysicsWorkerAsync(runToken), runToken);
+        // Worker mode: the world steps on its own task. Inline mode: on the engine loop (RunFrame).
+        if (WorldStep == WorldStepMode.Worker)
+            _ = Task.Run(() => RunPhysicsWorkerAsync(runToken), runToken);
 
         _engineThread = new Thread(() =>
         {
@@ -273,7 +350,7 @@ public class AltruistEngine : IAltruistEngine
 
                 try
                 {
-                    RunEngineLoopAsync(runToken).GetAwaiter().GetResult();
+                    RunEngineLoop(runToken);
                 }
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
@@ -295,7 +372,7 @@ public class AltruistEngine : IAltruistEngine
 
         _engineThread.Start();
         Enable();
-        Logger.LogInformation($"⚡⚡ [ENGINE {_engineHz}Hz] Unleashed — powerful, fast, and breaking speed limits!");
+        Logger.LogInformation($"⚡⚡ [ENGINE {_engineHz}Hz, world-step {WorldStep.ToString().ToLowerInvariant()}] Unleashed — powerful, fast, and breaking speed limits!");
     }
 
     public void Stop()
@@ -310,42 +387,74 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Core loops ----------------
 
-    private async Task RunEngineLoopAsync(CancellationToken token)
+    /// <summary>
+    /// The frame loop. It runs on the engine thread itself: every frame phase (next-tick queue,
+    /// cycles, dynamic tasks, effects and, inline, the world step) executes on that one thread,
+    /// strictly in sequence.
+    /// </summary>
+    private void RunEngineLoop(CancellationToken token)
     {
         using var timer = new PeriodicTimer(EngineTickPeriod);
 
-        long lastTickStopwatch = FrameTime.NowTicks;
+        long lastTickStopwatch = _clock.NowTicks;
 
         try
         {
-            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+            while (WaitForTimer(timer, token))
             {
                 if (!Enabled)
                     continue;
 
-                CurrentTick++;
-
-                long nowStopwatch = FrameTime.NowTicks;
+                long nowStopwatch = _clock.NowTicks;
                 long elapsedStopwatch = nowStopwatch - lastTickStopwatch;
                 lastTickStopwatch = nowStopwatch;
 
-                float dt = FrameTime.TicksToDeltaSeconds(elapsedStopwatch);
-
-                AdoptPendingStaticTasks();
-                await RunNextTickQueueAsync().ConfigureAwait(false);
-                RunStaticTasks(nowStopwatch);
-                StartDynamicTasksBudgeted();
-                RunEffects(nowStopwatch, dt);
-
-                lock (_physicsDtLock)
-                    _pendingPhysicsDt += dt;
-                _physicsTicks.Writer.TryWrite(true);
+                RunFrame(nowStopwatch, FrameTime.TicksToDeltaSeconds(elapsedStopwatch));
             }
         }
         catch (OperationCanceledException)
         {
             // normal shutdown
         }
+    }
+
+    private static bool WaitForTimer(PeriodicTimer timer, CancellationToken token)
+    {
+        var wait = timer.WaitForNextTickAsync(token);
+        return wait.IsCompletedSuccessfully ? wait.Result : wait.AsTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// One engine frame: next-tick queue → <c>[Cycle]</c> tasks → dynamic tasks → effects and timers
+    /// → world step (inline mode; worker mode hands the frame time to the world worker).
+    /// Called by the engine loop, or by <see cref="EngineTestDriver"/> on a stopped engine.
+    /// </summary>
+    internal void RunFrame(long nowStopwatch, float dt)
+    {
+        CurrentTick = Interlocked.Increment(ref _frame);
+
+        AdoptPendingStaticTasks();
+        RunNextTickQueue();
+        RunStaticTasks(nowStopwatch);
+        StartDynamicTasksBudgeted();
+        RunEffects(nowStopwatch, dt);
+
+        if (WorldStep == WorldStepMode.Inline)
+        {
+            try
+            {
+                _worldCoordinator.Step(dt);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                ReportFault("world step", ex);
+            }
+            return;
+        }
+
+        lock (_physicsDtLock)
+            _pendingPhysicsDt += dt;
+        _physicsTicks.Writer.TryWrite(true);
     }
 
     private async Task RunPhysicsWorkerAsync(CancellationToken token)
@@ -382,14 +491,18 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Tick subroutines ----------------
 
-    private async Task RunNextTickQueueAsync()
+    private void RunNextTickQueue()
     {
         while (_nextTickQueue.TryDequeue(out var del))
         {
             // One throwing delegate must not stop the loop or the delegates queued after it.
+            // Async delegates are awaited in order (the queue is sequential), on the engine thread.
             try
             {
-                await ExecuteDelegateAsync(del).ConfigureAwait(false);
+                if (del is Action action)
+                    action();
+                else
+                    ExecuteDelegateAsync(del).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
@@ -410,15 +523,18 @@ public class AltruistEngine : IAltruistEngine
         {
             bool due;
 
+            long frame = _frame;
+            long interval = 0;
+            long lastRun = 0;
             if (task.CycleRate.Unit == CycleUnit.Ticks)
             {
                 _staticLastRunFrame.TryGetValue(task.Id, out var lastFrame);
-                due = lastFrame == 0 || (CurrentTick - lastFrame) >= Math.Max(1, task.CycleRate.Value);
+                due = lastFrame == 0 || (frame - lastFrame) >= Math.Max(1, task.CycleRate.Value);
             }
             else
             {
-                long interval = ToStopwatchTickInterval(task.CycleRate);
-                _staticLastRunStopwatch.TryGetValue(task.Id, out var lastRun);
+                interval = ToStopwatchTickInterval(task.CycleRate);
+                _staticLastRunStopwatch.TryGetValue(task.Id, out lastRun);
                 due = lastRun == 0 || (nowStopwatch - lastRun) >= interval;
             }
 
@@ -429,9 +545,9 @@ public class AltruistEngine : IAltruistEngine
                 continue;
 
             if (task.CycleRate.Unit == CycleUnit.Ticks)
-                _staticLastRunFrame[task.Id] = CurrentTick;
+                _staticLastRunFrame[task.Id] = frame;
             else
-                _staticLastRunStopwatch[task.Id] = nowStopwatch;
+                _staticLastRunStopwatch[task.Id] = NextCadence(lastRun, interval, nowStopwatch);
 
             _staticInFlight[task.Id] = ExecuteDelegateAsync(task.Delegate);
         }
@@ -455,43 +571,92 @@ public class AltruistEngine : IAltruistEngine
 
     private void RunEffects(long nowStopwatch, float dt)
     {
-        if (_effects.IsEmpty)
+        while (_pendingEffects.TryDequeue(out var added))
+            _effectOrder.Add(added);
+
+        if (_effectOrder.Count == 0)
             return;
 
-        var nowUtc = DateTime.UtcNow;
-
-        foreach (var (id, effect) in _effects)
+        long frame = _frame;
+        var removed = 0;
+        for (var i = 0; i < _effectOrder.Count; i++)
         {
-            if (nowUtc >= effect.ExpiresAtUtc)
+            var effect = _effectOrder[i];
+            var id = effect.Id;
+
+            // Cancelled (or replaced) since it was scheduled.
+            if (!_effects.TryGetValue(id, out var live) || !ReferenceEquals(live, effect))
             {
-                _effects.TryRemove(id, out _);
+                _effectOrder[i] = null!;
+                removed++;
                 continue;
             }
 
-            bool due = effect.Rate.Unit switch
+            if (!effect.IsOneShot && nowStopwatch >= effect.ExpiresAtTicks)
             {
-                CycleUnit.Ticks => CurrentTick >= effect.NextExecuteFrame,
-                _ => nowStopwatch >= effect.NextExecuteTimeTicks
-            };
+                _effects.TryRemove(id, out _);
+                _effectOrder[i] = null!;
+                removed++;
+                continue;
+            }
+
+            bool due = effect.IsFrameBased
+                ? frame >= effect.NextExecuteFrame
+                : nowStopwatch >= effect.NextExecuteTimeTicks;
 
             if (!due)
                 continue;
 
             try
             {
+                if (effect.IsOneShot)
+                {
+                    _effects.TryRemove(id, out _);
+                    _effectOrder[i] = null!;
+                    removed++;
+                    effect.Once!();
+                    continue;
+                }
+
                 effect.Step(dt);
 
                 if (effect.Rate.Unit == CycleUnit.Ticks)
-                    effect.NextExecuteFrame = CurrentTick + Math.Max(1, effect.Rate.Value);
+                    effect.NextExecuteFrame = frame + Math.Max(1, effect.Rate.Value);
                 else
-                    effect.NextExecuteTimeTicks = nowStopwatch + ToStopwatchTickInterval(effect.Rate);
+                {
+                    // One interval after the previous due time (no drift), or after now when
+                    // more than an interval behind (no burst of catch-up runs).
+                    long interval = ToStopwatchTickInterval(effect.Rate);
+                    long next = effect.NextExecuteTimeTicks + interval;
+                    effect.NextExecuteTimeTicks = nowStopwatch >= next ? nowStopwatch + interval : next;
+                }
             }
             catch (Exception ex)
             {
-                _effects.TryRemove(id, out _);
+                if (_effects.TryRemove(id, out _) && _effectOrder[i] is not null)
+                {
+                    _effectOrder[i] = null!;
+                    removed++;
+                }
                 ReportFault("effect " + id.Id, ex);
             }
         }
+
+        if (removed > 0)
+            _effectOrder.RemoveAll(static e => e is null);
+    }
+
+    /// <summary>
+    /// The last-run mark after a time-based run: one interval after the previous mark, so the
+    /// average rate is the configured one even when frames do not line up with the interval;
+    /// resynchronized to now after a stall of two or more intervals (no burst of catch-up runs).
+    /// </summary>
+    private static long NextCadence(long lastRun, long interval, long now)
+    {
+        if (lastRun <= 0 || interval <= 0)
+            return now;
+        var next = lastRun + interval;
+        return now - next >= interval ? now : next;
     }
 
     private void StartDynamicTasksBudgeted()
@@ -542,7 +707,9 @@ public class AltruistEngine : IAltruistEngine
 
     public void ScheduleTask(Delegate taskDelegate, CycleRate? rate = null)
     {
-        var actualRate = rate ?? _engineRate;
+        // No rate = every frame (a plain [Cycle]). It used to fall back to the engine's own rate,
+        // which with unit "ticks" meant every framerateHz frames, i.e. once per second.
+        var actualRate = rate ?? EveryFrame;
 
         if (actualRate.Unit == CycleUnit.Hz && actualRate.Value > _engineHz)
             throw new ArgumentException($"Frequency {actualRate} must be <= engine frequency {_engineHz}Hz.", nameof(rate));

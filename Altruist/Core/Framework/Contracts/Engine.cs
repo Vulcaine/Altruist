@@ -64,6 +64,11 @@ public interface IEngineCore
     void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null);
     void Start(CancellationToken token);
     void Stop();
+
+    /// <summary>
+    /// Runs <paramref name="taskDelegate"/> on the engine loop at <paramref name="cycleRate"/>;
+    /// <c>null</c> = every frame.
+    /// </summary>
     void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null);
     void SendTask(TaskIdentifier taskId, Delegate taskDelegate);
     void WaitForNextTick(Delegate task);
@@ -78,6 +83,59 @@ public interface IEngineCore
 
 
     bool CancelEffect(TaskIdentifier id);
+
+    /// <summary>Engine frames run so far (the frame being run, while inside one).</summary>
+    long Frame => throw new NotSupportedException($"{GetType().Name} does not count frames.");
+
+    /// <summary>
+    /// Runs <paramref name="action"/> once on the engine loop (in the effect phase of a frame) after
+    /// <paramref name="delay"/>, measured on the engine clock. Cancel with <see cref="CancelEffect"/>.
+    /// </summary>
+    TaskIdentifier ScheduleOnce(TimeSpan delay, Action action) =>
+        throw new NotSupportedException($"{GetType().Name} does not support ScheduleOnce.");
+
+    /// <summary>
+    /// Runs <paramref name="action"/> once on the engine loop (in the effect phase) of engine frame
+    /// <paramref name="frame"/>, or of the next frame if that one has passed. Cancel with <see cref="CancelEffect"/>.
+    /// </summary>
+    TaskIdentifier ScheduleAtFrame(long frame, Action action) =>
+        throw new NotSupportedException($"{GetType().Name} does not support ScheduleAtFrame.");
+
+    /// <summary>
+    /// Runs <paramref name="work"/> on the thread pool (never on the engine loop) and hands its result,
+    /// or its exception, to <paramref name="onTick"/> on the engine loop (next-tick queue).
+    /// For I/O whose outcome the game state needs: database writes, HTTP calls.
+    /// </summary>
+    void RunOffTick<T>(Func<CancellationToken, Task<T>> work, Action<T?, Exception?> onTick)
+    {
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (onTick is null)
+            throw new ArgumentNullException(nameof(onTick));
+        _ = Task.Run(async () =>
+        {
+            T? result = default;
+            Exception? error = null;
+            try
+            { result = await work(CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception ex) { error = ex; }
+            WaitForNextTick(() => onTick(result, error));
+        });
+    }
+
+    /// <summary><see cref="RunOffTick{T}"/> for work without a result.</summary>
+    void RunOffTick(Func<CancellationToken, Task> work, Action<Exception?> onTick)
+    {
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (onTick is null)
+            throw new ArgumentNullException(nameof(onTick));
+        RunOffTick<bool>(async ct =>
+        {
+            await work(ct).ConfigureAwait(false);
+            return true;
+        }, (_, error) => onTick(error));
+    }
 }
 
 public interface IAltruistEngine : IEngineCore
