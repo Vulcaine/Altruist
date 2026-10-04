@@ -2,6 +2,28 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [0.9.7-beta] - 2026-10-04
+
+Engine lifecycle and DI fixes. No API was removed and no configuration key changed; existing apps need no changes.
+
+### Fixed
+- **One construction per boot** — `EngineStartupConfiguration` built a throwaway service provider during configuration, which constructed every singleton a second time and started a second engine on it (an orphan `EngineThread` that waited forever). Configuration now only registers. `[Cycle]` methods are registered once by `MethodScheduler`'s `[PostConstruct]`, on the instances whose `[PostConstruct]` ran; the visibility tracker and the 2D/3D organizer wire each other in the tracker's `[PostConstruct]`; the engine is started only by `ServerStatus` once every connectable service is up.
+- **Duplicate singletons from the dependency planner** — a `[Service]` that the planner had already registered as the dependency of a service scanned earlier got a second descriptor from its own attribute (two instances per boot, listed twice in `IEnumerable<T>`). The planned registration is now reused (an interface registration becomes a forward to the implementation).
+- **The game loop survives exceptions** — a `WaitForNextTick` / `SyncCommit` delegate that throws no longer stops the engine loop or the delegates queued after it. Failing `[Cycle]` tasks, effects and world steps are logged (repeats summarized every 10 s) instead of being swallowed silently; the loop keeps running.
+- **`SyncCommit` with `diagnostics: false`** — `EngineWithoutDiagnostics.SyncCommit` threw `NotImplementedException`; it now runs the commit on the next engine frame like the diagnostics engine does.
+- **`CycleUnit.Seconds` / `CycleUnit.Milliseconds`** — `[Cycle(30, CycleUnit.Seconds)]` (and `ScheduleEffect` with such a rate) ran about once every 333,000 s instead of 30 times per second: the engine read the stored period (in `TimeSpan` ticks) as seconds. `CycleRate.Frequency` exposes the configured frequency.
+- **World step time** — when the world worker fell behind, the dt of the frames it missed was dropped (the channel kept only the latest frame). The frame dts are now summed until the worker picks them up, so the simulated time matches the real time.
+- **Async `[Cycle]` methods** — the returned `Task` was discarded, so a slow async `[Cycle]` overlapped itself. Parameterless `[Cycle]` delegates are now invoked directly (no reflection per frame) and an async one never runs concurrently with itself.
+- **Engine restart** — after `ServerStatus` stopped the engine (a connectable service failed) and started it again, the world worker never stepped again, and stopping while the engine waited for the server could crash the engine thread. `ServerStatus` publishes `Alive` before it starts the engine, so the loop no longer idles up to 5 s at startup.
+- `[Cycle]` methods registered after the engine started (a `[PostConstruct]` running after `ServerStatus` went alive) are picked up safely on the next frame.
+
+### Added
+- **Interceptors from DI** — `ConnectionManager` installs every `IInterceptor` registered in DI (`[Service(typeof(IInterceptor))]`); `AddInterceptor` keeps working and ignores an instance that is already installed. `InterceptContext.Route` carries the portal path of the connection, so an interceptor can target one portal.
+- **Regression tests** for all of the above (`EngineLifecycleRegressionTests`, `DiInterceptorRegistrationTests`, `PlannedRegistrationDedupTests`).
+
+### Known issue
+- A plain `[Cycle]` (realtime) runs once every `framerateHz` frames, i.e. once per second, when `altruist:game:engine:unit` is `ticks` (the default); with `unit: "hz"` it runs every frame as documented. Use `[Cycle(1)]` for every frame. To be addressed together with config-driven cycle rates.
+
 ## [0.9.6-beta] - 2026-10-03
 
 ### Fixed
