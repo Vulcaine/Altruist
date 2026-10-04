@@ -2,6 +2,33 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [0.9.8-beta] - 2026-10-04
+
+Fixed-step world stepping, inline world step, one-shot timers and config-driven cycle rates. Existing apps need no changes: every new behaviour is behind a config key whose default keeps the 0.9.7 behaviour, except the plain-`[Cycle]` rate fix below.
+
+### Added
+- **`WorldCoordinator`** — the new default `IGameWorldOrganizer`: a composite that steps every `IWorldStepper` registered in DI, in registration order. Variable-rate steppers (`StepMode.Variable`) get `Step(dt)` with the real frame time; fixed-rate steppers (`StepMode.Fixed`, `FixedHz`) get `FixedStep(step)` 0..N times per frame with a constant `dt`, one fixed-step clock per stepper. Every stepper also gets `BeforeSteps` / `AfterSteps(FrameInfo)` once per frame. A stepper that throws is logged and does not stop the others. Steppers are resolved on the first step, so a stepper may depend on `IAltruistEngine`.
+- **`FixedStepClock`** — double-precision accumulator with a frame-time clamp and a step cap. Config: `altruist:game:engine:fixed-step:max-frame-delta` (0.25 s), `max-steps-per-frame` (8), `overrun` (`drop` | `carry` | `slow-motion`, default `drop`).
+- **`altruist:game:engine:world-step: inline`** — the world step runs on the engine thread as the last phase of every frame (next-tick queue → `[Cycle]` tasks → dynamic tasks → effects/timers → world step), so commands posted with `WaitForNextTick`, cycles and steppers share one thread and a fixed order. `worker` (the default) keeps the separate world-worker task.
+- **One-shot timers** — `IAltruistEngine.ScheduleOnce(TimeSpan, Action)` and `ScheduleAtFrame(long, Action)`, cancellable with `CancelEffect`; `IAltruistEngine.Frame`.
+- **`RunOffTick`** — runs I/O on the thread pool and hands the result (or exception) back on the engine loop.
+- **`[Cycle(Config = "key", Default = n, Unit = ...)]`** — cycle rate read from configuration at registration.
+- **`IEngineClock`**, **`ManualEngineClock`** and **`EngineTestDriver`** — run engine frames by hand, deterministically, on an engine that was never started (tests).
+- **`[ConditionalOnMissingService(typeof(T))]`** — DI: register a framework default only while no other class (or manual registration) provides `T`. The `WorldCoordinator` uses it, so an app's own `IGameWorldOrganizer` still replaces it.
+
+### Changed
+- **The engine frame runs on the engine thread.** Frames used to resume on thread-pool threads after the timer wait; every synchronous part of a frame now runs on `EngineThread` (async delegates continue where their `await` resumes, as before).
+- The 2D/3D world organizers are registered as `IWorldStepper` (variable rate) instead of `IGameWorldOrganizer`; they are stepped by the `WorldCoordinator` with the same frame time as before. `IGameWorldOrganizer2D` / `IGameWorldOrganizer3D` are unchanged.
+- **`ForceRuntime2D` / `ForceRuntime3D`** step as fixed-rate steppers at 25 Hz (dt 0.04 s) instead of a `[Cycle]` that assumed 25 Hz; `TickFrame()` is still available.
+- Effects expire on the engine clock (the UTC deadline is converted when the effect is scheduled) and run in scheduling order.
+- Time-based cycle and effect rates (`Hz`, `Seconds`, `Milliseconds`) keep their average rate instead of drifting to the next frame boundary (a 30 Hz cycle on a 120 Hz engine ran every 5th frame, 24 times a second); after a stall they resume without a burst.
+
+### Fixed
+- **Plain `[Cycle]`** (and `ScheduleTask` without a rate) runs every engine frame. With `unit: ticks` (the default) it ran once every `framerateHz` frames, i.e. once per second (the known issue of 0.9.7). If you relied on that, use `[Cycle(1, CycleUnit.Hz)]`.
+
+### Tests
+- `FixedStepClockTests`, `WorldCoordinatorTests`, `EngineFramePipelineTests` (inline order and thread, cycle rates, timers, `RunOffTick`, engine clock), `ForceRuntimeFixedStepTests`, `ConditionalOnMissingServiceTests`.
+
 ## [0.9.7-beta] - 2026-10-04
 
 Engine lifecycle and DI fixes. No API was removed and no configuration key changed; existing apps need no changes.

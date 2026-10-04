@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Protocol</PackageId>
     <Description>Altruist wire-protocol primitives — MessageEnvelope, PacketHeader, IPacketBase, PacketCodes. Shared by the server (Altruist) and client (Altruist.Client) packages so the on-the-wire shape has exactly one source of truth.</Description>
-    <Version>0.9.7-beta</Version>
+    <Version>0.9.8-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

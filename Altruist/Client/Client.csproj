@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Client</PackageId>
     <Description>Client framework for the Altruist wire protocol — TCP, UDP, WebSocket transports with the same MessagePack envelope encoding the server uses. AOT-friendly: the receive path byte-skips the envelope and only deserializes the inner packet as a known concrete type. Drop-in DLL for Unity, Godot, Blazor, or any .NET client.</Description>
-    <Version>0.9.7-beta</Version>
+    <Version>0.9.8-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
