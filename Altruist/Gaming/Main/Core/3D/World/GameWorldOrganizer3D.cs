@@ -32,7 +32,16 @@ namespace Altruist.Gaming.ThreeD
         private readonly IAIBehaviorService? _aiBehaviorService;
         private readonly IPositionHistoryRecorder? _positionRecorder;
         private IVisibilityTracker? _visibilityTracker;
-        private float _engineFrequencyHz = 25f;
+        /// <summary>
+        /// Rate the entity sync throttling ([Synchronized(Frequency)]) assumes for the world step:
+        /// <c>altruist:game:worlds:entity-sync-hz</c> (default 25).
+        /// </summary>
+        private readonly float _engineFrequencyHz;
+
+        public const float DefaultEntitySyncHz = 25f;
+
+        /// <summary>The sync rate passed to the entity sync service (<c>altruist:game:worlds:entity-sync-hz</c>).</summary>
+        public float EntitySyncHz => _engineFrequencyHz;
         private long _stepCount;
 
         public GameWorldOrganizer3D(
@@ -40,13 +49,15 @@ namespace Altruist.Gaming.ThreeD
             IEnumerable<IWorldIndex3D> gameWorlds,
             IEntitySyncService? entitySyncService = null,
             IAIBehaviorService? aiBehaviorService = null,
-            IPositionHistoryRecorder? positionRecorder = null
+            IPositionHistoryRecorder? positionRecorder = null,
+            [AppConfigValue("altruist:game:worlds:entity-sync-hz", "25")] float entitySyncHz = DefaultEntitySyncHz
         )
         {
             _worldLoader = worldLoader;
             _entitySyncService = entitySyncService;
             _aiBehaviorService = aiBehaviorService;
             _positionRecorder = positionRecorder;
+            _engineFrequencyHz = entitySyncHz > 0 ? entitySyncHz : DefaultEntitySyncHz;
 
             if (gameWorlds is null)
                 throw new ArgumentNullException(nameof(gameWorlds));

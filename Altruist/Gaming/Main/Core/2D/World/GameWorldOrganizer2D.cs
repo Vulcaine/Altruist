@@ -34,7 +34,16 @@ namespace Altruist.Gaming.TwoD
         private IVisibilityTracker? _visibilityTracker;
         private readonly IAIBehaviorService? _aiBehaviorService;
         private readonly IEntitySyncService? _entitySyncService;
-        private float _engineFrequencyHz = 25f;
+        /// <summary>
+        /// Rate the entity sync throttling ([Synchronized(Frequency)]) assumes for the world step:
+        /// <c>altruist:game:worlds:entity-sync-hz</c> (default 25).
+        /// </summary>
+        private readonly float _engineFrequencyHz;
+
+        public const float DefaultEntitySyncHz = 25f;
+
+        /// <summary>The sync rate passed to the entity sync service (<c>altruist:game:worlds:entity-sync-hz</c>).</summary>
+        public float EntitySyncHz => _engineFrequencyHz;
 
         public GameWorldOrganizer2D(
             IWorldPartitioner2D partitioner,
@@ -44,7 +53,8 @@ namespace Altruist.Gaming.TwoD
             IPhysxBodyApiProvider2D? bodyApi = null,
             IPhysxColliderApiProvider2D? colliderApi = null,
             IAIBehaviorService? aiBehaviorService = null,
-            IEntitySyncService? entitySyncService = null)
+            IEntitySyncService? entitySyncService = null,
+            [AppConfigValue("altruist:game:worlds:entity-sync-hz", "25")] float entitySyncHz = DefaultEntitySyncHz)
         {
             _partitioner = partitioner;
             _cache = cache;
@@ -53,6 +63,7 @@ namespace Altruist.Gaming.TwoD
             _colliderApi = colliderApi;
             _aiBehaviorService = aiBehaviorService;
             _entitySyncService = entitySyncService;
+            _engineFrequencyHz = entitySyncHz > 0 ? entitySyncHz : DefaultEntitySyncHz;
             _worlds = gameWorlds
                 .Select(index2d => AddWorld(
                     index2d,

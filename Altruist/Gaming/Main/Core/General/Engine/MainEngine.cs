@@ -350,7 +350,10 @@ public class AltruistEngine : IAltruistEngine
 
                 try
                 {
-                    RunEngineLoop(runToken);
+                    if (WorldStep == WorldStepMode.Inline)
+                        RunEngineLoop(runToken);
+                    else
+                        RunEngineLoopAsync(runToken).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
@@ -388,9 +391,9 @@ public class AltruistEngine : IAltruistEngine
     // ---------------- Core loops ----------------
 
     /// <summary>
-    /// The frame loop. It runs on the engine thread itself: every frame phase (next-tick queue,
-    /// cycles, dynamic tasks, effects and, inline, the world step) executes on that one thread,
-    /// strictly in sequence.
+    /// The inline-mode frame loop. It runs on the engine thread itself: every frame phase (next-tick
+    /// queue, cycles, dynamic tasks, effects and the world step) executes on that one thread, strictly
+    /// in sequence.
     /// </summary>
     private void RunEngineLoop(CancellationToken token)
     {
@@ -418,6 +421,39 @@ public class AltruistEngine : IAltruistEngine
         }
     }
 
+    /// <summary>
+    /// The worker-mode frame loop, with the threading of 0.9.7 and earlier: a frame continues on a
+    /// thread-pool thread after the timer wait and awaits the next-tick delegates asynchronously
+    /// (the world steps on its own worker task).
+    /// </summary>
+    private async Task RunEngineLoopAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(EngineTickPeriod);
+
+        long lastTickStopwatch = _clock.NowTicks;
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+            {
+                if (!Enabled)
+                    continue;
+
+                long nowStopwatch = _clock.NowTicks;
+                long elapsedStopwatch = nowStopwatch - lastTickStopwatch;
+                lastTickStopwatch = nowStopwatch;
+
+                BeginFrame();
+                await RunNextTickQueueAsync().ConfigureAwait(false);
+                FinishFrame(nowStopwatch, FrameTime.TicksToDeltaSeconds(elapsedStopwatch));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // normal shutdown
+        }
+    }
+
     private static bool WaitForTimer(PeriodicTimer timer, CancellationToken token)
     {
         var wait = timer.WaitForNextTickAsync(token);
@@ -427,14 +463,24 @@ public class AltruistEngine : IAltruistEngine
     /// <summary>
     /// One engine frame: next-tick queue → <c>[Cycle]</c> tasks → dynamic tasks → effects and timers
     /// → world step (inline mode; worker mode hands the frame time to the world worker).
-    /// Called by the engine loop, or by <see cref="EngineTestDriver"/> on a stopped engine.
+    /// Called by the inline engine loop, or by <see cref="EngineTestDriver"/> on a stopped engine.
     /// </summary>
     internal void RunFrame(long nowStopwatch, float dt)
     {
-        CurrentTick = Interlocked.Increment(ref _frame);
-
-        AdoptPendingStaticTasks();
+        BeginFrame();
         RunNextTickQueue();
+        FinishFrame(nowStopwatch, dt);
+    }
+
+    private void BeginFrame()
+    {
+        CurrentTick = Interlocked.Increment(ref _frame);
+        AdoptPendingStaticTasks();
+    }
+
+    /// <summary>The frame phases after the next-tick queue.</summary>
+    private void FinishFrame(long nowStopwatch, float dt)
+    {
         RunStaticTasks(nowStopwatch);
         StartDynamicTasksBudgeted();
         RunEffects(nowStopwatch, dt);
@@ -503,6 +549,23 @@ public class AltruistEngine : IAltruistEngine
                     action();
                 else
                     ExecuteDelegateAsync(del).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                ReportFault("next-tick task " + DescribeDelegate(del), ex);
+            }
+        }
+    }
+
+    /// <summary>Worker mode (0.9.7 behaviour): every delegate awaited in order, continuing where it resumes.</summary>
+    private async Task RunNextTickQueueAsync()
+    {
+        while (_nextTickQueue.TryDequeue(out var del))
+        {
+            // One throwing delegate must not stop the loop or the delegates queued after it.
+            try
+            {
+                await ExecuteDelegateAsync(del).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
