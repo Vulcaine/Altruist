@@ -188,6 +188,17 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
         if (!DependencyResolver.ShouldRegister(implType, cfg, log))
             return;
 
+        // A framework default steps aside for a registration the application made by hand.
+        foreach (var missing in implType.GetCustomAttributes<ConditionalOnMissingServiceAttribute>(false))
+        {
+            if (services.Any(d => d.ServiceType == missing.ServiceType))
+            {
+                log.LogDebug("Skipping {Type}: {Service} is already registered.",
+                    DependencyResolver.GetCleanName(implType), DependencyResolver.GetCleanName(missing.ServiceType));
+                return;
+            }
+        }
+
         if (implType.GetConstructors(BindingFlags.Public | BindingFlags.Instance).Length == 0)
         {
             log.LogDebug("Skipping {Type} — no public constructors", implType.Name);

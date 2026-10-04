@@ -143,7 +143,63 @@ namespace Altruist
 
             var gatingConds = conds.Where(c => string.IsNullOrEmpty(c.KeyField)).ToArray();
 
-            return gatingConds.Length == 0 || gatingConds.All(c => ConditionOk(c, cfg, log));
+            if (gatingConds.Length > 0 && !gatingConds.All(c => ConditionOk(c, cfg, log)))
+                return false;
+
+            foreach (var missing in t.GetCustomAttributes<ConditionalOnMissingServiceAttribute>(false))
+            {
+                var other = FindOtherServiceFor(missing.ServiceType, t, cfg, log);
+                if (other is not null)
+                {
+                    log.LogDebug("Skipping {Type}: {Other} registers {Service}.",
+                        GetCleanName(t), GetCleanName(other), GetCleanName(missing.ServiceType));
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static readonly object s_serviceTypesLock = new();
+        private static int s_serviceTypesAssemblyCount = -1;
+        private static List<(Type Impl, Type ServiceType)> s_serviceTypes = new();
+
+        /// <summary>
+        /// Another class (not <paramref name="self"/>) that declares <c>[Service(typeof(serviceType))]</c>
+        /// and would be registered, ignoring classes that are themselves conditional on that service missing.
+        /// </summary>
+        private static Type? FindOtherServiceFor(Type serviceType, Type self, IConfiguration cfg, ILogger log)
+        {
+            foreach (var (impl, svc) in ServiceDeclarations())
+            {
+                if (svc != serviceType || impl == self)
+                    continue;
+                if (impl.GetCustomAttributes<ConditionalOnMissingServiceAttribute>(false).Any(a => a.ServiceType == serviceType))
+                    continue;
+                if (ShouldRegister(impl, cfg, log))
+                    return impl;
+            }
+            return null;
+        }
+
+        private static List<(Type Impl, Type ServiceType)> ServiceDeclarations()
+        {
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
+                .ToArray();
+            lock (s_serviceTypesLock)
+            {
+                if (assemblies.Length == s_serviceTypesAssemblyCount)
+                    return s_serviceTypes;
+
+                var list = new List<(Type, Type)>();
+                foreach (var impl in TypeDiscovery.FindTypesWithAttribute<ServiceAttribute>(assemblies))
+                    foreach (var sa in impl.GetCustomAttributes<ServiceAttribute>(false))
+                        list.Add((impl, sa.ServiceType ?? impl));
+                s_serviceTypes = list;
+                s_serviceTypesAssemblyCount = assemblies.Length;
+                return list;
+            }
         }
 
         /// <summary>
