@@ -26,6 +26,9 @@ public class InterceptContext
     /// <summary>Size of the raw payload in bytes (after the event-name prefix).</summary>
     public int PayloadLength { get; }
 
+    /// <summary>Route (portal path) of the connection the packet arrived on, e.g. "/game" ("" when unknown).</summary>
+    public string Route { get; } = "";
+
     /// <summary>True once an interceptor rejected the packet; the gate handler is then skipped.</summary>
     public bool Rejected { get; private set; }
 
@@ -34,6 +37,12 @@ public class InterceptContext
         EventName = eventName;
         ClientId = clientId;
         PayloadLength = payloadLength;
+    }
+
+    public InterceptContext(string eventName, string clientId, int payloadLength, string route)
+        : this(eventName, clientId, payloadLength)
+    {
+        Route = route ?? "";
     }
 
     /// <summary>Drops the packet: the gate handler does not run (e.g. rate limits, oversize frames).</summary>
@@ -45,6 +54,9 @@ public class InterceptContext
 /// Runs before every gate handler (all interceptors complete before the handler starts). An
 /// interceptor can veto the packet with <see cref="InterceptContext.Reject"/>. Packets for
 /// unknown events are intercepted too (for rate limiting), with a null <c>eventData</c>.
+/// Register one as <c>[Service(typeof(IInterceptor))]</c> and the connection manager picks it
+/// up from DI; <see cref="IConnectionManager.AddInterceptor"/> still works for manual setup.
+/// Use <see cref="InterceptContext.Route"/> to limit an interceptor to one portal.
 /// </summary>
 public interface IInterceptor
 {

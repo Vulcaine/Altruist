@@ -50,7 +50,8 @@ namespace Altruist
             ICodecResolver codecResolver,
             ILoggerFactory loggerFactory, IEngineCore? engineCore = null,
             IDashboardNetworkRecorder? networkRecorder = null,
-            [AppConfigValue("altruist:server:transport:timeout", "10")] int timeout = 10
+            [AppConfigValue("altruist:server:transport:timeout", "10")] int timeout = 10,
+            IEnumerable<IInterceptor>? interceptors = null
          )
         {
             _socketManager = socketManager;
@@ -61,6 +62,11 @@ namespace Altruist
             _networkRecorder = networkRecorder;
             _idleTimeout = timeout;
 
+            // Interceptors registered in DI ([Service(typeof(IInterceptor))]) apply to every portal.
+            if (interceptors is not null)
+                foreach (var interceptor in interceptors)
+                    AddInterceptor(interceptor);
+
             Initialize();
         }
 
@@ -69,7 +75,14 @@ namespace Altruist
             CreateRoomAsync(StoreConstants.WaitingRoomId).GetAwaiter();
         }
 
-        public void AddInterceptor(IInterceptor interceptor) => _interceptors.Add(interceptor);
+        public void AddInterceptor(IInterceptor interceptor)
+        {
+            if (interceptor is null)
+                throw new ArgumentNullException(nameof(interceptor));
+            // The same instance registered in DI and added by hand runs once.
+            if (!_interceptors.Contains(interceptor))
+                _interceptors.Add(interceptor);
+        }
 
         public async Task<IEnumerable<AltruistConnection>> GetConnectionsForPortal(IPortal portal)
         {
@@ -103,7 +116,7 @@ namespace Altruist
             if (PortalGateRegistry<IPortal>.TryGetHandler(packet.Event, out var @delegate))
             {
                 var data = bytes;
-                var context = new InterceptContext(packet.Event, clientId, data.Length);
+                var context = new InterceptContext(packet.Event, clientId, data.Length, @event);
                 var handlerMethod = @delegate.Method;
                 var parameters = ParameterCache.GetOrAdd(handlerMethod, static m => m.GetParameters());
                 var hasPacketPayload = parameters.Length >= 2 && typeof(IPacket).IsAssignableFrom(parameters[0].ParameterType);
@@ -214,7 +227,7 @@ namespace Altruist
                 // them for free. The name is client-chosen: sanitized and logged at debug only.
                 if (_interceptors.Count > 0)
                 {
-                    var context = new InterceptContext(packet.Event, clientId, bytes.Length);
+                    var context = new InterceptContext(packet.Event, clientId, bytes.Length, @event);
                     var tasks = new Task[_interceptors.Count];
                     for (int i = 0; i < _interceptors.Count; i++)
                         tasks[i] = _interceptors[i].Intercept(context, null!);
