@@ -7,6 +7,10 @@ using Altruist.Gaming;
 
 using Cronos;
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Altruist.Engine;
 
 [Service(typeof(IEngineCore))]
@@ -36,17 +40,26 @@ public class AltruistEngine : IAltruistEngine
     // -------- Next-tick (run once next tick, sequential) --------
     private readonly ConcurrentQueue<Delegate> _nextTickQueue = new();
 
-    // -------- Physics dt (latest only) --------
-    private readonly Channel<float> _physicsTicks = Channel.CreateBounded<float>(
+    // -------- Physics dt (summed until the worker picks it up) --------
+    // The channel only signals "a frame happened"; the frame dts are summed in
+    // _pendingPhysicsDt so a worker that falls behind steps the missed time
+    // instead of losing it.
+    private readonly Channel<bool> _physicsTicks = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1)
         {
             SingleReader = true,
             SingleWriter = true,
             FullMode = BoundedChannelFullMode.DropOldest
         });
+    private readonly object _physicsDtLock = new();
+    private double _pendingPhysicsDt;
 
     // -------- Static tasks (registered once, run on cadence, never overlap per task) --------
+    // Registrations may arrive from another thread after the engine started (e.g. a
+    // [PostConstruct] that runs after ServerStatus went alive); they are queued and
+    // adopted by the engine thread at the start of the next frame.
     private readonly List<EngineStaticTask> _staticTasks = new();
+    private readonly ConcurrentQueue<EngineStaticTask> _pendingStaticTasks = new();
     private readonly Dictionary<TaskIdentifier, long> _staticLastRunStopwatch = new(); // for time-based
     private readonly Dictionary<TaskIdentifier, long> _staticLastRunFrame = new();     // for frame-based
     private readonly Dictionary<TaskIdentifier, Task> _staticInFlight = new();
@@ -64,6 +77,19 @@ public class AltruistEngine : IAltruistEngine
 
     private readonly ConcurrentDictionary<TaskIdentifier, DynamicTaskState> _dynamic = new();
     private const int MaxDynamicStartsPerTick = 128;
+
+    // -------- Fault reporting (a throwing task never stops the loop) --------
+    private ILogger? _logger;
+    private ILogger Logger => _logger ??= (_serviceProvider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance)
+        .CreateLogger<AltruistEngine>();
+    private readonly ConcurrentDictionary<string, FaultLog> _faults = new();
+    private static readonly long FaultLogInterval = Stopwatch.Frequency * 10;
+
+    private sealed class FaultLog
+    {
+        public long LastLogged;
+        public long Suppressed;
+    }
 
     public AltruistEngine(
         IServerStatus serverStatus,
@@ -222,26 +248,44 @@ public class AltruistEngine : IAltruistEngine
         _cts = new CancellationTokenSource();
         _linkedCts?.Dispose();
         _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
+        // Captured once: Stop() disposes and clears the sources while the thread may still run.
+        var runToken = _linkedCts.Token;
+
+        Logger.LogInformation("🚀 Starting engine...");
 
         // Physics worker runs as a Task
-        _ = Task.Run(() => RunPhysicsWorkerAsync(_linkedCts.Token), _linkedCts.Token);
+        _ = Task.Run(() => RunPhysicsWorkerAsync(runToken), runToken);
 
         _engineThread = new Thread(() =>
         {
             Thread.CurrentThread.Name = "EngineThread";
 
-            while (!_linkedCts!.IsCancellationRequested)
+            while (!runToken.IsCancellationRequested)
             {
-                if (_appStatus.Status == ReadyState.Alive)
+                if (_appStatus.Status != ReadyState.Alive)
                 {
+                    // Started before the server reported alive (or it went down again): wait for it.
                     try
-                    { RunEngineLoopAsync(_linkedCts!.Token).GetAwaiter().GetResult(); }
-                    catch (OperationCanceledException) { }
-                    catch { /* log */ }
-                    return;
+                    { Task.Delay(50, runToken).GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { return; }
+                    continue;
                 }
 
-                Thread.Sleep(5000);
+                try
+                {
+                    RunEngineLoopAsync(runToken).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    // Every task is guarded individually, so this is an engine bug; keep ticking.
+                    Logger.LogError(ex, "Engine loop failed; restarting it.");
+                    try
+                    { Task.Delay(100, runToken).GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { return; }
+                    continue;
+                }
+                return;
             }
         })
         {
@@ -251,6 +295,7 @@ public class AltruistEngine : IAltruistEngine
 
         _engineThread.Start();
         Enable();
+        Logger.LogInformation($"⚡⚡ [ENGINE {_engineHz}Hz] Unleashed — powerful, fast, and breaking speed limits!");
     }
 
     public void Stop()
@@ -286,21 +331,20 @@ public class AltruistEngine : IAltruistEngine
 
                 float dt = FrameTime.TicksToDeltaSeconds(elapsedStopwatch);
 
+                AdoptPendingStaticTasks();
                 await RunNextTickQueueAsync().ConfigureAwait(false);
                 RunStaticTasks(nowStopwatch);
                 StartDynamicTasksBudgeted();
                 RunEffects(nowStopwatch, dt);
 
-                _physicsTicks.Writer.TryWrite(dt);
+                lock (_physicsDtLock)
+                    _pendingPhysicsDt += dt;
+                _physicsTicks.Writer.TryWrite(true);
             }
         }
         catch (OperationCanceledException)
         {
             // normal shutdown
-        }
-        finally
-        {
-            _physicsTicks.Writer.TryComplete();
         }
     }
 
@@ -310,9 +354,14 @@ public class AltruistEngine : IAltruistEngine
         {
             while (await _physicsTicks.Reader.WaitToReadAsync(token).ConfigureAwait(false))
             {
-                float dt = 0f;
-                while (_physicsTicks.Reader.TryRead(out var v))
-                    dt = v;
+                while (_physicsTicks.Reader.TryRead(out _)) { }
+
+                float dt;
+                lock (_physicsDtLock)
+                {
+                    dt = (float)_pendingPhysicsDt;
+                    _pendingPhysicsDt = 0;
+                }
 
                 try
                 {
@@ -320,8 +369,8 @@ public class AltruistEngine : IAltruistEngine
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    System.Console.Error.WriteLine($"[PHYSICS-WORKER] Step() threw: {ex.GetType().Name}: {ex.Message}");
                     // Don't die — keep the loop running
+                    ReportFault("world step", ex);
                 }
             }
         }
@@ -336,7 +385,23 @@ public class AltruistEngine : IAltruistEngine
     private async Task RunNextTickQueueAsync()
     {
         while (_nextTickQueue.TryDequeue(out var del))
-            await ExecuteDelegateAsync(del).ConfigureAwait(false);
+        {
+            // One throwing delegate must not stop the loop or the delegates queued after it.
+            try
+            {
+                await ExecuteDelegateAsync(del).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ReportFault("next-tick task " + DescribeDelegate(del), ex);
+            }
+        }
+    }
+
+    private void AdoptPendingStaticTasks()
+    {
+        while (_pendingStaticTasks.TryDequeue(out var task))
+            _staticTasks.Add(task);
     }
 
     private void RunStaticTasks(long nowStopwatch)
@@ -373,12 +438,18 @@ public class AltruistEngine : IAltruistEngine
 
         if (_staticInFlight.Count > 0)
         {
-            var done = new List<TaskIdentifier>();
+            List<TaskIdentifier>? done = null;
             foreach (var kv in _staticInFlight)
-                if (kv.Value.IsCompleted)
-                    done.Add(kv.Key);
-            foreach (var id in done)
-                _staticInFlight.Remove(id);
+            {
+                if (!kv.Value.IsCompleted)
+                    continue;
+                if (kv.Value.IsFaulted)
+                    ReportFault("cycle task " + kv.Key.Id, kv.Value.Exception!.GetBaseException());
+                (done ??= new List<TaskIdentifier>()).Add(kv.Key);
+            }
+            if (done is not null)
+                foreach (var id in done)
+                    _staticInFlight.Remove(id);
         }
     }
 
@@ -415,9 +486,10 @@ public class AltruistEngine : IAltruistEngine
                 else
                     effect.NextExecuteTimeTicks = nowStopwatch + ToStopwatchTickInterval(effect.Rate);
             }
-            catch
+            catch (Exception ex)
             {
                 _effects.TryRemove(id, out _);
+                ReportFault("effect " + id.Id, ex);
             }
         }
     }
@@ -478,30 +550,50 @@ public class AltruistEngine : IAltruistEngine
         var methodInfo = taskDelegate.Method;
         var parameters = methodInfo.GetParameters();
 
-        var resolvedParameters = new object[parameters.Length];
-        for (int i = 0; i < parameters.Length; i++)
+        Delegate runnable;
+        if (parameters.Length == 0 && taskDelegate is Func<Task> or Action)
         {
-            var paramType = parameters[i].ParameterType;
-            resolvedParameters[i] = _serviceProvider.GetService(paramType)
-                ?? throw new InvalidOperationException(
-                    $"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
+            // Parameterless: invoke directly (no reflection per frame), and keep the returned
+            // Task so an async [Cycle] is tracked as in flight and never overlaps itself.
+            runnable = taskDelegate;
+        }
+        else
+        {
+            var resolvedParameters = new object[parameters.Length];
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                var paramType = parameters[i].ParameterType;
+                resolvedParameters[i] = _serviceProvider.GetService(paramType)
+                    ?? throw new InvalidOperationException(
+                        $"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
+            }
+
+            // No cache. CreateTaskDelegate wraps `void` methods in a shared closure
+            // (same lambda source line → same compiler-generated method), so caching
+            // by methodInfo+paramTypes collapses all void [Cycle]s to one key.
+            // The first void registration would then own the cached precompiled,
+            // and every later void [Cycle] would silently invoke the first one
+            // forever — i.e. only one of N void [Cycle] handlers would ever run.
+            // ScheduleTask is called once per handler at startup; the cost of
+            // building a fresh wrapper here is negligible.
+            runnable = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
         }
 
-        // No cache. CreateTaskDelegate wraps `void` methods in a shared closure
-        // (same lambda source line → same compiler-generated method), so caching
-        // by methodInfo+paramTypes collapses all void [Cycle]s to one key.
-        // The first void registration would then own the cached precompiled,
-        // and every later void [Cycle] would silently invoke the first one
-        // forever — i.e. only one of N void [Cycle] handlers would ever run.
-        // ScheduleTask is called once per handler at startup; the cost of
-        // building a fresh wrapper here is negligible.
-        var precompiled = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
-
-        _staticTasks.Add(new EngineStaticTask(precompiled, actualRate, Stopwatch.GetTimestamp()));
+        _pendingStaticTasks.Enqueue(new EngineStaticTask(runnable, actualRate, Stopwatch.GetTimestamp()));
     }
 
-    private static Action CreateDelegateWithResolvedParameters(Delegate taskDelegate, object[] resolvedParameters)
-        => () => taskDelegate.DynamicInvoke(resolvedParameters);
+    private static Func<Task> CreateDelegateWithResolvedParameters(Delegate taskDelegate, object[] resolvedParameters)
+        => () =>
+        {
+            try
+            {
+                return taskDelegate.DynamicInvoke(resolvedParameters) as Task ?? Task.CompletedTask;
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException is not null)
+            {
+                return Task.FromException(ex.InnerException);
+            }
+        };
 
     // ---------------- Delegate runner ----------------
 
@@ -516,9 +608,46 @@ public class AltruistEngine : IAltruistEngine
                 a();
                 break;
             default:
-                del.DynamicInvoke();
+                try
+                {
+                    if (del.DynamicInvoke() is Task t)
+                        await t.ConfigureAwait(false);
+                }
+                catch (TargetInvocationException ex) when (ex.InnerException is not null)
+                {
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                }
                 break;
         }
+    }
+
+    private static string DescribeDelegate(Delegate del) =>
+        $"{del.Method.DeclaringType?.Name ?? "?"}.{del.Method.Name}";
+
+    /// <summary>
+    /// Logs a task failure without stopping the loop. Repeats of the same source are
+    /// summarized at most every 10 s so a task that throws every frame cannot flood the log.
+    /// </summary>
+    private void ReportFault(string source, Exception ex)
+    {
+        var entry = _faults.GetOrAdd(source, static _ => new FaultLog());
+        var now = Stopwatch.GetTimestamp();
+        long suppressed;
+        lock (entry)
+        {
+            if (entry.LastLogged != 0 && now - entry.LastLogged < FaultLogInterval)
+            {
+                entry.Suppressed++;
+                return;
+            }
+            suppressed = entry.Suppressed;
+            entry.Suppressed = 0;
+            entry.LastLogged = now;
+        }
+        if (suppressed > 0)
+            Logger.LogError(ex, "Engine {Source} threw (and {Count} more times since the last report); the engine keeps running.", source, suppressed);
+        else
+            Logger.LogError(ex, "Engine {Source} threw; the engine keeps running.", source);
     }
 
     // ---------------- Timing helpers ----------------
@@ -528,8 +657,9 @@ public class AltruistEngine : IAltruistEngine
         return rate.Unit switch
         {
             CycleUnit.Hz => Math.Max(1, Stopwatch.Frequency / Math.Max(1, rate.Value)),
-            CycleUnit.Milliseconds => Math.Max(1, (Stopwatch.Frequency * Math.Max(1, rate.Value)) / 1000),
-            CycleUnit.Seconds => Math.Max(1, Stopwatch.Frequency * Math.Max(1, rate.Value)),
+            // CycleRate stores Seconds/Milliseconds rates as the cycle period in TimeSpan ticks
+            // (100 ns): [Cycle(30, CycleUnit.Seconds)] = 30 times per second.
+            CycleUnit.Milliseconds or CycleUnit.Seconds => Math.Max(1, (long)((double)Math.Max(1, rate.Value) * Stopwatch.Frequency / TimeSpan.TicksPerSecond)),
 
             // IMPORTANT: Ticks are frames; do not convert to stopwatch ticks here.
             CycleUnit.Ticks => throw new InvalidOperationException("CycleUnit.Ticks represents frames; use frame-based scheduling."),

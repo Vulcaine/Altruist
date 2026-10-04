@@ -92,14 +92,18 @@ public sealed class ServerStatus : IServerStatus
         await CheckAllConnectedAsync(tcs, engine, token);
     }
 
+    /// <summary>
+    /// The only place the engine is started (Alive) or stopped (Failed). The status is published
+    /// before the engine starts, so its loop begins right away instead of waiting for it.
+    /// </summary>
     public void SignalState(IEngineCore? engine, ReadyState state, CancellationToken token)
     {
+        Status = state;
+
         if (state == ReadyState.Failed)
             engine?.Stop();
         else if (state == ReadyState.Alive)
             engine?.Start(token);
-
-        Status = state;
     }
 
     private void StartTimeoutTimer(IEngineCore? engine)

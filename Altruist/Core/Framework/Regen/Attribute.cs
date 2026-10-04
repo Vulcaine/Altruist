@@ -34,6 +34,9 @@ public class CycleRate
 
     public CycleUnit Unit { get; }
 
+    /// <summary>The frequency this rate was created with (cycles per <see cref="Unit"/>, or the frame interval for Ticks).</summary>
+    public int Frequency { get; }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="CycleRate"/> class.
     /// </summary>
@@ -44,12 +47,11 @@ public class CycleRate
     /// <remarks>
     /// The frequency represents how often a cycle occurs per the given unit:
     ///
-    /// - **Seconds:** A frequency of 30 Hz means 30 cycles per second (faster execution).
-    /// - **Milliseconds:** A frequency of 30 Hz means 30 cycles per millisecond (extremely fast execution).
-    /// - **Ticks:** The frequency directly represents the number of cycles per tick, meaning **higher Hz results in slower execution**.
-    ///
-    /// A **higher frequency (Hz) results in faster execution** for time-based units (Seconds, Milliseconds).
-    /// However, for **Ticks, a higher frequency means slower execution** since it directly maps to CPU tick rate.
+    /// - **Hz / Seconds:** A frequency of 30 means 30 cycles per second. For Seconds and
+    ///   Milliseconds <see cref="Value"/> holds the cycle period in <see cref="TimeSpan"/> ticks (100 ns).
+    /// - **Milliseconds:** A frequency of 30 means 30 cycles per millisecond (capped by the engine frame rate).
+    /// - **Ticks:** The value is a number of engine frames: <c>[Cycle(2)]</c> runs every 2nd frame,
+    ///   meaning **a higher value results in slower execution**.
     /// </remarks>
     public CycleRate(int frequencyHz, CycleUnit unit = CycleUnit.Ticks)
     {
@@ -57,6 +59,7 @@ public class CycleRate
             throw new ArgumentException("Frequency must be a positive value.", nameof(frequencyHz));
 
         Unit = unit;
+        Frequency = frequencyHz;
 
         Value = unit switch
         {
@@ -160,7 +163,12 @@ public class CycleAttribute : Attribute
             return "🕒 " + CronMapper.MapCronToReadableFormat(Cron!);
 
         if (IsFrequency())
-            return "⚡ " + Rate!.Value.ToString() + "Hz";
+            return Rate!.Unit switch
+            {
+                CycleUnit.Ticks => "⚡ every " + Rate.Frequency + " frame(s)",
+                CycleUnit.Milliseconds => "⚡ " + Rate.Frequency + "/ms",
+                _ => "⚡ " + Rate.Frequency + "Hz",
+            };
 
         return "⚡ Realtime";
     }

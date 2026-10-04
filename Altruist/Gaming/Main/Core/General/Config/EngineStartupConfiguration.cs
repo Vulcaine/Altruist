@@ -15,17 +15,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-using System.Reflection;
-
 using Altruist.Contracts;
-using Altruist.Engine;
-using Altruist.Gaming.ThreeD;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Engine;
 
+/// <summary>
+/// Engine startup hook. It used to build a throwaway service provider here, which constructed
+/// every singleton a second time and started a second engine on it. Configuration now only
+/// registers; the engine lifecycle runs on the root provider:
+/// <list type="bullet">
+/// <item><c>[Cycle]</c> methods are registered by <see cref="Altruist.Engine.MethodScheduler"/>'s
+/// <c>[PostConstruct]</c>, on the instances the root provider built;</item>
+/// <item>the visibility tracker and the 2D/3D world organizer wire each other in the
+/// trackers' <c>[PostConstruct]</c> (<c>WireOrganizer</c>);</item>
+/// <item>the engine is started only by <c>ServerStatus</c> once every connectable service is up.</item>
+/// </list>
+/// </summary>
 [ServiceConfiguration]
 [ConditionalOnConfig("altruist:game:engine")]
 public class EngineStartupConfiguration : IAltruistConfiguration
@@ -34,52 +41,7 @@ public class EngineStartupConfiguration : IAltruistConfiguration
 
     public Task Configure(IServiceCollection services)
     {
-        var serviceProvider = services.BuildServiceProvider();
-        var logger = serviceProvider.GetRequiredService<ILogger<EngineStartupConfiguration>>();
-        var settings = serviceProvider.GetRequiredService<IAltruistContext>();
-        CancellationToken token = default;
-        if (settings.EngineEnabled)
-        {
-            // Wire circular dependency: organizer <-> visibility tracker
-            var organizer = serviceProvider.GetService<IGameWorldOrganizer3D>();
-            var tracker = serviceProvider.GetService<IVisibilityTracker>();
-            if (organizer != null && tracker != null)
-            {
-                organizer.SetVisibilityTracker(tracker);
-                if (tracker is Gaming.ThreeD.VisibilityTracker3D vt3d)
-                    vt3d.SetOrganizer(organizer);
-            }
-            var organizer2D = serviceProvider.GetService<Gaming.TwoD.IGameWorldOrganizer2D>();
-            if (organizer2D != null && tracker is Gaming.TwoD.VisibilityTracker2D vt2d)
-            {
-                organizer2D.SetVisibilityTracker(vt2d);
-                vt2d.SetOrganizer(organizer2D);
-            }
-
-            logger.LogInformation("🚀 Starting engine...");
-            var scheduler = serviceProvider.GetRequiredService<MethodScheduler>();
-            var methods = scheduler!.RegisterMethods(serviceProvider);
-            var engine = serviceProvider.GetRequiredService<IAltruistEngine>();
-            engine!.Start(token);
-            logger.LogInformation($"⚡⚡ [ENGINE {engine.Rate}Hz] Unleashed — powerful, fast, and breaking speed limits!");
-
-            if (methods.Any())
-            {
-                var methodsDisplay = string.Join("\n", methods.Select(m =>
-                {
-                    var regen = m.GetCustomAttribute<CycleAttribute>();
-                    var frequency = regen!.ToString();
-                    return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
-                }));
-
-                logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
-            }
-            else
-            {
-                logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Regen(Hz or cron)] to let me show my power. Please!");
-            }
-        }
-
+        IsConfigured = true;
         return Task.CompletedTask;
     }
 }

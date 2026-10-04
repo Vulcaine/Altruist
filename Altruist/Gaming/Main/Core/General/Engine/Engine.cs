@@ -93,21 +93,31 @@ public class MethodScheduler
     }
 
     /// <summary>
-    /// Self-register all <c>[Cycle]</c>-annotated methods against THIS scheduler's
-    /// provider. <see cref="EngineStartupConfiguration"/> also calls
-    /// <see cref="RegisterMethods"/> during its <c>Configure</c> phase, but that
-    /// runs against an anonymous temp <see cref="IServiceProvider"/> whose
-    /// MethodScheduler instance gets garbage-collected. With per-provider
-    /// singleton lifetime, the bootstrap provider's MethodScheduler stays empty
-    /// — its engine starts (via <c>ServerStatus.SignalState</c>) but ticks
-    /// nothing, so all <c>[Cycle]</c> work (visibility broadcasts, world step,
-    /// AI behavior, sync) silently never runs.
+    /// Registers all <c>[Cycle]</c>-annotated methods of the root provider's services on the
+    /// engine. This is the only place <c>[Cycle]</c> methods are registered, so they run on the
+    /// same instances whose <c>[PostConstruct]</c> hooks ran. The engine itself is started by
+    /// <c>ServerStatus</c> once every connectable service is up.
     /// </summary>
     [PostConstruct]
     public void SelfRegister()
     {
         if (_registeredMethodsByType.Count > 0) return;
-        RegisterMethods(_serviceProvider);
+        var methods = RegisterMethods(_serviceProvider);
+
+        var logger = (_serviceProvider.GetService<ILoggerFactory>()
+            ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance).CreateLogger<MethodScheduler>();
+        if (methods.Count == 0)
+        {
+            logger.LogInformation("❗Nothing to run.. 🙁 Mark something with [Cycle(Hz or cron)] to let me show my power. Please!");
+            return;
+        }
+
+        var methodsDisplay = string.Join("\n", methods.Select(m =>
+        {
+            var frequency = m.GetCustomAttribute<CycleAttribute>()!.ToString();
+            return $"       ↳ {m.DeclaringType?.FullName!.Split('`')[0]}.{m.Name} ({frequency})";
+        }));
+        logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
     }
 
     public List<MethodInfo> RegisterMethods(IServiceProvider serviceProvider)
@@ -335,8 +345,8 @@ public class EngineWithoutDiagnostics : IAltruistEngine
         _core.WaitForNextTick(task);
     }
 
-    public void SyncCommit(Action commit) => throw new NotImplementedException();
-    public Task<T> SyncCommit<T>(Func<T> commit) => throw new NotImplementedException();
+    public void SyncCommit(Action commit) => _core.SyncCommit(commit);
+    public Task<T> SyncCommit<T>(Func<T> commit) => _core.SyncCommit(commit);
 
     [Service(typeof(IAltruistEngine))]
     [ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
