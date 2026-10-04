@@ -63,6 +63,15 @@ public interface IInterceptor
     Task Intercept(InterceptContext context, IPacket eventData);
 }
 
+/// <summary>
+/// An interceptor that keeps per-connection state (e.g. rate-limit buckets). The connection manager
+/// calls <see cref="Forget"/> once the connection is gone, after the portals' <c>OnDisconnectedAsync</c>.
+/// </summary>
+public interface IConnectionStateInterceptor : IInterceptor
+{
+    void Forget(string clientId);
+}
+
 
 public class RelayInterceptor : IInterceptor
 {

@@ -42,7 +42,14 @@ public class EngineClientSender : ClientSender
 {
     private readonly IAltruistEngine _engine;
 
-    public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine, IDashboardNetworkRecorder? networkRecorder = null) : base(store, codec, networkRecorder)
+    public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine, IDashboardNetworkRecorder? networkRecorder = null)
+        : this(store, codec, engine, outbound: null, networkRecorder)
+    {
+    }
+
+    /// <summary>The constructor DI uses: the process-wide <see cref="OutboundQueues"/> (shared by every sender).</summary>
+    public EngineClientSender(IConnectionStore store, ICodec codec, IAltruistEngine engine, OutboundQueues? outbound,
+        IDashboardNetworkRecorder? networkRecorder = null) : base(store, codec, outbound, networkRecorder)
     {
         _engine = engine;
     }

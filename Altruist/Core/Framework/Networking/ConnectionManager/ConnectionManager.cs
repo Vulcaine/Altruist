@@ -40,6 +40,7 @@ namespace Altruist
         private readonly IEngineCore? _engine;
         private readonly ILogger _logger;
         private readonly IDashboardNetworkRecorder? _networkRecorder;
+        private readonly OutboundQueues? _outbound;
 
         private readonly int _idleTimeout;
 
@@ -51,7 +52,8 @@ namespace Altruist
             ILoggerFactory loggerFactory, IEngineCore? engineCore = null,
             IDashboardNetworkRecorder? networkRecorder = null,
             [AppConfigValue("altruist:server:transport:timeout", "10")] int timeout = 10,
-            IEnumerable<IInterceptor>? interceptors = null
+            IEnumerable<IInterceptor>? interceptors = null,
+            OutboundQueues? outbound = null
          )
         {
             _socketManager = socketManager;
@@ -61,6 +63,7 @@ namespace Altruist
             _logger = loggerFactory.CreateLogger(GetType());
             _networkRecorder = networkRecorder;
             _idleTimeout = timeout;
+            _outbound = outbound;
 
             // Interceptors registered in DI ([Service(typeof(IInterceptor))]) apply to every portal.
             if (interceptors is not null)
@@ -606,6 +609,23 @@ namespace Altruist
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "OnDisconnectedAsync handler threw for client {ClientId}.", clientId);
+                }
+            }
+
+            // Per-connection state of the transport: the outbound queue and interceptor state (rate limits).
+            _outbound?.Forget(clientId);
+            foreach (var interceptor in _interceptors)
+            {
+                if (interceptor is IConnectionStateInterceptor stateful)
+                {
+                    try
+                    {
+                        stateful.Forget(clientId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Interceptor {Interceptor} failed to forget client {ClientId}.", interceptor.GetType().Name, clientId);
+                    }
                 }
             }
 

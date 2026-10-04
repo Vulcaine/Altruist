@@ -80,6 +80,13 @@ public abstract class DirectRouter : AbstractAltruistRouter
     }
 }
 
+/// <summary>
+/// Sends packets to one client. <see cref="SendAsync{TPacketBase}(string, TPacketBase)"/> encodes and awaits the
+/// socket (<c>altruist:server:transport:outbound:mode: direct</c>, the default) or hands the packet to the
+/// client's outbound queue and returns (<c>queued</c>). <see cref="Enqueue"/> and <see cref="CloseAfterFlush"/>
+/// always use the queue (see <see cref="OutboundQueues"/>): in order per client, never waiting on a socket,
+/// with <see cref="CoalesceAttribute"/> packets superseding each other and slow readers aborted.
+/// </summary>
 [Service]
 [ConditionalOnConfig("altruist:server:transport")]
 public class ClientSender : IAltruistRouterSender
@@ -87,16 +94,63 @@ public class ClientSender : IAltruistRouterSender
     protected readonly IConnectionStore _store;
     protected readonly ICodec _codec;
     protected readonly IDashboardNetworkRecorder? _networkRecorder;
+    private OutboundQueues? _outbound;
 
     public ClientSender(IConnectionStore store, ICodec codec, IDashboardNetworkRecorder? networkRecorder = null)
+        : this(store, codec, outbound: null, networkRecorder)
+    {
+    }
+
+    /// <summary>The constructor DI uses: the process-wide <see cref="OutboundQueues"/> (shared by every sender).</summary>
+    public ClientSender(IConnectionStore store, ICodec codec, OutboundQueues? outbound, IDashboardNetworkRecorder? networkRecorder = null)
     {
         _store = store;
         _codec = codec;
         _networkRecorder = networkRecorder;
+        _outbound = outbound;
     }
+
+    /// <summary>
+    /// The per-client outbound queues. Shared by every sender resolved from DI; a sender constructed
+    /// by hand without one gets its own (direct mode, default limits) on first use.
+    /// </summary>
+    public OutboundQueues Outbound
+    {
+        get
+        {
+            if (_outbound is { } q)
+                return q;
+            Interlocked.CompareExchange(ref _outbound, new OutboundQueues(_store, _codec, networkRecorder: _networkRecorder), null);
+            return _outbound!;
+        }
+    }
+
+    /// <summary><c>altruist:server:transport:outbound:mode</c>.</summary>
+    public OutboundMode Mode => _outbound?.Mode ?? OutboundMode.Direct;
+
+    /// <summary>
+    /// Queues a packet for the client and returns at once; a pump encodes and sends it off the caller,
+    /// after everything queued before it.
+    /// </summary>
+    public virtual void Enqueue(string clientId, IPacketBase packet) => Outbound.Enqueue(clientId, packet);
+
+    /// <summary>Closes the client's connection once everything queued before has been sent.</summary>
+    public virtual void CloseAfterFlush(string clientId) => Outbound.CloseAfterFlush(clientId);
+
+    /// <summary>
+    /// Drops the client's queue and whatever is still in it. The connection manager calls this when a
+    /// connection is gone; call it again if you queued for the client after its disconnect.
+    /// </summary>
+    public virtual void Forget(string clientId) => _outbound?.Forget(clientId);
 
     public virtual async Task SendAsync(string clientId, byte[] message)
     {
+        if (Mode == OutboundMode.Queued)
+        {
+            Outbound.Enqueue(clientId, message);
+            return;
+        }
+
         var socket = await _store.GetConnectionAsync(clientId);
         if (socket != null && socket.IsConnected)
         {
@@ -121,6 +175,12 @@ public class ClientSender : IAltruistRouterSender
 
     public virtual async Task SendAsync<TPacketBase>(string clientId, TPacketBase message) where TPacketBase : IPacketBase
     {
+        if (Mode == OutboundMode.Queued)
+        {
+            Outbound.Enqueue(clientId, message);
+            return;
+        }
+
         var envelope = new MessageEnvelope(message, clientId);
         envelope.Stamp("server", clientId, DateTime.UtcNow);
         var encodeWatch = Stopwatch.StartNew();
@@ -166,7 +226,7 @@ public class ClientSender : IAltruistRouterSender
         }
     }
 
-    protected virtual async Task RecordOutboundAsync(
+    protected virtual Task RecordOutboundAsync(
         string clientId,
         AltruistConnection socket,
         object? payload,
@@ -178,34 +238,10 @@ public class ClientSender : IAltruistRouterSender
         double? encodeDurationMs = null)
     {
         if (_networkRecorder is null || !_networkRecorder.CapturePackets)
-            return;
+            return Task.CompletedTask;
 
-        string? roomId = null;
-        try
-        {
-            roomId = (await _store.FindRoomForClientAsync(clientId))?.Id;
-        }
-        catch
-        {
-            roomId = null;
-        }
-
-        await _networkRecorder.RecordAsync(new DashboardNetworkEvent
-        {
-            Kind = "packet",
-            Direction = "outbound",
-            Transport = socket.GetType().Name,
-            Route = socket.Route,
-            Gate = gate,
-            PacketType = packetType,
-            ConnectionId = socket.ConnectionId,
-            ClientId = clientId,
-            RoomId = roomId,
-            DurationMs = sendDurationMs + (encodeDurationMs ?? 0),
-            EncodeDurationMs = encodeDurationMs,
-            SendDurationMs = sendDurationMs,
-            Error = error
-        }, payload, rawPayload);
+        return OutboundRecording.RecordAsync(_networkRecorder, _store, clientId, socket, payload, rawPayload, packetType, gate,
+            sendDurationMs, error, encodeDurationMs);
     }
 }
 
