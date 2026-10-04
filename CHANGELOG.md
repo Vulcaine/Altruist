@@ -2,6 +2,26 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [0.9.9-beta] - 2026-10-04
+
+Per-client outbound queues with packet coalescing, and a config-driven rate-limit interceptor. Existing apps need no changes: `outbound:mode` defaults to `direct` (the previous behaviour) and the rate limit is only installed with `rate-limit:enabled: true`.
+
+### Added
+- **Outbound queues** — `ClientSender.Enqueue(clientId, packet)` queues a packet and returns at once; one pump per client encodes and sends off the caller, in order, into a reused buffer (`IBufferEncoder`). `CloseAfterFlush(clientId)` closes the connection after everything queued before it; `Forget(clientId)` drops a client's queue (the connection manager calls it when a connection is gone). A client whose send is stuck longer than `stuck-send-seconds` or that has more than `max-queued-per-client` packets waiting is aborted (normal disconnect path). Every sender resolved from DI shares the process-wide `OutboundQueues` service.
+- **`[Coalesce("key")]`** — a client's queue keeps at most one unsent packet per key (the newest, moved behind everything queued before it), e.g. for world snapshots.
+- **`altruist:server:transport:outbound:mode: direct | queued`** — `queued` makes `ClientSender.SendAsync` (and the room and broadcast senders built on it) enqueue and return; `direct` (default) encodes and awaits the socket as before. Config: `outbound:{mode,max-queued-per-client,stuck-send-seconds,encode-buffer-bytes}` (direct / 256 / 5 / 2048).
+- **`IOutboundMetrics`** — register one in DI to receive queue depth, coalesced packets, aborted slow clients, sent bytes and send errors.
+- **`RateLimitInterceptor`** — per-connection token buckets from `altruist:server:transport:rate-limit` (`enabled`, `max-payload-bytes`, `oversize-strikes`, `strikes-to-disconnect`, `strike-window-seconds`, `default-bucket`, `routes`, `buckets: { name: { capacity, per-second, gates } }`). A gate's bucket comes from config, else from **`[RateLimit("bucket")]`** on the gate handler, else the default bucket. Over-limit and oversize packets are rejected and counted as strikes; too many strikes in the window close the connection. Applies to unknown events too. Replace the token buckets by registering an `IRateLimiter`; receive verdicts with **`IRateLimitMetrics`**. `TokenBucketRateLimiter` and `RateLimitOptions.FromConfiguration` are public.
+- **`IConnectionStateInterceptor`** — an interceptor with per-connection state gets `Forget(clientId)` from the connection manager once the connection is gone.
+- **`altruist:game:worlds:entity-sync-hz`** — the rate the 2D/3D organizers pass to the entity sync service for `[Synchronized]` Hz/Seconds frequencies (default 25, unchanged).
+
+### Changed
+- **Worker mode keeps the threading of 0.9.7 and earlier.** 0.9.8 ran every engine frame on the engine thread in both world-step modes; this now applies to `world-step: inline` only. With `worker` (the default) a frame continues on a thread-pool thread after the timer wait and async next-tick delegates are awaited asynchronously, as before 0.9.8.
+- `ClientSender` and `EngineClientSender` have an additional constructor taking the shared `OutboundQueues` (used by DI); the existing constructors are unchanged.
+
+### Tests
+- `OutboundQueueTests`, `RateLimitTests`, `EngineCompatibilityTests` (worker-mode threading regression, organizer sync rate).
+
 ## [0.9.8-beta] - 2026-10-04
 
 Fixed-step world stepping, inline world step, one-shot timers and config-driven cycle rates. Existing apps need no changes: every new behaviour is behind a config key whose default keeps the 0.9.7 behaviour, except the plain-`[Cycle]` rate fix below.

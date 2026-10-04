@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Testing.E2E.Core</PackageId>
     <Description>Game-engine-agnostic core of [AltruistE2ETest]. Defines the marker attribute, a reflection-based test runner, and a console reporter. Multi-targeted netstandard2.1+net9.0 so the netstandard2.1 build can drop straight into Unity's Assets/Plugins (the editor-side runner glue lives in the consuming game's project).</Description>
-    <Version>0.9.8-beta</Version>
+    <Version>0.9.9-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>

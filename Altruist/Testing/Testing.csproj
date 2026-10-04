@@ -14,7 +14,7 @@
     <AssemblyName>Altruist.Testing</AssemblyName>
     <RootNamespace>Altruist.Testing</RootNamespace>
     <Description>xUnit test framework override that resolves test classes marked [AltruistTest] from the real Altruist DI container. Constructor parameters tagged [Mock] are replaced with Moq mocks visible to the rest of the per-class container.</Description>
-    <Version>0.9.8-beta</Version>
+    <Version>0.9.9-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
