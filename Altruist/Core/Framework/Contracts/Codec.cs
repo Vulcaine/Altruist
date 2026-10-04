@@ -28,6 +28,15 @@ public interface IEncoder
     byte[] Encode(object message, Type type);
 }
 
+/// <summary>
+/// Optional encoder capability: writes into a caller-owned (reusable) buffer instead of
+/// allocating a byte[] per message. Same bytes as <see cref="IEncoder.Encode{TPacket}"/>.
+/// </summary>
+public interface IBufferEncoder
+{
+    void Encode<TPacket>(System.Buffers.IBufferWriter<byte> writer, TPacket message);
+}
+
 public interface IDecoder
 {
     object Decode(byte[] message, Type type);

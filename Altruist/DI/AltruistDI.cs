@@ -34,8 +34,10 @@ public static class AltruistDI
     {
         var cfg = AppConfigLoader.Load(args);
 
+#if !NETSTANDARD2_1
         AssemblyLoader.EnsureAllReferencedAssembliesLoaded();
-        ConfigureLogging(Services);
+#endif
+        ConfigureLogging(Services, cfg);
 
         Services.AddSingleton(cfg);
         Dependencies.UseServices(Services);
@@ -69,12 +71,21 @@ public static class AltruistDI
         await new ConfigAttributeConfiguration().Configure(services);
     }
 
-    public static void ConfigureLogging(IServiceCollection services)
+    public static void ConfigureLogging(IServiceCollection services, IConfiguration? cfg = null)
     {
+        bool consoleEnabled = true;
+        if (cfg != null)
+        {
+            var val = cfg["altruist:logging:console"];
+            if (val != null && (val.Equals("false", StringComparison.OrdinalIgnoreCase) || val == "0"))
+                consoleEnabled = false;
+        }
+
         services.AddLogging(loggingBuilder =>
         {
             loggingBuilder.ClearProviders();
-            loggingBuilder.AddConsole();
+            if (consoleEnabled)
+                loggingBuilder.AddConsole();
         });
     }
 

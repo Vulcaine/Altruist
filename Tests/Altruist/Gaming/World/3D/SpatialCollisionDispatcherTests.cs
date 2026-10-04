@@ -21,6 +21,37 @@ public class CollisionTestObj : WorldObject3D
     public override void Step(float dt, IGameWorldManager3D world) { }
 }
 
+public sealed class PayloadOrderObjA : CollisionTestObj
+{
+    public PayloadOrderObjA() : base(0, 0) { }
+}
+
+public sealed class PayloadOrderObjB : CollisionTestObj
+{
+    public PayloadOrderObjB() : base(1, 0) { }
+}
+
+public sealed class PayloadOrderEvent
+{
+    public int Damage { get; init; }
+}
+
+[CollisionHandler]
+public sealed class PayloadOrderCollisionHandler
+{
+    public PayloadOrderEvent? LastPayload { get; private set; }
+    public PayloadOrderObjA? LastA { get; private set; }
+    public PayloadOrderObjB? LastB { get; private set; }
+
+    [CollisionEvent(typeof(PayloadOrderEvent))]
+    public void OnPayloadFirst(PayloadOrderEvent payload, PayloadOrderObjA a, PayloadOrderObjB b)
+    {
+        LastPayload = payload;
+        LastA = a;
+        LastB = b;
+    }
+}
+
 public class SpatialCollisionDispatcherTests
 {
     private SpatialCollisionDispatcher CreateDispatcher()
@@ -46,6 +77,27 @@ public class SpatialCollisionDispatcherTests
 
         var ex = Record.Exception(() => dispatcher.Dispatch(a, b, typeof(CollisionEnter)));
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Dispatch_ShouldInvokePayloadFirstHandler()
+    {
+        var handler = new PayloadOrderCollisionHandler();
+        CollisionHandlerDiscovery.RegisterCollisionHandlers(
+            [typeof(PayloadOrderCollisionHandler).Assembly],
+            type => type == typeof(PayloadOrderCollisionHandler) ? handler : null,
+            NullLogger.Instance);
+
+        var dispatcher = CreateDispatcher();
+        var a = new PayloadOrderObjA();
+        var b = new PayloadOrderObjB();
+        var payload = new PayloadOrderEvent { Damage = 42 };
+
+        dispatcher.Dispatch(a, b, typeof(PayloadOrderEvent), payload);
+
+        Assert.Same(payload, handler.LastPayload);
+        Assert.Same(a, handler.LastA);
+        Assert.Same(b, handler.LastB);
     }
 
     [Fact]

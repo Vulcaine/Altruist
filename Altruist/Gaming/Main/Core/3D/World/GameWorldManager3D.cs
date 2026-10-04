@@ -22,6 +22,16 @@ namespace Altruist.Gaming.ThreeD
         IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D;
         IEnumerable<IWorldObject3D> GetAllObjects();
         (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot();
+
+        /// <summary>
+        /// Monotonically increments every time <see cref="GetCachedSnapshot"/> rebuilds
+        /// the underlying list. Callers that cache derived structures keyed by the
+        /// snapshot's indices (e.g. spatial grids) must invalidate when this changes —
+        /// the snapshot's List reference is stable across rebuilds, so reference
+        /// equality cannot detect when the contents were swapped.
+        /// </summary>
+        int SnapshotVersion { get; }
+        Task<IPhysxBody3D?> SpawnObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
         Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
 
@@ -31,9 +41,26 @@ namespace Altruist.Gaming.ThreeD
         /// but has no collision or physics simulation. Ideal for distance-based
         /// combat entities that only need position tracking.
         /// </summary>
-        void SpawnLightweight(IWorldObject3D obj);
+        void SpawnLightweight(IWorldObject3D obj, string? withId = null);
         IWorldObject3D? DestroyObject(string instanceId);
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
+
+        /// <summary>
+        /// Fires synchronously whenever DestroyObject successfully removes an object.
+        /// Subscribers (VisibilityTracker3D) use this to broadcast invisibility to
+        /// observers that were seeing the object — independent of the snapshot rebuild
+        /// timing, so there's no race between gate-handler-driven destroys and the
+        /// per-tick visibility Tick.
+        /// </summary>
+        event Action<IWorldObject3D>? OnObjectDestroyed;
+
+        /// <summary>
+        /// Raised synchronously after a world object is registered (spawn/attach/lightweight).
+        /// Subscribers (VisibilityTracker3D) use this to broadcast visibility to in-range
+        /// observers without waiting for the next per-tick Tick. Out-of-range observers
+        /// are still picked up by the regular Tick when they move into range.
+        /// </summary>
+        event Action<IWorldObject3D>? OnObjectCreated;
 
         IEnumerable<IWorldObject3D> GetNearbyObjectsInRoom(
             string archetype,
@@ -80,23 +107,28 @@ namespace Altruist.Gaming.ThreeD
 
         private static uint _nextVirtualId = 1;
 
-        private readonly Dictionary<string, IWorldObject3D> _flatInstanceCache = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IWorldObject3D> _flatInstanceCache = new();
         private ZoneManager3D? _zoneManager;
 
         // ── Snapshot caching ─────────────────────────────────────────
         private readonly List<IWorldObject3D> _snapshotCache = new();
         private readonly Dictionary<string, IWorldObject3D> _snapshotLookup = new();
-        private bool _snapshotDirty = true;
+        private volatile bool _snapshotDirty = true;
+        private int _snapshotVersion;
 
-        /// <summary>
-        /// Returns a cached, reusable list of all world objects. The list is rebuilt
-        /// only when entities have been added or removed since the last call.
-        /// Callers must NOT modify the returned list.
-        /// </summary>
+        public event Action<IWorldObject3D>? OnObjectDestroyed;
+        public event Action<IWorldObject3D>? OnObjectCreated;
+
+        public int SnapshotVersion => _snapshotVersion;
+
         public (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot()
         {
             if (_snapshotDirty)
             {
+                // Clear dirty BEFORE iterating so concurrent MarkSnapshotDirty()
+                // calls during iteration will set it back to true, triggering
+                // a rebuild on the next tick instead of being lost.
+                _snapshotDirty = false;
                 _snapshotCache.Clear();
                 _snapshotLookup.Clear();
                 foreach (var kvp in _flatInstanceCache)
@@ -104,7 +136,7 @@ namespace Altruist.Gaming.ThreeD
                     _snapshotCache.Add(kvp.Value);
                     _snapshotLookup[kvp.Value.InstanceId] = kvp.Value;
                 }
-                _snapshotDirty = false;
+                _snapshotVersion++;
             }
             return (_snapshotCache, _snapshotLookup);
         }
@@ -163,6 +195,15 @@ namespace Altruist.Gaming.ThreeD
             return await Task.FromResult(partitions.ToList());
         }
 
+        public Task<IPhysxBody3D?> SpawnObject(IWorldObject3D obj, string? withId = null)
+        {
+            if (RequiresPhysicsBody(obj))
+                return SpawnDynamicObject(obj, withId);
+
+            SpawnLightweight(obj, withId);
+            return Task.FromResult<IPhysxBody3D?>(null);
+        }
+
         public async Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null)
         {
             return await SpawnObjectInternal(
@@ -181,23 +222,23 @@ namespace Altruist.Gaming.ThreeD
                 withId: withId);
         }
 
-        public void SpawnLightweight(IWorldObject3D obj)
+        public void SpawnLightweight(IWorldObject3D obj, string? withId = null)
         {
             if (obj is null) return;
 
-            if (obj.VirtualId == 0)
-                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
-
-            obj.ObjectArchetype = obj is AnonymousWorldObject3D
-                ? obj.ObjectArchetype
-                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
+            EnsureSpawnMetadata(obj);
 
             // Add to partitions for spatial queries — no physics body
             var partitions = FindPartitionsForObject(obj);
             AddObjectToPartitions(obj, partitions);
 
-            _flatInstanceCache[obj.InstanceId] = obj;
+            if (withId != null)
+                _flatInstanceCache[withId] = obj;
+            else
+                _flatInstanceCache[obj.InstanceId] = obj;
+
             MarkSnapshotDirty();
+            OnObjectCreated?.Invoke(obj);
         }
 
         /// <summary>
@@ -212,12 +253,7 @@ namespace Altruist.Gaming.ThreeD
             if (obj is null)
                 return null;
 
-            if (obj.VirtualId == 0)
-                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
-
-            obj.ObjectArchetype = obj is AnonymousWorldObject3D
-                ? obj.ObjectArchetype
-                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
+            EnsureSpawnMetadata(obj);
 
             IPhysxBody3D? body = null;
 
@@ -260,6 +296,15 @@ namespace Altruist.Gaming.ThreeD
 
                 _physx3D.AddBody(body);
             }
+            else if (!isStatic)
+            {
+                var bodyDesc = obj.BodyDescriptor ?? PhysxBody3D.Create(
+                    bodyType, mass: 1f, transform: obj.Transform, isKinematic: bodyType == PhysxBodyType.Kinematic);
+
+                body = new InMemoryPhysxBody3D(bodyDesc);
+                obj.BodyDescriptor = bodyDesc;
+                obj.Body = body;
+            }
 
             // Always register in partitions for spatial queries
             var partitions = FindPartitionsForObject(obj);
@@ -272,8 +317,28 @@ namespace Altruist.Gaming.ThreeD
                 _flatInstanceCache[obj.InstanceId] = obj;
 
             MarkSnapshotDirty();
+            OnObjectCreated?.Invoke(obj);
             await Task.CompletedTask;
             return body;
+        }
+
+        private static bool RequiresPhysicsBody(IWorldObject3D? obj)
+        {
+            if (obj?.BodyDescriptor != null)
+                return true;
+
+            var colliders = obj?.ColliderDescriptors;
+            return colliders != null && colliders.Any(c => !c.IsTrigger);
+        }
+
+        private static void EnsureSpawnMetadata(IWorldObject3D obj)
+        {
+            if (obj.VirtualId == 0)
+                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
+
+            obj.ObjectArchetype = obj is AnonymousWorldObject3D
+                ? obj.ObjectArchetype
+                : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
         }
 
         public IWorldObject3D? DestroyObject(string instanceId)
@@ -305,10 +370,9 @@ namespace Altruist.Gaming.ThreeD
 
             IWorldObject3D? removedFromCache = null;
 
-            if (_flatInstanceCache.TryGetValue(instanceId, out var cachedByKey))
+            if (_flatInstanceCache.TryRemove(instanceId, out var cachedByKey))
             {
                 removedFromCache = cachedByKey;
-                _flatInstanceCache.Remove(instanceId);
             }
 
             var obj = removedFromPartitions ?? removedFromCache;
@@ -317,7 +381,11 @@ namespace Altruist.Gaming.ThreeD
             {
                 MarkSnapshotDirty();
                 if (removeFromPhysx)
+                {
                     RemoveFromPhysxEngine(obj);
+                    // Only fire on destroy, not on detach-for-reposition (removeFromPhysx=false)
+                    OnObjectDestroyed?.Invoke(obj);
+                }
             }
 
             return obj;
@@ -400,15 +468,15 @@ namespace Altruist.Gaming.ThreeD
             GetObjectBounds(IWorldObject3D obj)
         {
             PhysxCollider3DDesc? chosen = null;
-            PhysxCollider3DDesc? firstAny = null;
+            PhysxCollider3DDesc? heightfieldCollider = null;
 
             var colliders = obj.ColliderDescriptors;
             if (colliders != null)
             {
                 foreach (var c in colliders)
                 {
-                    if (!firstAny.HasValue)
-                        firstAny = c;
+                    if (c.Heightfield is not null && !heightfieldCollider.HasValue)
+                        heightfieldCollider = c;
 
                     if (!c.IsTrigger)
                     {
@@ -416,16 +484,35 @@ namespace Altruist.Gaming.ThreeD
                         break;
                     }
                 }
-
-                if (!chosen.HasValue && firstAny.HasValue)
-                    chosen = firstAny;
             }
 
             Transform3D transformToUse;
 
-            if (chosen.HasValue)
+            var colliderForBounds = chosen ?? heightfieldCollider;
+            if (colliderForBounds.HasValue)
             {
-                transformToUse = chosen.Value.Transform;
+                transformToUse = colliderForBounds.Value.Transform;
+
+                if (colliderForBounds.Value.Heightfield is { } heightfield)
+                {
+                    var p = transformToUse.Position;
+                    var width = MathF.Max(1f, (heightfield.Width - 1) * heightfield.CellSizeX);
+                    var depth = MathF.Max(1f, (heightfield.Height - 1) * heightfield.CellSizeZ);
+
+                    var heightfieldMinY = p.Y;
+                    var heightfieldMaxY = p.Y;
+                    for (var x = 0; x < heightfield.Width; x++)
+                    {
+                        for (var z = 0; z < heightfield.Height; z++)
+                        {
+                            var y = p.Y + heightfield.Heights[x, z];
+                            if (y < heightfieldMinY) heightfieldMinY = y;
+                            if (y > heightfieldMaxY) heightfieldMaxY = y;
+                        }
+                    }
+
+                    return (p.X, heightfieldMinY, p.Z, p.X + width, heightfieldMaxY, p.Z + depth);
+                }
             }
             else
             {

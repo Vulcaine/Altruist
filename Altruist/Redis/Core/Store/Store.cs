@@ -276,40 +276,6 @@ public sealed class RedisCacheProvider : IRedisCacheProvider
     public async Task ClearAllAsync()
         => await _memoryCache.ClearAllAsync();
 
-    /// <summary>
-    /// Sync data from memory cache to redis.
-    /// </summary>
-    public async Task PushAsync()
-    {
-        var allTypes = _documents.Keys;
-        foreach (var type in allTypes)
-        {
-            var memoryCursor = await GetAllAsync(type);
-            foreach (var item in memoryCursor)
-            {
-                if (item is IStoredModel storedModel)
-                    await SaveRemoteAsync(storedModel.StorageId, storedModel);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Load data from redis into memory cache.
-    /// </summary>
-    public async Task PullAsync()
-    {
-        var allTypes = _documents.Keys;
-        foreach (var type in allTypes)
-        {
-            var memoryCursor = await GetAllRemoteAsync(type);
-            foreach (var item in memoryCursor)
-            {
-                if (item is IStoredModel storedModel)
-                    await SaveAsync(storedModel.StorageId, storedModel);
-            }
-        }
-    }
-
     public async Task RemoveAndForgetAsync<T>(string key, string cacheGroupId = "") where T : notnull
     {
         var document = GetDocumentOrFail<T>();

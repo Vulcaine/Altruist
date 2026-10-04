@@ -11,7 +11,7 @@ namespace Altruist.Gaming.Combat;
 /// </summary>
 public interface IDamageCalculator
 {
-    int Calculate(ICombatEntity attacker, ICombatEntity target);
+    DamageSpec Calculate(ICombatEntity attacker, ICombatEntity target);
 }
 
 /// <summary>
@@ -21,13 +21,13 @@ public interface IDamageCalculator
 public interface ICombatService
 {
     /// <summary>Single target attack using the registered IDamageCalculator.</summary>
-    HitResult Attack(ICombatEntity attacker, ICombatEntity target);
+    HitResult Attack(ICombatEntity attacker, ICombatEntity target, object? context = null);
 
     /// <summary>AoE sweep — finds all ICombatEntity in range, applies damage, returns all hits.</summary>
-    SweepResult Sweep(ICombatEntity attacker, SweepQuery query, int? damage = null);
+    SweepResult Sweep(ICombatEntity attacker, SweepQuery3D query, int? damage = null, DamageFlags flags = DamageFlags.Normal, object? context = null);
 
     /// <summary>Apply raw damage directly (bypasses calculator). Used by skills, DoTs, environment.</summary>
-    HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal);
+    HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal, object? context = null);
 
     /// <summary>Kill an entity immediately.</summary>
     void Kill(ICombatEntity entity, ICombatEntity? killer = null);

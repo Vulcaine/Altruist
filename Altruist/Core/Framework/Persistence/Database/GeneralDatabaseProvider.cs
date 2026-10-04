@@ -26,7 +26,7 @@ namespace Altruist.Persistence;
 /// - Connection creation + connection string building
 /// - Parameter binding (esp provider-specific JSON / special types)
 /// </summary>
-public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGeneralDatabaseProvider
+public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGeneralDatabaseProvider, ISqlTransactionProvider
 {
     private DbConnection? _conn;
 
@@ -120,6 +120,59 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         return conn;
     }
 
+    /// <summary>
+    /// A connection for one operation: the ambient transaction's connection when one is bound to
+    /// this async flow (see <see cref="SqlAmbientTransaction"/>), otherwise a fresh pooled one.
+    /// </summary>
+    protected readonly struct ConnectionLease : IAsyncDisposable
+    {
+        private readonly SemaphoreSlim? _gate;
+
+        public ConnectionLease(DbConnection connection, DbTransaction? transaction, SemaphoreSlim? gate)
+        {
+            Connection = connection;
+            Transaction = transaction;
+            _gate = gate;
+        }
+
+        public DbConnection Connection { get; }
+        public DbTransaction? Transaction { get; }
+
+        public ValueTask DisposeAsync()
+        {
+            if (Transaction is null)
+                return Connection.DisposeAsync();
+            _gate?.Release();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    protected async Task<ConnectionLease> LeaseConnectionAsync(CancellationToken ct = default)
+    {
+        var ambient = SqlAmbientTransaction.Current;
+        if (ambient is not null)
+        {
+            await ambient.Gate.WaitAsync(ct).ConfigureAwait(false);
+            return new ConnectionLease(ambient.Connection, ambient.Transaction, ambient.Gate);
+        }
+
+        return new ConnectionLease(await GetPooledConnectionAsync(ct).ConfigureAwait(false), null, null);
+    }
+
+    /// <inheritdoc />
+    public async Task<T> InTransactionAsync<T>(
+        Func<CancellationToken, Task<T>> work,
+        IsolationLevel isolation = IsolationLevel.ReadCommitted,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        if (SqlAmbientTransaction.Current is not null)
+            return await work(ct).ConfigureAwait(false);
+
+        var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+        return await SqlAmbientTransactionRunner.RunAsync(conn, work, isolation, ct).ConfigureAwait(false);
+    }
+
     // ---------- Connection lifecycle ----------
 
     protected async Task EnsureConnectedAsync(CancellationToken ct = default)
@@ -193,9 +246,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         try
         {
-            await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+            await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
+        var conn = lease.Connection;
 
             await using var cmd = PrepareCommand(conn, sql, parameters);
+        cmd.Transaction = lease.Transaction;
 
             await using var reader = await cmd
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
@@ -466,8 +521,10 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         ct.ThrowIfCancellationRequested();
 
-        await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+        await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
+        var conn = lease.Connection;
         await using var cmd = PrepareCommand(conn, sql, parameters);
+        cmd.Transaction = lease.Transaction;
 
         var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
         if (obj is long l)
@@ -487,8 +544,10 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         ct.ThrowIfCancellationRequested();
 
-        await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+        await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
+        var conn = lease.Connection;
         await using var cmd = PrepareCommand(conn, sql, parameters);
+        cmd.Transaction = lease.Transaction;
 
         var affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         if (!IsConnected)
@@ -524,9 +583,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     public virtual async Task CreateSchemaAsync(string schema, CancellationToken ct = default)
     {
-        await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+        await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
+        var conn = lease.Connection;
 
         await using var cmd = conn.CreateCommand();
+        cmd.Transaction = lease.Transaction;
         // Schema name is framework-controlled (from config), not user input
 #pragma warning disable CA2100
         cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
@@ -545,9 +606,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         try
         {
-            await using var conn = await GetPooledConnectionAsync(ct).ConfigureAwait(false);
+            await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
+        var conn = lease.Connection;
 
             await using var cmd = PrepareCommand(conn, sql, parameters);
+        cmd.Transaction = lease.Transaction;
 
             await using var reader = await cmd
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)

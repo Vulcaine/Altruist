@@ -19,12 +19,46 @@ using System.Security.Claims;
 using Altruist.Persistence;
 namespace Altruist.Security;
 
+/// <summary>
+/// Session-token cache wrapper. Reads/writes <see cref="AuthTokenSessionModel"/>
+/// against the in-memory <see cref="ICacheProvider"/>, dual-writing to the optional
+/// vault when configured.
+/// </summary>
 [Service]
 [ConditionalOnConfig("altruist:security")]
-public class TokenSessionSyncService : AbstractVaultCacheSyncService<AuthTokenSessionModel>
+public class TokenSessionSyncService
 {
-    public TokenSessionSyncService(ICacheProvider cacheProvider, IVault<AuthTokenSessionModel>? vault = null) : base(cacheProvider, vault)
+    private readonly ICacheProvider _cache;
+    private readonly IVault<AuthTokenSessionModel>? _vault;
+
+    public TokenSessionSyncService(ICacheProvider cache, IVault<AuthTokenSessionModel>? vault = null)
     {
+        _cache = cache;
+        _vault = vault;
+    }
+
+    public Task<AuthTokenSessionModel?> FindCachedByIdAsync(string id, string cacheGroupId = "")
+        => _cache.GetAsync<AuthTokenSessionModel>(id, cacheGroupId);
+
+    public Task<ICursor<AuthTokenSessionModel>> FindAllCachedAsync(string cacheGroupId = "")
+        => _cache.GetAllAsync<AuthTokenSessionModel>(cacheGroupId);
+
+    public async Task SaveAsync(AuthTokenSessionModel entity, string cacheGroupId = "")
+    {
+        await _cache.SaveAsync(entity.StorageId, entity, cacheGroupId);
+        if (_vault != null)
+            await _vault.SaveAsync(entity);
+    }
+
+    public async Task<AuthTokenSessionModel?> DeleteAsync(string id, string cacheGroupId = "")
+    {
+        if (_vault == null)
+            return await _cache.RemoveAsync<AuthTokenSessionModel>(id, cacheGroupId);
+
+        var deleted = await _vault.Where(x => x.StorageId == id).DeleteAsync();
+        if (deleted)
+            return await _cache.RemoveAsync<AuthTokenSessionModel>(id, cacheGroupId);
+        return null;
     }
 }
 

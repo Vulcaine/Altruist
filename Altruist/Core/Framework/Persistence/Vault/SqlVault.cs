@@ -190,8 +190,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         var orderByClause = ConvertOrderByToString(keySelector);
+        // Ensure the full projection: adding the bare sort column to SELECT made an OrderBy issued
+        // before Where/Take return only that one column.
         var next = _state.With(QueryPosition.ORDER_BY, orderByClause)
-                         .With(QueryPosition.SELECT, orderByClause);
+                         .EnsureProjectionSelected(VaultDocument);
         return New(next);
     }
 
@@ -199,7 +201,7 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     {
         var orderByClause = ConvertOrderByDescendingToString(keySelector);
         var next = _state.With(QueryPosition.ORDER_BY, orderByClause + " DESC")
-                         .With(QueryPosition.SELECT, orderByClause);
+                         .EnsureProjectionSelected(VaultDocument);
         return New(next);
     }
 

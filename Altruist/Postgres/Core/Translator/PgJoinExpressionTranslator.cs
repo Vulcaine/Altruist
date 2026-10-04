@@ -154,11 +154,14 @@ internal static class PgJoinExpressionTranslator
     private static string FormatValue(object? value) => value switch
     {
         null => "NULL",
-        string s => $"'{s.Replace("'", "''")}'",
+        string s => PgQueryTranslator.StringLiteral(s),
         bool b => b ? "TRUE" : "FALSE",
-        DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-        Enum e => Convert.ToInt64(e).ToString(),
-        _ => value!.ToString()!
+        DateTime dt => $"'{dt.ToString("yyyy-MM-dd HH:mm:ss.ffffff", System.Globalization.CultureInfo.InvariantCulture)}'",
+        Enum e => Convert.ToInt64(e, System.Globalization.CultureInfo.InvariantCulture).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        IFormattable f when value is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal
+            => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+        // Anything else (Guid, custom types) is quoted: ToString() output is never emitted raw.
+        _ => PgQueryTranslator.StringLiteral(value!.ToString() ?? "")
     };
 
     private static Expression StripConvert(Expression expr)

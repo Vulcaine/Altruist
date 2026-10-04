@@ -42,19 +42,19 @@ public class JwtAuth : IShieldAuth
     public async Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
         var token = GetTokenFromRequest(context);
-        var authDetails = ExtractAuthDetails(token);
 
         if (string.IsNullOrWhiteSpace(token))
         {
             return new AuthResult(AuthorizationResult.Failed(), null!);
         }
 
+        // Validate before reading any claims: malformed input must yield 401, not an exception.
         ClaimsPrincipal? principal;
         try
         {
             principal = await _tokenValidator.ValidateToken(token);
         }
-        catch (SecurityTokenException)
+        catch (Exception ex) when (ex is SecurityTokenException or ArgumentException)
         {
             return new AuthResult(AuthorizationResult.Failed(), null!);
         }
@@ -69,6 +69,7 @@ public class JwtAuth : IShieldAuth
             httpAuthContext.HttpContext.User = principal;
         }
 
+        var authDetails = ExtractAuthDetails(token);
         return new AuthResult(AuthorizationResult.Success(), authDetails);
     }
 

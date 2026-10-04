@@ -144,7 +144,7 @@ public interface IRedisCacheProvider : IRemoteCacheProvider
 }
 
 
-public interface IRemoteCacheProvider : ICacheProvider, IConnectable, ISyncService
+public interface IRemoteCacheProvider : ICacheProvider, IConnectable
 {
     /// <summary>
     /// Saves the specified entity to both external and the in-memory cache.

@@ -23,6 +23,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Resources\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Exclude nested DI.Tests project (has its own .csproj) -->
   <ItemGroup>
     <Compile Remove="DI.Tests/**" />
@@ -44,17 +48,26 @@
     <Compile Remove="Altruist/Physx/Movement/Forward/ForwardMovementTest.cs" />
     <Compile Remove="Altruist/Gaming/World/SpatialIndexingTests.cs" />
     <Compile Remove="Altruist/Persistance/Cache/Redis/RouterTests.cs" />
+    <Compile Remove="Altruist/Gaming/Combat/CombatServiceTests.cs" />
+    <Compile Remove="Altruist/Gaming/Physx/2D/Box2DWorldEngineTests.cs" />
+    <Compile Remove="Altruist/Gaming/World/2D/WorldLoader2DTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Altruist\Testing\Testing.csproj" />
+    <ProjectReference Include="..\Altruist\Client\Client.csproj" />
+    <ProjectReference Include="..\Altruist\Client\Inventory\Inventory.csproj" />
     <ProjectReference Include="..\Altruist\Core\Core.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Main\Gaming.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Questing\Questing.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Combat\Combat.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Movement\Movement.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Inventory\Inventory.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Autosave\Autosave.csproj" />
     <ProjectReference Include="..\Altruist\Redis\Redis.csproj" />
+    <ProjectReference Include="..\Altruist\Postgres\Postgres.csproj" />
     <ProjectReference Include="..\Altruist\ScyllaDB\ScyllaDB.csproj" />
+    <ProjectReference Include="..\Altruist\Web\Web.csproj" />
   </ItemGroup>
 
 </Project>

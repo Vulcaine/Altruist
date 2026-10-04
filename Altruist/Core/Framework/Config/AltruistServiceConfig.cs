@@ -36,7 +36,8 @@ public class AltruistServiceConfig : IAltruistConfiguration
 
         var registered = new List<string>();
 
-        // Reuse DI-level service registration (handles [Service] attributes)
+        // Reuse DI-level bean/service registration.
+        AltruistDIServiceConfig.RegisterBeanMethods(services, cfg, _log, registered);
         AltruistDIServiceConfig.RegisterServiceAttributes(services, cfg, _log, registered);
 
         // Full framework addition: Portal discovery
@@ -79,8 +80,7 @@ public class AltruistServiceConfig : IAltruistConfiguration
                         var portalAttribute = portalInstance.GetType().GetCustomAttribute<PortalAttribute>();
                         if (portalAttribute is not null)
                         {
-                            var basePath = cfg["altruist:server:transport:config:path"];
-                            portalInstance.Route = PathUtils.NormalizeRoute(basePath, portalAttribute.Endpoint);
+                            portalInstance.Route = PathUtils.NormalizeRoute(portalAttribute.Endpoint);
                         }
                     }
 

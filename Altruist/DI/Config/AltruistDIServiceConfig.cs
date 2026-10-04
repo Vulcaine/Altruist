@@ -34,6 +34,7 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
         DependencyResolver.EnsureConverters(services, cfg, _log);
 
         var registered = new List<string>();
+        RegisterBeanMethods(services, cfg, _log, registered);
         RegisterServiceAttributes(services, cfg, _log, registered);
 
         if (registered.Count > 0)
@@ -55,6 +56,126 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
     {
         foreach (var implType in Find<ServiceAttribute>())
             RegisterServiceType(services, cfg, log, reg, implType);
+    }
+
+    public static void RegisterBeanMethods(
+        IServiceCollection services,
+        IConfiguration cfg,
+        ILogger log,
+        List<string> reg)
+    {
+        foreach (var method in FindBeanMethods())
+            RegisterBeanMethod(services, cfg, log, reg, method);
+    }
+
+    private static IEnumerable<MethodInfo> FindBeanMethods() =>
+        AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
+            .SelectMany(SafeGetTypes)
+            .Where(t => t is { IsClass: true, IsAbstract: false })
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+            .Where(m => m.GetCustomAttribute<BeanAttribute>(inherit: true) is not null);
+
+    private static IEnumerable<Type> SafeGetTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(t => t is not null)!;
+        }
+    }
+
+    private static void RegisterBeanMethod(
+        IServiceCollection services,
+        IConfiguration cfg,
+        ILogger log,
+        List<string> reg,
+        MethodInfo method)
+    {
+        var attr = method.GetCustomAttribute<BeanAttribute>(inherit: true)!;
+
+        if (method.ContainsGenericParameters)
+        {
+            log.LogWarning("Skipping bean method {Method} because open generic bean methods are not supported.", method.Name);
+            return;
+        }
+
+        var returnType = method.ReturnType;
+        if (returnType == typeof(void) || returnType == typeof(Task) || returnType == typeof(ValueTask))
+        {
+            log.LogWarning("Skipping bean method {Method} because it does not return a service instance.", method.Name);
+            return;
+        }
+
+        var serviceType = attr.ServiceType ?? returnType;
+        if (!serviceType.IsAssignableFrom(returnType))
+        {
+            var msg =
+                $"Bean method '{method.DeclaringType?.FullName}.{method.Name}' returns '{returnType.FullName}', " +
+                $"which cannot be registered as '{serviceType.FullName}'.";
+            DependencyResolver.FailAndExit(log, msg);
+            throw new InvalidOperationException(msg);
+        }
+
+        if (attr.Replace)
+            RemoveExistingBeanRegistrations(services, serviceType, attr.Name);
+
+        object Factory(IServiceProvider sp)
+        {
+            var target = method.IsStatic
+                ? null
+                : DependencyResolver.CreateWithConfiguration(sp, cfg, method.DeclaringType!, log, attr.Lifetime);
+            var args = method.GetParameters()
+                .Select(p => DependencyResolver.ResolveParameter(sp, cfg, p, log))
+                .ToArray();
+            return method.Invoke(target, args)
+                   ?? throw new InvalidOperationException($"Bean method '{method.Name}' returned null.");
+        }
+
+        if (attr.Name is null)
+        {
+            services.Add(new ServiceDescriptor(serviceType, Factory, attr.Lifetime));
+            reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)} <= bean {method.DeclaringType?.Name}.{method.Name} ({attr.Lifetime})");
+            return;
+        }
+
+        switch (attr.Lifetime)
+        {
+            case ServiceLifetime.Singleton:
+                services.AddKeyedSingleton(serviceType, attr.Name, (sp, _) => Factory(sp));
+                break;
+            case ServiceLifetime.Scoped:
+                services.AddKeyedScoped(serviceType, attr.Name, (sp, _) => Factory(sp));
+                break;
+            default:
+                services.AddKeyedTransient(serviceType, attr.Name, (sp, _) => Factory(sp));
+                break;
+        }
+
+        reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)}[{attr.Name}] <= bean {method.DeclaringType?.Name}.{method.Name} ({attr.Lifetime})");
+    }
+
+    private static void RemoveExistingBeanRegistrations(IServiceCollection services, Type serviceType, string? key)
+    {
+        for (int i = services.Count - 1; i >= 0; i--)
+        {
+            var descriptor = services[i];
+            if (descriptor.ServiceType != serviceType)
+                continue;
+
+            if (key is null)
+            {
+                if (!descriptor.IsKeyedService)
+                    services.RemoveAt(i);
+                continue;
+            }
+
+            if (descriptor.IsKeyedService && Equals(descriptor.ServiceKey, key))
+                services.RemoveAt(i);
+        }
     }
 
     public static void RegisterServiceType(

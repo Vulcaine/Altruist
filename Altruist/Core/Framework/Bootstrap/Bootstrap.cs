@@ -50,7 +50,7 @@ public static class AltruistBootstrap
 
         var startup = provider.GetService<AltruistStartupConfiguration>();
         if (startup is not null)
-            await startup.StartAsync(Services);
+            await startup.StartAsync(Services, provider);
     }
 
     public static async Task BootstrapServices()

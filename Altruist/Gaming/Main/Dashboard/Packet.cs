@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using System.Collections.Concurrent;
+using System.Reflection;
 
 using Altruist.Physx.ThreeD;
 using Altruist.ThreeD.Numerics;
@@ -30,21 +32,42 @@ namespace Altruist.Dashboard
         [Key(3)]
         public DashboardPartitionStateDto[] Partitions { get; set; }
 
+        [JsonPropertyName("gizmos")]
+        [Key(4)]
+        public DashboardGizmo[] Gizmos { get; set; }
+
+        [JsonPropertyName("removedGizmoIds")]
+        [Key(5)]
+        public string[] RemovedGizmoIds { get; set; }
+
+        [JsonPropertyName("removedObjectIds")]
+        [Key(6)]
+        public string[] RemovedObjectIds { get; set; }
+
         public DashboardWorldObjectStatePacket()
         {
             MessageCode = PacketCodes.DashboardWorldObjectState;
             Partitions = Array.Empty<DashboardPartitionStateDto>();
+            Gizmos = Array.Empty<DashboardGizmo>();
+            RemovedGizmoIds = Array.Empty<string>();
+            RemovedObjectIds = Array.Empty<string>();
         }
 
         public DashboardWorldObjectStatePacket(
             int worldIndex,
             DateTime timestampUtc,
-            DashboardPartitionStateDto[] partitions)
+            DashboardPartitionStateDto[] partitions,
+            DashboardGizmo[]? gizmos = null,
+            string[]? removedGizmoIds = null,
+            string[]? removedObjectIds = null)
         {
             MessageCode = PacketCodes.DashboardWorldObjectState;
             WorldIndex = worldIndex;
             TimestampUtc = timestampUtc;
             Partitions = partitions ?? Array.Empty<DashboardPartitionStateDto>();
+            Gizmos = gizmos ?? Array.Empty<DashboardGizmo>();
+            RemovedGizmoIds = removedGizmoIds ?? Array.Empty<string>();
+            RemovedObjectIds = removedObjectIds ?? Array.Empty<string>();
         }
     }
 
@@ -88,6 +111,29 @@ namespace Altruist.Dashboard
         [JsonPropertyName("position")]
         [Key(2)]
         public Vector3Dto Position { get; set; } = default!;
+
+        [JsonPropertyName("name")]
+        [Key(3)]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    internal static class DashboardWorldObjectNames
+    {
+        private static readonly ConcurrentDictionary<Type, PropertyInfo?> NameProperties = new();
+
+        public static string Resolve(object? obj)
+        {
+            if (obj is null)
+                return string.Empty;
+
+            var property = NameProperties.GetOrAdd(obj.GetType(), static type =>
+            {
+                var candidate = type.GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
+                return candidate?.PropertyType == typeof(string) ? candidate : null;
+            });
+
+            return property?.GetValue(obj) as string ?? string.Empty;
+        }
     }
 
     /// <summary>
@@ -107,6 +153,96 @@ namespace Altruist.Dashboard
         [JsonPropertyName("z")]
         [Key(2)]
         public float Z { get; set; }
+    }
+
+    [MessagePackObject]
+    public sealed class DashboardGizmoPoint
+    {
+        [JsonPropertyName("x")]
+        [Key(0)]
+        public float X { get; set; }
+
+        [JsonPropertyName("y")]
+        [Key(1)]
+        public float Y { get; set; }
+
+        [JsonPropertyName("z")]
+        [Key(2)]
+        public float Z { get; set; }
+    }
+
+    [MessagePackObject]
+    public sealed class DashboardGizmo
+    {
+        [JsonPropertyName("id")]
+        [Key(0)]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("worldIndex")]
+        [Key(1)]
+        public int WorldIndex { get; set; }
+
+        [JsonPropertyName("category")]
+        [Key(2)]
+        public string Category { get; set; } = string.Empty;
+
+        [JsonPropertyName("source")]
+        [Key(3)]
+        public string Source { get; set; } = string.Empty;
+
+        [JsonPropertyName("type")]
+        [Key(4)]
+        public string Type { get; set; } = "sphere";
+
+        [JsonPropertyName("label")]
+        [Key(5)]
+        public string Label { get; set; } = string.Empty;
+
+        [JsonPropertyName("color")]
+        [Key(6)]
+        public string Color { get; set; } = "#38BDF8FF";
+
+        [JsonPropertyName("position")]
+        [Key(7)]
+        public Vector3Dto Position { get; set; } = new();
+
+        [JsonPropertyName("radius")]
+        [Key(8)]
+        public float Radius { get; set; }
+
+        [JsonPropertyName("width")]
+        [Key(9)]
+        public float Width { get; set; }
+
+        [JsonPropertyName("height")]
+        [Key(10)]
+        public float Height { get; set; }
+
+        [JsonPropertyName("points")]
+        [Key(11)]
+        public List<DashboardGizmoPoint> Points { get; set; } = new();
+
+        [JsonPropertyName("attachToInstanceId")]
+        [Key(12)]
+        public string AttachToInstanceId { get; set; } = string.Empty;
+
+        [JsonPropertyName("ttlSeconds")]
+        [Key(13)]
+        public float TtlSeconds { get; set; }
+
+        [JsonPropertyName("createdAtUtc")]
+        [Key(14)]
+        public DateTime CreatedAtUtc { get; set; }
+
+        [JsonPropertyName("updatedAtUtc")]
+        [Key(15)]
+        public DateTime UpdatedAtUtc { get; set; }
+    }
+
+    public sealed class DashboardGizmoChangeSet
+    {
+        public DashboardGizmo[] Gizmos { get; set; } = Array.Empty<DashboardGizmo>();
+        public string[] RemovedGizmoIds { get; set; } = Array.Empty<string>();
     }
 
     /// <summary>
@@ -129,6 +265,7 @@ namespace Altruist.Dashboard
     {
         public string InstanceId { get; set; } = string.Empty;
         public string Archetype { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
         public string ZoneId { get; set; } = string.Empty;
         public string ClientId { get; set; } = string.Empty;
 
@@ -148,18 +285,20 @@ namespace Altruist.Dashboard
         public PhysxColliderShape3D Shape { get; set; }
         public TransformDto Transform { get; set; } = default!;
         public bool IsTrigger { get; set; }
+        public string TransformSpace { get; set; } = "local";
 
         public HeightfieldDto? Heightfield { get; set; }
 
-        public static ColliderDto FromCollider(PhysxCollider3DDesc c)
+        public static ColliderDto FromCollider(PhysxCollider3DDesc c, int terrainSampleStride = 1)
         {
             return new ColliderDto
             {
                 Id = c.Id,
                 Shape = c.Shape,
                 IsTrigger = c.IsTrigger,
+                TransformSpace = "local",
                 Transform = TransformDto.FromTransform(c.Transform),
-                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield)
+                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield, terrainSampleStride)
             };
         }
     }
@@ -181,25 +320,33 @@ namespace Altruist.Dashboard
         /// </summary>
         public float[][] Heights { get; set; } = Array.Empty<float[]>();
 
-        public static HeightfieldDto FromHeightfield(HeightfieldData hf)
+        public static HeightfieldDto FromHeightfield(HeightfieldData hf, int sampleStride = 1)
         {
+            int stride = Math.Max(1, sampleStride);
+            int width = (int)Math.Ceiling(hf.Width / (double)stride);
+            int height = (int)Math.Ceiling(hf.Height / (double)stride);
+
             var dto = new HeightfieldDto
             {
-                Width = hf.Width,
-                Height = hf.Height,
-                CellSizeX = hf.CellSizeX,
-                CellSizeZ = hf.CellSizeZ,
+                Width = width,
+                Height = height,
+                CellSizeX = hf.CellSizeX * stride,
+                CellSizeZ = hf.CellSizeZ * stride,
                 HeightScale = hf.HeightScale,
-                Heights = new float[hf.Width][]
+                Heights = new float[width][]
             };
 
-            for (int x = 0; x < hf.Width; x++)
+            for (int x = 0; x < width; x++)
             {
-                var row = new float[hf.Height];
-                for (int z = 0; z < hf.Height; z++)
+                var row = new float[height];
+                int sourceX = Math.Min(hf.Width - 1, x * stride);
+
+                for (int z = 0; z < height; z++)
                 {
-                    row[z] = hf.Heights[x, z];
+                    int sourceZ = Math.Min(hf.Height - 1, z * stride);
+                    row[z] = hf.Heights[sourceX, sourceZ];
                 }
+
                 dto.Heights[x] = row;
             }
 

@@ -6,7 +6,7 @@ Licensed under the Apache License, Version 2.0
 namespace Altruist.Gaming.Combat;
 
 [Flags]
-public enum DamageFlags : byte
+public enum DamageFlags : uint
 {
     None = 0,
     Normal = 1,
@@ -15,8 +15,28 @@ public enum DamageFlags : byte
     Dodge = 8,
     Block = 16,
     Miss = 32,
-    Poison = 64,
-    Magic = 128,
+    Killed = 1u << 31,
+}
+
+/// <summary>
+/// Framework-level damage metadata.
+/// </summary>
+public readonly record struct DamageTraits(DamageFlags Flags)
+{
+    public static readonly DamageTraits None = new(DamageFlags.None);
+}
+
+/// <summary>
+/// Result produced by a damage calculator before it is applied to a target.
+/// </summary>
+public readonly record struct DamageSpec(
+    int Damage,
+    DamageTraits Traits)
+{
+    public DamageSpec(int damage, DamageFlags flags)
+        : this(damage, new DamageTraits(flags)) { }
+
+    public DamageFlags Flags => Traits.Flags;
 }
 
 public enum SweepType
@@ -26,13 +46,19 @@ public enum SweepType
     Line,
 }
 
-public record HitResult(
+public readonly record struct HitResult(
     ICombatEntity Target,
     int Damage,
-    DamageFlags Flags,
-    bool Killed);
+    DamageTraits Traits,
+    bool Killed)
+{
+    public HitResult(ICombatEntity target, int damage, DamageFlags flags, bool killed)
+        : this(target, damage, new DamageTraits(flags), killed) { }
 
-public record SweepResult(
+    public DamageFlags Flags => Traits.Flags;
+}
+
+public readonly record struct SweepResult(
     ICombatEntity Attacker,
-    SweepQuery Query,
+    SweepQuery3D Query,
     IReadOnlyList<HitResult> Hits);

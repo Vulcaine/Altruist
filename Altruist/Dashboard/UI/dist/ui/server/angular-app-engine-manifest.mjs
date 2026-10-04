@@ -1,6 +1,7 @@
 
 export default {
-  basePath: '/altruist/dashboard',
+  basePath: '/',
+  allowedHosts: [],
   supportedLocales: {
   "en-US": ""
 },

@@ -5,6 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 using System.Reflection;
 
+using Altruist;
 using Altruist.Contracts;
 
 using Microsoft.Extensions.Configuration;
@@ -78,13 +79,8 @@ namespace Altruist.Physx
                 return Task.CompletedTask;
             }
 
-            using (var warmupProvider = services.BuildServiceProvider())
-            {
-                CollisionHandlerDiscovery.RegisterCollisionHandlers(
-                    assemblies,
-                    type => warmupProvider.GetService(type),
-                    logger);
-            }
+            services.AddSingleton(new CollisionHandlerBootstrapState(registered.ToArray()));
+            services.AddSingleton<CollisionHandlerBootstrap>();
 
             logger.LogDebug("✅ Collision handler discovery & registration complete. {Count} handler types wired.",
                 registered.Count);
@@ -107,5 +103,38 @@ namespace Altruist.Physx
                      .GetAssemblies()
                      .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
                      .ToArray();
+    }
+
+    internal sealed record CollisionHandlerBootstrapState(Type[] HandlerTypes);
+
+    internal sealed class CollisionHandlerBootstrap
+    {
+        private readonly IServiceProvider _serviceProvider;
+        private readonly CollisionHandlerBootstrapState _state;
+        private readonly ILogger _logger;
+
+        public CollisionHandlerBootstrap(
+            IServiceProvider serviceProvider,
+            CollisionHandlerBootstrapState state,
+            ILoggerFactory loggerFactory)
+        {
+            _serviceProvider = serviceProvider;
+            _state = state;
+            _logger = loggerFactory.CreateLogger<CollisionHandlerBootstrap>();
+        }
+
+        [PostConstruct]
+        public void RegisterHandlers()
+        {
+            CollisionHandlerRegistry.Clear();
+            CollisionHandlerDiscovery.RegisterCollisionHandlerTypes(
+                _state.HandlerTypes,
+                type => _serviceProvider.GetService(type),
+                _logger);
+
+            _logger.LogInformation(
+                "Registered {Count} collision handler methods from the root provider.",
+                CollisionHandlerRegistry.TotalHandlerCount);
+        }
     }
 }

@@ -1,16 +1,177 @@
 # Altruist Framework — Performance Benchmark Report
 
-**Version:** 0.9.0-beta
-**Runtime:** .NET 9.0 | Release build | BenchmarkDotNet v0.14.0
-**Hardware:** Windows 11, 20 iterations per benchmark, 5 warmup
+**Latest run:** 2026-10-03 · Altruist develop @ 9d122df (+ uncommitted benchmark fixes) · .NET 9.0.3 Arm64 · BenchmarkDotNet 0.14.0, reference job (5 warmup + 20 iterations)
+**Hardware:** Apple M1 Pro (8 cores), 16 GiB, macOS 15.6.1, AC power — a developer laptop that was **not idle** during the run (see caveat below)
+**Raw data:** `results/20261003-200805-Geres-MacBook-Pro/` (machine.txt, SUMMARY.md, BDN reports)
 
 ---
 
 ## Executive Summary
 
-Altruist's core systems are designed for real-time game servers running at 20–128 Hz tick rates. At 30 Hz (industry standard for action MMOs), each tick budget is **33ms**. The benchmarks below confirm that all systems combined consume under 1ms per tick for typical game server loads (50 players, 1000 NPCs), leaving over 97% of the tick budget available for game logic.
+Altruist's core systems are designed for real-time game servers running at 20–128 Hz tick rates. At 30 Hz each tick budget is **33.3 ms**. In the latest run one complete simulated tick for 50 players + 500 NPCs (movement, AI, delta sync, visibility, collision, combat — `ScalabilityBenchmarks.FullTick`) took **1.8 ms mean / 1.5 ms median (~5% of the 30 Hz budget)**.
+
+The sections after "Latest results" (sync, AI, combat, …, CCU, comparisons) are the **previous report** (v0.9.0-beta, Windows 11 machine, hand-summed totals) and are kept for history; the claims in the READMEs now come from the latest run.
 
 ---
+
+## Latest results (2026-10-03)
+
+> **Caveat — noisy machine.** The run shared the laptop with other heavy processes (system load
+> average 40–75: a headless browser, a VM, screen recording, parallel builds). Single-threaded
+> nanosecond benchmarks (AI FSM: ±3%) are stable, but multi-millisecond and `Parallel.For`-based
+> benchmarks have BDN errors of ±30–130% and the `FullTick` curve over player count is not
+> monotonic. Medians are given next to means because they are more robust to that noise. Re-run
+> `./run.sh` on an idle machine before quoting the larger numbers as reference figures.
+
+### Claims
+
+| README claim (old) | Benchmark | Mean ± error (99.9%) | Median | Allocated |
+|---|---|---|---|---|
+| 0.9 ms framework overhead per tick | `ScalabilityBenchmarks.FullTick` [50 players, 500 NPCs] | 1.82 ms ± 0.94 ms | 1.51 ms | 231 KB |
+| ↳ legacy component sum (formula below) | micro-benchmarks | 2.04 ms | — | — |
+| AI FSM 14 ns/entity, 0 alloc | `AIBenchmarks.UpdateNoTransition` | 16.3 ns ± 0.4 ns | 16.3 ns | 0 B |
+| Combat 8 ns single attack | `CombatBenchmarks.SingleAttack` [100] | 91.6 ns ± 31.5 ns | 92.8 ns | 48 B |
+| Collision 13 µs / 100 entities | `CollisionBenchmarks.TickFull` [100] | 86.5 µs ± 57.5 µs | 55.2 µs | 10.5 KB |
+| Visibility 118 µs, 10 × 100 | `VisibilityBenchmarks.TickSteadyState` [10, 100] | 4.2 µs ± 1.5 µs | 3.9 µs | 424 B |
+| Entity sync 249 ns/entity | `SyncBenchmarks.SyncChangesPosition` | 844 ns ± 408 ns | 646 ns | 320 B |
+| ~6,600 CCU at 30 Hz | `FullTick` curve, 500 NPCs | not reproducible from this run (curve not monotonic, see below) | | |
+
+Notes:
+- The old 8 ns combat figure was not backed by the committed raw report either (it showed
+  14.75 ns / 80 B for `SingleAttack`); the sweep benchmarks returned NA before this revision.
+- Visibility steady state is far cheaper than the old 118 µs because ticks are staggered and
+  unchanged observers skip work; the per-player cost in `FullTick` is what matters for capacity.
+- The old ~6,600 CCU came from a hand-picked 10 µs per player × 2 for staggering (see the legacy
+  formula). Applied to this run it would give an absurd 211,000, so it is no longer published.
+
+### Per-tick breakdown (50 players / 500 NPCs, `ScalabilityBenchmarks`)
+
+| Stage | Mean | Allocated |
+|---|---|---|
+| **Full tick** | 1.82 ms (median 1.51 ms) | 231 KB |
+| Sync incl. movement (`SyncOnly`) | 1.35 ms | 163 KB |
+| AI (`AIOnly`) | 106 µs | 0 B |
+| Visibility (`VisibilityOnly`) | 31 µs | 0.4 KB |
+| Collision (`CollisionOnly`) | 2.31 ms ⚠ noisy (≥ full tick) | 56 KB |
+| Combat (`CombatOnly`) | 424 µs | 11 KB |
+
+### FullTick over player count (CCU input)
+
+| Players | 500 NPCs: mean (median) | 2000 NPCs: mean (median) |
+|---|---|---|
+| 50 | 1.82 ms (1.51 ms) | 56.2 ms (36.1 ms) ⚠ |
+| 200 | 2.23 ms (1.93 ms) | 20.2 ms (18.4 ms) |
+| 500 | 33.8 ms (9.9 ms) ⚠ | 15.7 ms (10.3 ms) |
+| 1000 | 22.3 ms (21.6 ms) | 20.4 ms (16.1 ms) |
+
+⚠ = BDN error larger than ±100%. Using the medians, 1000 players + 500 NPCs fit in ~22 ms, i.e.
+inside the 30 Hz budget (33.3 ms) but not the 60 Hz one; a clean run is needed for an exact CCU.
+
+The complete per-benchmark table is in the run's `SUMMARY.md` and `results/*-report-github.md`.
+
+---
+
+## Reproducing the numbers
+
+Every figure in this report comes from the BenchmarkDotNet suites in this folder. One command builds
+Release, runs all suites, records the machine and writes a summary with every claim recomputed:
+
+```bash
+cd Benchmarks
+./run.sh            # full run: reference job (5 warmup + 20 measured iterations), all suites — ~30 min
+./run.sh --quick    # same suites with BDN's ShortRun job (3 warmup + 3 iterations) — ~8 min
+./run.sh --dry      # smoke test (BDN Dry job, 1 iteration each) — checks every benchmark runs
+./run.sh --quick -- --filter '*Visibility*'   # anything after -- goes to BenchmarkDotNet
+```
+
+Requirements: .NET SDK with the .NET 9 runtime, `python3` (stdlib only), bash (macOS or Linux).
+Close other heavy processes and keep the machine on AC power for the full run.
+
+Output goes to `Benchmarks/results/<yyyymmdd-HHMMSS>-<host>[-quick|-dry]/`:
+
+| File | Content |
+|------|---------|
+| `machine.txt` | OS, CPU model, physical/logical cores, RAM, .NET SDK + runtimes, git commit (+ dirty flag), exact command |
+| `results/*-report-github.md` | BDN tables per suite (also `.csv`, `.html`, `-full-compressed.json`) |
+| `console.log`, `*.log` | Full BDN console output |
+| `SUMMARY.md` | Claims table, per-tick breakdown, CCU tables, every benchmark row — produced by `summarize.py` from the JSON reports |
+
+`summarize.py <run-dir> [machine.txt]` can be re-run on any existing run directory.
+Plain BenchmarkDotNet use also works: `dotnet run -c Release -- --filter '*Sync*' --job short`
+(a `--job` on the command line replaces the reference job instead of running in addition to it).
+
+### Claim → benchmark
+
+| Claim | Benchmark (class.method [params]) | Notes |
+|-------|-----------------------------------|-------|
+| 0.9 ms total framework overhead per tick | `ScalabilityBenchmarks.FullTick` [PlayerCount=50, NpcCount=500] | Direct measurement of one complete tick (see below). The legacy component sum is also reported. |
+| AI FSM 14 ns/entity, 0 alloc | `AIBenchmarks.UpdateNoTransition` | Cross-check: `TickManyEntities(1000)` / 1000 |
+| Combat 8 ns single attack | `CombatBenchmarks.SingleAttack` [EntityCount=100] | Attack = damage calc + apply + hit event |
+| Collision 13 µs / 100 entities | `CollisionBenchmarks.TickFull` [EntityCount=100] | Broadphase + enter/stay/exit bookkeeping, no handlers registered |
+| Visibility 118 µs, 10 players × 100 NPCs | `VisibilityBenchmarks.TickSteadyState` [PlayerCount=10, NpcCount=100] | Steady state (no entity moves) |
+| Entity sync 249 ns/entity (position update) | `SyncBenchmarks.SyncChangesPosition` | `GetSyncChanges` (the API `EntitySyncService` uses), 2 of 10 fields changed |
+| ~6,600 CCU at 30 Hz | Derived — `ScalabilityBenchmarks.FullTick` over PlayerCount ∈ {50, 200, 500, 1000}, NpcCount=500 | Formula below; legacy formula also reported |
+
+### What `ScalabilityBenchmarks.FullTick` does
+
+One tick for a world of P players (observers, clustered in a 2000×2000 area) and N NPCs
+(AI entities, spread over 10000×10000), every entity a `[Synchronized]` `WorldObject3D` with a
+50-unit trigger sphere collider and an `ICombatEntity`:
+
+1. **Movement** — every entity moves 1 unit (direction alternates per tick) so sync sees real deltas.
+2. **AI** — one compiled `AIStateMachine` per NPC (`Idle ⇄ Wander` every 2 s), `Update(ctx, 1/30 s)`.
+3. **Sync** — `Synchronization.GetSyncChanges` per entity (keyed by InstanceId) plus the
+   `GetObserversOf` fan-out lookup, as `EntitySyncService` does. Serialization and socket I/O are excluded.
+4. **Visibility** — `VisibilityTracker3D.Tick` (view range 5000, parallel + stagger).
+5. **Collision** — `SpatialCollisionDispatcher.Tick`.
+6. **Combat** — every player makes one single-target attack; one sphere sweep (r=500) per 10 players.
+
+`SyncOnly`, `AIOnly`, `VisibilityOnly`, `CollisionOnly` and `CombatOnly` run one stage with the same
+inputs, giving the per-system breakdown for the Combined Tick Budget table.
+
+### Derivation formulas
+
+All times are BenchmarkDotNet means. `Vis[P,N]` = `VisibilityBenchmarks.TickSteadyState`,
+`Full[P,N]` = `ScalabilityBenchmarks.FullTick`, budget(f) = 1000/f ms.
+
+**Per-tick overhead (direct):** `overhead = Full[50,500]`, budget share = `overhead / 33.3 ms`.
+
+**Per-tick overhead (legacy component sum,** the method behind the original 0.9 ms table**):**
+
+```
+sync      = 550 × SyncBenchmarks.SyncChangesPosition
+ai        = 500 × AIBenchmarks.UpdateNoTransition
+vis       = Vis[50,100] + (Vis[50,1000] − Vis[50,100]) × 400/900      (linear in NPC count, at 500)
+combat    = 50 × CombatBenchmarks.SingleAttack[100] + 5 × CombatBenchmarks.SweepSphere[1000]
+collision = CollisionBenchmarks.TickFull[500]
+world     = WorldBenchmarks.FilterSyncEntities[1000] + FilterAIEntities[1000] + DistanceCheck[1000]
+total     = sum of the above
+```
+
+The original table used hand estimates for combat (0.01 ms) and world iteration (0.05 ms); the
+formulas above replace them with measured analogues.
+
+**CCU (direct):** for NpcCount = 500 (and 2000), take the measured points (P, Full[P,N]).
+`CCU(f)` = the P where the curve reaches budget(f): linear interpolation between measured points,
+and beyond P = 1000 linear extrapolation with the 500→1000 slope:
+
+```
+CCU(f) = 1000 + (budget(f) − Full[1000,N]) / ((Full[1000,N] − Full[500,N]) / 500)
+```
+
+Visibility uses `Parallel.For` and tick staggering internally, so this is multi-core wall time with
+staggering already included.
+
+**CCU (legacy formula,** behind the original ~6,600 figure**):** `CCU_single = budget(f) / c`,
+`CCU_stagger = 2 × CCU_single`, where the original c ≈ 10 µs was picked by hand. The closest
+reproducible value is the mean per-player visibility cost at 50 players,
+`c = (Vis[50,100]/50 + Vis[50,1000]/50) / 2` (= 10.9 µs on the data below → 6,130 at 30 Hz).
+The ×2 double-counts staggering, which the measured visibility tick already includes, and c covers
+visibility only (no sync/AI/collision/combat) — prefer the direct method.
+
+---
+
+> Everything below this line is the **previous report** (v0.9.0-beta, Windows 11), kept for history.
 
 ## Entity Synchronization (Delta Sync)
 

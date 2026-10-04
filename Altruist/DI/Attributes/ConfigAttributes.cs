@@ -58,7 +58,10 @@ public sealed class AppConfigValueAttribute : Attribute
 public sealed class ConfigConverterAttribute : ServiceAttribute
 {
     public Type TargetType { get; }
-    public ConfigConverterAttribute(Type targetType) : base(targetType, lifetime: ServiceLifetime.Singleton) => TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
+    // Registered as the converter type itself: registering it under TargetType (e.g. List<string>)
+    // put a converter instance behind a service type it does not implement, which breaks
+    // ServiceProvider validation (WebApplication validates on build in Development).
+    public ConfigConverterAttribute(Type targetType) : base(null, lifetime: ServiceLifetime.Singleton) => TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
 }
 
 public interface IConfigConverter
@@ -87,11 +90,16 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
     public event Action<T>? OnChange;
 
     public LiveConfigValue(IConfiguration config, string key)
+        : this(config, key, key)
+    {
+    }
+
+    public LiveConfigValue(IConfiguration config, string key, string registryKey)
     {
         this.config = config;
         this.key = key;
 
-        LiveConfigRegistry.Register(key);
+        LiveConfigRegistry.Register(registryKey);
 
         Current = Read();
         ChangeToken.OnChange(config.GetReloadToken, Reload);

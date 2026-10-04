@@ -34,6 +34,55 @@ public class VaultAttribute : Attribute
         => (this.Name, this.StoreHistory, this.Keyspace, this.DbToken, this.DbInstance) = (Name, StoreHistory, Keyspace, DbToken, DbInstance);
 }
 
+/// <summary>
+/// Marks an entire vault table for deletion during migration. The table is dropped from the DB.
+/// The class stays in code as self-documenting history.
+///
+/// Apply [Obsolete] alongside this attribute to get compiler warnings/errors and IDE
+/// strikethroughs wherever the vault is injected or referenced:
+///
+/// <example>
+/// [VaultTableDelete("Replaced by PlayerStatsVault in v3.0")]
+/// [Obsolete("This vault is deleted. Use PlayerStatsVault instead.", error: true)]
+/// [Vault("old_player_stats")]
+/// public class OldPlayerStatsVault : IStoredModel { ... }
+/// </example>
+///
+/// - error: false → compiler WARNING (yellow squiggle, strikethrough)
+/// - error: true  → compiler ERROR (red, won't compile if referenced)
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public class VaultTableDeleteAttribute : Attribute
+{
+    public string Reason { get; }
+    public VaultTableDeleteAttribute(string reason = "")
+        => Reason = reason ?? "";
+}
+
+/// <summary>
+/// Archives a vault table before dropping it. All data is copied to the archive table
+/// using INSERT INTO ... SELECT, then the original table is dropped.
+/// Safer than [VaultTableDelete] — data is preserved in the archive table.
+///
+/// <example>
+/// [VaultArchived("archived_old_stats", "Migrated to PlayerStatsVault in v3.0")]
+/// [Obsolete("Archived. Use PlayerStatsVault.", error: true)]
+/// [Vault("old_player_stats")]
+/// public class OldPlayerStatsVault : IStoredModel { ... }
+/// </example>
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public class VaultArchivedAttribute : Attribute
+{
+    public string ArchiveTableName { get; }
+    public string Reason { get; }
+    public VaultArchivedAttribute(string archiveTableName, string reason = "")
+    {
+        ArchiveTableName = archiveTableName ?? throw new ArgumentNullException(nameof(archiveTableName));
+        Reason = reason ?? "";
+    }
+}
+
 [AttributeUsage(AttributeTargets.Class, Inherited = true)]
 public class VaultPrimaryKeyAttribute : Attribute
 {
@@ -53,6 +102,74 @@ public class VaultColumnIndexAttribute : Attribute { }
 
 [AttributeUsage(AttributeTargets.Property)]
 public class VaultIgnoreAttribute : Attribute { }
+
+/// <summary>
+/// Marks a property as renamed from a previous column name.
+/// The migration planner will emit a RENAME COLUMN instead of DROP + ADD,
+/// preserving existing data. Multiple attributes can be stacked to preserve
+/// rename history — only the last one matching a current DB column is applied.
+///
+/// <example>
+/// [VaultRenamedFrom("original_name")]   // first rename (historical)
+/// [VaultRenamedFrom("display_name")]    // second rename — this one runs if "display_name" exists in DB
+/// public string PrettyName { get; set; }
+/// </example>
+/// </summary>
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = true)]
+public class VaultRenamedFromAttribute : Attribute
+{
+    public string OldColumnName { get; }
+    public VaultRenamedFromAttribute(string oldColumnName)
+        => OldColumnName = oldColumnName ?? throw new ArgumentNullException(nameof(oldColumnName));
+}
+
+/// <summary>
+/// Copies data from an existing column into this new column during migration,
+/// with automatic type conversion (USING cast). The source column is NOT deleted —
+/// use [VaultColumnDelete] on a separate property to remove it after copy.
+///
+/// Use nameof() for compile-time safety when the source property still exists,
+/// or a string literal if it was already removed from the model.
+///
+/// <example>
+/// // Copy int gold into new string gold_display with cast
+/// [VaultColumn("gold_display")]
+/// [VaultColumnCopy(nameof(Gold))]     // or [VaultColumnCopy("gold")] if Gold property removed
+/// public string GoldDisplay { get; set; } = "";
+/// </example>
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public class VaultColumnCopyAttribute : Attribute
+{
+    public string SourceColumn { get; }
+    public VaultColumnCopyAttribute(string sourceColumn)
+        => SourceColumn = sourceColumn ?? throw new ArgumentNullException(nameof(sourceColumn));
+}
+
+/// <summary>
+/// Marks a column for deletion during migration. The column is dropped from the DB.
+/// The property serves as self-documenting history — it is ignored by the ORM
+/// (implicitly treated as [VaultIgnore]) but read by the migration planner.
+///
+/// If [VaultColumnCopy] exists on another property referencing this column,
+/// the copy runs first, then the delete.
+///
+/// Pair with [Obsolete] to get IDE strikethroughs and compiler warnings/errors:
+///
+/// <example>
+/// [VaultColumnDelete("Replaced by GoldDisplay (string) in v2.3")]
+/// [Obsolete("Column deleted. Use GoldDisplay instead.", error: true)]
+/// [VaultColumn("gold")]
+/// public int Gold { get; set; }
+/// </example>
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public class VaultColumnDeleteAttribute : Attribute
+{
+    public string Reason { get; }
+    public VaultColumnDeleteAttribute(string reason = "")
+        => Reason = reason ?? "";
+}
 
 [AttributeUsage(AttributeTargets.Class)]
 public class VaultSortingByAttribute : Attribute

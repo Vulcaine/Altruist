@@ -1,18 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { WorldScene } from './world-scene.component';
+import { WorldSceneComponent } from './world-scene.component';
 
-describe('WorldScene', () => {
-  let component: WorldScene;
-  let fixture: ComponentFixture<WorldScene>;
+describe('WorldSceneComponent', () => {
+  let component: WorldSceneComponent;
+  let fixture: ComponentFixture<WorldSceneComponent>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [WorldScene]
+      imports: [WorldSceneComponent]
     })
     .compileComponents();
 
-    fixture = TestBed.createComponent(WorldScene);
+    fixture = TestBed.createComponent(WorldSceneComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });

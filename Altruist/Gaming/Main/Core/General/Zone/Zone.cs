@@ -100,9 +100,9 @@ public sealed class ZoneManager : IZoneManager
         _zones[name] = new Zone(name, spawns);
     }
 
-    public async Task PlayerEnteredZone(string zoneName, string playerId)
+    public Task PlayerEnteredZone(string zoneName, string playerId)
     {
-        if (!_zones.TryGetValue(zoneName, out var zone)) return;
+        if (!_zones.TryGetValue(zoneName, out var zone)) return Task.CompletedTask;
 
         bool shouldActivate;
         lock (_lock)
@@ -112,10 +112,37 @@ public sealed class ZoneManager : IZoneManager
             if (shouldActivate) zone.IsActive = true;
         }
 
+        // Fire-and-forget spawn. PlayerEnteredZone returns immediately so the
+        // calling enter-game flow doesn't block on (potentially hundreds of)
+        // entity instantiations — the dominant cost in real workloads. The
+        // visibility tracker picks the entities up on its next tick as they
+        // come online, so the player sees mobs trickle in over a frame or two
+        // instead of a 300ms+ stall before they can move at all.
+        //
+        // The IsActive=true flip happens inside the lock above, so a second
+        // player entering during the spawn race correctly sees shouldActivate=false
+        // and does not double-spawn.
         if (shouldActivate && _spawnHandler != null)
         {
-            var ids = await _spawnHandler.SpawnZone(zone);
+            _ = SpawnZoneInBackgroundAsync(zone);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task SpawnZoneInBackgroundAsync(Zone zone)
+    {
+        try
+        {
+            var ids = await _spawnHandler!.SpawnZone(zone);
             zone.SpawnedIds = new ConcurrentBag<string>(ids);
+        }
+        catch (Exception)
+        {
+            // Reset IsActive so a future PlayerEnteredZone for the same zone
+            // can retry the spawn instead of getting stuck "active with zero mobs".
+            zone.IsActive = false;
+            throw;
         }
     }
 

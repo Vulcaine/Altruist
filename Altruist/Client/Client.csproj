@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.1;net9.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>Altruist.Client</PackageId>
+    <Description>Client framework for the Altruist wire protocol — TCP, UDP, WebSocket transports with the same MessagePack envelope encoding the server uses. AOT-friendly: the receive path byte-skips the envelope and only deserializes the inner packet as a known concrete type. Drop-in DLL for Unity, Godot, Blazor, or any .NET client.</Description>
+    <Version>0.9.6-beta</Version>
+    <Copyright>Copyright © 2025 Aron Gere</Copyright>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <!-- Sub-projects (Inventory, ...) live in subdirectories with their own .csproj.
+       The default SDK glob would otherwise pull their .cs files into this project. -->
+  <ItemGroup>
+    <Compile Remove="Inventory\**\*.cs" />
+    <None Remove="Inventory\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Protocol\Protocol.csproj" />
+    <ProjectReference Include="..\DI\DI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MessagePack" Version="3.1.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tests" />
+    <InternalsVisibleTo Include="Testing" />
+  </ItemGroup>
+
+</Project>

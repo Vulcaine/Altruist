@@ -11,6 +11,12 @@ public abstract class Portal : IPortal
 }
 
 
+public interface OnConnectingAsync
+{
+    public Task OnConnectingAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection);
+}
+
+
 public interface OnConnectedAsync
 {
     public Task OnConnectedAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection);

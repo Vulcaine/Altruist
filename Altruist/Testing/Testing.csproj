@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>Altruist.Testing</PackageId>
+    <!-- Default AssemblyName from project filename is "Testing" but the
+         [assembly: Xunit.TestFramework(..., "Altruist.Testing")] attribute in
+         downstream test projects looks up the framework type by assembly name.
+         If they don't match, xUnit silently falls back to its default class
+         runner and every [AltruistTest] class fails with "constructor
+         parameters did not have matching fixture data". -->
+    <AssemblyName>Altruist.Testing</AssemblyName>
+    <RootNamespace>Altruist.Testing</RootNamespace>
+    <Description>xUnit test framework override that resolves test classes marked [AltruistTest] from the real Altruist DI container. Constructor parameters tagged [Mock] are replaced with Moq mocks visible to the rest of the per-class container.</Description>
+    <Version>0.9.6-beta</Version>
+    <Copyright>Copyright © 2025 Aron Gere</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vulcaine/Altruist</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DI\DI.csproj" />
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Postgres\Postgres.csproj" />
+    <ProjectReference Include="..\Client\Client.csproj" />
+    <ProjectReference Include="..\Client\Inventory\Inventory.csproj" />
+    <ProjectReference Include="..\Testing.E2E.Core\Testing.E2E.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MessagePack" Version="3.1.10" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.4" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="3.1.0" />
+    <PackageReference Include="Npgsql" Version="9.0.4" />
+    <PackageReference Include="xunit.extensibility.execution" Version="2.9.3" />
+  </ItemGroup>
+
+</Project>

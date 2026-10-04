@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
@@ -5,18 +6,29 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
 {
     protected readonly IGameSessionService _gameSessionService;
     protected readonly IAltruistRouter _router;
+    private readonly int _sessionTtlMinutes;
+
+    /// <summary>
+    /// Snapshot of every <see cref="IClientSessionCleanup"/> registered in DI.
+    /// Each one's <see cref="IClientSessionCleanup.Cleanup"/> fires on every client
+    /// disconnect — see <see cref="OnDisconnectedAsync"/>.
+    /// </summary>
+    private readonly IClientSessionCleanup[] _sessionServices;
+    private readonly ILogger _logger;
 
     protected AltruistGameSessionPortal(
         IGameSessionService gameSessionService,
-        IAltruistRouter router)
+        IAltruistRouter router,
+        IEnumerable<IClientSessionCleanup> sessionServices,
+        ILoggerFactory loggerFactory,
+        [AppConfigValue("altruist:game:session:ttl-minutes", "60")] int sessionTtlMinutes = 60)
     {
         _gameSessionService = gameSessionService;
         _router = router;
+        _sessionTtlMinutes = Math.Max(1, sessionTtlMinutes);
+        _sessionServices = (sessionServices ?? Enumerable.Empty<IClientSessionCleanup>()).ToArray();
+        _logger = loggerFactory.CreateLogger(GetType());
     }
-
-    // ---------------------------
-    // Public API: fixed template
-    // ---------------------------
 
     [Gate(IngressEP.Handshake)]
     public async Task HandshakeAsync(
@@ -58,13 +70,39 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
         await PublishResultAsync(clientId, finalResult);
     }
 
-    public virtual Task OnDisconnectedAsync(string clientId, Exception? exception)
+    public async Task OnDisconnectedAsync(string clientId, Exception? exception)
     {
+        var session = _gameSessionService.GetSession(clientId);
+        await OnSessionDisconnectingAsync(clientId, session, exception);
         _gameSessionService.ClearSession(clientId);
-        return Task.CompletedTask;
+
+        // Fan out to every [Service] that opted into per-client cleanup by
+        // implementing IClientSessionCleanup. One bad handler doesn't block the
+        // rest — log and continue. Runs after ClearSession so a service that
+        // also overrides OnSessionDisconnectingAsync above has had its chance
+        // to read GameSession state before the framework cleanup tears down.
+        for (int i = 0; i < _sessionServices.Length; i++)
+        {
+            try
+            {
+                await _sessionServices[i].Cleanup(clientId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "{Type}.Cleanup failed for client {ClientId}",
+                    _sessionServices[i].GetType().Name, clientId);
+            }
+        }
+
+        await OnSessionDisconnectedAsync(clientId, exception);
     }
 
-    public virtual Task OnConnectedAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection) => Task.CompletedTask;
+    public async Task OnConnectedAsync(string clientId, ConnectionManager connectionManager, AltruistConnection connection)
+    {
+        var session = _gameSessionService.CreateSession(clientId, DateTime.UtcNow.AddMinutes(_sessionTtlMinutes));
+        await OnSessionConnectedAsync(clientId, session, connectionManager, connection);
+    }
 
     public async Task Cleanup()
     {
@@ -92,6 +130,24 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
         string clientId,
         IResultPacket result)
         => Task.FromResult(result);
+
+    protected virtual Task OnSessionConnectedAsync(
+        string clientId,
+        IGameSession session,
+        ConnectionManager connectionManager,
+        AltruistConnection connection)
+        => Task.CompletedTask;
+
+    protected virtual Task OnSessionDisconnectingAsync(
+        string clientId,
+        IGameSession? session,
+        Exception? exception)
+        => Task.CompletedTask;
+
+    protected virtual Task OnSessionDisconnectedAsync(
+        string clientId,
+        Exception? exception)
+        => Task.CompletedTask;
 
     // -----------------------------------
     // Publishing logic (framework owned)

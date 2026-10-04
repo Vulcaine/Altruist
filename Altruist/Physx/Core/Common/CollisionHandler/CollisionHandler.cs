@@ -108,6 +108,13 @@ namespace Altruist.Physx
 
         public static int TotalHandlerCount => _handlers.Values.Sum(l => l.Count);
 
+        public static void Clear()
+        {
+            _handlers.Clear();
+            _byEvent.Clear();
+            _keyCache.Clear();
+        }
+
         private static HandlerKey GetOrCreateKey(Type a, Type b)
             => _keyCache.GetOrAdd((a, b), static k => new HandlerKey(k.Item1, k.Item2));
 

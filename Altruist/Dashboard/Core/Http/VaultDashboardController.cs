@@ -21,6 +21,8 @@ using Altruist.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 
+using Npgsql;
+
 namespace Altruist.Dashboard;
 
 [ApiController]
@@ -72,6 +74,7 @@ public sealed class VaultDashboardController : ControllerBase
         public string Keyspace { get; set; } = default!;
         public string TableName { get; set; } = default!;
         public bool StoreHistory { get; set; }
+        public bool SupportsSqlQuery { get; set; }
         public IReadOnlyList<VaultColumnDto> Columns { get; set; } = Array.Empty<VaultColumnDto>();
     }
 
@@ -85,6 +88,20 @@ public sealed class VaultDashboardController : ControllerBase
         public List<Dictionary<string, object?>> Items { get; set; } = new();
     }
 
+    public sealed class VaultQueryRequestDto
+    {
+        public string Sql { get; set; } = string.Empty;
+    }
+
+    public sealed class VaultQueryResultDto
+    {
+        public bool HasRowset { get; set; }
+        public string StatementKind { get; set; } = "unknown";
+        public long? AffectedRows { get; set; }
+        public IReadOnlyList<string> Columns { get; set; } = Array.Empty<string>();
+        public List<Dictionary<string, object?>> Rows { get; set; } = new();
+    }
+
     // ---------------- Helpers ----------------
 
     private static string GetShortTypeName(Type t)
@@ -94,7 +111,7 @@ public sealed class VaultDashboardController : ControllerBase
         return idx > 0 ? name[..idx] : name;
     }
 
-    private static VaultDefinitionDto BuildDefinition(VaultMetadata md)
+    private VaultDefinitionDto BuildDefinition(VaultMetadata md)
     {
         var doc = VaultDocument.From(md.ClrType);
 
@@ -151,6 +168,7 @@ public sealed class VaultDashboardController : ControllerBase
             Keyspace = md.Keyspace,
             TableName = doc.Name,
             StoreHistory = doc.StoreHistory,
+            SupportsSqlQuery = SupportsSqlQuery(md),
             Columns = columns
         };
     }
@@ -287,6 +305,72 @@ public sealed class VaultDashboardController : ControllerBase
         return Ok(defs);
     }
 
+    [HttpPost("{typeKey}/query")]
+    public async Task<ActionResult<VaultQueryResultDto>> QueryVault(
+        string typeKey,
+        [FromBody] VaultQueryRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Sql))
+            return BadRequest("SQL is required.");
+
+        var md = VaultRegistry.GetByTypeKey(typeKey);
+        if (!SupportsSqlQuery(md))
+            return BadRequest($"Raw SQL is supported only for SQL-backed vaults. '{typeKey}' is not SQL-backed.");
+
+        var dataSource = _serviceProvider.GetService<NpgsqlDataSource>();
+        if (dataSource is null)
+            return BadRequest("PostgreSQL data source is not available.");
+
+        await using var conn = await dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+        await using (var searchPath = conn.CreateCommand())
+        {
+            searchPath.CommandText = $"SET search_path TO \"{EscapeIdentifier(md.Keyspace)}\";";
+            await searchPath.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        var sql = request.Sql.Trim();
+        var result = new VaultQueryResultDto
+        {
+            HasRowset = LooksLikeRowsetQuery(sql),
+            StatementKind = GetStatementKind(sql)
+        };
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+
+        if (!result.HasRowset)
+        {
+            result.AffectedRows = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            return Ok(result);
+        }
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+
+        var columns = new List<string>(reader.FieldCount);
+        for (int i = 0; i < reader.FieldCount; i++)
+            columns.Add(reader.GetName(i));
+
+        result.Columns = columns;
+
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                object? value = await reader.IsDBNullAsync(i, ct).ConfigureAwait(false)
+                    ? null
+                    : NormalizeDbValue(reader.GetValue(i));
+                row[columns[i]] = value;
+            }
+
+            result.Rows.Add(row);
+        }
+
+        return Ok(result);
+    }
+
     [HttpGet("{typeKey}/items")]
     public async Task<ActionResult<VaultItemPageDto>> GetVaultItems(
         string typeKey,
@@ -339,5 +423,96 @@ public sealed class VaultDashboardController : ControllerBase
 
         IEnumerable<object> list = await vault.ToListAsync();
         return (total, list);
+    }
+
+    private bool SupportsSqlQuery(VaultMetadata metadata)
+    {
+        var vaultType = typeof(IVault<>).MakeGenericType(metadata.ClrType);
+        var vault = _serviceProvider.GetService(vaultType);
+        return vault is not null && IsSqlBackedVault(vault.GetType());
+    }
+
+    private static bool IsSqlBackedVault(Type type)
+    {
+        for (var current = type; current is not null; current = current.BaseType!)
+        {
+            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(SqlVault<>))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string EscapeIdentifier(string identifier)
+        => identifier.Replace("\"", "\"\"", StringComparison.Ordinal);
+
+    private static string GetStatementKind(string sql)
+    {
+        var first = sql
+            .TrimStart()
+            .Split([' ', '\t', '\r', '\n'], 2, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()?
+            .Trim()
+            .ToUpperInvariant();
+
+        return first switch
+        {
+            "SELECT" => "select",
+            "WITH" => "with",
+            "SHOW" => "show",
+            "VALUES" => "values",
+            "EXPLAIN" => "explain",
+            "UPDATE" => "update",
+            "INSERT" => "insert",
+            "DELETE" => "delete",
+            _ => "statement"
+        };
+    }
+
+    private static bool LooksLikeRowsetQuery(string sql)
+    {
+        var kind = GetStatementKind(sql);
+        return kind is "select" or "with" or "show" or "values" or "explain";
+    }
+
+    private static object? NormalizeDbValue(object? value)
+    {
+        if (value is null or DBNull)
+            return null;
+
+        if (value is JsonDocument document)
+            return JsonSerializer.Deserialize<object?>(document.RootElement.GetRawText());
+
+        if (value is byte[] bytes)
+            return Convert.ToBase64String(bytes);
+
+        if (value is Array array && value is not byte[])
+        {
+            var list = new List<object?>(array.Length);
+            foreach (var item in array)
+                list.Add(NormalizeDbValue(item));
+            return list;
+        }
+
+        if (value is string str)
+        {
+            var trimmed = str.Trim();
+            if ((trimmed.StartsWith("{", StringComparison.Ordinal) && trimmed.EndsWith("}", StringComparison.Ordinal))
+                || (trimmed.StartsWith("[", StringComparison.Ordinal) && trimmed.EndsWith("]", StringComparison.Ordinal)))
+            {
+                try
+                {
+                    return JsonSerializer.Deserialize<object?>(trimmed);
+                }
+                catch
+                {
+                    return str;
+                }
+            }
+
+            return str;
+        }
+
+        return value;
     }
 }

@@ -25,13 +25,27 @@ public interface IMigrationExecutor
     Task ApplyAsync(string schema, IReadOnlyList<MigrationOperation> operations);
 }
 
+/// <summary>
+/// Thrown when a migration operation fails. Contains the operation index,
+/// operation type, and inner exception. The transaction is rolled back before this is thrown.
+/// </summary>
+public class MigrationException : Exception
+{
+    public MigrationException(string message) : base(message) { }
+    public MigrationException(string message, Exception inner) : base(message, inner) { }
+}
+
 public abstract class AbstractMigrationExecutor : IMigrationExecutor
 {
     protected readonly ISqlDatabaseProvider _provider;
+    protected readonly int _batchSize;
 
-    protected AbstractMigrationExecutor(ISqlDatabaseProvider provider)
+    protected AbstractMigrationExecutor(
+        ISqlDatabaseProvider provider,
+        [AppConfigValue("altruist:persistence:migration:batch-size", "50000")] int batchSize = 50_000)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _batchSize = batchSize > 0 ? batchSize : 50_000;
     }
 
     public async Task ApplyAsync(string schema, IReadOnlyList<MigrationOperation> operations)
@@ -40,12 +54,41 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
             throw new ArgumentNullException(nameof(schema));
         if (operations is null)
             throw new ArgumentNullException(nameof(operations));
+        if (operations.Count == 0)
+            return;
 
         await _provider.ConnectAsync();
 
-        foreach (var op in operations)
+        // Wrap all DDL in a transaction. Postgres supports transactional DDL
+        // (CREATE TABLE, ALTER TABLE, etc.) so the entire migration is atomic.
+        // The transaction must be bound to one connection: issuing "BEGIN;"/"COMMIT;" through
+        // ExecuteAsync ran each statement on a different pooled connection (no atomicity at all).
+        if (_provider is not ISqlTransactionProvider transactional)
         {
-            await ApplyOperationAsync(schema, op);
+            for (int i = 0; i < operations.Count; i++)
+                await ApplyOrWrapAsync(schema, operations, i, atomic: false);
+            return;
+        }
+
+        await transactional.InTransactionAsync(async _ =>
+        {
+            for (int i = 0; i < operations.Count; i++)
+                await ApplyOrWrapAsync(schema, operations, i, atomic: true);
+            return true;
+        });
+    }
+
+    private async Task ApplyOrWrapAsync(string schema, IReadOnlyList<MigrationOperation> operations, int i, bool atomic)
+    {
+        try
+        {
+            await ApplyOperationAsync(schema, operations[i]);
+        }
+        catch (Exception ex)
+        {
+            throw new MigrationException(
+                $"Migration failed at operation {i + 1}/{operations.Count}: {operations[i].GetType().Name}. " +
+                (atomic ? "All changes rolled back. " : "Earlier operations were applied. ") + $"Error: {ex.Message}", ex);
         }
     }
 
@@ -61,6 +104,9 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
             // TABLE OPERATIONS
             // --------------------------------
 
+            case ArchiveTableOperation archiveTable:
+                return ApplyArchiveTableAsync(defaultSchema, archiveTable);
+
             case CreateTableOperation createTable:
                 return ApplyCreateTableAsync(defaultSchema, createTable);
 
@@ -75,6 +121,18 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
 
             case DropColumnOperation dropColumn:
                 return ApplyDropColumnAsync(defaultSchema, dropColumn);
+
+            case RenameColumnOperation renameColumn:
+                return ApplyRenameColumnAsync(defaultSchema, renameColumn);
+
+            case AlterColumnTypeOperation alterType:
+                return ApplyAlterColumnTypeAsync(defaultSchema, alterType);
+
+            case CopyColumnDataOperation copyData:
+                return ApplyCopyColumnDataAsync(defaultSchema, copyData);
+
+            case DeleteMarkedColumnOperation deleteMarked:
+                return ApplyDeleteMarkedColumnAsync(defaultSchema, deleteMarked);
 
             // --------------------------------
             // CONSTRAINT OPERATIONS
@@ -131,6 +189,16 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     protected abstract Task ApplyCreateIndexAsync(string defaultSchema, CreateIndexOperation op);
 
     protected abstract Task ApplyDropIndexAsync(string defaultSchema, DropIndexOperation op);
+
+    protected abstract Task ApplyRenameColumnAsync(string defaultSchema, RenameColumnOperation op);
+
+    protected abstract Task ApplyCopyColumnDataAsync(string defaultSchema, CopyColumnDataOperation op);
+
+    protected abstract Task ApplyDeleteMarkedColumnAsync(string defaultSchema, DeleteMarkedColumnOperation op);
+
+    protected abstract Task ApplyAlterColumnTypeAsync(string defaultSchema, AlterColumnTypeOperation op);
+
+    protected abstract Task ApplyArchiveTableAsync(string defaultSchema, ArchiveTableOperation op);
 
     protected abstract Task ApplyCreateSchemaAsync(string defaultSchema, CreateSchemaOperation createSchema);
 

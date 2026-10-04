@@ -37,8 +37,11 @@ namespace Altruist.Gaming
         [AppConfigValue("*:index")]
         int index,
 
-        [AppConfigValue("*:name")]
-        string name,
+        [AppConfigValue("*:name", null)]
+        string? name,
+
+        [AppConfigValue("*:id", null)]
+        string? id,
 
         [AppConfigValue("*:fixedDeltaTime", "0.01666f")]
         ILiveConfigValue<float> liveDelta,
@@ -57,7 +60,7 @@ namespace Altruist.Gaming
         {
             StorageId = Guid.NewGuid().ToString();
             Index = index;
-            Name = name;
+            Name = ResolveWorldName(name, id, index);
             DataPath = data;
 
             liveSize.BindTo(v => Size = v);
@@ -70,5 +73,16 @@ namespace Altruist.Gaming
         public int Width => Size.X;
         public int Height => Size.Y;
         public int Depth => Size.Z;
+
+        private static string ResolveWorldName(string? name, string? id, int index)
+        {
+            if (!string.IsNullOrWhiteSpace(name))
+                return name.Trim();
+
+            if (!string.IsNullOrWhiteSpace(id))
+                return id.Trim();
+
+            return $"World {index}";
+        }
     }
 }

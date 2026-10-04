@@ -16,6 +16,10 @@ public sealed class TestWorldObject : IWorldObject3D
 
     public string ClientId { get; set; } = string.Empty;
 
+    public uint VirtualId { get; set; }
+
+    public uint CollisionLayer { get; set; } = 0xFFFFFFFFu;
+
     public Transform3D Transform { get; set; } = Transform3D.Identity;
 
     public PhysxBody3DDesc? BodyDescriptor { get; set; }
@@ -28,7 +32,7 @@ public sealed class TestWorldObject : IWorldObject3D
 
     public IPhysxBody3D? Body { get; set; }
 
-    public void Step(float dt, IWorldPhysics3D physics)
+    public void Step(float dt, IGameWorldManager3D world)
     {
         if (Body is not IPhysxBody3D b)
             return;

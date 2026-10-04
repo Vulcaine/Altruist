@@ -105,7 +105,7 @@ public class ArenaPortal : Portal, OnConnectedAsync, OnDisconnectedAsync
         if (attacker == null) return Task.CompletedTask;
 
         // Sphere sweep — hits all monsters within radius
-        var query = SweepQuery.Sphere(attacker.PosX, attacker.PosY, attacker.PosZ, packet.Radius);
+        var query = SweepQuery3D.Sphere(attacker.PosX, attacker.PosY, attacker.PosZ, packet.Radius);
         _combat.Sweep(attacker, query);
         return Task.CompletedTask;
     }

@@ -41,6 +41,19 @@ public class AltruistLogger : ILogger
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
         var logMessage = formatter(state, exception);
+        // The formatter does not include the exception; without it errors are undiagnosable.
+        if (exception is not null)
+            logMessage = $"{logMessage}{Environment.NewLine}{exception}";
+
+        var versionMessage = $"[ALTRUIST-{_frameworkVersion}]";
+        if (Console.IsOutputRedirected)
+        {
+            // One WriteLine per entry: Console.Out is synchronized, so concurrent loggers never
+            // interleave (Write + WriteLine pairs did, and colour codes are useless in a file).
+            Console.Out.WriteLine($"{versionMessage} {logMessage}");
+            return;
+        }
+
         var logLevelColor = logLevel switch
         {
             LogLevel.Trace => ConsoleColor.Gray,
@@ -52,15 +65,16 @@ public class AltruistLogger : ILogger
             LogLevel.None => ConsoleColor.Gray,
             _ => ConsoleColor.White
         };
-
-        var versionMessage = $"[ALTRUIST-{_frameworkVersion}]";
-        var formattedMessage = $"{versionMessage} {logMessage}";
-        Console.ForegroundColor = logLevelColor;
-
-        Console.Write(versionMessage);
-        Console.ResetColor();
-        Console.WriteLine($" {logMessage}");
+        lock (ConsoleLock)
+        {
+            Console.ForegroundColor = logLevelColor;
+            Console.Write(versionMessage);
+            Console.ResetColor();
+            Console.WriteLine($" {logMessage}");
+        }
     }
+
+    private static readonly object ConsoleLock = new();
 }
 
 

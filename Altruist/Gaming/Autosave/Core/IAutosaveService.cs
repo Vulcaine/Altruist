@@ -107,6 +107,13 @@ public interface IAutosaveServiceBase
 public interface IAutosaveService<T> : IAutosaveServiceBase where T : class, IVaultModel
 {
     /// <summary>
+    /// Mark an entity as dirty using its own storage ID as the owner ID.
+    /// Useful for root entities where owner identity and storage identity are the same.
+    /// </summary>
+    /// <param name="entity">The entity that changed.</param>
+    void MarkDirty(T entity);
+
+    /// <summary>
     /// Mark an entity as dirty. It will be saved to cache immediately
     /// and flushed to DB on the next interval or on disconnect.
     /// </summary>

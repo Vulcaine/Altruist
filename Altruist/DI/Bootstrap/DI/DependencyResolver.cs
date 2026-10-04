@@ -23,9 +23,6 @@ namespace Altruist
     /// </summary>
     public static class DependencyResolver
     {
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object> _singletonCache
-            = new System.Collections.Concurrent.ConcurrentDictionary<Type, object>();
-
         private static readonly MethodInfo? _genericGetKeyedService =
             typeof(ServiceProviderServiceExtensions)
                 .GetMethods(BindingFlags.Public | BindingFlags.Static)
@@ -84,26 +81,17 @@ namespace Altruist
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
             => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
 
+        /// <summary>
+        /// Construct an instance of <paramref name="impl"/> using <paramref name="sp"/> for
+        /// transitive dependency resolution. Construction is stateless across calls — the
+        /// owning <see cref="IServiceProvider"/> is responsible for tracking singleton lifetime
+        /// (which it does natively for descriptors registered with
+        /// <see cref="ServiceLifetime.Singleton"/>). This means each provider, including
+        /// per-test child containers, gets its own singletons built against its own dependency
+        /// graph — required for substituting mocks without leaking the original instances.
+        /// </summary>
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log, ServiceLifetime lifetime)
-        {
-            if (lifetime == ServiceLifetime.Singleton)
-            {
-                // 1) If already built, just return it.
-                if (_singletonCache.TryGetValue(impl, out var existing))
-                    return existing;
-
-                // 2) Build the instance (this is where circular detection happens).
-                var obj = CreateInstanceInternal(sp, cfg, impl, log);
-
-                // 3) Cache it for future calls.
-                _singletonCache[impl] = obj;
-
-                return obj;
-            }
-
-            // Transient / other lifetimes
-            return CreateInstanceInternal(sp, cfg, impl, log);
-        }
+            => CreateInstanceInternal(sp, cfg, impl, log);
 
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
         {
@@ -111,12 +99,8 @@ namespace Altruist
 
             if (path.Contains(impl))
             {
-                // Check the singleton cache directly (no sp.GetService call which causes re-entry)
-                if (_singletonCache.TryGetValue(impl, out var cached))
-                    return cached;
-
-                // At this point, we are genuinely in a construction cycle where
-                // no concrete instance exists yet → fatal circular dependency.
+                // Genuine construction cycle. (Use Lazy<T> in a constructor parameter to
+                // break it explicitly — see CreateLazy support above.)
                 var cycle = FormatCyclePath(path, impl);
                 var msg = $"Circular dependency detected while creating {GetCleanName(impl)}. Path: {cycle}";
 
@@ -340,6 +324,9 @@ namespace Altruist
                 GetCleanName(implType),
                 lifetime);
         }
+
+        public static object? ResolveParameter(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
+            => Arg(sp, cfg, p, log);
 
         private static object? Arg(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
         {
@@ -708,9 +695,10 @@ namespace Altruist
                 target.GetGenericTypeDefinition() == typeof(ILiveConfigValue<>))
             {
                 var genArg = target.GetGenericArguments()[0];
-                var relativeKey = ExtractWildcardRelativeKey(a.Path);
+                var readKey = ExtractWildcardRelativeKey(a.Path ?? string.Empty);
+                var registryKey = ExpandWildcardPath(cfg, a.Path ?? string.Empty);
                 var wrapperType = typeof(LiveConfigValue<>).MakeGenericType(genArg);
-                return Activator.CreateInstance(wrapperType, cfg, relativeKey);
+                return Activator.CreateInstance(wrapperType, cfg, readKey, registryKey);
             }
             // -------------------------------------------------------------------
 

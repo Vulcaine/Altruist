@@ -12,9 +12,10 @@ namespace Altruist.Gaming.TwoD
     [ConditionalOnConfig("altruist:game")]
     public class VisibilityTracker2D : IVisibilityTracker
     {
-        private readonly IGameWorldOrganizer2D _organizer;
+        private IGameWorldOrganizer2D? _organizer;
         private readonly ConcurrentDictionary<string, HashSet<string>> _visibleSets = new();
         private readonly ConcurrentDictionary<string, IWorldObject2D> _observers = new();
+        private readonly ConcurrentDictionary<string, string> _observerInstanceIds = new();
 
         public float ViewRange { get; set; } = 5000f;
 
@@ -22,11 +23,23 @@ namespace Altruist.Gaming.TwoD
         public event Action<VisibilityChange>? OnEntityInvisible;
 
         public VisibilityTracker2D(
-            IGameWorldOrganizer2D organizer,
             [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f)
         {
-            _organizer = organizer;
             ViewRange = viewRange;
+        }
+
+        public void SetOrganizer(IGameWorldOrganizer2D organizer) => _organizer = organizer;
+
+        /// <summary>
+        /// Wires the tracker <-> organizer pair after both exist (a constructor dependency in both
+        /// directions is a DI cycle). Mirrors VisibilityTracker3D.WireOrganizer.
+        /// </summary>
+        [PostConstruct]
+        public void WireOrganizer(IGameWorldOrganizer2D organizer)
+        {
+            if (_organizer is not null) return;
+            organizer.SetVisibilityTracker(this);
+            SetOrganizer(organizer);
         }
 
         /// <summary>
@@ -34,18 +47,32 @@ namespace Altruist.Gaming.TwoD
         /// </summary>
         public void Tick()
         {
+            if (_organizer is null) return;
             foreach (var world in _organizer.GetAllWorlds())
             {
                 var allObjects = world.FindAllObjects<IWorldObject2D>().ToList();
+                var lookup = allObjects.ToDictionary(o => o.InstanceId, o => o);
                 var worldIndex = world.Index.Index;
 
-                foreach (var obj in allObjects)
+                foreach (var (clientId, registeredObserver) in _observers.ToArray())
                 {
-                    if (string.IsNullOrEmpty(obj.ClientId))
+                    if (!lookup.TryGetValue(registeredObserver.InstanceId, out var observer) ||
+                        string.IsNullOrEmpty(observer.ClientId))
+                    {
+                        RemoveObserver(clientId);
                         continue;
+                    }
 
-                    _observers[obj.ClientId] = obj;
-                    UpdateVisibilityFor(obj, worldIndex, allObjects);
+                    if (!string.Equals(observer.ClientId, clientId, StringComparison.Ordinal))
+                    {
+                        RemoveObserver(clientId);
+                        Observe(observer);
+                        continue;
+                    }
+
+                    _observers[clientId] = observer;
+                    _observerInstanceIds[observer.InstanceId] = clientId;
+                    UpdateVisibilityFor(observer, worldIndex, allObjects);
                 }
             }
         }
@@ -71,9 +98,7 @@ namespace Altruist.Gaming.TwoD
                 float dy = tp.Y - pos.Y;
 
                 if (dx * dx + dy * dy <= rangeSq)
-                {
                     currentlyVisible.Add(target.InstanceId);
-                }
             }
 
             var previouslyVisible = _visibleSets.GetOrAdd(clientId, _ => new HashSet<string>());
@@ -121,14 +146,43 @@ namespace Altruist.Gaming.TwoD
             AltruistPool.ReturnList(toRemove);
         }
 
+        public bool Observe(ITypelessWorldObject observer)
+        {
+            if (observer is not IWorldObject2D worldObject)
+                return false;
+
+            if (string.IsNullOrEmpty(worldObject.ClientId))
+                return false;
+
+            _observers[worldObject.ClientId] = worldObject;
+            _observerInstanceIds[worldObject.InstanceId] = worldObject.ClientId;
+            RefreshObserver(worldObject.ClientId);
+            return true;
+        }
+
         public void RefreshObserver(string clientId)
         {
             _visibleSets.TryRemove(clientId, out _);
         }
 
+        public void RemoveObserver(ITypelessWorldObject observer)
+        {
+            if (observer is not IWorldObject2D worldObject)
+                return;
+
+            if (_observerInstanceIds.TryGetValue(worldObject.InstanceId, out var clientId))
+            {
+                RemoveObserver(clientId);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(worldObject.ClientId))
+                RemoveObserver(worldObject.ClientId);
+        }
+
         public void RemoveObserver(string clientId)
         {
-            if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0)
+            if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0 && _organizer is not null)
             {
                 foreach (var world in _organizer.GetAllWorlds())
                 {
@@ -149,7 +203,8 @@ namespace Altruist.Gaming.TwoD
                 }
             }
 
-            _observers.TryRemove(clientId, out _);
+            if (_observers.TryRemove(clientId, out var observer))
+                _observerInstanceIds.TryRemove(observer.InstanceId, out _);
         }
 
         public IReadOnlySet<string>? GetVisibleEntities(string clientId)
@@ -164,6 +219,12 @@ namespace Altruist.Gaming.TwoD
                 if (visibleSet.Contains(entityInstanceId))
                     yield return clientId;
             }
+        }
+
+        public IEnumerable<ITypelessWorldObject> GetObservers()
+        {
+            foreach (var observer in _observers.Values.ToArray())
+                yield return observer;
         }
     }
 }

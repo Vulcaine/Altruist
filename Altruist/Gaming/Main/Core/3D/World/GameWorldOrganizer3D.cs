@@ -32,6 +32,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IPositionHistoryRecorder? _positionRecorder;
         private IVisibilityTracker? _visibilityTracker;
         private float _engineFrequencyHz = 25f;
+        private long _stepCount;
 
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
@@ -61,6 +62,18 @@ namespace Altruist.Gaming.ThreeD
         public void SetVisibilityTracker(IVisibilityTracker? tracker)
         {
             _visibilityTracker = tracker;
+        }
+
+        /// <summary>Flat enumeration of every 3D entity across all worlds.
+        /// Used by <see cref="IPositionHistoryRecorder"/> so the recorder
+        /// doesn't need to pull the organizer via DI (one-way push avoids a cycle).</summary>
+        private static IEnumerable<IWorldObject3D> EnumerateAllEntities(IGameWorldManager3D[] worlds)
+        {
+            for (int i = 0; i < worlds.Length; i++)
+            {
+                foreach (var obj in worlds[i].FindAllObjects<IWorldObject3D>())
+                    yield return obj;
+            }
         }
 
         private async Task InitializeWorlds(IEnumerable<IWorldIndex3D> worlds)
@@ -107,68 +120,72 @@ namespace Altruist.Gaming.ThreeD
 
         public void Step(float deltaTime)
         {
-            var worlds = _worlds.Values.ToArray();
-
-            if (worlds.Length <= 1)
+            _stepCount++;
+            try
             {
-                // Single world: tick sequentially (no thread overhead)
-                foreach (var world in worlds)
-                    StepWorld(world, deltaTime);
-            }
-            else
-            {
-                // Multiple worlds: tick in parallel (one thread per world)
-                Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                    world => StepWorld(world, deltaTime));
-            }
+                var worlds = _worlds.Values.ToArray();
 
-
-
-            // Record position history for lag compensation (after positions finalized)
-            _positionRecorder?.RecordSnapshot(Altruist.Engine.AltruistEngine.CurrentTick);
-
-            // Build per-world snapshots once — reused by AI, visibility, and sync
-            var worldSnapshots = new WorldSnapshot[worlds.Length];
-            for (int i = 0; i < worlds.Length; i++)
-            {
-                var (list, lookup) = worlds[i].GetCachedSnapshot();
-                // Cast IWorldObject3D lists to ITypelessWorldObject for dimension-agnostic services
-                var typelessList = (IReadOnlyList<ITypelessWorldObject>)list;
-                var typelessLookup = (IReadOnlyDictionary<string, ITypelessWorldObject>)(object)lookup;
-                worldSnapshots[i] = new WorldSnapshot(worlds[i].Index.Index, typelessList, typelessLookup);
-            }
-
-            // AI behaviors tick (after physics, before visibility/sync)
-            // AI is independent per-entity — safe to run on the snapshot
-            if (_aiBehaviorService != null)
-            {
-                try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
-                catch { }
-            }
-
-            // Visibility (parallel per-observer + stagger) and sync can overlap
-            // since visibility writes to _visibleSets and sync reads entity state
-            var visTask = Task.CompletedTask;
-            if (_visibilityTracker is VisibilityTracker3D tracker)
-            {
-                visTask = Task.Run(() =>
+                if (worlds.Length <= 1)
                 {
-                    try { tracker.Tick(worldSnapshots); }
+                    foreach (var world in worlds)
+                        StepWorld(world, deltaTime);
+                }
+                else
+                {
+                    Parallel.ForEach(worlds, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                        world => StepWorld(world, deltaTime));
+                }
+
+                if (_positionRecorder != null)
+                    _positionRecorder.RecordSnapshot(Altruist.Engine.AltruistEngine.CurrentTick, EnumerateAllEntities(worlds));
+
+                var worldSnapshots = new WorldSnapshot[worlds.Length];
+                for (int i = 0; i < worlds.Length; i++)
+                {
+                    var (list, lookup) = worlds[i].GetCachedSnapshot();
+                    var typelessList = (IReadOnlyList<ITypelessWorldObject>)list;
+                    // Dictionary is invariant on TValue — cannot cast directly.
+                    // Wrap with a covariant read-only view.
+                    var typelessLookup = new Dictionary<string, ITypelessWorldObject>(lookup.Count);
+                    foreach (var kvp in lookup)
+                        typelessLookup[kvp.Key] = kvp.Value;
+                    worldSnapshots[i] = new WorldSnapshot(worlds[i].Index.Index, typelessList, typelessLookup);
+                }
+
+                if (_aiBehaviorService != null)
+                {
+                    try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
                     catch { }
-                });
-            }
+                }
 
-            // Auto-sync [Synchronized] entities (delta-based)
-            // Can run concurrently with visibility — sync reads entity properties,
-            // visibility writes to separate _visibleSets dictionary
-            if (_entitySyncService != null)
+                var visTask = Task.CompletedTask;
+                if (_visibilityTracker is VisibilityTracker3D tracker)
+                {
+                    visTask = Task.Run(() =>
+                    {
+                        try { tracker.Tick(worldSnapshots); }
+                        catch (Exception ex)
+                        {
+                            System.Console.Error.WriteLine($"[VISIBILITY ERROR] {ex.GetType().Name}: {ex.Message}");
+                            System.Console.Error.WriteLine(ex.StackTrace?.Split('\n')[0]);
+                        }
+                    });
+                }
+
+                if (_entitySyncService != null)
+                {
+                    try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
+                    catch { }
+                }
+
+                visTask.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
             {
-                try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
-                catch { }
+                System.Console.Error.WriteLine($"[STEP-CRASH] #{_stepCount} {ex.GetType().Name}: {ex.Message}");
+                System.Console.Error.WriteLine(ex.StackTrace);
+                throw; // re-throw so physics worker can handle it
             }
-
-            // Wait for visibility to complete before next tick
-            visTask.GetAwaiter().GetResult();
         }
 
         private static void StepWorld(IGameWorldManager3D world, float deltaTime)
@@ -216,12 +233,13 @@ namespace Altruist.Gaming.ThreeD
             if (obj.Body is not IPhysxBody3D body)
                 return;
 
-            var newPos = Position3D.From(body.Position);
-            var newRot = Rotation3D.FromQuaternion(body.Rotation);
+            var bodyTransform = obj.Transform
+                .WithPosition(Position3D.From(body.Position))
+                .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
 
-            obj.Transform = obj.Transform
-                .WithPosition(newPos)
-                .WithRotation(newRot);
+            obj.Transform = obj is IPhysicsTransformSync3D transformSync
+                ? transformSync.GetWorldTransformFromPhysics(body)
+                : bodyTransform;
 
             if (obj.Colliders != null)
             {
@@ -229,9 +247,7 @@ namespace Altruist.Gaming.ThreeD
                 {
                     try
                     {
-                        col.Transform = col.Transform
-                            .WithPosition(newPos)
-                            .WithRotation(newRot);
+                        col.Transform = bodyTransform;
                     }
                     catch
                     {

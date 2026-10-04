@@ -14,11 +14,13 @@ namespace Altruist.Gaming;
 /// </summary>
 public sealed class SpatialHashGrid
 {
+    private readonly record struct CellKey3D(int X, int Y, int Z);
+
     private readonly float _cellSize;
     private readonly float _invCellSize;
 
     // Cell -> list of object indices in the snapshot
-    private readonly Dictionary<long, List<int>> _cells = new();
+    private readonly Dictionary<CellKey3D, List<int>> _cells = new();
 
     // Pool of index lists to avoid allocation
     private readonly List<List<int>> _listPool = new();
@@ -40,7 +42,10 @@ public sealed class SpatialHashGrid
         for (int i = 0; i < objects.Count; i++)
         {
             var pos = objects[i].Transform.Position;
-            var key = CellKey((int)(pos.X * _invCellSize), (int)(pos.Y * _invCellSize));
+            var key = CellKey(
+                (int)(pos.X * _invCellSize),
+                (int)(pos.Y * _invCellSize),
+                (int)(pos.Z * _invCellSize));
             if (!_cells.TryGetValue(key, out var list))
             {
                 list = RentList();
@@ -59,7 +64,10 @@ public sealed class SpatialHashGrid
             if (objects[i] is not ThreeD.IWorldObject3D obj3d) continue;
 
             var pos = obj3d.Transform.Position;
-            var key = CellKey((int)(pos.X * _invCellSize), (int)(pos.Y * _invCellSize));
+            var key = CellKey(
+                (int)(pos.X * _invCellSize),
+                (int)(pos.Y * _invCellSize),
+                (int)(pos.Z * _invCellSize));
 
             if (!_cells.TryGetValue(key, out var list))
             {
@@ -90,30 +98,35 @@ public sealed class SpatialHashGrid
     /// Returns indices into the snapshot's AllObjects list.
     /// Uses the provided buffer to avoid allocation.
     /// </summary>
-    public void QueryRadius(float x, float y, float radius, List<int> results)
+    public void QueryRadius(float x, float y, float z, float radius, List<int> results)
     {
         results.Clear();
         int minCx = (int)((x - radius) * _invCellSize);
         int maxCx = (int)((x + radius) * _invCellSize);
         int minCy = (int)((y - radius) * _invCellSize);
         int maxCy = (int)((y + radius) * _invCellSize);
+        int minCz = (int)((z - radius) * _invCellSize);
+        int maxCz = (int)((z + radius) * _invCellSize);
 
         for (int cx = minCx; cx <= maxCx; cx++)
         {
             for (int cy = minCy; cy <= maxCy; cy++)
             {
-                var key = CellKey(cx, cy);
-                if (_cells.TryGetValue(key, out var list))
+                for (int cz = minCz; cz <= maxCz; cz++)
                 {
-                    for (int i = 0; i < list.Count; i++)
-                        results.Add(list[i]);
+                    var key = CellKey(cx, cy, cz);
+                    if (_cells.TryGetValue(key, out var list))
+                    {
+                        for (int i = 0; i < list.Count; i++)
+                            results.Add(list[i]);
+                    }
                 }
             }
         }
     }
 
-    private static long CellKey(int cx, int cy)
-        => ((long)cx << 32) | (uint)cy;
+    private static CellKey3D CellKey(int cx, int cy, int cz)
+        => new(cx, cy, cz);
 
     private List<int> RentList()
     {

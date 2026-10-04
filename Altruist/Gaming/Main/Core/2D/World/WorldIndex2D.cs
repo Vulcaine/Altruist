@@ -31,8 +31,10 @@ namespace Altruist.Gaming
         public WorldIndex2D(
             [AppConfigValue("*:index")]
             int index,
-             [AppConfigValue("*:name")]
-            string name,
+            [AppConfigValue("*:name", null)]
+            string? name,
+            [AppConfigValue("*:id", null)]
+            string? id,
             [AppConfigValue("*:fixedDeltaTime", "0.01666f")]
             float fixedDeltaTime,
             [AppConfigValue("*:size")]
@@ -51,10 +53,21 @@ namespace Altruist.Gaming
             Gravity = gravity ?? new Vector2(0f, -9.81f);
             Position = position ?? Vector2.Zero;
             DataPath = data;
-            Name = name;
+            Name = ResolveWorldName(name, id, index);
         }
 
         public int Width => Size.X;
         public int Height => Size.Y;
+
+        private static string ResolveWorldName(string? name, string? id, int index)
+        {
+            if (!string.IsNullOrWhiteSpace(name))
+                return name.Trim();
+
+            if (!string.IsNullOrWhiteSpace(id))
+                return id.Trim();
+
+            return $"World {index}";
+        }
     }
 }

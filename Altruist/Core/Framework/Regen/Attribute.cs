@@ -51,12 +51,12 @@ public class CycleRate
     /// A **higher frequency (Hz) results in faster execution** for time-based units (Seconds, Milliseconds).
     /// However, for **Ticks, a higher frequency means slower execution** since it directly maps to CPU tick rate.
     /// </remarks>
-    public CycleRate(int frequencyHz, CycleUnit? unit = CycleUnit.Ticks)
+    public CycleRate(int frequencyHz, CycleUnit unit = CycleUnit.Ticks)
     {
         if (frequencyHz <= 0)
             throw new ArgumentException("Frequency must be a positive value.", nameof(frequencyHz));
 
-        Unit = unit ?? CycleUnit.Ticks;
+        Unit = unit;
 
         Value = unit switch
         {
@@ -128,7 +128,7 @@ public class CycleAttribute : Attribute
     /// </summary>
     /// <param name="frequencyHz">The frequency in Hertz (times per second) for scheduling the method.</param>
     /// <exception cref="ArgumentException">Thrown when the <paramref name="frequencyHz"/> is less than or equal to 0.</exception>
-    public CycleAttribute(int frequencyHz, CycleUnit? unit = CycleUnit.Ticks)
+    public CycleAttribute(int frequencyHz, CycleUnit unit = CycleUnit.Ticks)
     {
         if (frequencyHz <= 0)
             throw new ArgumentException("Frequency must be a positive value.", nameof(frequencyHz));

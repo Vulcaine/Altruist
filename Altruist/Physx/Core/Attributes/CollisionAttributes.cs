@@ -18,7 +18,7 @@ namespace Altruist.Physx
     /// types this handler cares about, e.g.:
     ///
     ///   [CollisionEvent(typeof(PlayerHitTreeEvent))]
-    ///   void OnHit(Player player, Tree tree) { ... }
+    ///   void OnHit(PlayerHitTreeEvent payload, Player player, Tree tree) { ... }
     /// </summary>
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
     public sealed class CollisionEventAttribute : Attribute
@@ -43,7 +43,14 @@ namespace Altruist.Physx
     public class CollisionExit { }
 
     /// <summary>One-shot hit (combat damage, projectile impact). No tracking.</summary>
-    public class CollisionHit { }
+    public class CollisionHit
+    {
+        public object? Source { get; init; }
+        public object? Target { get; init; }
+        public int Damage { get; init; }
+        public uint Flags { get; init; }
+        public object? Context { get; init; }
+    }
 
     // ── Visibility events (bridged from VisibilityTracker) ───────────
 

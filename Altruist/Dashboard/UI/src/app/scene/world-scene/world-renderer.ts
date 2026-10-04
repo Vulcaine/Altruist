@@ -32,6 +32,8 @@ export class WorldRenderer {
 
   /** ✅ meshes created for each object instanceId (for accurate zoom/focus) */
   private meshesByObjectId = new Map<string, THREE.Object3D[]>();
+  private cameraNear = 1;
+  private cameraFar = 30000;
 
   constructor(
     private readonly input: WorldInputController,
@@ -45,7 +47,12 @@ export class WorldRenderer {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x020617);
 
-    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100000);
+    this.camera = new THREE.PerspectiveCamera(
+      60,
+      width / height,
+      this.cameraNear,
+      this.cameraFar,
+    );
     this.camera.position.set(0, 0, 0);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.4);
@@ -79,8 +86,11 @@ export class WorldRenderer {
       // user moved the camera manually -> stop auto-follow until they click a selection again
       this.followSelection = false;
     };
+    this.input.requestFocus = (center, radius) => {
+      this.focusCameraOnBounds(center, radius);
+    };
 
-    this.input.attach();
+    this.input.attach(this.renderer.domElement);
     this.lastFrameTime = performance.now();
   }
 
@@ -389,6 +399,40 @@ export class WorldRenderer {
       if (!isFinite(maxDim) || maxDim <= 0) maxDim = 1;
     }
 
+    this.focusCameraOnBounds(center, maxDim);
+  }
+
+  setCameraClip(near: number, far: number): void {
+    this.cameraNear = THREE.MathUtils.clamp(
+      Number.isFinite(near) ? near : this.cameraNear,
+      0.01,
+      100000,
+    );
+    this.cameraFar = THREE.MathUtils.clamp(
+      Number.isFinite(far) ? far : this.cameraFar,
+      this.cameraNear + 1,
+      10000000,
+    );
+
+    if (!this.camera) {
+      return;
+    }
+
+    this.camera.near = this.cameraNear;
+    this.camera.far = this.cameraFar;
+    this.camera.updateProjectionMatrix();
+  }
+
+  getCameraClip(): { near: number; far: number } {
+    return {
+      near: this.cameraNear,
+      far: this.cameraFar,
+    };
+  }
+
+  private focusCameraOnBounds(center: THREE.Vector3, maxDim: number): void {
+    if (!this.camera) return;
+
     // compute a good distance based on FOV (zoom *in*, not far away)
     const fov = (this.camera.fov * Math.PI) / 180;
     let distance = maxDim / (2 * Math.tan(fov / 2));
@@ -414,6 +458,7 @@ export class WorldRenderer {
     this.input.setOrientationFromDirection(dir);
 
     this.camera.lookAt(center);
+    this.input.setFocusTarget(center, distance, maxDim);
   }
 
   private fitCameraToGroup(): void {
@@ -441,5 +486,6 @@ export class WorldRenderer {
 
     this.input.setOrientationFromDirection(forward);
     this.camera.lookAt(center);
+    this.input.setFocusTarget(center, distance, maxDim);
   }
 }

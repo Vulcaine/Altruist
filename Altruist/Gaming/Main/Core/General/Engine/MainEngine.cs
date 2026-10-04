@@ -51,9 +51,6 @@ public class AltruistEngine : IAltruistEngine
     private readonly Dictionary<TaskIdentifier, long> _staticLastRunFrame = new();     // for frame-based
     private readonly Dictionary<TaskIdentifier, Task> _staticInFlight = new();
 
-    // Cache only for building the static delegates (startup-time).
-    private readonly Dictionary<string, Action> _staticDelegateCache = new();
-
     // -------- Effects --------
     private readonly ConcurrentDictionary<TaskIdentifier, DynamicEffectTask> _effects = new();
 
@@ -72,10 +69,13 @@ public class AltruistEngine : IAltruistEngine
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
         IGameWorldOrganizer worldCoordinator,
-        [AppConfigValue("altruist:game:engine:framerateHz", "30")] int engineFrequencyHz = 30,
+        [AppConfigValue("altruist:game:engine:framerateHz")] int? framerateHz = null,
         [AppConfigValue("altruist:game:engine:unit")] CycleUnit unit = CycleUnit.Ticks,
-        [AppConfigValue("altruist:game:engine:throttle")] int? throttle = null)
+        [AppConfigValue("altruist:game:engine:throttle")] int? throttle = null,
+        // Examples and docs use `frequency`; accept it as an alias for framerateHz.
+        [AppConfigValue("altruist:game:engine:frequency")] int? frequency = null)
     {
+        var engineFrequencyHz = framerateHz ?? frequency ?? 30;
         _serviceProvider = serviceProvider;
         _appStatus = serverStatus;
         _worldCoordinator = worldCoordinator;
@@ -314,7 +314,15 @@ public class AltruistEngine : IAltruistEngine
                 while (_physicsTicks.Reader.TryRead(out var v))
                     dt = v;
 
-                _worldCoordinator.Step(dt);
+                try
+                {
+                    _worldCoordinator.Step(dt);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    System.Console.Error.WriteLine($"[PHYSICS-WORKER] Step() threw: {ex.GetType().Name}: {ex.Message}");
+                    // Don't die — keep the loop running
+                }
             }
         }
         catch (OperationCanceledException)
@@ -479,21 +487,17 @@ public class AltruistEngine : IAltruistEngine
                     $"Cannot resolve dependency of type {paramType.FullName} for method {methodInfo.Name}.");
         }
 
-        var cacheKey = GenerateCacheKey(methodInfo, resolvedParameters);
-
-        if (!_staticDelegateCache.TryGetValue(cacheKey, out var precompiled))
-        {
-            precompiled = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
-            _staticDelegateCache[cacheKey] = precompiled;
-        }
+        // No cache. CreateTaskDelegate wraps `void` methods in a shared closure
+        // (same lambda source line → same compiler-generated method), so caching
+        // by methodInfo+paramTypes collapses all void [Cycle]s to one key.
+        // The first void registration would then own the cached precompiled,
+        // and every later void [Cycle] would silently invoke the first one
+        // forever — i.e. only one of N void [Cycle] handlers would ever run.
+        // ScheduleTask is called once per handler at startup; the cost of
+        // building a fresh wrapper here is negligible.
+        var precompiled = CreateDelegateWithResolvedParameters(taskDelegate, resolvedParameters);
 
         _staticTasks.Add(new EngineStaticTask(precompiled, actualRate, Stopwatch.GetTimestamp()));
-    }
-
-    private static string GenerateCacheKey(MethodInfo methodInfo, object[] resolvedParameters)
-    {
-        var paramTypes = string.Join(",", resolvedParameters.Select(p => p?.GetType().FullName));
-        return $"{methodInfo.DeclaringType!.FullName}.{methodInfo.Name}({paramTypes})";
     }
 
     private static Action CreateDelegateWithResolvedParameters(Delegate taskDelegate, object[] resolvedParameters)

@@ -115,9 +115,10 @@ public sealed class WebSocketTransport : ITransport
                     route = new RouteInfo(context.Request.Path, shieldAttr.GetType());
                     _routes[route.Path] = route;
                 }
-                else if (route?.ShieldType is not null)
+                else
                 {
-                    // No route info and no shield metadata: just continue as normal
+                    // Unknown routes must not be accepted as generic WebSocket connections.
+                    // Without this guard, stale/fallback clients can create orphan sessions.
                     await next();
                     return;
                 }

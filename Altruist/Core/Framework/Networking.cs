@@ -178,9 +178,12 @@ public static class Synchronization
 
         lock (entityLock)
         {
+            // Networking must always enumerate the [Synced] surface of the entity.
+            // `forceAllAsChanged` means "send every synced property right now",
+            // not "switch to a different metadata source".
             var metadata = SyncMetadataHelper.GetSyncMetadata(
                 newEntity.GetType(),
-                onlySyncedProperties: !forceAllAsChanged);
+                onlySyncedProperties: true);
             var properties = metadata.Properties;
             var count = metadata.Count;
 
@@ -205,6 +208,8 @@ public static class Synchronization
                 changedData.Clear();
             }
 
+            bool anyChange = false;
+
             for (int i = 0; i < count; i++)
             {
                 var prop = properties[i];
@@ -226,23 +231,33 @@ public static class Synchronization
 
                     changedData[prop.Name] = newValue;
                     lastState[i] = CloneValueIfNeeded(newValue);
+                    anyChange = true;
                 }
             }
 
-            // SyncAlways properties: always included, pre-computed indices (zero allocation)
-            var alwaysIndices = metadata.SyncAlwaysIndices;
-            for (int j = 0; j < alwaysIndices.Length; j++)
+            // SyncAlways means "include in any sync packet", not "force a packet
+            // every tick". Sending one per visible entity per tick scales to
+            // 1000s of entities × 25 Hz = catastrophic packet rate. Only piggy-
+            // back the SyncAlways properties on packets that already carry a
+            // real delta — routing fields like VirtualId still ride along
+            // whenever something else changes, which is when the client
+            // actually needs to demux them.
+            if (anyChange || forceAllAsChanged)
             {
-                var i = alwaysIndices[j];
-                var prop = properties[i];
-                var newValue = prop.Getter(newEntity);
+                var alwaysIndices = metadata.SyncAlwaysIndices;
+                for (int j = 0; j < alwaysIndices.Length; j++)
+                {
+                    var i = alwaysIndices[j];
+                    var prop = properties[i];
+                    var newValue = prop.Getter(newEntity);
 
-                int maskIndex = i / 64;
-                int bitIndex = i % 64;
-                masks[maskIndex] |= 1UL << bitIndex;
+                    int maskIndex = i / 64;
+                    int bitIndex = i % 64;
+                    masks[maskIndex] |= 1UL << bitIndex;
 
-                changedData[prop.Name] = newValue;
-                lastState[i] = CloneValueIfNeeded(newValue);
+                    changedData[prop.Name] = newValue;
+                    lastState[i] = CloneValueIfNeeded(newValue);
+                }
             }
 
             return (masks, maskCount, changedData);

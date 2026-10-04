@@ -45,8 +45,15 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         coordinator.Register(this);
     }
 
+    public void MarkDirty(T entity)
+    {
+        EnsureStorageId(entity);
+        MarkDirty(entity, entity.StorageId);
+    }
+
     public void MarkDirty(T entity, string ownerId)
     {
+        EnsureStorageId(entity);
         _dirtyMap[entity.StorageId] = ownerId;
         _ = _cache.SaveAsync(entity.StorageId, entity);
         _wal?.Append(entity, ownerId);
@@ -54,12 +61,27 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
 
     public async Task SaveAsync(T entity)
     {
+        EnsureStorageId(entity);
         await _cache.SaveAsync(entity.StorageId, entity);
 
         if (_vault != null)
             await _vault.SaveAsync(entity);
 
         _dirtyMap.TryRemove(entity.StorageId, out _);
+    }
+
+    // Fresh vault rows arrive here with an empty StorageId — the vault layer's
+    // OnSave hook would assign one inside _vault.SaveAsync, but by then the
+    // cache key (and dirty-map key) above are already empty-string, so every
+    // row in a save batch would silently overwrite the same cache slot. Run
+    // the same id-assignment OnSave does, but only for the StorageId — leave
+    // Timestamp/Type/Version for the real OnSave inside the vault save.
+    private static void EnsureStorageId(T entity)
+    {
+        if (!string.IsNullOrEmpty(entity.StorageId)) return;
+        entity.StorageId = entity is IIdGenerator generator
+            ? generator.GenerateId()
+            : Guid.NewGuid().ToString();
     }
 
     public async Task<T?> LoadAsync(string storageId)

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Altruist.Gaming.Questing</RootNamespace>
+    <AssemblyName>Questing</AssemblyName>
+    <PackageId>Altruist.Gaming.Questing</PackageId>
+    <Version>0.9.6-beta</Version>
+  </PropertyGroup>
+</Project>

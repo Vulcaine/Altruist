@@ -33,12 +33,14 @@ export interface ColliderDto {
   shape: PhysxColliderShape3D;
   isTrigger: boolean;
   transform: TransformDto;
+  transformSpace?: string;
   heightfield?: HeightfieldDto | null;
 }
 
 export interface WorldObjectDto {
   instanceId: string;
   archetype: string;
+  name?: string;
   zoneId: string;
   clientId: string;
   expired: boolean;

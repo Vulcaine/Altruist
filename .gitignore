@@ -77,3 +77,6 @@ Temp/
 obj/
 UserSettings/
 
+
+# Raw benchmark runs (Benchmarks/run.sh); the curated numbers live in BENCHMARK_RESULTS.md
+Benchmarks/results/

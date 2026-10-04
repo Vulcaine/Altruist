@@ -1,120 +1,240 @@
-// using System.Numerics;
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
 
-// using Altruist.Physx.ThreeD;
+using System.Collections.Concurrent;
+using System.Numerics;
+using Altruist.Physx.ThreeD;
+using Microsoft.Extensions.Logging;
 
-// namespace Altruist.Gaming.ThreeD;
+namespace Altruist.Gaming.ThreeD;
 
-// public interface INavMeshRuntime
-// {
-//     NavAgent CreateAgent(IPhysxBody3D body, float speed);
-//     void RemoveAgent(NavAgent agent);
+/// <summary>"Follow the path" runtime for an entity. Holds a current path,
+/// advances along it, and tracks whether re-planning is needed (target
+/// moved past a tolerance). Stateful per-entity; owners (mob AI, player
+/// click-to-move, charge skill) create one and tick it each frame.
+///
+/// Two usage modes:
+/// 1. <b>Manual.</b> Construct with just the service + zone; the caller
+///    drives motion (reads <see cref="CurrentWaypoint"/>, moves the body
+///    however it wants, calls <see cref="StepToward"/> on arrival). This
+///    is what the charge skill uses — it has its own KCC-driven motion
+///    pipeline and just needs the path waypoints.
+/// 2. <b>Body-bound.</b> Construct with a physics body + speed; pass the
+///    agent to an <see cref="INavMeshRuntime"/> via <see cref="INavMeshRuntime.RegisterAgent"/>.
+///    The runtime ticks every registered agent each frame, sets
+///    <c>body.LinearVelocity</c> in the direction of the next waypoint,
+///    and handles arrival/replan automatically. Right shape for mob AI.</summary>
+public sealed class NavMeshAgent
+{
+    private readonly INavMeshService _service;
+    private readonly string _zone;
 
-//     /// <summary>Request a new path for an agent; returns false if path failed.</summary>
-//     bool SetDestination(NavAgent agent, Vector3 destination);
+    private NavPath _path = NavPath.Empty;
+    private int _waypointIdx;
+    private Vector3 _lastDestination;
+    private float _replanIfTargetMovedSq;
 
-//     /// <summary>Advance all agents by deltaTime seconds.</summary>
-//     void Update(float deltaTime);
-// }
+    /// <summary>Optional physics body the runtime drives. Null in manual
+    /// mode.</summary>
+    public IPhysxBody3D? Body { get; }
+    /// <summary>Movement speed in world units per second; only meaningful
+    /// when <see cref="Body"/> is set.</summary>
+    public float Speed { get; set; }
+    /// <summary>How close the agent has to be to the current waypoint
+    /// before advancing the cursor. Body-bound agents that aren't quite
+    /// arriving (oscillating around the waypoint) usually want this raised.</summary>
+    public float ArrivalRadius { get; set; } = 0.4f;
 
-// [Service(typeof(INavMeshRuntime))]
-// public sealed class NavMeshRuntime : INavMeshRuntime
-// {
-//     private readonly INavMeshService _navMesh;
-//     private readonly HashSet<NavAgent> _agents = new();
+    /// <summary>Manual-mode constructor: caller drives motion, agent just
+    /// holds path state.</summary>
+    public NavMeshAgent(INavMeshService service, string zone, float replanIfTargetMovedBy = 1.5f)
+    {
+        _service = service ?? throw new ArgumentNullException(nameof(service));
+        _zone = zone ?? throw new ArgumentNullException(nameof(zone));
+        _replanIfTargetMovedSq = replanIfTargetMovedBy * replanIfTargetMovedBy;
+    }
 
-//     public NavMeshRuntime(INavMeshService navMesh)
-//     {
-//         _navMesh = navMesh ?? throw new ArgumentNullException(nameof(navMesh));
-//     }
+    /// <summary>Body-bound constructor: an <see cref="INavMeshRuntime"/>
+    /// drives motion. <paramref name="speed"/> is in world units per
+    /// second (mobs and players typically run at 4–8).</summary>
+    public NavMeshAgent(INavMeshService service, string zone, IPhysxBody3D body, float speed, float replanIfTargetMovedBy = 1.5f)
+        : this(service, zone, replanIfTargetMovedBy)
+    {
+        Body = body ?? throw new ArgumentNullException(nameof(body));
+        Speed = speed;
+    }
 
-//     public NavAgent CreateAgent(IPhysxBody3D body, float speed)
-//     {
-//         if (body is null)
-//             throw new ArgumentNullException(nameof(body));
+    public NavPath CurrentPath => _path;
+    public bool HasPath => _path.Waypoints.Count > 0 && _waypointIdx < _path.Waypoints.Count;
 
-//         var snapped = _navMesh.SamplePosition(body.Position);
-//         body.Position = snapped;
+    /// <summary>The next world-space waypoint the agent is heading toward,
+    /// or null if the path is exhausted.</summary>
+    public Vector3? CurrentWaypoint
+        => HasPath ? _path.Waypoints[_waypointIdx] : (Vector3?)null;
 
-//         var agent = new NavAgent(body, speed);
-//         _agents.Add(agent);
-//         return agent;
-//     }
+    /// <summary>Plan a path from <paramref name="from"/> to <paramref name="to"/>.
+    /// Replaces any in-flight path. Returns true on success.</summary>
+    public bool SetDestination(Vector3 from, Vector3 to)
+    {
+        var fresh = _service.FindPath(_zone, from, to);
+        if (fresh.Waypoints.Count == 0)
+        {
+            _path = NavPath.Empty;
+            _waypointIdx = 0;
+            return false;
+        }
+        _path = fresh;
+        _waypointIdx = 1; // 0 is the start point itself; first goal is 1
+        _lastDestination = to;
+        return true;
+    }
 
-//     public void RemoveAgent(NavAgent agent)
-//     {
-//         _agents.Remove(agent);
-//     }
+    /// <summary>Tracking variant: re-plans automatically when the target
+    /// has moved more than the agent's replan tolerance since the last
+    /// path. Cheap when the target is still — just a squared-distance
+    /// compare.</summary>
+    public bool TrackTarget(Vector3 from, Vector3 movingTarget)
+    {
+        if (!HasPath)
+            return SetDestination(from, movingTarget);
 
-//     public bool SetDestination(NavAgent agent, Vector3 destination)
-//     {
-//         if (!_agents.Contains(agent))
-//             throw new InvalidOperationException("Agent is not registered with this runtime.");
+        float dx = movingTarget.X - _lastDestination.X;
+        float dz = movingTarget.Z - _lastDestination.Z;
+        if (dx * dx + dz * dz > _replanIfTargetMovedSq)
+            return SetDestination(from, movingTarget);
 
-//         var start = agent.Position;
-//         destination = _navMesh.SamplePosition(destination);
+        return true;
+    }
 
-//         if (!_navMesh.TryFindPath(start, destination, out var path))
-//         {
-//             agent.CurrentPath = null;
-//             agent.CurrentWaypointIndex = 0;
-//             return false;
-//         }
+    /// <summary>Advance the waypoint cursor if the agent is within
+    /// <paramref name="arrivalRadius"/> of the current waypoint. Returns
+    /// the position the agent should head toward this frame (current
+    /// waypoint), or null if the path is fully consumed.</summary>
+    public Vector3? StepToward(Vector3 currentPosition, float arrivalRadius = 0.4f)
+    {
+        if (!HasPath) return null;
 
-//         agent.CurrentPath = path;
-//         agent.CurrentWaypointIndex = 0;
-//         return true;
-//     }
+        var target = _path.Waypoints[_waypointIdx];
+        float dx = target.X - currentPosition.X;
+        float dz = target.Z - currentPosition.Z;
+        if (dx * dx + dz * dz <= arrivalRadius * arrivalRadius)
+        {
+            _waypointIdx++;
+            if (!HasPath) return null;
+            target = _path.Waypoints[_waypointIdx];
+        }
+        return target;
+    }
 
-//     public void Update(float deltaTime)
-//     {
-//         if (deltaTime <= 0f)
-//             return;
+    public void Stop()
+    {
+        _path = NavPath.Empty;
+        _waypointIdx = 0;
+        if (Body != null)
+            Body.LinearVelocity = Vector3.Zero;
+    }
 
-//         foreach (var agent in _agents)
-//         {
-//             if (!agent.HasPath)
-//                 continue;
+    /// <summary>Body-bound tick: read body position, advance toward next
+    /// waypoint at <see cref="Speed"/>, set body velocity, advance cursor
+    /// on arrival. Called by <see cref="INavMeshRuntime.Update"/> for every
+    /// registered agent. No-op on manual-mode agents (no body).</summary>
+    public void Tick(float dt)
+    {
+        if (Body == null) return;
+        if (!HasPath || Speed <= 0f)
+        {
+            Body.LinearVelocity = Vector3.Zero;
+            return;
+        }
 
-//             AdvanceAgent(agent, deltaTime);
-//         }
-//     }
+        var next = StepToward(Body.Position, ArrivalRadius);
+        if (next == null)
+        {
+            Body.LinearVelocity = Vector3.Zero;
+            return;
+        }
 
-//     private static void AdvanceAgent(NavAgent agent, float dt)
-//     {
-//         var path = agent.CurrentPath!;
-//         var waypoints = path.Waypoints;
-//         var idx = agent.CurrentWaypointIndex;
+        // Y component is left at the body's current Y velocity so gravity /
+        // kinematic falls aren't clobbered.
+        Body.MoveToward(next.Value, Speed, dt);
+    }
+}
 
-//         if (idx >= waypoints.Count)
-//         {
-//             agent.CurrentPath = null;
-//             agent.Body.LinearVelocity = Vector3.Zero;
-//             return;
-//         }
+/// <summary>Central registry + ticker for body-bound nav-mesh agents.
+/// Games that want full automation (mob AI, click-to-move, patrol)
+/// register their agents here and call <see cref="Update"/> once per
+/// game tick — the runtime walks every agent, advances paths, and writes
+/// to the bound physics bodies. Manual-mode agents (the charge skill
+/// driving its own motion) skip this entirely.</summary>
+public interface INavMeshRuntime
+{
+    NavMeshAgent CreateAgent(string zone, IPhysxBody3D body, float speed, float replanIfTargetMovedBy = 1.5f);
+    void RegisterAgent(NavMeshAgent agent);
+    void RemoveAgent(NavMeshAgent agent);
+    int RegisteredCount { get; }
+    /// <summary>Tick every registered agent. Typically called once per
+    /// world step from a <c>[PostStep]</c> service.</summary>
+    void Update(float dt);
+}
 
-//         var pos = agent.Position;
-//         var target = waypoints[idx];
+[Service(typeof(INavMeshRuntime))]
+[ConditionalOnConfig("altruist:game")]
+public sealed class NavMeshRuntime : INavMeshRuntime
+{
+    private readonly INavMeshService _navMesh;
+    private readonly ILogger _logger;
+    private readonly ConcurrentDictionary<NavMeshAgent, byte> _agents = new();
 
-//         var toTarget = target - pos;
-//         var distance = toTarget.Length();
+    public NavMeshRuntime(INavMeshService navMesh, ILoggerFactory loggerFactory)
+    {
+        _navMesh = navMesh;
+        _logger = loggerFactory.CreateLogger<NavMeshRuntime>();
+    }
 
-//         // Close enough to this waypoint → move to next.
-//         if (distance < 0.05f)
-//         {
-//             agent.CurrentWaypointIndex++;
-//             if (agent.CurrentWaypointIndex >= waypoints.Count)
-//             {
-//                 agent.CurrentPath = null;
-//                 agent.Body.LinearVelocity = Vector3.Zero;
-//             }
-//             return;
-//         }
+    public int RegisteredCount => _agents.Count;
 
-//         var dir = toTarget / MathF.Max(distance, 1e-6f);
-//         var desiredVelocity = dir * agent.Speed;
+    public NavMeshAgent CreateAgent(string zone, IPhysxBody3D body, float speed, float replanIfTargetMovedBy = 1.5f)
+    {
+        var agent = new NavMeshAgent(_navMesh, zone, body, speed, replanIfTargetMovedBy);
+        RegisterAgent(agent);
+        return agent;
+    }
 
-//         // Physics will handle actual integration & collisions.
-//         agent.Body.LinearVelocity = desiredVelocity;
-//     }
+    public void RegisterAgent(NavMeshAgent agent)
+    {
+        if (agent == null) throw new ArgumentNullException(nameof(agent));
+        if (agent.Body == null)
+            throw new ArgumentException("Agent must be body-bound to register with the runtime; use the body+speed constructor.", nameof(agent));
+        _agents.TryAdd(agent, 0);
+    }
 
-// }
+    public void RemoveAgent(NavMeshAgent agent)
+    {
+        if (agent == null) return;
+        _agents.TryRemove(agent, out _);
+        agent.Stop();
+    }
+
+    public void Update(float dt)
+    {
+        if (dt <= 0f || _agents.IsEmpty) return;
+        // Snapshot to a flat array so concurrent register/remove during
+        // tick (e.g. an AI behavior un-registers on death) doesn't fault
+        // the enumerator. Iteration order doesn't matter — agents are
+        // independent.
+        foreach (var kv in _agents)
+        {
+            try
+            {
+                kv.Key.Tick(dt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[NavMeshRuntime] agent tick threw — removing it.");
+                _agents.TryRemove(kv.Key, out _);
+            }
+        }
+    }
+}

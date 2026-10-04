@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 using System.Collections.Concurrent;
 
-public static class PortalGateRegistry<TMarker>
+public static class PortalGateRegistry<TMarker> where TMarker : notnull
 {
     private static readonly ConcurrentDictionary<string, List<Delegate>> _handlers =
         new(StringComparer.Ordinal);
@@ -41,6 +41,21 @@ public static class PortalGateRegistry<TMarker>
         return _handlers.TryGetValue(eventName, out var list)
             ? list.ToArray()
             : Array.Empty<Delegate>();
+    }
+
+    public static IReadOnlyList<(string EventName, Delegate Handler)> GetAllHandlerEntries()
+    {
+        var entries = new List<(string EventName, Delegate Handler)>();
+        foreach (var (eventName, list) in _handlers)
+        {
+            lock (list)
+            {
+                foreach (var handler in list)
+                    entries.Add((eventName, handler));
+            }
+        }
+
+        return entries;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
     height: 100%;
     width: 100%;
     display: flex;
+    position: relative;
 }
 
 .world-scene-viewport {
@@ -10,4 +11,61 @@
     min-width: 0;
     position: relative;
     overflow: hidden;
+}
+
+.world-speed-control {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(208, 140, 14, 0.28);
+    background: rgba(7, 7, 9, 0.72);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    backdrop-filter: blur(8px);
+}
+
+.world-speed-control input {
+    width: 72px;
+    border: 1px solid rgba(208, 140, 14, 0.26);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    padding: 4px 6px;
+}
+
+.world-clip-control {
+    position: absolute;
+    top: 58px;
+    right: 12px;
+    z-index: 5;
+    display: inline-flex;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(208, 140, 14, 0.24);
+    background: rgba(7, 7, 9, 0.72);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    backdrop-filter: blur(8px);
+}
+
+.world-clip-control label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.world-clip-control input {
+    width: 86px;
+    border: 1px solid rgba(208, 140, 14, 0.26);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    padding: 4px 6px;
 }

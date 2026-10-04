@@ -25,6 +25,7 @@ public interface IAltruistConnection : IStoredModel
     AuthDetails? AuthDetails { get; }
     public string Route { get; set; }
     string ConnectionId { get; }
+    void SetId(string connectionId);
     string RemoteAddress { get; }
     DateTime ConnectedAt { get; }
     Task SendAsync(byte[] data);
@@ -38,6 +39,8 @@ public interface IAltruistConnection : IStoredModel
 
 public class AltruistConnection : StoredModel, IAltruistConnection
 {
+    private string _connectionId = string.Empty;
+
     [JsonIgnore]
     public AuthDetails? AuthDetails { get; set; }
 
@@ -55,7 +58,11 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     public override string Type { get => GetType().Name; set { } }
 
     [JsonPropertyName("connectionId")]
-    public string ConnectionId { get; set; } = string.Empty;
+    public string ConnectionId
+    {
+        get => _connectionId;
+        set => SetIdCore(value, allowEmpty: true);
+    }
 
     [JsonPropertyName("isConnected")]
     public virtual bool IsConnected { get; set; }
@@ -64,10 +71,37 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
     public override string StorageId { get; set; } = Guid.NewGuid().ToString();
 
+    public void SetId(string connectionId)
+        => SetIdCore(connectionId, allowEmpty: false);
+
+    private void SetIdCore(string connectionId, bool allowEmpty)
+    {
+        if (string.IsNullOrWhiteSpace(connectionId))
+        {
+            if (allowEmpty)
+            {
+                _connectionId = string.Empty;
+                return;
+            }
+
+            throw new ArgumentException("Connection id cannot be empty.", nameof(connectionId));
+        }
+
+        _connectionId = connectionId.Trim();
+        StorageId = _connectionId;
+    }
+
     public virtual Task CloseOutputAsync()
     {
         throw new NotImplementedException();
     }
+
+    /// <summary>
+    /// Tears the connection down at once, without a close handshake and without waiting for a
+    /// pending send (e.g. a peer that stopped reading). The read loop then ends and the normal
+    /// disconnect path runs. Transports without an abort do nothing.
+    /// </summary>
+    public virtual void Abort() { }
 
     public virtual Task CloseAsync()
     {
@@ -83,6 +117,12 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     {
         throw new NotImplementedException();
     }
+
+    /// <summary>
+    /// Sends one binary message from a buffer the caller may reuse once the task completes.
+    /// Transports without a native overload copy it.
+    /// </summary>
+    public virtual Task SendAsync(ReadOnlyMemory<byte> data) => SendAsync(data.ToArray());
 }
 
 public interface ITransportClient
@@ -120,4 +160,3 @@ public interface IConnectionManager
     Task Cleanup();
     Task<bool> IsConnectionExistsAsync(string connectionId);
 }
-
