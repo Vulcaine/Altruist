@@ -240,19 +240,39 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
             {
                 DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
 
-                services.Add(new ServiceDescriptor(
-                    implType,
-                    sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime)!,
-                    lifetime));
+                // The planner may already have registered this type as a dependency of a service
+                // processed earlier. A second descriptor would build a second singleton (and an
+                // IEnumerable<T> would list it twice), so the planned registration is kept for the
+                // implementation and an interface registration is turned into a forward to it.
+                var selfIndex = DependencyResolver.IndexOfPlannedRegistration(services, implType, implType);
+                if (selfIndex < 0)
+                {
+                    services.Add(new ServiceDescriptor(
+                        implType,
+                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime)!,
+                        lifetime));
+                }
+                else if (services[selfIndex].Lifetime != lifetime)
+                {
+                    services[selfIndex] = new ServiceDescriptor(
+                        implType,
+                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime)!,
+                        lifetime);
+                }
 
                 reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
 
                 if (serviceType != implType)
                 {
-                    services.Add(new ServiceDescriptor(
+                    var forward = new ServiceDescriptor(
                         serviceType,
                         sp => sp.GetRequiredService(implType),
-                        lifetime));
+                        lifetime);
+                    var plannedIndex = DependencyResolver.IndexOfPlannedRegistration(services, serviceType, implType);
+                    if (plannedIndex < 0)
+                        services.Add(forward);
+                    else
+                        services[plannedIndex] = forward;
 
                     reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
                 }

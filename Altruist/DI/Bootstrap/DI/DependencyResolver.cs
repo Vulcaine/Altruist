@@ -298,6 +298,26 @@ namespace Altruist
         /// and cached appropriately. The planner is responsible for deciding *what*
         /// gets registered; this method only does the actual DI registration.
         /// </summary>
+        // Registrations the planner made for a dependency before the dependency's own [Service]
+        // attribute was processed (descriptor -> implementation type).
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ServiceDescriptor, Type> s_plannedImplementations = new();
+
+        /// <summary>
+        /// The index of a descriptor the dependency planner registered for
+        /// <paramref name="serviceType"/> → <paramref name="implType"/>, or -1.
+        /// </summary>
+        public static int IndexOfPlannedRegistration(IServiceCollection services, Type serviceType, Type implType)
+        {
+            for (var i = 0; i < services.Count; i++)
+            {
+                var d = services[i];
+                if (d.ServiceType == serviceType && !d.IsKeyedService
+                    && s_plannedImplementations.TryGetValue(d, out var impl) && impl == implType)
+                    return i;
+            }
+            return -1;
+        }
+
         public static void RegisterPlannedService(
             IServiceCollection services,
             IConfiguration cfg,
@@ -309,7 +329,7 @@ namespace Altruist
             if (IsNonServiceable(serviceType))
                 return;
 
-            services.Add(new ServiceDescriptor(
+            var descriptor = new ServiceDescriptor(
                 serviceType,
                 sp =>
                 {
@@ -317,7 +337,9 @@ namespace Altruist
                     var obj = CreateWithConfiguration(sp, cfg, implType, log, lifetime);
                     return obj!;
                 },
-                lifetime));
+                lifetime);
+            s_plannedImplementations.AddOrUpdate(descriptor, implType);
+            services.Add(descriptor);
 
             log.LogDebug("🔧 Planned registration: {Service} → {Impl} ({Lifetime})",
                 GetCleanName(serviceType),
