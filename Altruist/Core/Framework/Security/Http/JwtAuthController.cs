@@ -254,7 +254,8 @@ public abstract class JwtAuthController : AuthController
 
             if (cached?.IsRefreshTokenValid() != true || cached.Fingerprint != fingerprint)
             {
-                _logger.LogWarning($"[refresh] ❌ Invalid/expired session for refresh token: {refreshToken}");
+                // Never log the refresh token itself: it is a bearer secret.
+                _logger.LogWarning("[refresh] ❌ Invalid or expired session for the presented refresh token");
                 return Unauthorized("Invalid or expired session.");
             }
 

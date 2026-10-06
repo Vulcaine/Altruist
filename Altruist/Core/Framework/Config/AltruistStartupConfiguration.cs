@@ -3,6 +3,7 @@ using System.Text;
 using System.Diagnostics;
 
 using Altruist.Contracts;
+using Altruist.Http;
 using Altruist.Security;
 using Altruist.Transport;
 using Altruist.Web.Features;
@@ -254,6 +255,11 @@ namespace Altruist
 
             var app = builder.Build();
             var logger = app.Logger;
+
+            // HTTP hardening (altruist:server:http:hardening and path rate limits) runs before
+            // everything else: the client address must be known before the relay and the shields.
+            if (app.Services.GetService<HttpApiSettings>() is { } http)
+                app.UseAltruistHttpHardening(http);
 
             // Stack traces only in Development: elsewhere an unhandled error is a bare 500.
             if (app.Environment.IsDevelopment())

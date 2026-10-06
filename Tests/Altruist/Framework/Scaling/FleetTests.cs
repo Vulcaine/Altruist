@@ -99,6 +99,23 @@ public abstract class FleetBackplaneContract
         var results = await Task.WhenAll(Enumerable.Range(0, 32).Select(i => Task.Run(() => b.SetIfAbsentAsync(P + "race", $"n{i}", TimeSpan.FromSeconds(30)))));
         Assert.Equal(1, results.Count(r => r));
     }
+
+    protected async Task Increment_counts_from_zero_and_by_any_step()
+    {
+        var b = Create();
+        Assert.Equal(1, await b.IncrementAsync(P + "n", TimeSpan.FromSeconds(30)));
+        Assert.Equal(2, await b.IncrementAsync(P + "n", TimeSpan.FromSeconds(30)));
+        Assert.Equal(7, await b.IncrementAsync(P + "n", TimeSpan.FromSeconds(30), 5));
+        Assert.Equal("7", await b.GetAsync(P + "n"));
+        Assert.Equal(1, await b.IncrementAsync(P + "other", TimeSpan.FromSeconds(30)));
+    }
+
+    protected async Task Concurrent_increments_are_never_lost()
+    {
+        var b = Create();
+        var results = await Task.WhenAll(Enumerable.Range(0, 64).Select(_ => Task.Run(() => b.IncrementAsync(P + "count", TimeSpan.FromSeconds(30)))));
+        Assert.Equal(Enumerable.Range(1, 64).Select(i => (long)i), results.OrderBy(r => r));
+    }
 }
 
 public class InMemoryFleetBackplaneTests : FleetBackplaneContract
@@ -111,6 +128,20 @@ public class InMemoryFleetBackplaneTests : FleetBackplaneContract
     [Fact] public Task Take_once() => Take_returns_a_value_once();
     [Fact] public Task Delete_own() => DeleteIfValue_only_removes_your_own_value();
     [Fact] public Task Race() => Concurrent_claims_have_exactly_one_winner();
+    [Fact] public Task Increment() => Increment_counts_from_zero_and_by_any_step();
+    [Fact] public Task Increment_race() => Concurrent_increments_are_never_lost();
+
+    [Fact]
+    public async Task A_counter_keeps_the_expiry_of_its_first_increment()
+    {
+        var b = Create();
+        await b.IncrementAsync("w", TimeSpan.FromSeconds(10));
+        _clock.Advance(TimeSpan.FromSeconds(8));
+        Assert.Equal(2, await b.IncrementAsync("w", TimeSpan.FromSeconds(10)));
+        _clock.Advance(TimeSpan.FromSeconds(3));
+        Assert.Null(await b.GetAsync("w"));
+        Assert.Equal(1, await b.IncrementAsync("w", TimeSpan.FromSeconds(10)));
+    }
 
     [Fact]
     public async Task Expired_values_are_gone_and_can_be_claimed_again()
@@ -144,6 +175,20 @@ public class RedisFleetBackplaneTests : FleetBackplaneContract, IDisposable
     [RedisFact] public Task Take_once() => Take_returns_a_value_once();
     [RedisFact] public Task Delete_own() => DeleteIfValue_only_removes_your_own_value();
     [RedisFact] public Task Race() => Concurrent_claims_have_exactly_one_winner();
+    [RedisFact] public Task Increment() => Increment_counts_from_zero_and_by_any_step();
+    [RedisFact] public Task Increment_race() => Concurrent_increments_are_never_lost();
+
+    [RedisFact]
+    public async Task Counters_expire_from_their_first_increment_in_redis()
+    {
+        var b = Create();
+        await b.IncrementAsync(P + "w", TimeSpan.FromSeconds(2));
+        await Task.Delay(1200);
+        Assert.Equal(2, await b.IncrementAsync(P + "w", TimeSpan.FromSeconds(2)));
+        await Task.Delay(1400);
+        Assert.Null(await b.GetAsync(P + "w"));
+        Assert.Equal(1, await b.IncrementAsync(P + "w", TimeSpan.FromSeconds(2)));
+    }
 
     [RedisFact]
     public async Task Values_expire_in_redis()
@@ -480,5 +525,6 @@ public class FleetTests
         public async Task<IReadOnlyDictionary<string, string>> GetByPrefixAsync(string prefix, CancellationToken ct = default) { await Check(); return await inner.GetByPrefixAsync(prefix, ct); }
         public async Task DeleteAsync(string key, CancellationToken ct = default) { await Check(); await inner.DeleteAsync(key, ct); }
         public async Task<bool> DeleteIfValueAsync(string key, string value, CancellationToken ct = default) { await Check(); return await inner.DeleteIfValueAsync(key, value, ct); }
+        public async Task<long> IncrementAsync(string key, TimeSpan ttl, long by = 1, CancellationToken ct = default) { await Check(); return await inner.IncrementAsync(key, ttl, by, ct); }
     }
 }

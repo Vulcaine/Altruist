@@ -26,6 +26,11 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
     private const string DeleteIfValueScript =
         "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
 
+    // INCRBY, and an expiry for a key that has none (created by this call, or left without one).
+    private const string IncrementScript =
+        "local v = redis.call('incrby', KEYS[1], ARGV[1]) " +
+        "if redis.call('pttl', KEYS[1]) < 0 then redis.call('pexpire', KEYS[1], ARGV[2]) end return v";
+
     private readonly IConnectionMultiplexer _mux;
     private readonly bool _ownsConnection;
 
@@ -110,6 +115,13 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
     {
         var deleted = await Db.ScriptEvaluateAsync(DeleteIfValueScript, new[] { K(key) }, new RedisValue[] { value }).ConfigureAwait(false);
         return (long)deleted == 1;
+    }
+
+    public async Task<long> IncrementAsync(string key, TimeSpan ttl, long by = 1, CancellationToken cancellationToken = default)
+    {
+        var ms = Math.Max(1L, (long)Math.Ceiling(ttl.TotalMilliseconds));
+        var value = await Db.ScriptEvaluateAsync(IncrementScript, new[] { K(key) }, new RedisValue[] { by, ms }).ConfigureAwait(false);
+        return (long)value;
     }
 
     private static string EscapeGlob(string s) =>

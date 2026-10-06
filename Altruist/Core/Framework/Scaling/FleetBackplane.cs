@@ -44,6 +44,17 @@ public interface IFleetBackplane
 
     /// <summary>Deletes the key only while it still holds <paramref name="value"/> (release your own claim).</summary>
     Task<bool> DeleteIfValueAsync(string key, string value, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds <paramref name="by"/> to the integer at <paramref name="key"/> in one atomic step and
+    /// returns the new value. A key that does not exist (or expired) starts at 0 and gets
+    /// <paramref name="ttl"/>; incrementing an existing key keeps its expiry (a fixed window that
+    /// starts with the first increment). Shared counters: rate limits, failure lockouts. The default
+    /// throws <see cref="NotSupportedException"/> (a backplane written before counters existed):
+    /// those counters then stay in each server's memory.
+    /// </summary>
+    Task<long> IncrementAsync(string key, TimeSpan ttl, long by = 1, CancellationToken cancellationToken = default) =>
+        Task.FromException<long>(new NotSupportedException($"{GetType().Name} does not implement IFleetBackplane.IncrementAsync."));
 }
 
 /// <summary>
@@ -55,9 +66,12 @@ public interface IFleetBackplane
 [ConditionalOnMissingService(typeof(IFleetBackplane))]
 public sealed class InMemoryFleetBackplane : IFleetBackplane
 {
+    private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(1);
+
     private readonly ConcurrentDictionary<string, (string Value, DateTime Expires)> _data = new(StringComparer.Ordinal);
     private readonly Func<DateTime> _utcNow;
     private readonly object _gate = new();
+    private DateTime _lastSweep;
 
     [ActivatorUtilitiesConstructor]
     public InMemoryFleetBackplane() : this(shared: false) { }
@@ -126,6 +140,25 @@ public sealed class InMemoryFleetBackplane : IFleetBackplane
         {
             if (!_data.TryGetValue(key, out var e) || e.Value != value) return Task.FromResult(false);
             return Task.FromResult(_data.TryRemove(key, out _));
+        }
+    }
+
+    public Task<long> IncrementAsync(string key, TimeSpan ttl, long by = 1, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var now = _utcNow();
+            // Counters are keyed per client: drop the expired ones now and then.
+            if (now - _lastSweep >= SweepInterval)
+            {
+                _lastSweep = now;
+                foreach (var (k, e) in _data)
+                    if (e.Expires <= now) _data.TryRemove(k, out _);
+            }
+            var live = _data.TryGetValue(key, out var current) && current.Expires > now;
+            var value = (live && long.TryParse(current.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0) + by;
+            _data[key] = (value.ToString(System.Globalization.CultureInfo.InvariantCulture), live ? current.Expires : now + ttl);
+            return Task.FromResult(value);
         }
     }
 }

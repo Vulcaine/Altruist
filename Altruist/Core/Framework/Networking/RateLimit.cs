@@ -39,11 +39,16 @@ public enum RateVerdict
 }
 
 /// <summary>
-/// Puts a gate handler into a rate-limit bucket (<c>altruist:server:transport:rate-limit:buckets:&lt;name&gt;</c>).
+/// Names a rate limit.
+/// <list type="bullet">
+/// <item>On a gate handler: its bucket (<c>altruist:server:transport:rate-limit:buckets:&lt;name&gt;</c>).
 /// A bucket that lists the gate in its <c>gates</c> takes precedence; gates in no bucket use the
-/// <c>default-bucket</c>.
+/// <c>default-bucket</c>.</item>
+/// <item>On an MVC controller or action: an HTTP policy (<c>altruist:server:http:rate-limit:policies:&lt;name&gt;</c>,
+/// see <see cref="Altruist.Http.HttpRateLimitOptions"/>); controller and action policies both apply.</item>
+/// </list>
 /// </summary>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
 public sealed class RateLimitAttribute : Attribute
 {
     public RateLimitAttribute(string bucket)

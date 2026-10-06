@@ -14,17 +14,85 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+using System.Security.Cryptography;
+
 namespace Altruist.Security;
 
 public interface IPasswordHasher
 {
     string Hash(string password);
-    bool Verify(string password, string hash);
+
+    /// <summary>
+    /// True when <paramref name="password"/> matches <paramref name="hash"/>. A null hash (unknown
+    /// user) costs one verify against a dummy hash and returns false, so both paths take the same
+    /// time; a malformed hash returns false.
+    /// </summary>
+    bool Verify(string password, string? hash);
 }
 
+/// <summary>
+/// BCrypt password hashes. Config <c>altruist:security:password</c>:
+/// <c>work-factor</c> (default 11) and <c>prehash</c>: <c>none</c> (default, plain BCrypt, which
+/// only uses the first 72 bytes of a password) or <c>sha384</c> (BCrypt over a SHA-384 pre-hash,
+/// BCrypt.Net's "enhanced" mode, so long passwords are not truncated). Hashes of one prehash mode
+/// do not verify in the other: pick it before storing hashes.
+/// </summary>
 [Service(typeof(IPasswordHasher))]
 public class BcryptPasswordHasher : IPasswordHasher
 {
-    public string Hash(string password) => BCrypt.Net.BCrypt.HashPassword(password);
-    public bool Verify(string password, string hash) => BCrypt.Net.BCrypt.Verify(password, hash);
+    public const int DefaultWorkFactor = 11;
+    public const string PrehashNone = "none";
+    public const string PrehashSha384 = "sha384";
+
+    private readonly Lazy<string> _dummyHash;
+
+    public int WorkFactor { get; }
+
+    /// <summary>True for the <c>sha384</c> prehash (BCrypt.Net enhanced hashing).</summary>
+    public bool Enhanced { get; }
+
+    public BcryptPasswordHasher() : this(DefaultWorkFactor, PrehashNone) { }
+
+    public BcryptPasswordHasher(
+        [AppConfigValue("altruist:security:password:work-factor", "11")] int workFactor,
+        [AppConfigValue("altruist:security:password:prehash", PrehashNone)] string prehash)
+    {
+        if (workFactor is < 4 or > 31)
+            throw new ArgumentOutOfRangeException(nameof(workFactor), workFactor, "BCrypt work factors run from 4 to 31.");
+        WorkFactor = workFactor;
+        Enhanced = (prehash ?? PrehashNone).Trim().ToLowerInvariant() switch
+        {
+            PrehashNone or "" => false,
+            PrehashSha384 => true,
+            var other => throw new ArgumentException(
+                $"altruist:security:password:prehash must be '{PrehashNone}' or '{PrehashSha384}', not '{other}'.", nameof(prehash)),
+        };
+        // Verified against when there is no hash, so a missing user costs as much as a wrong password.
+        _dummyHash = new Lazy<string>(() => Hash(Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))));
+    }
+
+    public string Hash(string password) => Enhanced
+        ? BCrypt.Net.BCrypt.EnhancedHashPassword(password, WorkFactor)
+        : BCrypt.Net.BCrypt.HashPassword(password, WorkFactor);
+
+    public bool Verify(string password, string? hash)
+    {
+        try
+        {
+            if (hash is null)
+            {
+                Check(password, _dummyHash.Value);
+                return false;
+            }
+            return Check(password, hash);
+        }
+        catch (Exception ex) when (ex is BCrypt.Net.SaltParseException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private bool Check(string password, string hash) => Enhanced
+        ? BCrypt.Net.BCrypt.EnhancedVerify(password, hash)
+        : BCrypt.Net.BCrypt.Verify(password, hash);
 }

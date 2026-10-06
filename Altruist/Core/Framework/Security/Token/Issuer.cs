@@ -92,10 +92,22 @@ public class JwtTokenIssuer : IJwtTokenIssuer
         JwtOptions = jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme);
     }
 
+    private JwtTokenIssuer(JwtBearerOptions jwtOptions)
+    {
+        JwtOptions = jwtOptions;
+    }
+
+    /// <summary>
+    /// An issuer for these claims. Returns a copy: the registered issuer is a shared singleton, and
+    /// setting the claims on it let concurrent requests issue tokens with each other's claims.
+    /// </summary>
     public JwtTokenIssuer WithClaims(IEnumerable<Claim> claims)
     {
-        _customClaims = claims;
-        return this;
+        return new JwtTokenIssuer(JwtOptions)
+        {
+            _customClaims = claims?.ToList(),
+            _refreshTokenExpiry = _refreshTokenExpiry,
+        };
     }
 
     public JwtTokenIssuer SetRefreshTokenExpiry(TimeSpan expiration)
