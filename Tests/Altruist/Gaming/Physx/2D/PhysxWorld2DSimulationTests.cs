@@ -190,9 +190,231 @@ public class PhysxWorld2DSimulationTests
         Assert.Equal(Simulate(), Simulate());
     }
 
+    [Fact]
+    public void The_zero_filter_is_the_default_filter()
+    {
+        Assert.Equal(PhysxFilter2D.Default, default(PhysxFilter2D));
+        Assert.Equal(PhysxFilter2D.Default, new PhysxFilter2D());
+        Assert.Equal(PhysxFilter2D.Default.GetHashCode(), default(PhysxFilter2D).GetHashCode());
+        var f = default(PhysxFilter2D);
+        Assert.Equal((ushort)1, f.Category);
+        Assert.Equal((ushort)0xFFFF, f.Mask);
+        Assert.Equal((short)0, f.Group);
+
+        var custom = new PhysxFilter2D(Category: 4, Mask: 0, Group: -2) with { Mask = 2 };
+        var (category, mask, group) = custom;
+        Assert.Equal((4, 2, -2), (category, mask, group));
+        Assert.Equal(custom, new PhysxFilter2D(4, 2, -2));
+        Assert.NotEqual(PhysxFilter2D.Default, custom);
+
+        // A fixture with the zero filter collides like the default one.
+        var world = World();
+        Ground(world);
+        Crate(world, new Vector2(0, 1), default(PhysxFilter2D));
+        var top = Crate(world, new Vector2(0, 3), new PhysxFilter2D());
+        Run(world, 180);
+        Assert.InRange(top.Position.Y, 1.9f, 2.1f);
+    }
+
+    [Fact]
+    public void The_zero_body_def_is_a_static_sleeping_body_with_full_gravity()
+    {
+        var def = default(PhysxBodyDef2D);
+        Assert.Equal(PhysxBodyType.Static, def.Type);
+        Assert.True(def.AllowSleep);
+        Assert.Equal(1f, def.GravityScale);
+        Assert.Equal(def, new PhysxBodyDef2D());
+        Assert.Equal(0.1f, new PhysxBodyDef2D { GravityScale = 0.1f }.GravityScale);
+        Assert.Equal(0f, new PhysxBodyDef2D { GravityScale = 0f }.GravityScale);
+        Assert.False(new PhysxBodyDef2D { AllowSleep = false }.AllowSleep);
+
+        var world = World();
+        var body = world.CreateBody(default(PhysxBodyDef2D) with { Type = PhysxBodyType.Dynamic, Position = new Vector2(0, 10) });
+        world.CreateFixture(body, new PhysxFixtureDef2D { Shape = PhysxShape2D.Circle(0.5f), Density = 1 });
+        Run(world, 30);
+        Assert.True(body.Position.Y < 9.5f, "a zero-value body def falls under gravity");
+    }
+
+    private static (float X, float Y, float Vy) Drop(PhysxWorldSettings2D settings, params float[] steps)
+    {
+        var world = PhysxWorldEngine2D.Create(settings);
+        Ground(world);
+        var crate = Crate(world, new Vector2(0.3f, 4));
+        crate.AngularVelocityZ = 1f;
+        foreach (var dt in steps) world.Step(dt);
+        return (crate.Position.X, crate.Position.Y, crate.LinearVelocity.Y);
+    }
+
+    [Fact]
+    public void Step_advances_by_dt_unless_fixed_stepping_is_opted_in()
+    {
+        var gravity = new Vector2(0, -10);
+        var fixedSteps = new PhysxWorldSettings2D { Gravity = gravity, FixedDeltaTime = 1f / 60f, MaxSubSteps = 4 };
+        var sixtieth = Enumerable.Repeat(1f / 60f, 40).ToArray();
+
+        // Default (no sub-steps): FixedDeltaTime does not change stepping.
+        Assert.Equal(
+            Drop(new PhysxWorldSettings2D { Gravity = gravity, FixedDeltaTime = 1f / 10f }, Enumerable.Repeat(1f / 30f, 20).ToArray()),
+            Drop(new PhysxWorldSettings2D { Gravity = gravity }, Enumerable.Repeat(1f / 30f, 20).ToArray()));
+
+        // Fixed stepping: a 1/30 step is two 1/60 steps, two 1/120 steps are one.
+        Assert.Equal(Drop(new PhysxWorldSettings2D { Gravity = gravity }, sixtieth),
+            Drop(fixedSteps, Enumerable.Repeat(1f / 30f, 20).ToArray()));
+        Assert.Equal(Drop(new PhysxWorldSettings2D { Gravity = gravity }, sixtieth),
+            Drop(fixedSteps, Enumerable.Repeat(1f / 120f, 80).ToArray()));
+
+        // At most MaxSubSteps per call: a one-second hitch runs 4 steps, not 60.
+        Assert.Equal(Drop(new PhysxWorldSettings2D { Gravity = gravity }, 1f / 60f, 1f / 60f, 1f / 60f, 1f / 60f),
+            Drop(fixedSteps, 1f));
+    }
+
+    [Fact]
+    public void Ray_cast_returns_the_closest_hits_sorted_by_fraction()
+    {
+        var world = World(0);
+        // Created out of order so the broad-phase does not report them front to back.
+        foreach (var x in new[] { 7, 2, 9, 4, 1, 8, 3, 6, 5 })
+        {
+            var b = world.CreateBody(new PhysxBodyDef2D { Type = PhysxBodyType.Static, Position = new Vector2(x, 0), UserData = x });
+            world.CreateFixture(b, new PhysxFixtureDef2D { Shape = PhysxShape2D.Circle(0.25f) });
+        }
+        var ray = new PhysxRay2D(new Vector2(0, 0), new Vector2(10, 0));
+
+        var three = world.RayCast(ray, 3).ToList();
+        Assert.Equal(new object?[] { 1, 2, 3 }, three.Select(h => h.Body.UserData));
+        Assert.True(three[0].Fraction <= three[1].Fraction && three[1].Fraction <= three[2].Fraction);
+
+        var closest = Assert.Single(world.RayCast(ray));
+        Assert.Equal(1, closest.Body.UserData);
+        Assert.Equal(0.75f, closest.Point.X, 3);
+
+        var all = world.RayCast(ray, 100).ToList();
+        Assert.Equal(Enumerable.Range(1, 9).Cast<object?>(), all.Select(h => h.Body.UserData));
+
+        var back = world.RayCast(new PhysxRay2D(new Vector2(10, 0), new Vector2(0, 0)), 2).ToList();
+        Assert.Equal(new object?[] { 9, 8 }, back.Select(h => h.Body.UserData));
+    }
+
+    [Fact]
+    public void Enumerated_contacts_are_distinct_and_fail_loudly_once_stale()
+    {
+        var world = World();
+        Ground(world, tag: "floor");
+        var crates = Enumerable.Range(0, 3).Select(i => Crate(world, new Vector2(i * 3 - 3, 1), tag: i)).ToList();
+        Run(world, 60);
+
+        var contacts = world.Contacts.Where(c => c.IsTouching).ToList();
+        Assert.Equal(3, contacts.Count);
+        Assert.Equal(3, contacts.Distinct().Count());
+        var tags = contacts.Select(c => c.BodyA.UserData ?? c.BodyB.UserData).OrderBy(t => (int)t!).ToList();
+        Assert.Equal(new object?[] { 0, 1, 2 }, tags);
+        var infos = contacts.Select(c => c.ToInfo()).ToList();
+
+        world.Step(1f / 60f);
+        Assert.Throws<InvalidOperationException>(() => contacts[0].IsTouching);
+        // The copies stay valid.
+        Assert.All(infos, i => Assert.True(i.IsTouching));
+        Assert.All(infos, i => Assert.Equal(1f, MathF.Abs(i.Manifold.Normal.Y), 3));
+        Assert.Equal(3, infos.Select(i => i.BodyA.UserData ?? i.BodyB.UserData).Distinct().Count());
+
+        // Removing a body also invalidates views taken before.
+        var before = world.Contacts.First();
+        world.RemoveBody(crates[0]);
+        Assert.Throws<InvalidOperationException>(() => before.PointCount);
+    }
+
+    [Fact]
+    public void A_listener_contact_is_valid_only_inside_the_callback_but_can_be_copied()
+    {
+        var world = World();
+        Ground(world, tag: "floor");
+        Crate(world, new Vector2(0, 2), tag: "crate");
+        var kept = new List<IPhysxContact2D>();
+        var copies = new List<PhysxContactInfo2D>();
+        world.SetContactListener(new BeginRecorder(c =>
+        {
+            kept.Add(c);
+            copies.Add(c.ToInfo());
+        }));
+        Run(world, 120);
+        Assert.Single(copies);
+        Assert.Throws<InvalidOperationException>(() => kept[0].IsTouching);
+        Assert.True(copies[0].IsTouching);
+        Assert.Contains(copies[0].FixtureA.UserData ?? copies[0].FixtureB.UserData, new object?[] { "floor" });
+    }
+
+    private sealed class ShortFactory : IPhysxWorldEngineFactory2D
+    {
+        public IPhysxWorldEngine2D Create(Vector2 gravity, float fixedDeltaTime = 1f / 60f) => new Box2DWorldEngine2D(gravity, fixedDeltaTime);
+    }
+
+    [Fact]
+    public void The_default_factory_overload_applies_every_setting()
+    {
+        var settings = new PhysxWorldSettings2D { Gravity = new Vector2(0, -3), FixedDeltaTime = 1f / 30f, VelocityIterations = 2, PositionIterations = 1, MaxSubSteps = 3 };
+        IPhysxWorldEngineFactory2D factory = new ShortFactory();
+        var engine = (Box2DWorldEngine2D)factory.Create(settings);
+        Assert.Equal(settings, engine.Settings);
+        Assert.Equal(1f / 30f, engine.FixedDeltaTime);
+
+        // Same result as a world created with the settings directly.
+        static float Fall(IPhysxWorldEngine2D w)
+        {
+            Ground(w);
+            var c = Crate(w, new Vector2(0, 3));
+            for (var i = 0; i < 40; i++) w.Step(1f / 60f);
+            return c.Position.Y;
+        }
+        Assert.Equal(Fall(PhysxWorldEngine2D.Create(settings)), Fall(engine));
+    }
+
+    [Fact]
+    public void The_2D_world_factory_is_registered_in_every_environment_mode()
+    {
+        Assert.Empty(typeof(WorldEngineFactory2D).GetCustomAttributes(typeof(global::Altruist.ConditionalOnConfigAttribute), false));
+        Assert.NotEmpty(typeof(WorldEngineFactory2D).GetCustomAttributes(typeof(global::Altruist.ServiceAttribute), false));
+    }
+
+    [Fact]
+    public void Collision_enter_carries_the_impulse_and_stay_fires_every_later_step()
+    {
+        var world = World();
+        var ground = world.CreateBody(new PhysxBodyDef2D { Type = PhysxBodyType.Static });
+        world.CreateFixture(ground, new PhysxFixtureDef2D { Shape = PhysxShape2D.Box(50, 0.5f) });
+        var crate = world.CreateBody(new PhysxBodyDef2D { Type = PhysxBodyType.Dynamic, Position = new Vector2(0, 3) });
+        var fixture = world.CreateFixture(crate, new PhysxFixtureDef2D { Shape = PhysxShape2D.Box(0.5f, 0.5f), Density = 1 });
+
+        var step = 0;
+        var log = new List<(string Kind, int Step, float Impulse)>();
+        fixture.OnCollisionEnter += i => log.Add(("enter", step, i.Impulse));
+        Action<PhysxCollisionInfo2D> stay = i => log.Add(("stay", step, i.Impulse));
+        fixture.OnCollisionStay += stay;
+
+        for (step = 1; step <= 120; step++) world.Step(1f / 60f);
+
+        var enter = Assert.Single(log, e => e.Kind == "enter");
+        // The landing stops the crate: about m * v = 1 * 10 * 38 / 60.
+        Assert.InRange(enter.Impulse, 5f, 7f);
+        var stays = log.Where(e => e.Kind == "stay").ToList();
+        Assert.Equal(120 - enter.Step, stays.Count);
+        Assert.All(stays, s => Assert.True(s.Step > enter.Step));
+        // At rest the contact carries the crate's weight: m * g * dt.
+        Assert.Equal(1f * 10f / 60f, stays[^1].Impulse, 2);
+
+        fixture.OnCollisionStay -= stay;
+        var count = log.Count;
+        world.Step(1f / 60f);
+        Assert.Equal(count, log.Count);
+    }
+
     private sealed class Recorder(Action<IPhysxContact2D> preSolve) : IPhysxContactListener2D
     {
         public void PreSolve(IPhysxContact2D contact) => preSolve(contact);
+    }
+
+    private sealed class BeginRecorder(Action<IPhysxContact2D> begin) : IPhysxContactListener2D
+    {
+        public void BeginContact(IPhysxContact2D contact) => begin(contact);
     }
 
     private sealed class ClosestTagged(string tag) : IPhysxRayCastCallback2D

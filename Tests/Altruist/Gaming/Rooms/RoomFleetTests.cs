@@ -239,10 +239,12 @@ public class RoomFleetTests
         Assert.All(h.Host.Rooms, m => Assert.Equal(new[] { engine }, m.Sim.Threads.Keys));
     }
 
-    [Fact]
-    public void A_failing_room_is_reported_and_the_other_rooms_go_on()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void A_failing_room_is_reported_and_the_other_rooms_go_on(int workers)
     {
-        var h = new PuckHarness(workers: 4);
+        var h = new PuckHarness(workers);
         h.Run(10);
         var broken = h.Host.Rooms[5];
         broken.Sim.ThrowAt = broken.Sim.Steps;

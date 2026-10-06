@@ -46,6 +46,10 @@ public sealed class LineGame :
     public readonly List<string> Abandons = new();
     public readonly List<string> Finished = new();
     public readonly List<string> ForcedClosed = new();
+    public readonly List<string> Draws = new();
+    public int TeamForfeits;
+    /// <summary>The game ends the simulation when a team forfeits (default); false: it keeps running.</summary>
+    public bool EndOnForfeit = true;
     /// <summary>Load of a room per mode (capacity tests); 1 by default.</summary>
     public Func<string, double> Load = _ => 1;
     public int EndAfter = int.MaxValue;
@@ -69,7 +73,13 @@ public sealed class LineGame :
     public ISeatController<Walk> CreateBot(Room<LineSim, Walk, Player> room, Seat<LineSim, Walk, Player> seat) => new Stepper(++_bots);
     public void OnAbandoned(Room<LineSim, Walk, Player> room, Participant<LineSim, Walk, Player> p) => Abandons.Add(p.PrincipalId);
     public void OnFinished(Room<LineSim, Walk, Player> room) => Finished.Add(room.Id);
-    public void OnTeamForfeit(Room<LineSim, Walk, Player> room, int winnerTeam) => room.Sim.EndAfter = room.Sim.Steps;
+    public void OnTeamForfeit(Room<LineSim, Walk, Player> room, int winnerTeam)
+    {
+        TeamForfeits++;
+        if (EndOnForfeit) room.Sim.EndAfter = room.Sim.Steps;
+    }
+
+    public void OnForfeitDraw(Room<LineSim, Walk, Player> room) => Draws.Add(room.Id);
 
     public IPacketBase? Welcome(Room<LineSim, Walk, Player> room, Participant<LineSim, Walk, Player> p) => new Sent("welcome", $"{p.Seat!.Id}");
     public IPacketBase? Roster(Room<LineSim, Walk, Player> room) => new Sent("roster", string.Join(",", room.Seats.Select(s => s.Owner?.PrincipalId ?? (s.IsBot ? "bot" : "open"))));
@@ -83,7 +93,7 @@ public sealed class LineGame :
     public double TimeLeftSeconds(Room<LineSim, Walk, Player> room) => 120;
     public IPacketBase QueueStatus(QueueStatusInfo s) => new Sent("queue", $"{s.State}:{s.Playlist}:{s.PlayersFound}/{s.PlayersNeeded}");
 
-    public int? TeamSizeOf(string mode) => mode == "duo" ? 1 : null;
+    public int? TeamSizeOf(string mode) => mode switch { "duo" => 1, "free" => 0, _ => null };
     public IPacketBase LobbyState(Lobby<LineSim, Walk, Player> lobby, LobbyMember<Player> to) =>
         new Sent("lobby", $"{lobby.Code.Length}:{lobby.Members.Count}:{(lobby.IsHost(to.PrincipalId) ? "host" : "guest")}:{lobby.Room is not null}");
     public IPacketBase Rejected(LobbyRejectReason reason, string code) => new Sent("reject", reason.ToString());

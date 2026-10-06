@@ -31,11 +31,15 @@ internal sealed class SwapPacing
     public double LastSwapAt = double.NegativeInfinity;
 }
 
+/// <summary>The mean rating a rated room started with (rated join in progress).</summary>
+internal sealed record RoomRating(double Mean);
+
 /// <summary>
 /// Queues, groups and join in progress on top of the <see cref="RoomHost{TSim,TInput,TPlayer}"/>:
 /// waiting players first fill open (or bot) seats of running rooms that allow it — open seats at
 /// once, bot seats one at a time with a notice — and otherwise start new rooms; rated playlists
-/// group by rating window. Everything runs on the engine thread.
+/// group by rating window (and join rated rooms whose mean rating is inside the player's window).
+/// Everything runs on the engine thread.
 /// <para>
 /// In a fleet (<see cref="RoomHost{TSim,TInput,TPlayer}.UseFleet"/>) each server publishes its
 /// queue lengths; the players of a playlist gather on one server — the one with the most of them
@@ -76,17 +80,21 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
 
     /// <summary>
     /// Puts the connection in a playlist's queue (a re-queue into the same playlist keeps its
-    /// place). Gates (verification, bans, ...) are the caller's: check them first. A draining
-    /// server queues nobody: the connection is told it is idle and that the server is going away (false).
+    /// place); it leaves its lobby (<see cref="RoomHost{TSim,TInput,TPlayer}.TakeOver"/>). Gates
+    /// (verification, bans, ...) are the caller's: check them first. False: the connection plays
+    /// in a room or is about to join one (nothing changes), or the server is draining (it is told
+    /// it is idle and that the server is going away).
     /// </summary>
     public bool Enqueue(RoomSession<TSim, TInput, TPlayer> s, PlaylistOptions playlist)
     {
+        if (s.Room is not null || s.PendingRoom is not null) return false;
         if (_host.IsDraining)
         {
             _host.Send(s.ClientId, _game.QueueStatus(new QueueStatusInfo(QueueState.Idle, playlist.Id, 0, 0, 0)));
             _host.Send(s.ClientId, _host.Game.ServerDraining());
             return false;
         }
+        _host.TakeOver(s, this);
         var existing = Queue.Get(s.PrincipalId);
         var queuedAt = existing?.Playlist == playlist.Id ? existing.QueuedAt : _host.Now;
         Queue.Enqueue(new QueueEntry(s.PrincipalId, playlist.Id, _game.RatingOf(s.Player, playlist), queuedAt));
@@ -138,6 +146,13 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     {
         Queue.Remove(s.PrincipalId);
         AbortPendingJoin(s);
+    }
+
+    /// <summary>The connection went into a lobby: it leaves the queue (and a running join notice) and is told it is idle.</summary>
+    public void OnTakenOver(RoomSession<TSim, TInput, TPlayer> s)
+    {
+        if (Queue.Get(s.PrincipalId) is null && s.PendingRoom is null) return;
+        Cancel(s);
     }
 
     public bool IsBusy(RoomSession<TSim, TInput, TPlayer> s) => Queue.Get(s.PrincipalId) is not null;
@@ -294,20 +309,31 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         foreach (var playlist in Queue.Playlists)
         {
             if (Queue.Waiting(playlist.Id).Count == 0) continue;
+
+            // Join in progress, oldest first: open seats (a player left) need no pacing; bot swaps one
+            // at a time, >= the swap interval apart. Rated: only into rooms inside the player's window.
+            foreach (var e in Queue.Waiting(playlist.Id).ToArray())
+            {
+                if (FindJoinTarget(playlist, e) is not (var m, { } seat))
+                {
+                    // Unrated targets do not depend on the player: nobody else fits either.
+                    if (playlist.Rated) continue;
+                    break;
+                }
+                Queue.Remove(e.PrincipalId);
+                AssignJoin(m!, seat, e);
+            }
+
             if (playlist.Rated)
             {
                 // A full server keeps the players queued until a room ends (or another server takes them).
-                while (_host.CanOpenRoom(playlist.Mode, playlist.Id) && Queue.TryFormRated(playlist.Id, _host.Now) is { } group) StartRoom(playlist, group);
+                while (_host.CanOpenRoom(playlist.Mode, playlist.Id) && Queue.TryFormRated(playlist.Id, _host.Now) is { } group && StartRoom(playlist, group)) { }
                 continue;
             }
 
-            // Join in progress: open seats (a player left) need no pacing; bot swaps one at a time, >= the swap interval apart.
-            while (Queue.Waiting(playlist.Id).Count > 0 && FindJoinTarget(playlist) is var (m, seat) && seat is not null)
-                AssignJoin(m!, seat, Queue.PopOldest(playlist.Id)!);
-
             // Players a joinable room takes within a few seconds do not start a new room.
             var reserved = Joinable(playlist).Sum(m => m.Seats.Count(sl => sl.IsBot && sl.Pending is null));
-            while (_host.CanOpenRoom(playlist.Mode, playlist.Id) && Queue.TryFormFill(playlist.Id, _host.Now, reserved) is { } group) StartRoom(playlist, group);
+            while (_host.CanOpenRoom(playlist.Mode, playlist.Id) && Queue.TryFormFill(playlist.Id, _host.Now, reserved) is { } group && StartRoom(playlist, group)) { }
         }
     }
 
@@ -321,13 +347,15 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         return p;
     }
 
-    private (Room<TSim, TInput, TPlayer>?, Seat<TSim, TInput, TPlayer>?) FindJoinTarget(PlaylistOptions playlist)
+    private (Room<TSim, TInput, TPlayer>?, Seat<TSim, TInput, TPlayer>?) FindJoinTarget(PlaylistOptions playlist, QueueEntry entry)
     {
         Room<TSim, TInput, TPlayer>? bestRoom = null;
         Seat<TSim, TInput, TPlayer>? best = null;
         var bestScore = int.MinValue;
+        var window = Matchmaker.RatingWindow(_host.Now - entry.QueuedAt, O);
         foreach (var m in Joinable(playlist))
         {
+            if (playlist.Rated && (m.Get<RoomRating>() is not { } rating || Math.Abs(entry.Rating - rating.Mean) > window)) continue;
             var swapPending = m.Seats.Any(sl => sl.Pending is not null && sl.IsBot);
             var paced = !swapPending && _host.Now - Pacing(m).LastSwapAt >= O.SwapIntervalSeconds;
             foreach (var seat in m.Seats)
@@ -353,11 +381,15 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     {
         if (_host.SessionOfPrincipal(entry.PrincipalId) is not { } s) return;
         var name = _host.Game.NameOf(s.Player);
-        seat.Pending = new PendingSeatClaim(s.PrincipalId, name, _host.Now + O.SwapNoticeSeconds, entry.QueuedAt);
-        if (seat.IsBot) Pacing(m).LastSwapAt = _host.Now;
+        // A bot seat changes hands after the notice; an open seat (nobody drives it) is taken at once.
+        var open = seat.IsOpen;
+        var claim = new PendingSeatClaim(s.PrincipalId, name, open ? _host.Now : _host.Now + O.SwapNoticeSeconds, entry.QueuedAt);
+        seat.Pending = claim;
+        if (!open) Pacing(m).LastSwapAt = _host.Now;
         s.PendingRoom = m;
         SendStatus(s, QueueState.Found, m.Playlist);
         _host.Notify(m, RoomNoticeKind.Joining, seat.Id, name);
+        if (open) CompleteJoin(m, seat, claim);
     }
 
     private void RunPendingSwaps()
@@ -405,7 +437,8 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         SendStatus(s, QueueState.Searching);
     }
 
-    private void StartRoom(PlaylistOptions playlist, List<QueueEntry> group)
+    /// <summary>Starts a room for the group; false (the group is back in the queue) when the server no longer takes it.</summary>
+    private bool StartRoom(PlaylistOptions playlist, List<QueueEntry> group)
     {
         var (team0, team1) = Matchmaker.BalanceTeams(group, byRating: playlist.Rated);
         var m = _host.CreateRoom(_host.Game.CreateSimulation(playlist.Mode, playlist.Id), playlist.Mode, playlist.Id, null, playlist.Rules);
@@ -424,7 +457,14 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         }
         // After every player is in: the game may base the bots on them (skill).
         foreach (var seat in botSeats) m.GiveToBot(seat);
-        _host.Start(m);
+        if (playlist.Rated && group.Count > 0) m.Set(new RoomRating(group.Average(e => e.Rating)));
+        if (!_host.TryStart(m))
+        {
+            // Drained or filled meanwhile (another thread): the players wait on, at their place.
+            foreach (var e in group)
+                if (_host.SessionOfPrincipal(e.PrincipalId) is not null) Queue.Enqueue(e);
+            return false;
+        }
         foreach (var p in m.Participants.Values)
         {
             var s = _host.SessionOfPrincipal(p.PrincipalId)!;
@@ -435,5 +475,6 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         }
         _host.SendRoster(m);
         _host.SendSnapshots(m);
+        return true;
     }
 }

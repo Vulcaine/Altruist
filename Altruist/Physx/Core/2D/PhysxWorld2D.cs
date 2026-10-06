@@ -11,10 +11,25 @@ namespace Altruist.Physx
     {
         float FixedDeltaTime { get; }
         IReadOnlyCollection<IPhysxBody> Bodies { get; }
+
+        /// <summary>
+        /// Advances the world by <paramref name="deltaTime"/> in one step, or, with fixed stepping
+        /// (<see cref="PhysxWorldSettings2D.MaxSubSteps"/> above zero), in whole steps of
+        /// <see cref="FixedDeltaTime"/> (see there).
+        /// </summary>
         void Step(float deltaTime);
         IPhysxBody2D AddBody(IPhysxBody2D body);
         void RemoveBody(IPhysxBody body);
+
+        /// <summary>The closest <paramref name="maxHits"/> bodies along the ray, closest first.</summary>
         IEnumerable<PhysxRaycastHit2D> RayCast(PhysxRay2D ray, int maxHits = 1);
+
+        /// <summary>
+        /// Applies world settings after creation (used by the default
+        /// <see cref="IPhysxWorldEngineFactory2D.Create(PhysxWorldSettings2D)"/>). Engines that
+        /// cannot change their settings ignore it.
+        /// </summary>
+        void ApplySettings(PhysxWorldSettings2D settings) { }
 
         /// <summary>Creates a body in this world (already added: no <see cref="AddBody"/> needed).</summary>
         IPhysxBody2D CreateBody(in PhysxBodyDef2D def);
@@ -30,7 +45,9 @@ namespace Altruist.Physx
 
         /// <summary>
         /// The world's current contacts (touching or only overlapping bounding boxes; check
-        /// <see cref="IPhysxContact2D.IsTouching"/>). Each item is valid until the next one.
+        /// <see cref="IPhysxContact2D.IsTouching"/>). Each item is a distinct view, valid until the
+        /// world's contact list changes (the next step, removing or disabling a body); copy it with
+        /// <see cref="IPhysxContact2D.ToInfo"/> to keep it longer.
         /// </summary>
         IEnumerable<IPhysxContact2D> Contacts { get; }
     }
@@ -39,7 +56,16 @@ namespace Altruist.Physx
     {
         IPhysxWorldEngine2D Create(Vector2 gravity, float fixedDeltaTime = 1f / 60f);
 
-        IPhysxWorldEngine2D Create(PhysxWorldSettings2D settings) => Create(settings.Gravity, settings.FixedDeltaTime);
+        /// <summary>
+        /// A world with every setting. The default creates it with gravity and fixed dt and
+        /// applies the rest (<see cref="IPhysxWorldEngine2D.ApplySettings"/>).
+        /// </summary>
+        IPhysxWorldEngine2D Create(PhysxWorldSettings2D settings)
+        {
+            var engine = Create(settings.Gravity, settings.FixedDeltaTime);
+            engine.ApplySettings(settings);
+            return engine;
+        }
     }
 
     /// <summary>

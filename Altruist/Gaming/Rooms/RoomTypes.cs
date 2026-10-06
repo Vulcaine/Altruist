@@ -61,7 +61,10 @@ public enum DisconnectAction
 /// <summary>What happens to a disconnected player when the grace runs out.</summary>
 public enum GraceExpiredAction
 {
-    /// <summary>The seat stays (with its bot); only the right to rejoin ends.</summary>
+    /// <summary>
+    /// The seat stays and a bot drives it (with <see cref="DisconnectAction.Hold"/> the held seat
+    /// opens for a bot now); only the right to rejoin ends.
+    /// </summary>
     ForfeitRejoin,
     /// <summary>The seat leaves the room.</summary>
     RemoveSeat,
@@ -83,7 +86,10 @@ public enum EmptyRoomAction
 {
     /// <summary>Disposed once no player is connected, joining or still allowed to rejoin.</summary>
     Dispose,
-    /// <summary>A team without seats forfeits; no team left: a draw (finished and disposed).</summary>
+    /// <summary>
+    /// A team without seats forfeits (reported once); no team left, or no player connected,
+    /// joining or still allowed to rejoin: a draw (finished and disposed).
+    /// </summary>
     TeamForfeit,
 }
 
@@ -96,10 +102,14 @@ public sealed record RoomRules
     public EmptyRoomAction WhenEmpty { get; init; } = EmptyRoomAction.Dispose;
     /// <summary>A returning player may take a bot or open seat of their team when their own seat went to a bot.</summary>
     public bool ReclaimTeamSeat { get; init; }
-    /// <summary>Queued players may join while it runs (matchmaking backfill).</summary>
+    /// <summary>Queued players may join while it runs (matchmaking backfill; rated rooms take players inside their rating window).</summary>
     public bool JoinInProgress { get; init; }
-    /// <summary>Open seats are refilled by bots (<see cref="Seat{TSim,TInput,TPlayer}.BotAt"/>).</summary>
-    public bool BotRefill { get; init; }
+    /// <summary>
+    /// Seats opened by the rules (<see cref="DisconnectAction.BotAfterDelay"/>, <see cref="VoluntaryLeaveAction.OpenForBot"/>,
+    /// <see cref="GraceExpiredAction.ForfeitRejoin"/>) get a bot at <see cref="Seat{TSim,TInput,TPlayer}.BotAt"/>
+    /// (default). False: they stay open for queued players only (<see cref="JoinInProgress"/>).
+    /// </summary>
+    public bool BotRefill { get; init; } = true;
 }
 
 /// <summary>Timings of the host (passed by the game; not read from configuration).</summary>
@@ -113,8 +123,13 @@ public sealed record RoomHostOptions
     public double ReconnectGraceSeconds { get; init; } = 30;
     /// <summary>Seconds an ended room stays before its players are released.</summary>
     public double ReturnAfterEndSeconds { get; init; } = 6;
-    /// <summary>Inputs buffered beyond this are dropped, oldest first.</summary>
+    /// <summary>Inputs buffered beyond this are merged or dropped, oldest first (when <see cref="Input"/> is not set).</summary>
     public int MaxQueuedInputs { get; init; } = 16;
+    /// <summary>
+    /// The simulation keeps stepping after it ended, until the room is released (an end screen
+    /// with moving players; default). False: an ended room stops stepping, snapshots go on.
+    /// </summary>
+    public bool StepAfterEnd { get; init; } = true;
 }
 
 /// <summary>One connection of a principal (at most one per principal: the newest wins).</summary>

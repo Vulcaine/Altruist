@@ -100,6 +100,16 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
 
     public T? Module<T>() where T : class => _modules.OfType<T>().FirstOrDefault();
 
+    /// <summary>
+    /// A module takes the connection for new work (it queues, it joins a lobby): every other
+    /// module lets go of it (<see cref="IRoomHostModule{TSim,TInput,TPlayer}.OnTakenOver"/>).
+    /// </summary>
+    public void TakeOver(RoomSession<TSim, TInput, TPlayer> s, IRoomHostModule<TSim, TInput, TPlayer> by)
+    {
+        foreach (var mod in _modules)
+            if (mod != by) mod.OnTakenOver(s);
+    }
+
     // ------------------------------------------------------------------ fleet: cores, capacity, drain
 
     /// <summary>Steps the rooms' simulations with this scheduler (more than one worker: in parallel).</summary>
@@ -364,6 +374,8 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
     /// One step of every room; snapshots every <see cref="RoomHostOptions.SnapshotEveryNSteps"/> steps.
     /// With a multi-worker scheduler the simulations step in parallel first, then the ends are
     /// handled on this thread in room order (each client sees the same packets in the same order).
+    /// A room that throws does not stop the others: every room steps, the snapshots go out, and the
+    /// failures are thrown together at the end (the coordinator logs them).
     /// </summary>
     public virtual void FixedStep(in FixedStep step)
     {
@@ -382,12 +394,16 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         }
         else
         {
+            List<Exception>? errors = null;
             foreach (var m in _rooms.ToArray())
             {
-                m.Step();
+                try
+                { m.Step(); }
+                catch (Exception ex) { (errors ??= new()).Add(ex); }
                 if (m.Sim.Ended && !m.Finished) Finish(m);
                 if (m.EndedSeconds > Options.ReturnAfterEndSeconds) Dispose(m);
             }
+            if (errors is not null) failure = new AggregateException(errors);
         }
         _stepCounter++;
         if (_stepCounter % Options.SnapshotEveryNSteps == 0)
@@ -522,9 +538,24 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         return room;
     }
 
-    /// <summary>The room starts stepping (the game resets its simulation in <c>OnStarting</c>).</summary>
+    /// <summary>
+    /// Starts the room when the server takes it (<see cref="CanOpenRoom"/>: not draining, its load
+    /// fits); false leaves it unstarted (drop it). Matchmaking and lobbies start rooms this way.
+    /// </summary>
+    public bool TryStart(Room<TSim, TInput, TPlayer> room)
+    {
+        if (_rooms.Contains(room) || _drainRequested || !(_node?.CanAccept(room.Load) ?? true)) return false;
+        Start(room);
+        return true;
+    }
+
+    /// <summary>
+    /// The room starts stepping (the game resets its simulation in <c>OnStarting</c>), whatever the
+    /// server's capacity: use <see cref="TryStart"/> to respect it.
+    /// </summary>
     public void Start(Room<TSim, TInput, TPlayer> room)
     {
+        if (_rooms.Contains(room)) return;
         _game.OnStarting(room);
         _rooms.Add(room);
         RefreshSample();
@@ -609,23 +640,41 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
                     }
                     if (since >= grace && _roomOfPrincipal.GetValueOrDefault(p.PrincipalId) == m)
                     {
-                        UnbindPrincipal(p.PrincipalId);
+                        // The seat went to a bot meanwhile: it stays (ForfeitRejoin) or leaves with the player.
+                        var left = p.Seat ?? m.SeatOf(p.LastSeat);
+                        if (left is not null && (left.Owner is not null && left.Owner != p || left.Pending is not null)) left = null;
+                        ExpireGrace(m, p, left);
                         changed = true; // the room may now be empty
                     }
                 }
-                else if (p.Seat is not null && since >= grace)
+                else if (p.Seat is { } held && since >= grace)
                 {
-                    if (m.Rules.OnGraceExpired == GraceExpiredAction.Abandon) Abandon(m, p);
-                    else
-                    {
-                        p.LeftEarly = true;
-                        UnbindPrincipal(p.PrincipalId);
-                        if (m.Rules.OnGraceExpired == GraceExpiredAction.RemoveSeat) m.RemoveSeat(p.Seat);
-                    }
+                    ExpireGrace(m, p, held);
                     changed = true;
                 }
             }
             if (changed && !CheckEmpty(m)) SendRoster(m);
+        }
+    }
+
+    /// <summary>The grace of a disconnected player ran out: <see cref="RoomRules.OnGraceExpired"/> decides what happens to its seat.</summary>
+    private void ExpireGrace(Room<TSim, TInput, TPlayer> m, Participant<TSim, TInput, TPlayer> p, Seat<TSim, TInput, TPlayer>? seat)
+    {
+        p.LeftEarly = true;
+        UnbindPrincipal(p.PrincipalId);
+        switch (m.Rules.OnGraceExpired)
+        {
+            case GraceExpiredAction.Abandon:
+                Abandon(m, p);
+                if (seat is not null && m.Seats.Contains(seat)) m.RemoveSeat(seat);
+                break;
+            case GraceExpiredAction.RemoveSeat:
+                if (seat is not null) m.RemoveSeat(seat);
+                break;
+            default:
+                // A held seat opens for a bot now (a seat a bot already drives keeps it).
+                if (seat is not null && seat.Owner == p) OpenSeat(m, seat, _now);
+                break;
         }
     }
 
@@ -653,22 +702,30 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         if (m.Rules.WhenEmpty == EmptyRoomAction.TeamForfeit)
         {
             var seated = m.Teams.Where(t => m.Seats.Any(s => s.Team == t)).ToList();
-            if (seated.Count >= 2) return false;
-            if (seated.Count == 0)
+            if (seated.Count == 1 && m.Get<TeamForfeited>() is null)
             {
-                _game.OnForfeitDraw(m);
-                Finish(m);
-                Dispose(m);
-                return true;
+                // A whole team is gone: the other one wins (reported once; the game ends the simulation).
+                m.Set(new TeamForfeited());
+                _game.OnTeamForfeit(m, seated[0]);
+                if (m.Ended) return false;
             }
-            // A whole team is gone: the other one wins.
-            _game.OnTeamForfeit(m, seated[0]);
-            return false;
+            if (seated.Count > 0 && HasPlayers(m)) return false;
+            // No team left, or nobody left to play it: a draw.
+            _game.OnForfeitDraw(m);
+            Finish(m);
+            Dispose(m);
+            return true;
         }
-        if (m.ConnectedHumans > 0 || m.Seats.Any(s => s.Pending is not null) || HasRejoinablePlayer(m)) return false;
+        if (HasPlayers(m)) return false;
         Dispose(m);
         return true;
     }
+
+    private sealed class TeamForfeited;
+
+    /// <summary>Someone is connected, about to join, or may still come back.</summary>
+    private bool HasPlayers(Room<TSim, TInput, TPlayer> m) =>
+        m.ConnectedHumans > 0 || m.Seats.Any(s => s.Pending is not null) || HasRejoinablePlayer(m);
 
     /// <summary>
     /// A dropped (not deliberately left) player whose grace still runs keeps the room up even with

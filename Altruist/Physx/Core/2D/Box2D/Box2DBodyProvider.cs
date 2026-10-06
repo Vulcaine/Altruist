@@ -44,7 +44,12 @@ namespace Altruist.Physx.TwoD
         public bool IsEnabled
         {
             get => _body.IsEnabled;
-            set => _body.IsEnabled = value;
+            set
+            {
+                // Disabling destroys the body's contacts.
+                if (Engine is { } e) e.ContactGeneration++;
+                _body.IsEnabled = value;
+            }
         }
 
         public Vector2 WorldCenter => _body.GetWorldCenter();
@@ -86,6 +91,9 @@ namespace Altruist.Physx.TwoD
 
         internal Body Underlying => _body;
 
+        /// <summary>The engine the body was added to (null until then).</summary>
+        internal Box2DWorldEngine2D? Engine { get; set; }
+
         private readonly Body _body;
         private readonly List<IPhysxCollider> _colliders = new();
 
@@ -109,7 +117,10 @@ namespace Altruist.Physx.TwoD
                 System.Reflection.BindingFlags.NonPublic);
 
             if (fixtureProp?.GetValue(collider) is Fixture fx)
+            {
+                if (Engine is { } e) e.ContactGeneration++;
                 _body.DestroyFixture(fx);
+            }
 
             return _colliders.Remove(collider);
         }
@@ -244,6 +255,7 @@ namespace Altruist.Physx.TwoD
                 return;
 
             var body = fixture.Body;
+            if (_engine is not null) _engine.ContactGeneration++;
             body.DestroyFixture(fixture);
             _fixtures.Remove(collider);
         }

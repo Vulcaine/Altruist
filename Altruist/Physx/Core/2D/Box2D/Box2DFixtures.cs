@@ -85,32 +85,85 @@ namespace Altruist.Physx.TwoD
 
         public event Action<IPhysxCollider, IPhysxCollider>? OnTriggerEnter;
         public event Action<IPhysxCollider, IPhysxCollider>? OnTriggerExit;
+        /// <summary>
+        /// Raised after the step in which the fixtures started touching, with the total normal
+        /// impulse the solver applied in that step (0 when they only came within the contact
+        /// margin and did not push yet).
+        /// </summary>
         public event Action<PhysxCollisionInfo2D>? OnCollisionEnter;
-        public event Action<PhysxCollisionInfo2D>? OnCollisionStay;
         public event Action<PhysxCollisionInfo2D>? OnCollisionExit;
 
-        private bool HasBeginSubscribers => OnTriggerEnter is not null || OnCollisionEnter is not null;
-        private bool HasEndSubscribers => OnTriggerExit is not null || OnCollisionExit is not null;
+        private Action<PhysxCollisionInfo2D>? _onCollisionStay;
 
-        internal static void RaiseBegin(Box2DContact2D contact)
+        /// <summary>
+        /// Raised after every later step while the fixtures touch (not for sensors, nor for
+        /// contacts disabled in pre-solve), with the total normal impulse of that step's solve.
+        /// </summary>
+        public event Action<PhysxCollisionInfo2D>? OnCollisionStay
         {
-            if (contact.Native!.FixtureA.UserData is not Box2DFixture2D a || contact.Native.FixtureB.UserData is not Box2DFixture2D b) return;
-            if (!a.HasBeginSubscribers && !b.HasBeginSubscribers) return;
+            add
+            {
+                var had = _onCollisionStay is not null;
+                _onCollisionStay += value;
+                if (!had && _onCollisionStay is not null && Engine is { } e) e.StaySubscribers++;
+            }
+            remove
+            {
+                var had = _onCollisionStay is not null;
+                _onCollisionStay -= value;
+                if (had && _onCollisionStay is null && Engine is { } e) e.StaySubscribers--;
+            }
+        }
+
+        // The world whose step raises this fixture's stays (counted there while subscribed).
+        private Box2DWorldEngine2D? Engine => (Body as Body2DAdapter)?.Engine;
+
+        private static bool TryPair(Box2DContact2D contact, out Box2DFixture2D a, out Box2DFixture2D b)
+        {
+            a = (contact.Native!.FixtureA.UserData as Box2DFixture2D)!;
+            b = (contact.Native.FixtureB.UserData as Box2DFixture2D)!;
+            return a is not null && b is not null;
+        }
+
+        /// <summary>
+        /// Raises the trigger enters at once; returns true for a collision between two fixtures
+        /// of the engine, whose enter is raised after the step (<see cref="RaiseCollisionEnter"/>).
+        /// </summary>
+        internal static bool RaiseBegin(Box2DContact2D contact)
+        {
+            if (!TryPair(contact, out var a, out var b)) return false;
             if (a.IsTrigger || b.IsTrigger)
             {
                 a.OnTriggerEnter?.Invoke(a, b);
                 b.OnTriggerEnter?.Invoke(b, a);
-                return;
+                return false;
             }
+            return true;
+        }
+
+        internal static void RaiseCollisionEnter(Box2DContact2D contact, float impulse)
+        {
+            if (!TryPair(contact, out var a, out var b)) return;
+            if (a.OnCollisionEnter is null && b.OnCollisionEnter is null) return;
             var m = contact.GetWorldManifold();
-            a.OnCollisionEnter?.Invoke(new PhysxCollisionInfo2D(a, b, a.Body, b.Body, m.Midpoint, m.Normal, 0f));
-            b.OnCollisionEnter?.Invoke(new PhysxCollisionInfo2D(b, a, b.Body, a.Body, m.Midpoint, -m.Normal, 0f));
+            a.OnCollisionEnter?.Invoke(new PhysxCollisionInfo2D(a, b, a.Body, b.Body, m.Midpoint, m.Normal, impulse));
+            b.OnCollisionEnter?.Invoke(new PhysxCollisionInfo2D(b, a, b.Body, a.Body, m.Midpoint, -m.Normal, impulse));
+        }
+
+        internal static void RaiseStay(Box2DContact2D contact)
+        {
+            if (!TryPair(contact, out var a, out var b)) return;
+            if (a._onCollisionStay is null && b._onCollisionStay is null) return;
+            var m = contact.GetWorldManifold();
+            var impulse = contact.NormalImpulse;
+            a._onCollisionStay?.Invoke(new PhysxCollisionInfo2D(a, b, a.Body, b.Body, m.Midpoint, m.Normal, impulse));
+            b._onCollisionStay?.Invoke(new PhysxCollisionInfo2D(b, a, b.Body, a.Body, m.Midpoint, -m.Normal, impulse));
         }
 
         internal static void RaiseEnd(Box2DContact2D contact)
         {
-            if (contact.Native!.FixtureA.UserData is not Box2DFixture2D a || contact.Native.FixtureB.UserData is not Box2DFixture2D b) return;
-            if (!a.HasEndSubscribers && !b.HasEndSubscribers) return;
+            if (!TryPair(contact, out var a, out var b)) return;
+            if (a.OnTriggerExit is null && a.OnCollisionExit is null && b.OnTriggerExit is null && b.OnCollisionExit is null) return;
             if (a.IsTrigger || b.IsTrigger)
             {
                 a.OnTriggerExit?.Invoke(a, b);
@@ -122,12 +175,43 @@ namespace Altruist.Physx.TwoD
         }
     }
 
-    /// <summary>A reusable view over a native contact (valid only while <see cref="Native"/> is set).</summary>
+    /// <summary>
+    /// A view over a native contact. The listener bridge reuses one view (valid only while
+    /// <see cref="Native"/> is set, i.e. inside the callback); <c>Contacts</c> creates one per
+    /// contact, bound to the world's contact generation (valid until the contact list may change).
+    /// </summary>
     internal sealed class Box2DContact2D : IPhysxContact2D
     {
         internal Contact? Native;
+        private readonly Box2DWorldEngine2D? _owner;
+        private readonly int _generation;
 
-        private Contact C => Native ?? throw new InvalidOperationException("The contact is only valid inside the callback or enumeration that handed it out.");
+        public Box2DContact2D() { }
+
+        internal Box2DContact2D(Contact native, Box2DWorldEngine2D owner)
+        {
+            Native = native;
+            _owner = owner;
+            _generation = owner.ContactGeneration;
+        }
+
+        private Contact C => Native is { } c && (_owner is null || _owner.ContactGeneration == _generation)
+            ? c
+            : throw new InvalidOperationException(_owner is null
+                ? "The contact is only valid inside the callback that handed it out; copy it with ToInfo() to keep it."
+                : "The contact is no longer valid: the world stepped or a body was removed since it was enumerated; copy it with ToInfo() to keep it.");
+
+        /// <summary>The total normal impulse stored at the contact's points by the last solve.</summary>
+        internal float NormalImpulse
+        {
+            get
+            {
+                var c = C;
+                var sum = 0f;
+                for (var i = 0; i < c.Manifold.PointCount; i++) sum += c.Manifold.Points[i].NormalImpulse;
+                return sum;
+            }
+        }
 
         public IPhysxFixture2D FixtureA => Box2DFixture2D.Of(C.FixtureA);
         public IPhysxFixture2D FixtureB => Box2DFixture2D.Of(C.FixtureB);

@@ -68,10 +68,13 @@ public interface IRoomGame<TSim, TInput, TPlayer>
     /// <summary>A player abandoned (<see cref="GraceExpiredAction.Abandon"/>, <see cref="VoluntaryLeaveAction.Abandon"/>).</summary>
     void OnAbandoned(Room<TSim, TInput, TPlayer> room, Participant<TSim, TInput, TPlayer> p) { }
 
-    /// <summary><see cref="EmptyRoomAction.TeamForfeit"/>: one team is left (<paramref name="winnerTeam"/>); end the simulation.</summary>
+    /// <summary><see cref="EmptyRoomAction.TeamForfeit"/>: one team is left (<paramref name="winnerTeam"/>); end the simulation. Called once per room.</summary>
     void OnTeamForfeit(Room<TSim, TInput, TPlayer> room, int winnerTeam) { }
 
-    /// <summary>No team is left: the room ends in a draw (finished and disposed right after).</summary>
+    /// <summary>
+    /// <see cref="EmptyRoomAction.TeamForfeit"/>: no team is left, or no player is connected, joining
+    /// or allowed to rejoin: the room ends in a draw (finished and disposed right after).
+    /// </summary>
     void OnForfeitDraw(Room<TSim, TInput, TPlayer> room) { }
 
     /// <summary>A newer connection of the same principal replaces this one (tell it before it closes).</summary>
@@ -162,6 +165,12 @@ public interface IRoomHostModule<TSim, TInput, TPlayer>
 
     /// <summary>Every frame, last.</summary>
     void AfterFrame() { }
+
+    /// <summary>
+    /// Another module took the connection for its work (<see cref="RoomHost{TSim,TInput,TPlayer}.TakeOver"/>:
+    /// it queued, it joined a lobby): let go of it.
+    /// </summary>
+    void OnTakenOver(RoomSession<TSim, TInput, TPlayer> s) { }
 
     /// <summary>The connection waits in this module (a queue, a lobby): it has something going on.</summary>
     bool IsBusy(RoomSession<TSim, TInput, TPlayer> s) => false;

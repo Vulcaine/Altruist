@@ -14,6 +14,11 @@ public sealed class LobbyMember<TPlayer>
     /// <summary>Stable id inside the lobby (also the member's seat id in its rooms).</summary>
     public required int MemberId { get; init; }
     public required TPlayer Player { get; set; }
+    /// <summary>
+    /// False while the member's connection is gone but its seat in the lobby's room may still be
+    /// rejoined: it keeps its place (and the host role) until the grace or the room ends.
+    /// </summary>
+    public bool Connected { get; set; } = true;
 }
 
 /// <summary>
@@ -45,7 +50,8 @@ public sealed class Lobby<TSim, TInput, TPlayer>
     public void Remove(string principalId)
     {
         Members.RemoveAll(m => m.PrincipalId == principalId);
-        if (HostPrincipalId == principalId) HostPrincipalId = Members.FirstOrDefault()?.PrincipalId ?? "";
+        // The host role goes to the next member still connected (else the next one).
+        if (HostPrincipalId == principalId) HostPrincipalId = (Members.FirstOrDefault(m => m.Connected) ?? Members.FirstOrDefault())?.PrincipalId ?? "";
     }
 
     public LobbyMember<TPlayer>? Get(string principalId) => Members.FirstOrDefault(m => m.PrincipalId == principalId);
@@ -75,15 +81,20 @@ public sealed record LobbyOptions
 
 /// <summary>
 /// Why a lobby request was refused: <see cref="Unavailable"/> = the server cannot take it (it is
-/// draining, or full when starting a room).
+/// draining, or full when starting a room); <see cref="TooManyPlayers"/> = the lobby has more
+/// members than the mode has seats.
 /// </summary>
-public enum LobbyRejectReason { NotFound, Full, Unavailable }
+public enum LobbyRejectReason { NotFound, Full, Unavailable, TooManyPlayers }
 
 /// <summary>What lobbies need from the game.</summary>
 public interface ILobbyGame<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
-    /// <summary>Seats per team the mode starts with (bots fill up to it), or null when the mode is not allowed.</summary>
+    /// <summary>
+    /// Seats per team of the mode (bots fill up to it; more members than both teams' seats cannot
+    /// start it), 0 for a mode without fixed teams (every member plays, no bots), or null when the
+    /// mode is not allowed.
+    /// </summary>
     int? TeamSizeOf(string mode);
 
     /// <summary>The lobby's state for one member.</summary>
@@ -102,7 +113,8 @@ internal sealed class LobbySeat<TSim, TInput, TPlayer>(Lobby<TSim, TInput, TPlay
 /// <summary>
 /// Private lobbies on top of the <see cref="RoomHost{TSim,TInput,TPlayer}"/>: create or join by
 /// code, host migration, start a room with the members (bots fill the teams), return after the
-/// room, rejoin a lobby room after a reconnect.
+/// room, rejoin a lobby room after a reconnect. A member whose connection drops during the
+/// lobby's room keeps its place and role for the room's reconnect grace.
 /// <para>
 /// In a fleet a lobby lives on the server it was created on and its code is claimed there: a
 /// player joining the code on another server is sent to it. A draining server moves its lobbies
@@ -138,10 +150,25 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
 
     // ------------------------------------------------------------------ commands
 
-    /// <summary>Joins the lobby with this code, or creates one for an empty code.</summary>
+    /// <summary>
+    /// Joins the lobby with this code, or creates one for an empty code. The connection leaves its
+    /// queue (<see cref="RoomHost{TSim,TInput,TPlayer}.TakeOver"/>) and its previous lobby; a
+    /// connection playing in a room is ignored.
+    /// </summary>
     public void Join(RoomSession<TSim, TInput, TPlayer> s, string code)
     {
         code = (code ?? "").Trim().ToUpperInvariant();
+        if (s.Room is not null) return;
+        if (LobbyOf(s) is { } current)
+        {
+            if (current.Code == code)
+            {
+                SendLobby(current);
+                return;
+            }
+            Leave(s, sendUpdate: true);
+        }
+        _host.TakeOver(s, this);
         if (_host.IsDraining)
         {
             // Another server takes it: the code's server, or any server for a new lobby.
@@ -213,20 +240,46 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         if (lobby is null) return;
         SetLobby(s, null);
         lobby.Remove(s.PrincipalId);
-        if (lobby.Members.Count == 0)
-        {
-            Close(lobby);
-            if (lobby.Room is { } m) _host.Dispose(m);
-            return;
-        }
+        if (CloseIfEmpty(lobby)) return;
         if (sendUpdate) SendLobby(lobby);
     }
 
-    /// <summary>The host starts a room in a mode: members alternate teams, bots fill each team to the mode's size.</summary>
+    /// <summary>A lobby without members closes (and its room goes).</summary>
+    private bool CloseIfEmpty(Lobby<TSim, TInput, TPlayer> lobby)
+    {
+        if (lobby.Members.Count > 0) return false;
+        Close(lobby);
+        if (lobby.Room is { } m) _host.Dispose(m);
+        return true;
+    }
+
+    /// <summary>Members whose connection is gone and who can no longer rejoin the lobby's room leave it.</summary>
+    private void PruneDisconnected(Lobby<TSim, TInput, TPlayer> lobby)
+    {
+        var gone = false;
+        foreach (var mb in lobby.Members.ToArray())
+        {
+            if (mb.Connected || (lobby.Room is { } room && _host.BoundRoom(mb.PrincipalId) == room)) continue;
+            lobby.Remove(mb.PrincipalId);
+            gone = true;
+        }
+        if (gone && !CloseIfEmpty(lobby)) SendLobby(lobby);
+    }
+
+    /// <summary>
+    /// The host starts a room in a mode: members alternate teams, bots fill each team to the mode's
+    /// size. Refused (<see cref="LobbyRejectReason.TooManyPlayers"/>) when the members do not fit the
+    /// mode's seats, and (<see cref="LobbyRejectReason.Unavailable"/>) when the server cannot take the room.
+    /// </summary>
     public void Start(RoomSession<TSim, TInput, TPlayer> s, string mode)
     {
         var lobby = LobbyOf(s);
         if (lobby is null || !lobby.IsHost(s.PrincipalId) || _game.TeamSizeOf(mode) is not { } teamSize || lobby.Room is not null) return;
+        if (teamSize > 0 && lobby.Members.Count > teamSize * 2)
+        {
+            _host.Send(s.ClientId, _game.Rejected(LobbyRejectReason.TooManyPlayers, lobby.Code));
+            return;
+        }
         if (!_host.CanOpenRoom(mode, Options.Playlist))
         {
             _host.Send(s.ClientId, _game.Rejected(LobbyRejectReason.Unavailable, lobby.Code));
@@ -256,7 +309,11 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
             m.GiveToBot(m.AddSeat(botId++, 1));
             team1++;
         }
-        _host.Start(m);
+        if (!_host.TryStart(m))
+        {
+            _host.Send(s.ClientId, _game.Rejected(LobbyRejectReason.Unavailable, lobby.Code));
+            return;
+        }
         lobby.Room = m;
         foreach (var p in m.Participants.Values)
         {
@@ -272,7 +329,8 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
 
     public void SendLobby(Lobby<TSim, TInput, TPlayer> lobby)
     {
-        foreach (var mb in lobby.Members) _host.Send(mb.ClientId, _game.LobbyState(lobby, mb));
+        foreach (var mb in lobby.Members)
+            if (mb.Connected) _host.Send(mb.ClientId, _game.LobbyState(lobby, mb));
     }
 
     private string NewCode()
@@ -290,7 +348,29 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
 
     public void OnSessionDropping(RoomSession<TSim, TInput, TPlayer> s)
     {
+        if (LobbyOf(s) is not { } lobby) return;
+        if (lobby.Room is { } room && s.Room == room && !room.Ended && lobby.Get(s.PrincipalId) is { } member)
+        {
+            // Dropped out of the lobby's room: the place (and host role) waits for the rejoin.
+            SetLobby(s, null);
+            member.Connected = false;
+            SendLobby(lobby);
+            return;
+        }
+        Leave(s, sendUpdate: true);
+    }
+
+    /// <summary>The connection queued: it leaves its lobby.</summary>
+    public void OnTakenOver(RoomSession<TSim, TInput, TPlayer> s)
+    {
         if (LobbyOf(s) is not null) Leave(s, sendUpdate: true);
+    }
+
+    /// <summary>Members whose rejoin grace ran out leave their lobby.</summary>
+    public void AfterFrame()
+    {
+        foreach (var lobby in _lobbies.Values.ToArray())
+            if (lobby.Room is not null && lobby.Members.Any(mb => !mb.Connected)) PruneDisconnected(lobby);
     }
 
     public void OnPlayerUpdated(RoomSession<TSim, TInput, TPlayer> s)
@@ -327,7 +407,9 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
             if (lobby.Members.Count >= Options.MaxMembers) return false;
             lobby.Add(s.ClientId, s.PrincipalId, s.Player, p.Seat!.Id);
         }
-        lobby.Get(s.PrincipalId)!.ClientId = s.ClientId;
+        var mb = lobby.Get(s.PrincipalId)!;
+        mb.ClientId = s.ClientId;
+        mb.Connected = true;
         SetLobby(s, lobby);
         return true;
     }
@@ -342,6 +424,12 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         if (room.Get<Lobby<TSim, TInput, TPlayer>>() is not { } lobby || lobby.Room != room) return;
         lobby.Room = null;
         if (!_lobbies.ContainsKey(lobby.Code)) return;
+        // Nobody can rejoin the room any more: members still away leave (the host role moves on).
+        if (lobby.Members.Any(mb => !mb.Connected))
+        {
+            foreach (var mb in lobby.Members.Where(mb => !mb.Connected).ToArray()) lobby.Remove(mb.PrincipalId);
+            if (CloseIfEmpty(lobby)) return;
+        }
         SendLobby(lobby);
         if (_host.IsDraining) MoveAway(lobby);
     }

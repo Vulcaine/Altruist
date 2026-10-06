@@ -147,10 +147,16 @@ public sealed class Room<TSim, TInput, TPlayer>
 
     /// <summary>
     /// One fixed step: one input per connected owner (repeated when starved), bots think, others
-    /// idle. The host steps its rooms; tools may step a room they created outside it.
+    /// idle. After the simulation ended it only steps with <see cref="RoomHostOptions.StepAfterEnd"/>.
+    /// The host steps its rooms; tools may step a room they created outside it.
     /// </summary>
     public void Step()
     {
+        if (Sim.Ended && !_options.StepAfterEnd)
+        {
+            EndedSeconds += Sim.Dt;
+            return;
+        }
         var inputs = _stepInputs;
         inputs.Clear();
         foreach (var s in Seats)

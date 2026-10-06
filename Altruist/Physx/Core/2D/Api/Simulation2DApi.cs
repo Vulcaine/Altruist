@@ -17,36 +17,65 @@ namespace Altruist.Physx.TwoD
     public sealed record PhysxWorldSettings2D
     {
         public Vector2 Gravity { get; init; }
+        /// <summary>
+        /// The fixed step of the world. Only used for stepping when <see cref="MaxSubSteps"/> is
+        /// above zero; otherwise <c>Step(dt)</c> advances the world by exactly <c>dt</c>.
+        /// </summary>
         public float FixedDeltaTime { get; init; } = 1f / 60f;
         public int VelocityIterations { get; init; } = 8;
         public int PositionIterations { get; init; } = 3;
+        /// <summary>
+        /// Fixed stepping (opt-in). 0 (default): <c>Step(dt)</c> runs one step of <c>dt</c>. Above
+        /// zero: <c>Step(dt)</c> adds <c>dt</c> to an accumulator and runs whole steps of
+        /// <see cref="FixedDeltaTime"/> while it lasts, at most this many per call; the time
+        /// beyond that is dropped (no catch-up spiral), the remainder carries to the next call.
+        /// </summary>
+        public int MaxSubSteps { get; init; }
     }
 
-    /// <summary>Everything a body is created with.</summary>
+    /// <summary>
+    /// Everything a body is created with. The zero value (<c>default</c> or <c>new()</c>) is a
+    /// valid definition: a <see cref="PhysxBodyType.Static"/> body at the origin that may sleep,
+    /// with a gravity scale of 1.
+    /// </summary>
     public readonly record struct PhysxBodyDef2D
     {
+        private static readonly int OneBits = BitConverter.SingleToInt32Bits(1f);
+
+        // Stored relative to the defaults so the zero value of the struct means AllowSleep = true
+        // and GravityScale = 1 (exact: the scale's bits are XOR-ed with those of 1).
+        private readonly bool _noSleep;
+        private readonly int _gravityScaleBits;
+
+        /// <summary>
+        /// Static (the default, as in Box2D: <c>b2_staticBody</c>), Dynamic or Kinematic. Set
+        /// <see cref="PhysxBodyType.Dynamic"/> for a body that moves under forces and contacts.
+        /// </summary>
         public PhysxBodyType Type { get; init; }
         public Vector2 Position { get; init; }
         /// <summary>Radians.</summary>
         public float Angle { get; init; }
         /// <summary>Continuous collision against other dynamic bodies (fast movers).</summary>
         public bool Bullet { get; init; }
-        public bool AllowSleep { get; init; }
+        /// <summary>The body may fall asleep when it comes to rest (default true).</summary>
+        public bool AllowSleep
+        {
+            get => !_noSleep;
+            init => _noSleep = !value;
+        }
         public bool FixedRotation { get; init; }
         public float LinearDamping { get; init; }
         public float AngularDamping { get; init; }
-        /// <summary>Multiplier of the world gravity for this body.</summary>
-        public float GravityScale { get; init; }
+        /// <summary>Multiplier of the world gravity for this body (default 1).</summary>
+        public float GravityScale
+        {
+            get => BitConverter.Int32BitsToSingle(_gravityScaleBits ^ OneBits);
+            init => _gravityScaleBits = BitConverter.SingleToInt32Bits(value) ^ OneBits;
+        }
         /// <summary>Game data carried by the body (see <see cref="IPhysxBody2D.UserData"/>).</summary>
         public object? UserData { get; init; }
         /// <summary>Optional id; a new one is generated when null.</summary>
         public string? Id { get; init; }
-
-        public PhysxBodyDef2D()
-        {
-            AllowSleep = true;
-            GravityScale = 1f;
-        }
     }
 
     public enum PhysxShapeKind2D { Circle, Polygon, Chain, Edge }
@@ -112,10 +141,46 @@ namespace Altruist.Physx.TwoD
     /// <summary>
     /// Collision filtering: two fixtures collide when each one's category is in the other's mask,
     /// unless they share a group: a positive group always collides, a negative one never does.
+    /// The zero value (<c>default</c> or <c>new()</c>) equals <see cref="Default"/>: category 1,
+    /// mask 0xFFFF (everything), group 0.
     /// </summary>
-    public readonly record struct PhysxFilter2D(ushort Category = 1, ushort Mask = 0xFFFF, short Group = 0)
+    public readonly record struct PhysxFilter2D
     {
         public static readonly PhysxFilter2D Default = new(Category: 1, Mask: 0xFFFF, Group: 0);
+
+        // Stored XOR-ed with the defaults so the zero value of the struct is the default filter.
+        private const ushort DefaultCategory = 1;
+        private const ushort DefaultMask = 0xFFFF;
+        private readonly ushort _category;
+        private readonly ushort _mask;
+
+        public PhysxFilter2D(ushort Category = DefaultCategory, ushort Mask = DefaultMask, short Group = 0)
+        {
+            _category = (ushort)(Category ^ DefaultCategory);
+            _mask = (ushort)(Mask ^ DefaultMask);
+            this.Group = Group;
+        }
+
+        public ushort Category
+        {
+            get => (ushort)(_category ^ DefaultCategory);
+            init => _category = (ushort)(value ^ DefaultCategory);
+        }
+
+        public ushort Mask
+        {
+            get => (ushort)(_mask ^ DefaultMask);
+            init => _mask = (ushort)(value ^ DefaultMask);
+        }
+
+        public short Group { get; init; }
+
+        public void Deconstruct(out ushort Category, out ushort Mask, out short Group)
+        {
+            Category = this.Category;
+            Mask = this.Mask;
+            Group = this.Group;
+        }
     }
 
     /// <summary>A shape attached to a body, with its material and filter.</summary>
@@ -125,6 +190,7 @@ namespace Altruist.Physx.TwoD
         public float Density { get; init; }
         public float Friction { get; init; }
         public float Restitution { get; init; }
+        /// <summary>Collision filter; the default collides with everything (<see cref="PhysxFilter2D.Default"/>).</summary>
         public PhysxFilter2D Filter { get; init; }
         /// <summary>Sensor: reports contacts but does not collide.</summary>
         public bool IsTrigger { get; init; }
@@ -134,7 +200,6 @@ namespace Altruist.Physx.TwoD
         public PhysxFixtureDef2D()
         {
             Friction = 0.2f;
-            Filter = PhysxFilter2D.Default;
         }
     }
 
@@ -180,8 +245,16 @@ namespace Altruist.Physx.TwoD
     }
 
     /// <summary>
-    /// A contact between two fixtures, valid only inside the listener call or the contact
-    /// enumeration that handed it out.
+    /// A live contact between two fixtures. The engine hands out views, not copies:
+    /// <list type="bullet">
+    /// <item>The contact passed to an <see cref="IPhysxContactListener2D"/> callback is one view
+    /// reused for every callback (no allocation per contact); it is valid only inside that call.</item>
+    /// <item>Each contact yielded by <see cref="IPhysxWorldEngine2D.Contacts"/> is a distinct view
+    /// (safe to collect, e.g. with <c>ToList()</c>), valid until the world's contact list changes
+    /// (the next step, removing or disabling a body or fixture).</item>
+    /// </list>
+    /// Using a view after that throws <see cref="InvalidOperationException"/>. To keep a contact,
+    /// copy it with <see cref="ToInfo"/>.
     /// </summary>
     public interface IPhysxContact2D
     {
@@ -200,6 +273,40 @@ namespace Altruist.Physx.TwoD
         /// <summary>Points in the local manifold (0 when the shapes do not touch).</summary>
         int PointCount { get; }
         PhysxWorldManifold2D GetWorldManifold();
+
+        /// <summary>A copy of the contact's current state that stays valid after the view does.</summary>
+        PhysxContactInfo2D ToInfo() =>
+            new(FixtureA, FixtureB, IsTouching, IsEnabled, Restitution, Friction, GetWorldManifold());
+    }
+
+    /// <summary>A snapshot of a contact (<see cref="IPhysxContact2D.ToInfo"/>), safe to keep.</summary>
+    public readonly struct PhysxContactInfo2D
+    {
+        public IPhysxFixture2D FixtureA { get; }
+        public IPhysxFixture2D FixtureB { get; }
+        public IPhysxBody2D BodyA => FixtureA.Body;
+        public IPhysxBody2D BodyB => FixtureB.Body;
+        public bool IsTouching { get; }
+        public bool IsEnabled { get; }
+        public float Restitution { get; }
+        public float Friction { get; }
+        /// <summary>World-space normal (A to B) and points at the time of the snapshot.</summary>
+        public PhysxWorldManifold2D Manifold { get; }
+        public int PointCount => Manifold.PointCount;
+
+        public PhysxContactInfo2D(
+            IPhysxFixture2D fixtureA, IPhysxFixture2D fixtureB,
+            bool isTouching, bool isEnabled, float restitution, float friction,
+            PhysxWorldManifold2D manifold)
+        {
+            FixtureA = fixtureA;
+            FixtureB = fixtureB;
+            IsTouching = isTouching;
+            IsEnabled = isEnabled;
+            Restitution = restitution;
+            Friction = friction;
+            Manifold = manifold;
+        }
     }
 
     /// <summary>Contact callbacks of a world, all on the stepping thread, inside <c>Step</c>.</summary>
