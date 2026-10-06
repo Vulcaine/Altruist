@@ -89,7 +89,8 @@ public sealed class Room<TSim, TInput, TPlayer>
             {
                 PrincipalId = principalId,
                 Player = player,
-                Input = new InputBuffer<TInput>(_options.MaxQueuedInputs, _game.NeutralInput),
+                Input = new InputBuffer<TInput>(_game.NeutralInput, _game.InputModel,
+                    _options.Input ?? new InputBufferOptions { MaxQueued = _options.MaxQueuedInputs }),
             };
             Participants[principalId] = p;
         }

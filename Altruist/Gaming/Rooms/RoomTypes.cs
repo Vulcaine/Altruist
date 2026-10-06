@@ -125,6 +125,8 @@ public sealed record RoomHostOptions
     public double ReturnAfterEndSeconds { get; init; } = 6;
     /// <summary>Inputs buffered beyond this are merged or dropped, oldest first (when <see cref="Input"/> is not set).</summary>
     public int MaxQueuedInputs { get; init; } = 16;
+    /// <summary>Input buffering (jitter target, catching up); null: the defaults with <see cref="MaxQueuedInputs"/>.</summary>
+    public InputBufferOptions? Input { get; init; }
     /// <summary>
     /// The simulation keeps stepping after it ended, until the room is released (an end screen
     /// with moving players; default). False: an ended room stops stepping, snapshots go on.

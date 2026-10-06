@@ -196,9 +196,11 @@ public class RoomHostTests
         h.Host.SubmitInput("c-a", 2, new Walk(1000)); // stale
         h.Run(4 / 60.0);
         Assert.Equal(x0 + 40, room.Sim.Seats[seat].X);
-        h.Run(2 / 60.0); // starved: the last input repeats
+        h.Run(2 / 60.0); // starved: the last input repeats (standing in for inputs 5 and 6)
         Assert.Equal(x0 + 60, room.Sim.Seats[seat].X);
-        Assert.Contains(h.Game.To("c-a"), p => p.EndsWith(":ack4"));
+        // Snapshots every 2 steps: input 3 applied, then (starved) a step standing in for input 5.
+        Assert.Contains(h.Game.To("c-a"), p => p.EndsWith(":ack3"));
+        Assert.Contains(h.Game.To("c-a"), p => p.EndsWith(":ack5"));
     }
 
     [Fact]

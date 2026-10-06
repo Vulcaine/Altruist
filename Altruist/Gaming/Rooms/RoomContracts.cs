@@ -16,6 +16,13 @@ public interface IRoomGame<TSim, TInput, TPlayer>
     /// <summary>The input of an idle seat (also the starting "last input" of a player).</summary>
     TInput NeutralInput { get; }
 
+    /// <summary>
+    /// What the input is (held buttons, which of them act on their press and in which order), so the
+    /// host can repeat, merge and account inputs without losing or reordering a press. Null (the
+    /// default): inputs are opaque values (see <see cref="RoomInputModel{TInput}.Opaque"/>).
+    /// </summary>
+    RoomInputModel<TInput>? InputModel => null;
+
     /// <summary>Display name of a player (notices).</summary>
     string NameOf(TPlayer player);
 
