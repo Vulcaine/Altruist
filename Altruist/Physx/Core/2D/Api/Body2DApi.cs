@@ -18,6 +18,39 @@ namespace Altruist.Physx.TwoD
 
         float RotationZ { get; set; }
 
+        // Rigid-body members. Engine-backed bodies implement them natively; the defaults keep
+        // lightweight implementations (fakes, kinematic stand-ins) working.
+
+        /// <summary>Game data carried by the body (a tag, the owning entity, ...).</summary>
+        object? UserData { get => null; set { } }
+
+        /// <summary>A sleeping body is skipped by the solver until something wakes it.</summary>
+        bool IsAwake { get => true; set { } }
+
+        /// <summary>A disabled body takes no part in the simulation (no contacts, no motion).</summary>
+        bool IsEnabled { get => true; set { } }
+
+        /// <summary>Center of mass in world coordinates.</summary>
+        Vector2 WorldCenter => Position;
+
+        /// <summary>Moves and rotates the body in one call (radians).</summary>
+        void SetTransform(Vector2 position, float angle)
+        {
+            Position = position;
+            RotationZ = angle;
+        }
+
+        /// <summary>A body-local direction in world coordinates.</summary>
+        Vector2 GetWorldVector(Vector2 local) => Rotation2D.FromRadians(RotationZ).Rotate(local);
+
+        /// <summary>A world direction in body-local coordinates.</summary>
+        Vector2 GetLocalVector(Vector2 world) => Rotation2D.FromRadians(RotationZ).Unrotate(world);
+
+        /// <summary>A body-local point in world coordinates.</summary>
+        Vector2 GetWorldPoint(Vector2 local) => Position + GetWorldVector(local);
+
+        /// <summary>A world point in body-local coordinates.</summary>
+        Vector2 GetLocalPoint(Vector2 world) => GetLocalVector(world - Position);
     }
 
 

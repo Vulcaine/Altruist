@@ -22,11 +22,11 @@ public class StateBehaviorAttribute : Attribute
 
 /// <summary>
 /// Marks a method as a state update handler. Signature:
-/// <c>string? MethodName(TContext context, float dt)</c>, where <c>TContext : IStateContext</c>.
+/// <c>string? MethodName(TContext context, float dt)</c>, where <c>TContext : IStateContextCore</c>.
 /// Return the next state name to transition, or null to stay.
 ///
 /// <para>The same method can back multiple states by decorating with <c>[State]</c> multiple times —
-/// different <see cref="Name"/> per occurrence. Use <see cref="IStateContext.CurrentStateTag"/>
+/// different <see cref="Name"/> per occurrence. Use <see cref="IStateContextCore.CurrentStateTag"/>
 /// or builder-attached per-state data to branch.</para>
 ///
 /// <para>Delay: the update method is not called until <see cref="Delay"/> has elapsed since entry.
@@ -80,8 +80,8 @@ public class StateExitAttribute : Attribute
 /// <summary>
 /// Attaches a normalized window to a state. Multiple windows per state are allowed
 /// (e.g. "damage", "input", "cancel"). Read at runtime via
-/// <see cref="IStateContext.InWindow"/> / <see cref="IStateContext.WindowEntered"/> /
-/// <see cref="IStateContext.WindowExited"/>.
+/// <see cref="IStateContextCore.InWindow"/> / <see cref="IStateContextCore.WindowEntered"/> /
+/// <see cref="IStateContextCore.WindowExited"/>.
 ///
 /// <para>Applied to the SAME method as the <see cref="StateAttribute"/>:</para>
 /// <code>

@@ -114,6 +114,8 @@ public sealed class RecordingOrganizer : IGameWorldOrganizer
 /// </list>
 /// Tests in this class start real engines; xUnit runs them one after another.
 /// </summary>
+// Wall-clock timings: run alone, not next to the CPU-heavy tests.
+[Collection(Tests.Gaming.Engine.CpuHeavyCollection.Name)]
 public sealed class EngineLifecycleRegressionTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);

@@ -11,7 +11,7 @@ namespace Altruist.Gaming;
 /// Produced by <see cref="StateMachineBuilder{TContext}.Build"/>; consumed by
 /// <see cref="StateMachine{TContext}"/>.
 /// </summary>
-public sealed class StateMachineDef<TContext> where TContext : class, IStateContext
+public sealed class StateMachineDef<TContext> where TContext : class, IStateContextCore
 {
     public string InitialState { get; }
     public IReadOnlyDictionary<string, Func<TContext, float, string?>> Updates { get; }

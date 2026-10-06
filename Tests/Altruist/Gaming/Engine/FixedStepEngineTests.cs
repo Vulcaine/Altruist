@@ -387,6 +387,8 @@ public sealed class WorldCoordinatorTests
 /// The engine frame pipeline (0.9.8): world-step inline, plain and configured [Cycle] rates,
 /// ScheduleOnce / ScheduleAtFrame, RunOffTick, the engine clock and the manual test driver.
 /// </summary>
+// Wall-clock timings: run alone, not next to the CPU-heavy tests.
+[Collection(Tests.Gaming.Engine.CpuHeavyCollection.Name)]
 public sealed class EngineFramePipelineTests
 {
     private static IServerStatus AliveStatus()

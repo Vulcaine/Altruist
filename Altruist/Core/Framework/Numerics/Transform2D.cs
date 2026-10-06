@@ -64,6 +64,22 @@ namespace Altruist.TwoD.Numerics
         public static Rotation2D FromRadians(float r) => new(r);
         public static Rotation2D FromDegrees(float deg) => new(MathF.PI * deg / 180f);
         public float ToDegrees() => Radians * 180f / MathF.PI;
+
+        /// <summary>Rotates <paramref name="v"/> by this angle (counter-clockwise): local to world.</summary>
+        public Vector2 Rotate(Vector2 v)
+        {
+            var c = MathF.Cos(Radians);
+            var s = MathF.Sin(Radians);
+            return new Vector2(c * v.X - s * v.Y, s * v.X + c * v.Y);
+        }
+
+        /// <summary>The inverse of <see cref="Rotate"/>: world to local.</summary>
+        public Vector2 Unrotate(Vector2 v)
+        {
+            var c = MathF.Cos(Radians);
+            var s = MathF.Sin(Radians);
+            return new Vector2(c * v.X + s * v.Y, -s * v.X + c * v.Y);
+        }
     }
 
     public readonly struct Transform2D

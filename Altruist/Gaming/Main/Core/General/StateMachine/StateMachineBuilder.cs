@@ -27,7 +27,7 @@ namespace Altruist.Gaming;
 /// StateMachineDef&lt;IComboContext&gt; def = b.Build();
 /// </code>
 /// </summary>
-public sealed class StateMachineBuilder<TContext> where TContext : class, IStateContext
+public sealed class StateMachineBuilder<TContext> where TContext : class, IStateContextCore
 {
     private readonly Dictionary<string, Func<TContext, float, string?>> _updates = new();
     private readonly Dictionary<string, Action<TContext>> _enters = new();
@@ -186,7 +186,7 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
             _name = name;
         }
 
-        /// <summary>Base duration in seconds. 0 = open-ended (no <see cref="IStateContext.Progress"/>).</summary>
+        /// <summary>Base duration in seconds. 0 = open-ended (no <see cref="IStateContextCore.Progress"/>).</summary>
         public StateConfig Duration(float seconds)
         {
             _owner._durations[_name] = seconds;
@@ -200,7 +200,7 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
             return this;
         }
 
-        /// <summary>Overwrite the state's tag string, readable via <see cref="IStateContext.CurrentStateTag"/>.</summary>
+        /// <summary>Overwrite the state's tag string, readable via <see cref="IStateContextCore.CurrentStateTag"/>.</summary>
         public StateConfig Tag(string tag)
         {
             _owner._tags[_name] = tag;
@@ -279,11 +279,11 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
     {
         var pars = method.GetParameters();
         if (pars.Length != 2
-            || !typeof(IStateContext).IsAssignableFrom(pars[0].ParameterType)
+            || !typeof(IStateContextCore).IsAssignableFrom(pars[0].ParameterType)
             || pars[1].ParameterType != typeof(float))
         {
             throw new InvalidOperationException(
-                $"[State] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContext, float).");
+                $"[State] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContextCore, float).");
         }
         if (method.ReturnType != typeof(string))
         {
@@ -295,10 +295,10 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
     private static void ValidateLifecycleSignature(MethodInfo method, Type declaringType, string attrName)
     {
         var pars = method.GetParameters();
-        if (pars.Length != 1 || !typeof(IStateContext).IsAssignableFrom(pars[0].ParameterType))
+        if (pars.Length != 1 || !typeof(IStateContextCore).IsAssignableFrom(pars[0].ParameterType))
         {
             throw new InvalidOperationException(
-                $"[{attrName}] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContext).");
+                $"[{attrName}] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContextCore).");
         }
         if (method.ReturnType != typeof(void))
         {

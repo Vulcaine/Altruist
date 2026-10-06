@@ -4,6 +4,7 @@ Licensed under the Apache License, Version 2.0
 */
 
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -89,6 +90,24 @@ namespace Altruist.Gaming
     [ConditionalOnMissingService(typeof(IGameWorldOrganizer))]
     public sealed class WorldCoordinator : IGameWorldOrganizer
     {
+        /// <summary>
+        /// The engine's meter: <c>altruist.engine.frame.duration</c> (ms per frame),
+        /// <c>altruist.engine.stepper.duration</c> (ms per stepper and frame, tagged <c>stepper</c>),
+        /// <c>altruist.engine.fixed_steps</c> and <c>altruist.engine.overruns</c> (frames that hit
+        /// <c>max-steps-per-frame</c>, tagged <c>stepper</c>).
+        /// </summary>
+        public const string MeterName = "Altruist.Engine";
+
+        private static readonly Meter EngineMeter = new(MeterName);
+        private static readonly Histogram<double> FrameDuration =
+            EngineMeter.CreateHistogram<double>("altruist.engine.frame.duration", "ms", "Wall time of one coordinator frame.");
+        private static readonly Histogram<double> StepperDuration =
+            EngineMeter.CreateHistogram<double>("altruist.engine.stepper.duration", "ms", "Wall time of one stepper in one frame.");
+        private static readonly Counter<long> FixedSteps =
+            EngineMeter.CreateCounter<long>("altruist.engine.fixed_steps", description: "Fixed steps run.");
+        private static readonly Counter<long> Overruns =
+            EngineMeter.CreateCounter<long>("altruist.engine.overruns", description: "Frames that hit max-steps-per-frame.");
+
         private readonly Lazy<IEnumerable<IWorldStepper>> _source;
         private readonly double _maxFrameDelta;
         private readonly int _maxSteps;
@@ -100,6 +119,7 @@ namespace Altruist.Gaming
         private sealed class Entry
         {
             public required IWorldStepper Stepper;
+            public required KeyValuePair<string, object?> Tag;
             public FixedStepClock? Clock;
             public long LastFaultLog;
             public long SuppressedFaults;
@@ -168,10 +188,13 @@ namespace Altruist.Gaming
             var entries = Entries();
             _frame++;
             double realDt = deltaTime;
+            var measure = FrameDuration.Enabled || StepperDuration.Enabled;
+            var frameStart = measure ? Stopwatch.GetTimestamp() : 0;
 
             foreach (var e in entries)
             {
                 var stepper = e.Stepper;
+                var stepperStart = measure ? Stopwatch.GetTimestamp() : 0;
                 if (e.Clock is not { } clock)
                 {
                     var frame = new FrameInfo(_frame, realDt, realDt, 0, false);
@@ -180,21 +203,28 @@ namespace Altruist.Gaming
                     { stepper.Step(deltaTime); }
                     catch (Exception ex) { ReportFault(e, "Step", ex); }
                     Guard(e, "AfterSteps", stepper, frame, static (s, f) => s.AfterSteps(in f));
-                    continue;
                 }
-
-                var steps = clock.Advance(realDt, out var clamped, out var overrun);
-                var info = new FrameInfo(_frame, realDt, clamped, steps, overrun);
-                Guard(e, "BeforeSteps", stepper, info, static (s, f) => s.BeforeSteps(in f));
-                var first = clock.TotalSteps - steps;
-                for (var i = 0; i < steps; i++)
+                else
                 {
-                    try
-                    { stepper.FixedStep(new FixedStep(first + i + 1, clock.Dt, i, steps)); }
-                    catch (Exception ex) { ReportFault(e, "FixedStep", ex); }
+                    var steps = clock.Advance(realDt, out var clamped, out var overrun);
+                    var info = new FrameInfo(_frame, realDt, clamped, steps, overrun);
+                    Guard(e, "BeforeSteps", stepper, info, static (s, f) => s.BeforeSteps(in f));
+                    var first = clock.TotalSteps - steps;
+                    for (var i = 0; i < steps; i++)
+                    {
+                        try
+                        { stepper.FixedStep(new FixedStep(first + i + 1, clock.Dt, i, steps)); }
+                        catch (Exception ex) { ReportFault(e, "FixedStep", ex); }
+                    }
+                    Guard(e, "AfterSteps", stepper, info, static (s, f) => s.AfterSteps(in f));
+                    if (steps > 0) FixedSteps.Add(steps, e.Tag);
+                    if (overrun) Overruns.Add(1, e.Tag);
                 }
-                Guard(e, "AfterSteps", stepper, info, static (s, f) => s.AfterSteps(in f));
+                if (measure)
+                    StepperDuration.Record(Stopwatch.GetElapsedTime(stepperStart).TotalMilliseconds, e.Tag);
             }
+            if (measure)
+                FrameDuration.Record(Stopwatch.GetElapsedTime(frameStart).TotalMilliseconds);
         }
 
         private void Guard(Entry e, string phase, IWorldStepper stepper, FrameInfo frame, Action<IWorldStepper, FrameInfo> call)
@@ -224,7 +254,7 @@ namespace Altruist.Gaming
                             $"{stepper.GetType().FullName} is a fixed-mode IWorldStepper with FixedHz {stepper.FixedHz}; it must be positive.");
                     clock = new FixedStepClock(stepper.FixedHz, _maxFrameDelta, _maxSteps, _overrun);
                 }
-                list.Add(new Entry { Stepper = stepper, Clock = clock });
+                list.Add(new Entry { Stepper = stepper, Clock = clock, Tag = new("stepper", stepper.GetType().Name) });
             }
             _entries = list.ToArray();
             return _entries;

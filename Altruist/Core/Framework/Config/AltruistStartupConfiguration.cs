@@ -192,6 +192,17 @@ namespace Altruist
                 builder.Services.Add(d);
             }
 
+            // A drain on shutdown (ServerDrainOnShutdown) must not be cut off by the host's
+            // default 30 s stop timeout.
+            if (sharingProvider.GetService<IServerNode>() is { } node)
+            {
+                var needed = node.DrainTimeout + (node is ServerNode sn ? sn.Options.ForceStopGrace : TimeSpan.Zero) + TimeSpan.FromSeconds(5);
+                builder.Services.Configure<HostOptions>(o =>
+                {
+                    if (o.ShutdownTimeout < needed) o.ShutdownTimeout = needed;
+                });
+            }
+
             var mvcBuilder = builder.Services.AddControllers();
             var conditionLog = _loggerFactory.CreateLogger<AltruistStartupConfiguration>();
 
@@ -261,6 +272,11 @@ namespace Altruist
                     KeepAliveInterval = TimeSpan.FromMinutes(2)
                 });
             }
+
+            // Fleet: a client may reach any server through this one (?node=), and requests relayed
+            // here get their client's address back. Before routing and the shields.
+            if (app.Services.GetService<IFleet>() is not null)
+                app.UseMiddleware<FleetRelayMiddleware>();
 
             app.UseRouting();
             app.Use(async (context, next) =>

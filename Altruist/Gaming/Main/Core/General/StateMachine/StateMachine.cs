@@ -10,7 +10,7 @@ namespace Altruist.Gaming;
 /// system) create one from a shared <see cref="StateMachineDef{TContext}"/>
 /// and tick it per entity.
 /// </summary>
-public class StateMachine<TContext> where TContext : class, IStateContext
+public class StateMachine<TContext> where TContext : class, IStateContextCore
 {
     protected readonly StateMachineDef<TContext> Def;
 

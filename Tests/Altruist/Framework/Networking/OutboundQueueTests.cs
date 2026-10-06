@@ -22,6 +22,8 @@ namespace Tests.Altruist.Framework.Networking;
 /// coalescing, slow-reader aborts, queued mode, metrics, the shared instance in DI and the
 /// connection manager forgetting a closed connection.
 /// </summary>
+// Wall-clock timings: run alone, not next to the CPU-heavy tests.
+[Collection(Tests.Gaming.Engine.CpuHeavyCollection.Name)]
 public sealed class OutboundQueueTests
 {
     [MessagePackObject]

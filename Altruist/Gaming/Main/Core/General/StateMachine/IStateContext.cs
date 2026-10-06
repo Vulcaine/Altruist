@@ -30,14 +30,11 @@ public readonly struct StateWindow
 /// <see cref="CurrentStateTag"/>, <see cref="ActiveWindows"/>, and
 /// <see cref="PreviousProgress"/> — consumer code only reads them.</para>
 ///
-/// <para>Consumers implement this via a domain-specific context interface:
-/// <c>IAIContext : IStateContext</c>, <c>IComboContext : IStateContext</c>, etc.</para>
+/// <para>Not tied to a world object: a match bot, a quest or a UI flow can be driven too.
+/// <see cref="IStateContext"/> adds the world-entity back-reference.</para>
 /// </summary>
-public interface IStateContext
+public interface IStateContextCore
 {
-    /// <summary>The entity this context belongs to. Back-reference for state logic.</summary>
-    ITypelessWorldObject Entity { get; }
-
     /// <summary>Seconds spent in the current state since the last transition. Set by the driver each tick.</summary>
     float TimeInState { get; set; }
 
@@ -96,4 +93,14 @@ public interface IStateContext
         if (!ActiveWindows.TryGetValue(kind, out var w)) return false;
         return PreviousProgress <= w.End && Progress > w.End;
     }
+}
+
+/// <summary>
+/// A state context that belongs to a world object. Consumers implement this via a
+/// domain-specific context interface (<c>IComboContext : IStateContext</c>, ...).
+/// </summary>
+public interface IStateContext : IStateContextCore
+{
+    /// <summary>The entity this context belongs to. Back-reference for state logic.</summary>
+    ITypelessWorldObject Entity { get; }
 }

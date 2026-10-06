@@ -21,6 +21,7 @@ namespace Altruist.Gaming;
 public static class AIBehaviorDiscovery
 {
     private static readonly Dictionary<string, StateMachineDef<IAIContext>> _templates = new();
+    private static readonly object _lock = new();
     private static bool _discovered;
 
     public static void DiscoverBehaviors(
@@ -28,8 +29,11 @@ public static class AIBehaviorDiscovery
         Func<Type, object?> instanceFactory,
         ILogger logger)
     {
-        if (_discovered) return;
-        _discovered = true;
+        lock (_lock)
+        {
+            if (_discovered) return;
+            _discovered = true;
+        }
 
         var asmList = assemblies.ToList();
         var behaviorTypes = TypeDiscovery.FindTypesWithAttribute<AIBehaviorAttribute>(asmList).ToList();
@@ -73,11 +77,8 @@ public static class AIBehaviorDiscovery
                     continue;
                 }
 
-                var def = new StateMachineBuilder<IAIContext>()
-                    .RegisterHandlers(type, instance)
-                    .Build();
-
-                _templates[attr.Name] = def;
+                var def = Build(type, instance);
+                lock (_lock) _templates[attr.Name] = def;
                 logger.LogInformation("[AI-DISC] Registered AI behavior '{Name}' with states: [{States}]",
                     attr.Name, string.Join(", ", def.Updates.Keys));
             }
@@ -91,10 +92,43 @@ public static class AIBehaviorDiscovery
     /// <summary>Create a new FSM instance from a registered behavior template.</summary>
     public static AIStateMachine? CreateStateMachine(string behaviorName)
     {
-        return _templates.TryGetValue(behaviorName, out var def)
-            ? new AIStateMachine(def)
-            : null;
+        lock (_lock)
+            return _templates.TryGetValue(behaviorName, out var def)
+                ? new AIStateMachine(def)
+                : null;
     }
 
-    public static bool HasBehavior(string name) => _templates.ContainsKey(name);
+    /// <summary>
+    /// A new FSM of the <typeparamref name="TBehavior"/> behavior, without an assembly scan:
+    /// for agents their owner ticks itself (a bot in a match room, a headless simulation, a
+    /// test). The behavior is built once (parameterless constructor; behaviors keep their
+    /// per-agent state in the context) and registered under its <see cref="AIBehaviorAttribute"/>
+    /// name, so <see cref="CreateStateMachine(string)"/> finds it too.
+    /// </summary>
+    public static AIStateMachine CreateStateMachine<TBehavior>() where TBehavior : class, new()
+    {
+        var name = typeof(TBehavior).GetCustomAttribute<AIBehaviorAttribute>()?.Name
+            ?? throw new InvalidOperationException($"{typeof(TBehavior).Name} has no [AIBehavior] attribute.");
+        StateMachineDef<IAIContext>? def;
+        lock (_lock) _templates.TryGetValue(name, out def);
+        if (def is null)
+        {
+            var built = Build(typeof(TBehavior), new TBehavior());
+            lock (_lock)
+            {
+                if (!_templates.TryGetValue(name, out def)) _templates[name] = def = built;
+            }
+        }
+        return new AIStateMachine(def);
+    }
+
+    public static bool HasBehavior(string name)
+    {
+        lock (_lock) return _templates.ContainsKey(name);
+    }
+
+    private static StateMachineDef<IAIContext> Build(Type type, object instance) =>
+        new StateMachineBuilder<IAIContext>()
+            .RegisterHandlers(type, instance)
+            .Build();
 }

@@ -15,7 +15,49 @@ namespace Altruist.Physx.TwoD
     {
         public string Id { get; }
         public PhysxBodyType Type { get; set; }
-        public float Mass { get => (float)_body.Mass; set { /* Box2D mass from fixtures; ignore set */ } }
+        /// <summary>
+        /// Box2D derives mass from the fixtures; setting it scales mass and rotational inertia so
+        /// the body weighs exactly this much whatever its shape (set it after adding fixtures).
+        /// </summary>
+        public float Mass
+        {
+            get => (float)_body.Mass;
+            set
+            {
+                _body.GetMassData(out var md);
+                if (md.Mass <= 0) return;
+                var k = value / md.Mass;
+                md.Mass = value;
+                md.RotationInertia *= k;
+                _body.SetMassData(md);
+            }
+        }
+
+        public object? UserData { get; set; }
+
+        public bool IsAwake
+        {
+            get => _body.IsAwake;
+            set => _body.IsAwake = value;
+        }
+
+        public bool IsEnabled
+        {
+            get => _body.IsEnabled;
+            set => _body.IsEnabled = value;
+        }
+
+        public Vector2 WorldCenter => _body.GetWorldCenter();
+
+        public void SetTransform(Vector2 position, float angle) => _body.SetTransform(position, angle);
+
+        public Vector2 GetWorldVector(Vector2 local) => _body.GetWorldVector(local);
+
+        public Vector2 GetLocalVector(Vector2 world) => _body.GetLocalVector(world);
+
+        public Vector2 GetWorldPoint(Vector2 local) => _body.GetWorldPoint(local);
+
+        public Vector2 GetLocalPoint(Vector2 world) => _body.GetLocalPoint(world);
         public PhysxTag? PhysxTag { get; set; }
 
         public Vector2 Position
@@ -52,6 +94,7 @@ namespace Altruist.Physx.TwoD
             Id = id;
             _body = body;
             Type = type;
+            body.UserData = this;
         }
 
         public void AddCollider(IPhysxCollider collider) => _colliders.Add(collider);
@@ -280,18 +323,9 @@ namespace Altruist.Physx.TwoD
 
                         // Apply local offset/rotation to vertices
                         var offset = t.Position.ToVector2();
-                        var angle = t.Rotation.Radians;
-                        var sin = MathF.Sin(angle);
-                        var cos = MathF.Cos(angle);
-
                         var transformed = new Vector2[verts.Length];
                         for (int i = 0; i < verts.Length; i++)
-                        {
-                            var v = verts[i];
-                            var x = v.X * cos - v.Y * sin;
-                            var y = v.X * sin + v.Y * cos;
-                            transformed[i] = new Vector2(x + offset.X, y + offset.Y);
-                        }
+                            transformed[i] = t.Rotation.Rotate(verts[i]) + new Vector2(offset.X, offset.Y);
 
                         var poly = new PolygonShape();
                         poly.Set(transformed);

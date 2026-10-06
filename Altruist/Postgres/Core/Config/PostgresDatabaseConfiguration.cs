@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Npgsql;
+
 namespace Altruist.Persistence.Postgres;
 
 [ServiceConfiguration(order: -100)]
@@ -109,6 +111,11 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
         // Connect once
         await provider.ConnectAsync().ConfigureAwait(false);
 
+        // Servers of a fleet often start together against one database: one bootstrap at a time
+        // (the others wait, then find the schema migrated), or concurrent CREATE SCHEMA / ALTER
+        // TABLE statements collide.
+        await using var bootstrapLock = await BootstrapLock.AcquireAsync(provider, logger).ConfigureAwait(false);
+
         // Create schemas used by persisted models (vaults).
         var schemaNames = modelTypes
             .Select(GetSchemaName)
@@ -136,6 +143,60 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
     }
 
     private sealed class PostgresBootstrapMarker { }
+
+    /// <summary>
+    /// A session-level Postgres advisory lock (per database) held for the whole bootstrap on a
+    /// connection of its own; released when disposed (or when the connection drops).
+    /// </summary>
+    internal sealed class BootstrapLock : IAsyncDisposable
+    {
+        /// <summary>Fixed key shared by every Altruist server ("ALTRBOOT").</summary>
+        public const long Key = 0x414C5452424F4F54;
+
+        private readonly NpgsqlConnection? _conn;
+
+        private BootstrapLock(NpgsqlConnection? conn) => _conn = conn;
+
+        public static async Task<BootstrapLock> AcquireAsync(ISqlDatabaseProvider provider, ILogger logger)
+        {
+            if (provider is not GeneralSqlDatabaseProvider sql)
+                return new BootstrapLock(null);
+            var conn = new NpgsqlConnection(sql.GetConnectionString());
+            try
+            {
+                await conn.OpenAsync().ConfigureAwait(false);
+                await using (var probe = new NpgsqlCommand("SELECT pg_try_advisory_lock(@k)", conn))
+                {
+                    probe.Parameters.AddWithValue("k", Key);
+                    if (await probe.ExecuteScalarAsync().ConfigureAwait(false) is true)
+                        return new BootstrapLock(conn);
+                }
+                logger.LogInformation("⏳ Another server is bootstrapping this database; waiting for it.");
+                await using var wait = new NpgsqlCommand("SELECT pg_advisory_lock(@k)", conn) { CommandTimeout = 0 };
+                wait.Parameters.AddWithValue("k", Key);
+                await wait.ExecuteNonQueryAsync().ConfigureAwait(false);
+                return new BootstrapLock(conn);
+            }
+            catch
+            {
+                await conn.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_conn is null) return;
+            try
+            {
+                await using var unlock = new NpgsqlCommand("SELECT pg_advisory_unlock(@k)", _conn);
+                unlock.Parameters.AddWithValue("k", Key);
+                await unlock.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+            catch (NpgsqlException) { /* closing the session releases it anyway */ }
+            await _conn.DisposeAsync().ConfigureAwait(false);
+        }
+    }
 
     private static async Task RunInitializersAsync(
         IServiceProvider sp,

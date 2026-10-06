@@ -61,6 +61,9 @@
     <ProjectReference Include="..\Altruist\Gaming\Main\Gaming.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Questing\Questing.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Combat\Combat.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Rooms\Rooms.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Matchmaking\Matchmaking.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Lobbies\Lobbies.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Movement\Movement.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Inventory\Inventory.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Autosave\Autosave.csproj" />
