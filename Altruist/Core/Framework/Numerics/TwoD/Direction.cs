@@ -5,6 +5,8 @@ Licensed under the Apache License, Version 2.0
 
 using System.Numerics;
 
+using Altruist.Numerics;
+
 namespace Altruist.TwoD.Numerics;
 
 /// <summary>"Which way from A to B?" — 2D mirror of
@@ -46,4 +48,40 @@ public static class Direction2D
 
     /// <summary>90° CCW rotation: (x, y) → (-y, x).</summary>
     public static Vector2 Perpendicular(Vector2 dir) => new(-dir.Y, dir.X);
+
+    /// <summary>90° clockwise rotation: (x, y) → (y, -x). For a surface normal pointing out of
+    /// a floor (+Y) this is the tangent pointing +X.</summary>
+    public static Vector2 PerpendicularClockwise(Vector2 dir) => new(dir.Y, -dir.X);
+
+    /// <summary>Unit vector at a polar angle in the standard math convention (0 = +X,
+    /// counter-clockwise, the convention of <see cref="Rotation2D"/> and physics bodies):
+    /// <c>(MathF.Cos(radians), MathF.Sin(radians))</c>. Not the yaw convention of
+    /// <see cref="TowardAngle"/> (0 = +Y, clockwise).</summary>
+    public static Vector2 FromPolar(float radians) => new(MathF.Cos(radians), MathF.Sin(radians));
+
+    /// <summary><see cref="FromPolar"/> in degrees:
+    /// <c>(MathF.Cos(degrees * (π / 180)), MathF.Sin(degrees * (π / 180)))</c>.</summary>
+    public static Vector2 FromPolarDegrees(float degrees) => FromPolar(Angle.ToRadians(degrees));
+
+    /// <summary>Limits the Y component (elevation) of the unit vector <paramref name="unit"/> to
+    /// [<paramref name="minY"/>, <paramref name="maxY"/>] and rebuilds X on the same side so the
+    /// result stays unit length: when Y is clamped,
+    /// <c>x = MathF.Sign(unit.X) * MathF.Sqrt(1 - y * y)</c>. Y above <paramref name="maxY"/> is
+    /// checked first. A vertical input (X = 0) stays vertical in X (0).</summary>
+    public static Vector2 ClampElevation(Vector2 unit, float minY, float maxY)
+    {
+        var ux = unit.X;
+        var uy = unit.Y;
+        if (uy > maxY)
+        {
+            uy = maxY;
+            ux = MathF.Sign(ux) * MathF.Sqrt(1 - uy * uy);
+        }
+        else if (uy < minY)
+        {
+            uy = minY;
+            ux = MathF.Sign(ux) * MathF.Sqrt(1 - uy * uy);
+        }
+        return new Vector2(ux, uy);
+    }
 }

@@ -6,8 +6,9 @@ Licensed under the Apache License, Version 2.0
 namespace Altruist.Numerics;
 
 /// <summary>"Angle bookkeeping" — wrap, signed difference, clamped step,
-/// degree↔radian conversion. Pure functions over radians. Dimension-agnostic
-/// (used identically by 2D and 3D consumers), hence the neutral namespace.</summary>
+/// degree↔radian conversion, nearest equivalent angle, angular rates toward a target.
+/// Pure functions over radians. Dimension-agnostic (used identically by 2D and 3D
+/// consumers), hence the neutral namespace.</summary>
 public static class Angle
 {
     private const float TwoPi = MathF.PI * 2f;
@@ -39,4 +40,51 @@ public static class Angle
 
     public static float ToRadians(float degrees) => degrees * (MathF.PI / 180f);
     public static float ToDegrees(float radians) => radians * (180f / MathF.PI);
+
+    // ── Modulo wrap and rates ─────────────────────────────────────────────
+    //
+    // Deterministic: same inputs give the same bits on the same runtime. Each helper evaluates
+    // exactly the expression in its summary, so it can replace that expression written inline.
+
+    /// <summary>Wraps <paramref name="radians"/> by modulo:
+    /// <c>a = (radians + π) % 2π; if (a &lt; 0) a += 2π; return a - π</c>. The result lies in
+    /// [-π, π): an exact +π maps to -π (where <see cref="Normalize"/>, an IEEE remainder, keeps +π),
+    /// and other inputs can differ from <see cref="Normalize"/> in the last bit. Use this one when
+    /// the arithmetic has to match <c>(a + PI) % (2 * PI)</c> code bit for bit (the TypeScript twin
+    /// <c>wrap</c> computes the same expression on JavaScript numbers); use
+    /// <see cref="Normalize"/> otherwise.</summary>
+    public static float Wrap(float radians)
+    {
+        var a = (radians + MathF.PI) % TwoPi;
+        if (a < 0) a += TwoPi;
+        return a - MathF.PI;
+    }
+
+    /// <summary>Signed delta from <paramref name="from"/> to <paramref name="to"/> wrapped with
+    /// <see cref="Wrap"/>: <c>Wrap(to - from)</c>.</summary>
+    public static float WrappedDelta(float from, float to) => Wrap(to - from);
+
+    /// <summary>The angle equivalent to <paramref name="angle"/> (same direction, a multiple of 2π
+    /// apart) nearest to <paramref name="reference"/>: <c>reference + Wrap(angle - reference)</c>.
+    /// Snapping a body to it never spins it a full turn.</summary>
+    public static float NearestEquivalent(float reference, float angle) => reference + Wrap(angle - reference);
+
+    /// <summary>The multiple of 2π nearest to <paramref name="radians"/> ("level after the spin"):
+    /// <c>radians - Wrap(radians)</c>.</summary>
+    public static float NearestFullTurn(float radians) => radians - Wrap(radians);
+
+    /// <summary>Proportional angular rate toward <paramref name="target"/>:
+    /// <c>Wrap(target - current) * gain</c> (rad/s for a gain in 1/s).</summary>
+    public static float RateToward(float current, float target, float gain) => Wrap(target - current) * gain;
+
+    /// <summary><see cref="RateToward"/> clamped to ±<paramref name="maxRate"/>:
+    /// <c>Scalar.Clamp(Wrap(target - current) * gain, -maxRate, maxRate)</c>.</summary>
+    public static float ClampedRateToward(float current, float target, float gain, float maxRate) =>
+        Scalar.Clamp(Wrap(target - current) * gain, -maxRate, maxRate);
+
+    /// <summary>The constant angular rate that arrives at <paramref name="target"/> in
+    /// <paramref name="time"/> seconds (never faster than in <paramref name="minTime"/>, e.g. one
+    /// step): <c>Wrap(target - current) / MathF.Max(time, minTime)</c>.</summary>
+    public static float ArriveRate(float current, float target, float time, float minTime) =>
+        Wrap(target - current) / MathF.Max(time, minTime);
 }

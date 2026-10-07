@@ -73,6 +73,11 @@ namespace Altruist.TwoD.Numerics
             return new Vector2(c * v.X - s * v.Y, s * v.X + c * v.Y);
         }
 
+        /// <summary>The angle (radians, counter-clockwise as <see cref="Rotate"/>) at which a body's
+        /// local +Y axis points along <paramref name="normal"/>: <c>MathF.Atan2(-normal.X, normal.Y)</c>.
+        /// Aligning a body's "up" with a surface normal turns toward this angle.</summary>
+        public static float AngleAligningUp(Vector2 normal) => MathF.Atan2(-normal.X, normal.Y);
+
         /// <summary>The inverse of <see cref="Rotate"/>: world to local.</summary>
         public Vector2 Unrotate(Vector2 v)
         {

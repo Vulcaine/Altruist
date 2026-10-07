@@ -1,0 +1,18 @@
+{
+  "name": "@altruist/sim2d",
+  "version": "0.1.0",
+  "description": "Altruist 2D simulation helpers for game clients: math, physics and gameplay verbs that mirror the C# Altruist API with the same operation order (deterministic twins of the server code).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./math": "./src/math/index.ts",
+    "./physics": "./src/physics/index.ts",
+    "./gameplay": "./src/gameplay/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
