@@ -78,3 +78,20 @@ export function clampedRateToward(current: number, target: number, gain: number,
 export function arriveRate(current: number, target: number, time: number, minTime: number): number {
   return wrap(target - current) / Math.max(time, minTime);
 }
+
+/** Constant rate of `direction` (±1) full turns in `time` seconds: `(direction * Math.PI * 2) / time`. */
+export function fullTurnRate(time: number, direction: number): number {
+  return (direction * Math.PI * 2) / time;
+}
+
+/** Which of `sectors` equal slices the direction (dx, dy) is in, counter-clockwise from -x:
+ * `Math.floor(((Math.atan2(dy, dx) + Math.PI) / (2 * Math.PI)) * sectors) % sectors` (+π wraps to 0). */
+export function sectorToward(dx: number, dy: number, sectors: number): number {
+  return Math.floor(((Math.atan2(dy, dx) + Math.PI) / (2 * Math.PI)) * sectors) % sectors;
+}
+
+/** `sectorToward(Math.cos(radians), Math.sin(radians), sectors)`, i.e.
+ * `Math.floor(((Math.atan2(Math.sin(a), Math.cos(a)) + Math.PI) / (2 * Math.PI)) * sectors) % sectors`. */
+export function sector(radians: number, sectors: number): number {
+  return sectorToward(Math.cos(radians), Math.sin(radians), sectors);
+}

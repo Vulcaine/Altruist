@@ -1,6 +1,7 @@
 /**
  * Physics layer. Closest accepted ray hit — mirror of C# `Altruist.Physx.TwoD.ClosestRayHit2D`
- * and `RayCastExtensions2D.RayCastClosest`.
+ * and `RayCastExtensions2D.RayCastClosest`. The default ray length is `Math.sqrt(dx * dx + dy * dy)`
+ * like C# (not `Math.hypot`).
  */
 import type { Vec2Like } from '../math/vec2.ts';
 import type { RayCastWorld } from './body2D.ts';

@@ -9,6 +9,17 @@ export function approachSpeed(velocity: Vec2Like, normal: Vec2Like): number {
   return -(velocity.x * normal.x + velocity.y * normal.y);
 }
 
+/** How fast `a` closes in on `b` along the unit `along`: `(a.x - b.x) * along.x + (a.y - b.y) * along.y`
+ * (the difference first). */
+export function closingSpeed(a: Vec2Like, b: Vec2Like, along: Vec2Like): number {
+  return (a.x - b.x) * along.x + (a.y - b.y) * along.y;
+}
+
+/** Centripetal acceleration on a curve of `radius`: `(v.x * v.x + v.y * v.y) / radius`. */
+export function centripetalAcceleration(velocity: Vec2Like, radius: number): number {
+  return (velocity.x * velocity.x + velocity.y * velocity.y) / radius;
+}
+
 /** Removes `amount` (1 = all) of the motion into `normal`:
  * `d = v·n; d < 0 ? (v.x - n.x * d * amount, v.y - n.y * d * amount) : v`. */
 export function cancelInto(velocity: Vec2Like, normal: Vec2Like, amount = 1): Vec2Like {

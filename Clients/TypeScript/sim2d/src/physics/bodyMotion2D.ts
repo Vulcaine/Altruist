@@ -2,7 +2,10 @@
  * Physics layer. Velocity and angular-velocity operations on a body — mirror of C#
  * `Altruist.Physx.TwoD.BodyMotionExtensions2D` (extension methods there, `fn(body, ...)` here).
  * Each reads the body, applies one math-layer / Velocity2D formula and writes once.
+ * Speeds are measured with `Math.sqrt(x * x + y * y)` like C# (not `Math.hypot`, which can differ in
+ * the last bit).
  */
+import type { NormalFrame2D } from '../math/normalFrame2D.ts';
 import { arriveRate, clampedRateToward, rateToward, wrap } from '../math/angle.ts';
 import { boxContainsLocal, boxDistanceSquaredLocal } from '../math/geometry2D.ts';
 import { angleAligningUp } from '../math/rotation2D.ts';
@@ -126,6 +129,11 @@ export function blendMotionFrom(body: LinearBody & AngularBody, linearBefore: Ve
   body.setAngularVelocity(lerpScalar(angularBefore, body.getAngularVelocity(), keep));
 }
 
+/** `v = frame.compose(alongNormal, alongTangent)`. */
+export function setVelocityInFrame(body: LinearBody, frame: NormalFrame2D, alongNormal: number, alongTangent: number): void {
+  body.setLinearVelocity(frame.compose(alongNormal, alongTangent));
+}
+
 // ── Angular velocity ──────────────────────────────────────────────────
 
 /** `w = wrap(angleAligningUp(normal) - angle) * rate`. */
@@ -157,6 +165,11 @@ export function steerAngularVelocity(
 ): void {
   const w = clampedRateToward(body.getAngle(), targetAngle, gain, maxRate);
   body.setAngularVelocity(approach(body.getAngularVelocity(), w, angularAcceleration * dt));
+}
+
+/** Spin from a surface slip on a round body: `w = w + (slip / radius) * factor`. */
+export function addSpinFromSlip(body: AngularBody, slip: number, radius: number, factor: number): void {
+  body.setAngularVelocity(body.getAngularVelocity() + (slip / radius) * factor);
 }
 
 // ── State ─────────────────────────────────────────────────────────────

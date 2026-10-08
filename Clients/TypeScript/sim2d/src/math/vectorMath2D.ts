@@ -1,7 +1,11 @@
 /**
  * Math layer. Vector algebra on `{ x, y }` — mirror of C# `Altruist.TwoD.Numerics.VectorMath2D`.
  * Same expressions, component by component, same order; returns new objects.
+ * Lengths are `Math.sqrt(x * x + y * y)`, the C# expression — not `Math.hypot`, which rounds
+ * differently (it can differ in the last bit), so code using `Math.hypot` keeps its own bits only
+ * while it keeps calling it.
  */
+import { fromPolarDegrees } from './direction2D.ts';
 import { approach } from './scalar.ts';
 import type { Vec2Like } from './vec2.ts';
 
@@ -91,6 +95,15 @@ export function clampLength(v: Vec2Like, maxLength: number): Vec2Like {
 /** `(v.x - v.x / length * amount, v.y - v.y / length * amount)` given v's length. */
 export function shortenBy(v: Vec2Like, length: number, amount: number): Vec2Like {
   return { x: v.x - (v.x / length) * amount, y: v.y - (v.y / length) * amount };
+}
+
+/** `v` rotated counter-clockwise by `degrees`:
+ * `{ x: c, y: s } = Direction2D.fromPolarDegrees(degrees); (v.x * c - v.y * s, v.x * s + v.y * c)`.
+ * The radians are `degrees * (π / 180)`; the C# twin computes `(degrees * π) / 180` (as float32
+ * code typically writes it). */
+export function rotateDegrees(v: Vec2Like, degrees: number): Vec2Like {
+  const { x: c, y: s } = fromPolarDegrees(degrees);
+  return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
 }
 
 /** `a + (b - a) * t`. */

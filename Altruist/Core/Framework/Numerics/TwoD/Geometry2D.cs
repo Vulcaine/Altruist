@@ -7,6 +7,17 @@ using System.Numerics;
 
 namespace Altruist.TwoD.Numerics;
 
+/// <summary>A side of a box in its own facing terms: <see cref="Front"/> is local +X (after the
+/// caller has turned X to the facing), <see cref="Top"/> local +Y. See
+/// <see cref="Geometry2D.ClassifyBoxSide"/>.</summary>
+public enum BoxSide2D
+{
+    Front,
+    Back,
+    Top,
+    Bottom,
+}
+
 /// <summary>Math layer. Point-versus-shape tests for boxes and rays. Box tests take the point in the box's
 /// local frame (centered, axis-aligned), e.g. from <c>body.GetLocalPoint(worldPoint)</c>; the
 /// body extensions in <c>Altruist.Physx.TwoD</c> (<c>BodyMotionExtensions2D.BoxContains</c>,
@@ -41,6 +52,24 @@ public static class Geometry2D
     /// <paramref name="angle"/>: <c>halfWidth * |cos(angle)| + halfHeight * |sin(angle)|</c>.</summary>
     public static float RotatedBoxHalfExtentX(float halfWidth, float halfHeight, float angle) =>
         halfWidth * MathF.Abs(MathF.Cos(angle)) + halfHeight * MathF.Abs(MathF.Sin(angle));
+
+    /// <summary>Which side of the centered box a local point (or local direction) is on. The
+    /// coordinates are scaled by the half extents (the box becomes a unit square) and the dominant
+    /// axis wins; <paramref name="axisBias"/> &gt; 1 favors front / back on the corners, &lt; 1 top /
+    /// bottom:
+    /// <code>
+    /// nx = local.X / halfWidth; ny = local.Y / halfHeight
+    /// MathF.Abs(nx) * axisBias &gt;= MathF.Abs(ny) ? (nx &gt;= 0 ? Front : Back) : (ny &gt;= 0 ? Top : Bottom)
+    /// </code>
+    /// For a body that can face either way pass <c>(local.X * facing, local.Y)</c> (front = the facing
+    /// side): <c>(local.X * facing) / halfWidth</c> is the same bits as <c>local.X * facing / halfWidth</c>.</summary>
+    public static BoxSide2D ClassifyBoxSide(Vector2 local, float halfWidth, float halfHeight, float axisBias)
+    {
+        var nx = local.X / halfWidth;
+        var ny = local.Y / halfHeight;
+        if (MathF.Abs(nx) * axisBias >= MathF.Abs(ny)) return nx >= 0 ? BoxSide2D.Front : BoxSide2D.Back;
+        return ny >= 0 ? BoxSide2D.Top : BoxSide2D.Bottom;
+    }
 
     /// <summary>Where <paramref name="point"/> lies relative to the ray from
     /// <paramref name="origin"/> along the unit <paramref name="direction"/>: the distance

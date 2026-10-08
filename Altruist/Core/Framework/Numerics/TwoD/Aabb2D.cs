@@ -32,6 +32,13 @@ public readonly record struct Aabb2D(float MinX, float MaxX, float MinY, float M
     public bool Contains(float x, float y, float marginX, float marginY) =>
         x >= MinX - marginX && x <= MaxX + marginX && y >= MinY - marginY && y <= MaxY + marginY;
 
+    /// <summary>The box grown by a margin on each side (negative shrinks):
+    /// <c>(MinX - marginX, MaxX + marginX, MinY - marginY, MaxY + marginY)</c>.
+    /// <c>Grow(mx, my).Contains(x, y)</c> is the same test, bit for bit, as
+    /// <c>Contains(x, y, mx, my)</c>; a shrink by a negative margin gives the same bounds as
+    /// writing <c>MinY + 0.3f</c> (IEEE <c>a - (-b)</c> is <c>a + b</c>).</summary>
+    public Aabb2D Grow(float marginX, float marginY) => new(MinX - marginX, MaxX + marginX, MinY - marginY, MaxY + marginY);
+
     /// <summary>Overlap test (touching edges count).</summary>
     public bool Intersects(Aabb2D other) =>
         MinX <= other.MaxX && MaxX >= other.MinX && MinY <= other.MaxY && MaxY >= other.MinY;

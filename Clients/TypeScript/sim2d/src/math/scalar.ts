@@ -9,6 +9,12 @@ export function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;
 }
 
+/** `Math.min(Math.max(v, min), max)`: unlike `clamp`, `max` wins when min > max and -0 becomes +0
+ * at a bound of 0; NaN stays NaN. */
+export function clampMinMax(v: number, min: number, max: number): number {
+  return Math.min(Math.max(v, min), max);
+}
+
 /** `clamp(v, 0, 1)`. */
 export function clamp01(v: number): number {
   return clamp(v, 0, 1);

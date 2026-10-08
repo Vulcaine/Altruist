@@ -4,13 +4,15 @@
  * Each verb delegates to one physics-layer operation (which delegates to the math layer) with the
  * same operation order, so it gives the same numbers as the hand-written update it replaces.
  * Side view, +Y up, `gravity` = magnitude of the pull toward -Y; counter-clockwise angles.
+ * Speeds are measured with `Math.sqrt(x * x + y * y)` like C# (not `Math.hypot`).
  */
 import { nearestEquivalent, nearestFullTurn } from '../math/angle.ts';
 import { contains, type Aabb2DLike } from '../math/aabb2D.ts';
-import { angleAligningUp } from '../math/rotation2D.ts';
+import { clampMinMax } from '../math/scalar.ts';
+import { angleAligningUp, upAt } from '../math/rotation2D.ts';
 import type { Vec2Like } from '../math/vec2.ts';
 import { addAlong, normalizeOrZeroWithLength } from '../math/vectorMath2D.ts';
-import { apexHeight, firstStepWhere, launchVelocity, positionAt, predict, type FlightState } from '../physics/ballistics2D.ts';
+import { apexHeight, firstStepWhere, firstZoneEntered, launchVelocity, positionAt, predict, type FlightState } from '../physics/ballistics2D.ts';
 import type { AngularBody, Body2DLike, LinearBody, PositionedBody } from '../physics/body2D.ts';
 import * as motion from '../physics/bodyMotion2D.ts';
 import { restore } from '../physics/bodyState2D.ts';
@@ -23,6 +25,15 @@ import { approachSpeed, bounce, cancelInto } from '../physics/velocity2D.ts';
 export function jumpOff(body: LinearBody, surfaceNormal: Vec2Like, speed: number): void {
   const v = cancelInto(body.getLinearVelocity(), surfaceNormal);
   body.setLinearVelocity(addAlong(v, surfaceNormal, speed));
+}
+
+/**
+ * Jump as if the body already faced where it is being aimed: `jumpOff(body, upAt(aimedRotation), speed)`.
+ * For fast play, where the jump comes before a rate-limited turn has finished: the jump follows the
+ * player's aim (e.g. the stick) instead of the half-turned body, so "aim, then jump" acts on the aim.
+ */
+export function jumpAsAimed(body: LinearBody, aimedRotation: number, speed: number): void {
+  jumpOff(body, upAt(aimedRotation), speed);
 }
 
 /** Add speed in a direction, keeping the current motion. */
@@ -54,6 +65,37 @@ export function bounceOff(body: LinearBody, normal: Vec2Like, outSpeed: number, 
 /** Keep only `keep` of the velocity change a hit caused. */
 export function absorbImpact(body: LinearBody & AngularBody, velocityBefore: Vec2Like, spinBefore: number, keep: number): void {
   motion.blendMotionFrom(body, velocityBefore, spinBefore, keep);
+}
+
+// ── Horizontal / vertical motion ──────────────────────────────────────
+// One component written directly, the other kept (not setSpeedAlong on an axis, which rounds differently).
+
+/** `v = (x, v.y)`. */
+export function setVelocityX(body: LinearBody, x: number): void {
+  body.setLinearVelocity({ x, y: body.getLinearVelocity().y });
+}
+
+/** `v = (v.x, y)`. */
+export function setVelocityY(body: LinearBody, y: number): void {
+  body.setLinearVelocity({ x: body.getLinearVelocity().x, y });
+}
+
+/** `v = (v.x * factor, v.y)`. */
+export function scaleVelocityX(body: LinearBody, factor: number): void {
+  const v = body.getLinearVelocity();
+  body.setLinearVelocity({ x: v.x * factor, y: v.y });
+}
+
+/** `v = (v.x, v.y * factor)`. */
+export function scaleVelocityY(body: LinearBody, factor: number): void {
+  const v = body.getLinearVelocity();
+  body.setLinearVelocity({ x: v.x, y: v.y * factor });
+}
+
+/** `v = (v.x, clampMinMax(v.y, min, max))` = `Math.min(Math.max(v.y, min), max)`. */
+export function clampVelocityY(body: LinearBody, min: number, max: number): void {
+  const v = body.getLinearVelocity();
+  body.setLinearVelocity({ x: v.x, y: clampMinMax(v.y, min, max) });
 }
 
 // ── Driving on surfaces ───────────────────────────────────────────────
@@ -147,6 +189,11 @@ export function snapUprightOn(body: Body2DLike, normal: Vec2Like, sink = 0): voi
   body.setAngularVelocity(0);
 }
 
+/** Half a turn on the spot: `setTransform(position, angle + Math.PI)`. */
+export function flipHalfTurn(body: Body2DLike): void {
+  body.setTransform(body.getPosition(), body.getAngle() + Math.PI);
+}
+
 /** Place the body with a motion and wake it. */
 export function resetMotion(body: Body2DLike, position: Vec2Like, angle: number, velocity: Vec2Like, spin: number): void {
   restore({ position, angle, linearVelocity: velocity, angularVelocity: spin, isAwake: true, isActive: true }, body);
@@ -202,6 +249,20 @@ export function willEnter(
   return firstStepWhere(body.getPosition(), velocity ?? body.getLinearVelocity(), gravity, h, steps, (p) => contains(zone, p.x, p.y, marginX, marginY)) >= 0;
 }
 
+/** The first of `zones` (in order) free flight enters within `steps` steps of `dt`, and the 1-based
+ * step; `{ zone: -1, step: -1 }` when none or below `floorY` first:
+ * `firstZoneEntered(position, velocity, gravity, dt, steps, zones, floorY)`. */
+export function predictZoneEntry(
+  body: LinearBody & PositionedBody,
+  zones: readonly Aabb2DLike[],
+  gravity: number,
+  dt: number,
+  steps: number,
+  floorY = -Infinity,
+): { zone: number; step: number } {
+  return firstZoneEntered(body.getPosition(), body.getLinearVelocity(), gravity, dt, steps, zones, floorY);
+}
+
 export function velocityToHit(body: PositionedBody, target: Vec2Like, gravity: number, time: number): Vec2Like {
   const p = body.getPosition();
   return launchVelocity({ x: target.x - p.x, y: target.y - p.y }, gravity, time);
@@ -217,6 +278,17 @@ export function timeToReach(body: LinearBody & PositionedBody, target: Vec2Like,
 
 export function brakingDistanceAlong(body: LinearBody, direction: Vec2Like, deceleration: number): number {
   return stoppingDistance(motion.speedAlong(body, direction), deceleration);
+}
+
+/** The body's up in the world (e.g. a one-way platform's top face): `getWorldVector({ x: 0, y: 1 })`. */
+export function upDirection(body: Pick<Body2DLike, 'getWorldVector'>): Vec2Like {
+  const v = body.getWorldVector({ x: 0, y: 1 });
+  return { x: v.x, y: v.y };
+}
+
+/** Height of the world point above the body's center along its up: `getLocalPoint(worldPoint).y`. */
+export function heightAbove(body: Pick<Body2DLike, 'getLocalPoint'>, worldPoint: Vec2Like): number {
+  return body.getLocalPoint(worldPoint).y;
 }
 
 export function isWithinBox(

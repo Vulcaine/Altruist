@@ -2,6 +2,7 @@
  * Physics layer. Free flight under gravity — mirror of C# `Altruist.Physx.TwoD.Ballistics2D`.
  * +Y up, `gravity` ≥ 0 pulls toward -Y. The stepper is semi-implicit Euler, not the engine.
  */
+import { contains, type Aabb2DLike } from '../math/aabb2D.ts';
 import type { Vec2Like } from '../math/vec2.ts';
 
 /** A mutable flight state for the stepper (C# passes position and velocity by ref). */
@@ -82,4 +83,26 @@ export function firstStepWhere(
     if (predicate(s.position)) return i + 1;
   }
   return -1;
+}
+
+/** The first of `zones` (checked in order) a step's position is in, as its index and the 1-based
+ * step; `{ zone: -1, step: -1 }` when none, or when the position drops below `floorY` first (checked
+ * before the zones). Each step is `step()` (`v.y -= g * dt; p.x += v.x * dt; p.y += v.y * dt`).
+ * Margins: pass `Aabb2D.grow(zone, mx, my)`. */
+export function firstZoneEntered(
+  position: Vec2Like,
+  velocity: Vec2Like,
+  gravity: number,
+  dt: number,
+  steps: number,
+  zones: readonly Aabb2DLike[],
+  floorY = -Infinity,
+): { zone: number; step: number } {
+  const s: FlightState = { position: { x: position.x, y: position.y }, velocity: { x: velocity.x, y: velocity.y } };
+  for (let i = 0; i < steps; i++) {
+    step(s, gravity, dt);
+    if (s.position.y < floorY) return { zone: -1, step: -1 };
+    for (let k = 0; k < zones.length; k++) if (contains(zones[k]!, s.position.x, s.position.y)) return { zone: k, step: i + 1 };
+  }
+  return { zone: -1, step: -1 };
 }

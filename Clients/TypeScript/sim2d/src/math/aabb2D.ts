@@ -26,6 +26,13 @@ export function contains(box: Aabb2DLike, x: number, y: number, marginX = 0, mar
   return x >= box.minX - marginX && x <= box.maxX + marginX && y >= box.minY - marginY && y <= box.maxY + marginY;
 }
 
+/** The box grown by a margin on each side (negative shrinks):
+ * `(minX - marginX, maxX + marginX, minY - marginY, maxY + marginY)`; `contains(grow(b, mx, my), x, y)`
+ * is the same test as `contains(b, x, y, mx, my)`. */
+export function grow(box: Aabb2DLike, marginX: number, marginY: number): Aabb2DLike {
+  return { minX: box.minX - marginX, maxX: box.maxX + marginX, minY: box.minY - marginY, maxY: box.maxY + marginY };
+}
+
 /** Overlap (touching edges count). */
 export function intersects(a: Aabb2DLike, b: Aabb2DLike): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;

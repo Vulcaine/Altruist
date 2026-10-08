@@ -87,4 +87,25 @@ public static class Angle
     /// step): <c>Wrap(target - current) / MathF.Max(time, minTime)</c>.</summary>
     public static float ArriveRate(float current, float target, float time, float minTime) =>
         Wrap(target - current) / MathF.Max(time, minTime);
+
+    /// <summary>The constant angular rate of <paramref name="direction"/> (±1) full turns in
+    /// <paramref name="time"/> seconds (a timed spin or flip): <c>direction * MathF.PI * 2 / time</c>.</summary>
+    public static float FullTurnRate(float time, int direction) => direction * MathF.PI * 2 / time;
+
+    // ── Sectors (double precision) ────────────────────────────────────────
+    //
+    // For bucketing directions into equal pie slices (cells, coverage maps, discrete aim). Double
+    // precision, as such code usually is.
+
+    /// <summary>Which of <paramref name="sectors"/> equal slices the direction
+    /// (<paramref name="dx"/>, <paramref name="dy"/>) falls in, counting counter-clockwise from -X
+    /// (slice 0 starts at -π): <c>(int)Math.Floor((Math.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * sectors) % sectors</c>.
+    /// Exactly +π (pointing along -X from above) wraps to slice 0.</summary>
+    public static int SectorToward(double dx, double dy, int sectors) =>
+        (int)Math.Floor((Math.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * sectors) % sectors;
+
+    /// <summary>The <see cref="SectorToward"/> slice of the direction at <paramref name="radians"/>
+    /// (any angle, wrapped through its sine and cosine):
+    /// <c>(int)Math.Floor((Math.Atan2(Math.Sin(radians), Math.Cos(radians)) + Math.PI) / (2 * Math.PI) * sectors) % sectors</c>.</summary>
+    public static int Sector(double radians, int sectors) => SectorToward(Math.Cos(radians), Math.Sin(radians), sectors);
 }

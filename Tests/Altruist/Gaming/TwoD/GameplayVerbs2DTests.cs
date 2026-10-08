@@ -53,6 +53,27 @@ public class GameplayVerbs2DTests
     }
 
     [Fact]
+    public void JumpAsAimed_jumps_along_the_up_of_the_aimed_rotation_not_the_current_one()
+    {
+        foreach (var (v, _, k) in Cases())
+        {
+            var aim = k * 9f;
+            var up = new Vector2(-MathF.Sin(aim), MathF.Cos(aim));
+            Same(Rotation2D.UpAt(aim), up);
+            var expected = new FakeBody2D { LinearVelocity = v };
+            expected.JumpOff(up, 9.5f);
+            var body = new FakeBody2D { LinearVelocity = v };
+            body.JumpAsAimed(aim, 9.5f);
+            Same(body.LinearVelocity, expected.LinearVelocity);
+        }
+        // Aimed nose-down (facing +X: rotation -pi/2): the jump goes along the roof, +X, whatever the body's current angle.
+        var b = new FakeBody2D { LinearVelocity = Vector2.Zero };
+        b.JumpAsAimed(-MathF.PI / 2, 10);
+        b.LinearVelocity.X.Should().BeApproximately(10, 1e-5f);
+        b.LinearVelocity.Y.Should().BeApproximately(0, 1e-5f);
+    }
+
+    [Fact]
     public void Push_launch_and_cancel_verbs()
     {
         foreach (var (v, n, k) in Cases())

@@ -33,4 +33,9 @@ public static class Kinematics
         if (dAcc >= distance) return (-v0 + MathF.Sqrt(v0 * v0 + 2 * acceleration * distance)) / acceleration;
         return tAcc + (distance - dAcc) / maxSpeed;
     }
+
+    /// <summary>The centripetal acceleration of moving at <paramref name="speed"/> on a curve of
+    /// <paramref name="radius"/>: <c>speed * speed / radius</c>. From a 2D velocity use
+    /// <c>Velocity2D.CentripetalAcceleration</c>, which squares the components (no square root).</summary>
+    public static float CentripetalAcceleration(float speed, float radius) => speed * speed / radius;
 }

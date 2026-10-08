@@ -33,3 +33,19 @@ export function pointToRay(origin: Vec2Like, direction: Vec2Like, point: Vec2Lik
   const offset = Math.abs((point.x - origin.x) * direction.y - (point.y - origin.y) * direction.x);
   return { along, offset };
 }
+
+/** A side of a box in its facing terms (front = local +x after turning x to the facing, top = +y).
+ * C#: `BoxSide2D`. */
+export type BoxSide2D = 'front' | 'back' | 'top' | 'bottom';
+
+/** Which side of the centered box a local point / direction is on (dominant axis of the point
+ * scaled to a unit square; `axisBias` > 1 favors front / back on corners):
+ * `nx = local.x / halfWidth; ny = local.y / halfHeight;
+ * Math.abs(nx) * axisBias >= Math.abs(ny) ? (nx >= 0 ? 'front' : 'back') : (ny >= 0 ? 'top' : 'bottom')`.
+ * For a body facing either way pass `{ x: local.x * facing, y: local.y }`. */
+export function classifyBoxSide(local: Vec2Like, halfWidth: number, halfHeight: number, axisBias: number): BoxSide2D {
+  const nx = local.x / halfWidth;
+  const ny = local.y / halfHeight;
+  if (Math.abs(nx) * axisBias >= Math.abs(ny)) return nx >= 0 ? 'front' : 'back';
+  return ny >= 0 ? 'top' : 'bottom';
+}

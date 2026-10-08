@@ -1,5 +1,6 @@
 /**
- * Math layer. Directions — mirror of C# `Altruist.TwoD.Numerics.Direction2D`.
+ * Math layer. Directions — mirror of C# `Altruist.TwoD.Numerics.Direction2D`. Lengths are
+ * `Math.sqrt(x * x + y * y)` like C# (not `Math.hypot`, which can differ in the last bit).
  */
 import { toRadians } from './angle.ts';
 import type { Vec2Like } from './vec2.ts';

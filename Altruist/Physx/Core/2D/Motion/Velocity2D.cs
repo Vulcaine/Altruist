@@ -25,6 +25,18 @@ public static class Velocity2D
     /// mover): <c>-Vector2.Dot(velocity, normal)</c>.</summary>
     public static float ApproachSpeed(Vector2 velocity, Vector2 normal) => -Vector2.Dot(velocity, normal);
 
+    /// <summary>How fast <paramref name="a"/> closes in on <paramref name="b"/> along the unit
+    /// <paramref name="along"/> (positive = a gains on b in that direction; e.g. a rammer's velocity, the
+    /// victim's, and the rammer's nose): <c>Vector2.Dot(a - b, along)</c>. The difference first, as
+    /// written; not <c>Dot(a, along) - Dot(b, along)</c>, which rounds differently.</summary>
+    public static float ClosingSpeed(Vector2 a, Vector2 b, Vector2 along) => Vector2.Dot(a - b, along);
+
+    /// <summary>The centripetal acceleration that keeps <paramref name="velocity"/> on a curve of
+    /// <paramref name="radius"/> (e.g. extra grip into a surface at speed):
+    /// <c>(v.X * v.X + v.Y * v.Y) / radius</c> (the squared speed, no square root).</summary>
+    public static float CentripetalAcceleration(Vector2 velocity, float radius) =>
+        (velocity.X * velocity.X + velocity.Y * velocity.Y) / radius;
+
     /// <summary>Removes <paramref name="amount"/> (1 = all) of the component of
     /// <paramref name="velocity"/> that goes against the unit <paramref name="normal"/>; a velocity
     /// moving away from it (or along it) is returned unchanged:

@@ -9,6 +9,17 @@ export function angleAligningUp(normal: Vec2Like): number {
   return Math.atan2(-normal.x, normal.y);
 }
 
+/** Angle at which a body facing `facing` (> 0: front = local +x, else local -x) points its front
+ * along `direction`: `Math.atan2(direction.y, direction.x) - (facing > 0 ? 0 : Math.PI)`. */
+export function angleAligningForward(direction: Vec2Like, facing: number): number {
+  return Math.atan2(direction.y, direction.x) - (facing > 0 ? 0 : Math.PI);
+}
+
+/** World direction of a body's local +Y at rotation `radians`: `(-sin, cos)`. */
+export function upAt(radians: number): Vec2Like {
+  return { x: -Math.sin(radians), y: Math.cos(radians) };
+}
+
 /** Local to world: `(c * x - s * y, s * x + c * y)`. */
 export function rotate(radians: number, v: Vec2Like): Vec2Like {
   const c = Math.cos(radians);

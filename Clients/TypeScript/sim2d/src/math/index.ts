@@ -13,3 +13,7 @@ export * as Geometry2D from './geometry2D.ts';
 export * as Aabb2D from './aabb2D.ts';
 export type { Aabb2DLike } from './aabb2D.ts';
 export * as Polyline2D from './polyline2D.ts';
+export { NormalFrame2D } from './normalFrame2D.ts';
+export type { TangentSide2D } from './normalFrame2D.ts';
+export type { BoxSide2D } from './geometry2D.ts';
+export * as Distance2D from './distance2D.ts';

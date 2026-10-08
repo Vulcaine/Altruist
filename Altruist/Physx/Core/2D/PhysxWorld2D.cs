@@ -50,6 +50,21 @@ namespace Altruist.Physx
         /// <see cref="IPhysxContact2D.ToInfo"/> to keep it longer.
         /// </summary>
         IEnumerable<IPhysxContact2D> Contacts { get; }
+
+        /// <summary>
+        /// The current contacts of one body, each a view like the items of <see cref="Contacts"/>, in
+        /// the order of <see cref="Contacts"/> restricted to this body. Box2D (and planck.js) link a new
+        /// contact first both in the world's list and in each body's list, so this is also the order of
+        /// the engine's per-body contact list (planck's <c>body.getContactList()</c>): code that walks a
+        /// body's list on a client and code that filters the world list on the server see the same
+        /// sequence.
+        /// </summary>
+        IEnumerable<IPhysxContact2D> ContactsOf(IPhysxBody2D body)
+        {
+            foreach (var c in Contacts)
+                if (ReferenceEquals(c.BodyA, body) || ReferenceEquals(c.BodyB, body))
+                    yield return c;
+        }
     }
 
     public interface IPhysxWorldEngineFactory2D

@@ -17,4 +17,12 @@ public static class Distance2D
 
     public static float Squared(Vector2 a, Vector2 b) => Vector2.DistanceSquared(a, b);
     public static float Squared(Position2D a, Position2D b) => Squared(a.ToFloatVector2(), b.ToFloatVector2());
+
+    /// <summary>A Manhattan distance with the vertical part weighted (e.g. 0.5: "who is closer,
+    /// height counting half"): <c>MathF.Abs(dx) + MathF.Abs(dy) * weightY</c>.</summary>
+    public static float Weighted(float dx, float dy, float weightY) => MathF.Abs(dx) + MathF.Abs(dy) * weightY;
+
+    /// <summary><see cref="Weighted(float,float,float)"/> between two points:
+    /// <c>MathF.Abs(a.X - b.X) + MathF.Abs(a.Y - b.Y) * weightY</c>.</summary>
+    public static float WeightedBetween(Vector2 a, Vector2 b, float weightY) => MathF.Abs(a.X - b.X) + MathF.Abs(a.Y - b.Y) * weightY;
 }

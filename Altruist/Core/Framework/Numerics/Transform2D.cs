@@ -78,6 +78,17 @@ namespace Altruist.TwoD.Numerics
         /// Aligning a body's "up" with a surface normal turns toward this angle.</summary>
         public static float AngleAligningUp(Vector2 normal) => MathF.Atan2(-normal.X, normal.Y);
 
+        /// <summary>The angle at which a body facing <paramref name="facing"/> (+1: its front is local
+        /// +X, otherwise local -X) points its front along <paramref name="direction"/> (aim the nose
+        /// where the stick or the velocity points):
+        /// <c>MathF.Atan2(direction.Y, direction.X) - (facing &gt; 0 ? 0 : MathF.PI)</c>.</summary>
+        public static float AngleAligningForward(Vector2 direction, int facing) =>
+            MathF.Atan2(direction.Y, direction.X) - (facing > 0 ? 0 : MathF.PI);
+
+        /// <summary>The world direction of a body's local +Y at rotation <paramref name="radians"/>:
+        /// <c>(-sin, cos)</c> (what <c>GetWorldVector((0, 1))</c> returns at that angle).</summary>
+        public static Vector2 UpAt(float radians) => new(-MathF.Sin(radians), MathF.Cos(radians));
+
         /// <summary>The inverse of <see cref="Rotate"/>: world to local.</summary>
         public Vector2 Unrotate(Vector2 v)
         {

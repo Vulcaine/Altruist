@@ -5,6 +5,8 @@ Licensed under the Apache License, Version 2.0
 
 using System.Numerics;
 
+using Altruist.TwoD.Numerics;
+
 namespace Altruist.Physx.TwoD;
 
 /// <summary>Physics layer. Free flight under constant gravity, in closed form and stepped:
@@ -91,5 +93,32 @@ public static class Ballistics2D
             if (predicate(position)) return i + 1;
         }
         return -1;
+    }
+
+    /// <summary>Steps up to <paramref name="steps"/> times and reports the first of
+    /// <paramref name="zones"/> a step's position lies in (checked in order, so earlier zones win a
+    /// tie), as its index and the 1-based step; <c>(-1, -1)</c> when none is entered, or when the
+    /// position drops below <paramref name="floorY"/> first (the flight ends there; checked before
+    /// the zones). Each step is <see cref="Step"/>, so the loop is, bit for bit:
+    /// <code>
+    /// for (i = 0; i &lt; steps; i++) {
+    ///     v.Y -= gravity * dt; p.X += v.X * dt; p.Y += v.Y * dt;
+    ///     if (p.Y &lt; floorY) break;                       // no zone
+    ///     for (k = 0; k &lt; zones.Length; k++) if (zones[k].Contains(p.X, p.Y)) return (k, i + 1);
+    /// }
+    /// </code>
+    /// Zones with margins: pass grown boxes (<see cref="Aabb2D.Grow"/>: the same bounds as the margins
+    /// written inline).</summary>
+    public static (int Zone, int Step) FirstZoneEntered(Vector2 position, Vector2 velocity, float gravity, float dt, int steps,
+                                                       ReadOnlySpan<Aabb2D> zones, float floorY = float.NegativeInfinity)
+    {
+        for (var i = 0; i < steps; i++)
+        {
+            Step(ref position, ref velocity, gravity, dt);
+            if (position.Y < floorY) return (-1, -1);
+            for (var k = 0; k < zones.Length; k++)
+                if (zones[k].Contains(position.X, position.Y)) return (k, i + 1);
+        }
+        return (-1, -1);
     }
 }

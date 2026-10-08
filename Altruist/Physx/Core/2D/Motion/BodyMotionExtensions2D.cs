@@ -123,6 +123,12 @@ public static class BodyMotionExtensions2D
         body.AngularVelocityZ = Scalar.Lerp(angularBefore, body.AngularVelocityZ, keep);
     }
 
+    /// <summary>Sets the velocity from its parts in a contact / surface frame:
+    /// <c>LinearVelocity = frame.Compose(alongNormal, alongTangent)</c>
+    /// (<c>Normal * alongNormal + Tangent * alongTangent</c>).</summary>
+    public static void SetVelocityInFrame(this IPhysxBody2D body, NormalFrame2D frame, float alongNormal, float alongTangent) =>
+        body.LinearVelocity = frame.Compose(alongNormal, alongTangent);
+
     // ── Angular velocity ──────────────────────────────────────────────────
 
     /// <summary>Turns the body's up (local +Y) toward the <paramref name="normal"/>:
@@ -151,6 +157,12 @@ public static class BodyMotionExtensions2D
         var w = Angle.ClampedRateToward(body.RotationZ, targetAngle, gain, maxRate);
         body.AngularVelocityZ = Scalar.Approach(body.AngularVelocityZ, w, angularAcceleration * dt);
     }
+
+    /// <summary>Adds the spin a surface slip of <paramref name="slip"/> (tangential speed difference)
+    /// gives a round body of <paramref name="radius"/>, scaled by <paramref name="factor"/>:
+    /// <c>AngularVelocityZ = AngularVelocityZ + slip / radius * factor</c>.</summary>
+    public static void AddSpinFromSlip(this IPhysxBody2D body, float slip, float radius, float factor) =>
+        body.AngularVelocityZ = body.AngularVelocityZ + slip / radius * factor;
 
     // ── State ─────────────────────────────────────────────────────────────
 

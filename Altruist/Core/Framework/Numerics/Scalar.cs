@@ -19,6 +19,12 @@ public static class Scalar
     /// NaN stays NaN.</summary>
     public static float Clamp(float v, float min, float max) => v < min ? min : v > max ? max : v;
 
+    /// <summary>Clamps with <c>MathF.Min(MathF.Max(v, min), max)</c>. Use it to reproduce that form:
+    /// unlike <see cref="Clamp"/> it gives <paramref name="max"/> when <paramref name="min"/> &gt;
+    /// <paramref name="max"/> and +0 for -0 with a bound at 0 (<c>MathF.Max(-0f, 0f)</c> is +0); NaN
+    /// stays NaN.</summary>
+    public static float ClampMinMax(float v, float min, float max) => MathF.Min(MathF.Max(v, min), max);
+
     /// <summary><see cref="Clamp"/> to [0, 1].</summary>
     public static float Clamp01(float v) => Clamp(v, 0f, 1f);
 

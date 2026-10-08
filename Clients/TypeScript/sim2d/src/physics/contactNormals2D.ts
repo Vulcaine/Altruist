@@ -1,6 +1,7 @@
 /**
  * Physics layer. Sum of a body's contact normals with support (ground) classification — mirror of
- * C# `Altruist.Physx.TwoD.ContactNormals2D`.
+ * C# `Altruist.Physx.TwoD.ContactNormals2D`. Directions divide by `Math.sqrt(x * x + y * y)` like C#
+ * (not `Math.hypot`).
  */
 import type { Vec2Like } from '../math/vec2.ts';
 

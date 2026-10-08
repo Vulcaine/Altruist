@@ -23,12 +23,25 @@ public class StateMachine<TContext> where TContext : class, IStateContextCore
         CurrentStateName = def.InitialState;
     }
 
-    /// <summary>Tick the FSM. Returns true if a state transition occurred during this call.</summary>
+    /// <summary>Tick the FSM: <see cref="Advance"/> then <see cref="RunState"/>. Returns true if a
+    /// state transition occurred during this call.</summary>
     public bool Update(TContext context, float dt)
     {
-        if (!Def.Updates.TryGetValue(CurrentStateName, out var update))
+        if (!Def.Updates.ContainsKey(CurrentStateName))
             return false;
+        Advance(context, dt);
+        return RunState(context, dt);
+    }
 
+    /// <summary>
+    /// The time accounting half of <see cref="Update"/>: records the previous progress, then
+    /// <c>TimeInState += dt</c> (float32, the same expression as an inline <c>phaseTime += dt</c>).
+    /// Split from <see cref="RunState"/> for simulations that advance the phase clock at the start of
+    /// a tick and evaluate the phase's transitions at the end, with other work in between that reads
+    /// the clock. A transition (<see cref="TransitionTo"/> or the handler's) resets the time to 0.
+    /// </summary>
+    public void Advance(TContext context, float dt)
+    {
         // Record progress BEFORE advancing time, so WindowEntered/Exited can compare.
         float prevProgress = StateDuration(context) > 0f
             ? TimeInState / StateDuration(context)
@@ -36,6 +49,18 @@ public class StateMachine<TContext> where TContext : class, IStateContextCore
         TimeInState += dt;
         context.TimeInState = TimeInState;
         context.PreviousProgress = prevProgress;
+    }
+
+    /// <summary>
+    /// The handler half of <see cref="Update"/>: runs the current state's update (unless its delay
+    /// has not elapsed) without advancing time, and transitions to the state it returns. Returns true
+    /// if a transition occurred. Returning the current state's own name stays (no re-entry); use
+    /// <see cref="TransitionTo"/> to re-enter a state (Exit, Enter, time reset).
+    /// </summary>
+    public bool RunState(TContext context, float dt)
+    {
+        if (!Def.Updates.TryGetValue(CurrentStateName, out var update))
+            return false;
 
         // Delay gate: update method is suppressed until delay elapses. Enter/Exit still ran.
         if (Def.Delays.TryGetValue(CurrentStateName, out var delay) && TimeInState < delay)
@@ -61,7 +86,9 @@ public class StateMachine<TContext> where TContext : class, IStateContextCore
         InvokeOnEnter(context, CurrentStateName);
     }
 
-    /// <summary>Force transition to a specific state (runs Exit + Enter hooks).</summary>
+    /// <summary>Force transition to a specific state (runs Exit + Enter hooks). Transitioning to the
+    /// current state re-enters it: Exit, Enter, and the time in state back to 0. Unknown states are
+    /// ignored.</summary>
     public void TransitionTo(TContext context, string stateName)
     {
         if (!Def.Updates.ContainsKey(stateName)) return;

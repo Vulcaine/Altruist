@@ -37,6 +37,14 @@ public static class GameplayVerbs2D
         body.LinearVelocity = VectorMath2D.AddAlong(v, surfaceNormal, speed);
     }
 
+    /// <summary>
+    /// Jump as if the body already faced where it is being aimed: <c>JumpOff(Rotation2D.UpAt(aimedRotation), speed)</c>.
+    /// For fast play, where the jump comes before a rate-limited turn has finished: the jump follows the
+    /// player's aim (e.g. the stick) instead of the half-turned body, so "aim, then jump" acts on the aim.
+    /// </summary>
+    public static void JumpAsAimed(this IPhysxBody2D body, float aimedRotation, float speed) =>
+        body.JumpOff(Rotation2D.UpAt(aimedRotation), speed);
+
     /// <summary>Add speed in a direction, keeping the current motion:
     /// <c>BodyMotionExtensions2D.AddVelocityAlong(direction, speed)</c>.</summary>
     public static void PushAlong(this IPhysxBody2D body, Vector2 direction, float speed) =>
@@ -76,6 +84,44 @@ public static class GameplayVerbs2D
     /// <see cref="BodyMotionExtensions2D.BlendMotionFrom"/>.</summary>
     public static void AbsorbImpact(this IPhysxBody2D body, Vector2 velocityBefore, float spinBefore, float keep) =>
         body.BlendMotionFrom(velocityBefore, spinBefore, keep);
+
+    // ── Horizontal / vertical motion ──────────────────────────────────────
+    //
+    // Each writes one component directly and keeps the other as it is (a component along (1, 0) or
+    // (0, 1) through SetSpeedAlong would round differently).
+
+    /// <summary>Set the horizontal speed, keeping the vertical: <c>LinearVelocity = (x, v.Y)</c>.</summary>
+    public static void SetVelocityX(this IPhysxBody2D body, float x) =>
+        body.LinearVelocity = new Vector2(x, body.LinearVelocity.Y);
+
+    /// <summary>Set the vertical speed, keeping the horizontal: <c>LinearVelocity = (v.X, y)</c>.</summary>
+    public static void SetVelocityY(this IPhysxBody2D body, float y) =>
+        body.LinearVelocity = new Vector2(body.LinearVelocity.X, y);
+
+    /// <summary>Scale the horizontal speed (e.g. cut the run-up when launching upward):
+    /// <c>LinearVelocity = (v.X * factor, v.Y)</c>.</summary>
+    public static void ScaleVelocityX(this IPhysxBody2D body, float factor)
+    {
+        var v = body.LinearVelocity;
+        body.LinearVelocity = new Vector2(v.X * factor, v.Y);
+    }
+
+    /// <summary>Scale the vertical speed (e.g. damp the lift of a burst):
+    /// <c>LinearVelocity = (v.X, v.Y * factor)</c>.</summary>
+    public static void ScaleVelocityY(this IPhysxBody2D body, float factor)
+    {
+        var v = body.LinearVelocity;
+        body.LinearVelocity = new Vector2(v.X, v.Y * factor);
+    }
+
+    /// <summary>Keep the vertical speed within [<paramref name="min"/>, <paramref name="max"/>] (e.g.
+    /// no fall and at most a small hop): <c>LinearVelocity = (v.X, Scalar.ClampMinMax(v.Y, min, max))</c>,
+    /// i.e. <c>MathF.Min(MathF.Max(v.Y, min), max)</c>.</summary>
+    public static void ClampVelocityY(this IPhysxBody2D body, float min, float max)
+    {
+        var v = body.LinearVelocity;
+        body.LinearVelocity = new Vector2(v.X, Scalar.ClampMinMax(v.Y, min, max));
+    }
 
     // ── Driving on surfaces ───────────────────────────────────────────────
 
@@ -184,6 +230,11 @@ public static class GameplayVerbs2D
         body.AngularVelocityZ = 0;
     }
 
+    /// <summary>Turn the body half a turn on the spot (mirror it across its long axis: roof becomes
+    /// underside, nose points back), keeping its position and motion:
+    /// <c>SetTransform(Position, RotationZ + MathF.PI)</c>.</summary>
+    public static void FlipHalfTurn(this IPhysxBody2D body) => body.SetTransform(body.Position, body.RotationZ + MathF.PI);
+
     /// <summary>Put the body somewhere with a given motion and wake it:
     /// <c>SetTransform(position, angle); LinearVelocity = velocity; AngularVelocityZ = spin; IsAwake = true</c>.</summary>
     public static void ResetMotion(this IPhysxBody2D body, Vector2 position, float angle, Vector2 velocity, float spin) =>
@@ -234,6 +285,16 @@ public static class GameplayVerbs2D
             p => zone.Contains(p.X, p.Y, marginX, marginY)) >= 0;
     }
 
+    /// <summary>Which of <paramref name="zones"/> (goal mouths, danger areas; checked in order) the
+    /// free-flying body enters first within <paramref name="steps"/> Euler steps of
+    /// <paramref name="dt"/>, and at which step (1-based); <c>(-1, -1)</c> when none, or when it
+    /// drops below <paramref name="floorY"/> first:
+    /// <c>Ballistics2D.FirstZoneEntered(Position, LinearVelocity, gravity, dt, steps, zones, floorY)</c>.
+    /// Margins: pass <c>zone.Grow(marginX, marginY)</c>.</summary>
+    public static (int Zone, int Step) PredictZoneEntry(this IPhysxBody2D body, ReadOnlySpan<Aabb2D> zones, float gravity, float dt, int steps,
+                                                        float floorY = float.NegativeInfinity) =>
+        Ballistics2D.FirstZoneEntered(body.Position, body.LinearVelocity, gravity, dt, steps, zones, floorY);
+
     /// <summary>The launch velocity that lands on <paramref name="target"/> in exactly
     /// <paramref name="time"/> seconds: <c>Ballistics2D.LaunchVelocity(target - Position, gravity, time)</c>.</summary>
     public static Vector2 VelocityToHit(this IPhysxBody2D body, Vector2 target, float gravity, float time) =>
@@ -255,6 +316,14 @@ public static class GameplayVerbs2D
     /// (for direction (1, 0) the same bits as <c>v.X * v.X / (2 * deceleration)</c>).</summary>
     public static float BrakingDistanceAlong(this IPhysxBody2D body, Vector2 direction, float deceleration) =>
         Kinematics.StoppingDistance(body.SpeedAlong(direction), deceleration);
+
+    /// <summary>The body's "up" (local +Y) in the world, e.g. the top face of a tilted one-way
+    /// platform: <c>GetWorldVector((0, 1))</c>.</summary>
+    public static Vector2 UpDirection(this IPhysxBody2D body) => body.GetWorldVector(new Vector2(0, 1));
+
+    /// <summary>How far the world point is above the body's center along the body's up (negative =
+    /// below; on a one-way platform: is it over the top face?): <c>GetLocalPoint(worldPoint).Y</c>.</summary>
+    public static float HeightAbove(this IPhysxBody2D body, Vector2 worldPoint) => body.GetLocalPoint(worldPoint).Y;
 
     /// <summary>Is the world point inside the body's box (half extents plus padding)?
     /// <see cref="BodyMotionExtensions2D.BoxContains"/>.</summary>

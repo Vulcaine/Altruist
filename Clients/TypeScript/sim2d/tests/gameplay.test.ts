@@ -15,6 +15,18 @@ function cases(): [Vec2Like, Vec2Like, number][] {
 }
 
 describe('gameplay verbs match the hand-written client updates', () => {
+  it('jumpAsAimed jumps along the up of the aimed rotation', () => {
+    for (const [v, , k] of cases()) {
+      const aim = k * 9;
+      const up = { x: -Math.sin(aim), y: Math.cos(aim) };
+      const expected = new FakeBody({ v });
+      G.jumpOff(expected, up, 9.5);
+      const b = new FakeBody({ v });
+      G.jumpAsAimed(b, aim, 9.5);
+      sameVec(b.v, expected.v);
+    }
+  });
+
   it('jumpOff / pushAlong / launchAlong / cancelMotionAgainst', () => {
     for (const [v, n, k] of cases()) {
       let vx = v.x, vy = v.y;

@@ -10,3 +10,6 @@ export * as BodyMotion2D from './bodyMotion2D.ts';
 export * as BodyState2D from './bodyState2D.ts';
 export type { BodyState2D as BodyState2DValue } from './bodyState2D.ts';
 export { ClosestRayHit2D, rayCastClosest } from './closestRayHit2D.ts';
+export { ContactImpact2D } from './contactImpact2D.ts';
+export { ContactRouter2D, RoutedContact2D, tagOf, touchingContacts, touchingContactsOf, tryRoute } from './contactRouter2D.ts';
+export type { ContactBodyLike, ContactEdgeBodyLike, ContactEdgeLike, ContactFixtureLike, ContactLike, ContactListLike, ContactWorldLike, TagGuard, WorldManifoldLike } from './contactRouter2D.ts';

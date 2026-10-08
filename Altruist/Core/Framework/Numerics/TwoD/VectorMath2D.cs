@@ -117,6 +117,19 @@ public static class VectorMath2D
     public static Vector2 ShortenBy(Vector2 v, float length, float amount) =>
         new(v.X - v.X / length * amount, v.Y - v.Y / length * amount);
 
+    /// <summary><paramref name="v"/> rotated counter-clockwise by <paramref name="degrees"/>:
+    /// <c>r = degrees * MathF.PI / 180; c = MathF.Cos(r); s = MathF.Sin(r); (v.X * c - v.Y * s, v.X * s + v.Y * c)</c>.
+    /// The radians are <c>(degrees * π) / 180</c>, not <see cref="Angle.ToRadians"/>'s
+    /// <c>degrees * (π / 180)</c> (the two can differ in the last bit). The TypeScript twin
+    /// <c>rotateDegrees</c> takes its cosine and sine from <c>Direction2D.fromPolarDegrees</c>
+    /// (<c>degrees * (π / 180)</c>).</summary>
+    public static Vector2 RotateDegrees(Vector2 v, float degrees)
+    {
+        var c = MathF.Cos(degrees * MathF.PI / 180);
+        var s = MathF.Sin(degrees * MathF.PI / 180);
+        return new Vector2(v.X * c - v.Y * s, v.X * s + v.Y * c);
+    }
+
     /// <summary>Linear interpolation <c>a + (b - a) * t</c> (unclamped). Not
     /// <see cref="Vector2.Lerp"/>, whose formula differs between .NET versions.</summary>
     public static Vector2 Lerp(Vector2 a, Vector2 b, float t) => a + (b - a) * t;

@@ -15,3 +15,8 @@ export function timeToCover(distance: number, initialSpeed: number, acceleration
   if (dAcc >= distance) return (-v0 + Math.sqrt(v0 * v0 + 2 * acceleration * distance)) / acceleration;
   return tAcc + (distance - dAcc) / maxSpeed;
 }
+
+/** `speed * speed / radius`. */
+export function centripetalAcceleration(speed: number, radius: number): number {
+  return (speed * speed) / radius;
+}
