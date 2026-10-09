@@ -76,26 +76,27 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
     /// <returns>A task completing after the append.</returns>
     public async Task FlushBufferToDiskAsync()
     {
-        if (_disposed) return;
-
-        var entries = new List<WalEntry>();
-        while (_buffer.TryDequeue(out var entry))
-            entries.Add(entry);
-
-        if (entries.Count == 0) return;
-
         await _writeLock.WaitAsync();
         try
         {
-            var lines = entries.Select(e => JsonSerializer.Serialize(e));
-            await File.AppendAllLinesAsync(_walFilePath, lines);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to flush WAL buffer to disk");
-            // Re-queue entries so they're not lost
-            foreach (var entry in entries)
-                _buffer.Enqueue(entry);
+            if (_disposed) return;
+
+            var entries = new List<WalEntry>();
+            while (_buffer.TryDequeue(out var entry))
+                entries.Add(entry);
+            if (entries.Count == 0) return;
+
+            try
+            {
+                await File.AppendAllLinesAsync(_walFilePath, entries.Select(e => JsonSerializer.Serialize(e)));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogError(ex, "Failed to flush WAL buffer to disk");
+                // Re-queue entries so they're not lost
+                foreach (var entry in entries)
+                    _buffer.Enqueue(entry);
+            }
         }
         finally
         {
@@ -166,12 +167,26 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
         }
     }
 
-    /// <summary>Stops the timer. Buffered entries not yet on disk are NOT written.</summary>
+    /// <summary>Stops the timer and writes the buffered entries to disk (waiting for a flush in progress).</summary>
+    /// <exception cref="IOException">The remaining entries could not be written; they are lost with this instance.</exception>
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _flushTimer.Dispose();
-        _writeLock.Dispose();
+        _writeLock.Wait();
+        try
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _flushTimer.Dispose();
+
+            var lines = new List<string>();
+            while (_buffer.TryDequeue(out var entry))
+                lines.Add(JsonSerializer.Serialize(entry));
+            if (lines.Count > 0)
+                File.AppendAllLines(_walFilePath, lines);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 }

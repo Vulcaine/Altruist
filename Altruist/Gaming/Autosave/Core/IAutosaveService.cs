@@ -127,9 +127,10 @@ public class AutosaveAttribute : Attribute
 public interface IAutosaveServiceBase
 {
     /// <summary>
-    /// Writes every dirty entity of this type from cache to the vault in batches, then truncates the write-ahead log.
-    /// Call it from your periodic autosave job and on shutdown. Entities whose save fails stay dirty and are retried on
-    /// the next flush. Without a vault it just clears the dirty set.
+    /// Writes every dirty entity of this type from cache to the vault in batches, then truncates the write-ahead log
+    /// when nothing is left dirty. Call it from your periodic autosave job and on shutdown. Entities whose save fails
+    /// stay dirty (and in the write-ahead log) and are retried on the next flush. Without a vault it just clears the
+    /// dirty set.
     /// </summary>
     /// <returns>A task completing when the flush has finished.</returns>
     Task FlushAsync();

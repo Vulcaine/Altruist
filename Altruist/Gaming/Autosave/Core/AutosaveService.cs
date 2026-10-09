@@ -138,8 +138,8 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         if (ids.Count > 0)
             await FlushIdsAsync(ids);
 
-        // Truncate WAL after successful full flush — data is now safe in DB
-        if (_wal != null)
+        // Only once every entity is in the DB: a failed save must stay recoverable from the WAL.
+        if (_wal != null && _dirtyMap.IsEmpty)
             await _wal.TruncateAsync();
     }
 
@@ -244,7 +244,8 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         }
     }
 
-    /// <summary>Stops the WAL timer. Does not flush: call <see cref="FlushAsync"/> first on shutdown.</summary>
+    /// <summary>Writes the buffered WAL entries to disk and stops the WAL timer. Does not save to the vault: call
+    /// <see cref="FlushAsync"/> first on shutdown (what it cannot save is recovered from the WAL on the next start).</summary>
     public void Dispose()
     {
         _wal?.Dispose();
