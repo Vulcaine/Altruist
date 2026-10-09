@@ -31,6 +31,10 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>Archetype (<c>""</c> for none) to instance ids.</summary>
         public Dictionary<string, HashSet<string>> TypeMap { get; set; } = new();
 
+        /// <summary>Instance id to the <see cref="Grid"/> key it was filed under by <see cref="Add"/>, so
+        /// <see cref="Remove"/> finds the entry after the object moved.</summary>
+        public Dictionary<string, string> CellOf { get; set; } = new();
+
         /// <summary>Creates an index with <see cref="CellSize"/> 0 (set it before use; for serializers).</summary>
         public SpatialGridIndex3D() { }
 
@@ -43,7 +47,7 @@ namespace Altruist.Gaming.ThreeD
 
         private static string GetKey(int x, int y, int z) => $"{x}:{y}:{z}";
 
-        /// <summary>Indexes <paramref name="obj"/> by its current position, instance id and archetype (overwrites an entry with the same id in the maps).</summary>
+        /// <summary>Indexes <paramref name="obj"/> by its current position, instance id and archetype; re-adding an id moves it out of its previous cell.</summary>
         /// <param name="obj">The object to index.</param>
         public virtual void Add(IWorldObject3D obj)
         {
@@ -57,8 +61,13 @@ namespace Altruist.Gaming.ThreeD
                 Grid[key] = list = new HashSet<string>();
             }
 
+            if (CellOf.TryGetValue(obj.InstanceId, out var previous) && previous != key
+                && Grid.TryGetValue(previous, out var previousCell))
+                previousCell.Remove(obj.InstanceId);
+
             list.Add(obj.InstanceId);
             InstanceMap[obj.InstanceId] = obj;
+            CellOf[obj.InstanceId] = key;
 
             var archetypeKey = obj.ObjectArchetype;
             if (!TypeMap.TryGetValue(archetypeKey ?? "", out var typeSet))
@@ -67,7 +76,7 @@ namespace Altruist.Gaming.ThreeD
             typeSet.Add(obj.InstanceId);
         }
 
-        /// <summary>Removes an object; the grid cell is computed from its current position.</summary>
+        /// <summary>Removes an object from the cell it was filed in (also after it moved).</summary>
         /// <param name="instanceId">Instance id.</param>
         /// <returns>The removed object, or <c>null</c> if unknown.</returns>
         public virtual IWorldObject3D? Remove(string instanceId)
@@ -75,12 +84,7 @@ namespace Altruist.Gaming.ThreeD
             if (!InstanceMap.TryGetValue(instanceId, out var obj))
                 return null;
 
-            string key = GetKey(
-                (int)(obj.Transform.Position.X / CellSize),
-                (int)(obj.Transform.Position.Y / CellSize),
-                (int)(obj.Transform.Position.Z / CellSize));
-
-            if (Grid.TryGetValue(key, out var cellSet))
+            if (CellOf.Remove(instanceId, out var key) && Grid.TryGetValue(key, out var cellSet))
                 cellSet.Remove(instanceId);
 
             if (TypeMap.TryGetValue(obj.ObjectArchetype ?? "", out var typeSet))

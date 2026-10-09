@@ -51,9 +51,8 @@ namespace Altruist.Gaming.ThreeD
         /// The physics body is left untouched.
         /// </summary>
         /// <remarks>
-        /// Side effect of the current implementation: the object is also removed from the flat
-        /// instance cache and NOT re-added, so afterwards <see cref="FindObject"/>, <see cref="GetAllObjects"/>
-        /// and <see cref="GetCachedSnapshot"/> no longer return it (and it stops being stepped) until it is spawned again.
+        /// The object stays in the world: <see cref="FindObject"/>, <see cref="GetAllObjects"/> and
+        /// <see cref="GetCachedSnapshot"/> keep returning it.
         /// </remarks>
         /// <param name="obj">The object whose position changed; <c>null</c> returns an empty sequence.</param>
         /// <returns>The partitions the object is now registered in.</returns>
@@ -203,9 +202,9 @@ namespace Altruist.Gaming.ThreeD
         /// Find a single partition that contains a specific position (if any).
         /// </summary>
         /// <remarks>
-        /// The cell index is computed with <c>Math.Round(coord / partitionSize)</c> (not floor), so positions in the upper
-        /// half of a partition map to the next partition index. Prefer <see cref="FindPartitionsForBounds"/> /
-        /// <see cref="FindPartitionsForPosition"/> when exact containment matters.
+        /// The cell index is <c>floor(coord / partitionSize)</c>, so a position belongs to the partition whose
+        /// half-open range <c>[Position, Position + Size)</c> contains it. Use <see cref="FindPartitionsForBounds"/> /
+        /// <see cref="FindPartitionsForPosition"/> for every partition an area overlaps.
         /// </remarks>
         /// <param name="x">X (world units).</param>
         /// <param name="y">Y (world units).</param>
@@ -352,21 +351,20 @@ namespace Altruist.Gaming.ThreeD
         }
 
         /// <summary>
-        /// Recalculate which partitions contain the given object, based on its bounds.
-        /// IMPORTANT: this must NOT remove the PhysX body, only detach from partitions/cache.
+        /// Recalculate which partitions contain the given object, based on its bounds. The object stays in the
+        /// world: its body, its <see cref="FindObject"/> entry and the snapshot are untouched.
         /// </summary>
         public async Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj)
         {
             if (obj is null)
                 return Enumerable.Empty<WorldPartitionManager3D>();
 
-            // Detach from partitions + caches ONLY (do not remove from PhysX)
-            DetachObjectInternal(obj.InstanceId, removeFromPhysx: false);
+            for (int i = 0; i < _partitions.Count; i++)
+                _partitions[i].DestroyObject(obj.InstanceId);
 
             var partitions = FindPartitionsForObject(obj);
             AddObjectToPartitions(obj, partitions);
 
-            // Preserve old behavior: do not re-add to _flatInstanceCache here.
             return await Task.FromResult(partitions.ToList());
         }
 
@@ -527,7 +525,7 @@ namespace Altruist.Gaming.ThreeD
                 return null;
 
             // Destroy = detach + remove from PhysX engine
-            return DetachObjectInternal(instanceId, removeFromPhysx: true);
+            return DetachObjectInternal(instanceId);
         }
 
         /// <inheritdoc/>
@@ -535,10 +533,9 @@ namespace Altruist.Gaming.ThreeD
             => obj is null ? null : DestroyObject(obj.InstanceId);
 
         /// <summary>
-        /// Internal removal logic used by both UpdateObjectPosition (detach only)
-        /// and DestroyObject (detach + physx removal).
+        /// Removes the object from the partitions, the instance cache and the physics engine.
         /// </summary>
-        private IWorldObject3D? DetachObjectInternal(string instanceId, bool removeFromPhysx)
+        private IWorldObject3D? DetachObjectInternal(string instanceId)
         {
             // Remove from partitions — use for-loop instead of LINQ to avoid allocations
             IWorldObject3D? removedFromPartitions = null;
@@ -561,12 +558,8 @@ namespace Altruist.Gaming.ThreeD
             if (obj != null)
             {
                 MarkSnapshotDirty();
-                if (removeFromPhysx)
-                {
-                    RemoveFromPhysxEngine(obj);
-                    // Only fire on destroy, not on detach-for-reposition (removeFromPhysx=false)
-                    OnObjectDestroyed?.Invoke(obj);
-                }
+                RemoveFromPhysxEngine(obj);
+                OnObjectDestroyed?.Invoke(obj);
             }
 
             return obj;
@@ -600,9 +593,9 @@ namespace Altruist.Gaming.ThreeD
         /// <inheritdoc/>
         public WorldPartitionManager3D? FindPartitionForPosition(int x, int y, int z)
         {
-            int indexX = (int)Math.Round(x / (double)_worldPartitioner.PartitionWidth);
-            int indexY = (int)Math.Round(y / (double)_worldPartitioner.PartitionHeight);
-            int indexZ = (int)Math.Round(z / (double)_worldPartitioner.PartitionDepth);
+            int indexX = (int)Math.Floor(x / (double)_worldPartitioner.PartitionWidth);
+            int indexY = (int)Math.Floor(y / (double)_worldPartitioner.PartitionHeight);
+            int indexZ = (int)Math.Floor(z / (double)_worldPartitioner.PartitionDepth);
 
             return _partitionMap.TryGetValue(new PartitionIndex3D(indexX, indexY, indexZ), out var p) ? p : null;
         }

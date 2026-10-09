@@ -4,6 +4,8 @@ Licensed under the Apache License, Version 2.0
 */
 
 using Altruist.Physx.ThreeD;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
@@ -78,6 +80,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IAIBehaviorService? _aiBehaviorService;
         private readonly IPositionHistoryRecorder? _positionRecorder;
         private IVisibilityTracker? _visibilityTracker;
+        private readonly ILogger _logger;
         /// <summary>
         /// Rate the entity sync throttling ([Synchronized(Frequency)]) assumes for the world step:
         /// <c>altruist:game:worlds:entity-sync-hz</c> (default 25).
@@ -101,6 +104,7 @@ namespace Altruist.Gaming.ThreeD
         /// <param name="aiBehaviorService">Optional AI service ticked each step.</param>
         /// <param name="positionRecorder">Optional lag-compensation position recorder.</param>
         /// <param name="entitySyncHz">Rate passed to the entity sync service (<c>altruist:game:worlds:entity-sync-hz</c>).</param>
+        /// <param name="loggerFactory">Receives the failures of individual objects and services during a step; null discards them.</param>
         /// <exception cref="ArgumentNullException"><paramref name="gameWorlds"/> is <c>null</c>.</exception>
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
@@ -108,9 +112,11 @@ namespace Altruist.Gaming.ThreeD
             IEntitySyncService? entitySyncService = null,
             IAIBehaviorService? aiBehaviorService = null,
             IPositionHistoryRecorder? positionRecorder = null,
-            [AppConfigValue("altruist:game:worlds:entity-sync-hz", "25")] float entitySyncHz = DefaultEntitySyncHz
+            [AppConfigValue("altruist:game:worlds:entity-sync-hz", "25")] float entitySyncHz = DefaultEntitySyncHz,
+            ILoggerFactory? loggerFactory = null
         )
         {
+            _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<GameWorldOrganizer3D>();
             _worldLoader = worldLoader;
             _entitySyncService = entitySyncService;
             _aiBehaviorService = aiBehaviorService;
@@ -196,7 +202,8 @@ namespace Altruist.Gaming.ThreeD
 
         /// <summary>Advances every world by <paramref name="deltaTime"/> and runs AI, visibility and entity sync; called by the world coordinator once per frame.</summary>
         /// <param name="deltaTime">Elapsed real time in seconds.</param>
-        /// <remarks>Rethrows only exceptions escaping the outer pipeline (after logging them as <c>[STEP-CRASH]</c>).</remarks>
+        /// <remarks>A failing object, physics step or service is logged and the rest of the step still runs; an exception
+        /// outside those (building the snapshots) is logged and rethrown to the coordinator.</remarks>
         public void Step(float deltaTime)
         {
             _stepCount++;
@@ -234,7 +241,7 @@ namespace Altruist.Gaming.ThreeD
                 if (_aiBehaviorService != null)
                 {
                     try { _aiBehaviorService.Tick(worldSnapshots, deltaTime); }
-                    catch { }
+                    catch (Exception ex) { _logger.LogError(ex, "AI tick failed at step {Step}.", _stepCount); }
                 }
 
                 var visTask = Task.CompletedTask;
@@ -243,68 +250,57 @@ namespace Altruist.Gaming.ThreeD
                     visTask = Task.Run(() =>
                     {
                         try { tracker.Tick(worldSnapshots); }
-                        catch (Exception ex)
-                        {
-                            System.Console.Error.WriteLine($"[VISIBILITY ERROR] {ex.GetType().Name}: {ex.Message}");
-                            System.Console.Error.WriteLine(ex.StackTrace?.Split('\n')[0]);
-                        }
+                        catch (Exception ex) { _logger.LogError(ex, "Visibility tick failed at step {Step}.", _stepCount); }
                     });
                 }
 
                 if (_entitySyncService != null)
                 {
                     try { _entitySyncService.Tick(worldSnapshots, _engineFrequencyHz).GetAwaiter().GetResult(); }
-                    catch { }
+                    catch (Exception ex) { _logger.LogError(ex, "Entity sync failed at step {Step}.", _stepCount); }
                 }
 
                 visTask.GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
-                System.Console.Error.WriteLine($"[STEP-CRASH] #{_stepCount} {ex.GetType().Name}: {ex.Message}");
-                System.Console.Error.WriteLine(ex.StackTrace);
-                throw; // re-throw so physics worker can handle it
+                _logger.LogError(ex, "World step {Step} failed.", _stepCount);
+                throw;
             }
         }
 
-        private static void StepWorld(IGameWorldManager3D world, float deltaTime)
+        private void StepWorld(IGameWorldManager3D world, float deltaTime)
         {
-            try
+            var objectsToSync = AltruistPool.RentList<IWorldObject3D>();
+
+            foreach (var obj in world.FindAllObjects<IWorldObject3D>())
             {
-                var objectsToSync = AltruistPool.RentList<IWorldObject3D>();
-
-                foreach (var obj in world.FindAllObjects<IWorldObject3D>())
+                if (obj.Expired)
                 {
-                    if (obj.Expired)
-                    {
-                        world.DestroyObject(obj);
-                        continue;
-                    }
-
-                    try { obj.Step(deltaTime, world); }
-                    catch { }
-
-                    objectsToSync.Add(obj);
+                    world.DestroyObject(obj);
+                    continue;
                 }
 
-                // Physics step (if enabled)
-                var physWorld = world.PhysxWorld;
-                if (physWorld?.Engine != null)
-                {
-                    try { physWorld.Step(deltaTime); }
-                    catch { }
-                }
+                try { obj.Step(deltaTime, world); }
+                catch (Exception ex) { _logger.LogError(ex, "Step of {Object} in world {World} failed.", obj.InstanceId, world.Index.Index); }
 
-                // Sync physics -> transform
-                foreach (var obj in objectsToSync)
-                {
-                    try { SyncObjectFromPhysics(obj); }
-                    catch { }
-                }
-
-                AltruistPool.ReturnList(objectsToSync);
+                objectsToSync.Add(obj);
             }
-            catch { }
+
+            var physWorld = world.PhysxWorld;
+            if (physWorld?.Engine != null)
+            {
+                try { physWorld.Step(deltaTime); }
+                catch (Exception ex) { _logger.LogError(ex, "Physics step of world {World} failed.", world.Index.Index); }
+            }
+
+            foreach (var obj in objectsToSync)
+            {
+                try { SyncObjectFromPhysics(obj); }
+                catch (Exception ex) { _logger.LogError(ex, "Physics sync of {Object} in world {World} failed.", obj.InstanceId, world.Index.Index); }
+            }
+
+            AltruistPool.ReturnList(objectsToSync);
         }
 
         private static void SyncObjectFromPhysics(IWorldObject3D obj)
@@ -323,15 +319,7 @@ namespace Altruist.Gaming.ThreeD
             if (obj.Colliders != null)
             {
                 foreach (var col in obj.Colliders)
-                {
-                    try
-                    {
-                        col.Transform = bodyTransform;
-                    }
-                    catch
-                    {
-                    }
-                }
+                    col.Transform = bodyTransform;
             }
         }
 
