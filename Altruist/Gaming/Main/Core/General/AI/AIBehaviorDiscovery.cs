@@ -27,12 +27,16 @@ public static class AIBehaviorDiscovery
     // handlers, even when another type registered the same name.
     private static readonly Dictionary<Type, StateMachineDef<IAIContext>> _byType = new();
     private static readonly object _lock = new();
+    // Held for the whole scan, so a concurrent caller returns only once the templates exist.
+    // Separate from _lock: behaviors resolved during the scan may call CreateStateMachine.
+    private static readonly object _discoveryLock = new();
     private static bool _discovered;
 
     /// <summary>
     /// Builds a template for every <see cref="AIBehaviorAttribute"/> class in
-    /// <paramref name="assemblies"/>. Runs once per process (later calls return immediately); a
-    /// behavior that cannot be created or whose handlers have a wrong signature is logged and skipped.
+    /// <paramref name="assemblies"/>. Runs once per process: a concurrent caller blocks until the
+    /// first scan has registered its templates, later calls return immediately. A behavior that
+    /// cannot be created or whose handlers have a wrong signature is logged and skipped.
     /// A later class registering the same name replaces the earlier one.
     /// </summary>
     /// <param name="assemblies">Assemblies to scan.</param>
@@ -44,12 +48,19 @@ public static class AIBehaviorDiscovery
         Func<Type, object?> instanceFactory,
         ILogger logger)
     {
-        lock (_lock)
+        lock (_discoveryLock)
         {
             if (_discovered) return;
             _discovered = true;
+            Scan(assemblies, instanceFactory, logger);
         }
+    }
 
+    private static void Scan(
+        IEnumerable<Assembly> assemblies,
+        Func<Type, object?> instanceFactory,
+        ILogger logger)
+    {
         var asmList = assemblies.ToList();
         var behaviorTypes = TypeDiscovery.FindTypesWithAttribute<AIBehaviorAttribute>(asmList).ToList();
         logger.LogInformation("[AI-DISC] scanning {Asm} assemblies, found {N} [AIBehavior] types",
