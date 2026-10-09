@@ -15,6 +15,7 @@ namespace Altruist.Dashboard
     /// full snapshot (with colliders and terrain) is served over HTTP by <see cref="WorldDashboardController"/>; this portal
     /// only streams deltas, so a viewer should load the snapshot first and then apply packets. Framework-internal: games do
     /// not call it, they publish debug visuals through <see cref="IDashboardGizmoRegistry"/>.</para>
+    /// <para>Every viewer keeps its own connection id, so several dashboards can be open at once.</para>
     /// <para>Runs every frame via <see cref="CycleAttribute"/> but throttles itself to one diff every 250 ms and does nothing while
     /// no dashboard is connected. When an <see cref="IVisibilityTracker"/> is registered, only player-owned objects (non-empty
     /// <c>ClientId</c>) and objects someone observes are included. Positions come from the physics body when present.</para>
@@ -22,7 +23,7 @@ namespace Altruist.Dashboard
     [Portal("/ws/dashboard")]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     [ConditionalOnAssembly("Altruist.Dashboard")]
-    public sealed class DashboardPortal : Portal, OnConnectingAsync, OnConnectedAsync, OnDisconnectedAsync
+    public sealed class DashboardPortal : Portal, OnConnectedAsync, OnDisconnectedAsync
     {
         private readonly IGameWorldOrganizer3D _gameWorldOrganizer;
         private readonly IDashboardGizmoRegistry _gizmos;
@@ -60,17 +61,6 @@ namespace Altruist.Dashboard
             _router = router;
             _connectionManager = connectionManager;
             _visibilityTracker = visibilityTracker;
-        }
-
-        /// <inheritdoc/>
-        /// <remarks>Sets the connection id to the fixed value <c>"dashboard"</c>.</remarks>
-        public Task OnConnectingAsync(
-            string clientId,
-            ConnectionManager connectionManager,
-            AltruistConnection connection)
-        {
-            connection.SetId("dashboard");
-            return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
