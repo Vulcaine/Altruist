@@ -242,13 +242,17 @@ public sealed class VaultDashboardController : ControllerBase
 
     /// <summary>
     /// <c>POST /dashboard/v1/vaults/{typeKey}/batch-update</c> with a <see cref="VaultBatchUpdateRequestDto"/>: for each
-    /// item, reads the primary-key fields and calls <c>IVault.UpdateAsync(pk, changes)</c> with the remaining known fields
-    /// (unknown fields are ignored; items with no changes are skipped). Items are applied one by one, not in a transaction.
-    /// 200 with the number of updated items; a missing primary-key field or a vault without a primary key throws (500).
+    /// item, finds the row by its primary-key fields, sets the remaining known fields (unknown fields are ignored; field
+    /// names match case-insensitively; items with no changes are skipped) and saves it through the vault, so
+    /// <c>OnSave</c> runs and versions bump. Every item is validated before any is applied, and all saves run in one
+    /// database transaction: either every row is updated or none. SQL-backed (PostgreSQL) vaults only.
+    /// 200 with the number of updated rows; 400 for a request that cannot be applied (missing primary-key field, a field
+    /// given twice in different case, a value of the wrong type, a vault that is not SQL-backed or has no primary key);
+    /// 404 when a primary key matches no row (nothing is changed).
     /// </summary>
     /// <param name="typeKey">Vault type key from <see cref="VaultDefinitionDto.TypeKey"/>.</param>
     /// <param name="request">Rows to update.</param>
-    /// <param name="ct">Not observed.</param>
+    /// <param name="ct">Cancels the update; the transaction then rolls back.</param>
     [HttpPost("{typeKey}/batch-update")]
     public async Task<ActionResult<VaultBatchUpdateResultDto>> BatchUpdate(
     string typeKey,
@@ -259,54 +263,114 @@ public sealed class VaultDashboardController : ControllerBase
             return Ok(new VaultBatchUpdateResultDto { Updated = 0 });
 
         var md = VaultRegistry.GetByTypeKey(typeKey);
+        if (!SupportsSqlQuery(md))
+            return BadRequest($"Batch updates are supported only for SQL-backed vaults. '{typeKey}' is not SQL-backed.");
+
+        var dataSource = _serviceProvider.GetService<NpgsqlDataSource>();
+        if (dataSource is null)
+            return BadRequest("PostgreSQL data source is not available.");
+
         var doc = VaultDocument.From(md.ClrType);
+        if (doc.PrimaryKey is null)
+            return BadRequest($"Vault '{typeKey}' has no primary key.");
 
-        var pkFields = doc.PrimaryKey?.Keys
-            ?? throw new InvalidOperationException("Vault has no primary key.");
+        var plan = new List<RowUpdate>(request.Items.Count);
+        foreach (var item in request.Items)
+        {
+            var (update, error) = PlanRowUpdate(doc, item);
+            if (error is not null)
+                return BadRequest(error);
+            if (update!.Changes.Count > 0)
+                plan.Add(update);
+        }
 
-        // Resolve IVault<T>
         var vaultType = typeof(IVault<>).MakeGenericType(md.ClrType);
         dynamic vault = _serviceProvider.GetRequiredService(vaultType);
 
-        int updated = 0;
-
-        foreach (var row in request.Items)
+        await using var conn = await dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
+        await using var tx = await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
+        using (SqlAmbientTransaction.Enter(conn, tx))
         {
-            // --- Extract primary key values ---
-            var pk = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var pkField in pkFields)
+            foreach (var update in plan)
             {
-                if (!row.TryGetValue(pkField, out var rawPkValue))
-                    throw new InvalidOperationException(
-                        $"Missing primary key field '{pkField}'.");
+                ct.ThrowIfCancellationRequested();
+                object? entity = await vault.Where((dynamic)PrimaryKeyPredicate(md.ClrType, update.PrimaryKey)).FirstOrDefaultAsync(ct);
+                if (entity is null)
+                    return NotFound($"No '{typeKey}' row with primary key {FormatKey(update.PrimaryKey)}; nothing was updated.");
 
-                pk[pkField] = ConvertIncomingValue(rawPkValue, doc.FieldTypes[pkField]);
+                foreach (var (field, value) in update.Changes)
+                    md.ClrType.GetProperty(field)!.SetValue(entity, value);
+
+                await vault.SaveAsync((dynamic)entity, false, ct);
             }
+        }
+        await tx.CommitAsync(ct).ConfigureAwait(false);
 
-            // --- Extract changed fields ---
-            var changes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        return Ok(new VaultBatchUpdateResultDto { Updated = plan.Count });
+    }
 
-            foreach (var (field, rawValue) in row)
-            {
-                if (pkFields.Contains(field))
-                    continue;
+    private sealed record RowUpdate(IReadOnlyDictionary<string, object?> PrimaryKey, IReadOnlyDictionary<string, object?> Changes);
 
-                if (!doc.FieldTypes.TryGetValue(field, out var targetType))
-                    continue;
-
-                var converted = ConvertIncomingValue(rawValue, targetType);
-                changes[field] = converted;
-            }
-
-            if (changes.Count == 0)
-                continue;
-
-            await vault.UpdateAsync(pk, changes);
-            updated++;
+    // Field names are the model's property names, matched case-insensitively (doc.FieldTypes is case-insensitive);
+    // the returned dictionaries use the property's own spelling.
+    private static (RowUpdate? Update, string? Error) PlanRowUpdate(VaultDocument doc, Dictionary<string, object?> item)
+    {
+        var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (field, value) in item)
+        {
+            if (!row.TryAdd(field, value))
+                return (null, $"Field '{field}' is given more than once (field names are case-insensitive).");
         }
 
-        return Ok(new VaultBatchUpdateResultDto { Updated = updated });
+        var pkFields = doc.PrimaryKey!.Keys;
+        var pk = new Dictionary<string, object?>(StringComparer.Ordinal);
+        var changes = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (field, raw) in row)
+        {
+            var name = doc.FieldTypes.Keys.FirstOrDefault(k => string.Equals(k, field, StringComparison.OrdinalIgnoreCase));
+            if (name is null)
+                continue;
+
+            object? value;
+            try
+            {
+                value = ConvertIncomingValue(raw, doc.FieldTypes[name]);
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidCastException or InvalidOperationException
+                                           or JsonException or ArgumentException or OverflowException)
+            {
+                return (null, $"Field '{field}': {ex.Message}");
+            }
+
+            if (pkFields.Contains(name, StringComparer.OrdinalIgnoreCase))
+                pk[name] = value;
+            else
+                changes[name] = value;
+        }
+
+        var missing = pkFields.FirstOrDefault(k => !pk.Keys.Contains(k, StringComparer.OrdinalIgnoreCase));
+        return missing is null
+            ? (new RowUpdate(pk, changes), null)
+            : (null, $"Missing primary key field '{missing}'.");
     }
+
+    private static System.Linq.Expressions.LambdaExpression PrimaryKeyPredicate(Type modelType, IReadOnlyDictionary<string, object?> pk)
+    {
+        var x = System.Linq.Expressions.Expression.Parameter(modelType, "x");
+        System.Linq.Expressions.Expression? body = null;
+        foreach (var (field, value) in pk)
+        {
+            var property = System.Linq.Expressions.Expression.Property(x, field);
+            var equal = System.Linq.Expressions.Expression.Equal(property,
+                System.Linq.Expressions.Expression.Constant(value, property.Type));
+            body = body is null ? equal : System.Linq.Expressions.Expression.AndAlso(body, equal);
+        }
+        return System.Linq.Expressions.Expression.Lambda(
+            typeof(Func<,>).MakeGenericType(modelType, typeof(bool)), body!, x);
+    }
+
+    private static string FormatKey(IReadOnlyDictionary<string, object?> pk)
+        => string.Join(", ", pk.Select(kv => $"{kv.Key}={kv.Value}"));
 
     private static object? ConvertIncomingValue(object? rawValue, Type targetType)
     {

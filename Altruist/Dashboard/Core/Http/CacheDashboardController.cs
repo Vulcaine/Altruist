@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 
 using Microsoft.AspNetCore.Http;
@@ -22,7 +23,8 @@ namespace Altruist.Dashboard
         public string? Preview { get; set; }
 
         /// <summary>
-        /// Where this entry lives: "inmemory", "redis", or "both".
+        /// Where this entry was read: always <c>inmemory</c>, the process-local tier (with the Redis provider its local
+        /// tier; Redis-only entries are not listed).
         /// </summary>
         public string Source { get; set; } = "inmemory";
     }
@@ -70,8 +72,11 @@ namespace Altruist.Dashboard
     /// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>; every request must pass the dashboard
     /// protection (<see cref="DashboardAccessOptions"/>). The edit/delete endpoints accept only a type that is
     /// currently cached or a registered vault model (<see cref="VaultRegistry"/>), matched by its exact
-    /// assembly-qualified or full name; any other type name is rejected with 400 and never loaded. Listing and edits
-    /// cover the local in-memory tier only (Redis-only entries are not listed and edits are not written to Redis).
+    /// assembly-qualified or full name; any other type name is rejected with 400 and never loaded. Listing covers the
+    /// local in-memory tier only (Redis-only entries are not listed). With a remote provider
+    /// (<see cref="IRemoteCacheProvider"/>, e.g. Redis) edits and deletes are written through to the remote store as well
+    /// (<see cref="IRemoteCacheProvider.SaveRemoteAsync{T}"/>, <see cref="ICacheProvider.RemoveAndForgetAsync{T}"/>), so
+    /// other processes see them; a type the remote store has no mapping for is rejected with 400.
     /// </remarks>
     [ApiController]
     [Route("/dashboard/v1/cache")]
@@ -157,8 +162,8 @@ namespace Altruist.Dashboard
 
         /// <summary>
         /// <c>GET /dashboard/v1/cache/entries/stream</c>: 200 <c>application/x-ndjson</c>, one <see cref="CacheEntryDto"/>
-        /// per line from the configured provider's <see cref="ICacheProvider.GetSnapshot"/>. With Redis this is still the
-        /// in-memory layer; <see cref="CacheEntryDto.Source"/> is then labelled <c>inmemory+redis</c>.
+        /// per line from the configured provider's <see cref="ICacheProvider.GetSnapshot"/>: its local in-memory tier, also
+        /// with Redis (<see cref="CacheEntryDto.Source"/> <c>inmemory</c>).
         /// </summary>
         /// <param name="ct">Aborts the stream.</param>
         [HttpGet("entries/stream")]
@@ -167,7 +172,7 @@ namespace Altruist.Dashboard
             Response.StatusCode = StatusCodes.Status200OK;
             Response.ContentType = "application/x-ndjson";
 
-            var source = _cacheProvider is IRedisCacheProvider ? "inmemory+redis" : "inmemory";
+            const string source = "inmemory";
 
             foreach (var snapshot in _cacheProvider.GetSnapshot())
             {
@@ -238,8 +243,9 @@ namespace Altruist.Dashboard
 
         /// <summary>
         /// <c>PUT /dashboard/v1/cache/entry</c> with a <see cref="CacheEntryUpdateDto"/> body: deserializes the value as the
-        /// named type and calls <see cref="ICacheProvider.SaveAsync{T}"/> (local tier). 204 on success; 400 when the type is
-        /// not a cached or registered vault type; a null value throws (500).
+        /// named type and saves it: <see cref="IRemoteCacheProvider.SaveRemoteAsync{T}"/> (remote store and local tier) with
+        /// a remote provider, else <see cref="ICacheProvider.SaveAsync{T}"/>. 204 on success; 400 when the type is not a
+        /// cached or registered vault type, has no remote mapping, or the value is null.
         /// </summary>
         /// <param name="dto">Entry type, group, key and new JSON value.</param>
         /// <param name="ct">Not observed.</param>
@@ -252,27 +258,22 @@ namespace Altruist.Dashboard
             if (type is null)
                 return BadRequest($"Type '{dto.Type}' is not a cached or registered vault type.");
 
-            var valueObj = JsonSerializer.Deserialize(
-                               dto.Value.GetRawText(),
-                               type,
-                               _jsonOptions)
-                           ?? throw new InvalidOperationException("Deserialized value is null.");
+            var valueObj = JsonSerializer.Deserialize(dto.Value.GetRawText(), type, _jsonOptions);
+            if (valueObj is null)
+                return BadRequest("The value is null.");
 
-            var method = typeof(ICacheProvider)
-                .GetMethod(nameof(ICacheProvider.SaveAsync))!
-                .MakeGenericMethod(type);
+            var method = _cacheProvider is IRemoteCacheProvider
+                ? typeof(IRemoteCacheProvider).GetMethod(nameof(IRemoteCacheProvider.SaveRemoteAsync))!
+                : typeof(ICacheProvider).GetMethod(nameof(ICacheProvider.SaveAsync))!;
 
-            var task = (Task)method.Invoke(
-                _cacheProvider,
-                [dto.Key, valueObj, dto.GroupId ?? string.Empty])!;
-
-            await task;
-            return NoContent();
+            return await InvokeCacheAsync(method.MakeGenericMethod(type), [dto.Key, valueObj, dto.GroupId ?? string.Empty]);
         }
 
         /// <summary>
-        /// <c>DELETE /dashboard/v1/cache/entry?Type=&amp;GroupId=&amp;Key=</c>: calls <see cref="ICacheProvider.RemoveAsync{T}"/>
-        /// (local tier) for the named type. 204 on completion; 400 when the type is not a cached or registered vault type.
+        /// <c>DELETE /dashboard/v1/cache/entry?Type=&amp;GroupId=&amp;Key=</c>: removes the entry of the named type:
+        /// <see cref="ICacheProvider.RemoveAndForgetAsync{T}"/> (remote store and local tier) with a remote provider, else
+        /// <see cref="ICacheProvider.RemoveAsync{T}"/>. 204 on completion; 400 when the type is not a cached or registered
+        /// vault type or has no remote mapping.
         /// </summary>
         /// <param name="dto">Entry type, group and key.</param>
         /// <param name="ct">Not observed.</param>
@@ -285,15 +286,24 @@ namespace Altruist.Dashboard
             if (type is null)
                 return BadRequest($"Type '{dto.Type}' is not a cached or registered vault type.");
 
-            var method = typeof(ICacheProvider)
-                .GetMethod(nameof(ICacheProvider.RemoveAsync))!
-                .MakeGenericMethod(type);
+            var method = typeof(ICacheProvider).GetMethod(_cacheProvider is IRemoteCacheProvider
+                ? nameof(ICacheProvider.RemoveAndForgetAsync)
+                : nameof(ICacheProvider.RemoveAsync))!;
 
-            var task = (Task)method.Invoke(
-                _cacheProvider,
-                [dto.Key, dto.GroupId ?? string.Empty])!;
+            return await InvokeCacheAsync(method.MakeGenericMethod(type), [dto.Key, dto.GroupId ?? string.Empty]);
+        }
 
-            await task;
+        private async Task<IActionResult> InvokeCacheAsync(MethodInfo method, object?[] args)
+        {
+            try
+            {
+                await (Task)method.Invoke(_cacheProvider, args)!;
+            }
+            catch (KeyNotFoundException ex)
+            {
+                // The remote store has no document mapping for the type.
+                return BadRequest(ex.Message);
+            }
             return NoContent();
         }
     }

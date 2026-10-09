@@ -362,25 +362,8 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
 
     private List<ServiceInfoDto> GetServiceInfos()
     {
-        // Use the real DI container instead of pure reflection so that we only see
-        // services that are actually registered and discovered by Altruist.
-        //
-        // Assuming there is an extension method:
-        //   IEnumerable<T> GetAll<T>(this IServiceProvider provider)
-        // as hinted in your snippet.
-        var allServices = _serviceProvider.GetAll<object>();
-
-        // Deduplicate by implementation type
-        var types = new HashSet<Type>();
-        foreach (var service in allServices)
-        {
-            if (service is null)
-                continue;
-            var t = service.GetType();
-            if (t.IsAbstract || t.IsGenericTypeDefinition)
-                continue;
-            types.Add(t);
-        }
+        // From the registrations, without resolving anything: resolving would construct every lazy singleton.
+        var types = _serviceProvider.GetRegisteredImplementationTypes().Where(t => !t.IsAbstract);
 
         var services = new List<ServiceInfoDto>();
 

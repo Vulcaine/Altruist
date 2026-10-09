@@ -32,21 +32,25 @@ namespace Altruist.Dashboard;
 /// </summary>
 /// <remarks>
 /// <para>
-/// DI: singleton <see cref="IDashboardNetworkRecorder"/>, registered only when
+/// DI: one singleton, resolvable as <see cref="IDashboardNetworkRecorder"/> (what the transports record into) and as
+/// itself (what the dashboard controllers read from), registered only when
 /// <c>altruist:dashboard:enabled</c> is <c>true</c> and the <c>Altruist.Dashboard</c> assembly is loaded.
 /// Settings are re-read from configuration on every call (reload-friendly):
 /// <c>altruist:dashboard:network:enabled</c>, <c>:captureHttp</c>, <c>:capturePackets</c> (each on unless
 /// set to <c>false</c>), <c>:retentionMinutes</c> (default 60, clamped 1..1440), <c>:maxEvents</c>
 /// (default 10000, clamped 100..200000), <c>:maxPayloadBytes</c> (default 32768, clamped 0..1 MiB),
-/// <c>:slowHttpMs</c> (default 1000), <c>:slowGateMs</c> (default 50) and <c>:redactFields</c>
-/// (default <c>password</c>, <c>token</c>, <c>authorization</c>).
+/// <c>:slowHttpMs</c> (default 1000), <c>:slowGateMs</c> (default 50), <c>:redactFields</c>
+/// (default <c>password</c>, <c>token</c>, <c>authorization</c>) and <c>:recordNonJsonPayloads</c> (default
+/// <c>false</c>).
 /// </para>
 /// <para>
 /// Memory only, per process (no sharing across a fleet). Thread-safe: one lock guards the buffer.
-/// Payloads are kept as text and may contain sensitive data: JSON object fields whose names match
-/// <c>redactFields</c> (case-insensitive, any depth) are replaced by <c>[redacted]</c>; non-JSON payloads
-/// (including hex dumps of binary frames) are not redacted. WebSocket upgrade requests (status 101, or
-/// <c>GET /ws</c>, <c>/ws/...</c>) are not recorded.
+/// Payloads are kept as text: JSON object fields whose names match <c>redactFields</c> (case-insensitive, any
+/// depth) are replaced by <c>[redacted]</c> before the payload is truncated. A payload that is not JSON (form or
+/// plain text, binary frames) cannot be redacted, so only its size is recorded, unless <c>redactFields</c> is empty
+/// or <c>recordNonJsonPayloads</c> is <c>true</c> (then it is kept as text, or hex for binary). Decoded packets are
+/// serialized to JSON, so they are always redactable. WebSocket upgrade requests (status 101, or <c>GET /ws</c>,
+/// <c>/ws/...</c>) are not recorded.
 /// </para>
 /// </remarks>
 [Service(typeof(IDashboardNetworkRecorder), ServiceLifetime.Singleton)]
@@ -291,33 +295,56 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
     {
         if (payload is not null)
         {
+            string json;
             try
             {
-                var json = JsonSerializer.Serialize(payload, payload.GetType(), _jsonOptions);
-                json = RedactJson(json);
-                return BuildTextPayload(json, Encoding.UTF8.GetByteCount(json));
+                json = JsonSerializer.Serialize(payload, payload.GetType(), _jsonOptions);
             }
-            catch
+            catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or JsonException)
             {
-                return BuildTextPayload(payload.ToString() ?? string.Empty, 0);
+                return NotRecorded(0, "payload could not be serialized to JSON");
             }
+            return BuildRedactedPayload(json, Encoding.UTF8.GetByteCount(json));
         }
 
         if (rawPayload is null || rawPayload.Length == 0)
             return new PayloadInfo();
 
-        var limit = MaxPayloadBytes;
-        var sliceLength = Math.Min(rawPayload.Length, limit);
-        var slice = rawPayload.AsSpan(0, sliceLength);
-        var text = LooksLikeUtf8(slice)
-            ? Encoding.UTF8.GetString(slice)
-            : Convert.ToHexString(slice);
+        if (LooksLikeUtf8(rawPayload))
+            return BuildRedactedPayload(Encoding.UTF8.GetString(rawPayload), rawPayload.Length);
 
-        text = RedactJson(text);
-        var info = BuildTextPayload(text, rawPayload.Length);
+        if (!RecordsUnredactable)
+            return NotRecorded(rawPayload.Length, "binary payload cannot be redacted");
+
+        var limit = MaxPayloadBytes;
+        var hex = Convert.ToHexString(rawPayload.AsSpan(0, Math.Min(rawPayload.Length, limit)));
+        var info = BuildTextPayload(hex, rawPayload.Length);
         info.Truncated = rawPayload.Length > limit || info.Truncated;
         return info;
     }
+
+    // Redacts the whole text first, then truncates: a truncated JSON document could not be parsed (and redacted).
+    private PayloadInfo BuildRedactedPayload(string text, int byteCount)
+    {
+        if (RedactFields.Length == 0 || string.IsNullOrWhiteSpace(text))
+            return BuildTextPayload(text, byteCount);
+
+        if (TryRedactJson(text) is { } redacted)
+            return BuildTextPayload(redacted, byteCount);
+
+        return RecordsUnredactable
+            ? BuildTextPayload(text, byteCount)
+            : NotRecorded(byteCount, "payload is not JSON, so it cannot be redacted");
+    }
+
+    private static PayloadInfo NotRecorded(int byteCount, string reason)
+    {
+        var note = $"[not recorded: {reason}; set altruist:dashboard:network:recordNonJsonPayloads to true to keep it]";
+        return new PayloadInfo { Bytes = byteCount, Truncated = byteCount > 0, Raw = note, Preview = note };
+    }
+
+    private bool RecordsUnredactable
+        => string.Equals(_configuration["altruist:dashboard:network:recordNonJsonPayloads"], "true", StringComparison.OrdinalIgnoreCase);
 
     private PayloadInfo BuildTextPayload(string text, int byteCount)
     {
@@ -346,25 +373,23 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
         };
     }
 
-    private string RedactJson(string text)
+    // The redacted JSON, or null when the text is not a JSON document.
+    private string? TryRedactJson(string text)
     {
-        var fields = RedactFields;
-        if (fields.Length == 0 || string.IsNullOrWhiteSpace(text))
-            return text;
-
+        JsonNode? node;
         try
         {
-            var node = JsonNode.Parse(text);
-            if (node is null)
-                return text;
-
-            RedactNode(node, fields);
-            return node.ToJsonString(_jsonOptions);
+            node = JsonNode.Parse(text);
         }
-        catch
+        catch (JsonException)
         {
-            return text;
+            return null;
         }
+        if (node is null)
+            return null;
+
+        RedactNode(node, RedactFields);
+        return node.ToJsonString(_jsonOptions);
     }
 
     private static void RedactNode(JsonNode node, string[] fields)
@@ -506,10 +531,10 @@ public sealed class NetworkDashboardController : ControllerBase
     private readonly DashboardNetworkRecorder _recorder;
 
     /// <summary>Creates the controller.</summary>
-    /// <param name="recorder">Must be a <see cref="DashboardNetworkRecorder"/> (cast; any other implementation throws).</param>
-    public NetworkDashboardController(IDashboardNetworkRecorder recorder)
+    /// <param name="recorder">The recorder whose events are listed.</param>
+    public NetworkDashboardController(DashboardNetworkRecorder recorder)
     {
-        _recorder = (DashboardNetworkRecorder)recorder;
+        _recorder = recorder;
     }
 
     /// <summary>
@@ -544,10 +569,10 @@ public sealed class PerformanceDashboardController : ControllerBase
     private readonly DashboardNetworkRecorder _recorder;
 
     /// <summary>Creates the controller.</summary>
-    /// <param name="recorder">Must be a <see cref="DashboardNetworkRecorder"/> (cast).</param>
-    public PerformanceDashboardController(IDashboardNetworkRecorder recorder)
+    /// <param name="recorder">The recorder whose events are summarized.</param>
+    public PerformanceDashboardController(DashboardNetworkRecorder recorder)
     {
-        _recorder = (DashboardNetworkRecorder)recorder;
+        _recorder = recorder;
     }
 
     /// <summary><c>GET /dashboard/v1/performance</c>: 200 with a <see cref="DashboardPerformanceDto"/> (see <see cref="DashboardNetworkRecorder.GetPerformance"/>).</summary>
