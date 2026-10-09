@@ -21,8 +21,8 @@ namespace Altruist.Persistence.Postgres;
 /// <c>altruist:persistence:database</c>): <c>host</c> (default <c>localhost</c>), <c>port</c> (5432),
 /// <c>username</c>, <c>password</c>, <c>database</c> (required), <c>pooling</c> (true), <c>max-pool-size</c> (300),
 /// <c>ssl-mode</c> (<c>disable</c> | <c>allow</c> | <c>prefer</c> | <c>require</c> | <c>verify-ca</c> | <c>verify-full</c>;
-/// unknown values fall back to <c>disable</c>). Host, username, database and ssl-mode are trimmed and lower-cased;
-/// the password is used verbatim. The session time zone is forced to UTC.
+/// any other value throws). Host, username and database are trimmed (their case is kept: quoted Postgres names are
+/// case-sensitive); the password is used verbatim. The session time zone is forced to UTC.
 /// </para>
 /// <para>
 /// When to use: prefer <c>IVault&lt;T&gt;</c> for single-table CRUD and <see cref="IPrefabs"/> for aggregates; use this
@@ -62,7 +62,7 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
 
     private readonly bool _pooling;
     private readonly int _maxPoolSize;
-    private readonly string _sslModeRaw;
+    private readonly SslMode _sslMode;
 
     /// <inheritdoc/>
     public override string ServiceName { get; } = "PostgreSQL";
@@ -80,7 +80,7 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
         "require" => SslMode.Require,
         "verifyca" or "verify-ca" => SslMode.VerifyCA,
         "verifyfull" or "verify-full" => SslMode.VerifyFull,
-        _ => SslMode.Disable
+        _ => throw new ArgumentException($"Unknown ssl-mode '{rawLower}'; use disable, allow, prefer, require, verify-ca or verify-full.")
     };
 
     /// <summary>
@@ -90,13 +90,14 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
     /// <param name="jsonOptions">Serializer options for JSON/jsonb parameters and columns.</param>
     /// <param name="host"><c>altruist:persistence:database:host</c>; empty means <c>localhost</c>.</param>
     /// <param name="port"><c>altruist:persistence:database:port</c>; values &lt;= 0 mean 5432.</param>
-    /// <param name="username"><c>altruist:persistence:database:username</c> (required, lower-cased).</param>
+    /// <param name="username"><c>altruist:persistence:database:username</c> (required).</param>
     /// <param name="password"><c>altruist:persistence:database:password</c> (required, may be empty).</param>
-    /// <param name="database"><c>altruist:persistence:database:database</c> (required, lower-cased).</param>
+    /// <param name="database"><c>altruist:persistence:database:database</c> (required).</param>
     /// <param name="pooling"><c>altruist:persistence:database:pooling</c>.</param>
     /// <param name="maxPoolSize"><c>altruist:persistence:database:max-pool-size</c>.</param>
     /// <param name="sslMode"><c>altruist:persistence:database:ssl-mode</c>.</param>
     /// <exception cref="ArgumentNullException">Username or database is empty, or password is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="sslMode"/> is not a known mode.</exception>
     public PgSqlDbProvider(
         JsonSerializerOptions jsonOptions,
         [AppConfigValue("altruist:persistence:database:host")] string host,
@@ -110,20 +111,15 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
         : base(jsonOptions)
     {
         _maxPoolSize = maxPoolSize;
-        var hostLower = NormLower(host);
-        var userLower = NormLower(username);
-        var dbLower = NormLower(database);
-        var sslLower = NormLower(sslMode);
-
-        _host = string.IsNullOrWhiteSpace(hostLower) ? "localhost" : hostLower;
+        _host = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
         _port = port <= 0 ? 5432 : port;
 
-        _username = string.IsNullOrWhiteSpace(userLower) ? throw new ArgumentNullException(nameof(username)) : userLower;
-        _database = string.IsNullOrWhiteSpace(dbLower) ? throw new ArgumentNullException(nameof(database)) : dbLower;
+        _username = string.IsNullOrWhiteSpace(username) ? throw new ArgumentNullException(nameof(username)) : username.Trim();
+        _database = string.IsNullOrWhiteSpace(database) ? throw new ArgumentNullException(nameof(database)) : database.Trim();
 
         _password = password ?? throw new ArgumentNullException(nameof(password));
         _pooling = pooling;
-        _sslModeRaw = sslLower;
+        _sslMode = ParseSslMode(NormLower(sslMode));
     }
 
     /// <inheritdoc/>
@@ -138,7 +134,7 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
             Database = _database,
             Pooling = _pooling,
             MaxPoolSize = _maxPoolSize,
-            SslMode = ParseSslMode(_sslModeRaw),
+            SslMode = _sslMode,
             // Deterministic timestamp conversions regardless of the server's default zone.
             Timezone = "UTC",
         };
@@ -181,22 +177,5 @@ public sealed class PgSqlDbProvider : GeneralSqlDatabaseProvider
         }
 
         p.Value = value;
-    }
-
-    /// <summary>Runs <c>SET search_path TO "&lt;schema&gt;"</c> (schema lower-cased).</summary>
-    /// <remarks>
-    /// <c>search_path</c> is a per-session setting and every operation leases its own pooled connection, so the
-    /// change only affects the connection it ran on (or the ambient transaction's connection, if one is active).
-    /// Vaults always qualify table names with their schema and do not depend on it.
-    /// </remarks>
-    /// <param name="schema">Schema name.</param>
-    /// <param name="ct">Cancellation token.</param>
-    public override async Task ChangeKeyspaceAsync(string schema, CancellationToken ct = default)
-    {
-        await EnsureConnectedAsync(ct).ConfigureAwait(false);
-
-        // use base's internal connection via Query/Execute path OR keep local:
-        // easiest is just execute SQL through ExecuteAsync:
-        await ExecuteAsync($"SET search_path TO \"{NormLower(schema)}\";", parameters: null, ct).ConfigureAwait(false);
     }
 }

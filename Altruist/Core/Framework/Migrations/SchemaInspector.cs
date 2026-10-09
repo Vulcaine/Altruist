@@ -133,6 +133,6 @@ public abstract class AbstractSchemaInspector : ISchemaInspector
         if (string.IsNullOrWhiteSpace(s))
             s = GetDefaultSchemaName();
 
-        return s.Trim().ToLowerInvariant();
+        return s.Trim();
     }
 }

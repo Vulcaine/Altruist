@@ -22,7 +22,7 @@ namespace Altruist.Persistence.Postgres;
 /// <item><description>discovers every <c>[Vault]</c> model and registers a singleton <c>IVault&lt;TModel&gt;</c> for it
 /// (built by <see cref="PostgresServiceFactory"/>);</description></item>
 /// <item><description>wraps services that have <see cref="TransactionalAttribute"/> methods in <see cref="TransactionalDecorator{T}"/>;</description></item>
-/// <item><description>bootstraps the database once per process: connects the unkeyed <see cref="ISqlDatabaseProvider"/>,
+/// <item><description>bootstraps the database once per process: connects the default <see cref="PgSqlDbProvider"/>,
 /// takes a session-level Postgres advisory lock so that several servers starting together migrate one at a time,
 /// creates every vault schema (<c>CREATE SCHEMA IF NOT EXISTS</c>), runs the schema migrator for all vault models
 /// (which can drop columns, constraints and indexes, see <see cref="Migrations.Postgres.PostgresMigrationPlanner"/>), then runs every
@@ -124,12 +124,12 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
         var loggerFactory = sp.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
         var logger = loggerFactory.CreateLogger(logPrefix);
 
-        var provider = sp.GetService<ISqlDatabaseProvider>();
+        var provider = sp.GetService<PgSqlDbProvider>();
         var migrator = sp.GetService<IVaultSchemaMigrator>();
 
         if (provider is null)
         {
-            logger.LogWarning("⚠️ No ISqlDatabaseProvider registered; skipping bootstrap.");
+            logger.LogWarning("⚠️ No PgSqlDbProvider registered; skipping bootstrap.");
             return;
         }
 

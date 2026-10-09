@@ -129,7 +129,8 @@ namespace Altruist.Migrations
             }
 
             // 6) execute all operations
-            var defaultSchema = "altruist";
+            // Every planned operation names its schema; the default only applies to hand-built operations.
+            var defaultSchema = "public";
 
             await _executor.ApplyAsync(defaultSchema, operations).ConfigureAwait(false);
 
@@ -181,7 +182,7 @@ namespace Altruist.Migrations
             if (string.IsNullOrWhiteSpace(s))
                 s = "public";
 
-            return s.Trim().ToLowerInvariant();
+            return s.Trim();
         }
 
         /// <summary>

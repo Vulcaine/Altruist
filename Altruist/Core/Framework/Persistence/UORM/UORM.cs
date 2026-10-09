@@ -46,8 +46,14 @@ public class VaultAttribute : Attribute
 {
     /// <summary>Table name. When blank, the snake_case class name is used.</summary>
     public string Name { get; }
-    /// <summary>Schema (Postgres) or keyspace the table lives in; defaults to <c>altruist</c>.</summary>
+    /// <summary>Schema (Postgres) or keyspace the table lives in; defaults to <c>altruist</c>. See <see cref="SchemaName"/>.</summary>
     public string Keyspace { get; } = "altruist";
+
+    /// <summary>
+    /// The schema the table actually lives in: <see cref="Keyspace"/> trimmed (case kept), or <c>public</c> when it is
+    /// set blank. Vaults, migrations, the registry and test isolation all use this value.
+    /// </summary>
+    public string SchemaName => string.IsNullOrWhiteSpace(Keyspace) ? "public" : Keyspace.Trim();
     /// <summary>Database provider token; defaults to <c>Postgres</c>. Currently informational: provider selection is driven by <c>altruist:persistence:database:provider</c>.</summary>
     public string DbToken { get; } = "Postgres";
     /// <summary>

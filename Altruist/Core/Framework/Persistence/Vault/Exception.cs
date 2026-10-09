@@ -16,8 +16,8 @@ namespace Altruist.Persistence;
 /// </summary>
 /// <remarks>
 /// Raised by vault saves when the stored row's version no longer equals the entity's version (someone else saved
-/// it in between). Typical handling: reload the entity, re-apply the change, save again. Batch saves also wrap
-/// any other failure of the batch statement in this exception (see <see cref="Exception.InnerException"/>).
+/// it in between). Typical handling: reload the entity, re-apply the change, save again. Other failures (connection,
+/// constraint violations) are never reported as this exception.
 /// </remarks>
 public sealed class OptimisticConcurrencyException : Exception
 {
@@ -51,5 +51,29 @@ public sealed class OptimisticConcurrencyException : Exception
         StorageId = storageId;
         ExpectedAffected = expectedAffected;
         ActualAffected = actualAffected;
+    }
+}
+
+/// <summary>
+/// A vault model's definition is invalid (for example a missing <c>Type</c> property or a foreign key to a column that
+/// is neither a primary key nor unique). Thrown by <see cref="VaultDocument.From(Type)"/> with every problem found.
+/// </summary>
+/// <remarks>These are programming errors in the model classes: fix the model; do not catch this to continue.</remarks>
+public sealed class InvalidVaultModelException : InvalidOperationException
+{
+    /// <summary>The invalid model type.</summary>
+    public Type ModelType { get; }
+
+    /// <summary>Every problem found, one message each.</summary>
+    public IReadOnlyList<string> Problems { get; }
+
+    /// <summary>Creates the exception.</summary>
+    /// <param name="modelType">The invalid model type.</param>
+    /// <param name="problems">The problems found (at least one).</param>
+    public InvalidVaultModelException(Type modelType, IReadOnlyList<string> problems)
+        : base($"Invalid vault model {modelType.FullName}: {string.Join(" ", problems)}")
+    {
+        ModelType = modelType;
+        Problems = problems;
     }
 }

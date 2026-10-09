@@ -220,15 +220,14 @@ public interface IGeneralDatabaseProvider : IConnectable
     IDatabaseServiceToken Token { get; }
     /// <summary>Returns the full provider connection string built from configuration.</summary>
     string GetConnectionString();
-    /// <summary>Creates the keyspace (SQL schema) if it doesn't exist (<c>CREATE SCHEMA IF NOT EXISTS</c>; the name is lower-cased).</summary>
+    /// <summary>Creates the keyspace (SQL schema) if it doesn't exist (<c>CREATE SCHEMA IF NOT EXISTS</c>; the name is trimmed, its case kept).</summary>
+    /// <remarks>
+    /// There is no "current keyspace" to switch: every operation leases its own pooled connection, and vaults always use
+    /// schema-qualified table names. Qualify raw SQL with the schema too.
+    /// </remarks>
     /// <param name="keyspace">Keyspace / schema name.</param>
     /// <param name="ct">Cancellation token.</param>
     Task CreateKeySpaceAsync(string keyspace, CancellationToken ct = default);
-    /// <summary>Switches the provider's default keyspace (Postgres: <c>SET search_path</c>); a no-op for providers that don't support it.</summary>
-    /// <remarks>Vaults always use schema-qualified table names, so this does not affect vault queries.</remarks>
-    /// <param name="keyspace">Keyspace / schema name.</param>
-    /// <param name="ct">Cancellation token.</param>
-    Task ChangeKeyspaceAsync(string keyspace, CancellationToken ct = default);
 }
 
 

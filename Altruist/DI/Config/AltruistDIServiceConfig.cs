@@ -391,14 +391,17 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
                         break;
                 }
 
-                services.Add(new ServiceDescriptor(
+                // Unkeyed forwards make every item part of IEnumerable<T>. They go to the front of the collection so
+                // that a regular (non-list) registration of the same service, wherever it was added, stays the one an
+                // unkeyed GetService<T> returns (the last registration wins) instead of the last list item.
+                services.Insert(0, new ServiceDescriptor(
                     serviceType,
                     sp => sp.GetRequiredKeyedService(serviceType, itemKey),
                     lifetime));
 
                 if (serviceType != implType)
                 {
-                    services.Add(new ServiceDescriptor(
+                    services.Insert(0, new ServiceDescriptor(
                         implType,
                         sp => sp.GetRequiredKeyedService(serviceType, itemKey),
                         lifetime));

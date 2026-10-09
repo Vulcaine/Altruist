@@ -41,7 +41,7 @@ internal static class PostgresVaultSetup
     {
         foreach (var modelType in vaultModelTypes)
         {
-            var schemaName = GetSchemaName(modelType);
+            var schemaName = modelType.GetCustomAttribute<VaultAttribute>(inherit: true)!.SchemaName;
 
             VaultRegistry.Register(modelType, schemaName);
 
@@ -61,14 +61,5 @@ internal static class PostgresVaultSetup
                 return factory.Create(sp, vaultIface);
             });
         }
-    }
-
-    private static string GetSchemaName(Type modelType)
-    {
-        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
-        if (!string.IsNullOrWhiteSpace(va?.Keyspace))
-            return va!.Keyspace!.Trim();
-
-        return "public";
     }
 }

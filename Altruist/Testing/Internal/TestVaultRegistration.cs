@@ -55,9 +55,7 @@ internal static class TestVaultRegistration
     {
         var va = modelType.GetCustomAttribute<VaultAttribute>()!;
 
-        ISqlDatabaseProvider sqlProvider = !string.IsNullOrWhiteSpace(va.DbInstance)
-            ? sp.GetKeyedService<ISqlDatabaseProvider>(va.DbInstance) ?? sp.GetRequiredService<ISqlDatabaseProvider>()
-            : sp.GetRequiredService<ISqlDatabaseProvider>();
+        var sqlProvider = PostgresServiceFactory.ResolveProvider(sp, modelType, va.DbInstance);
 
         IKeyspace keyspace = new DefaultSchema(testSchema);
         var doc = VaultDocument.From(modelType);

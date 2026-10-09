@@ -483,7 +483,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     protected virtual string GetDefaultSchemaName() => "public";
 
     /// <summary>
-    /// How schema names are normalized for comparison / DDL.
+    /// How schema names are normalized for comparison / DDL: trimmed, case kept (quoted names are case-sensitive, and
+    /// vaults query the schema exactly as written in the model).
     /// </summary>
     protected virtual string NormalizeSchemaName(string? schemaName)
     {
@@ -491,7 +492,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         if (string.IsNullOrWhiteSpace(s))
             s = GetDefaultSchemaName();
 
-        return s.Trim().ToLowerInvariant();
+        return s.Trim();
     }
 
     /// <summary>
@@ -793,12 +794,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         // principal schema MUST come from principal vault, not the dependent.
         var principalSchema = GetSchemaForDocument(principalDoc);
 
-        // Map principal property name -> physical column.
-        if (!principalDoc.Columns.TryGetValue(fk.PrincipalPropertyName, out var principalColumn))
-        {
-            // Fallback to camelCase if explicit column mapping not found
-            principalColumn = VaultDocument.ToCamelCase(fk.PrincipalPropertyName);
-        }
+        // Principal property (or physical column) -> physical column; the document validated it exists.
+        var principalColumn = principalDoc.Col(fk.PrincipalPropertyName);
 
         // principalDoc.Name is the physical table name; principalSchema is its schema.
         return (principalSchema, principalDoc.Name, principalColumn);
@@ -1277,22 +1274,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
     // ---------- helpers ----------
 
-    /// <summary>Physical primary key columns from the model's primary key attribute (unmapped names fall back to camelCase).</summary>
+    /// <summary>Physical primary key columns from the model's primary key attribute (property or column names).</summary>
     /// <param name="doc">The document.</param>
     /// <returns>Primary key columns; empty when none declared.</returns>
+    /// <exception cref="ArgumentException">A key names neither a mapped property nor a column.</exception>
     protected static List<string> ResolvePrimaryKeyColumns(VaultDocument doc)
-    {
-        var result = new List<string>();
-        var keys = doc.PrimaryKey?.Keys ?? Array.Empty<string>();
-        foreach (var keyProp in keys)
-        {
-            if (doc.Columns.TryGetValue(keyProp, out var col))
-                result.Add(col);
-            else
-                result.Add(VaultDocument.ToCamelCase(keyProp));
-        }
-        return result;
-    }
+        => (doc.PrimaryKey?.Keys ?? Array.Empty<string>()).Select(doc.Col).ToList();
 
     /// <summary>Physical column of <see cref="Altruist.UORM.VaultSortingByAttribute"/>, or null; it is indexed like a <see cref="Altruist.UORM.VaultColumnIndexAttribute"/> column.</summary>
     /// <param name="doc">The document.</param>
@@ -1303,9 +1290,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         if (string.IsNullOrWhiteSpace(sortProp))
             return null;
 
-        return doc.Columns.TryGetValue(sortProp, out var col)
-            ? col
-            : VaultDocument.ToCamelCase(sortProp);
+        return doc.Col(sortProp);
     }
 
     /// <summary>Builds <c>{prefix}_{parts}</c> (lower-cased); names longer than <see cref="MaxConstraintNameLength"/> are truncated with a 12-hex-char SHA-256 suffix. Mirrors <see cref="ConstraintUtil.ConstructConstraintName"/>.</summary>

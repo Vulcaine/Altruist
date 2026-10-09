@@ -39,20 +39,12 @@ public abstract class PostgresConfigurationBase
         TypeDiscovery.FindTypesImplementing<IDatabaseInitializer>(assemblies);
 
     /// <summary>
-    /// Schema of a model: the trimmed <c>Keyspace</c> of its <see cref="VaultAttribute"/> (or subclass, inherited), or
-    /// <c>public</c> when that is empty or the attribute is missing. Note the attribute's own default keyspace is
-    /// <c>altruist</c>.
+    /// Schema of a model: <see cref="VaultAttribute.SchemaName"/> of its <see cref="VaultAttribute"/> (or subclass,
+    /// inherited), or <c>public</c> when the attribute is missing.
     /// </summary>
     /// <param name="modelType">The vault model type.</param>
     protected static string GetSchemaName(Type modelType)
-    {
-        // Works for [Vault], [Prefab], and any future : VaultAttribute attribute.
-        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
-        if (!string.IsNullOrWhiteSpace(va?.Keyspace))
-            return va!.Keyspace!.Trim();
-
-        return "public";
-    }
+        => modelType.GetCustomAttribute<VaultAttribute>(inherit: true)?.SchemaName ?? "public";
 
     // ----------------- schema registration -----------------
 

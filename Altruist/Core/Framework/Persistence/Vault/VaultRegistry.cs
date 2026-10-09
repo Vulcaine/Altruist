@@ -13,19 +13,19 @@ namespace Altruist
         public string TypeKey { get; }
         /// <summary>The vault model CLR type.</summary>
         public Type ClrType { get; }
-        /// <summary>Schema / keyspace the table lives in (<c>altruist</c> when registered blank).</summary>
+        /// <summary>Schema / keyspace the table lives in (<c>public</c> when registered blank, like <see cref="Altruist.UORM.VaultAttribute.SchemaName"/>).</summary>
         public string Keyspace { get; }
 
         /// <summary>Creates the entry.</summary>
         /// <param name="typeKey">Stable type key.</param>
         /// <param name="clrType">Model type.</param>
-        /// <param name="keyspace">Keyspace; blank becomes <c>altruist</c>.</param>
+        /// <param name="keyspace">Keyspace; blank becomes <c>public</c>.</param>
         /// <exception cref="ArgumentNullException"><paramref name="typeKey"/> or <paramref name="clrType"/> is null.</exception>
         public VaultMetadata(string typeKey, Type clrType, string keyspace)
         {
             TypeKey = typeKey ?? throw new ArgumentNullException(nameof(typeKey));
             ClrType = clrType ?? throw new ArgumentNullException(nameof(clrType));
-            Keyspace = string.IsNullOrWhiteSpace(keyspace) ? "altruist" : keyspace;
+            Keyspace = string.IsNullOrWhiteSpace(keyspace) ? "public" : keyspace.Trim();
         }
     }
 

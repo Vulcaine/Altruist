@@ -14,6 +14,7 @@ using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 
@@ -121,12 +122,14 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     /// <inheritdoc/>
     public string GetConnectionString() => BuildConnectionString();
 
+    private int _connected;
+
     /// <summary>
     /// <c>true</c> while the database is reachable, as last observed by connect, a query or the 5-second health check.
     /// </summary>
-    public bool IsConnected { get; private set; }
+    public bool IsConnected => Volatile.Read(ref _connected) == 1;
 
-    /// <summary>Raised when the connection is (re)established. Also raised after every typed/untyped query while connected, so handlers must be cheap and idempotent.</summary>
+    /// <summary>Raised when the provider goes from unreachable to reachable: on (re)connect, or when a query or health check succeeds after a failure.</summary>
     public event Action? OnConnected;
     /// <summary>Raised on the first failed connect attempt and when a health check finds a previously healthy database unreachable.</summary>
     public event Action<Exception>? OnFailed;
@@ -215,8 +218,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     protected async Task EnsureConnectedAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        IsConnected = _conn?.State == ConnectionState.Open;
-        if (!IsConnected)
+        if (_conn?.State != ConnectionState.Open)
             await ConnectAsync(30, 2000, ct).ConfigureAwait(false);
     }
 
@@ -285,7 +287,6 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         var mat = _untypedMaterializers.GetOrAdd(modelType, static t => BuildUntypedMaterializer(t));
 
-        try
         {
             await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
         var conn = lease.Connection;
@@ -349,12 +350,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                 list.Add(inst);
             }
 
+            MarkReachable();
             return list;
-        }
-        finally
-        {
-            if (IsConnected)
-                OnConnected?.Invoke();
         }
     }
 
@@ -447,33 +444,39 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         {
             ct.ThrowIfCancellationRequested();
 
+            var conn = CreateConnection(connectionStringFactory());
             try
             {
-                _conn = CreateConnection(connectionStringFactory());
-                await _conn.OpenAsync(ct).ConfigureAwait(false);
-
-                RaiseConnectedEvent();
-                StartHealthChecks();
-                return;
+                await conn.OpenAsync(ct).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                throw;
-            }
-            catch (Exception ex)
-            {
+                await conn.DisposeAsync().ConfigureAwait(false);
                 if (attempt == 1)
                     RaiseFailedEvent(ex);
 
                 last = ex;
-                IsConnected = false;
-
                 if (attempt < maxRetries)
                     await Task.Delay(delayMilliseconds, ct).ConfigureAwait(false);
+                continue;
             }
+
+            await ReplaceControlConnectionAsync(conn).ConfigureAwait(false);
+            RaiseConnectedEvent();
+            StartHealthChecks();
+            return;
         }
 
-        RaiseOnRetryExhaustedEvent(last!);
+        var failure = last ?? new InvalidOperationException($"{ServiceName}: no connection attempt was made (maxRetries = {maxRetries}).");
+        RaiseOnRetryExhaustedEvent(failure);
+        ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private async Task ReplaceControlConnectionAsync(DbConnection? next)
+    {
+        var previous = Interlocked.Exchange(ref _conn, next);
+        if (previous is not null)
+            await previous.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>Connects with the default policy: 30 attempts, 2000 ms apart.</summary>
@@ -488,44 +491,18 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     public Task ShutdownAsync(Exception? ex = null) => ShutdownAsync(ex, CancellationToken.None);
 
     /// <inheritdoc/>
+    /// <remarks>Idempotent; the provider can be connected again afterwards.</remarks>
     public async Task ShutdownAsync(Exception? ex = null, CancellationToken ct = default)
     {
         StopHealthChecks();
-
-        if (_conn is null)
-            return;
-
-        try
-        {
-            // keep compatibility
-            await _conn.CloseAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            await _conn.DisposeAsync().ConfigureAwait(false);
-            _conn = null;
-            IsConnected = false;
-        }
-    }
-
-    // Backward compatible signature
-    /// <summary>Same as <see cref="ChangeKeyspaceAsync(string, CancellationToken)"/> without cancellation.</summary>
-    /// <param name="schema">Schema name.</param>
-    public Task ChangeKeyspaceAsync(string schema) => ChangeKeyspaceAsync(schema, CancellationToken.None);
-
-    /// <summary>Switches the default schema. No-op in the base class; providers override it (Postgres runs <c>SET search_path</c>).</summary>
-    /// <param name="schema">Schema name.</param>
-    /// <param name="ct">Cancellation token.</param>
-    public virtual async Task ChangeKeyspaceAsync(string schema, CancellationToken ct = default)
-    {
-        // Default no-op unless overridden (Postgres uses SET search_path)
-        await Task.CompletedTask.ConfigureAwait(false);
+        await ReplaceControlConnectionAsync(null).ConfigureAwait(false);
+        Volatile.Write(ref _connected, 0);
     }
 
     /// <summary>Marks the provider connected and raises <see cref="OnConnected"/>.</summary>
     public void RaiseConnectedEvent()
     {
-        IsConnected = true;
+        Volatile.Write(ref _connected, 1);
         OnConnected?.Invoke();
     }
 
@@ -533,7 +510,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     /// <param name="ex">The failure.</param>
     public void RaiseFailedEvent(Exception ex)
     {
-        IsConnected = false;
+        Volatile.Write(ref _connected, 0);
         OnFailed?.Invoke(ex);
     }
 
@@ -541,8 +518,15 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     /// <param name="ex">The last connection failure.</param>
     public void RaiseOnRetryExhaustedEvent(Exception ex)
     {
-        IsConnected = false;
+        Volatile.Write(ref _connected, 0);
         OnRetryExhausted?.Invoke(ex);
+    }
+
+    /// <summary>A statement just succeeded: if the provider was marked unreachable, it is reachable again.</summary>
+    private void MarkReachable()
+    {
+        if (Interlocked.Exchange(ref _connected, 1) == 0)
+            OnConnected?.Invoke();
     }
 
     // ---------- Provider API ----------
@@ -623,37 +607,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         cmd.Transaction = lease.Transaction;
 
         var affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        if (!IsConnected)
-            RaiseConnectedEvent();
-
+        MarkReachable();
         return affected;
-    }
-
-    // Default stubs (you can keep parity with your other provider surface)
-    /// <summary>Reserved no-op (returns 1); see <see cref="UpdateAsync{TVaultModel}(TVaultModel, CancellationToken)"/>.</summary>
-    /// <param name="entity">Ignored.</param>
-    public Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
-        => UpdateAsync(entity, CancellationToken.None);
-
-    /// <inheritdoc/>
-    public virtual async Task<long> UpdateAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
-        where TVaultModel : class, IVaultModel
-    {
-        await Task.CompletedTask.ConfigureAwait(false);
-        return 1;
-    }
-
-    /// <summary>Reserved no-op (returns 1); see <see cref="DeleteAsync{TVaultModel}(TVaultModel, CancellationToken)"/>.</summary>
-    /// <param name="entity">Ignored.</param>
-    public Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
-        => DeleteAsync(entity, CancellationToken.None);
-
-    /// <inheritdoc/>
-    public virtual async Task<long> DeleteAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
-        where TVaultModel : class, IVaultModel
-    {
-        await Task.CompletedTask.ConfigureAwait(false);
-        return 1;
     }
 
     // Schema
@@ -675,7 +630,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         cmd.Transaction = lease.Transaction;
         // Schema name is framework-controlled (from config), not user input
 #pragma warning disable CA2100
-        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
+        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS {VaultDocument.Quote(schema.Trim())};";
 #pragma warning restore CA2100
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -689,13 +644,12 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         ct.ThrowIfCancellationRequested();
 
-        try
         {
             await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
-        var conn = lease.Connection;
+            var conn = lease.Connection;
 
             await using var cmd = PrepareCommand(conn, sql, parameters);
-        cmd.Transaction = lease.Transaction;
+            cmd.Transaction = lease.Transaction;
 
             await using var reader = await cmd
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
@@ -714,12 +668,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                 list.Add(await create(reader, ct).ConfigureAwait(false));
             }
 
+            MarkReachable();
             return list;
-        }
-        finally
-        {
-            if (IsConnected)
-                OnConnected?.Invoke();
         }
     }
 
@@ -996,40 +946,58 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     // ---------- Health checks ----------
 
-    private CancellationTokenSource _healthCts = new();
+    private readonly object _healthLock = new();
+    private CancellationTokenSource? _healthCts;
     private readonly SemaphoreSlim _pingLock = new(1, 1);
 
-    /// <summary>Starts a background loop that runs <see cref="HealthCheckAsync"/> every <paramref name="seconds"/> seconds until <see cref="StopHealthChecks"/>.</summary>
+    /// <summary>
+    /// Starts a background loop that runs <see cref="HealthCheckAsync"/> every <paramref name="seconds"/> seconds until
+    /// <see cref="StopHealthChecks"/>; a loop already running is stopped first, so at most one runs.
+    /// </summary>
     /// <param name="seconds">Interval between checks, in seconds.</param>
     protected void StartHealthChecks(int seconds = 5)
     {
+        var cts = new CancellationTokenSource();
+        CancellationTokenSource? previous;
+        lock (_healthLock)
+        {
+            previous = _healthCts;
+            _healthCts = cts;
+        }
+        Cancel(previous);
+
+        var token = cts.Token;
         _ = Task.Run(async () =>
         {
-            while (!_healthCts.Token.IsCancellationRequested)
+            while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    await HealthCheckAsync().ConfigureAwait(false);
-                    await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCts.Token).ConfigureAwait(false);
+                    await HealthCheckAsync(token).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromSeconds(seconds), token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    return;
+                }
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>
     /// Opens a separate connection and runs <see cref="HealthCheckSql"/> (3 s timeout); flips <see cref="IsConnected"/> and raises
     /// <see cref="OnConnected"/>/<see cref="OnFailed"/> on state changes. Overlapping checks are skipped.
     /// </summary>
-    protected virtual async Task HealthCheckAsync()
+    /// <param name="ct">Cancelled when the health loop stops.</param>
+    protected virtual async Task HealthCheckAsync(CancellationToken ct)
     {
-        if (!await _pingLock.WaitAsync(0).ConfigureAwait(false))
+        if (!await _pingLock.WaitAsync(0, ct).ConfigureAwait(false))
             return;
 
         try
         {
             await using var pingConn = CreateConnection(BuildConnectionString());
-            await pingConn.OpenAsync(_healthCts.Token).ConfigureAwait(false);
+            await pingConn.OpenAsync(ct).ConfigureAwait(false);
 
             await using var cmd = pingConn.CreateCommand();
             // HealthCheckSql is a constant ("SELECT 1"), not user input
@@ -1038,25 +1006,13 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 #pragma warning restore CA2100
             cmd.CommandTimeout = 3;
 
-            await cmd.ExecuteScalarAsync(_healthCts.Token).ConfigureAwait(false);
-
-            if (!IsConnected)
-            {
-                IsConnected = true;
-                OnConnected?.Invoke();
-            }
+            await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+            MarkReachable();
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // ignore
-        }
-        catch (Exception ex)
-        {
-            if (IsConnected)
-            {
-                IsConnected = false;
+            if (Interlocked.Exchange(ref _connected, 0) == 1)
                 OnFailed?.Invoke(ex);
-            }
         }
         finally
         {
@@ -1064,10 +1020,23 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         }
     }
 
-    /// <summary>Cancels the health-check loop.</summary>
+    /// <summary>Stops the health-check loop (idempotent).</summary>
     protected void StopHealthChecks()
     {
-        _healthCts.Cancel();
-        _healthCts.Dispose();
+        CancellationTokenSource? cts;
+        lock (_healthLock)
+        {
+            cts = _healthCts;
+            _healthCts = null;
+        }
+        Cancel(cts);
+    }
+
+    private static void Cancel(CancellationTokenSource? cts)
+    {
+        if (cts is null)
+            return;
+        cts.Cancel();
+        cts.Dispose();
     }
 }

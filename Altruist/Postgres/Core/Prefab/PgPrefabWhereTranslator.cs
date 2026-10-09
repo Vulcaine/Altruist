@@ -318,15 +318,9 @@ internal sealed class PgPrefabWhereTranslator
         return new SqlFragment(sql, args);
     }
 
-    private static string QualifiedTable(Type modelType, VaultDocument doc)
-    {
-        var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
-        var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
-        return $"{Q(schema)}.{Q(doc.Name)}";
-    }
+    private static string QualifiedTable(Type modelType, VaultDocument doc) => doc.QualifiedTable();
 
-    private static string Col(VaultDocument doc, string logical)
-        => doc.Columns.TryGetValue(logical, out var physical) ? physical : VaultDocument.ToCamelCase(logical);
+    private static string Col(VaultDocument doc, string logical) => doc.Col(logical);
 
     private static string Q(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 }

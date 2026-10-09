@@ -10,32 +10,59 @@ using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
+/// <summary>
+/// Validates vault model definitions. Problems are collected and thrown together as one
+/// <see cref="InvalidVaultModelException"/>.
+/// </summary>
 internal static class DocumentValidator
 {
-    public static void Validate(VaultDocument doc)
+    /// <summary>Checks the model itself and normalizes its unique keys and indexes (no other document is needed).</summary>
+    /// <exception cref="InvalidVaultModelException">The model is invalid.</exception>
+    public static void ValidateModel(VaultDocument doc)
     {
         if (doc is null)
             throw new ArgumentNullException(nameof(doc));
 
-        ValidateStoredModel(doc);
-        ValidateHasTypeProperty(doc);
+        var problems = new List<string>();
+        if (!typeof(IStoredModel).IsAssignableFrom(doc.Type))
+            problems.Add($"The type {doc.Type.FullName} must implement IStoredModel.");
+        if (doc.Type.GetProperty("Type", BindingFlags.Public | BindingFlags.Instance) is null)
+            problems.Add($"The type {doc.Type.FullName} must have a 'Type' property.");
+        ThrowIfAny(doc, problems);
 
         NormalizeUniqueKeys(doc);
         NormalizeIndexes(doc);
-
-        ValidateForeignKeys(doc);
     }
 
-    private static void ValidateStoredModel(VaultDocument doc)
+    /// <summary>
+    /// Checks every foreign key against its principal document. <paramref name="principalOf"/> returns the principal's
+    /// document without validating its own foreign keys, so self references and cycles are fine.
+    /// </summary>
+    /// <exception cref="InvalidVaultModelException">A foreign key is invalid.</exception>
+    public static void ValidateForeignKeys(VaultDocument doc, Func<Type, VaultDocument> principalOf)
     {
-        if (!typeof(IStoredModel).IsAssignableFrom(doc.Type))
-            VaultDocument.FailAndExit($"The type {doc.Type.FullName} must implement IModel.");
+        var problems = new List<string>();
+        foreach (var fk in doc.ForeignKeys)
+        {
+            ValidateOnDelete(doc, fk, problems);
+
+            if (!typeof(IStoredModel).IsAssignableFrom(fk.PrincipalType))
+            {
+                problems.Add($"Foreign key '{doc.Type.FullName}.{fk.PropertyName}' points to type '{fk.PrincipalType.FullName}' " +
+                             "which does not implement IStoredModel.");
+                continue;
+            }
+
+            var principalDoc = fk.PrincipalType == doc.Type ? doc : principalOf(fk.PrincipalType);
+            ValidateReferencedColumn(doc, fk, principalDoc, problems);
+        }
+        ThrowIfAny(doc, problems);
     }
 
-    private static void ValidateHasTypeProperty(VaultDocument doc)
+    private static void ThrowIfAny(VaultDocument doc, List<string> problems)
     {
-        if (doc.Type.GetProperty("Type", BindingFlags.Public | BindingFlags.Instance) is null)
-            VaultDocument.FailAndExit($"The type {doc.Type.FullName} must have a 'Type' property.");
+        if (problems.Count > 0)
+            throw new InvalidVaultModelException(doc.Type, problems);
     }
 
     private static void NormalizeUniqueKeys(VaultDocument doc)
@@ -70,39 +97,6 @@ internal static class DocumentValidator
         doc.Indexes.RemoveAll(ix => singleUniqueColumns.Contains(ix));
     }
 
-    private static void ValidateForeignKeys(VaultDocument doc)
-    {
-        if (doc.ForeignKeys is null || doc.ForeignKeys.Count == 0)
-            return;
-
-        foreach (var fk in doc.ForeignKeys)
-        {
-            ValidateOnDelete(doc, fk);
-
-            // Build principal metadata via Document (canonical source of truth)
-            var principalDoc = VaultDocument.From(fk.PrincipalType);
-
-            ValidatePrincipalStoredModel(doc, fk, principalDoc);
-            ValidatePrincipalColumnExists(doc, fk, principalDoc);
-            ValidateReferencedColumnIsPkOrUnique(doc, fk, principalDoc);
-        }
-    }
-
-    private static void ValidatePrincipalColumnExists(
-        VaultDocument dependentDoc,
-        VaultDocument.VaultForeignKeyDefinition fk,
-        VaultDocument principalDoc)
-    {
-        var (_, principalPhysical) = ResolvePrincipalLogicalAndPhysical(principalDoc, fk.PrincipalPropertyName);
-
-        if (principalPhysical is null)
-        {
-            VaultDocument.FailAndExit(
-                $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to '{fk.PrincipalType.FullName}.{fk.PrincipalPropertyName}', " +
-                "but that property/column does not exist on the principal document.");
-        }
-    }
-
     private static (string? Logical, string? Physical) ResolvePrincipalLogicalAndPhysical(
     VaultDocument principalDoc,
     string principalPropertyOrColumn)
@@ -124,24 +118,7 @@ internal static class DocumentValidator
         return (null, null);
     }
 
-    private static void ValidatePrincipalStoredModel(
-        VaultDocument dependentDoc,
-        VaultDocument.VaultForeignKeyDefinition fk,
-        VaultDocument principalDoc)
-    {
-        if (!typeof(IStoredModel).IsAssignableFrom(fk.PrincipalType))
-        {
-            VaultDocument.FailAndExit(
-                $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to type '{fk.PrincipalType.FullName}' " +
-                "which does not implement IStoredModel.");
-        }
-
-        // If principalDoc was built, it necessarily had a VaultAttribute (or derived),
-        // because Document.From requires it. So we don't re-check attributes here.
-        _ = principalDoc;
-    }
-
-    private static void ValidateOnDelete(VaultDocument doc, VaultDocument.VaultForeignKeyDefinition fk)
+    private static void ValidateOnDelete(VaultDocument doc, VaultDocument.VaultForeignKeyDefinition fk, List<string> problems)
     {
         static bool IsValidOnDelete(string value) =>
             value.Equals("CASCADE", StringComparison.OrdinalIgnoreCase) ||
@@ -152,39 +129,41 @@ internal static class DocumentValidator
 
         if (!IsValidOnDelete(fk.OnDelete))
         {
-            VaultDocument.FailAndExit(
+            problems.Add(
                 $"Invalid OnDelete value '{fk.OnDelete}' on foreign key " +
                 $"'{doc.Type.FullName}.{fk.PropertyName}'. " +
                 "Allowed values are: CASCADE, NO ACTION, RESTRICT, SET NULL, SET DEFAULT.");
         }
     }
 
-    private static void ValidateReferencedColumnIsPkOrUnique(
+    private static void ValidateReferencedColumn(
         VaultDocument dependentDoc,
         VaultDocument.VaultForeignKeyDefinition fk,
-        VaultDocument principalDoc)
+        VaultDocument principalDoc,
+        List<string> problems)
     {
         var (_, principalPhysical) = ResolvePrincipalLogicalAndPhysical(principalDoc, fk.PrincipalPropertyName);
 
         if (principalPhysical is null)
         {
-            VaultDocument.FailAndExit(
+            problems.Add(
                 $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to '{fk.PrincipalType.FullName}.{fk.PrincipalPropertyName}', " +
                 "but that property/column does not exist on the principal document.");
+            return;
         }
 
         // ----- PK check (membership) -----
         var pkPhysicalCols = ResolveKeyColumnsToPhysical(principalDoc, principalDoc.PrimaryKey?.Keys);
-        var isPk = principalPhysical != null && pkPhysicalCols.Contains(principalPhysical);
+        var isPk = pkPhysicalCols.Contains(principalPhysical);
 
         // ----- Unique check (single-column UNIQUE constraints only) -----
-        var isUnique = principalPhysical != null && principalDoc.UniqueKeys.Any(uk =>
+        var isUnique = principalDoc.UniqueKeys.Any(uk =>
             uk.Columns.Count == 1 &&
             StringEquals(uk.Columns[0], principalPhysical));
 
         if (!isPk && !isUnique)
         {
-            VaultDocument.FailAndExit(
+            problems.Add(
                 $"Foreign key '{dependentDoc.Type.FullName}.{fk.PropertyName}' points to " +
                 $"'{fk.PrincipalType.FullName}.{fk.PrincipalPropertyName}', " +
                 "but that referenced column is neither PRIMARY KEY nor covered by a single-column UNIQUE constraint. " +

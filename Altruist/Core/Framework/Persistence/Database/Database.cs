@@ -92,15 +92,15 @@ public interface IKeyspaceSetup
 public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
 {
     /// <summary>
-    /// Opens the provider's control connection, retrying up to <paramref name="maxRetries"/> times
-    /// <paramref name="delayMilliseconds"/> ms apart, then starts a background health check (every 5 s).
-    /// Does not throw when retries run out: it raises <c>OnRetryExhausted</c> instead.
+    /// Opens the provider's control connection (replacing any previous one), retrying up to <paramref name="maxRetries"/>
+    /// times <paramref name="delayMilliseconds"/> ms apart, then starts a background health check (every 5 s; one loop
+    /// per provider). When the retries run out it raises <c>OnRetryExhausted</c> and then throws the last connection error.
     /// </summary>
     /// <param name="maxRetries">Maximum connection attempts.</param>
     /// <param name="delayMilliseconds">Delay between attempts, in milliseconds.</param>
     /// <param name="ct">Cancellation token.</param>
     Task ConnectAsync(int maxRetries, int delayMilliseconds, CancellationToken ct = default);
-    /// <summary>Stops health checks and closes the control connection.</summary>
+    /// <summary>Stops health checks and closes the control connection. Idempotent; the provider can connect again afterwards.</summary>
     /// <param name="ex">Optional reason for the shutdown (informational).</param>
     /// <param name="ct">Cancellation token.</param>
     Task ShutdownAsync(Exception? ex = null, CancellationToken ct = default);
@@ -159,18 +159,8 @@ public interface ISqlDatabaseProvider : IGeneralDatabaseProvider
         List<object?>? parameters = null,
         CancellationToken ct = default);
 
-    // Optional POCO-based ops (no-ops in current SqlDbProvider; kept for parity with Scylla provider)
-    /// <summary>Reserved; the built-in SQL provider does nothing and returns 1. Use <see cref="IVault{TVaultModel}.SaveAsync"/> to update rows.</summary>
-    /// <param name="entity">Ignored by the built-in provider.</param>
-    /// <param name="ct">Cancellation token.</param>
-    Task<long> UpdateAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default) where TVaultModel : class, IVaultModel;
-    /// <summary>Reserved; the built-in SQL provider does nothing and returns 1. Use <see cref="IVault{TVaultModel}.DeleteAsync"/> to delete rows.</summary>
-    /// <param name="entity">Ignored by the built-in provider.</param>
-    /// <param name="ct">Cancellation token.</param>
-    Task<long> DeleteAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default) where TVaultModel : class, IVaultModel;
-
     // Bootstrap / DDL
-    /// <summary>Creates the SQL schema if it doesn't exist (<c>CREATE SCHEMA IF NOT EXISTS</c>; the name is trimmed and lower-cased).</summary>
+    /// <summary>Creates the SQL schema if it doesn't exist (<c>CREATE SCHEMA IF NOT EXISTS</c>; the name is trimmed, its case kept).</summary>
     /// <param name="schema">Schema name.</param>
     /// <param name="ct">Cancellation token.</param>
     Task CreateSchemaAsync(string schema, CancellationToken ct = default);

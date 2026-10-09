@@ -352,17 +352,9 @@ public sealed class PgPrefabs : IPrefabs
             return args;
         }
 
-        public static string QualifiedTable(Type modelType, VaultDocument doc)
-        {
-            var va = modelType.GetCustomAttribute<VaultAttribute>(inherit: true);
-            var schema = string.IsNullOrWhiteSpace(va?.Keyspace) ? "public" : va!.Keyspace!.Trim();
-            return $"{Quote(schema)}.{Quote(doc.Name)}";
-        }
+        public static string QualifiedTable(Type modelType, VaultDocument doc) => doc.QualifiedTable();
 
-        public static string Col(VaultDocument doc, string logical)
-            => doc.Columns.TryGetValue(logical, out var physical)
-                ? physical
-                : VaultDocument.ToCamelCase(logical);
+        public static string Col(VaultDocument doc, string logical) => doc.Col(logical);
 
         private static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
     }

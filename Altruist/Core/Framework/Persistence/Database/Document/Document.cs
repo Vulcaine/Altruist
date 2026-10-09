@@ -27,8 +27,9 @@ namespace Altruist.Persistence;
 /// <c>[VaultColumnDelete]</c>) become columns.
 /// </para>
 /// <para>
-/// Validation problems (missing <c>Type</c> property, invalid foreign keys) print an error and <b>terminate the
-/// process</b> (<see cref="Environment.Exit"/>), because they are model-definition bugs that must be fixed at startup.
+/// Validation problems (missing <c>Type</c> property, invalid foreign keys) throw an
+/// <see cref="InvalidVaultModelException"/> listing every problem; they are model-definition bugs to fix at startup.
+/// Foreign keys may reference the model itself or form cycles between models.
 /// </para>
 /// </remarks>
 /// <example>
@@ -44,16 +45,29 @@ public sealed class VaultDocument
     // Lazy prevents duplicate builds under concurrency and ensures only one builder runs.
     private static readonly ConcurrentDictionary<Type, Lazy<VaultDocument>> _cache = new();
 
+    // Types whose foreign keys were checked against their principals (done outside the build, so that a model can
+    // reference itself or another model that references it back).
+    private static readonly ConcurrentDictionary<Type, bool> _foreignKeysValidated = new();
+
     /// <summary>
     /// Clears the cached Documents. Useful for tests / hot reload scenarios.
     /// </summary>
-    public static void ClearCache() => _cache.Clear();
+    public static void ClearCache()
+    {
+        _cache.Clear();
+        _foreignKeysValidated.Clear();
+    }
 
     /// <summary>
     /// Removes a single type from the cache. Useful for tests.
     /// </summary>
     public static bool RemoveFromCache(Type type)
-        => type is not null && _cache.TryRemove(type, out _);
+    {
+        if (type is null)
+            return false;
+        _foreignKeysValidated.TryRemove(type, out _);
+        return _cache.TryRemove(type, out _);
+    }
 
     // ----------------- Instance -----------------
 
@@ -63,6 +77,9 @@ public sealed class VaultDocument
     public VaultAttribute Header { get; }
     /// <summary>Physical table name (unquoted, without schema).</summary>
     public string Name { get; }
+
+    /// <summary>Schema (keyspace) of the table; see <see cref="VaultAttribute.SchemaName"/>.</summary>
+    public string SchemaName => Header.SchemaName;
 
     /// <summary>Whether saves may append snapshots to the <c>&lt;table&gt;_history</c> table (from <see cref="VaultAttribute.StoreHistory"/>).</summary>
     public bool StoreHistory { get; }
@@ -135,8 +152,9 @@ public sealed class VaultDocument
     public string TypePropertyName { get; set; } = "";
 
     /// <summary>
-    /// Creates and immediately validates a document. Normally built for you by <see cref="From(Type)"/>; construct one by
-    /// hand only in tests or tooling.
+    /// Creates a document and validates the model itself (foreign keys are checked by <see cref="Validate"/> and by
+    /// <see cref="From(Type)"/>). Normally built for you by <see cref="From(Type)"/>; construct one by hand only in
+    /// tests or tooling.
     /// </summary>
     /// <param name="header">The model's vault attribute.</param>
     /// <param name="type">The model type.</param>
@@ -151,6 +169,7 @@ public sealed class VaultDocument
     /// <param name="storeHistory">Whether history is enabled.</param>
     /// <param name="foreignKeys">Foreign keys, or <c>null</c>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="header"/>, <paramref name="type"/> or <paramref name="name"/> is <c>null</c>.</exception>
+    /// <exception cref="InvalidVaultModelException">The model is invalid.</exception>
     public VaultDocument(
         VaultAttribute header,
         Type type,
@@ -181,7 +200,7 @@ public sealed class VaultDocument
 
         ForeignKeys = foreignKeys ?? new();
 
-        Validate(); // Document is always validated on creation
+        DocumentValidator.ValidateModel(this);
     }
 
     /// <summary>
@@ -198,10 +217,23 @@ public sealed class VaultDocument
     }
 
     /// <summary>
-    /// The single entry point: builds a Document for any type that has a [Vault] (or derived) attribute.
-    /// Cached per type.
+    /// The single entry point: builds a Document for any type that has a [Vault] (or derived) attribute, validated
+    /// including its foreign keys. Cached per type.
     /// </summary>
+    /// <exception cref="InvalidVaultModelException">The model or one of its foreign keys is invalid.</exception>
     public static VaultDocument From(Type type)
+    {
+        var doc = Structure(type);
+        if (!_foreignKeysValidated.ContainsKey(type))
+        {
+            DocumentValidator.ValidateForeignKeys(doc, Structure);
+            _foreignKeysValidated.TryAdd(type, true);
+        }
+        return doc;
+    }
+
+    /// <summary>The cached document, built and validated without checking its foreign keys.</summary>
+    private static VaultDocument Structure(Type type)
     {
         if (type is null)
             throw new ArgumentNullException(nameof(type));
@@ -222,10 +254,15 @@ public sealed class VaultDocument
     public static VaultDocument From<T>() => From(typeof(T));
 
     /// <summary>
-    /// Validates the model definition (stored-model contract, <c>Type</c> property, foreign keys) and normalizes unique keys
-    /// and indexes. Terminates the process on an invalid definition. Called automatically by the constructor.
+    /// Validates the model definition (stored-model contract, <c>Type</c> property, foreign keys against their principal
+    /// documents) and normalizes unique keys and indexes. <see cref="From(Type)"/> does this for you.
     /// </summary>
-    public void Validate() => DocumentValidator.Validate(this);
+    /// <exception cref="InvalidVaultModelException">The definition is invalid; lists every problem.</exception>
+    public void Validate()
+    {
+        DocumentValidator.ValidateModel(this);
+        DocumentValidator.ValidateForeignKeys(this, Structure);
+    }
 
     /// <inheritdoc/>
     public override string ToString() => $"{Type.Name} [{Name}]";
@@ -234,12 +271,6 @@ public sealed class VaultDocument
     /// <param name="value">The name to convert.</param>
     public static string ToCamelCase(string value) =>
         string.IsNullOrEmpty(value) ? value : char.ToLowerInvariant(value[0]) + value[1..];
-
-    internal static void FailAndExit(string message)
-    {
-        Console.Error.WriteLine(message);
-        Environment.Exit(-1);
-    }
 
     // ----------------- Definitions -----------------
 
@@ -304,19 +335,28 @@ public sealed class VaultDocument
         }
     }
 
-    /// <summary>Returns the quoted, schema-qualified table name, e.g. <c>"altruist"."player_profile"</c> (schema from the attribute's keyspace, <c>public</c> if blank).</summary>
-    public string QualifiedTable()
-    {
-        var schema = string.IsNullOrWhiteSpace(Header.Keyspace) ? "public" : Header.Keyspace.Trim();
-        return $"{Quote(schema)}.{Quote(Name)}";
-    }
+    /// <summary>Returns the quoted, schema-qualified table name, e.g. <c>"altruist"."player_profile"</c> (schema: <see cref="SchemaName"/>).</summary>
+    public string QualifiedTable() => $"{Quote(SchemaName)}.{Quote(Name)}";
 
     /// <summary>Quotes an SQL identifier with double quotes, escaping embedded quotes.</summary>
     /// <param name="s">The identifier.</param>
     public static string Quote(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 
-    /// <summary>Returns the physical column name for a CLR property name (falls back to camelCase of the name when the property isn't mapped). Not quoted; wrap with <see cref="Quote"/>.</summary>
-    /// <param name="logical">CLR property name, e.g. <c>nameof(Model.Level)</c>.</param>
+    /// <summary>
+    /// Returns the physical column name of a mapped property (CLR property name, e.g. <c>nameof(Model.Level)</c>), or
+    /// the name itself when it already is one of the physical column names. Not quoted; wrap with <see cref="Quote"/>.
+    /// </summary>
+    /// <param name="logical">CLR property name, or a physical column name.</param>
+    /// <exception cref="ArgumentException">Neither a mapped property nor a column of this table.</exception>
     public string Col(string logical)
-       => Columns.TryGetValue(logical, out var physical) ? physical : ToCamelCase(logical);
+    {
+        if (Columns.TryGetValue(logical, out var physical))
+            return physical;
+        foreach (var column in Columns.Values)
+        {
+            if (string.Equals(column, logical, StringComparison.Ordinal))
+                return column;
+        }
+        throw new ArgumentException($"'{logical}' is neither a mapped [VaultColumn] property nor a column of {Type.Name} ({Name}).", nameof(logical));
+    }
 }
