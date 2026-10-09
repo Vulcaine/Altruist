@@ -10,14 +10,45 @@ using Npgsql;
 
 namespace Altruist.Persistence.Postgres;
 
+/// <summary>
+/// Startup configuration of the Postgres persistence module. Runs early (order -100) when
+/// <c>altruist:persistence:database:provider</c> is <c>postgres</c>.
+/// </summary>
+/// <remarks>
+/// <para><see cref="Configure"/> performs, in order:</para>
+/// <list type="number">
+/// <item><description>registers <c>[Keyspace]</c> classes as <see cref="IKeyspace"/> singletons;</description></item>
+/// <item><description>registers the <see cref="NpgsqlDataSource"/> used by <c>[Transactional]</c> proxies;</description></item>
+/// <item><description>discovers every <c>[Vault]</c> model and registers a singleton <c>IVault&lt;TModel&gt;</c> for it
+/// (built by <see cref="PostgresServiceFactory"/>);</description></item>
+/// <item><description>wraps services that have <see cref="TransactionalAttribute"/> methods in <see cref="TransactionalDecorator{T}"/>;</description></item>
+/// <item><description>bootstraps the database once per process: connects the unkeyed <see cref="ISqlDatabaseProvider"/>,
+/// takes a session-level Postgres advisory lock so that several servers starting together migrate one at a time,
+/// creates every vault schema (<c>CREATE SCHEMA IF NOT EXISTS</c>), runs the schema migrator for all vault models
+/// (which can drop columns, constraints and indexes, see <see cref="Migrations.Postgres.PostgresMigrationPlanner"/>), then runs every
+/// <see cref="IDatabaseInitializer"/> ordered by <see cref="IDatabaseInitializer.Order"/> then type name. Initializer
+/// exceptions are logged and swallowed.</description></item>
+/// </list>
+/// <para>
+/// Prefab types are not migrated (they have no table; their component vaults are). Bootstrap builds temporary
+/// service providers from the collection, so singletons created during it are not the ones the app later uses.
+/// Configuration is read from <c>AppConfigLoader.Load()</c>, not from the host's <c>IConfiguration</c>.
+/// </para>
+/// </remarks>
 [ServiceConfiguration(order: -100)]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, IDatabaseConfiguration
 {
+    /// <inheritdoc/>
     public bool IsConfigured { get; set; }
 
+    /// <inheritdoc/>
+    /// <remarks>Always <c>"PostgreSQL"</c>.</remarks>
     public string DatabaseName => "PostgreSQL";
 
+    /// <summary>Registers the Postgres services and bootstraps (migrates) the database; see the class remarks.</summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>A task that completes when bootstrap finished; sets <see cref="IsConfigured"/>.</returns>
     public async Task Configure(IServiceCollection services)
     {
         var cfg = AppConfigLoader.Load();
@@ -157,6 +188,12 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
 
         private BootstrapLock(NpgsqlConnection? conn) => _conn = conn;
 
+        /// <summary>
+        /// Takes the lock on a dedicated connection, waiting (no timeout) while another server holds it. Returns a no-op
+        /// lock when <paramref name="provider"/> is not a <see cref="GeneralSqlDatabaseProvider"/>.
+        /// </summary>
+        /// <param name="provider">Provider whose connection string is used.</param>
+        /// <param name="logger">Logs when waiting for another server.</param>
         public static async Task<BootstrapLock> AcquireAsync(ISqlDatabaseProvider provider, ILogger logger)
         {
             if (provider is not GeneralSqlDatabaseProvider sql)
@@ -184,6 +221,7 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
             }
         }
 
+        /// <summary>Releases the advisory lock and closes the dedicated connection.</summary>
         public async ValueTask DisposeAsync()
         {
             if (_conn is null) return;

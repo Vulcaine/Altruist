@@ -41,12 +41,15 @@ namespace Altruist.Gaming
 
         private readonly ParallelOptions _options;
 
+        /// <summary>DI constructor: reads <c>altruist:game:engine:step-workers</c> (see <see cref="Parse"/>).</summary>
         [ActivatorUtilitiesConstructor]
         public StepScheduler([AppConfigValue("altruist:game:engine:step-workers", "1")] string? workers)
             : this(Parse(workers))
         {
         }
 
+        /// <summary>A scheduler with <paramref name="workers"/> threads (1 = inline).</summary>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="workers"/> is below 1.</exception>
         public StepScheduler(int workers)
         {
             if (workers < 1)
@@ -55,6 +58,7 @@ namespace Altruist.Gaming
             _options = new ParallelOptions { MaxDegreeOfParallelism = workers };
         }
 
+        /// <inheritdoc/>
         public int Workers { get; }
 
         /// <summary><c>auto</c> (or empty) = one per core, otherwise a positive number.</summary>
@@ -68,6 +72,7 @@ namespace Altruist.Gaming
             throw new ArgumentException($"altruist:game:engine:step-workers must be 'auto' or a positive number, got '{workers}'.", nameof(workers));
         }
 
+        /// <inheritdoc/>
         public void ForEach<T>(IReadOnlyList<T> items, Action<T> body)
         {
             var count = items.Count;

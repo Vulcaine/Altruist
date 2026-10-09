@@ -41,17 +41,28 @@ namespace Altruist.Testing;
 /// </summary>
 public sealed class TestPlayerSession : IAsyncDisposable
 {
+    /// <summary>HTTP client for the server's REST surface (carries the bearer token after login).</summary>
     public TestHttpClient Http { get; }
+    /// <summary>TCP game connection (connected by <see cref="SetupPlayerAsync"/> / <see cref="ResumeAsync"/>).</summary>
     public TestTcpClient Tcp { get; }
 
+    /// <summary>The account name used, or null before setup.</summary>
     public string? Username { get; private set; }
+    /// <summary>The account password used, or null before setup.</summary>
     public string? Password { get; private set; }
+    /// <summary>The access token from the last login, or null.</summary>
     public string? Jwt { get; private set; }
+    /// <summary>The character's name, or null before setup.</summary>
     public string? CharacterName { get; private set; }
+    /// <summary>Character X position reported by the join (set by <see cref="SetupPlayerAsync"/>).</summary>
     public int CharX { get; private set; }
+    /// <summary>Character Y position reported by the join.</summary>
     public int CharY { get; private set; }
+    /// <summary>Character Z position reported by the join (0 when the server sends none).</summary>
     public int CharZ { get; private set; }
 
+    /// <summary>A session with fresh, unconnected HTTP and TCP clients.</summary>
+    /// <param name="cfg">Configuration with the server's addresses.</param>
     public TestPlayerSession(IConfiguration cfg)
     {
         Http = new TestHttpClient(cfg);
@@ -60,7 +71,22 @@ public sealed class TestPlayerSession : IAsyncDisposable
 
     /// <summary>Run the full new-player flow. After this returns, the player is
     /// in-world and both <see cref="Http"/> + <see cref="Tcp"/> can be driven
-    /// directly.
+    /// directly.</summary>
+    /// <remarks>Signs up a fresh account, logs in, creates a character with the given stats,
+    /// joins with it, connects TCP, upgrades the connection with the JWT and sends <c>enter-world</c>,
+    /// then waits 2 s (and, unless <paramref name="captureSpawnBurst"/>, drains 1 s of spawn traffic).</remarks>
+    /// <param name="race">Character race id.</param>
+    /// <param name="empire">Character empire id.</param>
+    /// <param name="str">Strength stat.</param>
+    /// <param name="con">Constitution stat.</param>
+    /// <param name="dex">Dexterity stat.</param>
+    /// <param name="intel">Intelligence stat.</param>
+    /// <param name="characterName">Character name; null derives one from the race and username.</param>
+    /// <param name="username">Account name; null generates a unique one.</param>
+    /// <param name="password">Account password.</param>
+    /// <param name="captureSpawnBurst">Keep the packets received after entering the world queued on <see cref="Tcp"/> (otherwise they are drained).</param>
+    /// <param name="ct">Cancels the flow.</param>
+    /// <exception cref="InvalidOperationException">A step of the flow returned a non-success HTTP status.</exception>
     public async Task SetupPlayerAsync(
         int race = 0, int empire = 1,
         int str = 6, int con = 4, int dex = 3, int intel = 3,
@@ -148,6 +174,7 @@ public sealed class TestPlayerSession : IAsyncDisposable
     /// <summary>Disconnect the TCP and wait for the despawn save path to commit
     /// to Postgres. Without the wait, assertions race against the autosave
     /// flush.</summary>
+    /// <param name="flushDelay">How long to wait after closing the connection.</param>
     public async Task DisconnectAndFlushAsync(TimeSpan flushDelay)
     {
         Tcp.Dispose();
@@ -167,6 +194,7 @@ public sealed class TestPlayerSession : IAsyncDisposable
         return raw.Contains(';') ? raw[..raw.IndexOf(';')] : raw;
     }
 
+    /// <summary>Disposes both clients (errors are ignored).</summary>
     public async ValueTask DisposeAsync()
     {
         try { Http.Dispose(); } catch { }

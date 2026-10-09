@@ -7,6 +7,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Security;
 
+/// <summary>
+/// The <see cref="IShieldAuth"/> behind <see cref="SessionShieldAttribute"/> (registered with
+/// <c>altruist:security:mode: session</c>). Looks the token up in <see cref="TokenSessionSyncService"/> (default group),
+/// requires an unexpired access time and a matching client IP, and keeps a process-wide copy for
+/// <see cref="AuthTokenSessionModel.CacheValidationInterval"/>. Each re-validation sets the access expiry to now plus that
+/// interval, so a session idle for longer than the interval expires.
+/// </summary>
 [Service(typeof(IShieldAuth))]
 [ConditionalOnConfig("altruist:security")]
 [ConditionalOnConfig("altruist:security:mode", havingValue: "session")]
@@ -16,6 +23,7 @@ public class SessionTokenAuth : IShieldAuth
     private readonly ILogger<SessionTokenAuth> _logger;
     private static readonly ConcurrentDictionary<string, CachedSession> _sessionCache = new();
 
+    /// <summary>Creates the handler (resolved by DI).</summary>
     public SessionTokenAuth(TokenSessionSyncService syncService, ILogger<SessionTokenAuth> logger)
     {
         _syncService = syncService;
@@ -23,6 +31,7 @@ public class SessionTokenAuth : IShieldAuth
     }
 
 
+    /// <summary>Authenticates <see cref="IAuthContext.Token"/>; the returned details use the principal id as group key.</summary>
     public async Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
         var token = context.Token;

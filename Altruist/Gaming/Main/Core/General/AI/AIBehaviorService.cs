@@ -7,13 +7,34 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming;
 
+/// <summary>
+/// Ticks the AI state machines of every world object that implements <see cref="IAIBehaviorEntity"/>.
+/// Driven by the world organizer (<c>GameWorldOrganizer2D</c> / <c>GameWorldOrganizer3D</c>) once per
+/// world step, on the engine thread; game code normally only reads from it.
+///
+/// <para>Choosing: this is for AI on persistent-world objects. Agents outside a world (bots in a match
+/// room, headless simulations) create their own machine with
+/// <see cref="AIBehaviorDiscovery.CreateStateMachine{TBehavior}"/> and tick it in their simulation step.</para>
+/// </summary>
 public interface IAIBehaviorService
 {
+    /// <summary>Updates the state machine of every AI entity in <paramref name="snapshots"/> by
+    /// <paramref name="dt"/> seconds, creating (and initialising) machines for new entities and
+    /// skipping hibernated or expired ones. Not thread-safe: call from the world step only.</summary>
     void Tick(WorldSnapshot[] snapshots, float dt);
+    /// <summary>The machine of the world object with this instance id, or null if it has not been ticked yet
+    /// (or was cleaned up after the object left the world).</summary>
     AIStateMachine? GetStateMachine(string instanceId);
+    /// <summary>Number of live state machines (one per ticked AI entity).</summary>
     int ActiveCount { get; }
 }
 
+/// <summary>
+/// Default <see cref="IAIBehaviorService"/>: one <see cref="AIStateMachine"/> per entity instance id,
+/// created lazily from the templates <see cref="AIBehaviorDiscovery"/> builds. Registered as a service
+/// only when the <c>altruist:game</c> config section exists. Exceptions thrown by a behavior are logged
+/// and swallowed per entity; machines of objects no longer in any snapshot are dropped every 100 ticks.
+/// </summary>
 [Service(typeof(IAIBehaviorService))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class AIBehaviorService : IAIBehaviorService
@@ -22,8 +43,10 @@ public sealed class AIBehaviorService : IAIBehaviorService
     private readonly ILogger _logger;
     private uint _tickCounter;
 
+    /// <inheritdoc/>
     public int ActiveCount => _machines.Count;
 
+    /// <summary>Created by DI; behaviors are discovered later, in <see cref="DiscoverBehaviors"/>.</summary>
     public AIBehaviorService(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<AIBehaviorService>();
@@ -40,6 +63,12 @@ public sealed class AIBehaviorService : IAIBehaviorService
     // Pulling the live root provider via Dependencies.RootProvider at PostConstruct
     // time gives us the long-lived bootstrap provider that hosts the runtime
     // singleton graph.
+    /// <summary>
+    /// Scans all loaded assemblies for <see cref="AIBehaviorAttribute"/> classes and builds their
+    /// templates (resolving each behavior from the root DI provider). Invoked once by the container
+    /// after construction (<c>[PostConstruct]</c>); later calls are no-ops.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><c>Dependencies.RootProvider</c> is not set yet.</exception>
     [PostConstruct]
     public void DiscoverBehaviors()
     {
@@ -55,6 +84,7 @@ public sealed class AIBehaviorService : IAIBehaviorService
             _logger);
     }
 
+    /// <inheritdoc/>
     public void Tick(WorldSnapshot[] snapshots, float dt)
     {
         _tickCounter++;
@@ -111,12 +141,14 @@ public sealed class AIBehaviorService : IAIBehaviorService
             CleanupDestroyedEntities(snapshots);
     }
 
+    /// <inheritdoc/>
     public AIStateMachine? GetStateMachine(string instanceId)
     {
         return _machines.TryGetValue(instanceId, out var fsm) ? fsm : null;
     }
 
-    /// <summary>Remove FSMs for entities no longer in the world.</summary>
+    /// <summary>Drops the machine of one entity right away (otherwise removed by the periodic cleanup
+    /// once the entity is gone from the world). A later tick of the same id starts a fresh machine.</summary>
     public void RemoveMachine(string instanceId)
     {
         _machines.Remove(instanceId);

@@ -20,9 +20,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist
 {
+    /// <summary>
+    /// Builds and runs the ASP.NET Core host for the server bootstrap: HTTP (controllers, authentication, readiness),
+    /// WebSocket/TCP/UDP transports and portal routes. Started last by <see cref="AltruistBootstrap.Bootstrap"/>, after
+    /// <see cref="PostConstructAttribute"/> hooks and modules.
+    /// </summary>
+    /// <remarks>
+    /// <para>Config keys: <c>altruist:server:http:host</c> and <c>altruist:server:http:port</c> (both required to host
+    /// anything; a non-numeric port falls back to 8080), <c>altruist:server:http:path</c> (path base, default <c>/</c>),
+    /// <c>altruist:server:transport:websocket:path</c> (default <c>/ws</c>).</para>
+    /// <para>Singleton registrations are copied into the web host as the already-built instances of the bootstrap provider,
+    /// so state initialized by <see cref="PostConstructAttribute"/> hooks is shared; controllers and portals gated by
+    /// <see cref="ConditionalOnConfigAttribute"/> get no route. Controllers from every loaded assembly are discovered.</para>
+    /// </remarks>
     [ServiceConfiguration(order: int.MaxValue)]
     public sealed class AltruistStartupConfiguration : IAltruistConfiguration
     {
+        /// <inheritdoc/>
         public bool IsConfigured { get; set; }
 
         private readonly ApplicationArgs _args;
@@ -42,6 +56,16 @@ namespace Altruist
         private readonly IServerStatus _appStatus;
         private readonly IEnumerable<ITransport> _transports;
 
+        /// <summary>Created by the framework; parameters come from DI and the config keys listed on the type.</summary>
+        /// <param name="args">Process arguments passed on to the web host builder.</param>
+        /// <param name="httpHost"><c>altruist:server:http:host</c>.</param>
+        /// <param name="httpPort"><c>altruist:server:http:port</c>.</param>
+        /// <param name="httpPath"><c>altruist:server:http:path</c>.</param>
+        /// <param name="wsPath"><c>altruist:server:transport:websocket:path</c>.</param>
+        /// <param name="loggerFactory">Logger factory.</param>
+        /// <param name="settings">Server context that receives the final <see cref="ServerInfo"/>.</param>
+        /// <param name="appStatus">Server readiness status, printed at startup.</param>
+        /// <param name="transports">Active transports.</param>
         public AltruistStartupConfiguration(
             ApplicationArgs args,
 
@@ -81,9 +105,18 @@ namespace Altruist
         /// Build and run the single HTTP server after all services and PostConstruct hooks are done.
         /// Blocks until shutdown.
         /// </summary>
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="cancellationToken">Stops waiting / triggers shutdown.</param>
         public Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
             => StartAsync(rootServices, bootstrapProvider: null, cancellationToken);
 
+        /// <summary>
+        /// Builds and starts the host, sharing singleton instances from <paramref name="bootstrapProvider"/>, then blocks until
+        /// shutdown. Returns immediately when HTTP host/port are not configured.
+        /// </summary>
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="bootstrapProvider">Provider whose singletons (with PostConstruct done) are reused; null builds a temporary one.</param>
+        /// <param name="cancellationToken">Stops waiting / triggers shutdown.</param>
         public async Task StartAsync(IServiceCollection rootServices, IServiceProvider? bootstrapProvider, CancellationToken cancellationToken = default)
         {
             var app = await BuildAndStartAsync(rootServices, bootstrapProvider, cancellationToken);
@@ -100,9 +133,19 @@ namespace Altruist
         /// <para>Returns <c>null</c> if HTTP host/port is unconfigured (matches
         /// <see cref="StartAsync"/>'s no-op semantic).</para>
         /// </summary>
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="cancellationToken">Cancels startup.</param>
         public Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
             => BuildAndStartAsync(rootServices, bootstrapProvider: null, cancellationToken);
 
+        /// <summary>
+        /// Like <see cref="BuildAndStartAsync(IServiceCollection, CancellationToken)"/>, sharing singleton instances from
+        /// <paramref name="bootstrapProvider"/>.
+        /// </summary>
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="bootstrapProvider">Provider whose singletons are reused; null builds a temporary one.</param>
+        /// <param name="cancellationToken">Cancels startup.</param>
+        /// <returns>The started application, or null when HTTP is not configured.</returns>
         public async Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, IServiceProvider? bootstrapProvider, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(_httpHost) || string.IsNullOrWhiteSpace(_httpPort))

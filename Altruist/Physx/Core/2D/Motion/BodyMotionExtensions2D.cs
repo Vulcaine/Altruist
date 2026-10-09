@@ -11,13 +11,27 @@ using Altruist.TwoD.Numerics;
 namespace Altruist.Physx.TwoD;
 
 /// <summary>Physics layer. Velocity and angular-velocity operations on a body: each reads the
-/// body's state, applies one math-layer / <see cref="Velocity2D"/> formula and writes the result
-/// back (one write per call). The gameplay verbs (<c>Altruist.Gaming.TwoD.GameplayVerbs2D</c>)
-/// are built on these.
-/// <para>Rotation convention: <see cref="IPhysxBody2D.RotationZ"/> counter-clockwise, as
-/// <see cref="Rotation2D"/> and Box2D (local +Y is the body's "up").</para>
+/// body's state, applies one math-layer formula (<see cref="VectorMath2D"/>, <see cref="Velocity2D"/>,
+/// <see cref="Angle"/>, <see cref="Scalar"/>) and writes the result back (one write per call).
+/// <para><b>Which layer to use.</b> Use these when you hold an <see cref="IPhysxBody2D"/> and want a
+/// mechanical velocity change. Use <see cref="Velocity2D"/> / <see cref="VectorMath2D"/> directly when
+/// you work on a velocity value that is not (yet) a body's (prediction, a captured incoming velocity).
+/// The Gaming package's <c>GameplayVerbs2D</c> wraps these in intent names (e.g.
+/// <c>GameplayVerbs2D.PushAlong</c> = <see cref="AddVelocityAlong"/>,
+/// <c>GameplayVerbs2D.SetSpeedAlong</c> = <see cref="SetVelocityAlong"/>,
+/// <c>GameplayVerbs2D.BounceOff</c> = <see cref="BounceVelocity"/>,
+/// <c>GameplayVerbs2D.Fall</c> = <see cref="ApplyGravity"/>); prefer those in gameplay code.</para>
+/// <para>Side effects: on a Box2D body (<see cref="Body2DAdapter"/>) a write to
+/// <c>LinearVelocity</c> / <c>AngularVelocityZ</c> goes through Box2D's
+/// <c>SetLinearVelocity</c> / <c>SetAngularVelocity</c>, which (as in Box2D) wake a sleeping body
+/// when the new value is non-zero and are ignored by static bodies. Methods documented as
+/// "written only when ..." skip the write (and so the wake) otherwise. No allocations.</para>
+/// <para>Rotation convention: <see cref="IPhysxBody2D.RotationZ"/> in radians, counter-clockwise
+/// positive, as <see cref="Rotation2D"/> and Box2D (local +Y is the body's "up"); +Y is world up;
+/// <c>dt</c> in seconds.</para>
 /// <para>Deterministic: same state and inputs give the same bits on the same runtime; each
-/// method evaluates exactly the expression in its summary.</para></summary>
+/// method evaluates exactly the expression in its summary (float32, <c>MathF</c>). The TypeScript
+/// twin is <c>@altruist/sim2d</c> <c>physics/bodyMotion2D.ts</c>, with the same operation order.</para></summary>
 public static class BodyMotionExtensions2D
 {
     // ── Read ──────────────────────────────────────────────────────────────
@@ -48,38 +62,53 @@ public static class BodyMotionExtensions2D
 
     // ── Linear velocity ───────────────────────────────────────────────────
 
-    /// <summary><c>LinearVelocity = VectorMath2D.AddAlong(v, direction, amount)</c>.</summary>
+    /// <summary>Adds <paramref name="amount"/> along the unit <paramref name="direction"/>, keeping the
+    /// rest of the motion: <c>LinearVelocity = VectorMath2D.AddAlong(v, direction, amount)</c>.
+    /// Alternatives: <see cref="SetVelocityAlong"/> sets that component to an exact value instead;
+    /// <c>GameplayVerbs2D.LaunchAlong</c> (Gaming) replaces the whole velocity.</summary>
     public static void AddVelocityAlong(this IPhysxBody2D body, Vector2 direction, float amount) =>
         body.LinearVelocity = VectorMath2D.AddAlong(body.LinearVelocity, direction, amount);
 
-    /// <summary><c>LinearVelocity = VectorMath2D.WithComponentAlong(v, direction, speed)</c>.</summary>
+    /// <summary>Sets the component along the unit <paramref name="direction"/> to exactly
+    /// <paramref name="speed"/>, keeping the perpendicular part:
+    /// <c>LinearVelocity = VectorMath2D.WithComponentAlong(v, direction, speed)</c>. To ease toward a
+    /// target speed instead use <see cref="ApproachVelocityAlong"/>.</summary>
     public static void SetVelocityAlong(this IPhysxBody2D body, Vector2 direction, float speed) =>
         body.LinearVelocity = VectorMath2D.WithComponentAlong(body.LinearVelocity, direction, speed);
 
-    /// <summary><c>LinearVelocity = VectorMath2D.ApproachComponentAlong(v, direction, target, acceleration * dt)</c>.</summary>
+    /// <summary>Moves the component along the unit <paramref name="direction"/> toward
+    /// <paramref name="target"/> by at most <c>acceleration * dt</c> (units/s² times seconds):
+    /// <c>LinearVelocity = VectorMath2D.ApproachComponentAlong(v, direction, target, acceleration * dt)</c>.</summary>
     public static void ApproachVelocityAlong(this IPhysxBody2D body, Vector2 direction, float target, float acceleration, float dt) =>
         body.LinearVelocity = VectorMath2D.ApproachComponentAlong(body.LinearVelocity, direction, target, acceleration * dt);
 
-    /// <summary><c>LinearVelocity = VectorMath2D.RedirectAlong(v, axis)</c>.</summary>
+    /// <summary>Re-points the velocity along <paramref name="axis"/> (e.g. follow a surface tangent):
+    /// <c>LinearVelocity = VectorMath2D.RedirectAlong(v, axis)</c>; see that method for the exact rule.</summary>
     public static void RedirectVelocityAlong(this IPhysxBody2D body, Vector2 axis) =>
         body.LinearVelocity = VectorMath2D.RedirectAlong(body.LinearVelocity, axis);
 
-    /// <summary><c>LinearVelocity = Velocity2D.AccelerateAlong(v, direction, acceleration, dt)</c>.</summary>
+    /// <summary>Constant acceleration along a direction for one step (no target, no cap):
+    /// <c>LinearVelocity = Velocity2D.AccelerateAlong(v, direction, acceleration, dt)</c>.</summary>
     public static void AccelerateAlong(this IPhysxBody2D body, Vector2 direction, float acceleration, float dt) =>
         body.LinearVelocity = Velocity2D.AccelerateAlong(body.LinearVelocity, direction, acceleration, dt);
 
-    /// <summary><c>LinearVelocity = Velocity2D.CancelInto(v, normal, amount)</c>.</summary>
+    /// <summary>Removes <paramref name="amount"/> (1 = all) of the motion into the unit
+    /// <paramref name="normal"/>: <c>LinearVelocity = Velocity2D.CancelInto(v, normal, amount)</c>.
+    /// Always writes (also when unchanged).</summary>
     public static void CancelVelocityInto(this IPhysxBody2D body, Vector2 normal, float amount = 1f) =>
         body.LinearVelocity = Velocity2D.CancelInto(body.LinearVelocity, normal, amount);
 
     /// <summary><c>LinearVelocity = Velocity2D.Bounce(incoming, normal, normalSpeed, tangentKeep)</c>
-    /// with <c>incoming</c> the body's current velocity.</summary>
+    /// with <c>incoming</c> the body's current velocity. To bounce from a velocity recorded earlier
+    /// (e.g. captured in pre-solve, before the solver changed it) write
+    /// <c>LinearVelocity = Velocity2D.Bounce(incoming, ...)</c> or use the Gaming package's
+    /// <c>GameplayVerbs2D.BounceOff</c> overload that takes <c>incoming</c>.</summary>
     public static void BounceVelocity(this IPhysxBody2D body, Vector2 normal, float normalSpeed, float tangentKeep) =>
         body.LinearVelocity = Velocity2D.Bounce(body.LinearVelocity, normal, normalSpeed, tangentKeep);
 
     /// <summary>Shortens the velocity by <paramref name="amount"/>:
     /// <c>speed = VectorMath2D.Length(v); LinearVelocity = VectorMath2D.ShortenBy(v, speed, amount)</c>
-    /// (no-op at rest).</summary>
+    /// (no-op at rest). The length is <c>MathF.Sqrt(v.X * v.X + v.Y * v.Y)</c>.</summary>
     public static void ReduceSpeed(this IPhysxBody2D body, float amount)
     {
         var v = body.LinearVelocity;
@@ -88,8 +117,9 @@ public static class BodyMotionExtensions2D
         body.LinearVelocity = VectorMath2D.ShortenBy(v, speed, amount);
     }
 
-    /// <summary><c>LinearVelocity = VectorMath2D.ClampLength(v, maxSpeed)</c>, written only when it
-    /// was faster.</summary>
+    /// <summary>Caps the speed at <paramref name="maxSpeed"/>: when <c>s = v.Length()</c> exceeds it,
+    /// <c>LinearVelocity = v / s * maxSpeed</c> (written only when it was faster). Note the operation
+    /// order (<c>v / s * maxSpeed</c>, <c>Vector2.Length</c>) when matching it elsewhere.</summary>
     public static void ClampSpeed(this IPhysxBody2D body, float maxSpeed)
     {
         var v = body.LinearVelocity;
@@ -97,11 +127,15 @@ public static class BodyMotionExtensions2D
         if (s > maxSpeed) body.LinearVelocity = v / s * maxSpeed;
     }
 
-    /// <summary><c>LinearVelocity = Velocity2D.ApplyLinearDrag(v, drag, dt)</c>.</summary>
+    /// <summary>Hand-applied linear drag for one step:
+    /// <c>LinearVelocity = Velocity2D.ApplyLinearDrag(v, drag, dt)</c>. For engine-side damping use
+    /// <see cref="PhysxBodyDef2D.LinearDamping"/>.</summary>
     public static void ApplyLinearDrag(this IPhysxBody2D body, float drag, float dt) =>
         body.LinearVelocity = Velocity2D.ApplyLinearDrag(body.LinearVelocity, drag, dt);
 
-    /// <summary><c>LinearVelocity = Velocity2D.ApplyGravity(v, gravity, dt, scale)</c> (+Y up).</summary>
+    /// <summary>Hand-applied gravity for one step (for worlds with zero engine gravity):
+    /// <c>LinearVelocity = Velocity2D.ApplyGravity(v, gravity, dt, scale)</c> (+Y up,
+    /// <paramref name="gravity"/> ≥ 0 pulls toward -Y).</summary>
     public static void ApplyGravity(this IPhysxBody2D body, float gravity, float dt, float scale = 1f) =>
         body.LinearVelocity = Velocity2D.ApplyGravity(body.LinearVelocity, gravity, dt, scale);
 
@@ -176,6 +210,7 @@ public static class BodyMotionExtensions2D
         body.IsAwake = true;
     }
 
-    /// <summary><see cref="BodyState2D.Capture"/>.</summary>
+    /// <summary>Snapshot of the body's motion state: <see cref="BodyState2D.Capture"/>. Restore it with
+    /// <see cref="BodyState2D.Restore"/>.</summary>
     public static BodyState2D CaptureState(this IPhysxBody2D body) => BodyState2D.Capture(body);
 }

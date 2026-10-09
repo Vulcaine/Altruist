@@ -6,8 +6,19 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Persistence.Postgres;
 
+/// <summary>
+/// Startup helper used by <see cref="PostgresDatabaseConfiguration"/>: discovers every non-abstract
+/// <see cref="IVaultModel"/> class annotated with <see cref="VaultAttribute"/>, records its schema in
+/// <see cref="VaultRegistry"/>, and registers a <b>singleton</b> <c>IVault&lt;TModel&gt;</c> whose instance is
+/// produced by the first registered <see cref="IServiceFactory"/> that can create it
+/// (<see cref="PostgresServiceFactory"/> for Postgres).
+/// </summary>
 internal static class PostgresVaultSetup
 {
+    /// <summary>Discovers and registers the vaults; returns the discovered model types (used for migration).</summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <param name="assemblies">Assemblies to scan.</param>
+    /// <returns>The vault model types found.</returns>
     public static Type[] Configure(IServiceCollection services, Assembly[] assemblies)
     {
         var vaultTypes = FindVaultModelTypes(assemblies).ToArray();

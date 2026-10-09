@@ -46,6 +46,13 @@ public enum OutboundMode
 [AttributeUsage(AttributeTargets.Class, Inherited = true, AllowMultiple = false)]
 public sealed class CoalesceAttribute : Attribute
 {
+    /// <summary>Marks the packet type as coalescing under <paramref name="key"/>.</summary>
+    /// <param name="key">Coalesce key; packets sharing it replace each other in a client's queue. Must be non-empty.</param>
+    /// <exception cref="ArgumentException"><paramref name="key"/> is null or whitespace.</exception>
+    /// <example><code>
+    /// [Coalesce("world-snapshot")]
+    /// public sealed class WorldSnapshotPacket : IPacketBase { ... }
+    /// </code></example>
     public CoalesceAttribute(string key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -53,6 +60,7 @@ public sealed class CoalesceAttribute : Attribute
         Key = key;
     }
 
+    /// <summary>Coalesce key shared by packets that supersede each other.</summary>
     public string Key { get; }
 }
 
@@ -102,8 +110,11 @@ public interface IOutboundMetrics
 [ConditionalOnConfig("altruist:server:transport")]
 public sealed class OutboundQueues
 {
+    /// <summary>Default for <c>max-queued-per-client</c> (packets).</summary>
     public const int DefaultMaxQueuedPerClient = 256;
+    /// <summary>Default for <c>stuck-send-seconds</c> (seconds).</summary>
     public const double DefaultStuckSendSeconds = 5;
+    /// <summary>Default for <c>encode-buffer-bytes</c> (bytes).</summary>
     public const int DefaultEncodeBufferBytes = 2048;
 
     private static readonly ConcurrentDictionary<Type, string?> CoalesceKeys = new();
@@ -117,6 +128,17 @@ public sealed class OutboundQueues
     private readonly IDashboardNetworkRecorder? _networkRecorder;
     private readonly long _stuckSendTicks;
 
+    /// <summary>DI constructor; values come from <c>altruist:server:transport:outbound:*</c>. Non-positive numeric values fall back to the defaults.</summary>
+    /// <param name="store">Connection store used to resolve and abort connections.</param>
+    /// <param name="codec">Codec used to encode queued packets.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
+    /// <param name="metrics">Optional queue metrics sink.</param>
+    /// <param name="networkRecorder">Optional dashboard packet recorder.</param>
+    /// <param name="mode"><c>mode</c>: <c>direct</c> (default) or <c>queued</c>.</param>
+    /// <param name="maxQueuedPerClient"><c>max-queued-per-client</c>.</param>
+    /// <param name="stuckSendSeconds"><c>stuck-send-seconds</c>.</param>
+    /// <param name="encodeBufferBytes"><c>encode-buffer-bytes</c>.</param>
+    /// <exception cref="ArgumentException"><paramref name="mode"/> is not <c>direct</c> or <c>queued</c>.</exception>
     public OutboundQueues(
         IConnectionStore store,
         ICodec codec,
@@ -152,6 +174,10 @@ public sealed class OutboundQueues
     /// <summary>Initial size of each client's reused encode buffer (it grows as needed).</summary>
     public int EncodeBufferBytes { get; }
 
+    /// <summary>Parses an <c>outbound:mode</c> value (case-insensitive; empty or null means <see cref="OutboundMode.Direct"/>).</summary>
+    /// <param name="value">Configured value.</param>
+    /// <returns>The parsed mode.</returns>
+    /// <exception cref="ArgumentException">Value is neither <c>direct</c> nor <c>queued</c>.</exception>
     public static OutboundMode ParseMode(string? value)
     {
         var v = (value ?? "").Trim();

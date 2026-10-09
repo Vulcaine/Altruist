@@ -11,6 +11,7 @@ namespace Altruist.Gaming.ThreeD;
 /// and a 2D spatial index for point→polygon lookup. Built once per zone by
 /// <see cref="NavMeshBuilder"/> and consumed by the pathfinder, funnel, and
 /// services. All queries are read-only and thread-safe.</summary>
+/// <remarks>Register it per zone with <see cref="INavMeshService.RegisterMesh"/>; most callers query through the service rather than the graph.</remarks>
 public sealed class NavMeshGraph
 {
     private readonly NavPoly[] _polys;
@@ -21,9 +22,13 @@ public sealed class NavMeshGraph
     private readonly int[] _edgeOffsetsByPoly; // _edges[_edgeOffsetsByPoly[i] .. _edgeOffsetsByPoly[i+1]) = poly i's outgoing
     private readonly NavSpatialIndex _spatialIndex;
 
+    /// <summary>Minimum corner of all polygon vertices.</summary>
     public Vector3 BoundsMin { get; }
+    /// <summary>Maximum corner of all polygon vertices.</summary>
     public Vector3 BoundsMax { get; }
+    /// <summary>Number of polygons.</summary>
     public int PolyCount => _polys.Length;
+    /// <summary>Number of directed portal edges (each adjacency appears once per direction).</summary>
     public int EdgeCount => _edges.Length;
 
     internal NavMeshGraph(
@@ -41,8 +46,13 @@ public sealed class NavMeshGraph
         _spatialIndex = new NavSpatialIndex(polys, boundsMin, boundsMax);
     }
 
+    /// <summary>Returns the polygon at <paramref name="polyIdx"/>.</summary>
+    /// <param name="polyIdx">Polygon index in [0, <see cref="PolyCount"/>).</param>
+    /// <exception cref="IndexOutOfRangeException">Index out of range.</exception>
     public NavPoly GetPoly(int polyIdx) => _polys[polyIdx];
 
+    /// <summary>Portal edges leaving <paramref name="polyIdx"/> (allocation-free view).</summary>
+    /// <param name="polyIdx">Polygon index.</param>
     public ReadOnlySpan<NavEdge> GetOutgoingEdges(int polyIdx)
     {
         int start = _edgeOffsetsByPoly[polyIdx];
@@ -52,6 +62,8 @@ public sealed class NavMeshGraph
 
     /// <summary>Locate the polygon containing the given XZ point. Returns
     /// false if the point is outside every polygon's footprint.</summary>
+    /// <param name="point">World point (Y ignored).</param>
+    /// <param name="polyIdx">Containing polygon index, or -1.</param>
     public bool TryLocate(Vector3 point, out int polyIdx)
         => _spatialIndex.TryLocate(point.X, point.Z, out polyIdx);
 
@@ -59,6 +71,10 @@ public sealed class NavMeshGraph
     /// contains it — the polygon whose XZ footprint has the closest point
     /// within <paramref name="maxDistance"/>. Returns the on-mesh position
     /// in <paramref name="onMesh"/> with Y from the polygon.</summary>
+    /// <param name="point">World point (Y ignored).</param>
+    /// <param name="maxDistance">Max XZ snap distance in world units.</param>
+    /// <param name="polyIdx">Chosen polygon index, or -1.</param>
+    /// <param name="onMesh">Snapped point, or <paramref name="point"/> on failure.</param>
     public bool TrySamplePosition(Vector3 point, float maxDistance, out int polyIdx, out Vector3 onMesh)
     {
         if (TryLocate(point, out polyIdx))
@@ -93,6 +109,9 @@ public sealed class NavMeshGraph
 
     /// <summary>Resolve the portal edge between two adjacent polygons.
     /// Returns false if they don't share an edge in the graph.</summary>
+    /// <param name="fromPoly">Polygon being left.</param>
+    /// <param name="toPoly">Polygon being entered.</param>
+    /// <param name="portal">The edge, oriented from <paramref name="fromPoly"/> to <paramref name="toPoly"/>.</param>
     public bool TryGetPortal(int fromPoly, int toPoly, out NavEdge portal)
     {
         foreach (var edge in GetOutgoingEdges(fromPoly))

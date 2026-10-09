@@ -37,8 +37,11 @@ namespace Altruist.Gaming.Engine;
 [ConditionalOnConfig("altruist:game:engine")]
 public class EngineStartupConfiguration : IAltruistConfiguration
 {
+    /// <summary>Set once <see cref="Configure"/> ran.</summary>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Registers nothing; only marks the engine configuration as done (active when <c>altruist:game:engine</c> is configured).</summary>
+    /// <param name="services">The service collection being built (unused).</param>
     public Task Configure(IServiceCollection services)
     {
         IsConfigured = true;

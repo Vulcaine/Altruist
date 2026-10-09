@@ -33,7 +33,7 @@ namespace Altruist.Testing.Internal;
 /// <para><b>Per-method DI freshness.</b> Each <c>[Fact]</c> gets a freshly built
 /// <see cref="IServiceProvider"/> with mocks reset and singleton state empty.
 /// The per-method provider replaces the Postgres <c>IServiceFactory</c> with
-/// a <see cref="TestPostgresServiceFactory"/> bound to the per-class schema, so
+/// a <c>TestPostgresServiceFactory</c> bound to the per-class schema, so
 /// every <see cref="IVault{T}"/> resolution targets the test schema regardless of
 /// the vault model's declared keyspace. The provider is also pushed onto
 /// <see cref="Dependencies"/>'s AsyncLocal scope so production code paths that

@@ -5,15 +5,25 @@ using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
+/// <summary>
+/// Translates prefab <c>Where</c> predicates into SQL over the root alias <c>r</c> with <c>?</c> placeholders and a
+/// parameter list. Supported shapes are listed on <see cref="PgPrefabs.Query{TPrefab}"/>.
+/// </summary>
 internal sealed class PgPrefabWhereTranslator
 {
     private readonly PrefabMeta _prefab;
 
+    /// <summary>Creates a translator for one prefab type.</summary>
+    /// <param name="prefab">Prefab metadata used to resolve component names.</param>
     public PgPrefabWhereTranslator(PrefabMeta prefab)
     {
         _prefab = prefab;
     }
 
+    /// <summary>Translates a one-parameter predicate.</summary>
+    /// <param name="lambda">The predicate.</param>
+    /// <returns>SQL fragment and its parameters in placeholder order.</returns>
+    /// <exception cref="NotSupportedException">Unsupported expression shape or parameter count.</exception>
     public SqlFragment Translate(LambdaExpression lambda)
     {
         if (lambda.Parameters.Count != 1)
@@ -321,7 +331,10 @@ internal sealed class PgPrefabWhereTranslator
     private static string Q(string s) => $"\"{s.Replace("\"", "\"\"")}\"";
 }
 
+/// <summary>A SQL fragment with <c>?</c> placeholders and the matching positional parameter values.</summary>
 internal readonly record struct SqlFragment(string Sql, List<object?> Parameters)
 {
+    /// <summary>A fragment without parameters.</summary>
+    /// <param name="sql">The SQL text.</param>
     public SqlFragment(string sql) : this(sql, new List<object?>()) { }
 }

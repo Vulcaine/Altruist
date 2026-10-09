@@ -9,15 +9,25 @@ using Altruist.TwoD.Numerics;
 
 namespace Altruist.Physx.TwoD;
 
-/// <summary>Physics layer. Velocity operations for hand-written 2D motion and contact response: impact speed,
+/// <summary>Velocity math for hand-written 2D motion and contact response: impact speed,
 /// cancelling motion into a surface, bounces, drag, scaled gravity, rigid-body point velocity.
-/// Pure functions on <see cref="Vector2"/>; the body extensions in <c>Altruist.Physx.TwoD</c>
-/// (<see cref="BodyMotionExtensions2D"/>) apply them to a body's velocity.
-/// <para>Convention for gravity: side view, +Y up, <c>gravity</c> is the magnitude (≥ 0) of the
-/// pull toward -Y.</para>
-/// <para>Deterministic: same inputs give the same bits on the same runtime. Each helper evaluates
-/// exactly the expression in its summary, so it can replace that expression written inline. The
-/// TypeScript package <c>@altruist/sim2d</c> has the same functions.</para></summary>
+/// <para><b>Which layer to use.</b> These are pure functions on <see cref="Vector2"/> values (no
+/// body, no side effects), the velocity counterpart of the generic vector math in
+/// <see cref="VectorMath2D"/>. To apply one of them to a body (read <c>LinearVelocity</c>, write the
+/// result back) use the matching <see cref="BodyMotionExtensions2D"/> method (e.g.
+/// <see cref="Bounce"/> ↔ <see cref="BodyMotionExtensions2D.BounceVelocity"/>,
+/// <see cref="CancelInto"/> ↔ <see cref="BodyMotionExtensions2D.CancelVelocityInto"/>). For
+/// intent-level verbs built on those (jump, bounce off, fall, keep rolling) use
+/// <c>GameplayVerbs2D</c> in the Gaming package (e.g. <c>GameplayVerbs2D.BounceOff</c>,
+/// <c>GameplayVerbs2D.JumpOff</c>, <c>GameplayVerbs2D.Fall</c>).</para>
+/// <para>Conventions: side view, +Y up; normals and directions are expected to be unit length
+/// (not checked); <c>dt</c> in seconds, accelerations in units/s², drag in 1/s.
+/// For gravity, <c>gravity</c> is the magnitude (≥ 0) of the pull toward -Y.</para>
+/// <para>Deterministic: same inputs give the same bits on the same runtime (float32,
+/// <c>MathF</c>). Each helper evaluates exactly the expression in its summary, in that operation
+/// order, so it can replace that expression written inline. The TypeScript package
+/// <c>@altruist/sim2d</c> (<c>physics/velocity2D.ts</c>) has the same functions with the same
+/// operation order on JavaScript doubles.</para></summary>
 public static class Velocity2D
 {
     /// <summary>How fast <paramref name="velocity"/> closes in against the unit
@@ -42,7 +52,9 @@ public static class Velocity2D
     /// moving away from it (or along it) is returned unchanged:
     /// <c>d = v.X * n.X + v.Y * n.Y; d &lt; 0 ? (v.X - n.X * d * amount, v.Y - n.Y * d * amount) : v</c>.
     /// Typical use: jump off a surface (cancel the fall into it, then <see cref="VectorMath2D.AddAlong"/>
-    /// the jump speed), or a thrust that first cancels opposing motion.</summary>
+    /// the jump speed), or a thrust that first cancels opposing motion. On a body:
+    /// <see cref="BodyMotionExtensions2D.CancelVelocityInto"/>; the Gaming package's
+    /// <c>GameplayVerbs2D.JumpOff</c> is cancel + add along the normal in one call.</summary>
     public static Vector2 CancelInto(Vector2 velocity, Vector2 normal, float amount = 1f)
     {
         var d = velocity.X * normal.X + velocity.Y * normal.Y;
@@ -55,7 +67,10 @@ public static class Velocity2D
     /// <paramref name="tangentKeep"/> of the tangential part of <paramref name="velocity"/>:
     /// <c>along = Vector2.Dot(v, n); tangent = (v - n * along) * tangentKeep; return n * normalSpeed + tangent</c>.
     /// A restitution bounce is <c>Bounce(v, n, ApproachSpeed(v, n) * restitution, friction)</c>; a
-    /// launch pad sets a fixed <paramref name="normalSpeed"/>.</summary>
+    /// launch pad sets a fixed <paramref name="normalSpeed"/>. On a body:
+    /// <see cref="BodyMotionExtensions2D.BounceVelocity"/> (current velocity as incoming) or
+    /// <c>GameplayVerbs2D.BounceOff</c> (Gaming package; also takes a recorded incoming velocity).
+    /// For a pure "remove the into-surface part" without a rebound use <see cref="CancelInto"/>.</summary>
     public static Vector2 Bounce(Vector2 velocity, Vector2 normal, float normalSpeed, float tangentKeep)
     {
         var along = Vector2.Dot(velocity, normal);
@@ -75,7 +90,10 @@ public static class Velocity2D
     public static Vector2 AccelerateAlong(Vector2 velocity, Vector2 direction, float acceleration, float dt) =>
         new(velocity.X + direction.X * acceleration * dt, velocity.Y + direction.Y * acceleration * dt);
 
-    /// <summary>Linear drag for one step: <c>f = 1 - drag * dt; (v.X * f, v.Y * f)</c>.</summary>
+    /// <summary>Linear drag for one step: <c>f = 1 - drag * dt; (v.X * f, v.Y * f)</c>
+    /// (<paramref name="drag"/> in 1/s; explicit Euler, so <c>drag * dt &gt; 1</c> reverses the
+    /// velocity and is not clamped). Unlike the engine's <see cref="PhysxBodyDef2D.LinearDamping"/>,
+    /// this runs only where you call it.</summary>
     public static Vector2 ApplyLinearDrag(Vector2 velocity, float drag, float dt)
     {
         var f = 1 - drag * dt;
@@ -84,7 +102,10 @@ public static class Velocity2D
 
     /// <summary>Gravity for one step, scaled per body: <c>(v.X, v.Y - gravity * dt * scale)</c>
     /// (<paramref name="gravity"/> pulls toward -Y). For bodies whose gravity is applied by hand
-    /// (world gravity zero) so each body can scale it at will.</summary>
+    /// (world gravity zero) so each body can scale it at will. With engine gravity, use the world's
+    /// <see cref="PhysxWorldSettings2D.Gravity"/> and <see cref="PhysxBodyDef2D.GravityScale"/>
+    /// instead (applying both would double gravity). On a body:
+    /// <see cref="BodyMotionExtensions2D.ApplyGravity"/>.</summary>
     public static Vector2 ApplyGravity(Vector2 velocity, float gravity, float dt, float scale = 1f) =>
         new(velocity.X, velocity.Y - gravity * dt * scale);
 

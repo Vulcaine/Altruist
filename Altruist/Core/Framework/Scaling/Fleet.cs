@@ -21,33 +21,48 @@ namespace Altruist;
 /// <summary>A server of the fleet as the others last saw it (its heartbeat).</summary>
 public sealed record FleetNodeInfo
 {
+    /// <summary>Unique id of the server (from <see cref="IServerNode.NodeId"/>).</summary>
     public required string NodeId { get; init; }
+    /// <summary>Region label (<c>altruist:server:fleet:region</c>); empty when unset.</summary>
     public string Region { get; init; } = "";
     /// <summary>Where the other servers reach it (<c>host:port</c>): relays, node-to-node calls.</summary>
     public string? InternalAddress { get; init; }
     /// <summary>Where clients reach it directly, when it has an address of its own (else through any server's relay).</summary>
     public string? PublicAddress { get; init; }
+    /// <summary>Lifecycle state of the server; only <see cref="ServerNodeState.Ready"/> accepts new work.</summary>
     public ServerNodeState State { get; init; }
+    /// <summary>Current load in the server's own load units (see <see cref="IServerNode.Capacity"/>).</summary>
     public double Load { get; init; }
+    /// <summary>Load budget; 0 or less means unlimited.</summary>
     public double MaxLoad { get; init; }
     /// <summary>Numbers the modules publish (queue lengths per playlist, ...).</summary>
     public Dictionary<string, double> Stats { get; init; } = new();
+    /// <summary>UTC time the entry was published (its heartbeat).</summary>
     public DateTime SeenUtc { get; init; }
 
+    /// <summary>True when the server is <see cref="ServerNodeState.Ready"/>.</summary>
     [JsonIgnore] public bool Accepting => State == ServerNodeState.Ready;
 
     /// <summary>New work of this cost fits (ready and within its budget).</summary>
     public bool Fits(double cost) => Accepting && (MaxLoad <= 0 || Load + cost <= MaxLoad + 1e-9);
 
+    /// <summary>Returns a published stat, or 0 when absent.</summary>
+    /// <param name="key">Stat key.</param>
     public double Stat(string key) => Stats.TryGetValue(key, out var v) ? v : 0;
 }
 
 /// <summary>
 /// Work handed from one server to another with its player (a queue place, a lobby): written by
 /// the server that sends the player away, taken by the server the player arrives at.
+/// Write with <see cref="IFleet.PutHandoffAsync"/>, read once with <see cref="IFleet.TakeHandoffAsync"/>.
 /// </summary>
+/// <param name="Kind">What kind of work this is (application-defined, e.g. <c>"queue"</c>).</param>
+/// <param name="Data">String key/value payload.</param>
+/// <param name="FromNode">Id of the server that wrote it.</param>
 public sealed record FleetHandoff(string Kind, Dictionary<string, string> Data, string FromNode)
 {
+    /// <summary>Returns a value from <c>Data</c>, or <c>null</c>.</summary>
+    /// <param name="key">Data key.</param>
     public string? Get(string key) => Data.TryGetValue(key, out var v) ? v : null;
 }
 
@@ -65,8 +80,11 @@ public sealed record FleetHandoff(string Kind, Dictionary<string, string> Data, 
 /// </summary>
 public interface IFleet
 {
+    /// <summary>This server's id.</summary>
     string NodeId { get; }
+    /// <summary>Cluster name; servers with the same cluster form one fleet (<c>altruist:server:fleet:cluster</c>).</summary>
     string Cluster { get; }
+    /// <summary>This server's region label.</summary>
     string Region { get; }
 
     /// <summary>The query parameter a client sets to reach a given server (<c>?node=</c>) through any server.</summary>
@@ -84,16 +102,23 @@ public interface IFleet
     /// <summary>More than one live server.</summary>
     bool IsMultiNode { get; }
 
+    /// <summary>Returns a live server by id (this one included), or <c>null</c> when unknown or its heartbeat expired.</summary>
+    /// <param name="nodeId">Server id.</param>
     FleetNodeInfo? Find(string nodeId);
 
     /// <summary>Publishes a number with the next heartbeat (thread-safe).</summary>
     void SetStat(string key, double value);
 
+    /// <summary>Stops publishing a stat set with <see cref="SetStat"/>.</summary>
+    /// <param name="key">Stat key.</param>
     void ClearStat(string key);
 
     /// <summary>This server runs the unit (kept while it lives; any thread).</summary>
     void Claim(string kind, string id);
 
+    /// <summary>Releases a unit claimed by this server (the backplane entry is removed only if this server still holds it). Fire-and-forget.</summary>
+    /// <param name="kind">Unit kind (e.g. <c>"room"</c>).</param>
+    /// <param name="id">Unit id.</param>
     void Release(string kind, string id);
 
     /// <summary>Claims a unit only when no live server holds it (unique ids: lobby codes).</summary>
@@ -123,18 +148,24 @@ public sealed record FleetOptions
 {
     /// <summary>Servers with the same cluster name form one fleet (several games may share a backplane).</summary>
     public string Cluster { get; init; } = "default";
+    /// <summary>Region label published with the heartbeat.</summary>
     public string Region { get; init; } = "";
+    /// <summary>Heartbeat interval (<c>heartbeat</c>, seconds; default 2).</summary>
     public TimeSpan Heartbeat { get; init; } = TimeSpan.FromSeconds(2);
     /// <summary>A server missing this many heartbeats is gone.</summary>
     public int MissedHeartbeats { get; init; } = 3;
     /// <summary>How long a claim lives without a refresh (refreshed at a third of it).</summary>
     public TimeSpan ClaimTtl { get; init; } = TimeSpan.FromSeconds(90);
+    /// <summary>How long an untaken <see cref="FleetHandoff"/> lives (60 s).</summary>
     public TimeSpan HandoffTtl { get; init; } = TimeSpan.FromSeconds(60);
+    /// <c>host:port</c> other servers use to reach this one (<c>internal-address</c>; auto-detected when unset).
     public string? InternalAddress { get; init; }
     /// <summary>The server's own public address; <c>{node-id}</c> is replaced. Null: clients go through the relay.</summary>
     public string? PublicAddress { get; init; }
+    /// <summary>Query parameter clients use to target a server (<c>node-param</c>).</summary>
     public string NodeParam { get; init; } = "node";
 
+    /// <summary>Time after which a silent server is considered gone: <see cref="Heartbeat"/> × <see cref="MissedHeartbeats"/>.</summary>
     public TimeSpan NodeTtl => Heartbeat * MissedHeartbeats;
 }
 
@@ -163,6 +194,18 @@ public sealed class Fleet : IFleet
     private long _lastFaultLog;
     private string _membership = "";
 
+    /// <summary>DI constructor reading <c>altruist:server:fleet:*</c> (and the HTTP host/port for address detection).</summary>
+    /// <param name="backplane">Shared (or in-memory) key-value store.</param>
+    /// <param name="node">This server's node (id, state, capacity).</param>
+    /// <param name="cluster"><c>cluster</c> (default <c>"default"</c>).</param>
+    /// <param name="region"><c>region</c>.</param>
+    /// <param name="heartbeatSeconds"><c>heartbeat</c> in seconds (non-positive = 2).</param>
+    /// <param name="internalAddress"><c>internal-address</c>; <c>{ip}</c> is replaced with this machine's IPv4. Empty = <see cref="DetectInternalAddress"/>.</param>
+    /// <param name="publicAddress"><c>public-address</c>; <c>{node-id}</c> is replaced. Empty = clients reach it through the relay.</param>
+    /// <param name="nodeParam"><c>node-param</c> (default <c>"node"</c>).</param>
+    /// <param name="httpHost"><c>altruist:server:http:host</c>.</param>
+    /// <param name="httpPort"><c>altruist:server:http:port</c>.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
     [ActivatorUtilitiesConstructor]
     public Fleet(
         IFleetBackplane backplane,
@@ -190,6 +233,12 @@ public sealed class Fleet : IFleet
     {
     }
 
+    /// <summary>Creates a fleet with explicit options (tests, manual setup).</summary>
+    /// <param name="backplane">Key-value store.</param>
+    /// <param name="node">This server's node.</param>
+    /// <param name="options">Fleet options.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
+    /// <param name="utcNow">Clock override (tests); defaults to <see cref="DateTime.UtcNow"/>.</param>
     public Fleet(IFleetBackplane backplane, IServerNode node, FleetOptions options, ILoggerFactory? loggerFactory = null, Func<DateTime>? utcNow = null)
     {
         _backplane = backplane;
@@ -199,14 +248,22 @@ public sealed class Fleet : IFleet
         _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<Fleet>();
     }
 
+    /// <summary>Effective options.</summary>
     public FleetOptions Options { get; }
+    /// <summary>Backplane in use.</summary>
     public IFleetBackplane Backplane => _backplane;
+    /// <inheritdoc/>
     public string NodeId => _node.NodeId;
+    /// <inheritdoc/>
     public string Cluster => Options.Cluster;
+    /// <inheritdoc/>
     public string Region => Options.Region;
+    /// <inheritdoc/>
     public string NodeParam => Options.NodeParam;
+    /// <inheritdoc/>
     public bool Shared => _backplane.Shared;
 
+    /// <inheritdoc/>
     public event Action? NodesChanged;
 
     private string Key(string rest) => $"fleet:{Options.Cluster}:{rest}";
@@ -216,6 +273,7 @@ public sealed class Fleet : IFleet
 
     // ------------------------------------------------------------------ nodes
 
+    /// <inheritdoc/>
     public FleetNodeInfo Self
     {
         get
@@ -236,6 +294,8 @@ public sealed class Fleet : IFleet
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Sorted by node id (ordinal); built on every access.</remarks>
     public IReadOnlyList<FleetNodeInfo> Nodes
     {
         get
@@ -249,6 +309,7 @@ public sealed class Fleet : IFleet
         }
     }
 
+    /// <inheritdoc/>
     public bool IsMultiNode
     {
         get
@@ -260,6 +321,7 @@ public sealed class Fleet : IFleet
         }
     }
 
+    /// <inheritdoc/>
     public FleetNodeInfo? Find(string nodeId)
     {
         if (nodeId == NodeId) return Self;
@@ -269,10 +331,14 @@ public sealed class Fleet : IFleet
         return null;
     }
 
+    /// <inheritdoc/>
     public void SetStat(string key, double value) => _stats[key] = value;
 
+    /// <inheritdoc/>
     public void ClearStat(string key) => _stats.TryRemove(key, out _);
 
+    /// <inheritdoc/>
+    /// <remarks>Never throws on backplane failures (logged at most every 30 s); claims are re-written at a third of <see cref="FleetOptions.ClaimTtl"/>.</remarks>
     public async Task HeartbeatAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -318,6 +384,7 @@ public sealed class Fleet : IFleet
         }
     }
 
+    /// <inheritdoc/>
     public async Task LeaveAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -335,6 +402,8 @@ public sealed class Fleet : IFleet
 
     // ------------------------------------------------------------------ units
 
+    /// <inheritdoc/>
+    /// <remarks>Non-blocking: the backplane write runs in the background and overwrites any previous holder. For ids that must be unique fleet-wide use <see cref="TryClaimAsync"/>.</remarks>
     public void Claim(string kind, string id)
     {
         var key = UnitKey(kind, id);
@@ -342,6 +411,7 @@ public sealed class Fleet : IFleet
         Background(_backplane.SetAsync(key, NodeId, Options.ClaimTtl), "claim");
     }
 
+    /// <inheritdoc/>
     public void Release(string kind, string id)
     {
         var key = UnitKey(kind, id);
@@ -349,6 +419,8 @@ public sealed class Fleet : IFleet
         Background(_backplane.DeleteIfValueAsync(key, NodeId), "release");
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Returns true when the unit was free, already held by this server, or held by a server that is no longer live (taken over).</remarks>
     public async Task<bool> TryClaimAsync(string kind, string id, CancellationToken cancellationToken = default)
     {
         var key = UnitKey(kind, id);
@@ -369,6 +441,7 @@ public sealed class Fleet : IFleet
         return owner == NodeId;
     }
 
+    /// <inheritdoc/>
     public async Task<string?> LocateAsync(string kind, string id, CancellationToken cancellationToken = default)
     {
         var key = UnitKey(kind, id);
@@ -378,9 +451,11 @@ public sealed class Fleet : IFleet
         return owner is not null && Find(owner) is not null ? owner : null;
     }
 
+    /// <inheritdoc/>
     public Task PutHandoffAsync(string nodeId, string principalId, FleetHandoff handoff, CancellationToken cancellationToken = default) =>
         _backplane.SetAsync(HandoffKey(nodeId, principalId), JsonSerializer.Serialize(handoff, Json), Options.HandoffTtl, cancellationToken);
 
+    /// <inheritdoc/>
     public async Task<FleetHandoff?> TakeHandoffAsync(string principalId, CancellationToken cancellationToken = default)
     {
         var raw = await _backplane.TakeAsync(HandoffKey(NodeId, principalId), cancellationToken).ConfigureAwait(false);
@@ -460,12 +535,16 @@ public sealed class FleetHeartbeatService : IHostedService
     private CancellationTokenSource? _stop;
     private Task? _loop;
 
+    /// <summary>Creates the service; the interval is <see cref="FleetOptions.Heartbeat"/> for <see cref="Fleet"/>, else 2 s.</summary>
+    /// <param name="fleet">Fleet to keep alive.</param>
     public FleetHeartbeatService(IFleet fleet)
     {
         _fleet = fleet;
         _interval = fleet is Fleet f ? f.Options.Heartbeat : TimeSpan.FromSeconds(2);
     }
 
+    /// <summary>Starts the heartbeat loop (first heartbeat immediately).</summary>
+    /// <param name="cancellationToken">Unused.</param>
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _stop = new CancellationTokenSource();
@@ -482,6 +561,8 @@ public sealed class FleetHeartbeatService : IHostedService
         return Task.CompletedTask;
     }
 
+    /// <summary>Stops the loop and leaves the fleet.</summary>
+    /// <param name="cancellationToken">Host shutdown token passed to <see cref="IFleet.LeaveAsync"/>.</param>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _stop?.Cancel();

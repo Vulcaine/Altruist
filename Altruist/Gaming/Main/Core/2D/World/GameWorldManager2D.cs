@@ -8,21 +8,66 @@ using Altruist.Physx.TwoD;
 
 namespace Altruist.Gaming.TwoD
 {
+    /// <summary>One running 2D world: its <see cref="IWorldIndex2D"/>, physics world, spatial partitions,
+    /// zones and the objects living in it. Created and stepped by <see cref="IGameWorldOrganizer2D"/>;
+    /// get one with <see cref="IGameWorldOrganizer2D.GetWorld(int)"/> rather than constructing it.
+    /// <para>Roles: the <b>organizer</b> owns all worlds and runs the tick (objects' <c>Step</c>, physics,
+    /// AI, visibility, entity sync); the <b>manager</b> (this) owns one world's object set and spatial
+    /// lookups; <see cref="IWorldLoader2D"/> builds a separate, standalone manager from a JSON world file (the
+    /// 2D organizer does not call the loader, so configured <c>data-path</c>s are not loaded automatically). Use a world for
+    /// persistent, partitioned spaces shared by many players; for short self-contained matches with
+    /// their own fixed-rate simulation prefer the Rooms package. The 3D counterpart is
+    /// <see cref="Altruist.Gaming.ThreeD.IGameWorldManager3D"/>.</para>
+    /// <para>Threading: not thread-safe; call from the world tick (or marshal onto it).</para>
+    /// <example><code>
+    /// var world = organizer.GetWorld(0)!;
+    /// var t = Transform2D.Zero.WithPosition(Position2D.Of(10, 5)).WithSize(Size2D.Of(1, 1));
+    /// var body = await world.SpawnDynamicObject(new MyCrate(t)); // MyCrate : WorldObject2D, [WorldObject("crate")]
+    /// var near = world.GetNearbyObjectsInRoom("crate", x, y, radius: 10, roomId: "");
+    /// world.DestroyObject(crate);
+    /// </code></example></summary>
     public interface IGameWorldManager2D : IGameWorldManager
     {
+        /// <summary>The static description this world was built from.</summary>
         IWorldIndex2D Index { get; }
+        /// <summary>The world's physics world (an <see cref="IPhysxWorld2D"/> for the default implementation).</summary>
         IPhysxWorld PhysxWorld { get; }
+        /// <summary>The world's zones (named rectangular regions over the partitions), created lazily.</summary>
         IZoneManager2D Zones { get; }
+        /// <summary>Computes the spatial partitions from <see cref="Index"/> and starts a background
+        /// save of them to the cache. Called once by the organizer when the world is added.</summary>
         void Initialize();
+        /// <summary>Saves every partition to the cache provider (no-op without one).</summary>
         Task SaveAsync();
 
+        /// <summary>Looks an object up by the key it was spawned under (its <c>InstanceId</c> or the
+        /// <c>withId</c> passed to spawn); null when absent.</summary>
         IWorldObject2D? FindObject(string id);
+        /// <summary>All objects of type <typeparamref name="T"/> in the world (live view; do not spawn
+        /// or destroy while enumerating).</summary>
         IEnumerable<T> FindAllObjects<T>() where T : IWorldObject2D;
+        /// <summary>All objects in the world (live view; do not spawn or destroy while enumerating).</summary>
         IEnumerable<IWorldObject2D> GetAllObjects();
 
+        /// <summary>Re-files <paramref name="obj"/> in the spatial partitions after its
+        /// <c>Transform</c> changed (the organizer's physics sync does not do this). Object and body stay
+        /// in the world.</summary>
+        /// <returns>The partitions the object now belongs to.</returns>
         Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IWorldObject2D obj);
 
+        /// <summary>Adds a moving object: resolves its archetype from <see cref="WorldObjectAttribute"/>
+        /// (kept as-is for <see cref="AnonymousWorldObject2D"/>), creates a dynamic body (mass 1) with one box
+        /// collider from <c>obj.Transform</c> when body / collider API providers are available, assigns
+        /// <c>obj.Body</c>, adds it to every partition its bounds overlap and indexes it.</summary>
+        /// <param name="obj">The object to add; null is ignored.</param>
+        /// <param name="withId">Optional lookup key for <see cref="FindObject"/> (default <c>obj.InstanceId</c>).</param>
+        /// <returns>The created body, or null when no body API is registered (or <paramref name="obj"/> is null).</returns>
         Task<IPhysxBody2D?> SpawnDynamicObject(IWorldObject2D obj, string? withId = null);
+        /// <summary>Adds a non-moving object (walls, props): like <see cref="SpawnDynamicObject"/> but with
+        /// a static body (mass 0) and filed in the single partition at its position.</summary>
+        /// <param name="obj">The object to add; null is ignored.</param>
+        /// <param name="withId">Optional lookup key for <see cref="FindObject"/> (default <c>obj.InstanceId</c>).</param>
+        /// <returns>The partition it was filed in, or null when none covers its position.</returns>
         IWorldPartitionManager? SpawnStaticObject(IWorldObject2D obj, string? withId = null);
 
         /// <summary>Legacy alias for <see cref="SpawnDynamicObject"/>.</summary>
@@ -30,27 +75,49 @@ namespace Altruist.Gaming.TwoD
         /// <summary>Legacy alias for <see cref="SpawnStaticObject"/>.</summary>
         IWorldPartitionManager? AddStaticObject(IWorldObject2D obj);
 
+        /// <summary>Removes the object with this instance id (or spawn key) from the partitions and the
+        /// index and removes its body from physics. To remove an object at the end of the current tick
+        /// instead, set its <c>Expired</c> flag and let the organizer destroy it.</summary>
+        /// <returns>The removed object, or null when not found.</returns>
         IWorldObject2D? DestroyObject(string instanceId);
+        /// <summary><see cref="DestroyObject(string)"/> by <c>obj.InstanceId</c>; null for a null object.</summary>
         IWorldObject2D? DestroyObject(IWorldObject2D obj);
 
+        /// <summary>Objects of one archetype within <paramref name="radius"/> of (<paramref name="x"/>,
+        /// <paramref name="y"/>) whose <c>ZoneId</c> equals <paramref name="roomId"/> (exact match; pass
+        /// <c>""</c> for objects without a zone). Uses the partitions' spatial grids, so positions are the
+        /// ones last filed (see <see cref="UpdateObjectPosition"/>).</summary>
+        /// <param name="archetype">Archetype to match (<see cref="WorldObjectAttribute"/> value).</param>
+        /// <param name="x">Center X, world units.</param>
+        /// <param name="y">Center Y, world units.</param>
+        /// <param name="radius">Search radius, world units.</param>
+        /// <param name="roomId">Zone / room id the objects must have.</param>
         IEnumerable<IWorldObject2D> GetNearbyObjectsInRoom(
             string archetype,
             int x, int y,
             float radius,
             string roomId);
 
+        /// <summary>Partitions overlapping the square of half size <paramref name="radius"/> around
+        /// (<paramref name="x"/>, <paramref name="y"/>).</summary>
         IEnumerable<IWorldPartitionManager> FindPartitionsForPosition(int x, int y, float radius);
+        /// <summary>The partition containing (<paramref name="x"/>, <paramref name="y"/>), or null outside the world.</summary>
         IWorldPartitionManager? FindPartitionForPosition(int x, int y);
 
-        /// <summary>Find all partitions whose AABB intersects the provided bounds.</summary>
+        /// <summary>Find all partitions whose AABB intersects the provided bounds (edges inclusive, world units).</summary>
         IEnumerable<IWorldPartitionManager> FindPartitionsForBounds(
             float minX, float minY,
             float maxX, float maxY);
 
-        /// <summary>Find all partitions that intersect the bounds of the given object.</summary>
+        /// <summary>Find all partitions that intersect the bounds of the given object: centered on
+        /// <c>Transform.Position</c> with full extents <c>Transform.Size</c> (1 x 1 when the size is zero or not finite).</summary>
         IEnumerable<IWorldPartitionManager> FindPartitionsForObject(IWorldObject2D obj);
     }
 
+    /// <summary>Default <see cref="IGameWorldManager2D"/>: partitions from an <see cref="IWorldPartitioner2D"/>,
+    /// objects in a flat dictionary plus per-partition <see cref="SpatialGridIndex2D"/>s, bodies through the
+    /// optional body / collider API providers. Not a DI service: <see cref="GameWorldOrganizer2D"/> creates one
+    /// per configured world.</summary>
     public sealed class GameWorldManager2D : IGameWorldManager2D
     {
         private readonly IWorldIndex2D _index;
@@ -67,6 +134,14 @@ namespace Altruist.Gaming.TwoD
         private readonly Dictionary<string, IWorldObject2D> _flatInstanceCache = new();
         private ZoneManager2D? _zoneManager;
 
+        /// <summary>Creates the manager; call <see cref="Initialize"/> before use (the organizer does).</summary>
+        /// <param name="world">The world description.</param>
+        /// <param name="physx2D">The physics world bodies are added to.</param>
+        /// <param name="worldPartitioner">Computes the partition grid.</param>
+        /// <param name="cacheProvider">Optional cache the partitions are saved to.</param>
+        /// <param name="bodyApi">Optional body factory; without it spawned objects get no body.</param>
+        /// <param name="colliderApi">Optional collider factory; without it bodies get no collider.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="world"/>, <paramref name="physx2D"/> or <paramref name="worldPartitioner"/> is null.</exception>
         public GameWorldManager2D(
             IWorldIndex2D world,
             IPhysxWorld2D physx2D,
@@ -85,10 +160,14 @@ namespace Altruist.Gaming.TwoD
             _partitions = new List<WorldPartition2D>();
         }
 
+        /// <inheritdoc/>
         public IPhysxWorld PhysxWorld => _physx2D;
+        /// <inheritdoc/>
         public IWorldIndex2D Index => _index;
+        /// <inheritdoc/>
         public IZoneManager2D Zones => _zoneManager ??= new ZoneManager2D(_worldPartitioner, _partitions);
 
+        /// <inheritdoc/>
         public void Initialize()
         {
             var partitions = _worldPartitioner.CalculatePartitions(_index);
@@ -101,6 +180,7 @@ namespace Altruist.Gaming.TwoD
             _ = SaveAsync();
         }
 
+        /// <inheritdoc/>
         public async Task SaveAsync()
         {
             if (_cache is null)
@@ -111,17 +191,21 @@ namespace Altruist.Gaming.TwoD
 
         // ── Lookup ──────────────────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public IWorldObject2D? FindObject(string id)
             => _flatInstanceCache.TryGetValue(id, out var obj) ? obj : null;
 
+        /// <inheritdoc/>
         public IEnumerable<T> FindAllObjects<T>() where T : IWorldObject2D
             => _flatInstanceCache.Values.OfType<T>();
 
+        /// <inheritdoc/>
         public IEnumerable<IWorldObject2D> GetAllObjects()
             => _flatInstanceCache.Values;
 
         // ── Spawn ───────────────────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public async Task<IPhysxBody2D?> SpawnDynamicObject(IWorldObject2D obj, string? withId = null)
         {
             if (obj is null)
@@ -158,6 +242,7 @@ namespace Altruist.Gaming.TwoD
             return body;
         }
 
+        /// <inheritdoc/>
         public IWorldPartitionManager? SpawnStaticObject(IWorldObject2D obj, string? withId = null)
         {
             if (obj is null)
@@ -198,14 +283,17 @@ namespace Altruist.Gaming.TwoD
 
         // ── Legacy aliases ──────────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public async Task AddDynamicObject(IWorldObject2D obj)
             => await SpawnDynamicObject(obj);
 
+        /// <inheritdoc/>
         public IWorldPartitionManager? AddStaticObject(IWorldObject2D obj)
             => SpawnStaticObject(obj);
 
         // ── Destroy ─────────────────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public IWorldObject2D? DestroyObject(string instanceId)
         {
             if (string.IsNullOrWhiteSpace(instanceId))
@@ -240,11 +328,13 @@ namespace Altruist.Gaming.TwoD
             return obj;
         }
 
+        /// <inheritdoc/>
         public IWorldObject2D? DestroyObject(IWorldObject2D obj)
             => obj is null ? null : DestroyObject(obj.InstanceId);
 
         // ── Position update ─────────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public async Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IWorldObject2D obj)
         {
             if (obj is null)
@@ -261,6 +351,7 @@ namespace Altruist.Gaming.TwoD
 
         // ── Nearby queries ──────────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public IEnumerable<IWorldObject2D> GetNearbyObjectsInRoom(
             string archetype,
             int x, int y,
@@ -281,6 +372,7 @@ namespace Altruist.Gaming.TwoD
 
         // ── Partition queries ───────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public IWorldPartitionManager? FindPartitionForPosition(int x, int y)
         {
             int indexX = (int)Math.Round(x / (double)_worldPartitioner.PartitionWidth);
@@ -289,6 +381,7 @@ namespace Altruist.Gaming.TwoD
             return _partitionMap.TryGetValue(new PartitionIndex2D(indexX, indexY), out var p) ? p : null;
         }
 
+        /// <inheritdoc/>
         public IEnumerable<IWorldPartitionManager> FindPartitionsForPosition(int x, int y, float radius)
         {
             float minX = x - radius;
@@ -299,6 +392,7 @@ namespace Altruist.Gaming.TwoD
             return FindPartitionsForBounds(minX, minY, maxX, maxY);
         }
 
+        /// <inheritdoc/>
         public IEnumerable<IWorldPartitionManager> FindPartitionsForBounds(
             float minX, float minY,
             float maxX, float maxY)
@@ -311,6 +405,7 @@ namespace Altruist.Gaming.TwoD
             );
         }
 
+        /// <inheritdoc/>
         public IEnumerable<IWorldPartitionManager> FindPartitionsForObject(IWorldObject2D obj)
         {
             if (obj is null)

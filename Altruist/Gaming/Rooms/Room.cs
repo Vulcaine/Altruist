@@ -9,6 +9,11 @@ namespace Altruist.Gaming.Rooms;
 /// One running room: the game's simulation plus its seats and participants. Seats keep their
 /// simulated body across controller changes (a bot taking over keeps position and velocity).
 /// Only touched from the engine thread.
+/// <para>
+/// Created with <see cref="RoomHost{TSim,TInput,TPlayer}.CreateRoom"/> (matchmaking and lobbies do
+/// that for you), seated with <see cref="AddSeat"/> + <see cref="Join"/> + <see cref="GiveToHuman"/>
+/// or <see cref="GiveToBot"/>, then started with <see cref="RoomHost{TSim,TInput,TPlayer}.TryStart"/>.
+/// </para>
 /// </summary>
 public sealed class Room<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
@@ -31,17 +36,25 @@ public sealed class Room<TSim, TInput, TPlayer>
         StartedAtUtc = startedAtUtc;
     }
 
+    /// <summary>Unique room id (a GUID without dashes), assigned on creation.</summary>
     public string Id { get; } = Guid.NewGuid().ToString("N");
+    /// <summary>The game mode the room was created for (passed to <see cref="IRoomGame{TSim,TInput,TPlayer}.CreateSimulation"/>).</summary>
     public string Mode { get; }
+    /// <summary>The playlist (queue) the room came from, or null (lobby or tool rooms may have none).</summary>
     public string? Playlist { get; }
     /// <summary>The lobby that started the room (its players go back there), or null.</summary>
     public string? LobbyCode { get; }
+    /// <summary>Lifecycle rules of this room (disconnects, grace, leaving, empty room, backfill).</summary>
     public RoomRules Rules { get; }
+    /// <summary>Wall-clock creation time (UTC, from the host's clock).</summary>
     public DateTime StartedAtUtc { get; }
     /// <summary>The load the room puts on the server (<see cref="IRoomGame{TSim,TInput,TPlayer}.LoadOf"/>).</summary>
     public double Load { get; internal set; } = 1;
+    /// <summary>The game's simulation of this room.</summary>
     public TSim Sim { get; }
+    /// <summary>The room's seats in the order they were added. Change them through <see cref="AddSeat"/> and <see cref="RemoveSeat"/>, not directly.</summary>
     public List<Seat<TSim, TInput, TPlayer>> Seats { get; } = new();
+    /// <summary>Every player that took part, by principal id (including disconnected and departed ones, for results).</summary>
     public Dictionary<string, Participant<TSim, TInput, TPlayer>> Participants { get; } = new();
     /// <summary>Every team that had a seat, in order of appearance (team forfeits).</summary>
     public List<int> Teams { get; } = new();
@@ -50,18 +63,22 @@ public sealed class Room<TSim, TInput, TPlayer>
     /// <summary>The end was handled (results handed to the game).</summary>
     public bool Finished { get; internal set; }
 
+    /// <summary>The room is over: the end was handled or the simulation reports it ended.</summary>
     public bool Ended => Finished || Sim.Ended;
 
     /// <summary>Connected participants that currently own a seat.</summary>
     public IEnumerable<Participant<TSim, TInput, TPlayer>> ActiveHumans => Participants.Values.Where(p => p.Connected && p.Seat is not null);
 
+    /// <summary>Participants with a live connection (seated or not).</summary>
     public int ConnectedHumans => Participants.Values.Count(p => p.Connected);
 
+    /// <summary>The seat with the game's seat id, or null.</summary>
     public Seat<TSim, TInput, TPlayer>? SeatOf(int id) => Seats.FirstOrDefault(s => s.Id == id);
 
     /// <summary>Per-room state of a module (join-in-progress pacing, ...).</summary>
     public T? Get<T>() where T : class => _features.TryGetValue(typeof(T), out var v) ? (T)v : null;
 
+    /// <summary>Stores (or, with null, removes) the per-room state of type <typeparamref name="T"/> (see <see cref="Get{T}"/>).</summary>
     public void Set<T>(T? value) where T : class
     {
         if (value is null) _features.Remove(typeof(T));
@@ -70,6 +87,14 @@ public sealed class Room<TSim, TInput, TPlayer>
 
     // ------------------------------------------------------------------ seats
 
+    /// <summary>
+    /// Adds a seat (open: no owner, no bot) to the room and the simulation and calls
+    /// <see cref="IRoomGame{TSim,TInput,TPlayer}.OnSeatAdded"/>. Then give it to a player
+    /// (<see cref="GiveToHuman"/>) or a bot (<see cref="GiveToBot"/>).
+    /// </summary>
+    /// <param name="id">The game's seat id (unique in the room).</param>
+    /// <param name="team">The seat's team.</param>
+    /// <returns>The new seat.</returns>
     public Seat<TSim, TInput, TPlayer> AddSeat(int id, int team)
     {
         var seat = new Seat<TSim, TInput, TPlayer> { Id = id, Team = team };
@@ -80,7 +105,13 @@ public sealed class Room<TSim, TInput, TPlayer>
         return seat;
     }
 
-    /// <summary>The participant for a principal, created on first use.</summary>
+    /// <summary>
+    /// The participant for a principal, created on first use (with a fresh input buffer); an existing
+    /// one keeps its player data and only gets the new <paramref name="clientId"/>. Does not seat it.
+    /// </summary>
+    /// <param name="principalId">The player identity.</param>
+    /// <param name="player">The game's player data (used only when the participant is created).</param>
+    /// <param name="clientId">The connection driving it, or null (not connected yet).</param>
     public Participant<TSim, TInput, TPlayer> Join(string principalId, TPlayer player, string? clientId)
     {
         if (!Participants.TryGetValue(principalId, out var p))

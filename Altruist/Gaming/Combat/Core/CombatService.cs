@@ -17,12 +17,25 @@ namespace Altruist.Gaming.Combat;
 /// IDamageCalculator is registered. Games should register their own
 /// IDamageCalculator implementation via [Service(typeof(IDamageCalculator))].
 /// </summary>
+/// <remarks>Formula: <c>max(1, attacker.GetAttackPower() - target.GetDefensePower())</c> with
+/// <see cref="DamageFlags.Normal"/>. Both powers default to 0 on <see cref="ICombatEntity"/>, so without overrides
+/// every hit deals 1. Subclass and override <see cref="Calculate"/> to tweak it while keeping the fallback shape.</remarks>
 public class DefaultDamageCalculator : IDamageCalculator
 {
+    /// <inheritdoc/>
     public virtual DamageSpec Calculate(ICombatEntity attacker, ICombatEntity target)
         => new(Math.Max(1, attacker.GetAttackPower() - target.GetDefensePower()), DamageFlags.Normal);
 }
 
+/// <summary>
+/// Default <see cref="ICombatService"/> implementation (singleton via <c>[Service(typeof(ICombatService))]</c>).
+/// Resolve <see cref="ICombatService"/> from DI; subclass only to change sweep/damage internals.
+/// </summary>
+/// <remarks>
+/// Sweep candidates come from 3D world 0's cached object snapshot. Sphere queries in <see cref="SweepSpace.PlanarXZ"/>
+/// or <see cref="SweepSpace.ThreeD"/> over more than 50 objects use a spatial hash broadphase (500-unit cells, rebuilt
+/// when the snapshot version changes); everything else is a linear scan. Not thread-safe (shared broadphase buffers).
+/// </remarks>
 [Service(typeof(ICombatService))]
 public class CombatService : ICombatService
 {
@@ -32,10 +45,20 @@ public class CombatService : ICombatService
     private readonly ILagCompensationService? _lagCompensation;
     private readonly ILogger _logger;
 
+    /// <inheritdoc/>
     public event Action<HitEvent>? OnHit;
+    /// <inheritdoc/>
     public event Action<DeathEvent>? OnDeath;
+    /// <inheritdoc/>
     public event Action<SweepEvent>? OnSweep;
 
+    /// <summary>Created by DI; all dependencies except the logger factory are optional.</summary>
+    /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="calculator">Game damage formula; <see cref="DefaultDamageCalculator"/> when null.</param>
+    /// <param name="worldOrganizer">3D world source for sweeps; sweeps find nothing when null.</param>
+    /// <param name="lagCompensation">Enables transparent rewind in <see cref="Attack"/>/<see cref="Sweep"/> when present
+    /// (registered when <c>altruist:game:lag-compensation</c> is configured).</param>
+    /// <param name="combatEvents">Dispatcher for <c>[CombatEvent]</c> handlers; handlers are skipped when null.</param>
     public CombatService(
         ILoggerFactory loggerFactory,
         IDamageCalculator? calculator = null,
@@ -51,6 +74,7 @@ public class CombatService : ICombatService
         _logger.LogInformation("CombatService using damage calculator: {Type}", _calculator.GetType().FullName);
     }
 
+    /// <inheritdoc/>
     public HitResult Attack(ICombatEntity attacker, ICombatEntity target, object? context = null)
     {
         // Transparent lag compensation: if enabled and client sent a tick, rewind
@@ -72,6 +96,7 @@ public class CombatService : ICombatService
         return ApplyDamage(attacker, target, spec.Damage, spec.Flags, context);
     }
 
+    /// <inheritdoc/>
     public HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal, object? context = null)
     {
         if (target.IsDead)
@@ -90,6 +115,7 @@ public class CombatService : ICombatService
         return new HitResult(target, damage, flags, killed);
     }
 
+    /// <inheritdoc/>
     public SweepResult Sweep(ICombatEntity attacker, SweepQuery3D query, int? damage = null, DamageFlags flags = DamageFlags.Normal, object? context = null)
     {
         // Transparent lag compensation: if enabled and client sent a tick, rewind
@@ -131,6 +157,7 @@ public class CombatService : ICombatService
         return result;
     }
 
+    /// <inheritdoc/>
     public void Kill(ICombatEntity entity, ICombatEntity? killer = null)
     {
         entity.Health = 0;

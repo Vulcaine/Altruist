@@ -15,32 +15,49 @@ using Altruist.Persistence;
 
 namespace Altruist.Migrations;
 
+/// <summary>Current physical state of one schema as read by <see cref="ISchemaInspector"/>: its tables keyed by name (case-insensitive).</summary>
 public sealed class DatabaseModel
 {
+    /// <summary>Normalized schema name.</summary>
     public string Schema { get; }
+    /// <summary>Tables keyed by name.</summary>
     public IReadOnlyDictionary<string, TableModel> Tables { get; }
 
+    /// <summary>Creates the model.</summary>
+    /// <param name="schema">Schema name.</param>
+    /// <param name="tables">Tables keyed by name.</param>
     public DatabaseModel(string schema, IReadOnlyDictionary<string, TableModel> tables)
     {
         Schema = schema ?? throw new ArgumentNullException(nameof(schema));
         Tables = tables ?? throw new ArgumentNullException(nameof(tables));
     }
 
+    /// <summary>Looks up a table by name.</summary>
+    /// <param name="tableName">Table name.</param>
+    /// <param name="table">The table when found.</param>
+    /// <returns>True when the table exists.</returns>
     public bool TryGetTable(string tableName, out TableModel table) =>
         Tables.TryGetValue(tableName, out table!);
 }
 
+/// <summary>Schema name plus tables. Not used by the built-in planner, which works with <see cref="DatabaseModel"/>.</summary>
 public sealed class SchemaModel
 {
+    /// <summary>Schema name.</summary>
     public string Name { get; init; } = "";
+    /// <summary>Tables keyed by name (case-insensitive by default).</summary>
     public IReadOnlyDictionary<string, TableModel> Tables { get; init; } =
         new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase);
 }
 
+/// <summary>Physical state of one table: columns, primary key, unique constraints, indexes and foreign keys.</summary>
 public sealed class TableModel
 {
+    /// <summary>Table name.</summary>
     public string Name { get; }
+    /// <summary>Columns keyed by name.</summary>
     public IReadOnlyDictionary<string, ColumnModel> Columns { get; }
+    /// <summary>Primary key columns in order; empty when none.</summary>
     public IReadOnlyList<string> PrimaryKeyColumns { get; }
 
     /// <summary>
@@ -49,11 +66,21 @@ public sealed class TableModel
     /// </summary>
     public IReadOnlyDictionary<string, UniqueConstraintModel> UniqueConstraints { get; }
 
+    /// <summary>Single-column indexes keyed by index name.</summary>
     public IReadOnlyDictionary<string, IndexModel> Indexes { get; }
 
     // NEW:
+    /// <summary>Foreign keys declared on the table.</summary>
     public IReadOnlyList<ForeignKeyModel> ForeignKeys { get; }
 
+    /// <summary>Creates the model; null collections become empty.</summary>
+    /// <param name="name">Table name.</param>
+    /// <param name="columns">Columns keyed by name.</param>
+    /// <param name="primaryKeyColumns">Primary key columns.</param>
+    /// <param name="uniqueConstraints">Unique constraints keyed by name.</param>
+    /// <param name="indexes">Indexes keyed by name.</param>
+    /// <param name="foreignKeys">Foreign keys.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="name"/> or <paramref name="columns"/> is null.</exception>
     public TableModel(
         string name,
         IReadOnlyDictionary<string, ColumnModel> columns,
@@ -71,12 +98,20 @@ public sealed class TableModel
     }
 }
 
+/// <summary>Physical state of one column.</summary>
 public sealed class ColumnModel
 {
+    /// <summary>Column name.</summary>
     public string Name { get; }
+    /// <summary>Database store type as reported by the catalog.</summary>
     public string StoreType { get; }
+    /// <summary>Whether the column allows NULL.</summary>
     public bool IsNullable { get; }
 
+    /// <summary>Creates the model.</summary>
+    /// <param name="name">Column name.</param>
+    /// <param name="storeType">Store type.</param>
+    /// <param name="isNullable">Whether NULL is allowed.</param>
     public ColumnModel(string name, string storeType, bool isNullable)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -85,11 +120,17 @@ public sealed class ColumnModel
     }
 }
 
+/// <summary>A single-column index.</summary>
 public sealed class IndexModel
 {
+    /// <summary>Index name.</summary>
     public string Name { get; }
+    /// <summary>Indexed column.</summary>
     public string Column { get; }
 
+    /// <summary>Creates the model.</summary>
+    /// <param name="name">Index name.</param>
+    /// <param name="column">Indexed column.</param>
     public IndexModel(string name, string column)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -97,8 +138,10 @@ public sealed class IndexModel
     }
 }
 
+/// <summary>A UNIQUE constraint over one or more columns.</summary>
 public sealed class UniqueConstraintModel
 {
+    /// <summary>Constraint name.</summary>
     public string Name { get; }
 
     /// <summary>
@@ -106,6 +149,10 @@ public sealed class UniqueConstraintModel
     /// </summary>
     public List<string> Columns { get; }
 
+    /// <summary>Creates the model.</summary>
+    /// <param name="name">Constraint name.</param>
+    /// <param name="columns">Columns, at least one.</param>
+    /// <exception cref="ArgumentException"><paramref name="columns"/> is empty.</exception>
     public UniqueConstraintModel(string name, IEnumerable<string> columns)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -118,13 +165,23 @@ public sealed class UniqueConstraintModel
     }
 }
 
+/// <summary>A foreign key constraint from one column to a principal table column.</summary>
 public sealed class ForeignKeyModel
 {
+    /// <summary>Constraint name.</summary>
     public string Name { get; }
+    /// <summary>Dependent column.</summary>
     public string Column { get; }
+    /// <summary>Referenced table.</summary>
     public string PrincipalTable { get; }
+    /// <summary>Referenced column.</summary>
     public string PrincipalColumn { get; }
 
+    /// <summary>Creates the model.</summary>
+    /// <param name="name">Constraint name.</param>
+    /// <param name="column">Dependent column.</param>
+    /// <param name="principalTable">Referenced table.</param>
+    /// <param name="principalColumn">Referenced column.</param>
     public ForeignKeyModel(string name, string column, string principalTable, string principalColumn)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -142,15 +199,37 @@ public sealed class ForeignKeyModel
 /// </summary>
 public interface IMigrationPlanner
 {
+    /// <summary>Computes the operations that turn the current schemas into the desired documents.</summary>
+    /// <param name="currentBySchema">Current state per normalized schema name; missing schemas are treated as empty.</param>
+    /// <param name="desiredDocuments">Desired tables, ordered so foreign-key principals come first.</param>
+    /// <returns>Operations in execution order; empty when nothing changes.</returns>
     IReadOnlyList<MigrationOperation> Plan(
         IReadOnlyDictionary<string, DatabaseModel> currentBySchema,
         IReadOnlyList<VaultDocument> desiredDocuments);
 }
 
+/// <summary>
+/// Provider-agnostic diff engine. Providers supply type mapping (<see cref="MapClrTypeToStoreType"/>) and defaults;
+/// the base plans in four passes over the documents.
+/// </summary>
+/// <remarks>
+/// <list type="number">
+/// <item>Tables: archive/drop tables marked <see cref="Altruist.UORM.VaultArchivedAttribute"/> /
+/// <see cref="Altruist.UORM.VaultTableDeleteAttribute"/>; create new tables (with history tables when
+/// <c>StoreHistory</c> is set); diff existing ones (renames from <see cref="Altruist.UORM.VaultRenamedFromAttribute"/>,
+/// type changes, added columns, dropped unmapped columns, unique constraints, indexes, history table).</item>
+/// <item>Column copies from <see cref="Altruist.UORM.VaultColumnCopyAttribute"/> (only when the source column exists).</item>
+/// <item>Drops of columns marked <see cref="Altruist.UORM.VaultColumnDeleteAttribute"/> (only when they exist).</item>
+/// <item>Foreign keys (add missing, drop stale), after all tables exist.</item>
+/// </list>
+/// Destructive by design: existing columns not mapped by the model are dropped.
+/// </remarks>
 public abstract class AbstractMigrationPlanner : IMigrationPlanner
 {
+    /// <summary>Maximum generated constraint name length (kept in sync with <see cref="ConstraintUtil.MaxConstraintNameLength"/>).</summary>
     protected const int MaxConstraintNameLength = 60;
 
+    /// <inheritdoc/>
     public IReadOnlyList<MigrationOperation> Plan(
         IReadOnlyDictionary<string, DatabaseModel> currentBySchema,
         IReadOnlyList<VaultDocument> desiredDocuments)
@@ -308,6 +387,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     /// </summary>
     protected virtual string? MapClrDefaultValueToStoreDefault(object? value, Type type) => null;
 
+    /// <summary>DEFAULT expression for a column, from the model's initializer value via <see cref="MapClrDefaultValueToStoreDefault"/>; null when none.</summary>
+    /// <param name="doc">The document.</param>
+    /// <param name="columnName">Physical column name.</param>
+    /// <param name="clrType">Property type.</param>
+    /// <returns>SQL DEFAULT expression or null.</returns>
     protected string? ResolveColumnDefaultSql(VaultDocument doc, string columnName, Type clrType)
     {
         return doc.ColumnDefaultValues.TryGetValue(columnName, out var defaultValue)
@@ -351,6 +435,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
     // ---------- helpers for unique constraints ----------
 
+    /// <summary>Order- and case-insensitive key for a column set (lower-cased, sorted, joined with <c>|</c>); used to match unique constraints.</summary>
+    /// <param name="columns">Column names.</param>
+    /// <returns>The normalized key.</returns>
     protected static string NormalizeColumnSet(IEnumerable<string> columns)
     {
         return string.Join("|",
@@ -360,6 +447,10 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 .OrderBy(c => c, StringComparer.Ordinal));
     }
 
+    /// <summary>Name for a composite unique constraint: <c>uq_{table}_{cols}</c>, hashed when too long.</summary>
+    /// <param name="tableName">Table name.</param>
+    /// <param name="columns">Physical columns.</param>
+    /// <returns>Constraint name.</returns>
     protected static string BuildUniqueConstraintName(string tableName, IReadOnlyList<string> columns)
     {
         // Deterministic, safe-length naming.
@@ -369,6 +460,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
     // ---------- core planning logic (provider-agnostic, uses hooks above) ----------
 
+    /// <summary>Plans CREATE TABLE (single-column unique keys inline), composite unique constraints and indexes for a new table.</summary>
+    /// <param name="ops">Operation list to append to.</param>
+    /// <param name="schema">Target schema.</param>
+    /// <param name="doc">The table's document.</param>
+    /// <param name="allDocs">All desired documents.</param>
+    /// <exception cref="InvalidOperationException">The model has no primary key or a field type is missing.</exception>
     protected void PlanNewTable(
         List<MigrationOperation> ops,
         string schema,
@@ -457,6 +554,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
     }
 
+    /// <summary>Plans ADD FOREIGN KEY for every declared foreign key of a new table.</summary>
+    /// <param name="ops">Operation list to append to.</param>
+    /// <param name="schema">Table schema.</param>
+    /// <param name="doc">The table's document.</param>
+    /// <param name="allDocs">All desired documents (to resolve principals).</param>
     protected void PlanForeignKeysForNewTable(
     List<MigrationOperation> ops,
     string schema,
@@ -489,6 +591,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
     }
 
+    /// <summary>Plans foreign key additions and drops for an existing table.</summary>
+    /// <param name="ops">Operation list to append to.</param>
+    /// <param name="schema">Table schema.</param>
+    /// <param name="doc">The table's document.</param>
+    /// <param name="existing">Current table state.</param>
+    /// <param name="allDocs">All desired documents (to resolve principals).</param>
     protected void PlanForeignKeyDiff(
     List<MigrationOperation> ops,
     string schema,
@@ -595,6 +703,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         return (principalSchema, principalDoc.Name, principalColumn);
     }
 
+    /// <summary>When <c>StoreHistory</c> is set, plans <c>&lt;table&gt;_history</c>: all columns nullable plus a <c>timestamp</c> column, primary key = table key + timestamp, and an index per key column.</summary>
+    /// <param name="ops">Operation list to append to.</param>
+    /// <param name="schema">Target schema.</param>
+    /// <param name="doc">The table's document.</param>
+    /// <exception cref="InvalidOperationException">The model has no primary key or a field type is missing.</exception>
     protected void PlanHistoryTableForNew(
         List<MigrationOperation> ops,
         string schema,
@@ -652,6 +765,12 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
     }
 
+    /// <summary>Plans renames, type changes, added and dropped columns, unique constraint and index changes for an existing table.</summary>
+    /// <param name="ops">Operation list to append to.</param>
+    /// <param name="schema">Table schema.</param>
+    /// <param name="doc">The table's document.</param>
+    /// <param name="existing">Current table state.</param>
+    /// <param name="allDocs">All desired documents.</param>
     protected void PlanExistingTableDiff(
         List<MigrationOperation> ops,
         string schema,
@@ -883,6 +1002,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         }
     }
 
+    /// <summary>When <c>StoreHistory</c> is set, creates the history table if missing or adds/drops its columns and key indexes to match the model.</summary>
+    /// <param name="ops">Operation list to append to.</param>
+    /// <param name="schema">Table schema.</param>
+    /// <param name="doc">The table's document.</param>
+    /// <param name="current">Current schema state.</param>
     protected void PlanHistoryTableDiff(
         List<MigrationOperation> ops,
         string schema,
@@ -968,6 +1092,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
 
     // ---------- helpers ----------
 
+    /// <summary>Physical primary key columns from the model's primary key attribute (unmapped names fall back to camelCase).</summary>
+    /// <param name="doc">The document.</param>
+    /// <returns>Primary key columns; empty when none declared.</returns>
     protected static List<string> ResolvePrimaryKeyColumns(VaultDocument doc)
     {
         var result = new List<string>();
@@ -982,6 +1109,9 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         return result;
     }
 
+    /// <summary>Physical column of <see cref="Altruist.UORM.VaultSortingByAttribute"/>, or null; it is indexed like a <see cref="Altruist.UORM.VaultColumnIndexAttribute"/> column.</summary>
+    /// <param name="doc">The document.</param>
+    /// <returns>The column or null.</returns>
     protected static string? ResolveSortingColumn(VaultDocument doc)
     {
         var sortProp = doc.SortingBy?.Name;
@@ -993,6 +1123,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             : VaultDocument.ToCamelCase(sortProp);
     }
 
+    /// <summary>Builds <c>{prefix}_{parts}</c> (lower-cased); names longer than <see cref="MaxConstraintNameLength"/> are truncated with a 12-hex-char SHA-256 suffix. Mirrors <see cref="ConstraintUtil.ConstructConstraintName"/>.</summary>
+    /// <param name="prefix">Name prefix, e.g. <c>uq</c>.</param>
+    /// <param name="parts">Name parts; blanks are skipped.</param>
+    /// <returns>Deterministic constraint name.</returns>
+    /// <exception cref="ArgumentException"><paramref name="prefix"/> is blank.</exception>
     protected static string ConstructConstraintName(string prefix, params string[] parts)
     {
         if (string.IsNullOrWhiteSpace(prefix))

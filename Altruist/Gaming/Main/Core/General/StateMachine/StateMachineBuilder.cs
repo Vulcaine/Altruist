@@ -175,6 +175,8 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
 
     // ── Fluent per-state configurator ──────────────────────────────────────────
 
+    /// <summary>Fluent per-state overrides returned by <see cref="ConfigureState"/>; every call
+    /// writes into the owning builder (taking effect at the next <see cref="Build"/>).</summary>
     public sealed class StateConfig
     {
         private readonly StateMachineBuilder<TContext> _owner;

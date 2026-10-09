@@ -38,6 +38,9 @@ namespace Altruist.Gaming.Flow;
 ///     .Build();
 /// tick.Run(sim);
 /// </code>
+///
+/// <para>Choosing: use this when EVERY step runs each tick in a fixed order (optionally stopping
+/// early); use <see cref="FirstMatch{TCtx}"/> when only the first matching branch should run.</para>
 /// </summary>
 public sealed class TickPipeline<TCtx>
 {

@@ -19,23 +19,45 @@ namespace Altruist;
 /// This works independently of ConditionalOnConfig — codecs that aren't the global default
 /// can still be used for specific transports.
 /// </summary>
+/// <remarks>
+/// Config keys: <c>altruist:server:transport:&lt;mode&gt;:codec:provider</c> (per transport, e.g. <c>websocket</c>,
+/// <c>tcp</c>) and <c>altruist:server:transport:codec:provider</c> (global). Unknown names fall through to the next step
+/// silently. Registered as a singleton by <see cref="CodecResolver"/> only when <c>altruist:server:transport</c> is
+/// configured. Inject this instead of <see cref="ICodec"/> when the codec must follow config or differ per transport.
+/// </remarks>
+/// <example>
+/// <code>
+/// var codec = codecResolver.ResolveForConnection(connection);
+/// var packet = codec.Decoder.Decode&lt;MyPacket&gt;(bytes);
+/// </code>
+/// </example>
 public interface ICodecResolver
 {
     /// <summary>
     /// Resolve the codec for a given transport mode.
     /// Pass null for the global default.
     /// </summary>
+    /// <param name="transportMode">Transport name as used in config (e.g. <c>websocket</c>, <c>tcp</c>), or <c>null</c>.</param>
+    /// <returns>The per-transport codec, else the global default, else the first discovered codec.</returns>
+    /// <exception cref="InvalidOperationException">No <see cref="CodecProviderAttribute"/> codec exists at all.</exception>
     ICodec Resolve(string? transportMode = null);
 
     /// <summary>
     /// Resolve the codec based on the connection type (WebSocketConnection → "websocket", etc.).
     /// </summary>
+    /// <remarks>The mode is inferred from the connection's class name: containing "WebSocket" maps to <c>websocket</c>,
+    /// containing "Tcp" to <c>tcp</c>, anything else to the global default.</remarks>
+    /// <param name="connection">The connection whose transport decides the codec.</param>
     ICodec ResolveForConnection(AltruistConnection connection);
 
-    /// <summary>Get a codec by its provider name directly.</summary>
+    /// <summary>Get a codec by its provider name directly (case-insensitive), bypassing config. Returns <c>null</c> if unknown.</summary>
     ICodec? GetByName(string providerName);
 }
 
+/// <summary>
+/// Default <see cref="ICodecResolver"/>: collects DI-registered codecs plus every other
+/// <see cref="CodecProviderAttribute"/> type found by reflection (created with <c>ActivatorUtilities</c>) once, at construction.
+/// </summary>
 [Service(typeof(ICodecResolver))]
 [ConditionalOnConfig("altruist:server:transport")]
 public class CodecResolver : ICodecResolver
@@ -44,6 +66,7 @@ public class CodecResolver : ICodecResolver
     private readonly IConfiguration _config;
     private readonly ILogger _logger;
 
+    /// <summary>Discovers and instantiates all codec providers. Constructed by DI.</summary>
     public CodecResolver(IServiceProvider serviceProvider, IConfiguration config, ILoggerFactory loggerFactory)
     {
         _config = config;
@@ -99,6 +122,7 @@ public class CodecResolver : ICodecResolver
             _logger.LogInformation("Available codec providers: {Codecs}", string.Join(", ", _codecs.Keys));
     }
 
+    /// <inheritdoc/>
     public ICodec Resolve(string? transportMode = null)
     {
         // 1. Transport-specific override
@@ -123,6 +147,7 @@ public class CodecResolver : ICodecResolver
             "and configure altruist:server:transport:codec:provider in config.yml.");
     }
 
+    /// <inheritdoc/>
     public ICodec ResolveForConnection(AltruistConnection connection)
     {
         var transportMode = connection switch
@@ -135,6 +160,7 @@ public class CodecResolver : ICodecResolver
         return Resolve(transportMode);
     }
 
+    /// <inheritdoc/>
     public ICodec? GetByName(string providerName)
         => _codecs.TryGetValue(providerName, out var codec) ? codec : null;
 }

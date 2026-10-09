@@ -33,11 +33,17 @@ namespace Altruist;
 /// </summary>
 public sealed class FleetRelayMiddleware
 {
+    /// <summary>Signed relay header: the client's IP address.</summary>
     public const string ForHeader = "X-Altruist-Relay-For";
+    /// <summary>Signed relay header: the client's original scheme.</summary>
     public const string ProtoHeader = "X-Altruist-Relay-Proto";
+    /// <summary>Signed relay header: the client's original host.</summary>
     public const string HostHeader = "X-Altruist-Relay-Host";
+    /// <summary>Signed relay header: Unix time (seconds) of signing; accepted within 60 s of skew.</summary>
     public const string TimeHeader = "X-Altruist-Relay-Time";
+    /// <summary>Base64 HMAC-SHA256 over ip|proto|host|time.</summary>
     public const string SignatureHeader = "X-Altruist-Relay-Signature";
+    /// <see cref="HttpContext.Items"/> key set to true on requests restored from a verified relay (they are never relayed again).
     public const string RelayedItem = "altruist:fleet:relayed";
 
     private static readonly TimeSpan MaxSkew = TimeSpan.FromSeconds(60);
@@ -50,6 +56,15 @@ public sealed class FleetRelayMiddleware
     private readonly byte[]? _key;
     private readonly ILogger _logger;
 
+    /// <summary>
+    /// Creates the middleware. Installed automatically by the startup pipeline (before routing and shields) whenever an
+    /// <see cref="IFleet"/> is registered; you do not add it yourself.
+    /// </summary>
+    /// <remarks>Without a secret (<c>altruist:server:fleet:secret</c> or <c>altruist:security:key</c>) nothing is relayed and incoming relay headers are stripped and ignored. Relays connect over plain <c>ws://</c> to the target's internal address.</remarks>
+    /// <param name="next">Next middleware.</param>
+    /// <param name="fleet">Fleet used to find the target server.</param>
+    /// <param name="config">Configuration (relay secret).</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
     public FleetRelayMiddleware(RequestDelegate next, IFleet fleet, IConfiguration? config = null, ILoggerFactory? loggerFactory = null)
     {
         _next = next;
@@ -60,6 +75,8 @@ public sealed class FleetRelayMiddleware
         _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<FleetRelayMiddleware>();
     }
 
+    /// <summary>Restores a verified relayed client's identity, then relays a WebSocket request for another live server or passes it on.</summary>
+    /// <param name="context">HTTP context.</param>
     public async Task InvokeAsync(HttpContext context)
     {
         RestoreRelayedClient(context);

@@ -8,18 +8,64 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
+    /// <summary>
+    /// Registry and per-frame driver of all 3D worlds (<see cref="IGameWorldManager3D"/>). Inject it to look a world
+    /// up by index or name; the engine steps it automatically.
+    /// </summary>
+    /// <remarks>
+    /// Registered only when <c>altruist:environment:mode</c> is <c>3D</c> and <c>altruist:game</c> is configured.
+    /// For 2D games use <see cref="Altruist.Gaming.TwoD.IGameWorldOrganizer2D"/>. Worlds are normally created from
+    /// configuration (<c>altruist:game:worlds:items</c>) at construction; <see cref="AddWorld"/> is for worlds built at runtime.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// public sealed class SpawnPortal(IGameWorldOrganizer3D worlds)
+    /// {
+    ///     public Task Spawn(IWorldObject3D obj) =&gt; worlds.GetWorld(0)!.SpawnObject(obj);
+    /// }
+    /// </code>
+    /// </example>
     public interface IGameWorldOrganizer3D : IGameWorldOrganizer
     {
+        /// <summary>Registers a world under its <c>Index.Index</c> so it is stepped every frame.</summary>
+        /// <param name="manager">The world to add.</param>
+        /// <returns><paramref name="manager"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="manager"/> is <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">A world with the same index is already registered.</exception>
         IGameWorldManager3D AddWorld(IGameWorldManager3D manager);
+        /// <summary>Unregisters the world with the given index (no-op if absent). Its objects and physics world are not disposed.</summary>
+        /// <param name="index">World index (<c>IWorldIndex.Index</c>).</param>
         void RemoveWorld(int index);
+        /// <summary>Returns the world with the given index, or <c>null</c>.</summary>
+        /// <param name="index">World index (<c>IWorldIndex.Index</c>, from config <c>*:index</c>).</param>
         IGameWorldManager3D? GetWorld(int index);
+        /// <summary>Returns the first world whose <c>Index.Name</c> equals <paramref name="name"/> (ordinal), or <c>null</c>. Linear scan; prefer <see cref="GetWorld(int)"/> on hot paths.</summary>
+        /// <param name="name">World name (config <c>*:name</c>, falling back to <c>*:id</c>, then <c>"World {index}"</c>).</param>
         IGameWorldManager3D? GetWorld(string name);
 
+        /// <summary>Enumerates all registered worlds (live view; order unspecified).</summary>
         IEnumerable<IGameWorldManager3D> GetAllWorlds();
+        /// <summary>
+        /// Attaches the visibility tracker ticked after each world step. Only a <see cref="VisibilityTracker3D"/> is ticked;
+        /// other implementations are stored but ignored. <see cref="VisibilityTracker3D"/> calls this itself from its <c>[PostConstruct]</c> wiring.
+        /// </summary>
+        /// <param name="tracker">The tracker, or <c>null</c> to stop visibility ticking.</param>
         void SetVisibilityTracker(IVisibilityTracker? tracker);
     }
 
     // Stepped by the WorldCoordinator (the engine's IGameWorldOrganizer) with the variable frame time.
+    /// <summary>
+    /// Default <see cref="IGameWorldOrganizer3D"/>, also an <see cref="IWorldStepper"/> in variable-step mode. Each
+    /// <see cref="Step"/>: for every world (in parallel when there is more than one) destroys expired objects, calls
+    /// each object's <c>Step(dt, world)</c>, steps physics and copies body position/rotation back to <c>Transform</c>
+    /// (or via <see cref="IPhysicsTransformSync3D"/>); then records position history, ticks AI, visibility (on a
+    /// background task) and entity sync with the shared per-world <see cref="WorldSnapshot"/>s.
+    /// </summary>
+    /// <remarks>
+    /// Singleton DI service. Config: <c>altruist:game:worlds:entity-sync-hz</c> (default 25). Exceptions thrown by
+    /// object <c>Step</c>, physics, AI and entity sync are swallowed silently; only visibility errors are logged to stderr.
+    /// Because worlds step in parallel, object <c>Step</c> code must not touch other worlds.
+    /// </remarks>
     [Service(typeof(IWorldStepper))]
     [Service(typeof(IGameWorldOrganizer3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
@@ -38,12 +84,24 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         private readonly float _engineFrequencyHz;
 
+        /// <summary>Fallback entity sync rate (Hz) when the configured value is missing or not positive.</summary>
         public const float DefaultEntitySyncHz = 25f;
 
         /// <summary>The sync rate passed to the entity sync service (<c>altruist:game:worlds:entity-sync-hz</c>).</summary>
         public float EntitySyncHz => _engineFrequencyHz;
         private long _stepCount;
 
+        /// <summary>
+        /// Creates the organizer and synchronously loads every configured world through <paramref name="worldLoader"/>
+        /// (blocking on <see cref="IWorldLoader3D.LoadFromIndex"/>).
+        /// </summary>
+        /// <param name="worldLoader">Loader that builds a manager per world index.</param>
+        /// <param name="gameWorlds">All configured world indices.</param>
+        /// <param name="entitySyncService">Optional entity sync service ticked each step.</param>
+        /// <param name="aiBehaviorService">Optional AI service ticked each step.</param>
+        /// <param name="positionRecorder">Optional lag-compensation position recorder.</param>
+        /// <param name="entitySyncHz">Rate passed to the entity sync service (<c>altruist:game:worlds:entity-sync-hz</c>).</param>
+        /// <exception cref="ArgumentNullException"><paramref name="gameWorlds"/> is <c>null</c>.</exception>
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
             IEnumerable<IWorldIndex3D> gameWorlds,
@@ -71,6 +129,7 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <inheritdoc/>
         public void SetVisibilityTracker(IVisibilityTracker? tracker)
         {
             _visibilityTracker = tracker;
@@ -97,6 +156,7 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <inheritdoc/>
         public IGameWorldManager3D AddWorld(IGameWorldManager3D manager)
         {
             if (manager is null)
@@ -110,16 +170,19 @@ namespace Altruist.Gaming.ThreeD
             return manager;
         }
 
+        /// <inheritdoc/>
         public virtual void RemoveWorld(int index)
         {
             _worlds.Remove(index);
         }
 
+        /// <inheritdoc/>
         public virtual IGameWorldManager3D? GetWorld(int index)
         {
             return _worlds.TryGetValue(index, out var manager) ? manager : null;
         }
 
+        /// <inheritdoc/>
         public virtual IGameWorldManager3D? GetWorld(string name)
         {
             return _worlds
@@ -128,8 +191,12 @@ namespace Altruist.Gaming.ThreeD
                 .FirstOrDefault();
         }
 
+        /// <summary>Indices of all registered worlds.</summary>
         public virtual IEnumerable<int> GetAllWorldIndices() => _worlds.Keys;
 
+        /// <summary>Advances every world by <paramref name="deltaTime"/> and runs AI, visibility and entity sync; called by the world coordinator once per frame.</summary>
+        /// <param name="deltaTime">Elapsed real time in seconds.</param>
+        /// <remarks>Rethrows only exceptions escaping the outer pipeline (after logging them as <c>[STEP-CRASH]</c>).</remarks>
         public void Step(float deltaTime)
         {
             _stepCount++;
@@ -268,8 +335,10 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <summary><c>true</c> when no world is registered.</summary>
         public bool Empty() => _worlds.Count == 0;
 
+        /// <inheritdoc/>
         public IEnumerable<IGameWorldManager3D> GetAllWorlds()
         {
             return _worlds.Values;

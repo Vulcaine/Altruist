@@ -14,6 +14,7 @@ namespace Altruist.Gaming.ThreeD;
 ///
 /// Stateful per-call: not thread-safe. Allocate one per worker, or call from
 /// a single thread.</summary>
+/// <remarks>Most callers should use <see cref="INavMeshService.FindPath"/>, which pools one pathfinder per thread and adds funnel smoothing.</remarks>
 public sealed class NavMeshPathfinder
 {
     // Open set as a binary min-heap on f-score.
@@ -24,6 +25,10 @@ public sealed class NavMeshPathfinder
 
     /// <summary>Find a polygon-level path. Returns false if no path exists
     /// (disconnected components, or either index out of range).</summary>
+    /// <param name="graph">The nav-mesh.</param>
+    /// <param name="startPoly">Start polygon index.</param>
+    /// <param name="goalPoly">Goal polygon index.</param>
+    /// <param name="polyPath">Polygon indices start to goal inclusive; empty on failure.</param>
     public bool TryFind(NavMeshGraph graph, int startPoly, int goalPoly, out int[] polyPath)
     {
         polyPath = Array.Empty<int>();

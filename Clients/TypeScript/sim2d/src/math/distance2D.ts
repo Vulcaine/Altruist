@@ -5,12 +5,15 @@
  */
 import type { Vec2Like } from './vec2.ts';
 
-/** Manhattan distance with the vertical part weighted: `Math.abs(dx) + Math.abs(dy) * weightY`. */
+/** Manhattan distance with the vertical part weighted: `Math.abs(dx) + Math.abs(dy) * weightY`
+ * (`weightY` > 1 makes height differences count more). Mirrors C# `Distance2D.Weighted`. For a
+ * Euclidean length use {@link VectorMath2D.lengthXY}. */
 export function weighted(dx: number, dy: number, weightY: number): number {
   return Math.abs(dx) + Math.abs(dy) * weightY;
 }
 
-/** `Math.abs(a.x - b.x) + Math.abs(a.y - b.y) * weightY`. */
+/** {@link weighted} between two points: `Math.abs(a.x - b.x) + Math.abs(a.y - b.y) * weightY`.
+ * Mirrors C# `Distance2D.WeightedBetween`. */
 export function weightedBetween(a: Vec2Like, b: Vec2Like, weightY: number): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) * weightY;
 }

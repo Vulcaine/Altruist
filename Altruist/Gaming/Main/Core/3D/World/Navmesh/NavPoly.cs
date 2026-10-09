@@ -14,13 +14,21 @@ namespace Altruist.Gaming.ThreeD;
 /// time so paths follow terrain elevation.</summary>
 public sealed class NavPoly
 {
+    /// <summary>Index of this polygon in its <see cref="NavMeshGraph"/>.</summary>
     public int Index { get; }
+    /// <summary>Vertices in world space, CCW from above.</summary>
     public Vector3[] Vertices { get; }
+    /// <summary>Vertex average (used for A* costs and heuristics).</summary>
     public Vector3 Centroid { get; }
-    /// <summary>Axis-aligned XZ bounds, used for spatial-index pruning.</summary>
+    /// <summary>Axis-aligned XZ bounds, used for spatial-index pruning: minimum X (in <c>X</c>) and Z (in <c>Y</c>).</summary>
     public Vector2 MinXZ { get; }
+    /// <summary>Maximum X (in <c>X</c>) and Z (in <c>Y</c>) of the polygon.</summary>
     public Vector2 MaxXZ { get; }
 
+    /// <summary>Creates a polygon and precomputes centroid and XZ bounds.</summary>
+    /// <param name="index">Index in the owning graph.</param>
+    /// <param name="vertices">At least three vertices, convex, CCW from above (array is not copied).</param>
+    /// <exception cref="ArgumentException">Fewer than three vertices.</exception>
     public NavPoly(int index, Vector3[] vertices)
     {
         if (vertices == null || vertices.Length < 3)
@@ -101,6 +109,7 @@ public sealed class NavPoly
 /// world-space waypoint list.</summary>
 public readonly struct NavEdge
 {
+    /// <summary>Polygon the edge leaves.</summary>
     public readonly int FromPoly;
     /// <summary>-1 if this is a border edge (no neighbor on the other side).</summary>
     public readonly int ToPoly;
@@ -108,9 +117,17 @@ public readonly struct NavEdge
     /// when crossing from <c>FromPoly</c> to <c>ToPoly</c>; the funnel relies
     /// on this orientation invariant.</summary>
     public readonly Vector3 V0;
+    /// <summary>Portal endpoint on the right when crossing from <c>FromPoly</c> to <c>ToPoly</c>.</summary>
     public readonly Vector3 V1;
+    /// <summary>A* traversal cost (builder: distance between the two polygon centroids).</summary>
     public readonly float Cost;
 
+    /// <summary>Creates a portal edge.</summary>
+    /// <param name="fromPoly">Polygon being left.</param>
+    /// <param name="toPoly">Polygon being entered, or -1 for a border edge.</param>
+    /// <param name="v0">Left endpoint.</param>
+    /// <param name="v1">Right endpoint.</param>
+    /// <param name="cost">Traversal cost.</param>
     public NavEdge(int fromPoly, int toPoly, Vector3 v0, Vector3 v1, float cost)
     {
         FromPoly = fromPoly;

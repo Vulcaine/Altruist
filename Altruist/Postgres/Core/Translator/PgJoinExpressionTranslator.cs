@@ -4,10 +4,22 @@ using Altruist.Querying;
 
 namespace Altruist.Persistence.Postgres.Querying;
 
+/// <summary>
+/// Translator for multi-table queries (<see cref="PgVaultQuery"/> join chains). Vaults are passed as
+/// <c>object</c> and read dynamically (<c>Keyspace</c>, <c>VaultDocument</c>); each lambda parameter is mapped to
+/// the vault of its table, and columns are emitted fully qualified (<c>"schema"."table"."col"</c>).
+/// </summary>
+/// <remarks>
+/// Unlike <see cref="PgQueryTranslator"/> the WHERE visitor accepts any binary tree of comparison and
+/// <c>&amp;&amp;</c>/<c>||</c> nodes (column-to-column included); leaves that are not rooted in a query parameter are
+/// compiled and evaluated client-side. Null values are emitted as <c>NULL</c> with the plain operator
+/// (<c>= NULL</c>), not <c>IS NULL</c>.
+/// </remarks>
 internal static class PgJoinExpressionTranslator
 {
     // ---------------- JOIN ----------------
 
+    /// <summary>Typed wrapper over <see cref="BuildJoinDynamic"/>.</summary>
     public static string BuildJoin<TLeft, TRight>(
         PgVault<TLeft> left,
         PgVault<TRight> right,
@@ -18,6 +30,11 @@ internal static class PgJoinExpressionTranslator
         where TRight : class, IVaultModel
         => BuildJoinDynamic(left, right, leftKey, rightKey, joinType);
 
+    /// <summary>
+    /// Builds <c>&lt;JOIN KIND&gt; "schema"."right" ON left.col = right.col</c>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Unknown <paramref name="joinType"/>.</exception>
+    /// <exception cref="NotSupportedException">A key selector is not a member access.</exception>
     public static string BuildJoinDynamic(
         object left,
         object right,
@@ -42,6 +59,10 @@ internal static class PgJoinExpressionTranslator
 
     // ---------------- SELECT (2..6 params) ----------------
 
+    /// <summary>
+    /// Builds <c>SELECT ... FROM root [joins] [WHERE a AND b ...]</c>; a null <paramref name="projection"/> selects
+    /// <c>*</c>. ORDER BY / LIMIT / OFFSET are appended by the caller.
+    /// </summary>
     public static string BuildSelect(
         LambdaExpression? projection,
         object from,
@@ -64,6 +85,8 @@ internal static class PgJoinExpressionTranslator
 
     // ---------------- WHERE (N params) ----------------
 
+    /// <summary>Translates a multi-parameter predicate into a parenthesised WHERE fragment.</summary>
+    /// <exception cref="NotSupportedException">A binary operator other than comparisons, <c>&amp;&amp;</c> or <c>||</c>.</exception>
     public static string Translate(
         LambdaExpression predicate,
         IReadOnlyDictionary<ParameterExpression, object> paramMap)
@@ -95,6 +118,8 @@ internal static class PgJoinExpressionTranslator
 
     // ---------------- COLUMN ----------------
 
+    /// <summary>Resolves a key selector (<c>x =&gt; x.Prop</c>, conversions stripped) to a fully qualified column.</summary>
+    /// <exception cref="NotSupportedException">The body is not a member access.</exception>
     public static string Column(LambdaExpression expr, object vault)
     {
         var body = StripConvert(expr.Body);

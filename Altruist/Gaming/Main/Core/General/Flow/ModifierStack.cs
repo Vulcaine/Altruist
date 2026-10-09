@@ -34,6 +34,10 @@ public enum ModifierOp : byte
 /// same order. The operand is computed (its delegate runs) only when the entry applies, exactly like
 /// an expression inside an <c>if</c>.</para>
 ///
+/// <para>Choosing: use this when several conditional operations combine into ONE float (scales,
+/// gravity, speed caps); use <see cref="FirstMatch{TCtx, TResult}"/> when exactly one rule should
+/// pick the value.</para>
+///
 /// <para>Conditions: <c>when</c> (optional) gates an entry. <see cref="Builder.Else"/> makes the
 /// next entry the <c>else</c> branch of the previous one: it is considered only when no entry of
 /// its chain applied (an <c>if / else if / else if</c> chain is one entry followed by

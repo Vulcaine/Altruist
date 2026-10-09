@@ -20,13 +20,39 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Security;
 
+/// <summary>
+/// Guards an MVC controller/action or a portal with an <see cref="IShieldAuth"/> handler: the request (or
+/// WebSocket upgrade) gets 401 unless the handler succeeds. On success the <see cref="AuthResult"/> is stored in
+/// <c>HttpContext.Items["AuthResult"]</c>. Fails closed: a handler that cannot be resolved or throws denies.
+/// </summary>
+/// <remarks>
+/// Use a ready-made subclass rather than this one directly: <see cref="JwtShieldAttribute"/> for
+/// <c>Authorization: Bearer</c> JWTs, <see cref="TicketShieldAttribute"/> for WebSocket connections opened with a
+/// one-time ticket (browsers cannot send headers on WebSockets), <see cref="SessionShieldAttribute"/> for
+/// <c>altruist:security:mode: session</c>. Derive your own (passing your handler type) for custom schemes; the
+/// handler is resolved from DI by its type, or built with <c>ActivatorUtilities</c> when it is only registered as
+/// <see cref="IShieldAuth"/>. The parameterless constructor installs no handler and lets every request through.
+/// </remarks>
+/// <example>
+/// <code>
+/// public sealed class ApiKeyShieldAttribute : ShieldAttribute
+/// {
+///     public ApiKeyShieldAttribute() : base(typeof(ApiKeyAuth)) { } // ApiKeyAuth : IShieldAuth
+/// }
+///
+/// [ApiKeyShield]
+/// public class AdminController : ControllerBase { }
+/// </code>
+/// </example>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
 public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
 {
     private readonly Type? _authHandlerType;
 
+    /// <summary>A shield without a handler: authorization always passes. Prefer a subclass that passes a handler type.</summary>
     public ShieldAttribute() { }
 
+    /// <summary>A shield that authenticates with <paramref name="authHandlerType"/> (an <see cref="IShieldAuth"/> implementation).</summary>
     public ShieldAttribute(Type authHandlerType)
     {
         _authHandlerType = authHandlerType;
@@ -34,6 +60,10 @@ public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
 
     // HTTP-based authentication for MVC + WebSockets. Fails closed: a handler that cannot be
     // resolved or that throws denies the request (previously both silently let it through).
+    /// <summary>
+    /// MVC authorization filter: runs the handler with an <see cref="HttpAuthContext"/>; sets a 401 result when it
+    /// fails, throws or cannot be resolved. Called by ASP.NET, not by user code.
+    /// </summary>
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         if (_authHandlerType is null)
@@ -81,6 +111,14 @@ public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
     }
 
     // Non-HTTP authentication (for TCP/UDP)
+    /// <summary>
+    /// Runs the handler for a non-HTTP connection (TCP/UDP transports). Returns the <see cref="AuthDetails"/> on
+    /// success, or null when there is no handler, it cannot be resolved, it fails or it throws. Note that the
+    /// built-in <see cref="JwtAuth"/> and <see cref="TicketShieldAuth"/> handlers only accept <see cref="HttpAuthContext"/>,
+    /// so they always yield null here.
+    /// </summary>
+    /// <param name="serviceProvider">Provider the handler is resolved from.</param>
+    /// <param name="context">The connection's credentials.</param>
     public async Task<AuthDetails?> AuthenticateNonHttpAsync(IServiceProvider serviceProvider, IAuthContext context)
     {
         if (_authHandlerType != null)

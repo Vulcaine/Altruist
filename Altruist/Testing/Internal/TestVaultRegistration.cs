@@ -16,7 +16,7 @@ namespace Altruist.Testing.Internal;
 /// <summary>
 /// Per-test-class override of <see cref="IVault{T}"/> registrations. For every
 /// <c>[Vault]</c>-marked model in loaded assemblies, registers a singleton factory
-/// in <paramref name="services"/> that builds a <see cref="PgVault{T}"/> against
+/// in <c>services</c> that builds a <see cref="PgVault{T}"/> against
 /// the test schema regardless of <c>[Vault(Keyspace=…)]</c>. The new descriptors
 /// shadow the root container's registrations because MEDI returns the last
 /// matching descriptor for a closed generic <see cref="IVault{T}"/>.

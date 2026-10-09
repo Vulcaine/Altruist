@@ -14,12 +14,28 @@ namespace Altruist.Gaming.Inventory;
 /// Templates can be registered programmatically or loaded from JSON files
 /// (deserialized directly into the user's subclass).
 /// </summary>
+/// <remarks>
+/// A template is the static definition shared by all instances; register it with <see cref="IItemTemplateProvider"/>
+/// and create instances via <see cref="IInventoryService.CreateItem"/> (which also tracks the instance).
+/// </remarks>
+/// <example>
+/// <code>
+/// public class MyItemTemplate : ItemTemplate
+/// {
+///     public int Damage { get; set; }
+///     public override GameItem CreateInstance(short count = 1) =&gt; new MyItem
+///     {
+///         Category = Category, Stackable = Stackable, MaxStack = MaxStack, Size = Size, Damage = Damage
+///     };
+/// }
+/// </code>
+/// </example>
 public abstract class ItemTemplate
 {
-    /// <summary>Unique numeric ID for this template.</summary>
+    /// <summary>Unique numeric ID for this template; becomes <see cref="GameItem.TemplateId"/>.</summary>
     public long ItemId { get; set; }
 
-    /// <summary>String key for this template (e.g. "iron_sword").</summary>
+    /// <summary>String key for this template (e.g. "iron_sword"); optional, used by <see cref="IItemTemplateProvider.GetTemplateByKey"/>.</summary>
     public string Key { get; set; } = "";
 
     /// <summary>Display name.</summary>
@@ -37,12 +53,15 @@ public abstract class ItemTemplate
     /// <summary>Grid size for grid-based containers.</summary>
     public ByteVector2 Size { get; set; } = new(1, 1);
 
-    /// <summary>Equipment slot type (null = not equippable).</summary>
+    /// <summary>Equipment slot type (null = not equippable). Not applied automatically: <see cref="GameItem.EquipmentSlotType"/> is a virtual property your item type must override.</summary>
     public string? EquipmentSlotType { get; set; }
 
     /// <summary>
     /// Create a GameItem instance from this template.
-    /// Users must override this in their template subclass.
+    /// Users must override this in their template subclass and copy the template fields they need
+    /// (Category, Stackable, MaxStack, Size, ...); <see cref="IInventoryService.CreateItem"/> only sets TemplateId and Count afterwards.
     /// </summary>
+    /// <param name="count">Requested stack count.</param>
+    /// <returns>A new, untracked item instance.</returns>
     public abstract GameItem CreateInstance(short count = 1);
 }

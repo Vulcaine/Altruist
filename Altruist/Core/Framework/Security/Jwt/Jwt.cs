@@ -23,6 +23,17 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Altruist.Security;
 
+/// <summary>
+/// The <see cref="IShieldAuth"/> behind <see cref="JwtShieldAttribute"/> (registered with <c>altruist:security:mode: jwt</c>).
+/// Reads <c>Authorization: Bearer &lt;jwt&gt;</c> (an optional <c>;jwt</c> suffix is ignored), validates it with
+/// <see cref="IJwtTokenValidator"/>, sets <c>HttpContext.User</c> and returns <see cref="AuthDetails"/> whose principal is
+/// the <c>sub</c> claim and whose IP and group key come from the <c>Ip</c> / <c>GroupKey</c> claims.
+/// </summary>
+/// <remarks>
+/// HTTP only (including WebSocket upgrades): other <see cref="IAuthContext"/> kinds throw <see cref="NotSupportedException"/>.
+/// Tokens without <c>Ip</c> / <c>GroupKey</c> claims (e.g. from <see cref="IAccessTokenIssuer"/>) still authenticate,
+/// but their details hold <c>"Unknown"</c> there, so <see cref="AuthDetails.IsAlive"/> is false.
+/// </remarks>
 [Service(typeof(IShieldAuth))]
 [ConditionalOnConfig("altruist:security")]
 [ConditionalOnConfig("altruist:security:mode", havingValue: "jwt")]
@@ -31,6 +42,9 @@ public class JwtAuth : IShieldAuth
     private readonly IJwtTokenValidator _tokenValidator;
     private readonly TokenSessionSyncService? _syncService;
 
+    /// <summary>Creates the handler (resolved by DI).</summary>
+    /// <param name="tokenValidator">Validates the bearer token.</param>
+    /// <param name="serviceProvider">Used to resolve the optional <see cref="TokenSessionSyncService"/>.</param>
     public JwtAuth(IJwtTokenValidator tokenValidator, IServiceProvider serviceProvider)
     {
         _tokenValidator = tokenValidator;
@@ -39,6 +53,7 @@ public class JwtAuth : IShieldAuth
 
     private readonly JwtSecurityTokenHandler _tokenHandler = new();
 
+    /// <summary>Authenticates the bearer token of an <see cref="HttpAuthContext"/>; fails (no exception) when it is missing, malformed or invalid.</summary>
     public async Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
         var token = GetTokenFromRequest(context);
@@ -111,11 +126,17 @@ public class JwtAuth : IShieldAuth
     }
 }
 
+/// <summary>Validates JWTs against the parameters registered by <see cref="AuthConfiguration"/>. Inject it when you need the JWT validator specifically; <see cref="ITokenValidator"/> resolves to the same implementation in jwt mode.</summary>
 public interface IJwtTokenValidator : ITokenValidator
 {
 
 }
 
+/// <summary>
+/// Default <see cref="IJwtTokenValidator"/> and <see cref="ITokenValidator"/> in <c>altruist:security:mode: jwt</c>:
+/// validates signature (HS256), issuer, audience and lifetime (no clock skew) with the registered
+/// <see cref="TokenValidationParameters"/>.
+/// </summary>
 [Service(typeof(ITokenValidator))]
 [Service(typeof(IJwtTokenValidator))]
 [ConditionalOnConfig("altruist:security")]
@@ -125,12 +146,19 @@ public class JwtTokenValidator : IJwtTokenValidator
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly TokenValidationParameters _validationParams;
 
+    /// <summary>Creates the validator over <paramref name="parameters"/>.</summary>
     public JwtTokenValidator(TokenValidationParameters parameters)
     {
         _tokenHandler = new JwtSecurityTokenHandler();
         _validationParams = parameters;
     }
 
+    /// <summary>
+    /// Removes any <c>;jwt</c> suffix and validates the token. Returns the principal (inbound claims mapped by
+    /// <see cref="JwtSecurityTokenHandler"/>'s defaults, so <c>sub</c> appears as <see cref="ClaimTypes.NameIdentifier"/>).
+    /// </summary>
+    /// <exception cref="SecurityTokenException">When the token is invalid or expired (it never returns null).</exception>
+    /// <exception cref="ArgumentException">When the token is malformed.</exception>
     public Task<ClaimsPrincipal?> ValidateToken(string token)
     {
         string actualToken = token.Replace(";jwt", "");
@@ -139,8 +167,22 @@ public class JwtTokenValidator : IJwtTokenValidator
 }
 
 
+/// <summary>
+/// Requires a valid JWT in <c>Authorization: Bearer ...</c> (via <see cref="JwtAuth"/>); otherwise 401. Needs
+/// <c>altruist:security:mode: jwt</c> (the default). Use on controllers, actions and portals reached over HTTP or a
+/// WebSocket upgrade by clients that can send headers; browsers opening WebSockets should use
+/// <see cref="TicketShieldAttribute"/> instead. Plain ASP.NET <c>[Authorize]</c> works too for MVC.
+/// </summary>
+/// <example>
+/// <code>
+/// [JwtShield]
+/// [HttpGet("me")]
+/// public IActionResult Me() =&gt; Ok(User.PrincipalId());
+/// </code>
+/// </example>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
 public class JwtShieldAttribute : ShieldAttribute
 {
+    /// <summary>Creates the shield.</summary>
     public JwtShieldAttribute() : base(typeof(JwtAuth)) { }
 }

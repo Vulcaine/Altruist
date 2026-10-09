@@ -19,6 +19,12 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
+    /// <summary>
+    /// Builds <see cref="IGameWorldManager3D"/> instances from world configuration and optional exported scene JSON
+    /// (<see cref="WorldSchema"/>). Used by <see cref="GameWorldOrganizer3D"/> at startup for every configured world;
+    /// call it yourself only to create additional worlds at runtime (then register them with <see cref="IGameWorldOrganizer3D.AddWorld"/>).
+    /// </summary>
+    /// <remarks>For 2D worlds see <see cref="Altruist.Gaming.TwoD.IWorldLoader2D"/>.</remarks>
     public interface IWorldLoader3D
     {
         /// <summary>
@@ -27,15 +33,35 @@ namespace Altruist.Gaming.ThreeD
         ///  - create the physics world
         ///  - build all bodies and colliders from the schema
         ///  - instantiate archetype-based world objects
-        ///  - create & initialize a GameWorldManager3D
+        ///  - create &amp; initialize a GameWorldManager3D
         ///  - add all spawned world objects as static objects to the manager
         /// </summary>
+        /// <remarks>
+        /// Overwrites <c>index.Size</c> and <c>index.Position</c> with the schema's root transform. Only nodes with at least one
+        /// supported collider (box, mesh as box, sphere, capsule) become objects; a node whose <c>archetype</c> matches a
+        /// <see cref="WorldObjectAttribute"/> type is instantiated through that type's parameterless constructor, other nodes
+        /// become <see cref="AnonymousWorldObject3D"/>.
+        /// </remarks>
+        /// <param name="index">World descriptor (gravity and fixed step are used for the physics engine).</param>
+        /// <param name="json">Serialized <see cref="WorldSchema"/>.</param>
+        /// <returns>The populated world manager (not yet registered with the organizer).</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="index"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="json"/> is empty.</exception>
+        /// <exception cref="InvalidOperationException">The JSON does not deserialize, or an archetype type lacks a parameterless constructor.</exception>
         Task<IGameWorldManager3D> LoadFromJson(IWorldIndex3D index, string json);
 
         /// <summary>
         /// Load a game world manager from the JSON file path defined in the WorldIndex3D descriptor.
         /// Same behavior as LoadFromJson, but reads the JSON from disk.
         /// </summary>
+        /// <remarks>
+        /// Without a <c>DataPath</c> an empty world is created immediately (with a physics world when physics is enabled and an
+        /// engine factory is registered).
+        /// </remarks>
+        /// <param name="index">World descriptor.</param>
+        /// <returns>The world manager.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="index"/> is <c>null</c>.</exception>
+        /// <exception cref="FileNotFoundException"><c>DataPath</c> is set but the file does not exist.</exception>
         Task<IGameWorldManager3D> LoadFromIndex(IWorldIndex3D index);
 
         /// <summary>
@@ -56,6 +82,11 @@ namespace Altruist.Gaming.ThreeD
     ///
     /// This refactored version produces a fully wired GameWorldManager3D instead of a bare PhysxWorld3D.
     /// </summary>
+    /// <remarks>
+    /// Singleton when <c>altruist:game</c> is configured. Physics is used when <c>altruist:game:physics:enabled</c> (default
+    /// <c>true</c>) and an <see cref="IPhysxWorldEngineFactory3D"/> is registered. Euler angles in the JSON are degrees
+    /// (Unity convention); box sizes are full sizes. Not thread-safe: <see cref="SpawnedWorldObjects"/> is shared across loads.
+    /// </remarks>
     [Service(typeof(IWorldLoader3D))]
     [ConditionalOnConfig("altruist:game")]
     public sealed class WorldLoader3D : IWorldLoader3D
@@ -69,10 +100,19 @@ namespace Altruist.Gaming.ThreeD
         private readonly Dictionary<string, Type> _archetypeMap;
 
         private readonly List<IWorldObject3D> _spawnedWorldObjects = new();
+        /// <inheritdoc/>
+        /// <remarks>Reflects only the most recent load (cleared at the start of every load).</remarks>
         public IReadOnlyList<IWorldObject3D> SpawnedWorldObjects => _spawnedWorldObjects;
 
         private readonly JsonSerializerOptions _options;
 
+        /// <summary>Creates the loader and scans loaded assemblies once for <see cref="WorldObjectAttribute"/> types implementing <see cref="IWorldObject3D"/>.</summary>
+        /// <param name="worldPartitioner">Partitioner passed to each created manager.</param>
+        /// <param name="options">JSON options used to deserialize <see cref="WorldSchema"/>.</param>
+        /// <param name="engineFactory">Optional physics engine factory.</param>
+        /// <param name="bodyApi">Optional body factory.</param>
+        /// <param name="colliderApi">Optional collider factory.</param>
+        /// <param name="physicsEnabled">Config <c>altruist:game:physics:enabled</c> (default <c>true</c>).</param>
         public WorldLoader3D(
             IWorldPartitioner3D worldPartitioner,
             JsonSerializerOptions options,
@@ -95,6 +135,7 @@ namespace Altruist.Gaming.ThreeD
         // JSON entrypoints -> GameWorldManager3D
         // --------------------------------------------------------------------
 
+        /// <inheritdoc/>
         public async Task<IGameWorldManager3D> LoadFromJson(IWorldIndex3D index, string json)
         {
             if (index is null)
@@ -112,6 +153,7 @@ namespace Altruist.Gaming.ThreeD
             return await BuildGameWorld(index, worldSchema);
         }
 
+        /// <inheritdoc/>
         public async Task<IGameWorldManager3D> LoadFromIndex(IWorldIndex3D index)
         {
             if (index is null)

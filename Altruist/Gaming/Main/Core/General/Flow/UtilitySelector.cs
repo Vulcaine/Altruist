@@ -72,6 +72,25 @@ internal static class UtilityOptions
 /// <para>Determinism: fixed option order everywhere, a fixed number of RNG draws per scored
 /// decision, float32 arithmetic applied in the order above (<c>score + noise</c>,
 /// <c>score + bonus</c>), strict comparisons. Allocation: none per decision.</para>
+///
+/// <para>Choosing: use this when several options compete on a numeric score and the choice should
+/// be sticky (inertia) and optionally noisy (per-agent personality); use
+/// <see cref="FirstMatch{TCtx, TResult}"/> when a fixed priority order of conditions decides; use
+/// <see cref="AIStateMachine"/> / <see cref="StateMachine{TContext}"/> for the behaviour that runs
+/// once an option is chosen (a common pattern: the selector picks a role, a state machine per role
+/// runs it).</para>
+///
+/// <code>
+/// var roles = UtilitySelector&lt;Role, BotCtx&gt;.Create()
+///     .Force("kickoff", c =&gt; c.KickoffPending, Role.Kickoff)
+///     .Option(Role.Attack, c =&gt; c.AttackScore)
+///     .Option(Role.Defend, c =&gt; c.DefendScore, veto: (c, s) =&gt; c.NoGoalToDefend)
+///     .Noise(c =&gt; c.Personality.RoleNoise)
+///     .Inertia(c =&gt; 1.5f, heldBonus: 0.3f, bonus: 0.1f, tickSeconds: 1f / 60f)
+///     .StartWith(Role.Defend)
+///     .Build();
+/// Role role = roles.Select(ctx, rng, tick, out bool changed);
+/// </code>
 /// </summary>
 public sealed class UtilitySelector<TOption, TCtx> where TOption : notnull
 {

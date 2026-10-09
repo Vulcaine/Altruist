@@ -18,16 +18,32 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist;
 
+/// <summary>Server readiness as reported by <see cref="IServerStatus.Status"/>.</summary>
 public enum ReadyState
 {
+    /// <summary>Startup in progress: waiting for connectable services (database, cache, ...) to connect. HTTP requests get 503.</summary>
     Starting = 0,
+    /// <summary>A required service lost its connection (or startup failed); the engine is stopped and HTTP requests get 503.</summary>
     Failed = 1,
+    /// <summary>All connectable services are connected; the engine runs and requests are served.</summary>
     Alive = 2
 }
 
+/// <summary>
+/// Tracks readiness from the connection state of every <see cref="IConnectable"/> service (the database and cache
+/// providers plus any registered <see cref="IConnectable"/>), and starts/stops the engine accordingly. Singleton;
+/// inject <see cref="IServerStatus"/>.
+/// </summary>
+/// <remarks>
+/// Goes <see cref="ReadyState.Alive"/> once all connectables are connected (immediately when there are none). A
+/// connectable reporting failure switches to <see cref="ReadyState.Failed"/> (engine stopped) until it reconnects.
+/// When an engine is present and not everything connects within 1 minute, or a service exhausts its retries, the
+/// host is shut down via <see cref="IHostApplicationLifetime.StopApplication"/>.
+/// </remarks>
 [Service(typeof(IServerStatus))]
 public sealed class ServerStatus : IServerStatus
 {
+    /// <inheritdoc/>
     public ReadyState Status { get; private set; } = ReadyState.Starting;
 
     private readonly HashSet<IConnectable> _connectables = new();
@@ -38,9 +54,16 @@ public sealed class ServerStatus : IServerStatus
     private bool _startup;
     private Timer? _startupTimeoutTimer;
 
+    /// <summary>The services whose connection state gates readiness.</summary>
     public HashSet<IConnectable> Connectables => _connectables;
 
     // All dependencies are injected; no manual BuildServiceProvider gymnastics.
+    /// <summary>Collects the connectables to watch.</summary>
+    /// <param name="otherConnectables">All services registered as <see cref="IConnectable"/>.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="lifetime">Used to stop the host when startup fails.</param>
+    /// <param name="dbProvider">The database provider, watched when it is <see cref="IConnectable"/>.</param>
+    /// <param name="cacheProvider">The cache provider, watched when it is <see cref="IConnectable"/>.</param>
     public ServerStatus(
         IEnumerable<IConnectable> otherConnectables,
         ILoggerFactory loggerFactory,
@@ -64,8 +87,10 @@ public sealed class ServerStatus : IServerStatus
 
     /// <summary>
     /// Kicks off the startup sequence (connect + wait + advertise readiness).
-    /// Called automatically during startup via the [Configuration] mechanism.
+    /// Called automatically after construction via <c>[PostConstruct]</c>; completes once the server is alive.
     /// </summary>
+    /// <param name="engine">The engine to start when alive (null when no engine is configured).</param>
+    /// <param name="token">Passed to the engine when it starts.</param>
     [PostConstruct]
     public async Task Configure(IEngineCore? engine = null, CancellationToken token = default)
     {
@@ -224,6 +249,7 @@ public sealed class ServerStatus : IServerStatus
 
     private void LogStatus() => Console.WriteLine(ToString());
 
+    /// <summary>A console table of each connectable and whether it is connected; empty when there are none.</summary>
     public override string ToString()
     {
         if (_connectables.Count == 0)
@@ -255,17 +281,26 @@ public sealed class ServerStatus : IServerStatus
     }
 }
 
+/// <summary>
+/// ASP.NET Core middleware that answers 503 ("Service is not ready.") to every request that reaches it while
+/// <see cref="IServerStatus.Status"/> is not <see cref="ReadyState.Alive"/>. Added to the pipeline by the framework.
+/// </summary>
 public sealed class ReadinessMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IServerStatus _appStatus;
 
+    /// <summary>Creates the middleware.</summary>
+    /// <param name="next">The next middleware.</param>
+    /// <param name="appStatus">The readiness source.</param>
     public ReadinessMiddleware(RequestDelegate next, IServerStatus appStatus)
     {
         _next = next;
         _appStatus = appStatus;
     }
 
+    /// <summary>Short-circuits with 503 unless the server is alive; otherwise calls the next middleware.</summary>
+    /// <param name="context">The HTTP context.</param>
     public async Task InvokeAsync(HttpContext context)
     {
         if (_appStatus.Status != ReadyState.Alive)

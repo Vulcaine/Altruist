@@ -24,6 +24,10 @@ public sealed class ServerDrainOnShutdown : IHostedLifecycleService
     private readonly bool _enabled;
     private readonly ILogger _logger;
 
+    /// <summary>Creates the service.</summary>
+    /// <param name="node">Node to drain.</param>
+    /// <param name="enabled"><c>altruist:server:drain:on-shutdown</c> (default true).</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
     public ServerDrainOnShutdown(
         IServerNode node,
         [AppConfigValue("altruist:server:drain:on-shutdown", "true")] bool enabled = true,
@@ -34,6 +38,8 @@ public sealed class ServerDrainOnShutdown : IHostedLifecycleService
         _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<ServerDrainOnShutdown>();
     }
 
+    /// <summary>Runs the drain (when enabled) and waits for it; logs when it timed out or the host cut it short.</summary>
+    /// <param name="cancellationToken">Host shutdown token.</param>
     public async Task StoppingAsync(CancellationToken cancellationToken)
     {
         if (!_enabled) return;
@@ -49,9 +55,19 @@ public sealed class ServerDrainOnShutdown : IHostedLifecycleService
         }
     }
 
+    /// <summary>No-op.</summary>
+    /// <param name="cancellationToken">Unused.</param>
     public Task StartingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>No-op.</summary>
+    /// <param name="cancellationToken">Unused.</param>
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>No-op.</summary>
+    /// <param name="cancellationToken">Unused.</param>
     public Task StartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>No-op.</summary>
+    /// <param name="cancellationToken">Unused.</param>
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>No-op.</summary>
+    /// <param name="cancellationToken">Unused.</param>
     public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

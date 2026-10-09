@@ -18,15 +18,43 @@ namespace Altruist.Migrations
     /// Provider-agnostic contract for applying vault schema to a physical database.
     /// Implementations are provider-specific (Postgres, Scylla, etc.).
     /// </summary>
+    /// <remarks>
+    /// The provider's startup bootstrap calls it automatically for every discovered vault model; application code
+    /// rarely needs it (e.g. to migrate models loaded later, or in tooling/tests).
+    /// </remarks>
     public interface IVaultSchemaMigrator
     {
         /// <summary>
         /// Ensure that all tables / indexes / constraints for the given vault models
         /// exist in the database, across all logical schemas (keyspaces).
         /// </summary>
+        /// <param name="modelTypes">Vault model types (with <see cref="Altruist.UORM.VaultAttribute"/>) to reconcile.</param>
+        /// <param name="cancellationToken">Cancellation token (passed to schema inspection).</param>
+        /// <returns>A task completing when the schema matches the models.</returns>
+        /// <exception cref="MigrationException">Applying an operation failed.</exception>
         Task Migrate(Type[] modelTypes, CancellationToken cancellationToken = default);
     }
 
+    /// <summary>
+    /// Default <see cref="IVaultSchemaMigrator"/>: builds the desired model from the vault types, inspects the current
+    /// schemas, plans the diff and executes it. Registered when <c>altruist:persistence:database</c> is configured and run
+    /// once by the database provider's startup bootstrap (Postgres: after creating the schemas, under a bootstrap lock
+    /// so servers starting together do not migrate concurrently).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Steps: (1) <see cref="VaultDocument"/> per model type, plus any foreign-key principal types not in the list;
+    /// (2) topological sort so principals come before dependents (throws <see cref="InvalidOperationException"/> on a
+    /// foreign-key cycle between different models; self-references are allowed); (3) <see cref="ISchemaInspector"/> per
+    /// schema; (4) <see cref="IMigrationPlanner.Plan"/>; (5) <see cref="IMigrationExecutor.ApplyAsync"/> with default schema
+    /// <c>altruist</c>.
+    /// </para>
+    /// <para>
+    /// The plan is a full reconciliation: columns that exist in the database but are no longer mapped by the model are
+    /// dropped. Use <see cref="Altruist.UORM.VaultRenamedFromAttribute"/> to rename instead of drop+add, and
+    /// <see cref="Altruist.UORM.VaultColumnCopyAttribute"/> to carry data into a new column.
+    /// </para>
+    /// </remarks>
     [Service(typeof(IVaultSchemaMigrator))]
     [ConditionalOnConfig("altruist:persistence:database")]
     public sealed class VaultSchemaMigrator : IVaultSchemaMigrator
@@ -36,6 +64,11 @@ namespace Altruist.Migrations
         private readonly IMigrationExecutor _executor;
         private readonly ILogger<VaultSchemaMigrator> _logger;
 
+        /// <summary>Created by DI.</summary>
+        /// <param name="inspector">Reads the current schema.</param>
+        /// <param name="planner">Diffs current vs desired.</param>
+        /// <param name="executor">Applies the operations.</param>
+        /// <param name="loggerFactory">Logger factory.</param>
         public VaultSchemaMigrator(
             ISchemaInspector inspector,
             IMigrationPlanner planner,
@@ -48,6 +81,8 @@ namespace Altruist.Migrations
             _logger = loggerFactory.CreateLogger<VaultSchemaMigrator>();
         }
 
+        /// <inheritdoc/>
+        /// <remarks>No-op for a null or empty list; logs and returns when nothing needs to change.</remarks>
         public async Task Migrate(Type[] modelTypes, CancellationToken ct = default)
         {
             if (modelTypes is null || modelTypes.Length == 0)

@@ -21,12 +21,19 @@ public interface IAIContext : IStateContextCore
 /// </summary>
 public abstract class AIContext : IAIContext
 {
+    /// <inheritdoc/>
     public float TimeInState { get; set; }
+    /// <inheritdoc/>
     public float StateDuration { get; set; }
+    /// <inheritdoc/>
     public string CurrentStateTag { get; set; } = "";
+    /// <inheritdoc/>
     public IReadOnlyDictionary<string, StateWindow>? ActiveWindows { get; set; }
+    /// <inheritdoc/>
     public object? CurrentStateData { get; set; }
+    /// <inheritdoc/>
     public StateMotionProfile? CurrentStateMotion { get; set; }
+    /// <inheritdoc/>
     public float PreviousProgress { get; set; }
 }
 
@@ -34,6 +41,13 @@ public abstract class AIContext : IAIContext
 /// Implement on world objects that should be ticked by the AI behavior system.
 /// The service discovers the matching <see cref="AIBehaviorAttribute"/> by name
 /// and auto-ticks the state machine.
+///
+/// <para>Each engine tick <see cref="AIBehaviorService"/> walks the world snapshots, lazily creates
+/// one <see cref="AIStateMachine"/> per <see cref="ITypelessWorldObject.InstanceId"/> (initialised on
+/// creation), and updates it unless the object is hibernated (<see cref="IHibernatable"/>), expired,
+/// or its <see cref="IAIBehaviorEntity.AIContext"/> is still null. Agents that are not world objects (a bot in a match
+/// room) should not implement this; create their machine with
+/// <see cref="AIBehaviorDiscovery.CreateStateMachine{TBehavior}"/> and tick it yourself.</para>
 /// </summary>
 public interface IAIBehaviorEntity
 {

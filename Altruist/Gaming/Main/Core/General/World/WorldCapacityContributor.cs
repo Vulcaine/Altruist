@@ -22,6 +22,7 @@ namespace Altruist.Gaming
         private readonly Lazy<IGameWorldOrganizer3D?> _worlds3D;
         private readonly double _loadPerWorld;
 
+        /// <summary>Created by DI; either organizer may be absent.</summary>
         public WorldCapacityContributor(
             Lazy<IGameWorldOrganizer2D?> worlds2D,
             Lazy<IGameWorldOrganizer3D?> worlds3D,
@@ -32,8 +33,10 @@ namespace Altruist.Gaming
             _loadPerWorld = loadPerWorld;
         }
 
+        /// <inheritdoc/>
         public string Kind => "worlds";
 
+        /// <summary>Number of 2D + 3D worlds, with <c>count * world-load</c> as load.</summary>
         public CapacitySample Sample()
         {
             // The organizers return the dictionary's value collection: Count() reads its count without enumerating.

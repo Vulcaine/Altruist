@@ -16,14 +16,18 @@ public sealed class EntityPositionHistory
     private int _head;
     private int _count;
 
+    /// <summary>Maximum snapshots kept.</summary>
     public int Capacity => _buffer.Length;
+    /// <summary>Snapshots currently stored.</summary>
     public int Count => _count;
 
+    /// <summary>Allocates a ring of <paramref name="capacity"/> snapshots.</summary>
     public EntityPositionHistory(int capacity = 64)
     {
         _buffer = new PositionSnapshot[capacity];
     }
 
+    /// <summary>Appends a snapshot, overwriting the oldest when full. Ticks are expected to increase.</summary>
     public void Record(long tick, float x, float y, float z, float yaw)
     {
         _buffer[_head] = new PositionSnapshot(tick, x, y, z, yaw);

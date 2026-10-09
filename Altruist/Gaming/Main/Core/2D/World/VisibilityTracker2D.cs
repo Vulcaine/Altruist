@@ -7,6 +7,20 @@ using System.Collections.Concurrent;
 
 namespace Altruist.Gaming.TwoD
 {
+    /// <summary>Default 2D <see cref="IVisibilityTracker"/> (singleton; registered when <c>altruist:game</c>
+    /// exists and <c>altruist:environment:mode</c> is <c>2D</c>). Ticked by <see cref="GameWorldOrganizer2D"/>
+    /// after physics; each tick, for every registered observer, every object of the world within
+    /// <see cref="ViewRange"/> (Euclidean, inclusive, observer itself excluded) is visible, and the diff
+    /// against the previous tick fires <see cref="OnEntityVisible"/> / <see cref="OnEntityInvisible"/>
+    /// (synchronously, on the tick thread). Brute force O(observers x objects) per world; it does not use
+    /// partitions. The 3D counterpart is <see cref="Altruist.Gaming.ThreeD.VisibilityTracker3D"/>.
+    /// <para>Observers are dropped automatically when their object leaves the world or loses its
+    /// <c>ClientId</c>.</para>
+    /// <example><code>
+    /// tracker.OnEntityVisible += c =&gt; SendSpawn(c.ObserverClientId, c.Target);
+    /// tracker.Observe(playerObject);           // on join (player.ClientId must be set)
+    /// tracker.RemoveObserver(clientId);        // on disconnect
+    /// </code></example></summary>
     [Service(typeof(IVisibilityTracker))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     [ConditionalOnConfig("altruist:game")]
@@ -17,21 +31,27 @@ namespace Altruist.Gaming.TwoD
         private readonly ConcurrentDictionary<string, IWorldObject2D> _observers = new();
         private readonly ConcurrentDictionary<string, string> _observerInstanceIds = new();
 
+        /// <summary>View radius in world units (config <c>altruist:game:visibility:range</c>, default 5000).</summary>
         public float ViewRange { get; set; } = 5000f;
 
+        /// <inheritdoc/>
         public event Action<VisibilityChange>? OnEntityVisible;
+        /// <inheritdoc/>
         public event Action<VisibilityChange>? OnEntityInvisible;
 
+        /// <summary>DI constructor.</summary>
+        /// <param name="viewRange">Config <c>altruist:game:visibility:range</c> (default 5000 world units).</param>
         public VisibilityTracker2D(
             [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f)
         {
             ViewRange = viewRange;
         }
 
+        /// <summary>Sets the organizer whose worlds are scanned (normally done by <see cref="WireOrganizer"/>).</summary>
         public void SetOrganizer(IGameWorldOrganizer2D organizer) => _organizer = organizer;
 
         /// <summary>
-        /// Wires the tracker <-> organizer pair after both exist (a constructor dependency in both
+        /// Wires the tracker &lt;-&gt; organizer pair after both exist (a constructor dependency in both
         /// directions is a DI cycle). Mirrors VisibilityTracker3D.WireOrganizer.
         /// </summary>
         [PostConstruct]
@@ -146,6 +166,10 @@ namespace Altruist.Gaming.TwoD
             AltruistPool.ReturnList(toRemove);
         }
 
+        /// <summary>Registers a 2D world object with a non-empty <c>ClientId</c> as an observer (keyed by
+        /// client id, replacing any previous object for that client) and resets its visible set, so the
+        /// next tick fires <see cref="OnEntityVisible"/> for everything in range.</summary>
+        /// <returns>False when the object is not an <see cref="IWorldObject2D"/> or has no client id.</returns>
         public bool Observe(ITypelessWorldObject observer)
         {
             if (observer is not IWorldObject2D worldObject)
@@ -160,11 +184,13 @@ namespace Altruist.Gaming.TwoD
             return true;
         }
 
+        /// <inheritdoc/>
         public void RefreshObserver(string clientId)
         {
             _visibleSets.TryRemove(clientId, out _);
         }
 
+        /// <inheritdoc/>
         public void RemoveObserver(ITypelessWorldObject observer)
         {
             if (observer is not IWorldObject2D worldObject)
@@ -180,6 +206,7 @@ namespace Altruist.Gaming.TwoD
                 RemoveObserver(worldObject.ClientId);
         }
 
+        /// <inheritdoc/>
         public void RemoveObserver(string clientId)
         {
             if (_visibleSets.TryRemove(clientId, out var visible) && visible.Count > 0 && _organizer is not null)
@@ -207,11 +234,14 @@ namespace Altruist.Gaming.TwoD
                 _observerInstanceIds.TryRemove(observer.InstanceId, out _);
         }
 
+        /// <summary>The instance ids visible to the client after the last tick, or null when it is not
+        /// observing. The returned set is live (mutated by the next tick); copy it to keep or use it off the tick thread.</summary>
         public IReadOnlySet<string>? GetVisibleEntities(string clientId)
         {
             return _visibleSets.TryGetValue(clientId, out var set) ? set : null;
         }
 
+        /// <summary>Client ids whose visible set contains the entity (lazy scan over all observers).</summary>
         public IEnumerable<string> GetObserversOf(string entityInstanceId)
         {
             foreach (var (clientId, visibleSet) in _visibleSets)
@@ -221,6 +251,7 @@ namespace Altruist.Gaming.TwoD
             }
         }
 
+        /// <inheritdoc/>
         public IEnumerable<ITypelessWorldObject> GetObservers()
         {
             foreach (var observer in _observers.Values.ToArray())

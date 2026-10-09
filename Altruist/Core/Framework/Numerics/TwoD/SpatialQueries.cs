@@ -10,7 +10,7 @@ using Altruist.Numerics;
 namespace Altruist.TwoD.Numerics;
 
 /// <summary>Stateless spatial predicates — 2D mirror of
-/// <see cref="Altruist.ThreeD.Numerics.SpatialQueries"/>.
+/// <see cref="Altruist.ThreeD.Numerics.SpatialQueries3D"/>.
 /// Rotation uses the Altruist 2D convention (<c>Atan2(dx, dy)</c>).</summary>
 public static class SpatialQueries2D
 {
@@ -21,6 +21,7 @@ public static class SpatialQueries2D
         var dy = to.Y - from.Y;
         return dx * dx + dy * dy <= range * range;
     }
+    /// <summary><see cref="Position2D"/> overload of <see cref="IsInRange(Vector2,Vector2,float)"/>.</summary>
     public static bool IsInRange(Position2D from, Position2D to, float range)
         => IsInRange(from.ToFloatVector2(), to.ToFloatVector2(), range);
 
@@ -39,6 +40,7 @@ public static class SpatialQueries2D
         var diff = Angle.ShortestDifference(rotationRadians, targetYaw);
         return MathF.Abs(diff) <= halfAngleRadians;
     }
+    /// <summary><see cref="Position2D"/> overload of <see cref="IsInCone(Vector2,float,float,float,Vector2)"/>.</summary>
     public static bool IsInCone(Position2D origin, float rotationRadians, float halfAngleRadians, float range, Position2D target)
         => IsInCone(origin.ToFloatVector2(), rotationRadians, halfAngleRadians, range, target.ToFloatVector2());
 
@@ -57,6 +59,7 @@ public static class SpatialQueries2D
         var perp = MathF.Abs(-dx * dirY + dy * dirX);
         return perp <= halfWidth;
     }
+    /// <summary><see cref="Position2D"/> overload of <see cref="IsInLine(Vector2,float,float,float,Vector2)"/>.</summary>
     public static bool IsInLine(Position2D origin, float rotationRadians, float length, float halfWidth, Position2D target)
         => IsInLine(origin.ToFloatVector2(), rotationRadians, length, halfWidth, target.ToFloatVector2());
 }

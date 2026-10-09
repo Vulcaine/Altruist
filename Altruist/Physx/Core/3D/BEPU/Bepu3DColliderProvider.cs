@@ -9,19 +9,20 @@ using Altruist.ThreeD.Numerics;
 namespace Altruist.Physx.ThreeD
 {
     /// <summary>
-    /// BEPU-backed collider API provider (3D).
-    ///
-    /// NOTE: This remains engine-agnostic:
-    /// - It does NOT touch the BEPU Simulation directly.
-    /// - It only creates an adapter implementing IPhysxCollider3D
-    ///   from an engine-agnostic PhysxCollider3DDesc.
-    /// The BEPU body API later interprets Shape + Transform + IsTrigger
-    /// when attaching this collider to a specific body/engine.
+    /// BEPU-backed collider API provider (3D). Registered in DI as a singleton <see cref="IPhysxColliderApiProvider3D"/> when the
+    /// config key <c>altruist:environment:mode</c> equals <c>3D</c>.
     /// </summary>
+    /// <remarks>
+    /// Engine-agnostic: it does not touch the BEPU simulation; it only wraps a <see cref="PhysxCollider3DDesc"/> in a
+    /// data-only <see cref="IPhysxCollider3D"/>. The BEPU body API turns <c>Shape</c> + <c>Transform.Size</c> (+ heightfield)
+    /// into a BEPU shape when the collider is attached. <c>IsTrigger</c> is stored but not interpreted by the BEPU engine,
+    /// and the collider's collision/trigger events are not raised by it.
+    /// </remarks>
     [Service(typeof(IPhysxColliderApiProvider3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     public sealed class BepuPhysxColliderApiProvider3D : IPhysxColliderApiProvider3D
     {
+        /// <summary>Creates the stateless provider.</summary>
         public BepuPhysxColliderApiProvider3D()
         {
         }
@@ -29,6 +30,7 @@ namespace Altruist.Physx.ThreeD
         /// <summary>
         /// Create an engine-agnostic collider adapter from a collider descriptor.
         /// </summary>
+        /// <param name="desc">Collider descriptor (see <see cref="PhysxCollider3D"/>).</param>
         public IPhysxCollider3D CreateCollider(in PhysxCollider3DDesc desc)
         {
             return new Collider3DAdapter(

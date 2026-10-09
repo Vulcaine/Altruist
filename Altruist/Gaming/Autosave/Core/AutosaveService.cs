@@ -13,6 +13,13 @@ namespace Altruist.Gaming.Autosave;
 /// Generic autosave service. Tracks dirty entities by owner, saves to cache immediately,
 /// batch-flushes to vault (DB) on interval, and optionally writes to a WAL for crash recovery.
 /// </summary>
+/// <remarks>
+/// Normally created by <see cref="AutosaveServiceFactory"/> when <see cref="IAutosaveService{T}"/> is injected; construct
+/// it manually only in tests or for models without <see cref="AutosaveAttribute"/>. The "on interval" part is driven by
+/// the caller: nothing inside this class schedules <see cref="FlushAsync"/>. Call <see cref="RecoverFromWalAsync"/> once
+/// at startup (it is not on the interface; resolve the concrete type or cast) to replay unflushed WAL entries.
+/// </remarks>
+/// <typeparam name="T">Vault model type.</typeparam>
 public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : class, IVaultModel
 {
     private readonly ConcurrentDictionary<string, string> _dirtyMap = new(); // storageId → ownerId
@@ -22,8 +29,18 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
     private readonly ILogger _logger;
     private readonly int _batchSize;
 
+    /// <inheritdoc/>
     public int DirtyCount => _dirtyMap.Count;
 
+    /// <summary>Creates the service and registers it with <paramref name="coordinator"/>.</summary>
+    /// <param name="cache">Cache that holds the latest entity snapshots (written on every <see cref="MarkDirty(T, string)"/>).</param>
+    /// <param name="coordinator">Coordinator this service registers itself with.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="vault">Database vault; when null, flushes only clear dirty flags and nothing reaches a database.</param>
+    /// <param name="batchSize">Entities per <c>SaveBatchAsync</c> call during flush.</param>
+    /// <param name="walEnabled">Create a <see cref="WriteAheadLog{T}"/> for crash recovery.</param>
+    /// <param name="walDirectory">Directory of the WAL file (created if missing; relative to the working directory).</param>
+    /// <param name="walFlushIntervalSeconds">How often the WAL buffer is appended to disk, in seconds.</param>
     public AutosaveService(
         ICacheProvider cache,
         IAutosaveCoordinator coordinator,
@@ -45,12 +62,14 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         coordinator.Register(this);
     }
 
+    /// <inheritdoc/>
     public void MarkDirty(T entity)
     {
         EnsureStorageId(entity);
         MarkDirty(entity, entity.StorageId);
     }
 
+    /// <inheritdoc/>
     public void MarkDirty(T entity, string ownerId)
     {
         EnsureStorageId(entity);
@@ -59,6 +78,7 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         _wal?.Append(entity, ownerId);
     }
 
+    /// <inheritdoc/>
     public async Task SaveAsync(T entity)
     {
         EnsureStorageId(entity);
@@ -84,6 +104,7 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
             : Guid.NewGuid().ToString();
     }
 
+    /// <inheritdoc/>
     public async Task<T?> LoadAsync(string storageId)
     {
         var cached = await _cache.GetAsync<T>(storageId);
@@ -98,6 +119,7 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         return fromDb;
     }
 
+    /// <inheritdoc/>
     public async Task FlushByOwnerAsync(string ownerId)
     {
         var ids = _dirtyMap
@@ -109,6 +131,7 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
             await FlushIdsAsync(ids);
     }
 
+    /// <inheritdoc/>
     public async Task FlushAsync()
     {
         var ids = _dirtyMap.Keys.ToList();
@@ -124,6 +147,10 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
     /// Recover unflushed data from WAL file (called on startup).
     /// Returns the number of recovered entities.
     /// </summary>
+    /// <remarks>Deserializes the latest WAL snapshot per storage id, batch-saves them to the vault (falling back to
+    /// per-entity saves), then truncates the WAL. Without a vault the entries are discarded. Call before gameplay
+    /// starts mutating entities of this type.</remarks>
+    /// <returns>Number of distinct entities found in the WAL (including any that failed to deserialize or save).</returns>
     public async Task<int> RecoverFromWalAsync()
     {
         if (_wal == null) return 0;
@@ -217,6 +244,7 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         }
     }
 
+    /// <summary>Stops the WAL timer. Does not flush: call <see cref="FlushAsync"/> first on shutdown.</summary>
     public void Dispose()
     {
         _wal?.Dispose();

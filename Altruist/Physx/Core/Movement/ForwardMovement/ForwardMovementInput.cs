@@ -16,12 +16,21 @@ limitations under the License.
 
 namespace Altruist.Physx;
 
+/// <summary>
+/// Input for a "forward + rotate" (tank / vehicle style) movement model: the body thrusts along its own facing and turns
+/// left/right. Use <see cref="EightDirectionMovementPhysxInput"/> instead when movement follows fixed screen axes.
+/// </summary>
 public class ForwardMovementPhysxInput : MovementPhysxInput
 {
+    /// <summary>Thrust along the current facing this tick.</summary>
     public bool MoveForward { get; set; }
+    /// <summary>Turn left this tick.</summary>
     public bool RotateLeft { get; set; }
+    /// <summary>Turn right this tick.</summary>
     public bool RotateRight { get; set; }
+    /// <summary>Boost request; its effect is defined by the movement implementation.</summary>
     public bool Turbo { get; set; }
+    /// <summary>Turn rate in radians per second.</summary>
     public float RotationSpeed { get; set; }
 
 }

@@ -46,6 +46,9 @@ public static class DependencyPlanner
     /// Register an additional attribute type as a service marker.
     /// Provider packages (e.g. Persistence) call this to add VaultAttribute etc.
     /// </summary>
+    /// <remarks>Call before bootstrap registers services. Classes carrying a marker are auto-registered as singletons when
+    /// they appear as a constructor dependency. Not thread-safe.</remarks>
+    /// <param name="attributeType">Attribute type (subclasses also match).</param>
     public static void RegisterServiceMarker(Type attributeType)
     {
         if (!_serviceMarkerAttributes.Contains(attributeType))
@@ -61,6 +64,18 @@ public static class DependencyPlanner
     /// dependencies are registered in <paramref name="services"/> (dependencies first).
     /// Honors ConditionalOnConfig via DependencyResolver.ShouldRegister.
     /// </summary>
+    /// <remarks>
+    /// Resolution order per dependency: already registered → skipped; list-style conditional → not auto-registered;
+    /// the first <see cref="ServiceAttribute"/> implementation declaring that exact service type (with its lifetime);
+    /// a concrete class with a service marker (singleton); otherwise an <see cref="IServiceFactory"/> that can create it.
+    /// A dependency nobody can provide is left unregistered and fails later at resolution. Parameters with
+    /// <see cref="AppConfigValueAttribute"/>, default values, simple types and <see cref="Lazy{T}"/> are not planned.
+    /// </remarks>
+    /// <param name="services">Collection to register into.</param>
+    /// <param name="cfg">Configuration for condition evaluation.</param>
+    /// <param name="log">Logger.</param>
+    /// <param name="implType">Root implementation type (itself NOT registered here).</param>
+    /// <exception cref="InvalidOperationException">A constructor dependency cycle was found.</exception>
     public static void EnsureDependenciesRegistered(
         IServiceCollection services,
         IConfiguration cfg,

@@ -10,17 +10,77 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Gaming.ThreeD
 {
+    /// <summary>
+    /// One persistent 3D world (open world / shard): owns the world's objects, its spatial
+    /// partitions, its zones and (optionally) a physics world. Objects are added with the
+    /// <c>Spawn*</c> methods and removed with <see cref="DestroyObject(string)"/>; the
+    /// <see cref="GameWorldOrganizer3D"/> steps every registered world each engine frame
+    /// (object <c>Step</c>, physics step, physics-to-transform sync, AI, visibility, entity sync).
+    /// </summary>
+    /// <remarks>
+    /// Use a world for long-lived shared spaces with spatial queries and visibility. For short,
+    /// fixed-rate matches use the Rooms package instead. For 2D games use
+    /// <see cref="Altruist.Gaming.TwoD.IGameWorldManager2D"/>. Instances are created by
+    /// <see cref="IWorldLoader3D"/> (one per configured <see cref="IWorldIndex3D"/>) and looked up via
+    /// <see cref="IGameWorldOrganizer3D.GetWorld(int)"/>; you normally do not construct one yourself.
+    /// Not thread-safe for concurrent writers: call spawn/destroy from the engine/world step thread
+    /// (the object cache is concurrent, the partitions are not).
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var world = organizer.GetWorld(0)!;
+    /// await world.SpawnDynamicObject(myObject);
+    /// var near = world.GetNearbyObjectsInRoom("enemy", x, y, z, radius: 30f, roomId: "");
+    /// world.DestroyObject(myObject);
+    /// </code>
+    /// </example>
     public interface IGameWorldManager3D : IGameWorldManager
     {
+        /// <summary>The configuration this world was created from (index, name, size, gravity, data path).</summary>
         IWorldIndex3D Index { get; }
+        /// <summary>
+        /// The physics world, or <c>null</c> when the world runs without a physics engine
+        /// (objects then only get in-memory bodies, see <see cref="SpawnDynamicObject"/>).
+        /// </summary>
         IPhysxWorld3D? PhysxWorld { get; }
+        /// <summary>Zone registry for this world (named AABB regions); created lazily on first access.</summary>
         IZoneManager3D Zones { get; }
 
+        /// <summary>
+        /// Re-files <paramref name="obj"/> into the partitions that its current bounds intersect after it moved.
+        /// The physics body is left untouched.
+        /// </summary>
+        /// <remarks>
+        /// Side effect of the current implementation: the object is also removed from the flat
+        /// instance cache and NOT re-added, so afterwards <see cref="FindObject"/>, <see cref="GetAllObjects"/>
+        /// and <see cref="GetCachedSnapshot"/> no longer return it (and it stops being stepped) until it is spawned again.
+        /// </remarks>
+        /// <param name="obj">The object whose position changed; <c>null</c> returns an empty sequence.</param>
+        /// <returns>The partitions the object is now registered in.</returns>
         Task<IEnumerable<WorldPartitionManager3D>> UpdateObjectPosition(IWorldObject3D obj);
 
+        /// <summary>Looks up a live object by the key it was spawned with (its <c>InstanceId</c>, or the <c>withId</c> override).</summary>
+        /// <param name="id">Instance id / spawn key.</param>
+        /// <returns>The object, or <c>null</c> when not present.</returns>
         IWorldObject3D? FindObject(string id);
+        /// <summary>
+        /// Enumerates all live objects assignable to <typeparamref name="T"/> (filtered with <c>OfType</c>, allocates per call).
+        /// For per-tick iteration over everything prefer <see cref="GetCachedSnapshot"/>.
+        /// </summary>
+        /// <typeparam name="T">World object type to filter by.</typeparam>
         IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D;
+        /// <summary>Enumerates all live objects (a live view over the concurrent instance cache; order unspecified).</summary>
         IEnumerable<IWorldObject3D> GetAllObjects();
+        /// <summary>
+        /// Returns a cached list + id lookup of all live objects, rebuilt only when objects were
+        /// spawned or destroyed since the last call. Used once per tick by the organizer to feed
+        /// AI, visibility and entity sync without re-materializing the object set.
+        /// </summary>
+        /// <remarks>
+        /// The returned collections are reused and mutated in place on the next rebuild; do not hold them
+        /// across ticks and do not call this concurrently. Use <see cref="SnapshotVersion"/> to detect rebuilds.
+        /// The lookup is keyed by <c>InstanceId</c>.
+        /// </remarks>
         (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot();
 
         /// <summary>
@@ -31,8 +91,39 @@ namespace Altruist.Gaming.ThreeD
         /// equality cannot detect when the contents were swapped.
         /// </summary>
         int SnapshotVersion { get; }
+        /// <summary>
+        /// Spawns <paramref name="obj"/>, picking the cheapest path: a dynamic physics body
+        /// (<see cref="SpawnDynamicObject"/>) when the object has a <c>BodyDescriptor</c> or at least one
+        /// non-trigger collider descriptor, otherwise <see cref="SpawnLightweight"/> (no body).
+        /// </summary>
+        /// <remarks>Use this when you do not care which path is taken; call the specific method to force one.</remarks>
+        /// <param name="obj">The object to register.</param>
+        /// <param name="withId">Optional key for the instance cache instead of <c>obj.InstanceId</c>.</param>
+        /// <returns>The created body, or <c>null</c> for the lightweight path.</returns>
         Task<IPhysxBody3D?> SpawnObject(IWorldObject3D obj, string? withId = null);
+        /// <summary>
+        /// Spawns <paramref name="obj"/> with a dynamic physics body. With a physics engine the body is built from
+        /// <c>obj.BodyDescriptor</c> (default: dynamic, mass 1 at <c>obj.Transform</c>) and <c>obj.ColliderDescriptors</c>
+        /// (default: one non-trigger box at <c>obj.Transform</c>), added to <see cref="PhysxWorld"/> and written back to
+        /// <c>Body</c>/<c>Colliders</c>. Without a physics engine an in-memory body (position/velocity only) is attached.
+        /// </summary>
+        /// <remarks>
+        /// Also assigns <c>VirtualId</c> (process-wide sequence) if 0, resolves <c>ObjectArchetype</c> from
+        /// <see cref="WorldObjectAttribute"/> (except for <see cref="AnonymousWorldObject3D"/>), files the object into
+        /// partitions, marks the snapshot dirty and raises <see cref="OnObjectCreated"/> synchronously.
+        /// Use <see cref="SpawnStaticObject"/> for immovable geometry and <see cref="SpawnLightweight"/> for objects that need no collision.
+        /// </remarks>
+        /// <param name="obj">The object to register.</param>
+        /// <param name="withId">Optional key for the instance cache instead of <c>obj.InstanceId</c>.</param>
+        /// <returns>The created body, or <c>null</c> when <paramref name="obj"/> is <c>null</c>.</returns>
         Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null);
+        /// <summary>
+        /// Spawns <paramref name="obj"/> as static (immovable, mass 0) geometry such as terrain or buildings.
+        /// Same registration steps as <see cref="SpawnDynamicObject"/>; without a physics engine no body is created at all.
+        /// </summary>
+        /// <param name="obj">The object to register.</param>
+        /// <param name="withId">Optional key for the instance cache instead of <c>obj.InstanceId</c>.</param>
+        /// <returns>The created static body, or <c>null</c> when physics is disabled.</returns>
         Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null);
 
         /// <summary>
@@ -41,8 +132,21 @@ namespace Altruist.Gaming.ThreeD
         /// but has no collision or physics simulation. Ideal for distance-based
         /// combat entities that only need position tracking.
         /// </summary>
+        /// <remarks>Assigns <c>VirtualId</c>/archetype and raises <see cref="OnObjectCreated"/> like the other spawn methods.</remarks>
+        /// <param name="obj">The object to register; <c>null</c> is ignored.</param>
+        /// <param name="withId">Optional key for the instance cache instead of <c>obj.InstanceId</c>.</param>
         void SpawnLightweight(IWorldObject3D obj, string? withId = null);
+        /// <summary>
+        /// Removes the object with the given instance id from partitions and the instance cache, removes its body from the
+        /// physics engine and raises <see cref="OnObjectDestroyed"/> synchronously. For deferred removal during a tick,
+        /// set <c>Expired = true</c> on the object instead; the organizer destroys expired objects at the start of the next world step.
+        /// </summary>
+        /// <param name="instanceId">Instance id (or the <c>withId</c> key used at spawn).</param>
+        /// <returns>The removed object, or <c>null</c> when nothing matched.</returns>
         IWorldObject3D? DestroyObject(string instanceId);
+        /// <summary>Destroys <paramref name="obj"/> by its <c>InstanceId</c>; see <see cref="DestroyObject(string)"/>.</summary>
+        /// <param name="obj">The object to remove; <c>null</c> returns <c>null</c>.</param>
+        /// <returns>The removed object, or <c>null</c> when nothing matched.</returns>
         IWorldObject3D? DestroyObject(IWorldObject3D obj);
 
         /// <summary>
@@ -62,6 +166,21 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         event Action<IWorldObject3D>? OnObjectCreated;
 
+        /// <summary>
+        /// Returns objects of one archetype whose position lies within <paramref name="radius"/> of a point
+        /// and whose <c>ZoneId</c> equals <paramref name="roomId"/> (ordinal), using the partitions' spatial grids.
+        /// </summary>
+        /// <remarks>
+        /// Distance is a full 3D sphere test against <c>Transform.Position</c> (object extents are ignored).
+        /// Only objects currently filed in partitions are found. For physics-shape queries use the 3D query/physics APIs instead.
+        /// </remarks>
+        /// <param name="archetype">Archetype to match exactly (as resolved from <see cref="WorldObjectAttribute"/>; <c>""</c> for none).</param>
+        /// <param name="x">Query center X (world units).</param>
+        /// <param name="y">Query center Y (world units).</param>
+        /// <param name="z">Query center Z (world units).</param>
+        /// <param name="radius">Sphere radius in world units.</param>
+        /// <param name="roomId">Zone/room id to match; pass <c>""</c> for objects without a zone.</param>
+        /// <returns>Distinct matching objects (order unspecified).</returns>
         IEnumerable<IWorldObject3D> GetNearbyObjectsInRoom(
             string archetype,
             int x, int y, int z,
@@ -72,16 +191,39 @@ namespace Altruist.Gaming.ThreeD
         /// Find all partitions intersecting a sphere around a position.
         /// Useful for "what partitions does this player see?" style queries.
         /// </summary>
+        /// <remarks>The sphere is approximated by its bounding cube (see <see cref="FindPartitionsForBounds"/>).</remarks>
+        /// <param name="x">Center X (world units).</param>
+        /// <param name="y">Center Y (world units).</param>
+        /// <param name="z">Center Z (world units).</param>
+        /// <param name="radius">Radius in world units.</param>
+        /// <returns>A lazily evaluated sequence of intersecting partitions.</returns>
         IEnumerable<WorldPartitionManager3D> FindPartitionsForPosition(int x, int y, int z, float radius);
 
         /// <summary>
         /// Find a single partition that contains a specific position (if any).
         /// </summary>
+        /// <remarks>
+        /// The cell index is computed with <c>Math.Round(coord / partitionSize)</c> (not floor), so positions in the upper
+        /// half of a partition map to the next partition index. Prefer <see cref="FindPartitionsForBounds"/> /
+        /// <see cref="FindPartitionsForPosition"/> when exact containment matters.
+        /// </remarks>
+        /// <param name="x">X (world units).</param>
+        /// <param name="y">Y (world units).</param>
+        /// <param name="z">Z (world units).</param>
+        /// <returns>The partition, or <c>null</c> if the index is outside the world grid.</returns>
         WorldPartitionManager3D? FindPartitionForPosition(int x, int y, int z);
 
         /// <summary>
         /// Find all partitions whose AABB intersects the provided bounds.
         /// </summary>
+        /// <remarks>Inclusive test (touching faces count). Partition bounds start at the world origin (0,0,0); <c>IWorldIndex3D.Position</c> is not applied.</remarks>
+        /// <param name="minX">Minimum X of the query box.</param>
+        /// <param name="minY">Minimum Y of the query box.</param>
+        /// <param name="minZ">Minimum Z of the query box.</param>
+        /// <param name="maxX">Maximum X of the query box.</param>
+        /// <param name="maxY">Maximum Y of the query box.</param>
+        /// <param name="maxZ">Maximum Z of the query box.</param>
+        /// <returns>A lazily evaluated sequence of intersecting partitions.</returns>
         IEnumerable<WorldPartitionManager3D> FindPartitionsForBounds(
             float minX, float minY, float minZ,
             float maxX, float maxY, float maxZ);
@@ -89,9 +231,25 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>
         /// Find all partitions that intersect the bounds of the given object.
         /// </summary>
+        /// <remarks>
+        /// Bounds come from the first non-trigger collider descriptor (heightfield colliders use their full grid extent),
+        /// else a heightfield collider, else <c>obj.Transform</c> position ± size/2. A zero/NaN collider size falls back to the transform size.
+        /// </remarks>
+        /// <param name="obj">The object; <c>null</c> returns an empty sequence.</param>
+        /// <returns>A lazily evaluated sequence of intersecting partitions.</returns>
         IEnumerable<WorldPartitionManager3D> FindPartitionsForObject(IWorldObject3D obj);
     }
 
+    /// <summary>
+    /// Default <see cref="IGameWorldManager3D"/>: partitions the world with an <see cref="IWorldPartitioner3D"/>,
+    /// keeps objects in a concurrent instance cache plus per-partition spatial grids, and creates physics bodies
+    /// through the optional body/collider API providers.
+    /// </summary>
+    /// <remarks>
+    /// Not a DI service: <see cref="WorldLoader3D"/> constructs one per world index. Physics is enabled when a
+    /// non-null <see cref="IPhysxWorld3D"/> is passed; bodies are only created when the body and collider API
+    /// providers are also supplied.
+    /// </remarks>
     public sealed class GameWorldManager3D : IGameWorldManager3D
     {
         private readonly IWorldIndex3D _index;
@@ -116,11 +274,15 @@ namespace Altruist.Gaming.ThreeD
         private volatile bool _snapshotDirty = true;
         private int _snapshotVersion;
 
+        /// <inheritdoc/>
         public event Action<IWorldObject3D>? OnObjectDestroyed;
+        /// <inheritdoc/>
         public event Action<IWorldObject3D>? OnObjectCreated;
 
+        /// <inheritdoc/>
         public int SnapshotVersion => _snapshotVersion;
 
+        /// <inheritdoc/>
         public (IReadOnlyList<IWorldObject3D> List, IReadOnlyDictionary<string, IWorldObject3D> Lookup) GetCachedSnapshot()
         {
             if (_snapshotDirty)
@@ -143,6 +305,12 @@ namespace Altruist.Gaming.ThreeD
 
         private void MarkSnapshotDirty() => _snapshotDirty = true;
 
+        /// <summary>Creates the manager and immediately computes the world's partitions (see <see cref="Initialize"/>).</summary>
+        /// <param name="world">World configuration (size drives the partition grid).</param>
+        /// <param name="physx3D">Physics world, or <c>null</c> to run without physics.</param>
+        /// <param name="worldPartitioner">Partitioner that splits the world into partitions.</param>
+        /// <param name="bodyApi">Body factory; required (with <paramref name="colliderApi"/>) for real physics bodies.</param>
+        /// <param name="colliderApi">Collider factory; required (with <paramref name="bodyApi"/>) for real physics bodies.</param>
         public GameWorldManager3D(
             IWorldIndex3D world,
             IPhysxWorld3D? physx3D,
@@ -162,10 +330,17 @@ namespace Altruist.Gaming.ThreeD
             Initialize();
         }
 
+        /// <inheritdoc/>
         public IPhysxWorld3D? PhysxWorld => _physx3D;
+        /// <inheritdoc/>
         public IWorldIndex3D Index => _index;
+        /// <inheritdoc/>
         public IZoneManager3D Zones => _zoneManager ??= new ZoneManager3D(_worldPartitioner, _partitions);
 
+        /// <summary>
+        /// Computes the partition grid from <see cref="Index"/> and registers the partitions. Called by the constructor;
+        /// calling it again appends a duplicate set of partitions, so do not call it manually.
+        /// </summary>
         public void Initialize()
         {
             var partitions = _worldPartitioner.CalculatePartitions(_index);
@@ -195,6 +370,7 @@ namespace Altruist.Gaming.ThreeD
             return await Task.FromResult(partitions.ToList());
         }
 
+        /// <inheritdoc/>
         public Task<IPhysxBody3D?> SpawnObject(IWorldObject3D obj, string? withId = null)
         {
             if (RequiresPhysicsBody(obj))
@@ -204,6 +380,7 @@ namespace Altruist.Gaming.ThreeD
             return Task.FromResult<IPhysxBody3D?>(null);
         }
 
+        /// <inheritdoc/>
         public async Task<IPhysxBody3D?> SpawnDynamicObject(IWorldObject3D obj, string? withId = null)
         {
             return await SpawnObjectInternal(
@@ -213,6 +390,7 @@ namespace Altruist.Gaming.ThreeD
                 withId: withId);
         }
 
+        /// <inheritdoc/>
         public async Task<IPhysxBody3D?> SpawnStaticObject(IWorldObject3D obj, string? withId = null)
         {
             return await SpawnObjectInternal(
@@ -222,6 +400,7 @@ namespace Altruist.Gaming.ThreeD
                 withId: withId);
         }
 
+        /// <inheritdoc/>
         public void SpawnLightweight(IWorldObject3D obj, string? withId = null)
         {
             if (obj is null) return;
@@ -242,7 +421,7 @@ namespace Altruist.Gaming.ThreeD
         }
 
         /// <summary>
-        /// Core spawn logic shared by dynamic & static world objects.
+        /// Core spawn logic shared by dynamic &amp; static world objects.
         /// </summary>
         private async Task<IPhysxBody3D?> SpawnObjectInternal(
             IWorldObject3D obj,
@@ -341,6 +520,7 @@ namespace Altruist.Gaming.ThreeD
                 : WorldObjectArchetypeHelper.ResolveArchetype(obj.GetType());
         }
 
+        /// <inheritdoc/>
         public IWorldObject3D? DestroyObject(string instanceId)
         {
             if (string.IsNullOrWhiteSpace(instanceId))
@@ -350,6 +530,7 @@ namespace Altruist.Gaming.ThreeD
             return DetachObjectInternal(instanceId, removeFromPhysx: true);
         }
 
+        /// <inheritdoc/>
         public IWorldObject3D? DestroyObject(IWorldObject3D obj)
             => obj is null ? null : DestroyObject(obj.InstanceId);
 
@@ -401,6 +582,7 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <inheritdoc/>
         public IEnumerable<IWorldObject3D> GetNearbyObjectsInRoom(
             string archetype,
             int x, int y, int z,
@@ -415,6 +597,7 @@ namespace Altruist.Gaming.ThreeD
             return result.Distinct();
         }
 
+        /// <inheritdoc/>
         public WorldPartitionManager3D? FindPartitionForPosition(int x, int y, int z)
         {
             int indexX = (int)Math.Round(x / (double)_worldPartitioner.PartitionWidth);
@@ -587,15 +770,18 @@ namespace Altruist.Gaming.ThreeD
             return r;
         }
 
+        /// <inheritdoc/>
         public IWorldObject3D? FindObject(string id)
             => _flatInstanceCache.TryGetValue(id, out var obj) ? obj : null;
 
+        /// <inheritdoc/>
         public IEnumerable<T> FindAllObjects<T>() where T : IWorldObject3D
         {
             return _flatInstanceCache.Values
                 .OfType<T>();
         }
 
+        /// <inheritdoc/>
         public IEnumerable<IWorldObject3D> GetAllObjects()
         {
             return _flatInstanceCache.Values;

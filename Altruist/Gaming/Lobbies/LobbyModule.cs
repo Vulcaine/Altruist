@@ -7,12 +7,17 @@ using Altruist.Gaming.Rooms;
 
 namespace Altruist.Gaming.Lobbies;
 
+/// <summary>One member of a <see cref="Lobby{TSim,TInput,TPlayer}"/>.</summary>
+/// <typeparam name="TPlayer">The game's player data.</typeparam>
 public sealed class LobbyMember<TPlayer>
 {
+    /// <summary>The member's current connection (updated when it rejoins).</summary>
     public required string ClientId { get; set; }
+    /// <summary>The member's player identity.</summary>
     public required string PrincipalId { get; init; }
     /// <summary>Stable id inside the lobby (also the member's seat id in its rooms).</summary>
     public required int MemberId { get; init; }
+    /// <summary>The member's player data (kept up to date on profile changes).</summary>
     public required TPlayer Player { get; set; }
     /// <summary>
     /// False while the member's connection is gone but its seat in the lobby's room may still be
@@ -30,10 +35,15 @@ public sealed class Lobby<TSim, TInput, TPlayer>
 {
     private int _nextMemberId = 1;
 
+    /// <summary>An empty lobby; <see cref="LobbyModule{TSim,TInput,TPlayer}"/> creates them (use <see cref="LobbyModule{TSim,TInput,TPlayer}.Join"/>).</summary>
+    /// <param name="code">The invite code.</param>
     public Lobby(string code) => Code = code;
 
+    /// <summary>The invite code (upper case).</summary>
     public string Code { get; }
+    /// <summary>Members in join order (also the order the host role passes on).</summary>
     public List<LobbyMember<TPlayer>> Members { get; } = new();
+    /// <summary>The member that may start rooms ("" in an empty lobby).</summary>
     public string HostPrincipalId { get; private set; } = "";
     /// <summary>The room the lobby is playing, or null.</summary>
     public Room<TSim, TInput, TPlayer>? Room { get; internal set; }
@@ -47,6 +57,7 @@ public sealed class Lobby<TSim, TInput, TPlayer>
         return m;
     }
 
+    /// <summary>Removes a member; the host role passes to the next connected member (else the next one).</summary>
     public void Remove(string principalId)
     {
         Members.RemoveAll(m => m.PrincipalId == principalId);
@@ -54,8 +65,10 @@ public sealed class Lobby<TSim, TInput, TPlayer>
         if (HostPrincipalId == principalId) HostPrincipalId = (Members.FirstOrDefault(m => m.Connected) ?? Members.FirstOrDefault())?.PrincipalId ?? "";
     }
 
+    /// <summary>The member with this principal, or null.</summary>
     public LobbyMember<TPlayer>? Get(string principalId) => Members.FirstOrDefault(m => m.PrincipalId == principalId);
 
+    /// <summary>The principal holds the host role.</summary>
     public bool IsHost(string principalId) => HostPrincipalId == principalId;
 
     /// <summary>Hands the host role to a member (a lobby moved to another server keeps its host).</summary>
@@ -65,9 +78,12 @@ public sealed class Lobby<TSim, TInput, TPlayer>
     }
 }
 
+/// <summary>Settings of <see cref="LobbyModule{TSim,TInput,TPlayer}"/> (passed by the game; not read from configuration).</summary>
 public sealed record LobbyOptions
 {
+    /// <summary>Members a lobby takes; joining a full lobby is refused with <see cref="LobbyRejectReason.Full"/>.</summary>
     public int MaxMembers { get; init; } = 4;
+    /// <summary>Characters in a generated invite code.</summary>
     public int CodeLength { get; init; } = 5;
     /// <summary>Unambiguous code characters.</summary>
     public string CodeAlphabet { get; init; } = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -80,13 +96,28 @@ public sealed record LobbyOptions
 }
 
 /// <summary>
-/// Why a lobby request was refused: <see cref="Unavailable"/> = the server cannot take it (it is
-/// draining, or full when starting a room); <see cref="TooManyPlayers"/> = the lobby has more
-/// members than the mode has seats.
+/// Why a lobby request was refused: <see cref="NotFound"/> = no lobby has the code;
+/// <see cref="Full"/> = the lobby has <see cref="LobbyOptions.MaxMembers"/> members;
+/// <see cref="Unavailable"/> = the server cannot take it (it is draining, or full when starting a
+/// room); <see cref="TooManyPlayers"/> = the lobby has more members than the mode has seats.
 /// </summary>
-public enum LobbyRejectReason { NotFound, Full, Unavailable, TooManyPlayers }
+public enum LobbyRejectReason
+{
+    /// <summary>No lobby has the code.</summary>
+    NotFound,
+    /// <summary>The lobby already has <see cref="LobbyOptions.MaxMembers"/> members.</summary>
+    Full,
+    /// <summary>The server cannot take it (draining, or full when starting a room).</summary>
+    Unavailable,
+    /// <summary>The lobby has more members than the mode has seats.</summary>
+    TooManyPlayers,
+}
 
-/// <summary>What lobbies need from the game.</summary>
+/// <summary>
+/// What lobbies need from the game; implement it (usually on the same class as
+/// <see cref="IRoomGame{TSim,TInput,TPlayer}"/>) when the host uses <see cref="LobbyModule{TSim,TInput,TPlayer}"/>.
+/// Called on the engine thread.
+/// </summary>
 public interface ILobbyGame<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
@@ -100,6 +131,9 @@ public interface ILobbyGame<TSim, TInput, TPlayer>
     /// <summary>The lobby's state for one member.</summary>
     IPacketBase LobbyState(Lobby<TSim, TInput, TPlayer> lobby, LobbyMember<TPlayer> to);
 
+    /// <summary>The packet that tells a connection its lobby request was refused.</summary>
+    /// <param name="reason">Why.</param>
+    /// <param name="code">The code it asked for ("" for a new lobby).</param>
     IPacketBase Rejected(LobbyRejectReason reason, string code);
 }
 
@@ -120,6 +154,27 @@ internal sealed class LobbySeat<TSim, TInput, TPlayer>(Lobby<TSim, TInput, TPlay
 /// player joining the code on another server is sent to it. A draining server moves its lobbies
 /// (members, code and host) to another server once they are not playing a room.
 /// </para>
+/// <para>
+/// When to use: private play among invited players (friends, custom games, training) where a leader
+/// picks the mode and starts, and the group stays together between rooms. For public queues that
+/// group strangers by playlist and rating, with backfill and join in progress, use
+/// <c>MatchmakingModule</c> (Altruist.Gaming.Matchmaking) instead; both can be added to one host and
+/// joining a lobby takes the connection out of its queue (<see cref="RoomHost{TSim,TInput,TPlayer}.TakeOver"/>).
+/// Lobby rooms carry <see cref="Room{TSim,TInput,TPlayer}.LobbyCode"/>; their players return to the
+/// lobby (not the menu) when the room ends, and the host member's <see cref="RoomHost{TSim,TInput,TPlayer}.Return"/>
+/// ends the room for everyone.
+/// </para>
+/// <example>
+/// <code>
+/// var lobbies = new LobbyModule&lt;ArenaSim, PadInput, Profile&gt;(game,
+///     new LobbyOptions { MaxMembers = 6, Playlist = "private", Rules = new RoomRules { BotRefill = false } });
+/// host.Use(lobbies);
+/// // engine thread, on client commands:
+/// lobbies.Join(session, "");          // create a lobby (the code comes back in LobbyState)
+/// lobbies.Join(session, "K7QXD");     // join by code (any server of the fleet)
+/// lobbies.Start(session, "2v2");      // host only; ILobbyGame.TeamSizeOf("2v2") must not be null
+/// </code>
+/// </example>
 /// </summary>
 public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
@@ -131,18 +186,25 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
     /// <summary>The fleet unit kind lobby codes are claimed under, and the <see cref="FleetHandoff.Kind"/> of a lobby move.</summary>
     public const string LobbyUnit = "lobby";
 
+    /// <summary>Creates the module; add it to a host with <see cref="RoomHost{TSim,TInput,TPlayer}.Use"/>.</summary>
+    /// <param name="game">The game's lobby hooks (usually the same object as the host's <see cref="IRoomGame{TSim,TInput,TPlayer}"/>).</param>
+    /// <param name="options">Lobby size, codes, playlist name and room rules.</param>
     public LobbyModule(ILobbyGame<TSim, TInput, TPlayer> game, LobbyOptions options)
     {
         _game = game;
         Options = options;
     }
 
+    /// <summary>The options it was created with.</summary>
     public LobbyOptions Options { get; }
 
+    /// <inheritdoc/>
     public void Attach(RoomHost<TSim, TInput, TPlayer> host) => _host = host;
 
+    /// <summary>Open lobbies on this server.</summary>
     public IReadOnlyCollection<Lobby<TSim, TInput, TPlayer>> Lobbies => _lobbies.Values;
 
+    /// <summary>The lobby the connection is in, or null.</summary>
     public Lobby<TSim, TInput, TPlayer>? LobbyOf(RoomSession<TSim, TInput, TPlayer> s) => s.Get<LobbySeat<TSim, TInput, TPlayer>>()?.Lobby;
 
     private static void SetLobby(RoomSession<TSim, TInput, TPlayer> s, Lobby<TSim, TInput, TPlayer>? lobby) =>
@@ -234,6 +296,9 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         SendLobby(lobby);
     }
 
+    /// <summary>The connection leaves its lobby (an empty lobby closes and its room is disposed).</summary>
+    /// <param name="s">The connection.</param>
+    /// <param name="sendUpdate">Send the new lobby state to the remaining members.</param>
     public void Leave(RoomSession<TSim, TInput, TPlayer> s, bool sendUpdate)
     {
         var lobby = LobbyOf(s);
@@ -327,6 +392,7 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         _host.SendSnapshots(m);
     }
 
+    /// <summary>Sends every connected member its <see cref="ILobbyGame{TSim,TInput,TPlayer}.LobbyState"/>.</summary>
     public void SendLobby(Lobby<TSim, TInput, TPlayer> lobby)
     {
         foreach (var mb in lobby.Members)
@@ -346,6 +412,7 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
 
     // ------------------------------------------------------------------ host hooks
 
+    /// <summary>The connection is closing: it leaves its lobby, unless it drops out of the lobby's running room (then its place and role wait for the rejoin).</summary>
     public void OnSessionDropping(RoomSession<TSim, TInput, TPlayer> s)
     {
         if (LobbyOf(s) is not { } lobby) return;
@@ -373,6 +440,7 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
             if (lobby.Room is not null && lobby.Members.Any(mb => !mb.Connected)) PruneDisconnected(lobby);
     }
 
+    /// <summary>The member's player data changed: the lobby is updated and resent.</summary>
     public void OnPlayerUpdated(RoomSession<TSim, TInput, TPlayer> s)
     {
         if (LobbyOf(s) is { } lobby && lobby.Get(s.PrincipalId) is { } member)
@@ -382,6 +450,7 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         }
     }
 
+    /// <summary>The connection is in a lobby.</summary>
     public bool IsBusy(RoomSession<TSim, TInput, TPlayer> s) => LobbyOf(s) is not null;
 
     /// <summary>The host ends the room for everyone; other members just step out of it.</summary>
@@ -399,6 +468,7 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         return true;
     }
 
+    /// <summary>A member rejoining a lobby room gets its lobby place back (re-added when it was pruned; refused when the lobby is full meanwhile).</summary>
     public bool OnRejoining(RoomSession<TSim, TInput, TPlayer> s, Room<TSim, TInput, TPlayer> room, Participant<TSim, TInput, TPlayer> p)
     {
         if (room.Get<Lobby<TSim, TInput, TPlayer>>() is not { } lobby) return true;
@@ -414,11 +484,13 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         return true;
     }
 
+    /// <summary>Resends the lobby state after a member rejoined its room.</summary>
     public void OnRejoined(RoomSession<TSim, TInput, TPlayer> s, Room<TSim, TInput, TPlayer> room)
     {
         if (room.Get<Lobby<TSim, TInput, TPlayer>>() is { } lobby) SendLobby(lobby);
     }
 
+    /// <summary>The lobby's room ended: members still away leave, the rest are back in the lobby (on a draining server the lobby then moves to another server).</summary>
     public void OnRoomDisposed(Room<TSim, TInput, TPlayer> room)
     {
         if (room.Get<Lobby<TSim, TInput, TPlayer>>() is not { } lobby || lobby.Room != room) return;

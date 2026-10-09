@@ -14,24 +14,50 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/// <summary>
+/// How the number given to <see cref="CycleRate"/> / <see cref="CycleAttribute"/> is interpreted.
+/// </summary>
+/// <remarks>
+/// Note the default for both is <see cref="Ticks"/> (engine frames), where a HIGHER number means SLOWER
+/// execution; for a "times per second" rate pass <see cref="Hz"/> or <see cref="Seconds"/> explicitly.
+/// </remarks>
 public enum CycleUnit
 {
+    /// <summary>Cycles per second; must not exceed the engine frame rate (scheduling throws otherwise).</summary>
     Hz,
+    /// <summary>Cycles per second, scheduled by wall-clock period (not capped against the engine rate at registration).</summary>
     Seconds,
+    /// <summary>Cycles per millisecond (effectively capped by the engine frame rate).</summary>
     Milliseconds,
+    /// <summary>Engine frames between runs: 1 = every frame, 2 = every second frame, and so on.</summary>
     Ticks
 }
 
 /// <summary>
 /// Represents the cycle rate of an engine in different time units, calculating the number of ticks per cycle.
 /// </summary>
+/// <remarks>
+/// Used for the engine's own rate, by <see cref="CycleAttribute"/>, and when scheduling tasks or effects on the
+/// engine programmatically. Immutable.
+/// </remarks>
+/// <example>
+/// <code>
+/// var everyFrame   = new CycleRate(1);                    // Ticks: every engine frame
+/// var everyThird   = new CycleRate(3, CycleUnit.Ticks);   // every 3rd frame
+/// var tenPerSecond = new CycleRate(10, CycleUnit.Hz);     // 10 times per second
+/// </code>
+/// </example>
 public class CycleRate
 {
     /// <summary>
-    /// The computed tick interval at which cycles occur. A lower value means a faster cycle rate.
+    /// The computed interval value; its meaning depends on <see cref="Unit"/>: frames between runs for
+    /// <see cref="CycleUnit.Ticks"/>, cycles per second for <see cref="CycleUnit.Hz"/>, and the cycle period in
+    /// <see cref="TimeSpan"/> ticks (100 ns) for <see cref="CycleUnit.Seconds"/> / <see cref="CycleUnit.Milliseconds"/>.
+    /// Prefer <see cref="Frequency"/> + <see cref="Unit"/> when you need the user-facing rate.
     /// </summary>
     public long Value { get; }
 
+    /// <summary>Unit the rate was created with.</summary>
     public CycleUnit Unit { get; }
 
     /// <summary>The frequency this rate was created with (cycles per <see cref="Unit"/>, or the frame interval for Ticks).</summary>
@@ -89,7 +115,44 @@ public class CycleRate
 /// This attribute is used to define the scheduling behavior for methods in the system, allowing
 /// them to be executed at specified intervals or times. It supports cron-based scheduling, frequency-based
 /// scheduling (in Hertz), or real-time execution by default.
+/// <para>
+/// Discovery: at startup the engine's method scheduler scans every service registered in the root DI container
+/// (e.g. via <c>[Service]</c>) for <c>[Cycle]</c> methods (public or non-public, instance) and runs them on that
+/// same instance. The method must be parameterless and return <see cref="Task"/> or <c>void</c>; other shapes
+/// throw at startup. Requires the game engine to be enabled; methods on classes not registered in DI are never found.
+/// </para>
+/// <para>
+/// Modes (first match wins): cron (<see cref="Cron"/>, 5-field cron evaluated in UTC on a timer, independent of
+/// the frame loop), configured rate (<see cref="Config"/>), fixed rate (<see cref="Rate"/>), else every frame.
+/// An async frame-scheduled method is not overlapped with itself while a previous run is still in flight.
+/// </para>
+/// <para>
+/// Use <c>[Cycle]</c> for fixed recurring work declared on a service. For work started/stopped at runtime or
+/// with an expiry, schedule it on the engine programmatically instead.
+/// </para>
 /// </remarks>
+/// <example>
+/// <code>
+/// [Service]
+/// public class Housekeeping
+/// {
+///     [Cycle]                              // every engine frame
+///     public void Tick() { }
+///
+///     [Cycle(5, CycleUnit.Hz)]             // 5 times per second
+///     public Task SyncAsync() =&gt; Task.CompletedTask;
+///
+///     [Cycle(10)]                          // every 10th frame (default unit is Ticks)
+///     public void Sweep() { }
+///
+///     [Cycle("0 * * * *")]                 // top of every hour (UTC)
+///     public Task HourlyAsync() =&gt; Task.CompletedTask;
+///
+///     [Cycle(Config = "myapp:sync:hz", Default = 2, Unit = CycleUnit.Hz)]
+///     public void ConfiguredSync() { }
+/// }
+/// </code>
+/// </example>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public class CycleAttribute : Attribute
 {
@@ -99,12 +162,14 @@ public class CycleAttribute : Attribute
     public string? Cron { get; }
 
     /// <summary>
-    /// Gets the frequency in Hertz to schedule the method execution, if provided.
+    /// Gets the fixed rate set by the <c>(int, CycleUnit)</c> constructor, or null. Despite the historical wording,
+    /// the default unit is <see cref="CycleUnit.Ticks"/> (frames between runs), not Hertz.
     /// </summary>
     public CycleRate? Rate { get; }
 
     /// <summary>
     /// Gets a value indicating whether the method should be executed in real-time.
+    /// True only for the parameterless constructor (every frame, unless <see cref="Config"/> is set).
     /// </summary>
     public bool Realtime { get; }
 
@@ -134,7 +199,8 @@ public class CycleAttribute : Attribute
     /// <summary>
     /// Initializes a new instance of the <see cref="CycleAttribute"/> class, with a cron expression for scheduling.
     /// </summary>
-    /// <param name="cron">The cron expression defining the schedule for the method.</param>
+    /// <param name="cron">The cron expression defining the schedule for the method (standard 5-field
+    /// <c>minute hour day month weekday</c>, evaluated in UTC; parsed at startup and invalid expressions throw).</param>
     /// <exception cref="ArgumentNullException">Thrown when the <paramref name="cron"/> is null.</exception>
     public CycleAttribute(string cron)
     {
@@ -142,9 +208,14 @@ public class CycleAttribute : Attribute
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CycleAttribute"/> class, with a frequency in Hertz.
+    /// Initializes a new instance of the <see cref="CycleAttribute"/> class with a fixed rate.
     /// </summary>
-    /// <param name="frequencyHz">The frequency in Hertz (times per second) for scheduling the method.</param>
+    /// <remarks>
+    /// With the default <see cref="CycleUnit.Ticks"/>, <paramref name="frequencyHz"/> is the number of frames between
+    /// runs (<c>[Cycle(2)]</c> = every 2nd frame). Pass <see cref="CycleUnit.Hz"/> for times per second.
+    /// </remarks>
+    /// <param name="frequencyHz">The rate value, interpreted according to <paramref name="unit"/> (must be positive).</param>
+    /// <param name="unit">How to interpret <paramref name="frequencyHz"/>; defaults to <see cref="CycleUnit.Ticks"/> (frames).</param>
     /// <exception cref="ArgumentException">Thrown when the <paramref name="frequencyHz"/> is less than or equal to 0.</exception>
     public CycleAttribute(int frequencyHz, CycleUnit unit = CycleUnit.Ticks)
     {
@@ -161,7 +232,7 @@ public class CycleAttribute : Attribute
     public bool IsCron() => !string.IsNullOrEmpty(Cron);
 
     /// <summary>
-    /// Determines if the method is scheduled based on a frequency in Hertz.
+    /// Determines if the method is scheduled at a fixed rate (<see cref="Rate"/> is set).
     /// </summary>
     /// <returns>True if the frequency is set; otherwise, false.</returns>
     public bool IsFrequency() => Rate != null;
@@ -175,6 +246,7 @@ public class CycleAttribute : Attribute
     /// <summary>True when the rate comes from configuration (<see cref="Config"/>).</summary>
     public bool IsConfigured() => !IsCron() && !string.IsNullOrWhiteSpace(Config);
 
+    /// <summary>Human-readable schedule description used in the startup log (e.g. "every 2 frame(s)", "5Hz", readable cron).</summary>
     public override string ToString()
     {
         if (IsCron())

@@ -9,9 +9,11 @@ namespace Altruist.Testing;
 
 /// <summary>
 /// Replaces a constructor parameter's service with a <see cref="Mock{T}"/>.<see cref="Mock{T}.Object"/>
-/// for the lifetime of this test class. The mock is registered into the per-class
-/// child container BEFORE building the provider, so other DI-resolved services in
-/// the same constructor see the mock as their dependency (Spring <c>@MockBean</c> behavior).
+/// for one test method (each <c>[Fact]</c> gets a fresh mock in its freshly built container).
+/// The mock replaces every registration of the parameter's type BEFORE the provider is built,
+/// so other DI-resolved services in the same constructor see the mock as their dependency
+/// (Spring <c>@MockBean</c> behavior). Only on constructors of <see cref="AltruistTestAttribute"/>
+/// classes; get the <see cref="Mock{T}"/> back with <c>Mock.Get(parameter)</c> to set it up.
 /// </summary>
 [AttributeUsage(AttributeTargets.Parameter, Inherited = false, AllowMultiple = false)]
 public sealed class MockAttribute : Attribute

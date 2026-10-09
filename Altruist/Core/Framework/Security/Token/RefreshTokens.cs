@@ -27,6 +27,7 @@ namespace Altruist.Security;
 [VaultUniqueKey(nameof(TokenHash))]
 public abstract class RefreshTokenModel : VaultModel
 {
+    /// <summary>The principal (account id) the token signs in.</summary>
     [VaultColumn("principal_id"), VaultColumnIndex]
     public virtual string PrincipalId { get; set; } = "";
 
@@ -38,9 +39,11 @@ public abstract class RefreshTokenModel : VaultModel
     [VaultColumn("token_hash")]
     public virtual string TokenHash { get; set; } = "";
 
+    /// <summary>UTC issue time; the newest per family decides which sessions <see cref="IRefreshTokenService.RevokeExcessAsync"/> keeps.</summary>
     [VaultColumn("issued_at")]
     public virtual DateTime IssuedAt { get; set; }
 
+    /// <summary>UTC expiry (<see cref="RefreshTokenOptions.Lifetime"/> after issue; not extended by rotation of other tokens).</summary>
     [VaultColumn("expires_at")]
     public virtual DateTime ExpiresAt { get; set; }
 
@@ -48,6 +51,7 @@ public abstract class RefreshTokenModel : VaultModel
     [VaultColumn("used_at", nullable: true)]
     public virtual DateTime? UsedAt { get; set; }
 
+    /// <summary>When the token's family was revoked (sign-out, reuse detection, session limit); null while active.</summary>
     [VaultColumn("revoked_at", nullable: true)]
     public virtual DateTime? RevokedAt { get; set; }
 }
@@ -60,13 +64,19 @@ public abstract class RefreshTokenModel : VaultModel
 /// </summary>
 public sealed class RefreshTokenOptions
 {
+    /// <summary>Config section of these options.</summary>
     public const string ConfigPath = "altruist:security:refresh-tokens";
 
+    /// <summary>Lifetime of each issued token (<c>lifetime-days</c>, default 30 days). Every rotation issues a token with a fresh lifetime, so an active session never expires.</summary>
     public TimeSpan Lifetime { get; set; } = TimeSpan.FromDays(30);
+    /// <summary>Families (sessions) per principal kept by <see cref="IRefreshTokenService.RevokeExcessAsync"/> (<c>max-sessions</c>, default 10; 0 = unlimited). Not enforced automatically: call it after sign-in.</summary>
     public int MaxSessions { get; set; } = 10;
+    /// <summary>How long rotated tokens are kept so a replay is still detected as <see cref="RefreshOutcome.Reused"/> (<c>used-retention-hours</c>, default 48 hours).</summary>
     public TimeSpan UsedRetention { get; set; } = TimeSpan.FromHours(48);
+    /// <summary>How long revoked tokens are kept before pruning (<c>revoked-retention-hours</c>, default 24 hours).</summary>
     public TimeSpan RevokedRetention { get; set; } = TimeSpan.FromHours(24);
 
+    /// <summary>Reads <see cref="ConfigPath"/>; missing keys keep their defaults. Keys may also be written without dashes (<c>lifetimedays</c>).</summary>
     public static RefreshTokenOptions FromConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -84,6 +94,7 @@ public sealed class RefreshTokenOptions
     }
 }
 
+/// <summary>Result kind of <see cref="IRefreshTokenService.RotateAsync"/>.</summary>
 public enum RefreshOutcome
 {
     /// <summary>The token was valid; it is now used and <see cref="RefreshRotation.Next"/> replaces it.</summary>
@@ -95,9 +106,15 @@ public enum RefreshOutcome
 }
 
 /// <summary>A new raw refresh token (give it to the client; it is not stored).</summary>
+/// <param name="Token">The raw token (43 base64url characters).</param>
+/// <param name="FamilyId">The session family it belongs to.</param>
+/// <param name="ExpiresAt">UTC expiry; use it for the cookie expiry.</param>
 public sealed record IssuedRefreshToken(string Token, string FamilyId, DateTime ExpiresAt);
 
+/// <summary>Outcome of <see cref="IRefreshTokenService.RotateAsync"/>: on <see cref="RefreshOutcome.Rotated"/>, give <paramref name="Next"/> to the client and issue a new access token for <paramref name="PrincipalId"/>.</summary>
+/// <param name="Outcome">What happened to the presented token.</param>
 /// <param name="PrincipalId">The token's principal (also for <see cref="RefreshOutcome.Reused"/>), null when unknown.</param>
+/// <param name="Next">The successor token (only for <see cref="RefreshOutcome.Rotated"/>).</param>
 public sealed record RefreshRotation(RefreshOutcome Outcome, string? PrincipalId, IssuedRefreshToken? Next);
 
 /// <summary>Stores that delete their stale rows periodically (<see cref="TokenPruneService"/>).</summary>
@@ -106,6 +123,7 @@ public interface ITokenPruner
     /// <summary>What is pruned, for the log ("refresh tokens").</summary>
     string PrunedName { get; }
 
+    /// <summary>Deletes stale rows as of <paramref name="now"/> (UTC); returns the number deleted.</summary>
     Task<long> PruneAsync(DateTime now, CancellationToken ct = default);
 }
 
@@ -117,8 +135,31 @@ public interface ITokenPruner
 /// ambient SQL transaction (<see cref="ISqlTransactionProvider"/>), so a sign-in can create the
 /// account and its first token atomically.
 /// </summary>
+/// <remarks>
+/// Use it with <see cref="IAccessTokenIssuer"/>: short-lived JWT access tokens plus long-lived opaque refresh
+/// tokens (default 30 days, <see cref="RefreshTokenOptions"/>), ideally delivered in a <see cref="RefreshCookie"/>.
+/// Registered (singleton) by <see cref="TokenStoreConfiguration"/> when the application declares exactly one
+/// <see cref="RefreshTokenModel"/> vault; with several, inject <see cref="IRefreshTokenService{TModel}"/>.
+/// Needs a SQL provider with transactions. Stale rows are pruned by <see cref="TokenPruneService"/>.
+/// </remarks>
+/// <example>
+/// <code>
+/// // sign-in
+/// var refresh = await refreshTokens.IssueAsync(accountId);
+/// await refreshTokens.RevokeExcessAsync(accountId);
+/// refreshCookie.Append(Response, refresh);
+///
+/// // refresh endpoint
+/// if (!refreshCookie.HasCsrfHeader(Request)) return Forbid();
+/// var r = await refreshTokens.RotateAsync(refreshCookie.Read(Request));
+/// if (r.Outcome != RefreshOutcome.Rotated) { refreshCookie.Delete(Response); return Unauthorized(); }
+/// refreshCookie.Append(Response, r.Next!);
+/// return Ok(accessTokens.Issue(r.PrincipalId!));
+/// </code>
+/// </example>
 public interface IRefreshTokenService : ITokenPruner
 {
+    /// <summary>The lifetimes and limits in effect.</summary>
     RefreshTokenOptions Options { get; }
 
     /// <summary>A new token for <paramref name="principalId"/>: in <paramref name="familyId"/>, or a new family (a new session).</summary>
@@ -157,6 +198,14 @@ public class RefreshTokenService : IRefreshTokenService
     private readonly Func<DateTime> _utcNow;
     private readonly ILogger _log;
 
+    /// <summary>Creates a service over the table of <paramref name="modelType"/>.</summary>
+    /// <param name="db">A SQL provider that also implements <see cref="ISqlTransactionProvider"/>.</param>
+    /// <param name="modelType">A concrete <see cref="RefreshTokenModel"/> vault type.</param>
+    /// <param name="options">Lifetimes and limits (defaults when null).</param>
+    /// <param name="loggerFactory">Logger factory (reuse warnings); optional.</param>
+    /// <param name="utcNow">UTC clock (tests); default <see cref="DateTime.UtcNow"/>.</param>
+    /// <exception cref="InvalidOperationException">When <paramref name="db"/> does not support transactions.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="modelType"/> is abstract or not a <see cref="RefreshTokenModel"/>.</exception>
     public RefreshTokenService(
         ISqlDatabaseProvider db,
         Type modelType,
@@ -173,12 +222,16 @@ public class RefreshTokenService : IRefreshTokenService
         _log = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<RefreshTokenService>();
     }
 
+    /// <inheritdoc/>
     public RefreshTokenOptions Options { get; }
 
+    /// <inheritdoc/>
     public string PrunedName => "refresh tokens";
 
     private string C(string property) => _t.Column(property);
 
+    /// <inheritdoc/>
+    /// <exception cref="ArgumentException">When <paramref name="principalId"/> is empty.</exception>
     public async Task<IssuedRefreshToken> IssueAsync(string principalId, string? familyId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(principalId))
@@ -195,6 +248,11 @@ public class RefreshTokenService : IRefreshTokenService
         return new IssuedRefreshToken(raw, row.FamilyId, row.ExpiresAt);
     }
 
+    /// <summary>
+    /// Consumes <paramref name="rawToken"/> under a row lock (<c>SELECT ... FOR UPDATE</c>, read committed) and issues its
+    /// successor in the same family. A token already used yields <see cref="RefreshOutcome.Reused"/> and revokes its
+    /// family (logged as a warning); a revoked one also revokes (no-op) and yields <see cref="RefreshOutcome.Invalid"/>.
+    /// </summary>
     public async Task<RefreshRotation> RotateAsync(string? rawToken, CancellationToken ct = default)
     {
         if (!OpaqueToken.IsWellFormed(rawToken))
@@ -228,6 +286,7 @@ public class RefreshTokenService : IRefreshTokenService
         return result;
     }
 
+    /// <inheritdoc/>
     public async Task<bool> RevokeFamilyAsync(string? rawToken, CancellationToken ct = default)
     {
         if (!OpaqueToken.IsWellFormed(rawToken))
@@ -239,11 +298,13 @@ public class RefreshTokenService : IRefreshTokenService
         return true;
     }
 
+    /// <inheritdoc/>
     public Task<long> RevokeAllAsync(string principalId, CancellationToken ct = default) =>
         _db.ExecuteAsync(
             $"UPDATE {_t.Table} SET {C(nameof(RefreshTokenModel.RevokedAt))} = ? WHERE {C(nameof(RefreshTokenModel.PrincipalId))} = ? AND {C(nameof(RefreshTokenModel.RevokedAt))} IS NULL",
             new List<object?> { _utcNow(), principalId }, ct);
 
+    /// <inheritdoc/>
     public Task<long> RevokeExcessAsync(string principalId, int? maxSessions = null, CancellationToken ct = default)
     {
         var max = maxSessions ?? Options.MaxSessions;
@@ -277,6 +338,11 @@ public class RefreshTokenService : IRefreshTokenService
 /// <summary><see cref="RefreshTokenService"/> on the table of <typeparamref name="TModel"/>.</summary>
 public sealed class RefreshTokenService<TModel> : RefreshTokenService, IRefreshTokenService<TModel> where TModel : RefreshTokenModel
 {
+    /// <summary>Creates the service over the table of <typeparamref name="TModel"/>.</summary>
+    /// <param name="db">A SQL provider that also implements <see cref="ISqlTransactionProvider"/>.</param>
+    /// <param name="options">Lifetimes and limits (defaults when null).</param>
+    /// <param name="loggerFactory">Logger factory; optional.</param>
+    /// <param name="utcNow">UTC clock (tests); default <see cref="DateTime.UtcNow"/>.</param>
     public RefreshTokenService(ISqlDatabaseProvider db, RefreshTokenOptions? options = null, ILoggerFactory? loggerFactory = null, Func<DateTime>? utcNow = null)
         : base(db, typeof(TModel), options, loggerFactory, utcNow) { }
 }

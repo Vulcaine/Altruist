@@ -31,6 +31,14 @@ public delegate bool TryRule<in TCtx, TResult>(TCtx context, out TResult result)
 /// <para>Allocation: none per evaluation (the rules are an array of structs built once). Keep
 /// the delegates free of per-call captures (pass state through the context) to stay that way.</para>
 ///
+/// <para>Choosing: use this for a stateless "first rule that applies picks the value" decision
+/// re-evaluated every call; <see cref="FirstMatch{TCtx}"/> when the branches run actions instead
+/// of returning a value; <see cref="UtilitySelector{TOption, TCtx}"/> when options are scored and
+/// the best one wins (with noise and hysteresis); <see cref="StateMachine{TContext}"/> /
+/// <see cref="AIStateMachine"/> when the decision has memory (a current state that persists over
+/// ticks, with enter/exit hooks and time in state); <see cref="ModifierStack{TCtx}"/> when several
+/// conditional operations combine into one float instead of one rule winning.</para>
+///
 /// <code>
 /// var hitMultiplier = FirstMatch&lt;HitContext, float&gt;.Create()
 ///     .When("super",   c =&gt; c.SuperStrike,   c =&gt; c.Config.SuperStrikeMultiplier)
@@ -198,6 +206,10 @@ public sealed class FirstMatch<TCtx, TResult>
 /// something (movement modes, input actions, tactics). The first rule that matches runs its action;
 /// later rules are not evaluated. Same ordering, determinism and allocation guarantees as
 /// <see cref="FirstMatch{TCtx, TResult}"/>.
+///
+/// <para>Choosing: prefer this over <see cref="FirstMatch{TCtx, TResult}"/> when each branch
+/// performs work rather than producing a value, and over <see cref="TickPipeline{TCtx}"/> when only
+/// ONE branch should run (a pipeline runs every step in order).</para>
 ///
 /// <code>
 /// var movement = FirstMatch&lt;MoveContext&gt;.Create()

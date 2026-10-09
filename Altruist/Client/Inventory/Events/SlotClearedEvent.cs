@@ -6,4 +6,6 @@ namespace Altruist.Client.Inventory.Events;
 /// multi-cell items, this fires once per cleared anchor; the linked cells
 /// are invalidated internally without separate events.
 /// </summary>
+/// <param name="Window">Container id.</param>
+/// <param name="Cell">Anchor cell that was cleared.</param>
 public sealed record SlotClearedEvent(byte Window, ushort Cell);

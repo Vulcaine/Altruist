@@ -17,10 +17,21 @@ using Microsoft.Extensions.Logging;
 namespace Altruist
 {
     /// <summary>
-    /// Shared dependency creation & config-binding utilities reused by service & prefab registration.
+    /// Shared dependency creation &amp; config-binding utilities reused by service &amp; prefab registration.
     /// Centralizes: constructor selection, config arg/property binding, custom converters, and conditional registration.
     /// Also supports invoking a single [PostConstruct] public void instance method with resolved parameters.
     /// </summary>
+    /// <remarks>
+    /// This is the engine behind <see cref="ServiceAttribute"/>, <see cref="BeanAttribute"/> and
+    /// <see cref="ServiceConfigurationAttribute"/>; application code rarely calls it directly. Use
+    /// <see cref="CreateWithConfiguration(IServiceProvider, IConfiguration, Type, ILogger)"/> when you need to build an
+    /// object the Altruist way (attribute-aware constructor injection) without registering it.
+    /// Constructor parameter rules: <see cref="AppConfigValueAttribute"/> → config; <see cref="ServiceKeyAttribute"/> → keyed service;
+    /// simple types → default value or error; <see cref="Lazy{T}"/> → deferred lookup (breaks cycles);
+    /// <c>IEnumerable/IList/ICollection/IReadOnlyList/List/HashSet&lt;T&gt;</c> and arrays → all registrations of <c>T</c>;
+    /// otherwise the registered service, then the parameter default, then null / <c>default</c> for nullable and value types;
+    /// an unresolvable reference type fails with diagnostics naming disabled <see cref="ConditionalOnConfigAttribute"/> candidates.
+    /// </remarks>
     public static class DependencyResolver
     {
         private static readonly MethodInfo? _genericGetKeyedService =
@@ -66,6 +77,10 @@ namespace Altruist
         // --------------------------- Public API ---------------------------
 
         /// <summary>Make sure custom converters are discovered exactly once.</summary>
+        /// <remarks>Discovers <see cref="ConfigConverterAttribute"/> classes and builds them from a temporary provider. Process-wide: later calls (even with another collection) are no-ops.</remarks>
+        /// <param name="services">Collection used to resolve converter dependencies.</param>
+        /// <param name="cfg">Configuration.</param>
+        /// <param name="log">Logger.</param>
         public static void EnsureConverters(IServiceCollection services, IConfiguration cfg, ILogger log)
         {
             if (_converters is not null)
@@ -78,6 +93,18 @@ namespace Altruist
             }
         }
 
+        /// <summary>
+        /// Constructs <paramref name="impl"/> with the widest public constructor (or the one marked
+        /// <c>[ActivatorUtilitiesConstructor]</c>), resolving parameters from <paramref name="sp"/> and <paramref name="cfg"/>,
+        /// then sets public <see cref="AppConfigValueAttribute"/> properties. Does not run <see cref="PostConstructAttribute"/> hooks
+        /// and does not cache the instance.
+        /// </summary>
+        /// <param name="sp">Provider for dependencies.</param>
+        /// <param name="cfg">Configuration root (or a list item section for wildcard paths).</param>
+        /// <param name="impl">Concrete type to build.</param>
+        /// <param name="log">Logger for failures.</param>
+        /// <returns>The new instance.</returns>
+        /// <exception cref="InvalidOperationException">No public constructor, a construction cycle, or an unresolvable parameter.</exception>
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
             => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
 
@@ -90,6 +117,11 @@ namespace Altruist
         /// per-test child containers, gets its own singletons built against its own dependency
         /// graph — required for substituting mocks without leaking the original instances.
         /// </summary>
+        /// <param name="sp">Provider for dependencies.</param>
+        /// <param name="cfg">Configuration root or item section.</param>
+        /// <param name="impl">Concrete type to build.</param>
+        /// <param name="log">Logger for failures.</param>
+        /// <param name="lifetime">Informational only; currently unused.</param>
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log, ServiceLifetime lifetime)
             => CreateInstanceInternal(sp, cfg, impl, log);
 
@@ -136,7 +168,13 @@ namespace Altruist
             }
         }
 
-        /// <summary>Return true if the type should be registered given ConditionalOnConfig attributes.</summary>
+        /// <summary>
+        /// Return true if the type should be registered given ConditionalOnConfig attributes (gate mode, all must match)
+        /// and <see cref="ConditionalOnMissingServiceAttribute"/> (no other active <see cref="ServiceAttribute"/> class provides the service).
+        /// </summary>
+        /// <param name="t">Candidate type.</param>
+        /// <param name="cfg">Configuration to evaluate against.</param>
+        /// <param name="log">Logger for debug messages about failed conditions.</param>
         public static bool ShouldRegister(Type t, IConfiguration cfg, ILogger log)
         {
             var conds = t.GetCustomAttributes<ConditionalOnConfigAttribute>(false).ToArray();
@@ -206,6 +244,8 @@ namespace Altruist
         /// Try to infer a default service type for registration. Falls back to the implementation itself.
         /// Throws for open generics.
         /// </summary>
+        /// <param name="impl">Implementation type.</param>
+        /// <returns>Currently always <paramref name="impl"/> itself.</returns>
         public static Type InferServiceType(Type impl)
         {
             if (impl.IsGenericTypeDefinition)
@@ -213,7 +253,8 @@ namespace Altruist
             return impl;
         }
 
-        /// <summary>Format a readable, generic-aware type name for logs.</summary>
+        /// <summary>Format a readable, generic-aware type name for logs (e.g. <c>List&lt;String&gt;</c>).</summary>
+        /// <param name="type">Type to format.</param>
         public static string GetCleanName(Type type)
         {
             if (type.IsGenericType)
@@ -237,6 +278,11 @@ namespace Altruist
         ///  - arguments are resolved via DI and/or [ConfigValue] just like constructor parameters.
         /// If no such method exists, this is a no-op.
         /// </summary>
+        /// <param name="instance">Object whose hook to run.</param>
+        /// <param name="sp">Provider for hook parameters.</param>
+        /// <param name="cfg">Configuration for <see cref="AppConfigValueAttribute"/> parameters.</param>
+        /// <param name="log">Logger; hook exceptions are logged then rethrown (wrapped in <see cref="TargetInvocationException"/>).</param>
+        /// <exception cref="InvalidOperationException">The type breaks one of the rules above.</exception>
         public static async Task InvokePostConstructAsync(object instance, IServiceProvider sp, IConfiguration cfg, ILogger log)
         {
             if (instance is null)
@@ -284,6 +330,15 @@ namespace Altruist
         }
 
         // optional convenience
+        /// <summary>
+        /// Creates <typeparamref name="T"/> with <see cref="ActivatorUtilities"/> (standard MEDI constructor injection, NOT the
+        /// attribute-aware <see cref="CreateWithConfiguration(IServiceProvider, IConfiguration, Type, ILogger)"/>) and then runs its
+        /// <see cref="PostConstructAttribute"/> hook. Use for one-off objects that are not registered services.
+        /// </summary>
+        /// <typeparam name="T">Type to create.</typeparam>
+        /// <param name="sp">Provider for constructor and hook dependencies.</param>
+        /// <param name="cfg">Configuration for hook parameters.</param>
+        /// <param name="log">Logger.</param>
         public static async Task<T> CreateWithPostConstructAsync<T>(IServiceProvider sp, IConfiguration cfg, ILogger log)
         {
             var instance = ActivatorUtilities.CreateInstance<T>(sp)!;
@@ -298,6 +353,8 @@ namespace Altruist
         ///  - prefer the one marked with [ActivatorUtilitiesConstructor] if present,
         ///  - otherwise the widest (most parameters) public ctor.
         /// </summary>
+        /// <param name="t">Type to inspect.</param>
+        /// <exception cref="InvalidOperationException"><paramref name="t"/> has no public constructor.</exception>
         public static ConstructorInfo SelectCtor(Type t)
         {
             var ctors = t.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
@@ -313,6 +370,7 @@ namespace Altruist
         /// "Simple" types that must be provided by config or default values, not by DI.
         /// Mirrors the logic used for config conversion and non-serviceability.
         /// </summary>
+        /// <param name="type">Type to test (nullable wrappers are unwrapped).</param>
         public static bool IsSimple(Type type)
         {
             type = Nullable.GetUnderlyingType(type) ?? type;
@@ -325,6 +383,7 @@ namespace Altruist
         /// primitives, enums, string, pointers, byrefs, delegates, simple BCLs, Nullable&lt;T&gt; of simple, etc.
         /// Used by planner and resolver.
         /// </summary>
+        /// <param name="t">Type to test.</param>
         public static bool IsNonServiceable(Type t)
         {
             // unwrap Nullable<T>
@@ -362,6 +421,9 @@ namespace Altruist
         /// The index of a descriptor the dependency planner registered for
         /// <paramref name="serviceType"/> → <paramref name="implType"/>, or -1.
         /// </summary>
+        /// <param name="services">Collection to search.</param>
+        /// <param name="serviceType">Registered service type.</param>
+        /// <param name="implType">Implementation the planner recorded for it.</param>
         public static int IndexOfPlannedRegistration(IServiceCollection services, Type serviceType, Type implType)
         {
             for (var i = 0; i < services.Count; i++)
@@ -374,6 +436,17 @@ namespace Altruist
             return -1;
         }
 
+        /// <summary>
+        /// Adds a registration of <paramref name="serviceType"/> built from <paramref name="implType"/> via
+        /// <see cref="CreateWithConfiguration(IServiceProvider, IConfiguration, Type, ILogger, ServiceLifetime)"/> and records it as
+        /// planner-made (see <see cref="IndexOfPlannedRegistration"/>). Non-serviceable types are ignored.
+        /// </summary>
+        /// <param name="services">Collection to register into.</param>
+        /// <param name="cfg">Configuration for construction.</param>
+        /// <param name="log">Logger.</param>
+        /// <param name="implType">Concrete type to build.</param>
+        /// <param name="serviceType">Type to register as.</param>
+        /// <param name="lifetime">DI lifetime.</param>
         public static void RegisterPlannedService(
             IServiceCollection services,
             IConfiguration cfg,
@@ -403,6 +476,16 @@ namespace Altruist
                 lifetime);
         }
 
+        /// <summary>
+        /// Resolves one method/constructor parameter with the same rules as constructor injection (see the class remarks).
+        /// Useful for invoking attribute-discovered handler methods with injected arguments.
+        /// </summary>
+        /// <param name="sp">Provider for services.</param>
+        /// <param name="cfg">Configuration for <see cref="AppConfigValueAttribute"/>.</param>
+        /// <param name="p">The parameter.</param>
+        /// <param name="log">Logger.</param>
+        /// <returns>The value to pass.</returns>
+        /// <exception cref="InvalidOperationException">The parameter cannot be satisfied.</exception>
         public static object? ResolveParameter(IServiceProvider sp, IConfiguration cfg, ParameterInfo p, ILogger log)
             => Arg(sp, cfg, p, log);
 
@@ -520,6 +603,11 @@ namespace Altruist
             throw new InvalidOperationException(msg);
         }
 
+        /// <summary>Resolves the keyed registration of <paramref name="serviceType"/> under <paramref name="key"/>, or null.</summary>
+        /// <param name="sp">Provider.</param>
+        /// <param name="serviceType">Service type.</param>
+        /// <param name="key">Service key.</param>
+        /// <param name="log">Logger.</param>
         public static object? TryResolveKeyedService(IServiceProvider sp, Type serviceType, string key, ILogger log)
         {
             if (_genericGetKeyedService is null)
@@ -577,8 +665,13 @@ namespace Altruist
         }
 
         /// <summary>
-        /// Logs a critical dependency resolution failure and terminates the process.
+        /// Logs a critical dependency resolution failure (also to stdout with a <c>FATAL DI:</c> prefix) and throws
+        /// <see cref="InvalidOperationException"/>. It does not exit the process itself; the exception aborts bootstrap.
         /// </summary>
+        /// <param name="log">Logger.</param>
+        /// <param name="message">Failure message.</param>
+        /// <param name="ex">Optional inner exception.</param>
+        /// <exception cref="InvalidOperationException">Always.</exception>
         public static void FailAndExit(ILogger log, string message, Exception? ex = null)
         {
             if (ex is not null)
@@ -754,6 +847,17 @@ namespace Altruist
 
         // ------------------- Config conversion pipeline ------------------
 
+        /// <summary>
+        /// Reads the value described by <paramref name="a"/> from <paramref name="cfg"/> and converts it to <paramref name="target"/>
+        /// (see <see cref="AppConfigValueAttribute"/> for conversion, default and wildcard rules; <see cref="ILiveConfigValue{T}"/>
+        /// targets get a <see cref="LiveConfigValue{T}"/>).
+        /// </summary>
+        /// <param name="cfg">Configuration root or list item section.</param>
+        /// <param name="target">Target type.</param>
+        /// <param name="a">The attribute with path and default.</param>
+        /// <param name="log">Logger.</param>
+        /// <returns>The converted value, or null for a missing key of a nullable/reference type.</returns>
+        /// <exception cref="InvalidOperationException">The key is missing, has no default, and <paramref name="target"/> is a non-nullable value type.</exception>
         public static object? ResolveFromConfig(IConfiguration cfg, Type target, AppConfigValueAttribute a, ILogger log)
         {
             if (a is null)

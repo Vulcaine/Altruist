@@ -5,6 +5,11 @@ using System.Runtime.Loader;
 using Microsoft.Extensions.DependencyModel;
 using Microsoft.Extensions.Logging;
 
+/// <summary>
+/// Forces assemblies into the AppDomain so attribute scanning (<c>[Service]</c>, <c>[Portal]</c>, ...) sees types in
+/// referenced projects/packages that no code has touched yet. Called by both bootstrap entry points; call it yourself only
+/// if you scan assemblies before bootstrap. Not available on netstandard2.1.
+/// </summary>
 public static class AssemblyLoader
 {
     /// <summary>

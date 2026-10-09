@@ -13,18 +13,39 @@ import type { Vec2Like } from '../math/vec2.ts';
 import type { AngularBody, Body2DLike, LinearBody } from './body2D.ts';
 import { pointVelocity } from './velocity2D.ts';
 
+/**
+ * Immutable snapshot of one body (the striker) hitting another (the target) at a contact point,
+ * with the derived closing / tangential speeds. Mirrors the C# readonly struct `ContactImpact2D`.
+ * Pure: reading it never touches a body; apply the response with {@link BodyMotion2D}.
+ * @example
+ * ```ts
+ * router.onPreSolve(isStriker, isTarget, (c) => {
+ *   const hit = ContactImpact2D.capture(c.point, c.normal, c.bodyA, c.bodyB);
+ *   if (hit.closingSpeed > 0) BodyMotion2D.setVelocityInFrame(c.bodyB, hit.frame, hit.closingSpeed * k, hit.targetTangential);
+ * });
+ * ```
+ */
 export class ContactImpact2D {
+  /** Contact point in world space (a copy). C# `ContactImpact2D.Point`. */
   readonly point: Vec2Like;
+  /** Unit normal from the striker into the target (a copy). C# `ContactImpact2D.Normal`. */
   readonly normal: Vec2Like;
+  /** Striker's linear velocity at capture (a copy). C# `ContactImpact2D.StrikerVelocity`. */
   readonly strikerVelocity: Vec2Like;
+  /** Striker's angular velocity at capture (rad/s, CCW). C# `ContactImpact2D.StrikerSpin`. */
   readonly strikerSpin: number;
+  /** Striker's center of mass at capture (a copy). C# `ContactImpact2D.StrikerCenter`. */
   readonly strikerCenter: Vec2Like;
+  /** Target's linear velocity at capture (a copy). C# `ContactImpact2D.TargetVelocity`. */
   readonly targetVelocity: Vec2Like;
-  /** `pointVelocity(strikerVelocity, strikerSpin, point - strikerCenter)`. */
+  /** Velocity of the striker's material at the contact point:
+   * `pointVelocity(strikerVelocity, strikerSpin, point - strikerCenter)`. C# `ContactImpact2D.StrikerPointVelocity`. */
   readonly strikerPointVelocity: Vec2Like;
-  /** `NormalFrame2D.left(normal)`. */
+  /** `NormalFrame2D.left(normal)`: tangent `(-n.y, n.x)`. C# `ContactImpact2D.Frame`. */
   readonly frame: NormalFrame2D;
 
+  /** Copies every vector and derives {@link strikerPointVelocity} and {@link frame}. Mirrors the C#
+   * `ContactImpact2D` constructor. Prefer {@link ContactImpact2D.capture} when you hold the bodies. */
   constructor(point: Vec2Like, normal: Vec2Like, strikerVelocity: Vec2Like, strikerSpin: number, strikerCenter: Vec2Like, targetVelocity: Vec2Like) {
     this.point = { x: point.x, y: point.y };
     this.normal = { x: normal.x, y: normal.y };
@@ -36,7 +57,8 @@ export class ContactImpact2D {
     this.frame = NormalFrame2D.left(normal);
   }
 
-  /** Reads the bodies at a contact (pre-solve): `(v, w, worldCenter)` of the striker and `v` of the target. */
+  /** Reads the bodies at a contact (pre-solve, before the solver changes velocities): `(v, w, worldCenter)`
+   * of the striker and `v` of the target. Mirrors C# `ContactImpact2D.Capture`. */
   static capture(
     point: Vec2Like,
     normal: Vec2Like,
@@ -46,33 +68,38 @@ export class ContactImpact2D {
     return new ContactImpact2D(point, normal, striker.getLinearVelocity(), striker.getAngularVelocity(), striker.getWorldCenter(), target.getLinearVelocity());
   }
 
-  /** `(cp.x - vb.x) * n.x + (cp.y - vb.y) * n.y` (the difference first). */
+  /** Relative speed along the normal, striker point minus target (positive = closing in):
+   * `(cp.x - vb.x) * n.x + (cp.y - vb.y) * n.y` (the difference first). C# `ContactImpact2D.ClosingSpeed`. */
   get closingSpeed(): number {
     const cp = this.strikerPointVelocity;
     return (cp.x - this.targetVelocity.x) * this.normal.x + (cp.y - this.targetVelocity.y) * this.normal.y;
   }
 
-  /** `cp.x * n.x + cp.y * n.y`. */
+  /** Striker point's speed into the target (along the normal): `cp.x * n.x + cp.y * n.y`. C#
+   * `ContactImpact2D.StrikerInto`. */
   get strikerInto(): number {
     return this.strikerPointVelocity.x * this.normal.x + this.strikerPointVelocity.y * this.normal.y;
   }
 
-  /** `Math.sqrt(vb.x * vb.x + vb.y * vb.y)`. */
+  /** Target's speed: `Math.sqrt(vb.x * vb.x + vb.y * vb.y)`. C# `ContactImpact2D.TargetSpeed`
+   * (`Vector2.Length` there). */
   get targetSpeed(): number {
     return Math.sqrt(this.targetVelocity.x * this.targetVelocity.x + this.targetVelocity.y * this.targetVelocity.y);
   }
 
-  /** `frame.across(targetVelocity)`. */
+  /** Target velocity along the tangent: `frame.across(targetVelocity)`. C# `ContactImpact2D.TargetTangential`. */
   get targetTangential(): number {
     return this.frame.across(this.targetVelocity);
   }
 
-  /** `frame.across(strikerPointVelocity)`. */
+  /** Striker point velocity along the tangent: `frame.across(strikerPointVelocity)`. C#
+   * `ContactImpact2D.StrikerTangential`. */
   get strikerTangential(): number {
     return this.frame.across(this.strikerPointVelocity);
   }
 
-  /** `strikerTangential - targetTangential`. */
+  /** Tangential speed difference at the contact (feed {@link BodyMotion2D.addSpinFromSlip}):
+   * `strikerTangential - targetTangential`. C# `ContactImpact2D.Slip`. */
   get slip(): number {
     return this.strikerTangential - this.targetTangential;
   }

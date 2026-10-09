@@ -14,14 +14,48 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0 (the "License");
 */
 
+/// <summary>
+/// Postgres <see cref="IMigrationPlanner"/>: the provider-agnostic <see cref="AbstractMigrationPlanner"/> diff
+/// (desired vault documents vs. the live schema snapshot from <see cref="PostgresSchemaInspector"/>) plus the
+/// Postgres CLR-to-column type mapping and default-value literals.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Registered as a singleton <see cref="IMigrationPlanner"/> when <c>altruist:persistence:database:provider</c> is
+/// <c>postgres</c>; used by the vault schema migrator at startup (see <see cref="Persistence.Postgres.PostgresDatabaseConfiguration"/>).
+/// You do not call it directly.
+/// </para>
+/// <para>
+/// The plan is not purely additive. Besides creating tables, columns, unique constraints, indexes and foreign
+/// keys, it also plans <b>destructive</b> operations: columns present in the database but no longer on the model
+/// are dropped (data lost) unless matched by <c>[VaultRenamedFrom]</c>; column type changes are altered in place;
+/// unique constraints and <c>&lt;table&gt;_&lt;col&gt;_idx</c> indexes no longer declared are dropped; tables marked
+/// <c>[VaultTableDelete]</c> are dropped and <c>[VaultArchived]</c> tables are copied then dropped.
+/// </para>
+/// <para>
+/// Type map: <c>string</c>→<c>text</c>, <c>bool</c>→<c>boolean</c>, <c>byte</c>/<c>short</c>→<c>smallint</c>,
+/// <c>int</c>→<c>integer</c>, <c>long</c>→<c>bigint</c>, <c>float</c>→<c>real</c>, <c>double</c>→<c>double precision</c>,
+/// <c>decimal</c>→<c>numeric</c>, <c>DateTime</c>→<c>timestamp</c>, <c>DateTimeOffset</c>→<c>timestamptz</c>,
+/// <c>Guid</c>→<c>uuid</c>, <c>byte[]</c>→<c>bytea</c>, <c>TimeSpan</c>→<c>interval</c>; arrays of
+/// short/int/long/string/float/double/Guid map to Postgres arrays; enums→<c>integer</c>; every other array,
+/// collection or object→<c>jsonb</c>. Nullable&lt;T&gt; maps like T. History tables use <c>timestamptz</c> for
+/// their <c>timestamp</c> column.
+/// </para>
+/// </remarks>
 [Service(typeof(IMigrationPlanner))]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PostgresMigrationPlanner : AbstractMigrationPlanner
 {
+    /// <inheritdoc/>
+    /// <remarks>Postgres: <c>public</c>.</remarks>
     protected override string GetDefaultSchemaName() => "public";
 
+    /// <inheritdoc/>
+    /// <remarks>Postgres: <c>timestamptz</c>.</remarks>
     protected override string HistoryTimestampStoreType => "timestamptz";
 
+    /// <inheritdoc/>
+    /// <remarks>See the type map in the class remarks.</remarks>
     protected override string MapClrTypeToStoreType(Type type)
     {
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
@@ -87,6 +121,12 @@ public sealed class PostgresMigrationPlanner : AbstractMigrationPlanner
         return "jsonb";
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Strings are single-quoted with <c>'</c> doubled; numbers use invariant culture; <c>DateTime</c>/<c>DateTimeOffset</c>
+    /// use the round-trip (<c>"O"</c>) format; enums become their integer value; anything else not listed is
+    /// serialized to JSON and cast to <c>jsonb</c>. Returns null for a null value (no default).
+    /// </remarks>
     protected override string? MapClrDefaultValueToStoreDefault(object? value, Type type)
     {
         if (value == null)

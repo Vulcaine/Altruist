@@ -5,48 +5,111 @@ using Altruist.Physx.ThreeD;
 
 namespace Altruist.Gaming.ThreeD;
 
+/// <summary>
+/// Server-authoritative character mover for a 3D body: takes latched movement input, applies gravity, grounding,
+/// acceleration and collide-and-slide, and writes the result to the body each tick.
+/// </summary>
+/// <remarks>
+/// The framework implementation is <see cref="KinematicCharacterController3D"/>. Use a character controller for
+/// player/NPC avatars that must walk, slide along walls and stick to slopes; for simple steering of bodies without
+/// collision response use the body steering/navigation extension helpers, and for fully simulated objects (balls, crates)
+/// let the physics solver drive a dynamic body instead. All members are expected to be called from the world tick thread.
+/// </remarks>
 public interface IKinematicCharacterController3D
 {
+    /// <summary>Attaches the body the controller moves (typically a kinematic capsule) and adopts its current yaw.</summary>
+    /// <param name="body">Body to drive; its <see cref="IPhysxBody3D.Position"/> is the capsule centre.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="body"/> is null.</exception>
     void SetBody(IPhysxBody3D body);
 
+    /// <summary>
+    /// Replaces the latched movement input (null resets to <see cref="CharacterRealtimeWasdInput3D.Neutral"/>). The input keeps
+    /// applying every <see cref="Step"/> until replaced; click-to-move input resets itself on arrival.
+    /// </summary>
+    /// <param name="input">New input, interpreted by the active <see cref="IMovementProfile3D"/>.</param>
     void SetMovementInput(ICharacterMovementInput3D input);
 
+    /// <summary>
+    /// Queues a one-shot displacement in the character's local frame (X right, Y up, Z forward relative to the current yaw),
+    /// e.g. root motion from an animation or a dash. Accumulates until the next <see cref="Step"/>, which applies it (with
+    /// sweeps when enabled) before regular movement and then clears it. Does not change velocity.
+    /// </summary>
+    /// <param name="localDelta">Displacement in world units; near-zero values are ignored.</param>
     void AddLocalMotionDelta(Vector3 localDelta);
 
     // Simulation tick (called by prefab/world Step)
+    /// <summary>Advances the controller by one fixed tick and writes position, rotation and velocity to the body. No-op without a body or for a non-positive/non-finite <paramref name="dt"/>.</summary>
+    /// <param name="dt">Tick length in seconds.</param>
+    /// <param name="world">World whose physics engine (or the controller's query provider) is used for sweeps and ground probes.</param>
     void Step(float dt, IGameWorldManager3D world);
 
     // State outputs (for replication)
+    /// <summary>Body position (capsule centre), or zero when no body is attached.</summary>
     Vector3 Position { get; }
+    /// <summary>Body rotation (yaw-only), or identity when no body is attached.</summary>
     Quaternion Rotation { get; }
+    /// <summary>Current facing yaw in radians, wrapped to [-PI, PI]; 0 faces +Z.</summary>
     float Yaw { get; }
+    /// <summary>Whether the last ground probe found walkable ground (slope within the max slope angle).</summary>
     bool IsGrounded { get; }
+    /// <summary>Controller velocity in world units per second after the last step, including gravity.</summary>
     Vector3 Velocity { get; } // controller velocity (including gravity)
+    /// <summary>The movement frame evaluated by the movement profile on the last step.</summary>
     CharacterMovementFrame3D LastMovementFrame { get; }
+    /// <summary>True while a click-to-move target is pending or the realtime input has a non-trivial move axis (|axis| &gt;= 0.01) or jump held.</summary>
     bool HasActiveMovementInput { get; }
 }
 
 // Single hook (no pre/post)
+/// <summary>
+/// Pluggable behaviour (jump, dash, glide, ...) that can modify the motor state once per
+/// <see cref="KinematicCharacterController3D.Step"/>, after facing is resolved and before gravity, acceleration and the move.
+/// </summary>
+/// <remarks>
+/// Register with <see cref="KinematicCharacterController3D.AddAbility"/>; abilities run in registration order. To leave the
+/// ground (e.g. jump) set <see cref="CharacterMotorContext.IsGrounded"/> to false together with a positive vertical velocity,
+/// otherwise the grounded ground-snap overwrites <c>Velocity.Y</c>. For one-off displacements prefer
+/// <see cref="KinematicCharacterController3D.AddLocalMotionDelta"/>.
+/// </remarks>
+/// <example><code>
+/// controller.AddAbility(new SimpleJumpAbility3D { JumpSpeed = 8f });
+/// </code></example>
 public interface ICharacterAbility3D
 {
+    /// <summary>Called once per controller step; mutate <paramref name="ctx"/> to change the motion.</summary>
+    /// <param name="dt">Tick length in seconds.</param>
+    /// <param name="ctx">Mutable motor state for this tick.</param>
     void Step(float dt, ref CharacterMotorContext ctx);
 }
 
+/// <summary>Mutable per-tick motor state handed to every <see cref="ICharacterAbility3D"/> by reference.</summary>
 public struct CharacterMotorContext
 {
+    /// <summary>Body being moved.</summary>
     public IPhysxBody3D Body;
+    /// <summary>World the controller is stepping in.</summary>
     public IGameWorldManager3D World;
 
+    /// <summary>Desired horizontal move direction in world space, normalised on XZ, or zero when idle.</summary>
     public Vector3 DesiredMoveWorld; // normalized on XZ (or zero)
+    /// <summary>Target horizontal speed in world units per second (0 when idle).</summary>
     public float DesiredSpeed;       // m/s
+    /// <summary>Controller velocity in world units per second; abilities may overwrite it.</summary>
     public Vector3 Velocity;         // motor-controlled velocity (mutable)
 
+    /// <summary>Grounded state from the start-of-tick probe. Set false to apply gravity this tick (required for jumps).</summary>
     public bool IsGrounded;
+    /// <summary>Ground surface normal (+Y when airborne or unknown).</summary>
     public Vector3 GroundNormal;
 
+    /// <summary>Jump button currently held (level, not edge; abilities detect the edge themselves).</summary>
     public bool JumpPressed;
+    /// <summary>Sprint currently held.</summary>
     public bool SprintHeld;
 
+    /// <summary>Creates a context with zero motion, not grounded and an up ground normal.</summary>
+    /// <param name="body">Body being moved.</param>
+    /// <param name="world">World being stepped.</param>
     public CharacterMotorContext(IPhysxBody3D body, IGameWorldManager3D world)
     {
         Body = body;
@@ -64,6 +127,36 @@ public struct CharacterMotorContext
     }
 }
 
+/// <summary>
+/// Default <see cref="IKinematicCharacterController3D"/>: capsule character mover with camera-relative input via an
+/// <see cref="IMovementProfile3D"/>, yaw-only rotation, gravity, ground probing with a max slope, acceleration/deceleration,
+/// capsule collide-and-slide, depenetration, terrain snapping and pluggable <see cref="ICharacterAbility3D"/>s.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Not a DI service: create one per character, call <see cref="SetBody"/> (a kinematic capsule, e.g. from
+/// <see cref="HumanoidCapsuleBodyProfile"/>, with <see cref="Radius"/>/<see cref="Height"/> matching it), optionally
+/// <see cref="SetQueryProvider"/>, then call <see cref="Step"/> once per world tick on the tick thread. Not thread-safe.
+/// Positions are capsule centres; +Y is up; yaw is radians with 0 facing +Z.
+/// </para>
+/// <para>
+/// Spatial queries go to the <see cref="ISpatialQueryProvider"/> if one was set, otherwise directly to the world's physics
+/// engine (<see cref="IGameWorldManager3D.PhysxWorld"/>). Terrain snapping on slopes only runs with a query provider. Note
+/// that hits coming from a query provider carry no body, and the sweep/depenetration passes ignore body-less hits, so with
+/// a provider set walls and obstacles do not block movement; only ground probing and terrain snapping use those hits.
+/// </para>
+/// <para>Step order: profile evaluation, depenetration, ground probe, authored local motion, facing, abilities, gravity,
+/// horizontal accel/decel, sweep-and-slide move, depenetration, body velocity write-back, final ground probe.</para>
+/// </remarks>
+/// <example><code>
+/// var kcc = new KinematicCharacterController3D { MovementProfile = TpsMovementProfile3D.Default, Radius = 0.3f, Height = 1.8f };
+/// kcc.SetBody(body);
+/// kcc.AddAbility(new SimpleJumpAbility3D());
+/// // per input packet:
+/// kcc.SetMovementInput(new CharacterRealtimeWasdInput3D(x, z, look, 0f, 0f, false, sprint, jump));
+/// // per tick:
+/// kcc.Step(dt, world);
+/// </code></example>
 public sealed class KinematicCharacterController3D : IKinematicCharacterController3D
 {
     private IPhysxBody3D? _body;
@@ -98,52 +191,80 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     // ─────────────────────────────────────────────
 
     // Acceleration / deceleration (m/s^2)
+    /// <summary>Horizontal acceleration toward the target velocity, world units/s². Default 1000 (effectively instant).</summary>
     public float Acceleration { get; set; } = 1000f;
+    /// <summary>Horizontal deceleration toward zero when there is no move input, world units/s². Default 1000.</summary>
     public float Deceleration { get; set; } = 1000f; // default == Acceleration (optional knob)
 
     // Air control
+    /// <summary>Multiplier on both <see cref="Acceleration"/> and <see cref="Deceleration"/> while airborne (air control). Default 1.</summary>
     public float AirAccelerationMultiplier { get; set; } = 1f;
+    /// <summary>Multiplier on the target horizontal speed while airborne. Default 1.</summary>
     public float AirMaxSpeedMultiplier { get; set; } = 1f;
 
     // Vertical
+    /// <summary>Downward acceleration while airborne, world units/s² (positive number). Default 25; the movement profile's <see cref="IMovementProfile3D.Configure"/> may overwrite it.</summary>
     public float Gravity { get; set; } = 25f;      // m/s^2 downward
+    /// <summary>Terminal fall speed, world units/s (absolute value used). Default 50.</summary>
     public float MaxFallSpeed { get; set; } = 50f; // clamp
 
     // Grounding/slope
+    /// <summary>Extra distance below the capsule searched for ground each probe, world units. Default 0.12.</summary>
     public float GroundProbeDistance { get; set; } = 0.12f;
+    /// <summary>Separation kept between the capsule and obstacles during sweeps, world units. Default 0.03.</summary>
     public float SkinWidth { get; set; } = 0.03f;
+    /// <summary>Steepest walkable slope in degrees; steeper ground does not count as grounded. Default 60.</summary>
     public float MaxSlopeAngleDeg { get; set; } = 60f;
+    /// <summary>Constant downward speed (world units/s) applied while grounded so the controller keeps contact and re-snaps to terrain. Default 2.</summary>
     public float GroundSnapSpeed { get; set; } = 2f; // tiny downward velocity when grounded
 
+    /// <summary>Layers treated as ground for probes and terrain snapping. Default <see cref="PhysxLayer.World"/>.</summary>
     public PhysxLayer GroundMask { get; set; } = PhysxLayer.World;
     // Collision / sweeps
+    /// <summary>Sweep the capsule for collide-and-slide and ground probing. When false the body moves without collision or depenetration and grounding falls back to a short downward ray from the feet. Default true.</summary>
     public bool UseCapsuleSweeps { get; set; } = true;
+    /// <summary>Maximum collide-and-slide iterations per move (clamped 1..8). Default 3.</summary>
     public int MaxSlideIterations { get; set; } = 3;
 
     // For movement sweeps, you typically want to collide with World + Dynamic, but not Character/Trigger.
+    /// <summary>Layers that block movement sweeps and depenetration. Default <see cref="PhysxLayer.World"/> | <see cref="PhysxLayer.Dynamic"/> (other characters and triggers pass through).</summary>
     public PhysxLayer CollisionMask { get; set; } = PhysxLayer.World | PhysxLayer.Dynamic;
 
     // Depenetration
+    /// <summary>Push the capsule out of overlapping geometry before and after each move (requires <see cref="UseCapsuleSweeps"/>). Default true.</summary>
     public bool UseDepenetration { get; set; } = true;
+    /// <summary>Maximum push-out iterations per depenetration pass (clamped 1..16). Default 3.</summary>
     public int DepenetrationIterations { get; set; } = 3;
 
     // How far we push out per depenetration step when overlap is detected.
     // Typically <= SkinWidth.
+    /// <summary>Distance pushed per depenetration iteration, world units; typically &lt;= <see cref="SkinWidth"/>. Default 0.03.</summary>
     public float DepenetrationPushDistance { get; set; } = 0.03f;
 
     // Character shape for grounding probe.
+    /// <summary>Capsule radius used by sweeps and probes, world units; should match the body's collider. Default 0.28.</summary>
     public float Radius { get; set; } = 0.28f;
+    /// <summary>Total capsule height (including both hemispheres) used by sweeps and probes, world units. Default 1.8.</summary>
     public float Height { get; set; } = 1.8f;
+    /// <summary>Maps input to movement each tick; default <see cref="TpsMovementProfile3D.Default"/>. Assigning a new instance makes the next step call its <see cref="IMovementProfile3D.Configure"/>. When null, input is ignored and the last frame is reused.</summary>
     public IMovementProfile3D? MovementProfile { get; set; } = TpsMovementProfile3D.Default;
+    /// <summary>Speeds and turn rate passed to the movement profile. Default <see cref="CharacterMovementStats3D.Default"/>.</summary>
     public CharacterMovementStats3D MovementStats { get; set; } = CharacterMovementStats3D.Default;
 
     // Outputs
+    /// <inheritdoc/>
     public Vector3 Position => _body?.Position ?? Vector3.Zero;
+    /// <inheritdoc/>
     public Quaternion Rotation => _body?.Rotation ?? Quaternion.Identity;
+    /// <inheritdoc/>
     public float Yaw => _yaw;
+    /// <inheritdoc/>
     public bool IsGrounded => _isGrounded;
+    /// <inheritdoc/>
     public Vector3 Velocity => _velocity;
+    /// <inheritdoc/>
     public CharacterMovementFrame3D LastMovementFrame { get; private set; }
+    /// <inheritdoc/>
     public bool HasActiveMovementInput => _movementInput switch
     {
         CharacterClickToMoveInput3D => true,
@@ -154,6 +275,9 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         _ => false,
     };
 
+    /// <summary>Appends an ability; abilities run in registration order inside every <see cref="Step"/>.</summary>
+    /// <param name="ability">Ability to add.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="ability"/> is null.</exception>
     public void AddAbility(ICharacterAbility3D ability)
     {
         if (ability == null)
@@ -161,14 +285,22 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         _abilities.Add(ability);
     }
 
+    /// <summary>Removes all abilities.</summary>
     public void ClearAbilities() => _abilities.Clear();
 
+    /// <inheritdoc/>
     public void SetBody(IPhysxBody3D body)
     {
         _body = body ?? throw new ArgumentNullException(nameof(body));
         _yaw = ExtractYaw(body.Rotation);
     }
 
+    /// <summary>
+    /// Routes sweeps and probes through <paramref name="queries"/> (e.g. the DI-registered <see cref="ISpatialQueryProvider"/>,
+    /// which works with physics on or off) instead of the world's physics engine, and enables slope terrain snapping. See the
+    /// class remarks for the obstacle-blocking caveat.
+    /// </summary>
+    /// <param name="queries">Query provider to use.</param>
     public void SetQueryProvider(ISpatialQueryProvider queries) => _queries = queries;
 
     private void MoveIntent(float moveX, float moveZ)
@@ -191,9 +323,11 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         _cameraPitch = Math.Clamp(pitch, -1.55f, 1.55f);
     }
 
+    /// <inheritdoc/>
     public void SetMovementInput(ICharacterMovementInput3D input)
         => _movementInput = input ?? CharacterRealtimeWasdInput3D.Neutral;
 
+    /// <inheritdoc/>
     public void AddLocalMotionDelta(Vector3 localDelta)
     {
         if (localDelta.LengthSquared() <= 1e-12f)
@@ -202,6 +336,7 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
         _authoredLocalMotionDelta += localDelta;
     }
 
+    /// <inheritdoc/>
     public void Step(float dt, IGameWorldManager3D world)
     {
         if (dt <= 0f || float.IsNaN(dt) || float.IsInfinity(dt))
@@ -833,12 +968,19 @@ public sealed class KinematicCharacterController3D : IKinematicCharacterControll
     }
 }
 
+/// <summary>
+/// Minimal jump <see cref="ICharacterAbility3D"/>: on the rising edge of the jump input while grounded, sets vertical velocity
+/// to <see cref="JumpSpeed"/> and marks the character airborne. No coyote time, buffering or double jump. Holds per-character
+/// edge state, so use one instance per controller.
+/// </summary>
 public sealed class SimpleJumpAbility3D : ICharacterAbility3D
 {
+    /// <summary>Upward launch speed in world units per second. Default 7.5.</summary>
     public float JumpSpeed { get; set; } = 7.5f;
 
     private bool _wasPressed;
 
+    /// <inheritdoc/>
     public void Step(float dt, ref CharacterMotorContext ctx)
     {
         bool pressedThisFrame = ctx.JumpPressed && !_wasPressed;

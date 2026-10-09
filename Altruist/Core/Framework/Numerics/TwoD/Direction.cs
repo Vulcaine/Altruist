@@ -10,12 +10,15 @@ using Altruist.Numerics;
 namespace Altruist.TwoD.Numerics;
 
 /// <summary>"Which way from A to B?" — 2D mirror of
-/// <see cref="Altruist.ThreeD.Numerics.Direction"/>. Normalized direction
+/// <see cref="Altruist.ThreeD.Numerics.Direction3D"/>. Normalized direction
 /// vectors with safe coincident-point handling (returns
 /// <see cref="Vector2.Zero"/> instead of NaN). Yaw convention mirrors 3D:
 /// <c>TowardAngle(0)</c> faces +Y (forward), <c>TowardAngle(π/2)</c> faces +X.</summary>
 public static class Direction2D
 {
+    /// <summary>Unit vector from <paramref name="from"/> to <paramref name="to"/>;
+    /// <see cref="Vector2.Zero"/> when the points coincide (squared distance below 1e-12). For an
+    /// already-computed vector use <see cref="VectorMath2D.NormalizeOrZero(Vector2)"/>.</summary>
     public static Vector2 Between(Vector2 from, Vector2 to)
     {
         var delta = to - from;
@@ -23,10 +26,12 @@ public static class Direction2D
         if (lenSq < 1e-12f) return Vector2.Zero;
         return delta / MathF.Sqrt(lenSq);
     }
+    /// <summary><see cref="Position2D"/> overload of <see cref="Between(Vector2,Vector2)"/>.</summary>
     public static Vector2 Between(Position2D from, Position2D to) => Between(from.ToFloatVector2(), to.ToFloatVector2());
 
     /// <summary>Intent-named alias of <see cref="Between(Vector2,Vector2)"/>.</summary>
     public static Vector2 Toward(Vector2 from, Vector2 to) => Between(from, to);
+    /// <summary><see cref="Position2D"/> overload of <see cref="Toward(Vector2,Vector2)"/>.</summary>
     public static Vector2 Toward(Position2D from, Position2D to) => Between(from, to);
 
     /// <summary>Unit vector at <paramref name="rotationRadians"/>. Same shape
@@ -35,6 +40,9 @@ public static class Direction2D
     public static Vector2 TowardAngle(float rotationRadians)
         => new(MathF.Sin(rotationRadians), MathF.Cos(rotationRadians));
 
+    /// <summary>Both the unit direction and the distance from <paramref name="from"/> to
+    /// <paramref name="to"/> in one square root; <c>(Vector2.Zero, 0)</c> when the points coincide. Use it
+    /// when a caller needs an arrival test and a per-tick step together.</summary>
     public static (Vector2 direction, float distance) WithDistance(Vector2 from, Vector2 to)
     {
         var delta = to - from;
@@ -43,6 +51,7 @@ public static class Direction2D
         var len = MathF.Sqrt(lenSq);
         return (delta / len, len);
     }
+    /// <summary><see cref="Position2D"/> overload of <see cref="WithDistance(Vector2,Vector2)"/>.</summary>
     public static (Vector2 direction, float distance) WithDistance(Position2D from, Position2D to)
         => WithDistance(from.ToFloatVector2(), to.ToFloatVector2());
 

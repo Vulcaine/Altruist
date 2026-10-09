@@ -4,14 +4,26 @@ using Altruist.Physx.Contracts;
 
 namespace Altruist.Physx.ThreeD;
 
+/// <summary>
+/// BEPU implementation of <see cref="IPhysxApiProvider3D"/>. Registered in DI as a singleton
+/// <see cref="IPhysxApiProvider3D"/> when the config key <c>altruist:environment:mode</c> equals <c>3D</c>.
+/// </summary>
+/// <remarks>
+/// Stateless: every call goes through the body's own properties or <see cref="IPhysxBody.ApplyForce"/>, so it also works
+/// with non-BEPU bodies such as <see cref="InMemoryPhysxBody3D"/> (which ignores forces and impulses).
+/// </remarks>
 [Service(typeof(IPhysxApiProvider3D))]
 [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
 public sealed class BepuPhysxApiProvider3D : IPhysxApiProvider3D
 {
+    /// <inheritdoc/>
     public IPhysxForceApi3D Force { get; }
+    /// <inheritdoc/>
     public IPhysxMotionApi3D Motion { get; }
+    /// <inheritdoc/>
     public IPhysxTransformApi3D Transform { get; }
 
+    /// <summary>Creates the provider and its three sub-APIs.</summary>
     public BepuPhysxApiProvider3D()
     {
         Force = new BepuPhysxForceApi3D();

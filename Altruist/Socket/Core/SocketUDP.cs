@@ -31,6 +31,17 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Socket;
 
+/// <summary>
+/// Experimental UDP transport (<c>altruist:server:transport:udp:enabled: true</c>), listening on
+/// <c>altruist:server:transport:udp:port</c> (13001) with route <c>altruist:server:transport:udp:event</c> (<c>/game</c>).
+/// Client ids are a Murmur3 hash of the sender's <c>ip:port</c>.
+/// </summary>
+/// <remarks>
+/// Not production-ready: every datagram from an endpoint without a live stored connection starts a new
+/// <see cref="IConnectionManager.HandleConnection"/> session whose read loop receives on the shared socket, and when the
+/// connection manager type carries a <c>ShieldAttribute</c> every client is rejected (token extraction is not implemented).
+/// Prefer the WebSocket or <see cref="TcpTransport"/> transports.
+/// </remarks>
 [Service(typeof(ITransport))]
 [ConditionalOnConfig("altruist:server:transport:udp:enabled", havingValue: "true")]
 public sealed class UdpTransport : ITransport, IDisposable
@@ -44,8 +55,14 @@ public sealed class UdpTransport : ITransport, IDisposable
 
     private static readonly IMurmurHash3 _hasher = MurmurHash3Factory.Instance.Create();
 
+    /// <summary>Always <c>"udp"</c>.</summary>
     public string TransportType => "udp";
 
+    /// <summary>DI constructor.</summary>
+    /// <param name="store">Connection store used to look up existing endpoints.</param>
+    /// <param name="codec">Codec used to decode the handshake.</param>
+    /// <param name="event">Route assigned to UDP connections (<c>udp:event</c>).</param>
+    /// <param name="port">Listen port (<c>udp:port</c>, default 13001).</param>
     public UdpTransport(
         IConnectionStore store,
         ICodec codec,
@@ -58,11 +75,19 @@ public sealed class UdpTransport : ITransport, IDisposable
         _store = store;
     }
 
+    /// <summary>Starts the UDP receive loop using the DI <see cref="IConnectionManager"/>; <paramref name="path"/> is ignored.</summary>
+    /// <typeparam name="TType">Ignored.</typeparam>
+    /// <param name="app">Application (service provider source).</param>
+    /// <param name="path">Ignored.</param>
     public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path) where TType : class
     {
         StartUdpServer(app.ApplicationServices.GetRequiredService<IConnectionManager>(), app.ApplicationServices);
     }
 
+    /// <summary>Starts the UDP receive loop using the service of <paramref name="type"/> as the connection manager; <paramref name="path"/> is ignored.</summary>
+    /// <param name="app">Application (service provider source).</param>
+    /// <param name="type">Service type resolving to an <see cref="IConnectionManager"/>.</param>
+    /// <param name="path">Ignored.</param>
     public void UseTransportEndpoints(IApplicationBuilder app, Type type, string path)
     {
         StartUdpServer((app.ApplicationServices.GetRequiredService(type) as IConnectionManager)!, app.ApplicationServices);
@@ -136,8 +161,11 @@ public sealed class UdpTransport : ITransport, IDisposable
         await connectionManager.HandleConnection(connection, _endpoint, clientId);
     }
 
+    /// <summary>No-op (UDP does not use the HTTP pipeline).</summary>
+    /// <param name="app">Unused.</param>
     public void RouteTraffic(IApplicationBuilder app) { }
 
+    /// <summary>Disposes the UDP socket.</summary>
     public void Dispose()
     {
         _udpClient?.Dispose();
@@ -145,13 +173,17 @@ public sealed class UdpTransport : ITransport, IDisposable
     }
 }
 
+/// <summary>Store-friendly wrapper around a <see cref="UdpConnection"/> that forwards I/O. Created by <see cref="UdpTransport"/>.</summary>
 public sealed class CachedUdpConnection : AltruistConnection
 {
     [JsonIgnore]
     private UdpConnection? _udpConnection;
 
+    /// <summary>Transport type tag (hides the base <c>Type</c>).</summary>
     public new string Type { get; } = "udp";
 
+    /// <summary>Wraps a UDP endpoint connection.</summary>
+    /// <param name="udpConnection">Underlying connection.</param>
     public CachedUdpConnection(UdpConnection udpConnection)
     {
         _udpConnection = udpConnection;
@@ -160,6 +192,8 @@ public sealed class CachedUdpConnection : AltruistConnection
         LastActivity = udpConnection.LastActivity;
     }
 
+    /// <summary>Creates a detached copy (metadata only): sends are dropped, receives return empty.</summary>
+    /// <param name="connection">Connection to copy id, auth details and last activity from.</param>
     public CachedUdpConnection(AltruistConnection connection)
     {
         ConnectionId = connection.ConnectionId;
@@ -167,9 +201,14 @@ public sealed class CachedUdpConnection : AltruistConnection
         LastActivity = connection.LastActivity;
     }
 
+    /// <summary>
+    /// True when <c>LastActivity</c> is within 30 minutes. Hides (does not override) the base property, so code holding an
+    /// <see cref="AltruistConnection"/> reference sees the base value instead.
+    /// </summary>
     [JsonIgnore]
     public new bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
 
+    /// <inheritdoc/>
     public override async Task SendAsync(byte[] data)
     {
         if (_udpConnection != null)
@@ -178,6 +217,7 @@ public sealed class CachedUdpConnection : AltruistConnection
         }
     }
 
+    /// <inheritdoc/>
     public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
         if (_udpConnection != null)
@@ -190,6 +230,7 @@ public sealed class CachedUdpConnection : AltruistConnection
         }
     }
 
+    /// <inheritdoc/>
     public override Task CloseAsync()
     {
         if (_udpConnection != null)
@@ -203,6 +244,7 @@ public sealed class CachedUdpConnection : AltruistConnection
     }
 }
 
+/// <summary>One remote UDP endpoint on the shared server socket. UDP is connectionless: close is a no-op.</summary>
 public sealed class UdpConnection : AltruistConnection
 {
     [JsonIgnore]
@@ -211,11 +253,18 @@ public sealed class UdpConnection : AltruistConnection
     [JsonIgnore]
     private readonly IPEndPoint? _remoteEndPoint;
 
+    /// <summary>True when <c>LastActivity</c> is within 30 minutes (hides, does not override, the base property).</summary>
     [JsonIgnore]
     public new bool IsConnected => DateTime.UtcNow - LastActivity < TimeSpan.FromMinutes(30);
 
+    /// <summary>Transport type tag (hides the base <c>Type</c>).</summary>
     public new string Type { get; } = "udp";
 
+    /// <summary>Creates an endpoint connection.</summary>
+    /// <param name="client">Shared server socket.</param>
+    /// <param name="connectionId">Connection id.</param>
+    /// <param name="authDetails">Authentication result, if any.</param>
+    /// <param name="remoteEndPoint">Remote endpoint datagrams are sent to.</param>
     public UdpConnection(UdpClient client, string connectionId, AuthDetails? authDetails, IPEndPoint remoteEndPoint)
     {
         _client = client;
@@ -224,6 +273,9 @@ public sealed class UdpConnection : AltruistConnection
         _remoteEndPoint = remoteEndPoint;
     }
 
+    /// <summary>Sends one datagram to the remote endpoint.</summary>
+    /// <param name="data">Datagram bytes.</param>
+    /// <exception cref="InvalidOperationException">No socket.</exception>
     public override async Task SendAsync(byte[] data)
     {
         if (IsConnected && _client != null)
@@ -236,6 +288,9 @@ public sealed class UdpConnection : AltruistConnection
         }
     }
 
+    /// <summary>Receives the next datagram on the shared socket (from any sender; the token is not observed).</summary>
+    /// <param name="cancellationToken">Not observed.</param>
+    /// <exception cref="InvalidOperationException">No socket.</exception>
     public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
         if (IsConnected && _client != null)
@@ -251,6 +306,7 @@ public sealed class UdpConnection : AltruistConnection
         return Array.Empty<byte>();
     }
 
+    /// <summary>No-op.</summary>
     public override Task CloseAsync()
     {
         // UDP is connectionless, so we don’t explicitly "close" connections.
@@ -267,19 +323,26 @@ public sealed class UdpConnection : AltruistConnection
 //     }
 // }
 
+/// <summary>Service token describing the UDP transport (not auto-registered).</summary>
 public sealed class UdpTransportToken : ITransportServiceToken
 {
+    /// <summary>Shared instance.</summary>
     public static UdpTransportToken Instance = new UdpTransportToken();
 
+    /// <summary>Human-readable description shown at startup.</summary>
     public string Description => "📡 Transport: Udp Socket";
 }
 
+/// <summary>Transport configuration registered when UDP is enabled; only logs activation.</summary>
 [Service(typeof(ITransportConfiguration))]
 [ConditionalOnConfig("altruist:server:transport:udp:enabled", "true")]
 public sealed class UdpSocketConfiguration : ITransportConfiguration
 {
+    /// <summary>Set by the framework once configured.</summary>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Logs activation (no services are added).</summary>
+    /// <param name="services">Service collection.</param>
     public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();

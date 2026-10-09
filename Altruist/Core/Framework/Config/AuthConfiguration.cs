@@ -19,6 +19,8 @@ namespace Altruist.Security;
 /// </summary>
 public interface IAuthChallengeWriter
 {
+    /// <summary>Writes the response for a failed authentication/authorization. The default challenge is suppressed when a writer exists.</summary>
+    /// <param name="context">The current request.</param>
     /// <param name="statusCode">401 (no or invalid token) or 403 (valid token, not allowed).</param>
     Task WriteAsync(HttpContext context, int statusCode);
 }
@@ -34,21 +36,45 @@ public interface IAuthChallengeWriter
 /// <c>map-inbound-claims</c> (ASP.NET maps <c>sub</c> to <c>NameIdentifier</c> and so on; default
 /// true) and <c>name-claim</c> (the claim <c>User.Identity.Name</c> reads).
 /// </para>
+/// <para>
+/// Tokens are validated with issuer and audience <c>Altruist</c>, zero clock skew, and must not be expired. The
+/// <see cref="SymmetricSecurityKey"/> and <see cref="TokenValidationParameters"/> are registered as singletons so token
+/// issuers can sign with the same key. <c>mode: session</c> registers nothing here (session auth is handled elsewhere);
+/// any other non-empty mode logs a warning and configures no authentication.
+/// </para>
 /// </summary>
 [ServiceConfiguration]
 public sealed class AuthConfiguration : IAltruistConfiguration
 {
     /// <summary>The key used when <c>altruist:security:key</c> is not set. Public (it ships with Altruist): never valid in Production.</summary>
     public const string DevelopmentKey = "VGhpcy1pcy1hLWRldmVsb3BtZW50LXNlY3JldC1rZXktMTIzNDU2";
+    /// <summary>Default minimum key length in bytes (UTF-8) for <c>altruist:security:min-key-bytes</c>.</summary>
     public const int DefaultMinKeyBytes = 32;
 
+    /// <inheritdoc/>
     public bool IsConfigured { get; set; }
+
+    /// <summary>HS256 signing secret (<c>altruist:security:key</c>, UTF-8 bytes used as the key).</summary>
     public string SecretKey { get; set; } = "";
+
+    /// <summary>Authentication mode (<c>altruist:security:mode</c>): <c>jwt</c> (default) or <c>session</c>.</summary>
     public string Mode { get; set; } = "";
+
+    /// <summary>Minimum key length in bytes enforced by the key guard (<c>altruist:security:min-key-bytes</c>).</summary>
     public int MinKeyBytes { get; set; } = DefaultMinKeyBytes;
+
+    /// <summary><c>altruist:security:jwt:map-inbound-claims</c>; null keeps the ASP.NET default (true).</summary>
     public bool? MapInboundClaims { get; set; }
+
+    /// <summary><c>altruist:security:jwt:name-claim</c>, trimmed; null keeps the default name claim type.</summary>
     public string? NameClaim { get; set; }
 
+    /// <summary>Created by the framework from configuration; see the type summary for the keys.</summary>
+    /// <param name="secretKey"><c>altruist:security:key</c> (defaults to <see cref="DevelopmentKey"/>).</param>
+    /// <param name="mode"><c>altruist:security:mode</c> (default <c>jwt</c>).</param>
+    /// <param name="minKeyBytes"><c>altruist:security:min-key-bytes</c> (default 32).</param>
+    /// <param name="mapInboundClaims"><c>altruist:security:jwt:map-inbound-claims</c>.</param>
+    /// <param name="nameClaim"><c>altruist:security:jwt:name-claim</c>.</param>
     public AuthConfiguration(
         [AppConfigValue("altruist:security:key", DevelopmentKey)]
         string secretKey,
@@ -68,6 +94,12 @@ public sealed class AuthConfiguration : IAltruistConfiguration
         NameClaim = string.IsNullOrWhiteSpace(nameClaim) ? null : nameClaim.Trim();
     }
 
+    /// <summary>
+    /// In <c>jwt</c> mode: enforces the key policy (may throw in Production), then registers the signing key, validation
+    /// parameters, JWT bearer authentication (with <see cref="IAuthChallengeWriter"/> hooks) and authorization.
+    /// </summary>
+    /// <param name="services">Collection to configure.</param>
+    /// <exception cref="InvalidOperationException">Production, <c>altruist:security</c> configured, and the key is unfit.</exception>
     public Task Configure(IServiceCollection services)
     {
         var sp = services.BuildServiceProvider();
@@ -140,6 +172,7 @@ public sealed class AuthConfiguration : IAltruistConfiguration
     /// Pins HS256 (a token signed with another algorithm, or unsigned, is rejected) and requires an
     /// expiry. Applied to the bearer validation parameters.
     /// </summary>
+    /// <param name="parameters">Parameters to harden in place.</param>
     public static void Harden(TokenValidationParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(parameters);
@@ -149,6 +182,8 @@ public sealed class AuthConfiguration : IAltruistConfiguration
     }
 
     /// <summary>Why <paramref name="key"/> is unfit for production, or null when it is fine.</summary>
+    /// <param name="key">Candidate secret.</param>
+    /// <param name="minKeyBytes">Minimum UTF-8 byte length.</param>
     public static string? KeyProblem(string? key, int minKeyBytes = DefaultMinKeyBytes)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -164,6 +199,12 @@ public sealed class AuthConfiguration : IAltruistConfiguration
     /// Throws (refuses to start) in Production when the application configures security and the
     /// key has a <see cref="KeyProblem"/>; logs a warning otherwise.
     /// </summary>
+    /// <param name="key">Configured secret.</param>
+    /// <param name="minKeyBytes">Minimum UTF-8 byte length.</param>
+    /// <param name="securityConfigured">Whether the application has an <c>altruist:security</c> section.</param>
+    /// <param name="production">Whether the environment is Production.</param>
+    /// <param name="logger">Logger for the warning.</param>
+    /// <exception cref="InvalidOperationException"><paramref name="production"/> and <paramref name="securityConfigured"/> and the key is unfit.</exception>
     public static void EnforceKeyPolicy(string? key, int minKeyBytes, bool securityConfigured, bool production, ILogger logger)
     {
         var problem = KeyProblem(key, minKeyBytes);

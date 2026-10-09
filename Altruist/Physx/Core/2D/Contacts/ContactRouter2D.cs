@@ -13,7 +13,7 @@ namespace Altruist.Physx.TwoD
     /// first. Fixtures, bodies and the normal are oriented to match: <see cref="Normal"/> points from
     /// A's side to B's side (the engine's A→B normal, negated when the pair was swapped).
     ///
-    /// <para>A tag is the fixture's <see cref="IPhysxCollider.UserData"/>, or its body's
+    /// <para>A tag is the fixture's <see cref="Altruist.Physx.Contracts.IPhysxCollider.UserData"/>, or its body's
     /// <see cref="IPhysxBody2D.UserData"/> when the fixture has none (<see cref="ContactRouter2D.TagOf"/>).</para>
     ///
     /// <para>Valid as long as the underlying contact view is: inside the listener callback for a
@@ -33,6 +33,12 @@ namespace Altruist.Physx.TwoD
         /// <summary>True when the engine's fixture A carries <see cref="B"/> (the pair was flipped).</summary>
         public bool Swapped { get; }
 
+        /// <summary>Wraps a contact with its tags already ordered. Normally produced by
+        /// <see cref="ContactRouter2D"/> / <see cref="ContactQueries2D"/>, not constructed by hand.</summary>
+        /// <param name="contact">The engine's contact view.</param>
+        /// <param name="a">The tag of type <typeparamref name="TA"/>.</param>
+        /// <param name="b">The tag of type <typeparamref name="TB"/>.</param>
+        /// <param name="swapped">True when <paramref name="a"/> belongs to the engine's fixture B.</param>
         public RoutedContact2D(IPhysxContact2D contact, TA a, TB b, bool swapped)
         {
             Contact = contact;
@@ -103,14 +109,14 @@ namespace Altruist.Physx.TwoD
     /// A contact listener that dispatches by the TYPES of the two tags (user data), replacing the
     /// <c>if (ua is X &amp;&amp; ub is Y) ... else if (ub is X &amp;&amp; ua is Y) ... // flip the normal</c>
     /// ladders of a hand-written listener. Register handlers per pair; the router orders each pair
-    /// (the <typeparamref name="TA"/> tag is always <c>A</c>) and orients the normal from A to B.
+    /// (the <c>TA</c> tag is always <c>A</c>) and orients the normal from A to B.
     ///
     /// <code>
     /// var router = new ContactRouter2D()
-    ///     .FilterPreSolve&lt;SurfaceTag, BallTag&gt;((in RoutedContact2D&lt;SurfaceTag, BallTag&gt; c) =&gt; !PassThrough(c.A, c.BodyA, c.BodyB))
-    ///     .OnPreSolve&lt;SurfaceTag, VehicleTag&gt;((in RoutedContact2D&lt;SurfaceTag, VehicleTag&gt; c) =&gt;
+    ///     .FilterPreSolve&lt;SurfaceTag, ProjectileTag&gt;((in RoutedContact2D&lt;SurfaceTag, ProjectileTag&gt; c) =&gt; !PassThrough(c.A, c.BodyA, c.BodyB))
+    ///     .OnPreSolve&lt;SurfaceTag, MoverTag&gt;((in RoutedContact2D&lt;SurfaceTag, MoverTag&gt; c) =&gt;
     ///     {
-    ///         var m = c.GetWorldManifold();           // normal: surface → vehicle
+    ///         var m = c.GetWorldManifold();           // normal: surface → mover
     ///         RecordSurface(c.B.Id, c.BodyB, m.Midpoint, m.Normal);
     ///     });
     /// world.SetContactListener(router);
@@ -131,6 +137,17 @@ namespace Altruist.Physx.TwoD
     /// TA = TB the unswapped orientation wins. Matching uses <c>is</c>, so base types and interfaces
     /// match their implementations.</para>
     /// <para>Allocation: none per contact (registrations are an array, the view is the engine's).</para>
+    /// <para><b>Router vs a raw listener.</b> Use the router when dispatch depends on what the two
+    /// fixtures are (their tags). Implement <see cref="IPhysxContactListener2D"/> yourself only when
+    /// you need every contact regardless of tags, or the engine's raw A/B orientation. A world holds
+    /// one listener (<see cref="IPhysxWorldEngine2D.SetContactListener"/>); to combine, wrap the
+    /// router in your listener and forward (e.g. call <see cref="PreSolve"/>). For per-fixture
+    /// enter/stay/exit events after the step use <see cref="IPhysxCollider2D.OnCollisionEnter"/> and
+    /// friends instead; for polling after a step use <see cref="ContactQueries2D"/>.</para>
+    /// <para>Threading: callbacks run on the thread stepping the world, inside <c>Step</c>. Register
+    /// handlers before stepping; registering during a step is not synchronized. Routed contacts are
+    /// views valid only inside the callback.</para>
+    /// <para>The TypeScript twin is <c>@altruist/sim2d</c> <c>physics/contactRouter2D.ts</c>.</para>
     /// </summary>
     public sealed class ContactRouter2D : IPhysxContactListener2D
     {
@@ -140,7 +157,7 @@ namespace Altruist.Physx.TwoD
         private Route[] _preSolve = Array.Empty<Route>();
         private Route[] _postSolve = Array.Empty<Route>();
 
-        /// <summary>The tag of a fixture: its user data, else its body's.</summary>
+        /// <summary>The tag of a fixture: its user data, else its body's (null when neither is set).</summary>
         public static object? TagOf(IPhysxFixture2D fixture) => fixture.UserData ?? fixture.Body.UserData;
 
         /// <summary>Matches a contact against the pair (TA, TB) (see the class summary for the
@@ -167,14 +184,18 @@ namespace Altruist.Physx.TwoD
             return false;
         }
 
-        /// <summary>Handles begin-contact events of the pair (TA, TB).</summary>
+        /// <summary>Handles begin-contact events of the pair (TA, TB) (fired when the fixtures' bounding
+        /// shapes start touching, inside the step). Returns this router for chaining.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="handler"/> is null.</exception>
         public ContactRouter2D OnBegin<TA, TB>(ContactHandler2D<TA, TB> handler)
         {
             _begin = Append(_begin, new HandlerRoute<TA, TB>(handler ?? throw new ArgumentNullException(nameof(handler))));
             return this;
         }
 
-        /// <summary>Handles end-contact events of the pair (TA, TB).</summary>
+        /// <summary>Handles end-contact events of the pair (TA, TB) (also raised when a body or fixture
+        /// is removed). Returns this router for chaining.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="handler"/> is null.</exception>
         public ContactRouter2D OnEnd<TA, TB>(ContactHandler2D<TA, TB> handler)
         {
             _end = Append(_end, new HandlerRoute<TA, TB>(handler ?? throw new ArgumentNullException(nameof(handler))));
@@ -182,14 +203,19 @@ namespace Altruist.Physx.TwoD
         }
 
         /// <summary>Handles pre-solve of the pair (TA, TB), after every filter kept the contact and only
-        /// when it has manifold points. The handler may change restitution / friction or disable it.</summary>
+        /// when it has manifold points. The handler may change restitution / friction or disable it.
+        /// Pre-solve sees velocities before the solver applies the contact: the place to capture a
+        /// <see cref="ContactImpact2D"/>. Returns this router for chaining.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="handler"/> is null.</exception>
         public ContactRouter2D OnPreSolve<TA, TB>(ContactHandler2D<TA, TB> handler)
         {
             _preSolve = Append(_preSolve, new HandlerRoute<TA, TB>(handler ?? throw new ArgumentNullException(nameof(handler))));
             return this;
         }
 
-        /// <summary>Handles post-solve of the pair (TA, TB) with the largest normal impulse.</summary>
+        /// <summary>Handles post-solve of the pair (TA, TB) with the largest normal impulse of the
+        /// contact's points (mass × units/s). Returns this router for chaining.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="handler"/> is null.</exception>
         public ContactRouter2D OnPostSolve<TA, TB>(ContactImpulseHandler2D<TA, TB> handler)
         {
             _postSolve = Append(_postSolve, new ImpulseRoute<TA, TB>(handler ?? throw new ArgumentNullException(nameof(handler))));
@@ -197,7 +223,9 @@ namespace Altruist.Physx.TwoD
         }
 
         /// <summary>A pre-solve filter for the pair (TA, TB): returning false disables the contact for
-        /// this step (one-way platforms, pass-through) and skips the rest of its routing.</summary>
+        /// this step (one-way platforms, pass-through) and skips the rest of its routing. Filters run
+        /// even for contacts without manifold points. Returns this router for chaining.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="keep"/> is null.</exception>
         public ContactRouter2D FilterPreSolve<TA, TB>(ContactFilter2D<TA, TB> keep)
         {
             _preFilters = Append(_preFilters, new FilterRoute<TA, TB>(keep ?? throw new ArgumentNullException(nameof(keep))));
@@ -319,7 +347,7 @@ namespace Altruist.Physx.TwoD
         /// <summary>
         /// Touching contacts of <paramref name="body"/> with fixtures tagged <typeparamref name="TOther"/>,
         /// oriented with the other side as A and this body as B (so <c>Normal</c> points from the other
-        /// fixture toward this body: out of a surface, toward the car standing on it). Order: the body's
+        /// fixture toward this body: out of a surface, toward the body resting on it). Order: the body's
         /// contact list (= the world order restricted to the body). <c>B</c> is the body-side tag (may be null).
         /// </summary>
         public static IEnumerable<RoutedContact2D<TOther, object?>> TouchingContactsOf<TOther>(this IPhysxWorldEngine2D world, IPhysxBody2D body)

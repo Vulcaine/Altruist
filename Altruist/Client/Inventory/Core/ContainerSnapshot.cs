@@ -16,6 +16,7 @@ namespace Altruist.Client.Inventory;
 /// </summary>
 internal sealed class ContainerSnapshot
 {
+    /// <summary>Geometry this snapshot validates against.</summary>
     public ContainerLayout Layout { get; }
 
     // anchor cell → snapshot. Linked cells are NOT keys here.
@@ -25,16 +26,23 @@ internal sealed class ContainerSnapshot
     // Lookup direction: "what's covering cell N?" → anchor → snapshot.
     private readonly Dictionary<ushort, ushort> _coverage = new();
 
+    /// <summary>Creates an empty mirror for <paramref name="layout"/>.</summary>
+    /// <param name="layout">Container geometry.</param>
     public ContainerSnapshot(ContainerLayout layout)
     {
         Layout = layout ?? throw new ArgumentNullException(nameof(layout));
     }
 
+    /// <summary>Live view of all anchored items.</summary>
     public IReadOnlyCollection<ItemSnapshot> Anchors => _anchors.Values;
 
+    /// <summary>Item anchored exactly at <paramref name="cell"/>, or <c>null</c>.</summary>
+    /// <param name="cell">Cell index.</param>
     public ItemSnapshot? GetAnchor(ushort cell)
         => _anchors.TryGetValue(cell, out var snap) ? snap : null;
 
+    /// <summary>Item whose footprint covers <paramref name="cell"/>, or <c>null</c>.</summary>
+    /// <param name="cell">Cell index.</param>
     public ItemSnapshot? GetItemCoveringCell(ushort cell)
     {
         if (_coverage.TryGetValue(cell, out var anchor) && _anchors.TryGetValue(anchor, out var snap))
@@ -100,6 +108,7 @@ internal sealed class ContainerSnapshot
         return true;
     }
 
+    /// <summary>Lowest uncovered cell index, or -1 when full.</summary>
     public int FindFirstFreeCell()
     {
         int capacity = Layout switch

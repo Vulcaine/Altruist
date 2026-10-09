@@ -20,6 +20,11 @@ public static class NavMeshFunnel
     /// <summary>Smooth a polygon-level path into a world-space waypoint
     /// list. <paramref name="start"/> and <paramref name="end"/> are the
     /// actual start/end positions; the polygons are the A* result.</summary>
+    /// <param name="graph">The nav-mesh the polygons belong to.</param>
+    /// <param name="polyPath">Polygon sequence from <see cref="NavMeshPathfinder.TryFind"/>.</param>
+    /// <param name="start">Start position (first waypoint).</param>
+    /// <param name="end">End position (last waypoint).</param>
+    /// <returns>A new waypoint list beginning with <paramref name="start"/> and ending with <paramref name="end"/>.</returns>
     public static List<Vector3> Smooth(NavMeshGraph graph, int[] polyPath, Vector3 start, Vector3 end)
     {
         var output = new List<Vector3>(polyPath.Length + 2);

@@ -16,6 +16,16 @@ using System.Linq.Expressions;
 
 namespace Altruist.Persistence;
 
+/// <summary>
+/// Hydrates prefab components after the roots are loaded, one query per included component:
+/// collections by <c>dependent.FK IN (root StorageIds)</c>, single references by
+/// <c>dependent.PK IN (root FK values)</c>. Key values are compared as strings; non-string keys are skipped.
+/// </summary>
+/// <remarks>
+/// Collections are always assigned (empty list when no rows match), except when no root has a StorageId. Single
+/// references stay null when the FK is empty or the row is missing. Unknown include names are ignored. Large root
+/// sets produce one <c>IN</c> list with one parameter per key.
+/// </remarks>
 internal sealed class PgPrefabEagerLoader
 {
     private readonly ISqlDatabaseProvider _db;
@@ -28,12 +38,19 @@ internal sealed class PgPrefabEagerLoader
     // elementType => () => new List<elementType>() compiled once
     private static readonly ConcurrentDictionary<Type, Func<IList>> _listFactoryCache = new();
 
+    /// <summary>Creates a loader for one prefab type.</summary>
+    /// <param name="db">Provider the queries run on.</param>
+    /// <param name="prefab">Prefab metadata (root and components).</param>
     public PgPrefabEagerLoader(ISqlDatabaseProvider db, PrefabMeta prefab)
     {
         _db = db;
         _prefab = prefab;
     }
 
+    /// <summary>Loads each included component for all <paramref name="prefabs"/> and assigns it.</summary>
+    /// <param name="prefabs">Prefabs whose root is already set.</param>
+    /// <param name="includes">Component property names to load.</param>
+    /// <param name="ct">Cancellation token.</param>
     public async Task HydrateAsync<TPrefab>(List<TPrefab> prefabs, HashSet<string> includes, CancellationToken ct)
         where TPrefab : PrefabModel, new()
     {

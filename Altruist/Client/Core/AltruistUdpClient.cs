@@ -13,6 +13,9 @@ namespace Altruist.Client;
 ///
 /// <para>Use for high-frequency lossy traffic — movement deltas, voice, etc.
 /// Server identifies the client by source endpoint; no handshake.</para>
+///
+/// <para>Internal: send through <see cref="IAltruistClientRouter.Udp"/>. Registered as a DI
+/// singleton only when <c>altruist:client:transport:udp</c> is configured.</para>
 /// </summary>
 [Service]
 [ConditionalOnConfig("altruist:client:transport:udp")]
@@ -23,8 +26,16 @@ internal sealed class AltruistUdpClient : IAsyncDisposable, IDisposable
     private readonly UdpClient _udp = new();
     private readonly IPEndPoint _serverEndpoint;
 
+    /// <summary>Codec used to encode outbound packets (and by the router to decode inbound ones).</summary>
     public IClientCodec Codec => _codec;
 
+    /// <summary>
+    /// Explicit ctor for manual wiring. Resolves <see cref="EndpointConfig.Host"/> synchronously
+    /// via DNS to its first IPv4 address (<c>"localhost"</c> maps to loopback); falls back to
+    /// loopback when no IPv4 address is found.
+    /// </summary>
+    /// <param name="endpoint">Server host and port.</param>
+    /// <param name="codec">Codec used to encode outbound packets.</param>
     public AltruistUdpClient(EndpointConfig endpoint, IClientCodec codec)
     {
         _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
@@ -72,6 +83,11 @@ internal sealed class AltruistUdpClient : IAsyncDisposable, IDisposable
     }
 
     /// <summary>Send one datagram with a gate name + codec-encoded payload.</summary>
+    /// <remarks>On netstandard2.1 cancelling <paramref name="ct"/> closes the socket.</remarks>
+    /// <typeparam name="T">Static packet type used for serialization.</typeparam>
+    /// <param name="gate">Server gate name (at most 255 UTF-8 bytes).</param>
+    /// <param name="payload">Packet to send.</param>
+    /// <param name="ct">Cancellation token.</param>
     public async Task SendAsync<T>(string gate, T payload, CancellationToken ct = default)
     {
         var gateBytes = Encoding.UTF8.GetBytes(gate);
@@ -95,6 +111,11 @@ internal sealed class AltruistUdpClient : IAsyncDisposable, IDisposable
 
     /// <summary>Receive one datagram or throw <see cref="OperationCanceledException"/>
     /// on timeout.</summary>
+    /// <remarks>On netstandard2.1 the timeout is implemented by closing the socket: a timeout
+    /// then surfaces as <see cref="ObjectDisposedException"/> / <see cref="System.Net.Sockets.SocketException"/>
+    /// rather than <see cref="OperationCanceledException"/>, and the client is unusable afterwards.</remarks>
+    /// <param name="timeout">Maximum wait.</param>
+    /// <returns>The datagram bytes (one <see cref="MessageEnvelope"/>).</returns>
     public async Task<byte[]> ReceiveAsync(TimeSpan timeout)
     {
         using var cts = new CancellationTokenSource(timeout);
@@ -107,12 +128,15 @@ internal sealed class AltruistUdpClient : IAsyncDisposable, IDisposable
         return result.Buffer;
     }
 
+    /// <summary>Synchronous <see cref="Dispose"/> wrapped in a completed task.</summary>
+    /// <returns>A completed task.</returns>
     public ValueTask DisposeAsync()
     {
         Dispose();
         return default;
     }
 
+    /// <summary>Closes and disposes the socket. Errors are swallowed.</summary>
     public void Dispose()
     {
         try { _udp.Close(); } catch { }

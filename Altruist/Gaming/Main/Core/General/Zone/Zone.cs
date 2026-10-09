@@ -12,18 +12,31 @@ namespace Altruist.Gaming;
 /// to spawn an entity. The actual entity creation is done by the game via
 /// IZoneSpawnHandler.
 /// </summary>
+/// <remarks>The framework only stores these values and hands them to the <see cref="IZoneSpawnHandler"/>;
+/// their interpretation (units, what a type or template id means) is up to the game.</remarks>
 public class ZoneSpawnDefinition
 {
+    /// <summary>Consumer-defined spawn kind (e.g. a single entity or a group).</summary>
     public string Type { get; set; } = "";
+    /// <summary>Spawn X in world units.</summary>
     public int X { get; set; }
+    /// <summary>Spawn Y in world units.</summary>
     public int Y { get; set; }
+    /// <summary>Spawn Z in world units.</summary>
     public int Z { get; set; }
+    /// <summary>Random spread around <see cref="X"/>.</summary>
     public int RangeX { get; set; }
+    /// <summary>Random spread around <see cref="Y"/>.</summary>
     public int RangeY { get; set; }
+    /// <summary>Initial facing (consumer-defined encoding).</summary>
     public int Direction { get; set; }
+    /// <summary>How many entities to spawn (default 1).</summary>
     public int Count { get; set; } = 1;
+    /// <summary>Template / prototype id of the entity to spawn.</summary>
     public int Vnum { get; set; }
+    /// <summary>Respawn delay in seconds (default 60).</summary>
     public double RegenSeconds { get; set; } = 60;
+    /// <summary>Respawn percentage (default 100).</summary>
     public int RegenPercent { get; set; } = 100;
 }
 
@@ -34,8 +47,11 @@ public class ZoneSpawnDefinition
 /// </summary>
 public interface IManagedZone : IZone
 {
+    /// <summary>Players currently inside.</summary>
     int PlayerCount { get; }
+    /// <summary>Spawns materialised when the zone activates.</summary>
     IReadOnlyList<ZoneSpawnDefinition> SpawnDefinitions { get; }
+    /// <summary>Instance ids returned by the last <see cref="IZoneSpawnHandler.SpawnZone"/> (a copy).</summary>
     IReadOnlyCollection<string> SpawnedInstanceIds { get; }
 }
 
@@ -55,6 +71,12 @@ public interface IZoneSpawnHandler
 /// <summary>
 /// Manages zone lifecycle. Zones activate when the first player enters
 /// and deactivate when the last player leaves.
+///
+/// <para>Choosing: use this for presence-driven spawning in persistent worlds (content exists only
+/// while someone is there). For static spatial regions with bounds checks use
+/// <see cref="IZoneManager2D"/> / <see cref="IZoneManager3D"/>; to park individual idle entities use
+/// <see cref="IEntityHibernationService"/>. The game reports enters/leaves; nothing calls these
+/// automatically.</para>
 /// </summary>
 public interface IZoneManager
 {
@@ -80,6 +102,12 @@ public interface IZoneManager
     int TotalSpawnedEntities { get; }
 }
 
+/// <summary>
+/// Default <see cref="IZoneManager"/> (registered when <c>altruist:game</c> exists). Thread-safe. Spawning on
+/// activation is fire-and-forget (the enter call returns before the entities exist; a failed spawn
+/// resets the zone to inactive so the next enter retries); despawning on deactivation is awaited.
+/// Without an <see cref="IZoneSpawnHandler"/> registered it only tracks presence.
+/// </summary>
 [Service(typeof(IZoneManager))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class ZoneManager : IZoneManager
@@ -88,18 +116,22 @@ public sealed class ZoneManager : IZoneManager
     private readonly IZoneSpawnHandler? _spawnHandler;
     private readonly object _lock = new();
 
+    /// <inheritdoc/>
     public int TotalSpawnedEntities => _zones.Values.Where(z => z.IsActive).Sum(z => z.SpawnedIds.Count);
 
+    /// <summary>Created by DI; <paramref name="spawnHandler"/> is the game's optional spawn callback.</summary>
     public ZoneManager(IZoneSpawnHandler? spawnHandler = null)
     {
         _spawnHandler = spawnHandler;
     }
 
+    /// <summary>Registers (or replaces, resetting presence) a zone.</summary>
     public void RegisterZone(string name, List<ZoneSpawnDefinition> spawns)
     {
         _zones[name] = new Zone(name, spawns);
     }
 
+    /// <inheritdoc/>
     public Task PlayerEnteredZone(string zoneName, string playerId)
     {
         if (!_zones.TryGetValue(zoneName, out var zone)) return Task.CompletedTask;
@@ -146,6 +178,7 @@ public sealed class ZoneManager : IZoneManager
         }
     }
 
+    /// <inheritdoc/>
     public async Task PlayerLeftZone(string zoneName, string playerId)
     {
         if (!_zones.TryGetValue(zoneName, out var zone)) return;
@@ -166,10 +199,13 @@ public sealed class ZoneManager : IZoneManager
         }
     }
 
+    /// <inheritdoc/>
     public IManagedZone? GetZone(string name) => _zones.GetValueOrDefault(name);
 
+    /// <inheritdoc/>
     public IEnumerable<string> GetAllZoneNames() => _zones.Keys;
 
+    /// <inheritdoc/>
     public IEnumerable<IManagedZone> GetActiveZones() => _zones.Values.Where(z => z.IsActive);
 
     private sealed class Zone : IManagedZone

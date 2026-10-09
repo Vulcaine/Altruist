@@ -5,17 +5,32 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Physx
 {
+    /// <summary>
+    /// Reflection helpers that turn <see cref="CollisionEventAttribute"/> methods into compiled invokers in
+    /// <see cref="CollisionHandlerRegistry"/>. With the Altruist host this runs automatically
+    /// (<see cref="AltruistCollisionHandlerConfig"/>); call it directly only in custom hosts or tests.
+    /// </summary>
     public static class CollisionHandlerDiscovery
     {
         /// <summary>
-        /// Discover all [CollisionHandler] classes in the given assemblies,
-        /// create instances (via instanceFactory) and register all their
-        /// [CollisionEvent] methods into CollisionHandlerRegistry.
-        ///
-        /// instanceFactory can be your DI container's resolver:
-        ///    type => serviceProvider.GetService(type)
-        /// falling back to Activator.CreateInstance if it returns null.
+        /// Scans <paramref name="assemblies"/> for <see cref="CollisionHandlerAttribute"/> classes, creates one instance
+        /// of each and registers all their <see cref="CollisionEventAttribute"/> methods into <see cref="CollisionHandlerRegistry"/>.
+        /// Does not clear the registry first.
         /// </summary>
+        /// <param name="assemblies">Assemblies to scan.</param>
+        /// <param name="instanceFactory">
+        /// Resolver for handler instances, e.g. <c>type =&gt; serviceProvider.GetService(type)</c>. When it returns
+        /// <see langword="null"/> the method falls back to <see cref="Activator.CreateInstance(Type)"/> (requires a public parameterless constructor).
+        /// </param>
+        /// <param name="logger">Logger for diagnostics.</param>
+        /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">A handler method has an invalid signature (see <see cref="CollisionEventAttribute"/>).</exception>
+        /// <example>
+        /// <code>
+        /// CollisionHandlerDiscovery.RegisterCollisionHandlers(
+        ///     new[] { typeof(MyHandlers).Assembly }, type =&gt; provider.GetService(type), logger);
+        /// </code>
+        /// </example>
         public static void RegisterCollisionHandlers(
             IEnumerable<Assembly> assemblies,
             Func<Type, object?> instanceFactory,
@@ -46,6 +61,16 @@ namespace Altruist.Physx
             }
         }
 
+        /// <summary>
+        /// Registers the <see cref="CollisionEventAttribute"/> methods of an explicit list of handler types (no assembly
+        /// scan). Unlike <see cref="RegisterCollisionHandlers"/> there is no <see cref="Activator"/> fallback: types the
+        /// factory cannot resolve are logged and skipped. Does not clear the registry first.
+        /// </summary>
+        /// <param name="handlerTypes">Handler classes to register.</param>
+        /// <param name="instanceFactory">Resolver for handler instances, typically the DI root provider.</param>
+        /// <param name="logger">Logger for diagnostics.</param>
+        /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">A handler method has an invalid signature (see <see cref="CollisionEventAttribute"/>).</exception>
         public static void RegisterCollisionHandlerTypes(
             IEnumerable<Type> handlerTypes,
             Func<Type, object?> instanceFactory,

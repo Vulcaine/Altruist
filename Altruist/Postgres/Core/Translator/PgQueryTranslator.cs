@@ -10,13 +10,24 @@ using Microsoft.EntityFrameworkCore.Query;
 namespace Altruist.Persistence.Postgres;
 
 /// <summary>
-/// Centralized PostgreSQL query translation logic.
-/// Converts LINQ expressions + metadata into SQL fragments.
+/// Centralized PostgreSQL query translation logic for single-table vaults
+/// (<see cref="PgVault{TVaultModel}"/>, <see cref="PgHistoricalVault{TVaultModel}"/>).
+/// Converts LINQ expressions + metadata into SQL fragments with values inlined as escaped literals.
 /// </summary>
+/// <remarks>
+/// Supported shapes are listed on <see cref="PgVault{TVaultModel}"/>; every other shape throws
+/// <see cref="NotSupportedException"/>. Joined queries use <see cref="Querying.PgJoinExpressionTranslator"/> and prefab
+/// filters use <see cref="PgPrefabWhereTranslator"/> instead.
+/// </remarks>
 internal static class PgQueryTranslator
 {
     // -------------------- WHERE --------------------
 
+    /// <summary>
+    /// Translates a predicate into a WHERE fragment: property-vs-value comparisons combined with
+    /// <c>&amp;&amp;</c>/<c>||</c> (each combination parenthesised).
+    /// </summary>
+    /// <exception cref="NotSupportedException">Any other node type, or a comparison with no model property side.</exception>
     public static string Where<T>(
         Expression<Func<T, bool>> predicate,
         VaultDocument document)
@@ -62,6 +73,8 @@ internal static class PgQueryTranslator
 
     // -------------------- ORDER BY --------------------
 
+    /// <summary>Translates <c>x =&gt; x.Prop</c> into a quoted column name (no direction; callers append <c>DESC</c>).</summary>
+    /// <exception cref="NotSupportedException">The body is not a plain member access.</exception>
     public static string OrderBy<T, TKey>(
         Expression<Func<T, TKey>> selector,
         VaultDocument doc)
@@ -76,6 +89,11 @@ internal static class PgQueryTranslator
 
     // -------------------- SELECT --------------------
 
+    /// <summary>
+    /// Translates <c>x =&gt; new { A = ..., B = ... }</c> into <c>"col" AS "Member"</c> items, one per constructor
+    /// member. Only member names matter; the value expressions are ignored.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The body is not a <see cref="NewExpression"/> with members (enumerated lazily).</exception>
     public static IEnumerable<string> Select<T, TResult>(
         Expression<Func<T, TResult>> selector,
         VaultDocument doc)
@@ -94,6 +112,11 @@ internal static class PgQueryTranslator
 
     // -------------------- UPDATE (SetPropertyCalls) --------------------
 
+    /// <summary>
+    /// Builds an <c>UPDATE ... SET ... [WHERE ...]</c> from a member-init expression. Currently unused by the
+    /// vaults (<c>UpdateAsync</c> loads, modifies and re-saves rows instead).
+    /// </summary>
+    /// <exception cref="NotSupportedException">The body is not a <see cref="MemberInitExpression"/>.</exception>
     public static string BuildUpdate<T>(
         Expression<Func<SetPropertyCalls<T>, SetPropertyCalls<T>>> setExpression,
         QueryState state,
@@ -125,6 +148,9 @@ internal static class PgQueryTranslator
 
     // -------------------- UPDATE (dictionary-based) --------------------
 
+    /// <summary>
+    /// Builds an <c>UPDATE</c> keyed by primary-key values (null key values become <c>IS NULL</c>). Currently unused.
+    /// </summary>
     public static string BuildUpdate(
         IReadOnlyDictionary<string, object?> primaryKey,
         IReadOnlyDictionary<string, object?> changes,
@@ -241,6 +267,11 @@ internal static class PgQueryTranslator
         _ => StringLiteral(value.ToString() ?? "")
     };
 
+    /// <summary>
+    /// Renders <paramref name="s"/> as a Postgres escape-string literal (<c>E'...'</c>) with backslashes and quotes
+    /// escaped, safe regardless of <c>standard_conforming_strings</c>.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="s"/> contains a NUL character.</exception>
     internal static string StringLiteral(string s)
     {
         if (s.Contains('\0'))

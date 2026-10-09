@@ -17,6 +17,14 @@ namespace Altruist.Gaming.Autosave;
 /// Service factory that creates AutosaveService&lt;T&gt; instances for any VaultModel
 /// marked with [Autosave]. Integrates with the framework's DI system.
 /// </summary>
+/// <remarks>
+/// Picked up automatically as an <see cref="IServiceFactory"/>; you never call it directly. Config keys read when a
+/// service is created: <c>altruist:game:autosave:default-batch-size</c>, <c>altruist:game:autosave:wal:enabled</c>
+/// (default true; ANDed with <see cref="AutosaveAttribute.Wal"/>), <c>altruist:game:autosave:wal:directory</c>
+/// (default <c>data/wal</c>), <c>altruist:game:autosave:wal:flush-interval-seconds</c> (default 10).
+/// <c>altruist:game:autosave:default-interval</c> is only read by <see cref="ResolveInterval"/>.
+/// <see cref="IVault{TVaultModel}"/> is resolved optionally, so autosave also works cache-only.
+/// </remarks>
 public sealed class AutosaveServiceFactory : IServiceFactory
 {
     /// <summary>Config key for the global default autosave interval.</summary>
@@ -31,6 +39,10 @@ public sealed class AutosaveServiceFactory : IServiceFactory
     /// <summary>Fallback batch size.</summary>
     public const int FallbackBatchSize = 100;
 
+    /// <summary>True for closed <c>IAutosaveService&lt;T&gt;</c> where <c>T</c> is an <see cref="IVaultModel"/> marked
+    /// with <see cref="AutosaveAttribute"/>.</summary>
+    /// <param name="serviceType">Requested service type.</param>
+    /// <returns>Whether <see cref="Create"/> can build it.</returns>
     public bool CanCreate(Type serviceType)
     {
         if (!serviceType.IsGenericType)
@@ -45,6 +57,11 @@ public sealed class AutosaveServiceFactory : IServiceFactory
                modelType.GetCustomAttribute<AutosaveAttribute>() != null;
     }
 
+    /// <summary>Builds an <see cref="AutosaveService{T}"/> for the model, resolving cache, coordinator, optional vault
+    /// and the config values listed on the class.</summary>
+    /// <param name="sp">Service provider.</param>
+    /// <param name="serviceType">Closed <c>IAutosaveService&lt;T&gt;</c> accepted by <see cref="CanCreate"/>.</param>
+    /// <returns>The new service (already registered with the coordinator).</returns>
     public object Create(IServiceProvider sp, Type serviceType)
     {
         var modelType = serviceType.GetGenericArguments()[0];
@@ -76,6 +93,12 @@ public sealed class AutosaveServiceFactory : IServiceFactory
     /// Resolve the effective cron expression for an [Autosave] attribute,
     /// considering config defaults.
     /// </summary>
+    /// <remarks>Order: attribute cron, then empty string when the attribute has a time-based interval (use
+    /// <see cref="AutosaveAttribute.GetTimeSpan"/> instead), then <see cref="DefaultIntervalConfigKey"/>, then
+    /// <see cref="FallbackInterval"/>. Use it when building your own flush scheduler.</remarks>
+    /// <param name="attr">The model's autosave attribute.</param>
+    /// <param name="config">App configuration, or null.</param>
+    /// <returns>A cron expression, or <c>""</c> for time-based intervals.</returns>
     public static string ResolveInterval(AutosaveAttribute attr, IConfiguration? config)
     {
         // Explicit cron expression on attribute takes priority
@@ -99,6 +122,11 @@ public sealed class AutosaveServiceFactory : IServiceFactory
     /// <summary>
     /// Resolve the effective batch size, considering attribute and config defaults.
     /// </summary>
+    /// <remarks>An attribute value other than 100 wins; otherwise a positive <see cref="DefaultBatchSizeConfigKey"/>
+    /// value, else 100. (An attribute explicitly set to 100 therefore still yields to config.)</remarks>
+    /// <param name="attr">The model's autosave attribute.</param>
+    /// <param name="config">App configuration, or null.</param>
+    /// <returns>Batch size for vault writes.</returns>
     public static int ResolveBatchSize(AutosaveAttribute attr, IConfiguration? config)
     {
         // Config can override the default (100)
@@ -111,6 +139,9 @@ public sealed class AutosaveServiceFactory : IServiceFactory
         return attr.BatchSize != FallbackBatchSize ? attr.BatchSize : configBatchSize;
     }
 
+    /// <summary>Reads <c>altruist:game:autosave:wal:enabled</c>; true when missing or unparsable.</summary>
+    /// <param name="config">App configuration, or null.</param>
+    /// <returns>Whether the WAL is globally enabled.</returns>
     public static bool ResolveWalEnabled(IConfiguration? config)
     {
         var configValue = config?.GetSection("altruist:game:autosave:wal:enabled")?.Value;

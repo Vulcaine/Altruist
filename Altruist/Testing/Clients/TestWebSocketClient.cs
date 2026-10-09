@@ -34,9 +34,13 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
     private readonly ClientWebSocket _ws = new();
     private readonly WebSocketMessageType _messageType;
 
+    /// <summary>Codec selected from <c>altruist:server:transport:websocket:codec:provider</c> (or the global provider); JSON uses text frames, MessagePack binary frames.</summary>
     public ITestCodec Codec { get; }
+    /// <summary>The socket is open.</summary>
     public bool IsConnected => _ws.State == WebSocketState.Open;
 
+    /// <summary>An unconnected client for <c>ws://{http host}:{http port}{websocket path}</c>.</summary>
+    /// <param name="cfg">The test configuration.</param>
     public TestWebSocketClient(IConfiguration cfg)
     {
         var host = TestHttpClient.NormalizeHost(cfg["altruist:server:http:host"] ?? "localhost");
@@ -50,11 +54,17 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
         _messageType = Codec.Provider == "json" ? WebSocketMessageType.Text : WebSocketMessageType.Binary;
     }
 
+    /// <summary>Opens the WebSocket.</summary>
+    /// <param name="ct">Cancels the handshake.</param>
     public Task ConnectAsync(CancellationToken ct = default) => _ws.ConnectAsync(_url, ct);
 
     /// <summary>Send a single Altruist envelope: <c>{ event, payload }</c> encoded
     /// via the configured codec. The server's portal router uses the event field
     /// to dispatch.</summary>
+    /// <param name="eventName">The event (gate) name.</param>
+    /// <param name="payload">The payload, or null.</param>
+    /// <param name="ct">Cancels the send.</param>
+    /// <exception cref="InvalidOperationException">Not connected.</exception>
     public async Task SendAsync(string eventName, object? payload = null, CancellationToken ct = default)
     {
         if (!IsConnected) throw new InvalidOperationException(
@@ -73,7 +83,9 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
 
     /// <summary>Receive one frame within <paramref name="timeout"/>. Returns the
     /// raw codec bytes; pass to <see cref="Codec"/> to decode into a known shape.
-    /// Returns <c>null</c> on timeout.</summary>
+    /// Returns <c>null</c> on timeout, on a close frame or when not connected. Note that a timed-out
+    /// receive aborts a <see cref="ClientWebSocket"/>: the client is unusable afterwards.</summary>
+    /// <param name="timeout">How long to wait for a complete message.</param>
     public async Task<byte[]?> ReceiveAsync(TimeSpan timeout)
     {
         if (!IsConnected) return null;
@@ -97,12 +109,14 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
 
     /// <summary>Convenience: receive and decode UTF-8 text. Useful for JSON
     /// transports when you just want to inspect the raw envelope.</summary>
+    /// <param name="timeout">How long to wait for a complete message.</param>
     public async Task<string?> ReceiveTextAsync(TimeSpan timeout)
     {
         var bytes = await ReceiveAsync(timeout);
         return bytes is null ? null : Encoding.UTF8.GetString(bytes);
     }
 
+    /// <summary>Closes the socket gracefully when open, then disposes it.</summary>
     public async ValueTask DisposeAsync()
     {
         try
@@ -114,5 +128,6 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
         Dispose();
     }
 
+    /// <summary>Disposes the socket without a close handshake.</summary>
     public void Dispose() => _ws.Dispose();
 }

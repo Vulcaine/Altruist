@@ -6,7 +6,10 @@ import type { Vec2Like } from './vec2.ts';
 
 /** Appends an arc as `steps + 1` points:
  * `steps = max(minSegments, ceil(|end - start| / maxSegmentDegrees))`,
- * `a = toRadians(start + ((end - start) * i) / steps)`, `(cx + r * cos a, cy + r * sin a)`. */
+ * `a = toRadians(start + ((end - start) * i) / steps)`, `(cx + r * cos a, cy + r * sin a)`.
+ * Angles in degrees, counter-clockwise from +X; both endpoints are included, so chaining arcs
+ * duplicates the joint (clean up with {@link removeDuplicates}). Mutates `points`. Mirrors C#
+ * `Polyline2D.AppendArc`. */
 export function appendArc(
   points: Vec2Like[],
   centerX: number,
@@ -27,7 +30,8 @@ export function appendArc(
 }
 
 /** Drops consecutive points within `sqrt(epsilonSquared)` (squared distance not above it) and, when
- * `closed`, a last point that coincides with the first (squared distance below it). */
+ * `closed`, a last point that coincides with the first (squared distance below it). Returns a new
+ * array; input points are reused, not copied. Mirrors C# `Polyline2D.RemoveDuplicates`. */
 export function removeDuplicates(points: readonly Vec2Like[], epsilonSquared = 1e-10, closed = true): Vec2Like[] {
   const out: Vec2Like[] = [];
   for (const p of points) {

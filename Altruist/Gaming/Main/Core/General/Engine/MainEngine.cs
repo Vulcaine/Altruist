@@ -13,6 +13,38 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Altruist.Engine;
 
+/// <summary>
+/// The game engine loop: a dedicated high-priority thread that runs fixed-rate frames
+/// (<c>altruist:game:engine:framerateHz</c>, alias <c>frequency</c>, default 30 Hz). Each frame runs, in
+/// order: the next-tick queue (<see cref="WaitForNextTick(Action)"/> / <see cref="SyncCommit(Action)"/>),
+/// the <c>[Cycle]</c> tasks (<see cref="ScheduleTask"/>), the dynamic tasks (<see cref="SendTask"/>), the
+/// effects and one-shot timers (<see cref="ScheduleEffect"/>, <see cref="ScheduleOnce"/>,
+/// <see cref="ScheduleAtFrame"/>), then the world step (<see cref="WorldStep"/>: inline on this thread, or
+/// handed to a separate worker task). A throwing task is logged (rate-limited) and never stops the loop.
+///
+/// <para>Registered as <see cref="IEngineCore"/> when the <c>altruist:game:engine</c> config section exists;
+/// game code injects <see cref="IAltruistEngine"/> (a pass-through wrapper, optionally with diagnostics).
+/// The engine is started by the server once it reports alive; frames wait while the server is not alive.</para>
+///
+/// <para>Threading: anything that mutates game/world state from a socket handler, HTTP request or
+/// background task should be marshalled onto the loop with <see cref="WaitForNextTick(Action)"/> /
+/// <see cref="SyncCommit{T}(Func{T})"/>; slow I/O whose result the game needs goes through
+/// <c>RunOffTick</c>. For a deterministic match simulation with its own fixed step, use rooms
+/// (<c>Altruist.Gaming.Rooms</c>) rather than hand-rolled <c>[Cycle]</c> tasks.</para>
+///
+/// <para>Tests: construct it with a <see cref="ManualEngineClock"/>, do not start it, and drive frames
+/// with <see cref="EngineTestDriver"/>.</para>
+/// </summary>
+/// <example><code>
+/// // appsettings: "altruist": { "game": { "engine": { "framerateHz": 60, "world-step": "inline" } } }
+/// [Service]
+/// public sealed class Respawner(IAltruistEngine engine)
+/// {
+///     [Cycle(1, CycleUnit.Hz)] public void Sweep() { /* runs once a second on the engine thread */ }
+///
+///     public void OnDeath(string id) =&gt; engine.ScheduleOnce(TimeSpan.FromSeconds(5), () =&gt; Respawn(id));
+/// }
+/// </code></example>
 [Service(typeof(IEngineCore))]
 [ConditionalOnConfig("altruist:game:engine")]
 public class AltruistEngine : IAltruistEngine
@@ -44,9 +76,14 @@ public class AltruistEngine : IAltruistEngine
 
     // Keep Rate for external visibility, but DO NOT use it to build the engine timer when Unit==Ticks.
     private readonly CycleRate _engineRate;
+    /// <summary>The configured engine rate (<c>framerateHz</c> with <c>altruist:game:engine:unit</c>);
+    /// informational, the loop period is always <c>1 / framerateHz</c> seconds.</summary>
     public CycleRate Rate => _engineRate;
 
+    /// <summary>True once <see cref="Start"/> ran (until <see cref="Stop"/> / <see cref="Disable"/>).</summary>
     public bool Enabled { get; private set; }
+    /// <summary><c>altruist:game:engine:throttle</c> (default derived from the rate). Currently stored only;
+    /// the loop does not read it.</summary>
     public int Throttle = 1_000_000;
 
     private CancellationTokenSource? _cts = new();
@@ -111,6 +148,17 @@ public class AltruistEngine : IAltruistEngine
         public long Suppressed;
     }
 
+    /// <summary>Created by DI; the parameters marked <c>[AppConfigValue]</c> are read from
+    /// <c>altruist:game:engine:*</c>.</summary>
+    /// <param name="serverStatus">Frames only run while the server status is alive.</param>
+    /// <param name="serviceProvider">Resolves parameters of <c>[Cycle]</c> delegates that take services.</param>
+    /// <param name="worldCoordinator">Stepped once per frame (inline) or by the world worker.</param>
+    /// <param name="framerateHz">Frames per second (default 30, minimum 1).</param>
+    /// <param name="unit">Unit stored in <see cref="Rate"/>.</param>
+    /// <param name="throttle">Stored in <see cref="Throttle"/>.</param>
+    /// <param name="frequency">Alias of <paramref name="framerateHz"/> (used when that is not set).</param>
+    /// <param name="worldStep"><c>worker</c> (default) or <c>inline</c>; see <see cref="WorldStepMode"/>.</param>
+    /// <param name="clock">Time source; default the real stopwatch.</param>
     public AltruistEngine(
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
@@ -136,9 +184,13 @@ public class AltruistEngine : IAltruistEngine
         Throttle = throttle ?? (int)(1_000_000_000 / (_engineRate.Value + 1));
     }
 
+    /// <summary>Sets <see cref="Enabled"/> (does not start the loop; see <see cref="Start"/>).</summary>
     public void Enable() => Enabled = true;
+    /// <summary>Clears <see cref="Enabled"/> (does not stop the loop; see <see cref="Stop"/>).</summary>
     public void Disable() => Enabled = false;
 
+    /// <summary>Parses <c>altruist:game:engine:world-step</c> (case-insensitive; empty = worker).</summary>
+    /// <exception cref="ArgumentException">Neither <c>worker</c> nor <c>inline</c>.</exception>
     public static WorldStepMode ParseWorldStep(string? value)
     {
         var v = (value ?? "").Trim();
@@ -151,6 +203,9 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Public scheduling APIs ----------------
 
+    /// <summary>Queues <paramref name="task"/> to run once at the start of the next frame, on the engine loop,
+    /// in queue order. Thread-safe; the usual way to apply changes from other threads. Delegates with
+    /// parameters are invoked without arguments (use <see cref="WaitForNextTick(Action)"/>).</summary>
     public void WaitForNextTick(Delegate task)
     {
         if (task is null)
@@ -158,6 +213,9 @@ public class AltruistEngine : IAltruistEngine
         _nextTickQueue.Enqueue(task);
     }
 
+    /// <summary>Queues <paramref name="task"/> to run once at the start of the next frame, on the engine
+    /// loop, in queue order. Thread-safe.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="task"/> is null.</exception>
     public void WaitForNextTick(Action task)
     {
         if (task is null)
@@ -165,6 +223,9 @@ public class AltruistEngine : IAltruistEngine
         _nextTickQueue.Enqueue(task);
     }
 
+    /// <summary>Queues an async <paramref name="task"/> for the next frame. Queued tasks are awaited one after
+    /// another in queue order (in inline mode by blocking the engine thread until each completes), so keep
+    /// them short; for slow I/O use <c>RunOffTick</c>.</summary>
     public void WaitForNextTick(Func<Task> task)
     {
         if (task is null)
@@ -172,6 +233,8 @@ public class AltruistEngine : IAltruistEngine
         _nextTickQueue.Enqueue(task);
     }
 
+    /// <summary>Runs <paramref name="commit"/> on the engine loop next frame (same as
+    /// <see cref="WaitForNextTick(Action)"/>); use it for state mutations that must not race the tick.</summary>
     public void SyncCommit(Action commit)
     {
         if (commit is null)
@@ -179,6 +242,9 @@ public class AltruistEngine : IAltruistEngine
         WaitForNextTick(commit);
     }
 
+    /// <summary>Runs <paramref name="commit"/> on the engine loop next frame and completes the returned task
+    /// with its result (or exception). Continuations run asynchronously, not on the engine thread.
+    /// Do not block on the result from the engine thread itself (it would deadlock).</summary>
     public Task<T> SyncCommit<T>(Func<T> commit)
     {
         if (commit is null)
@@ -196,6 +262,17 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Effects ----------------
 
+    /// <summary>
+    /// Runs <paramref name="step"/> repeatedly on the engine loop (effect phase) at <paramref name="cycleRate"/>
+    /// until <paramref name="expiresAtUtc"/> or <see cref="CancelEffect"/>. Effects run in scheduling order;
+    /// the first run is one interval after scheduling. A throwing effect is logged and removed.
+    /// Use for timed buffs/DoTs; for one delayed action use <see cref="ScheduleOnce"/>, for a permanent
+    /// service-level loop use a <c>[Cycle]</c> method.
+    /// </summary>
+    /// <param name="cycleRate"><see cref="CycleUnit.Ticks"/> = every N frames; time units use the engine clock.</param>
+    /// <param name="expiresAtUtc">Wall-clock deadline (converted to the engine clock at scheduling).</param>
+    /// <param name="step">Receives the frame's dt in seconds.</param>
+    /// <returns>The id to pass to <see cref="CancelEffect"/>.</returns>
     public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
     {
         if (step is null)
@@ -230,6 +307,9 @@ public class AltruistEngine : IAltruistEngine
         return id;
     }
 
+    /// <summary>Runs <paramref name="action"/> once on the engine loop (effect phase) after <paramref name="delay"/>
+    /// on the engine clock (negative = next frame). Cancel with <see cref="CancelEffect"/>. Use
+    /// <see cref="ScheduleAtFrame"/> when the deadline is a frame number.</summary>
     public TaskIdentifier ScheduleOnce(TimeSpan delay, Action action)
     {
         if (action is null)
@@ -244,6 +324,8 @@ public class AltruistEngine : IAltruistEngine
         return effect.Id;
     }
 
+    /// <summary>Runs <paramref name="action"/> once in the effect phase of engine frame <paramref name="frame"/>
+    /// (or of the next frame if it has passed; see <see cref="Frame"/>). Cancel with <see cref="CancelEffect"/>.</summary>
     public TaskIdentifier ScheduleAtFrame(long frame, Action action)
     {
         if (action is null)
@@ -255,6 +337,7 @@ public class AltruistEngine : IAltruistEngine
         return effect.Id;
     }
 
+    /// <summary>Cancels an effect or one-shot timer; false if it already ran out or was unknown. Thread-safe.</summary>
     public bool CancelEffect(TaskIdentifier id) => _effects.TryRemove(id, out _);
 
     private void AddEffect(DynamicEffectTask effect)
@@ -274,6 +357,12 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Dynamic tasks ----------------
 
+    /// <summary>
+    /// Requests one run of <paramref name="taskDelegate"/> under <paramref name="id"/>, started on the engine
+    /// loop (dynamic-task phase). Requests are counted, never dropped: each call yields exactly one run, the
+    /// runs of one id never overlap (an async run must finish before the next starts), and the latest
+    /// delegate wins. At most 128 dynamic tasks start per frame. Thread-safe.
+    /// </summary>
     public void SendTask(TaskIdentifier id, Delegate taskDelegate)
     {
         if (taskDelegate is null)
@@ -292,6 +381,9 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Cron (unchanged, fire-and-forget) ----------------
 
+    /// <summary>Runs <paramref name="jobDelegate"/> at each occurrence of <paramref name="cronExpression"/>
+    /// (Cronos format, UTC). Runs on the thread pool, NOT on the engine loop: marshal state changes with
+    /// <see cref="WaitForNextTick(Action)"/>. <paramref name="serviceInstance"/> is unused.</summary>
     public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
     {
         var cron = CronExpression.Parse(cronExpression);
@@ -315,6 +407,9 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Start/Stop ----------------
 
+    /// <summary>Starts the engine thread (and, in worker mode, the world worker task). No-op if already
+    /// enabled. Called by the framework once the server is up; tests using <see cref="EngineTestDriver"/>
+    /// must not call it.</summary>
     public void Start(CancellationToken token)
     {
         if (Enabled)
@@ -378,6 +473,7 @@ public class AltruistEngine : IAltruistEngine
         Logger.LogInformation($"⚡⚡ [ENGINE {_engineHz}Hz, world-step {WorldStep.ToString().ToLowerInvariant()}] Unleashed — powerful, fast, and breaking speed limits!");
     }
 
+    /// <summary>Cancels the loop and the world worker; the current frame finishes.</summary>
     public void Stop()
     {
         Disable();
@@ -768,6 +864,15 @@ public class AltruistEngine : IAltruistEngine
 
     // ---------------- Static task scheduling (startup-time) ----------------
 
+    /// <summary>
+    /// Registers a recurring task (this is what <c>[Cycle]</c> methods become). <c>null</c> rate = every frame;
+    /// <see cref="CycleUnit.Ticks"/> = every N frames; time-based units keep the average rate (no catch-up
+    /// burst after a stall). A run is skipped while the previous async run of the same task is still in
+    /// flight. Delegate parameters are resolved from DI once, at registration. Safe to call from any
+    /// thread; the task is adopted at the start of the next frame.
+    /// </summary>
+    /// <exception cref="ArgumentException">A <see cref="CycleUnit.Hz"/> rate above the engine frequency.</exception>
+    /// <exception cref="InvalidOperationException">A delegate parameter cannot be resolved from DI.</exception>
     public void ScheduleTask(Delegate taskDelegate, CycleRate? rate = null)
     {
         // No rate = every frame (a plain [Cycle]). It used to fall back to the engine's own rate,

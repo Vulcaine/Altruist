@@ -14,19 +14,27 @@ public sealed class ConsoleReporter : ITestReporter
 {
     private readonly Action<string> _writeLine;
 
+    /// <summary>A reporter that writes to <see cref="Console"/>.</summary>
     public ConsoleReporter() : this(Console.WriteLine) { }
+    /// <summary>A reporter that writes each line to <paramref name="writeLine"/> (a game-engine log, a UI panel).</summary>
+    /// <param name="writeLine">The line sink.</param>
     public ConsoleReporter(Action<string> writeLine) => _writeLine = writeLine;
 
+    /// <inheritdoc/>
     public void OnRunStarted(int totalTests)
     {
         _writeLine($"[Altruist E2E] Running {totalTests} test(s)...");
     }
 
+    /// <summary>Prints nothing (the result line is written when the test finishes).</summary>
+    /// <param name="fullName">The test's full name.</param>
     public void OnTestStarted(string fullName)
     {
         // Quiet — we report on finish so PASS/FAIL is on the same line.
     }
 
+    /// <summary>Prints one PASS/FAIL/SKIP line with the duration, plus the exception and its first stack frames on failure.</summary>
+    /// <param name="result">The result.</param>
     public void OnTestFinished(TestResult result)
     {
         var symbol = result.Outcome switch
@@ -47,6 +55,8 @@ public sealed class ConsoleReporter : ITestReporter
         }
     }
 
+    /// <summary>Prints the passed / failed / skipped counts and the total duration.</summary>
+    /// <param name="results">Every result of the run.</param>
     public void OnRunFinished(IReadOnlyList<TestResult> results)
     {
         int passed = 0, failed = 0, skipped = 0;

@@ -14,21 +14,53 @@ using Altruist.TwoD.Numerics;
 
 namespace Altruist.Gaming.TwoD
 {
+    /// <summary>Builds a 2D world (<see cref="IGameWorldManager2D"/>) from a JSON level file
+    /// (<see cref="WorldSchema2D"/>): walks the object hierarchy, accumulates parent position / rotation, and
+    /// spawns one static object per node that has at least one recognised collider. Nodes whose
+    /// <c>archetype</c> matches a <see cref="WorldObjectAttribute"/> type (case-insensitive) are instantiated
+    /// as that type (parameterless constructor required); others become <see cref="AnonymousWorldObject2D"/>.
+    /// <para>The returned manager is standalone: it is not registered with <see cref="IGameWorldOrganizer2D"/>
+    /// (which builds its own empty worlds from config) and so is not stepped by the engine. The 3D
+    /// counterpart, <see cref="Altruist.Gaming.ThreeD.IWorldLoader3D"/>, is driven by the 3D organizer.</para>
+    /// <example><code>
+    /// var world = await loader.LoadFromJson(index, File.ReadAllText("worlds/arena.json"));
+    /// </code></example></summary>
     public interface IWorldLoader2D
     {
         /// <summary>
         /// Load a game world manager from a JSON string and a WorldIndex2D descriptor.
+        /// Side effect: overwrites <paramref name="index"/>'s <c>Size</c> (truncated to integers) and
+        /// <c>Position</c> with the schema's root transform. Creates a new physics engine from the index's
+        /// gravity and fixed step.
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="index"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="json"/> is null or blank.</exception>
+        /// <exception cref="InvalidOperationException">The JSON does not deserialize, or an archetype type has
+        /// no parameterless constructor.</exception>
         Task<IGameWorldManager2D> LoadFromJson(IWorldIndex2D index, string json);
 
         /// <summary>
         /// Load a game world manager from the JSON file path defined in the WorldIndex2D descriptor.
+        /// When the index is a <see cref="WorldIndex2D"/> with no <c>DataPath</c>, returns an empty world
+        /// (note: that world is not <c>Initialize</c>d, so it has no partitions until you call it).
         /// </summary>
+        /// <exception cref="InvalidOperationException">The index is not a <see cref="WorldIndex2D"/> (no data path).</exception>
+        /// <exception cref="System.IO.FileNotFoundException">The data file does not exist.</exception>
         Task<IGameWorldManager2D> LoadFromIndex(IWorldIndex2D index);
 
+        /// <summary>The objects created by the most recent load (cleared at the start of each load; shared by
+        /// all callers of this singleton).</summary>
         IReadOnlyList<IWorldObject2D> SpawnedWorldObjects { get; }
     }
 
+    /// <summary>Default <see cref="IWorldLoader2D"/> (singleton; registered when <c>altruist:game</c> exists and
+    /// <c>altruist:environment:mode</c> is <c>2D</c>). Scans loaded assemblies once, at construction, for
+    /// <see cref="WorldObjectAttribute"/> types implementing <see cref="IWorldObject2D"/> (first type wins on
+    /// duplicate archetypes). Collider shapes: <c>box</c> / <c>mesh</c>, <c>circle</c> / <c>sphere</c>,
+    /// <c>capsule</c> (case-insensitive); other shapes are skipped.
+    /// <para>Current behaviour: the parsed collider list only decides whether a node is spawned; the body is
+    /// created by <see cref="IGameWorldManager2D.SpawnStaticObject"/>, which always uses one box collider from
+    /// the object's transform. Node <c>id</c> and <c>type</c> are not used.</para></summary>
     [Service(typeof(IWorldLoader2D))]
     [ConditionalOnConfig("altruist:game")]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
@@ -43,10 +75,17 @@ namespace Altruist.Gaming.TwoD
         private readonly Dictionary<string, Type> _archetypeMap;
 
         private readonly List<IWorldObject2D> _spawnedWorldObjects = new();
+        /// <inheritdoc/>
         public IReadOnlyList<IWorldObject2D> SpawnedWorldObjects => _spawnedWorldObjects;
 
         private readonly JsonSerializerOptions _options;
 
+        /// <summary>DI constructor; builds the archetype map from the loaded assemblies.</summary>
+        /// <param name="engineFactory">Creates the physics engine of each loaded world.</param>
+        /// <param name="bodyApi">Body factory passed to the world manager.</param>
+        /// <param name="colliderApi">Collider factory passed to the world manager.</param>
+        /// <param name="worldPartitioner">Partition grid of loaded worlds.</param>
+        /// <param name="options">JSON options used to deserialize <see cref="WorldSchema2D"/>.</param>
         public WorldLoader2D(
             IPhysxWorldEngineFactory2D engineFactory,
             IPhysxBodyApiProvider2D bodyApi,
@@ -64,6 +103,7 @@ namespace Altruist.Gaming.TwoD
 
         // ── Entrypoints ──────────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public async Task<IGameWorldManager2D> LoadFromJson(IWorldIndex2D index, string json)
         {
             if (index is null) throw new ArgumentNullException(nameof(index));
@@ -82,6 +122,7 @@ namespace Altruist.Gaming.TwoD
             return await BuildGameWorld(index, schema);
         }
 
+        /// <inheritdoc/>
         public async Task<IGameWorldManager2D> LoadFromIndex(IWorldIndex2D index)
         {
             if (index is null) throw new ArgumentNullException(nameof(index));

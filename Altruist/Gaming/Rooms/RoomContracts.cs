@@ -9,7 +9,17 @@ namespace Altruist.Gaming.Rooms;
 /// What the game plugs into the room host: its seat bookkeeping, bots, results and wire format.
 /// The host owns connections, seats, inputs, timing, reconnects and disposal; it never looks
 /// inside the packets.
+/// <para>
+/// Implement it once per game (usually together with <c>IMatchmakingGame</c> and/or <c>ILobbyGame</c>
+/// when those modules are used) and pass it to the <see cref="RoomHost{TSim,TInput,TPlayer}"/>
+/// constructor. Every member is called on the engine thread, except <see cref="BeforeStep"/>,
+/// bot <see cref="ISeatController{TInput}.Think"/> calls and the simulation step, which may run on a
+/// step worker (see <see cref="BeforeStep"/>). Members returning a packet may return null to send nothing.
+/// </para>
 /// </summary>
+/// <typeparam name="TSim">The game's per-room simulation.</typeparam>
+/// <typeparam name="TInput">One step of one seat's input (a struct, compared by value).</typeparam>
+/// <typeparam name="TPlayer">The game's player data (profile, rating) carried by sessions and participants.</typeparam>
 public interface IRoomGame<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
@@ -47,6 +57,7 @@ public interface IRoomGame<TSim, TInput, TPlayer>
 
     // ---------------------------------------------------------------- seats and steps
 
+    /// <summary>A seat was added to the room and its simulation (set per-seat game data here).</summary>
     void OnSeatAdded(Room<TSim, TInput, TPlayer> room, Seat<TSim, TInput, TPlayer> seat) { }
 
     /// <summary>A new bot for the seat.</summary>
@@ -55,6 +66,7 @@ public interface IRoomGame<TSim, TInput, TPlayer>
     /// <summary>A player took the seat; <paramref name="newDriver"/>: someone else (or nobody) had it before.</summary>
     void OnHumanSeated(Room<TSim, TInput, TPlayer> room, Seat<TSim, TInput, TPlayer> seat, Participant<TSim, TInput, TPlayer> p, bool newDriver) { }
 
+    /// <summary>A bot took the seat (created with <see cref="CreateBot"/>).</summary>
     void OnBotSeated(Room<TSim, TInput, TPlayer> room, Seat<TSim, TInput, TPlayer> seat) { }
 
     /// <summary>The owner gives the seat up (move per-seat stats to the player, ...).</summary>
@@ -95,10 +107,17 @@ public interface IRoomGame<TSim, TInput, TPlayer>
 
     // ---------------------------------------------------------------- wire format
 
+    /// <summary>The packet that tells a player it is in the room (room id, its seat, the rules); sent on join and rejoin. Null sends nothing.</summary>
     IPacketBase? Welcome(Room<TSim, TInput, TPlayer> room, Participant<TSim, TInput, TPlayer> p);
 
+    /// <summary>The packet listing the room's seats and who drives them; sent to active players whenever that changes. Null sends nothing.</summary>
     IPacketBase? Roster(Room<TSim, TInput, TPlayer> room);
 
+    /// <summary>A short event for the room's players (someone joining, leaving, a bot in or out, a reconnect). Null sends nothing.</summary>
+    /// <param name="room">The room.</param>
+    /// <param name="kind">What happened.</param>
+    /// <param name="seat">The seat it happened to.</param>
+    /// <param name="name">Display name of the player or bot involved.</param>
     IPacketBase? Notice(Room<TSim, TInput, TPlayer> room, RoomNoticeKind kind, int seat, string name);
 
     /// <summary>Room state shared by every receiver of one snapshot round (a fresh copy).</summary>
@@ -128,9 +147,13 @@ public interface IRoomGame<TSim, TInput, TPlayer>
     IPacketBase? Redirect(RoomRedirect redirect) => null;
 }
 
-/// <summary>Where the host's packets go (the outbound queues in production, a recorder in tests).</summary>
+/// <summary>
+/// Where the host's packets go (the outbound queues in production, a recorder in tests). Called on
+/// the engine thread: implementations must only enqueue, never write to a socket synchronously.
+/// </summary>
 public interface IRoomTransport
 {
+    /// <summary>Queues a packet to a connection (never blocks the engine thread).</summary>
     void Send(string clientId, IPacketBase packet);
 
     /// <summary>Closes the connection after what was queued before.</summary>
@@ -139,11 +162,15 @@ public interface IRoomTransport
 
 /// <summary>
 /// A feature on top of the host (matchmaking, lobbies). Hooks run in registration order at
-/// fixed points of the host's own flow.
+/// fixed points of the host's own flow, all on the engine thread. Add one with
+/// <see cref="RoomHost{TSim,TInput,TPlayer}.Use"/>; implement it for a custom way of filling rooms
+/// (tournaments, scripted events) that needs the same reconnect, drain and fleet hooks the built-in
+/// matchmaking and lobby modules use. Every member has a no-op default.
 /// </summary>
 public interface IRoomHostModule<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
+    /// <summary>Called once by <see cref="RoomHost{TSim,TInput,TPlayer}.Use"/>: keep the host to create and start rooms.</summary>
     void Attach(RoomHost<TSim, TInput, TPlayer> host) { }
 
     /// <summary>A connection is closing (or replaced), before its room seat is let go.</summary>

@@ -29,6 +29,22 @@ namespace Altruist
 
     }
 
+    /// <summary>
+    /// Default <see cref="IConnectionManager"/> (singleton, registered when <c>altruist:server:transport</c> is configured).
+    /// Transports hand every accepted connection to <see cref="HandleConnection"/>, which runs the portal lifecycle hooks,
+    /// the read loop, interceptors and gate dispatch, and the disconnect path. Connection/room queries delegate to
+    /// <see cref="ISocketManager"/>.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item>Lifecycle: <c>OnConnectingAsync</c> → registration in the waiting room → <c>OnConnectedAsync</c> → read loop →
+    /// <c>OnDisconnectedAsync</c> → outbound queue and <see cref="IConnectionStateInterceptor"/> state forgotten → removal from the store.
+    /// Only portals whose route matches the connection's route receive these hooks.</item>
+    /// <item>Idle timeout: a connection that sends nothing for <c>altruist:server:transport:timeout</c> seconds (default 10) is closed.</item>
+    /// <item>Interceptors: every DI-registered <see cref="IInterceptor"/> plus any added with <see cref="AddInterceptor"/>.</item>
+    /// </list>
+    /// Inject <see cref="IConnectionManager"/> for connection/room lookups from portals; to send data use the outbound senders.
+    /// </remarks>
     [Service(typeof(IConnectionManager))]
     [ConditionalOnConfig("altruist:server:transport")]
     public class ConnectionManager : IConnectionManager
@@ -46,6 +62,15 @@ namespace Altruist
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<System.Reflection.MethodInfo, System.Reflection.ParameterInfo[]> ParameterCache = new();
 
+        /// <summary>DI constructor. Also ensures the waiting room exists (fire-and-forget).</summary>
+        /// <param name="socketManager">Connection/room registry.</param>
+        /// <param name="codecResolver">Resolves the default codec used to decode packets.</param>
+        /// <param name="loggerFactory">Logger factory.</param>
+        /// <param name="engineCore">Optional engine; when present <see cref="DisconnectEngineAwareAsync"/> runs on the engine thread.</param>
+        /// <param name="networkRecorder">Optional dashboard packet recorder.</param>
+        /// <param name="timeout">Idle timeout in seconds (<c>altruist:server:transport:timeout</c>, default 10).</param>
+        /// <param name="interceptors">Interceptors registered in DI (<c>[Service(typeof(IInterceptor))]</c>); applied to every portal.</param>
+        /// <param name="outbound">Outbound queues, forgotten per client on disconnect.</param>
         public ConnectionManager(
             ISocketManager socketManager,
             ICodecResolver codecResolver,
@@ -78,6 +103,12 @@ namespace Altruist
             CreateRoomAsync(StoreConstants.WaitingRoomId).GetAwaiter();
         }
 
+        /// <summary>
+        /// Adds an interceptor that runs before gate handlers. Prefer registering it in DI with <c>[Service(typeof(IInterceptor))]</c>;
+        /// use this for manual setup. Adding the same instance twice is a no-op. Not thread-safe: call during startup.
+        /// </summary>
+        /// <param name="interceptor">Interceptor to add.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="interceptor"/> is null.</exception>
         public void AddInterceptor(IInterceptor interceptor)
         {
             if (interceptor is null)
@@ -87,6 +118,8 @@ namespace Altruist
                 _interceptors.Add(interceptor);
         }
 
+        /// <summary>Returns all connections whose route equals the portal's route (trailing slashes ignored). Scans every connection.</summary>
+        /// <param name="portal">Portal whose route to match.</param>
         public async Task<IEnumerable<AltruistConnection>> GetConnectionsForPortal(IPortal portal)
         {
             var allConns = await GetAllConnectionsAsync();
@@ -103,6 +136,22 @@ namespace Altruist
             return connections;
         }
 
+        /// <summary>
+        /// Dispatches one decoded packet: resolves the gate handler for <c>packet.Event</c>, decodes the payload into the
+        /// handler's packet parameter type, runs interceptors (a rejection skips the handler), sets <see cref="PacketContext"/>
+        /// (raw bytes and, for <see cref="ILagCompensated"/> packets, the client tick) and invokes the handler.
+        /// Called by the read loop; call it directly only for custom transports/relays.
+        /// </summary>
+        /// <remarks>
+        /// Supported handler shapes: <c>()</c>, <c>(string clientId)</c>, <c>(TPacket packet, string clientId)</c>.
+        /// Interceptors are only run when a packet object exists (handlers with a packet parameter) or for unknown events.
+        /// Exceptions thrown by the handler propagate (and end the read loop).
+        /// </remarks>
+        /// <param name="packet">Envelope carrying the event name.</param>
+        /// <param name="bytes">Payload bytes to decode into the handler's packet type.</param>
+        /// <param name="event">Route (portal path) of the connection.</param>
+        /// <param name="clientId">Connection id of the sender.</param>
+        /// <returns><c>false</c> when the packet has no event or the payload failed to decode (the read loop then closes the connection); otherwise <c>true</c>, including for rejected and unknown events.</returns>
         public async Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId)
         {
             if (string.IsNullOrEmpty(packet.Event))
@@ -327,6 +376,15 @@ namespace Altruist
             }, payload, rawPayload);
         }
 
+        /// <summary>
+        /// Owns an accepted connection until it closes: runs <c>OnConnectingAsync</c>, registers it in the waiting room, runs
+        /// <c>OnConnectedAsync</c>, then reads and dispatches packets until the peer closes, the idle timeout fires or an
+        /// error occurs, and finally runs the disconnect path. Called by transports; awaits for the whole connection lifetime.
+        /// </summary>
+        /// <remarks>Codecs implementing <c>IFramedCodec</c> use a stream read loop with the codec's framer (raw TCP); others use one message per receive (JSON <c>{"event","data"}</c> or a 1-byte-length event-name prefix for binary codecs).</remarks>
+        /// <param name="connection">The accepted connection.</param>
+        /// <param name="event">Route (portal path) the connection arrived on.</param>
+        /// <param name="clientId">Proposed client id; replaced by <c>connection.ConnectionId</c> when that is set (e.g. by <c>OnConnectingAsync</c>).</param>
         public async Task HandleConnection(AltruistConnection connection, string @event, string clientId)
         {
             var portals = PortalGateRegistry<IPortal>.GetAllHandlers()
@@ -568,6 +626,11 @@ namespace Altruist
             }
         }
 
+        /// <summary>
+        /// Disconnects a client from game code: when an engine is registered the disconnect is scheduled as an engine task
+        /// (so it does not race the tick), otherwise it runs immediately like <see cref="DisconnectAsync(string)"/>.
+        /// </summary>
+        /// <param name="clientId">Connection id.</param>
         public async Task DisconnectEngineAwareAsync(string clientId)
         {
             if (_engine != null)
@@ -591,6 +654,13 @@ namespace Altruist
             }
         }
 
+        /// <summary>
+        /// Closes the client's connection immediately and runs the disconnect path (portal <c>OnDisconnectedAsync</c>, per-connection
+        /// state cleanup, store removal). Note: this overload notifies every portal, not only those on the client's route.
+        /// To close gracefully after pending sends, use the outbound sender's <c>CloseAfterFlush</c>; from engine/tick code prefer
+        /// <see cref="DisconnectEngineAwareAsync"/>.
+        /// </summary>
+        /// <param name="clientId">Connection id.</param>
         public async Task DisconnectAsync(string clientId) => await DisconnectAsync(clientId, PortalGateRegistry<IPortal>.GetAllHandlers(), null);
 
         private async Task DisconnectAsync(string clientId, IReadOnlyList<IPortal> portals, Exception? failureException)
@@ -633,31 +703,42 @@ namespace Altruist
             await _socketManager.Cleanup();
         }
 
+        /// <summary>Removes the connection from the store without closing it or running disconnect hooks (see <see cref="DisconnectAsync(string)"/>).</summary>
+        /// <param name="connectionId">Connection id.</param>
         public Task RemoveConnectionAsync(string connectionId)
         {
             return _socketManager.RemoveConnectionAsync(connectionId);
         }
 
+        /// <summary>Registers a connection (see <see cref="ISocketManager.AddConnectionAsync"/>).</summary>
+        /// <param name="connectionId">Connection id.</param>
+        /// <param name="socket">Connection object.</param>
+        /// <param name="roomId">Optional room to join.</param>
         public Task<bool> AddConnectionAsync(string connectionId, AltruistConnection socket, string? roomId = null)
         {
             return _socketManager.AddConnectionAsync(connectionId, socket, roomId);
         }
 
+        /// <summary>Returns the connection with the given id, or <c>null</c>.</summary>
+        /// <param name="connectionId">Connection id.</param>
         public Task<AltruistConnection?> GetConnectionAsync(string connectionId)
         {
             return _socketManager.GetConnectionAsync(connectionId);
         }
 
+        /// <summary>Returns all connection ids.</summary>
         public Task<IEnumerable<string>> GetAllConnectionIdsAsync()
         {
             return _socketManager.GetAllConnectionIdsAsync();
         }
 
+        /// <summary>Returns all connections keyed by id.</summary>
         public virtual async Task<Dictionary<string, AltruistConnection>> GetAllConnectionsDictAsync()
         {
             return await _socketManager.GetAllConnectionsDictAsync();
         }
 
+        /// <summary>Returns a cursor over all connections.</summary>
         public Task<ICursor<AltruistConnection>> GetAllConnectionsAsync()
         {
             return _socketManager.GetAllConnectionsAsync();
@@ -677,56 +758,76 @@ namespace Altruist
             return default!;
         }
 
+        /// <summary>Returns the connections in a room keyed by id.</summary>
+        /// <param name="roomId">Room id.</param>
         public async Task<Dictionary<string, AltruistConnection>> GetConnectionsInRoomAsync(string roomId)
         {
             return await _socketManager.GetConnectionsInRoomAsync(roomId);
         }
 
+        /// <summary>Returns the first room with free capacity, or <c>null</c>.</summary>
         public async Task<RoomPacket?> FindAvailableRoomAsync()
         {
             return await _socketManager.FindAvailableRoomAsync();
         }
 
+        /// <summary>Returns the room the client is in, or <c>null</c>.</summary>
+        /// <param name="clientId">Connection id.</param>
         public async Task<RoomPacket?> FindRoomForClientAsync(string clientId)
         {
             return await _socketManager.FindRoomForClientAsync(clientId);
         }
 
+        /// <summary>Creates a room (or returns the existing one with that id).</summary>
+        /// <param name="roomId">Room id; <c>null</c> generates one.</param>
         public async Task<RoomPacket> CreateRoomAsync(string? roomId = null)
         {
             return await _socketManager.CreateRoomAsync(roomId);
         }
 
+        /// <summary>Deletes a room record.</summary>
+        /// <param name="roomName">Room id.</param>
         public Task DeleteRoomAsync(string roomName)
         {
             return _socketManager.DeleteRoomAsync(roomName);
         }
 
+        /// <summary>Returns a room by id, or <c>null</c>.</summary>
+        /// <param name="roomId">Room id.</param>
         public Task<RoomPacket?> GetRoomAsync(string roomId)
         {
             return _socketManager.GetRoomAsync(roomId);
         }
 
+        /// <summary>Returns all rooms keyed by id.</summary>
         public Task<Dictionary<string, RoomPacket>> GetAllRoomsAsync()
         {
             return _socketManager.GetAllRoomsAsync();
         }
 
+        /// <summary>Moves a connection into a room (leaving its previous one).</summary>
+        /// <param name="connectionId">Connection id.</param>
+        /// <param name="roomId">Target room id.</param>
         public Task<RoomPacket?> JoinRoomAsync(string connectionId, string roomId)
         {
             return _socketManager.JoinRoomAsync(connectionId, roomId);
         }
 
+        /// <summary>Persists a modified room.</summary>
+        /// <param name="room">Room to save.</param>
         public async Task SaveRoomAsync(RoomPacket room)
         {
             await _socketManager.SaveRoomAsync(room);
         }
 
+        /// <summary>No-op hook (store cleanup runs through <see cref="ISocketManager.Cleanup"/> on each disconnect).</summary>
         public virtual Task Cleanup()
         {
             return Task.CompletedTask;
         }
 
+        /// <summary>Returns whether a connection with this id is registered.</summary>
+        /// <param name="connectionId">Connection id.</param>
         public Task<bool> IsConnectionExistsAsync(string connectionId)
         {
             return _socketManager.IsConnectionExistsAsync(connectionId);

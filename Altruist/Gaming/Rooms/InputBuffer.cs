@@ -12,6 +12,7 @@ public sealed record InputBufferOptions
     public int MaxQueued { get; init; } = 16;
     /// <summary>Bounds of the adaptive target depth (inputs kept queued against arrival jitter).</summary>
     public int MinTarget { get; init; }
+    /// <summary>Upper bound of the adaptive target depth; also the depth a standing queue must stay above to be drained.</summary>
     public int MaxTarget { get; init; } = 2;
     /// <summary>Arrivals the jitter is measured over.</summary>
     public int JitterWindow { get; init; } = 120;
@@ -33,14 +34,19 @@ public sealed record InputBufferOptions
 /// <summary>Counters of one buffer (and, summed, of every buffer: <see cref="InputBufferTotals"/>).</summary>
 public sealed class InputBufferStats
 {
+    /// <summary>Inputs accepted (new sequence numbers, including the real input of a speculative step).</summary>
     public long Offered;
+    /// <summary>Inputs dropped because their sequence was already applied.</summary>
     public long Stale;
+    /// <summary>Inputs dropped because their sequence was already queued.</summary>
     public long Duplicates;
+    /// <summary>Queued inputs applied to a step (merged pairs count once).</summary>
     public long Applied;
     /// <summary>Steps with nothing queued (the held state was repeated).</summary>
     public long Starved;
     /// <summary>Starved steps that stood in for the client's next input, and how many of those it then confirmed.</summary>
     public long Speculated;
+    /// <summary>Speculative steps whose real input then arrived equal to what was applied.</summary>
     public long SpeculationHits;
     /// <summary>Inputs folded into the next one (draining a standing queue, overflow).</summary>
     public long Merged;
@@ -48,6 +54,7 @@ public sealed class InputBufferStats
     public long Dropped;
     /// <summary>Presses (declared action edges) in the offered stream, and applied to the simulation.</summary>
     public long PressesOffered;
+    /// <summary>Presses (declared action edges) applied to the simulation.</summary>
     public long PressesApplied;
     /// <summary>Offered presses that never reached the simulation.</summary>
     public long PressesLost;
@@ -130,6 +137,10 @@ public sealed class InputBuffer<TInput> where TInput : struct
     /// <summary>A plain FIFO (no speculation, no draining) of opaque inputs: the pre-0.9.10 behaviour.</summary>
     public InputBuffer(int max, TInput neutral) : this(neutral, null, new InputBufferOptions { MaxQueued = max, CatchUp = false }) { }
 
+    /// <summary>A buffer for one participant (the room creates one per participant from <see cref="RoomHostOptions.Input"/>).</summary>
+    /// <param name="neutral">The input of an idle seat: the "last input" before anything arrived and after <see cref="Reset"/>.</param>
+    /// <param name="model">What the input is (buttons, actions); null treats inputs as opaque (<see cref="RoomInputModel{TInput}.Opaque"/>).</param>
+    /// <param name="options">Tuning; null uses the defaults.</param>
     public InputBuffer(TInput neutral, RoomInputModel<TInput>? model = null, InputBufferOptions? options = null)
     {
         _neutral = neutral;
@@ -156,7 +167,9 @@ public sealed class InputBuffer<TInput> where TInput : struct
     public double Jitter { get; private set; }
     /// <summary>Speculative steps not confirmed or corrected yet.</summary>
     public int Speculating => _spec.Count;
+    /// <summary>This buffer's counters (also added to <see cref="InputBufferTotals"/>).</summary>
     public InputBufferStats Stats { get; } = new();
+    /// <summary>The input model in use (<see cref="RoomInputModel{TInput}.Opaque"/> when none was given).</summary>
     public RoomInputModel<TInput> Model => _model;
 
     /// <summary>Queues an input; false when it was stale or a duplicate.</summary>
@@ -266,6 +279,7 @@ public sealed class InputBuffer<TInput> where TInput : struct
         return Last;
     }
 
+    /// <summary>Forgets every queued input, speculation, jitter sample and sequence (back to <c>neutral</c>, sequences start again from 1). Statistics are kept.</summary>
     public void Reset()
     {
         _queue.Clear();

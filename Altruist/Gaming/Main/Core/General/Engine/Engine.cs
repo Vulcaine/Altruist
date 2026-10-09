@@ -71,14 +71,26 @@ public class FrameRate
     public static int Hz256 = 256;
 }
 
+/// <summary>Stopwatch-based time helpers. Prefer the engine's <see cref="IEngineClock"/> inside engine code
+/// (it can be replaced by a <see cref="ManualEngineClock"/> in tests); this reads the real clock.</summary>
 public static class FrameTime
 {
     private static readonly double TicksToSeconds = 1.0 / Stopwatch.Frequency;
 
+    /// <summary>Current <see cref="Stopwatch.GetTimestamp"/> (units of <see cref="Stopwatch.Frequency"/>).</summary>
     public static long NowTicks => Stopwatch.GetTimestamp();
+    /// <summary>Converts a stopwatch tick span to seconds.</summary>
     public static float TicksToDeltaSeconds(long ticks) => (float)(ticks * TicksToSeconds);
 }
 
+/// <summary>
+/// Finds every <c>[Cycle]</c>-annotated method on the services in the root DI provider and registers it
+/// on the engine: cron expressions via <see cref="IEngineCore.RegisterCronJob"/>, rates (fixed or read
+/// from config) and plain <c>[Cycle]</c> (every frame) via <see cref="IEngineCore.ScheduleTask"/>.
+/// Registered automatically as a service and runs in its <c>[PostConstruct]</c>; game code does not
+/// call it. Supported methods are parameterless and return <c>void</c> or <see cref="Task"/>. When a
+/// subclass and its base both expose the same method, the subclass' registration wins.
+/// </summary>
 [Service]
 public class MethodScheduler
 {
@@ -86,6 +98,7 @@ public class MethodScheduler
     private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<Type, (object? serviceInstance, HashSet<MethodInfo>)> _registeredMethodsByType;
 
+    /// <summary>Created by DI.</summary>
     public MethodScheduler(IEngineCore engine, IServiceProvider serviceProvider)
     {
         _engine = engine;
@@ -121,6 +134,9 @@ public class MethodScheduler
         logger.LogInformation($"   🚀 Scheduled methods:\n{methodsDisplay}");
     }
 
+    /// <summary>Scans <paramref name="serviceProvider"/>'s services for <c>[Cycle]</c> methods and schedules
+    /// them; returns the methods registered so far.</summary>
+    /// <exception cref="InvalidOperationException">A <c>[Cycle]</c> method has parameters or another return type.</exception>
     public List<MethodInfo> RegisterMethods(IServiceProvider serviceProvider)
     {
         // 1. Collect all methods annotated with CycleAttribute
@@ -245,6 +261,10 @@ public class MethodScheduler
         }
     }
 
+    /// <summary>Registers <paramref name="method"/> on <paramref name="serviceInstance"/> as a cron job
+    /// (standard 5-field Cronos expression, evaluated in UTC). Cron jobs run on the thread pool, not on
+    /// the engine thread.</summary>
+    /// <exception cref="InvalidOperationException"><paramref name="serviceInstance"/> is null or the method signature is unsupported.</exception>
     public void RegisterCronJob(MethodInfo method, string cronExpression, object? serviceInstance = null)
     {
 
@@ -284,15 +304,22 @@ public class MethodScheduler
 }
 
 
+/// <summary>A task registered once with <see cref="IEngineCore.ScheduleTask"/> (a <c>[Cycle]</c> method):
+/// the engine's internal bookkeeping record. Not normally created by game code.</summary>
 public class EngineStaticTask
 {
     private static long _nextSeq;
 
+    /// <summary>Unique id (delegate method name plus a process-wide sequence number).</summary>
     public TaskIdentifier Id { get; }
+    /// <summary>The delegate the engine invokes.</summary>
     public Delegate Delegate { get; }
+    /// <summary>How often it runs.</summary>
     public CycleRate CycleRate { get; }
+    /// <summary>Stopwatch timestamp given at registration; the engine schedules from its own last-run bookkeeping.</summary>
     public long NextExecuteTime { get; set; }
 
+    /// <summary>Creates the record with a fresh unique <see cref="Id"/>.</summary>
     public EngineStaticTask(Delegate task, CycleRate cycleRate, long nextExecuteTime)
     {
         Delegate = task;
@@ -310,70 +337,102 @@ public class EngineStaticTask
 }
 
 
+/// <summary>
+/// The <see cref="IAltruistEngine"/> registered when <c>altruist:game:engine:diagnostics</c> is <c>false</c>:
+/// a pass-through to the core engine (<see cref="AltruistEngine"/>). Inject <see cref="IAltruistEngine"/>
+/// in game code rather than this type.
+/// </summary>
 [Service(typeof(IAltruistEngine))]
 [ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "false")]
 public class EngineWithoutDiagnostics : IAltruistEngine
 {
     private readonly IEngineCore _core;
 
+    /// <summary>Wraps <paramref name="core"/>.</summary>
     public EngineWithoutDiagnostics(IEngineCore core)
     {
         _core = core;
     }
 
+    /// <inheritdoc/>
     public CycleRate Rate => _core.Rate;
 
+    /// <inheritdoc/>
     public bool Enabled => _core.Enabled;
 
+    /// <inheritdoc/>
     public void Enable() => _core.Enable();
 
+    /// <inheritdoc/>
     public void Disable() => _core.Disable();
 
+    /// <inheritdoc/>
     public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
         => _core.RegisterCronJob(jobDelegate, cronExpression, serviceInstance);
 
+    /// <inheritdoc/>
     public void Start(CancellationToken token) => _core.Start(token);
 
+    /// <inheritdoc/>
     public void Stop() => _core.Stop();
 
+    /// <inheritdoc/>
     public void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null)
         => _core.ScheduleTask(taskDelegate, cycleRate);
 
+    /// <inheritdoc/>
     public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
         => _core.SendTask(taskId, taskDelegate);
+    /// <inheritdoc/>
     public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
     {
         return _core.ScheduleEffect(cycleRate, expiresAtUtc, step);
     }
+    /// <inheritdoc/>
     public bool CancelEffect(TaskIdentifier id)
     {
         return _core.CancelEffect(id);
     }
 
+    /// <inheritdoc/>
     public void WaitForNextTick(Delegate task)
     {
         _core.WaitForNextTick(task);
     }
 
+    /// <inheritdoc/>
     public void WaitForNextTick(Action task)
     {
         _core.WaitForNextTick(task);
     }
 
+    /// <inheritdoc/>
     public void WaitForNextTick(Func<Task> task)
     {
         _core.WaitForNextTick(task);
     }
 
+    /// <inheritdoc/>
     public void SyncCommit(Action commit) => _core.SyncCommit(commit);
+    /// <inheritdoc/>
     public Task<T> SyncCommit<T>(Func<T> commit) => _core.SyncCommit(commit);
 
+    /// <inheritdoc/>
     public long Frame => _core.Frame;
+    /// <inheritdoc/>
     public TaskIdentifier ScheduleOnce(TimeSpan delay, Action action) => _core.ScheduleOnce(delay, action);
+    /// <inheritdoc/>
     public TaskIdentifier ScheduleAtFrame(long frame, Action action) => _core.ScheduleAtFrame(frame, action);
+    /// <inheritdoc/>
     public void RunOffTick<T>(Func<CancellationToken, Task<T>> work, Action<T?, Exception?> onTick) => _core.RunOffTick(work, onTick);
+    /// <inheritdoc/>
     public void RunOffTick(Func<CancellationToken, Task> work, Action<Exception?> onTick) => _core.RunOffTick(work, onTick);
 
+    /// <summary>
+    /// The <see cref="IAltruistEngine"/> registered when <c>altruist:game:engine:diagnostics</c> is <c>true</c>:
+    /// forwards to the core engine and times every scheduled task, logging an estimated throughput
+    /// every N tasks. For profiling only; inject <see cref="IAltruistEngine"/> rather than this type.
+    /// </summary>
     [Service(typeof(IAltruistEngine))]
     [ConditionalOnConfig("altruist:game:engine:diagnostics", havingValue: "true")]
     public class EngineWithDiagnostics : IAltruistEngine
@@ -386,6 +445,7 @@ public class EngineWithoutDiagnostics : IAltruistEngine
         private readonly int _taskTrackCount = 100;
 
 
+        /// <summary>Wraps <paramref name="wrappedEngine"/>.</summary>
         public EngineWithDiagnostics(IEngineCore wrappedEngine, ILoggerFactory loggerFactory)
         {
             _wrappedEngine = wrappedEngine;
@@ -413,30 +473,37 @@ public class EngineWithoutDiagnostics : IAltruistEngine
             }
         }
 
+        /// <inheritdoc/>
         public CycleRate Rate => _wrappedEngine.Rate;
 
+        /// <inheritdoc/>
         public bool Enabled { get; private set; }
 
+        /// <inheritdoc/>
         public void Enable()
         {
             Enabled = true;
         }
 
+        /// <inheritdoc/>
         public void Disable()
         {
             Enabled = false;
         }
 
+        /// <inheritdoc/>
         public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
         {
             _wrappedEngine.RegisterCronJob(jobDelegate, cronExpression, serviceInstance);
         }
 
+        /// <inheritdoc/>
         public void Start(CancellationToken token)
         {
             _wrappedEngine.Start(token);
         }
 
+        /// <inheritdoc/>
         public void Stop()
         {
             _wrappedEngine.Stop();
@@ -494,6 +561,7 @@ public class EngineWithoutDiagnostics : IAltruistEngine
             }
         }
 
+        /// <inheritdoc/>
         public void ScheduleTask(Delegate taskDelegate, CycleRate? cycleRate = null)
         {
             // null = every frame (resolved by the wrapped engine).
@@ -517,6 +585,7 @@ public class EngineWithoutDiagnostics : IAltruistEngine
             }
         }
 
+        /// <inheritdoc/>
         public void SendTask(TaskIdentifier taskId, Delegate taskDelegate)
         {
             if (taskDelegate is Func<Task> asyncDelegate)
@@ -537,42 +606,54 @@ public class EngineWithoutDiagnostics : IAltruistEngine
             }
         }
 
+        /// <inheritdoc/>
         public TaskIdentifier ScheduleEffect(CycleRate cycleRate, DateTime expiresAtUtc, Action<float> step)
         {
             return _wrappedEngine.ScheduleEffect(cycleRate, expiresAtUtc, step);
         }
+        /// <inheritdoc/>
         public bool CancelEffect(TaskIdentifier id)
         {
             return _wrappedEngine.CancelEffect(id);
         }
 
+        /// <inheritdoc/>
         public void WaitForNextTick(Delegate task)
         {
             _wrappedEngine.WaitForNextTick(task);
         }
 
+        /// <inheritdoc/>
         public void WaitForNextTick(Action task)
         {
             _wrappedEngine.WaitForNextTick(task);
         }
+        /// <inheritdoc/>
         public void WaitForNextTick(Func<Task> task)
         {
             _wrappedEngine.WaitForNextTick(task);
         }
 
+        /// <inheritdoc/>
         public void SyncCommit(Action commit)
         {
             _wrappedEngine.SyncCommit(commit);
         }
+        /// <inheritdoc/>
         public Task<T> SyncCommit<T>(Func<T> commit)
         {
             return _wrappedEngine.SyncCommit(commit);
         }
 
+        /// <inheritdoc/>
         public long Frame => _wrappedEngine.Frame;
+        /// <inheritdoc/>
         public TaskIdentifier ScheduleOnce(TimeSpan delay, Action action) => _wrappedEngine.ScheduleOnce(delay, action);
+        /// <inheritdoc/>
         public TaskIdentifier ScheduleAtFrame(long frame, Action action) => _wrappedEngine.ScheduleAtFrame(frame, action);
+        /// <inheritdoc/>
         public void RunOffTick<T>(Func<CancellationToken, Task<T>> work, Action<T?, Exception?> onTick) => _wrappedEngine.RunOffTick(work, onTick);
+        /// <inheritdoc/>
         public void RunOffTick(Func<CancellationToken, Task> work, Action<Exception?> onTick) => _wrappedEngine.RunOffTick(work, onTick);
     }
 

@@ -3,6 +3,11 @@ using System.Linq.Expressions;
 
 namespace Altruist.Persistence;
 
+/// <summary>
+/// Mutable prefab query built by <see cref="PgPrefabs.Query{TPrefab}"/>: selects the root rows
+/// (<c>FROM root r [WHERE ...]</c>, bound parameters), creates one <typeparamref name="TPrefab"/> per root and then
+/// hydrates the included components with <see cref="PgPrefabEagerLoader"/>.
+/// </summary>
 internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
     where TPrefab : PrefabModel, new()
 {
@@ -19,11 +24,14 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
     private static readonly ConcurrentDictionary<string, Action<TPrefab, object>> _rootSetterCache =
         new(StringComparer.Ordinal);
 
+    /// <summary>Creates an empty query.</summary>
+    /// <param name="db">Provider the queries run on.</param>
     public PgPrefabQuery(ISqlDatabaseProvider db)
     {
         _db = db;
     }
 
+    /// <inheritdoc/>
     public IPrefabQuery<TPrefab> Where(Expression<Func<TPrefab, bool>> predicate)
     {
         var meta = PrefabDocument.Get(typeof(TPrefab));
@@ -37,6 +45,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         return this;
     }
 
+    /// <inheritdoc/>
     public IPrefabQuery<TPrefab> Include<TProp>(Expression<Func<TPrefab, TProp>> selector)
     {
         var name = ResolveIncludeName(selector.Body);
@@ -44,6 +53,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         return this;
     }
 
+    /// <inheritdoc/>
     public IPrefabQuery<TPrefab> IncludeAll()
     {
         // No reflection here: we rely on PrefabMeta which is already constructed elsewhere.
@@ -59,6 +69,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
     private PgPrefabQuery<TPrefab> Skip(int count) { _skip = count; return this; }
     private PgPrefabQuery<TPrefab> Take(int count) { _take = count; return this; }
 
+    /// <inheritdoc/>
     public async Task<List<TPrefab>> ToListAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -128,6 +139,7 @@ internal sealed class PgPrefabQuery<TPrefab> : IPrefabQuery<TPrefab>
         return string.Join(", ", cols);
     }
 
+    /// <inheritdoc/>
     public async Task<TPrefab?> FirstOrDefaultAsync(CancellationToken ct = default)
     {
         Take(1);

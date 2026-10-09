@@ -16,20 +16,56 @@ namespace Altruist.Gaming;
 /// Works for entity-entity, entity-zone, entity-partition.
 /// Uses the same [CollisionHandler]/[CollisionEvent] API as the physics system.
 /// </summary>
+/// <remarks>
+/// Use it for 3D worlds without a physics engine (or for logical events such as hits and visibility) where
+/// physics contacts are not available; with a physics engine, contacts are reported by the physics world instead.
+/// Handlers are looked up in <see cref="CollisionHandlerRegistry"/> by the runtime types of both objects
+/// (in either argument order). The framework calls <see cref="Dispatch"/> itself (e.g. the visibility tracker raises
+/// <see cref="EntityVisible"/>/<see cref="EntityInvisible"/>), but <see cref="Tick"/> is not called automatically:
+/// call it from your own per-tick code if you want overlap events.
+/// </remarks>
+/// <example>
+/// <code>
+/// // in a combat service
+/// dispatcher.DispatchHit(attacker, target, new CollisionHit { Source = attacker, Target = target });
+///
+/// // in a [CollisionHandler] class
+/// [CollisionEvent(typeof(CollisionHit))]
+/// private void OnHit(CollisionHit hit, PlayerEntity attacker, MonsterEntity target) { /* ... */ }
+/// </code>
+/// </example>
 public interface ISpatialCollisionDispatcher
 {
     /// <summary>One-shot hit dispatch (combat). No enter/stay/exit tracking.</summary>
+    /// <param name="entityA">First object (the source when <paramref name="hit"/> is generated).</param>
+    /// <param name="entityB">Second object (the target when <paramref name="hit"/> is generated).</param>
+    /// <param name="hit">Payload; defaults to a <see cref="CollisionHit"/> with Source = A and Target = B.</param>
     void DispatchHit(object entityA, object entityB, CollisionHit? hit = null);
 
     /// <summary>Dispatch a specific event phase between two objects.</summary>
+    /// <remarks>Invokes matching handlers synchronously on the calling thread; handler exceptions are logged and swallowed.</remarks>
+    /// <param name="entityA">First object.</param>
+    /// <param name="entityB">Second object.</param>
+    /// <param name="eventType">Event key type (e.g. <see cref="CollisionEnter"/>); handlers registered for it are invoked.</param>
+    /// <param name="payload">Event payload; when <c>null</c> a new instance of <paramref name="eventType"/> is created (needs a parameterless constructor).</param>
     void Dispatch(object entityA, object entityB, Type eventType, object? payload = null);
 
     /// <summary>Run full overlap detection tick (enter/stay/exit) for a world.</summary>
+    /// <remarks>
+    /// Two objects overlap when their layers (<c>CollisionLayer</c>) share a bit, a handler exists for their types and their
+    /// center distance is at most the larger of their radii (radius = largest size component of the first collider descriptor
+    /// with a positive size, else <paramref name="collisionRadius"/>). Also raises enter/exit between objects and the
+    /// zone containing their position (only for <see cref="GameWorldManager3D"/> worlds). Not thread-safe: call from one thread.
+    /// </remarks>
+    /// <param name="world">World whose cached snapshot is scanned.</param>
+    /// <param name="collisionRadius">Fallback radius and minimum broadphase query radius, in world units.</param>
     void Tick(IGameWorldManager3D world, float collisionRadius = 200f);
 
+    /// <summary>Total number of handlers registered in <see cref="CollisionHandlerRegistry"/>.</summary>
     int HandlerCount { get; }
 }
 
+/// <summary>Default singleton <see cref="ISpatialCollisionDispatcher"/> (always registered).</summary>
 [Service(typeof(ISpatialCollisionDispatcher))]
 public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
 {
@@ -53,13 +89,17 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
     private readonly SpatialHashGrid _grid = new(cellSize: 300f);
     private readonly List<int> _nearbyBuffer = new(64);
 
+    /// <inheritdoc/>
     public int HandlerCount => CollisionHandlerRegistry.TotalHandlerCount;
 
+    /// <summary>Creates the dispatcher.</summary>
+    /// <param name="loggerFactory">Logger factory for handler failures.</param>
     public SpatialCollisionDispatcher(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<SpatialCollisionDispatcher>();
     }
 
+    /// <inheritdoc/>
     public void DispatchHit(object entityA, object entityB, CollisionHit? hit = null)
     {
         Dispatch(entityA, entityB, typeof(CollisionHit), hit ?? new CollisionHit
@@ -69,6 +109,7 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         });
     }
 
+    /// <inheritdoc/>
     public void Dispatch(object entityA, object entityB, Type eventType, object? payload = null)
     {
         payload ??= Activator.CreateInstance(eventType);
@@ -94,6 +135,7 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         }
     }
 
+    /// <inheritdoc/>
     public void Tick(IGameWorldManager3D world, float collisionRadius = 200f)
     {
         _currentOverlaps.Clear();
@@ -222,7 +264,8 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
             pairSet.Remove(pairHash);
     }
 
-    /// <summary>Remove tracking for a destroyed entity.</summary>
+    /// <summary>Remove tracking for a destroyed entity (its pairs and zone membership) without raising exit events. Not called automatically.</summary>
+    /// <param name="instanceId">Instance id of the removed object.</param>
     public void RemoveEntity(string instanceId)
     {
         _entityZones.TryRemove(instanceId, out _);

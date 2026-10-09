@@ -26,10 +26,22 @@ namespace Altruist.Persistence;
 /// - Connection creation + connection string building
 /// - Parameter binding (esp provider-specific JSON / special types)
 /// </summary>
+/// <remarks>
+/// <para>
+/// Derive from this to add a new ADO.NET database; application code should inject <see cref="ISqlDatabaseProvider"/>
+/// (or better, <see cref="IVault{TVaultModel}"/>) rather than this class. Postgres ships as <c>PgSqlDbProvider</c>.
+/// </para>
+/// <para>
+/// Every query/command leases its own pooled connection (or the ambient transaction's, see
+/// <see cref="InTransactionAsync{T}"/>), so instances are safe to share as singletons. A separate control connection
+/// opened by <c>ConnectAsync</c> drives connection state, plus a background health check every 5 seconds.
+/// </para>
+/// </remarks>
 public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGeneralDatabaseProvider, ISqlTransactionProvider
 {
     private DbConnection? _conn;
 
+    /// <summary>Serializer options used to write JSON parameters and read JSON columns.</summary>
     protected readonly JsonSerializerOptions JsonOptions;
 
     private static readonly ConcurrentDictionary<Type, UntypedMaterializer> _untypedMaterializers = new();
@@ -51,6 +63,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         public required UntypedProp[] Props { get; init; }
     }
 
+    /// <summary>Initializes the provider.</summary>
+    /// <param name="jsonOptions">Options for (de)serializing JSON-mapped values.</param>
     protected GeneralSqlDatabaseProvider(JsonSerializerOptions jsonOptions)
     {
         JsonOptions = jsonOptions;
@@ -58,7 +72,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     // ---------- Provider specifics to implement ----------
 
+    /// <summary>Human-readable service name (used in logs and health reporting).</summary>
     public abstract string ServiceName { get; }
+    /// <inheritdoc/>
     public abstract IDatabaseServiceToken Token { get; }
 
     /// <summary>Default parameter prefix used for named parameters.</summary>
@@ -102,12 +118,19 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     /// <summary>Ping query used for health checks.</summary>
     protected virtual string HealthCheckSql => "SELECT 1";
 
+    /// <inheritdoc/>
     public string GetConnectionString() => BuildConnectionString();
 
+    /// <summary>
+    /// <c>true</c> while the database is reachable, as last observed by connect, a query or the 5-second health check.
+    /// </summary>
     public bool IsConnected { get; private set; }
 
+    /// <summary>Raised when the connection is (re)established. Also raised after every typed/untyped query while connected, so handlers must be cheap and idempotent.</summary>
     public event Action? OnConnected;
+    /// <summary>Raised on the first failed connect attempt and when a health check finds a previously healthy database unreachable.</summary>
     public event Action<Exception>? OnFailed;
+    /// <summary>Raised when <see cref="ConnectAsync(int, int, CancellationToken)"/> has used up all its retries without connecting.</summary>
     public event Action<Exception>? OnRetryExhausted;
 
     /// <summary>
@@ -128,6 +151,10 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         private readonly SemaphoreSlim? _gate;
 
+        /// <summary>Wraps a leased connection.</summary>
+        /// <param name="connection">The open connection.</param>
+        /// <param name="transaction">The ambient transaction, or <c>null</c> for a private pooled connection.</param>
+        /// <param name="gate">The ambient transaction's gate to release on dispose, or <c>null</c>.</param>
         public ConnectionLease(DbConnection connection, DbTransaction? transaction, SemaphoreSlim? gate)
         {
             Connection = connection;
@@ -135,9 +162,12 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             _gate = gate;
         }
 
+        /// <summary>The open connection to run the command on.</summary>
         public DbConnection Connection { get; }
+        /// <summary>The ambient transaction to attach to the command, or <c>null</c>.</summary>
         public DbTransaction? Transaction { get; }
 
+        /// <summary>Disposes a private pooled connection, or releases the ambient transaction's gate (the connection stays open for the transaction).</summary>
         public ValueTask DisposeAsync()
         {
             if (Transaction is null)
@@ -147,6 +177,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         }
     }
 
+    /// <summary>
+    /// Leases a connection for one operation: the ambient transaction's connection (serialized through its gate) when
+    /// one is active on this async flow, otherwise a fresh pooled connection. Always dispose the lease.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
     protected async Task<ConnectionLease> LeaseConnectionAsync(CancellationToken ct = default)
     {
         var ambient = SqlAmbientTransaction.Current;
@@ -175,6 +210,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     // ---------- Connection lifecycle ----------
 
+    /// <summary>Reconnects the control connection (30 attempts, 2000 ms apart) if it is not open.</summary>
+    /// <param name="ct">Cancellation token.</param>
     protected async Task EnsureConnectedAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -184,6 +221,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 
     // Backward compatible signature
+    /// <summary>Same as <see cref="ConnectAsync(int, int, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="maxRetries">Maximum connection attempts.</param>
+    /// <param name="delayMilliseconds">Delay between attempts, in milliseconds.</param>
     public Task ConnectAsync(int maxRetries, int delayMilliseconds)
         => ConnectAsync(maxRetries, delayMilliseconds, CancellationToken.None);
 
@@ -231,6 +271,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             ct: ct).ConfigureAwait(false);
     }
 
+    /// <inheritdoc/>
     public async Task<List<object>> QueryAsync(
      Type modelType,
      string sql,
@@ -435,12 +476,18 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         RaiseOnRetryExhaustedEvent(last!);
     }
 
+    /// <summary>Connects with the default policy: 30 attempts, 2000 ms apart.</summary>
     public Task ConnectAsync() => ConnectAsync(30, 2000, CancellationToken.None);
+    /// <summary>Connects with the default policy (30 attempts, 2000 ms apart), honouring <paramref name="ct"/>.</summary>
+    /// <param name="ct">Cancellation token.</param>
     public Task ConnectAsync(CancellationToken ct) => ConnectAsync(30, 2000, ct);
 
     // Backward compatible signature
+    /// <summary>Same as <see cref="ShutdownAsync(Exception, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="ex">Optional reason for the shutdown (informational).</param>
     public Task ShutdownAsync(Exception? ex = null) => ShutdownAsync(ex, CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task ShutdownAsync(Exception? ex = null, CancellationToken ct = default)
     {
         StopHealthChecks();
@@ -462,26 +509,36 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 
     // Backward compatible signature
+    /// <summary>Same as <see cref="ChangeKeyspaceAsync(string, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="schema">Schema name.</param>
     public Task ChangeKeyspaceAsync(string schema) => ChangeKeyspaceAsync(schema, CancellationToken.None);
 
+    /// <summary>Switches the default schema. No-op in the base class; providers override it (Postgres runs <c>SET search_path</c>).</summary>
+    /// <param name="schema">Schema name.</param>
+    /// <param name="ct">Cancellation token.</param>
     public virtual async Task ChangeKeyspaceAsync(string schema, CancellationToken ct = default)
     {
         // Default no-op unless overridden (Postgres uses SET search_path)
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
+    /// <summary>Marks the provider connected and raises <see cref="OnConnected"/>.</summary>
     public void RaiseConnectedEvent()
     {
         IsConnected = true;
         OnConnected?.Invoke();
     }
 
+    /// <summary>Marks the provider disconnected and raises <see cref="OnFailed"/>.</summary>
+    /// <param name="ex">The failure.</param>
     public void RaiseFailedEvent(Exception ex)
     {
         IsConnected = false;
         OnFailed?.Invoke(ex);
     }
 
+    /// <summary>Marks the provider disconnected and raises <see cref="OnRetryExhausted"/>.</summary>
+    /// <param name="ex">The last connection failure.</param>
     public void RaiseOnRetryExhaustedEvent(Exception ex)
     {
         IsConnected = false;
@@ -491,10 +548,14 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     // ---------- Provider API ----------
 
     // Backward compatible signature
+    /// <summary>Vault-model-only overload of <see cref="QueryAsync{TVaultModel}(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string sql, List<object>? parameters = null)
         where TVaultModel : class, IVaultModel
         => QueryAsync<TVaultModel>(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
         string sql,
         List<object?>? parameters = null,
@@ -502,10 +563,14 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         => (await ExecuteFetchAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false)).ToList();
 
     // Backward compatible signature
+    /// <summary>Overload of <see cref="QuerySingleAsync{TVaultModel}(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string sql, List<object>? parameters = null)
         where TVaultModel : class
         => QuerySingleAsync<TVaultModel>(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
         string sql,
         List<object?>? parameters = null,
@@ -514,9 +579,13 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         => (await ExecuteFetchAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false)).FirstOrDefault();
 
     // Backward compatible signature
+    /// <summary>Overload of <see cref="ExecuteCountAsync(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null)
         => ExecuteCountAsync(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<long> ExecuteCountAsync(string sql, List<object?>? parameters = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -537,9 +606,13 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 
     // Backward compatible signature
+    /// <summary>Overload of <see cref="ExecuteAsync(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<long> ExecuteAsync(string sql, List<object>? parameters = null)
         => ExecuteAsync(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<long> ExecuteAsync(string sql, List<object?>? parameters = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -557,9 +630,12 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 
     // Default stubs (you can keep parity with your other provider surface)
+    /// <summary>Reserved no-op (returns 1); see <see cref="UpdateAsync{TVaultModel}(TVaultModel, CancellationToken)"/>.</summary>
+    /// <param name="entity">Ignored.</param>
     public Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
         => UpdateAsync(entity, CancellationToken.None);
 
+    /// <inheritdoc/>
     public virtual async Task<long> UpdateAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
         where TVaultModel : class, IVaultModel
     {
@@ -567,9 +643,12 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         return 1;
     }
 
+    /// <summary>Reserved no-op (returns 1); see <see cref="DeleteAsync{TVaultModel}(TVaultModel, CancellationToken)"/>.</summary>
+    /// <param name="entity">Ignored.</param>
     public Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
         => DeleteAsync(entity, CancellationToken.None);
 
+    /// <inheritdoc/>
     public virtual async Task<long> DeleteAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
         where TVaultModel : class, IVaultModel
     {
@@ -578,9 +657,15 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 
     // Schema
+    /// <summary>Same as <see cref="CreateSchemaAsync"/> without cancellation.</summary>
+    /// <param name="keyspace">Schema name.</param>
     public Task CreateKeySpaceAsync(string keyspace) => CreateSchemaAsync(keyspace, CancellationToken.None);
+    /// <summary>Alias of <see cref="CreateSchemaAsync"/>.</summary>
+    /// <param name="keyspace">Schema name.</param>
+    /// <param name="ct">Cancellation token.</param>
     public Task CreateKeySpaceAsync(string keyspace, CancellationToken ct = default) => CreateSchemaAsync(keyspace, ct);
 
+    /// <inheritdoc/>
     public virtual async Task CreateSchemaAsync(string schema, CancellationToken ct = default)
     {
         await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
@@ -665,6 +750,14 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         }
     }
 
+    /// <summary>
+    /// Converts a raw column value to a property type when materializing rows: strings via <c>ToString</c>, enums from
+    /// name or number, JSON text/documents into complex types, GUIDs and dates, otherwise <see cref="Convert.ChangeType(object, Type)"/>.
+    /// Override to support provider-specific types.
+    /// </summary>
+    /// <param name="val">The non-null value read from the reader.</param>
+    /// <param name="targetType">The property type (nullable already unwrapped).</param>
+    /// <returns>The converted value.</returns>
     protected virtual object? ConvertValue(object val, Type targetType)
     {
         if (val is null)
@@ -720,6 +813,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         return result is not null;
     }
 
+    /// <summary>Whether a property of type <paramref name="t"/> is read from a JSON column (collections, dictionaries and non-primitive objects).</summary>
+    /// <param name="t">The property type.</param>
     protected static bool IsJsonTargetType(Type t)
     {
         if (typeof(System.Collections.IDictionary).IsAssignableFrom(t))
@@ -736,6 +831,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                && t != typeof(TimeSpan);
     }
 
+    /// <summary>Whether a parameter value of type <paramref name="type"/> is bound as serialized JSON (anything that isn't a scalar, enum, <c>byte[]</c> or array).</summary>
+    /// <param name="type">The value's runtime type.</param>
     protected static bool ShouldWriteAsJson(Type type)
     {
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
@@ -775,6 +872,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     // SQL is built by the Vault ORM query pipeline — not from user input.
     // Parameters are always bound via DbParameter (parameterized queries).
 #pragma warning disable CA2100
+    /// <summary>Creates a command on <paramref name="conn"/>, rewriting <c>?</c> placeholders to named parameters and binding <paramref name="parameters"/> through <see cref="BindParameter"/>.</summary>
+    /// <param name="conn">Open connection.</param>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values, or <c>null</c>.</param>
+    /// <returns>The prepared command (caller disposes it and sets its transaction).</returns>
     protected DbCommand PrepareCommand(DbConnection conn, string sql, List<object?>? parameters)
     {
         var cmd = conn.CreateCommand();
@@ -800,6 +902,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 #pragma warning restore CA2100
 
+    /// <summary>Replaces each <c>?</c> outside single- or double-quoted text with <c>{prefix}p1</c>, <c>{prefix}p2</c>, ... in order.</summary>
+    /// <param name="sql">SQL text.</param>
+    /// <param name="expectedCount">Expected number of placeholders (capacity hint only; not validated).</param>
+    /// <param name="prefix">Parameter prefix, e.g. <c>@</c>.</param>
+    /// <returns>The rewritten SQL.</returns>
     protected static string ReplaceQuestionMarks(string sql, int expectedCount, string prefix)
     {
         var sb = new StringBuilder(sql.Length + expectedCount * 3);
@@ -846,6 +953,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         return sb.ToString();
     }
 
+    /// <summary>Trims and lower-cases an identifier (<c>null</c> becomes empty).</summary>
+    /// <param name="s">The identifier.</param>
     protected static string NormLower(string? s) => (s ?? string.Empty).Trim().ToLowerInvariant();
 
     // ---------- Health checks ----------
@@ -853,6 +962,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     private CancellationTokenSource _healthCts = new();
     private readonly SemaphoreSlim _pingLock = new(1, 1);
 
+    /// <summary>Starts a background loop that runs <see cref="HealthCheckAsync"/> every <paramref name="seconds"/> seconds until <see cref="StopHealthChecks"/>.</summary>
+    /// <param name="seconds">Interval between checks, in seconds.</param>
     protected void StartHealthChecks(int seconds = 5)
     {
         _ = Task.Run(async () =>
@@ -869,6 +980,10 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         });
     }
 
+    /// <summary>
+    /// Opens a separate connection and runs <see cref="HealthCheckSql"/> (3 s timeout); flips <see cref="IsConnected"/> and raises
+    /// <see cref="OnConnected"/>/<see cref="OnFailed"/> on state changes. Overlapping checks are skipped.
+    /// </summary>
     protected virtual async Task HealthCheckAsync()
     {
         if (!await _pingLock.WaitAsync(0).ConfigureAwait(false))
@@ -912,6 +1027,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         }
     }
 
+    /// <summary>Cancels the health-check loop.</summary>
     protected void StopHealthChecks()
     {
         _healthCts.Cancel();

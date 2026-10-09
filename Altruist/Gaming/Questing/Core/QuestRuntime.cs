@@ -3,6 +3,46 @@ using System.Reflection;
 
 namespace Altruist.Gaming.Questing;
 
+/// <summary>
+/// The quest engine: holds the registered <see cref="QuestDefinition{T}"/>s, routes game events
+/// (triggers and custom hooks) to them per subject, gates them by requirements, caches and
+/// persists per-subject <see cref="QuestState"/> through an <see cref="IQuestStateStore"/>, and
+/// publishes changed <see cref="QuestUpdate"/>s to an <see cref="IQuestUpdateSink{T}"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Not registered in DI by the framework: construct one per context type (typically a
+/// singleton), call <see cref="LoadFromAssembly"/> then <see cref="LoadModulesFromAssembly"/>
+/// once at startup, then fire events from game code. Loading/registering is not thread-safe
+/// and must finish before dispatching.
+/// </para>
+/// <para>
+/// Threading: different subjects may be dispatched concurrently, but calls for the same subject
+/// must be serialized (per-subject state is a plain dictionary). Quests are visited in ordinal
+/// id order after loading. Each dispatch: evaluate requirements (failing → publish
+/// <see cref="QuestStatus.Suspended"/>, skip handler), run the state-machine or hook handler,
+/// resolve status from state, publish if changed, and finally call
+/// <see cref="IQuestStateStore.SaveDirtyAsync"/> once per fire.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// var runtime = new QuestRuntime&lt;MyQuestContext&gt;(
+///     store, new NullQuestUpdateSink&lt;MyQuestContext&gt;(), requirements,
+///     (b, trigger, quest, targetId, value, state, results) =&gt; new MyQuestContext
+///     {
+///         SubjectId = b.SubjectId, Subject = b.Subject, Services = b.Services, Player = b.Player,
+///         Trigger = trigger, TargetId = targetId, Value = value, State = state, RequirementResults = results,
+///     });
+/// runtime.LoadFromAssembly(typeof(WolfHunt).Assembly);
+/// runtime.LoadModulesFromAssembly(typeof(WolfHunt).Assembly);
+///
+/// await runtime.ReconcileAsync(baseCtx);                                   // on login
+/// await runtime.FireAsync(baseCtx, QuestTrigger.Kill, targetId: victimId); // on kill
+/// await runtime.FireAsync(baseCtx, QuestTrigger.Npc, npcKey: "postmaster");
+/// </code>
+/// </example>
+/// <typeparam name="TContext">The game's quest context type.</typeparam>
 public sealed class QuestRuntime<TContext> where TContext : QuestContext
 {
     private const string LevelReconciledKey = "__level_reconciled";
@@ -23,6 +63,16 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     private List<QuestDefinition<TContext>> _quests = new();
     private Dictionary<string, List<QuestDefinition<TContext>>> _npcBindings = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Creates an empty runtime; load quests with <see cref="LoadFromAssembly"/> / <see cref="Register"/>.</summary>
+    /// <param name="stateStore">Per-subject state persistence.</param>
+    /// <param name="updateSink">Receives changed quest snapshots (use <see cref="NullQuestUpdateSink{T}"/> to ignore).</param>
+    /// <param name="requirements">Requirement evaluators by key.</param>
+    /// <param name="contextFactory">
+    /// Builds the per-quest context from (base context, trigger, quest, targetId, value, state,
+    /// requirement results). Must copy the base context's subject data and set the other fields
+    /// from the arguments; called for requirement evaluation (empty results, only when the quest has requirements) and again for
+    /// the dispatch.
+    /// </param>
     public QuestRuntime(
         IQuestStateStore stateStore,
         IQuestUpdateSink<TContext> updateSink,
@@ -35,9 +85,21 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         _contextFactory = contextFactory;
     }
 
+    /// <summary>Number of registered quests.</summary>
     public int QuestCount => _quests.Count;
+    /// <summary>Registered quests (ordinal id order after loading; <see cref="Register"/> appends).</summary>
     public IReadOnlyList<QuestDefinition<TContext>> Quests => _quests;
 
+    /// <summary>
+    /// Discovers every concrete, non-generic <see cref="QuestBehavior{T}"/> subclass whose context
+    /// type is assignable to <typeparamref name="TContext"/> (skipping
+    /// <see cref="QuestTemplateAttribute"/> types), instantiates it with its parameterless
+    /// constructor and builds a definition from its attributes. Replaces all previously registered
+    /// quests, so call it before <see cref="LoadModulesFromAssembly"/> / <see cref="Register"/>.
+    /// </summary>
+    /// <param name="assembly">Assembly containing the quest classes.</param>
+    /// <exception cref="MissingMethodException">A quest type has no public parameterless constructor.</exception>
+    /// <exception cref="InvalidOperationException">A state method has an invalid signature (see <see cref="QuestStateAttribute"/>).</exception>
     public void LoadFromAssembly(Assembly assembly)
     {
         var quests = assembly.GetTypes()
@@ -53,8 +115,9 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// <summary>
     /// Discovers <see cref="IQuestModule{T}"/> implementations in the assembly
     /// and invokes their <c>Register</c> method, allowing data-driven quest
-    /// registration. Call this after <see cref="LoadFromAssembly"/>.
+    /// registration. Call this after <see cref="LoadFromAssembly"/>. Re-sorts all quests by id.
     /// </summary>
+    /// <param name="assembly">Assembly containing the module classes (public parameterless constructors).</param>
     public void LoadModulesFromAssembly(Assembly assembly)
     {
         var moduleType = typeof(IQuestModule<TContext>);
@@ -71,8 +134,10 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// <summary>
     /// Adds a programmatically-built quest definition. Used by
     /// <see cref="IQuestModule{T}"/> implementations to register N tiers / N
-    /// data rows that share one behavior-template class.
+    /// data rows that share one behavior-template class. Appends without sorting or checking for
+    /// duplicate ids; call during startup only.
     /// </summary>
+    /// <param name="definition">The definition, usually from <see cref="QuestDefinition{T}.Create"/>.</param>
     public void Register(QuestDefinition<TContext> definition)
     {
         _quests.Add(definition);
@@ -104,9 +169,24 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         }
     }
 
+    /// <summary>True when at least one quest is bound to <paramref name="npcKey"/> via <see cref="QuestNpcAttribute"/> (case-insensitive). Useful to decide whether an NPC interaction is quest-relevant.</summary>
+    /// <param name="npcKey">NPC key.</param>
+    /// <returns>Whether bindings exist.</returns>
     public bool HasNpcBinding(string npcKey) =>
         !string.IsNullOrWhiteSpace(npcKey) && _npcBindings.ContainsKey(npcKey);
 
+    /// <summary>
+    /// Fires a built-in trigger at every quest (each one's requirements are evaluated and its
+    /// matching handler, if any, runs), then saves. This is the main entry point for game events.
+    /// For <see cref="QuestTrigger.Npc"/> with an <paramref name="npcKey"/> that has bindings, only
+    /// the bound quests are targeted; an unbound or missing key targets all quests. A handler
+    /// exception is logged to stderr and does not stop other quests.
+    /// </summary>
+    /// <param name="baseContext">Subject data; passed to the context factory.</param>
+    /// <param name="trigger">The event; use <see cref="FireHookAsync"/> for custom hooks.</param>
+    /// <param name="targetId">Event target id (victim, NPC, item...), exposed as <see cref="QuestContext.TargetId"/>.</param>
+    /// <param name="value">Event value, exposed as <see cref="QuestContext.Value"/>.</param>
+    /// <param name="npcKey">NPC key for <see cref="QuestTrigger.Npc"/> routing; ignored for other triggers.</param>
     public async Task FireAsync(TContext baseContext, QuestTrigger trigger, long targetId = 0, int value = 0, string? npcKey = null)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
@@ -137,6 +217,13 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         await _stateStore.SaveDirtyAsync(baseContext.SubjectId, _states[baseContext.SubjectId]);
     }
 
+    /// <summary>Fires a built-in trigger at one quest only (see <see cref="FireQuestHookAsync"/>).</summary>
+    /// <param name="baseContext">Subject data.</param>
+    /// <param name="questId">Target quest id (ordinal, case-sensitive).</param>
+    /// <param name="trigger">The trigger.</param>
+    /// <param name="targetId">Event target id.</param>
+    /// <param name="value">Event value.</param>
+    /// <returns>False when no quest has that id.</returns>
     public Task<bool> FireQuestAsync(TContext baseContext, string questId, QuestTrigger trigger, long targetId = 0, int value = 0)
     {
         return FireQuestHookAsync(
@@ -148,6 +235,17 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
             value);
     }
 
+    /// <summary>
+    /// Fires a custom (or built-in) hook key at every quest whose <see cref="QuestDefinition{T}.HasHook"/>
+    /// is true, then saves. Use for game-specific events declared with
+    /// <see cref="QuestHookAttribute"/> or <c>OnXxx</c> state methods; the context's
+    /// <see cref="QuestContext.Trigger"/> is <see cref="QuestTrigger.Custom"/>. Unlike
+    /// <see cref="FireAsync"/>, a handler exception propagates and stops the remaining quests.
+    /// </summary>
+    /// <param name="baseContext">Subject data.</param>
+    /// <param name="hookKey">Hook key (case-insensitive for handler lookup).</param>
+    /// <param name="targetId">Event target id.</param>
+    /// <param name="value">Event value.</param>
     public async Task FireHookAsync(TContext baseContext, string hookKey, long targetId = 0, int value = 0)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
@@ -158,6 +256,18 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         await _stateStore.SaveDirtyAsync(baseContext.SubjectId, _states[baseContext.SubjectId]);
     }
 
+    /// <summary>
+    /// Dispatches a hook key to a single quest by id (requirements, handler, publish), then saves.
+    /// Use when the event is already known to concern one quest (e.g. a quest UI button). Exceptions
+    /// from the handler propagate.
+    /// </summary>
+    /// <param name="baseContext">Subject data.</param>
+    /// <param name="questId">Target quest id (ordinal, case-sensitive).</param>
+    /// <param name="hookKey">Hook key.</param>
+    /// <param name="trigger">Value exposed as <see cref="QuestContext.Trigger"/>.</param>
+    /// <param name="targetId">Event target id.</param>
+    /// <param name="value">Event value.</param>
+    /// <returns>False when no quest has that id.</returns>
     public async Task<bool> FireQuestHookAsync(
         TContext baseContext,
         string questId,
@@ -177,11 +287,27 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         return true;
     }
 
+    /// <summary>Fires <see cref="QuestTrigger.Enter"/> at all quests; call when a subject logs in / enters so quests can initialise or re-sync.</summary>
+    /// <param name="baseContext">Subject data.</param>
     public Task ReconcileAsync(TContext baseContext)
     {
         return FireAsync(baseContext, QuestTrigger.Enter);
     }
 
+    /// <summary>
+    /// Brings level-driven quests (<see cref="QuestDefinition{T}.HasLevelHook"/>) in line with the
+    /// subject's level: for each such quest whose requirements pass, dispatches
+    /// <see cref="QuestHooks.Level"/> once per level from the last reconciled level + 1 up to
+    /// <paramref name="currentLevel"/> (<see cref="QuestContext.Value"/> = that level), remembering
+    /// progress in state key <c>__level_reconciled</c>. Idempotent, so call it on login and on every
+    /// level change instead of firing <see cref="QuestTrigger.Level"/> directly. On level loss
+    /// (<paramref name="currentLevel"/> &lt; <paramref name="previousLevel"/>)
+    /// <see cref="IQuestLevelResetHook{T}.ResetAboveLevel"/> runs first (even if requirements fail) and the reconciled level is
+    /// lowered. Per-level handler exceptions are logged and skipped.
+    /// </summary>
+    /// <param name="baseContext">Subject data.</param>
+    /// <param name="previousLevel">Level before the change (only used to detect level loss).</param>
+    /// <param name="currentLevel">New level (clamped to at least 1).</param>
     public async Task ReconcileLevelAsync(TContext baseContext, int previousLevel, int currentLevel)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
@@ -237,6 +363,8 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         await _stateStore.SaveDirtyAsync(baseContext.SubjectId, _states[baseContext.SubjectId]);
     }
 
+    /// <summary>Drops the subject's cached state and publish fingerprints and calls <see cref="IQuestStateStore.ResetAsync"/>, restarting all of its quests.</summary>
+    /// <param name="subjectId">The subject id.</param>
     public async Task ResetAsync(string subjectId)
     {
         _states.TryRemove(subjectId, out _);
@@ -245,6 +373,13 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         await _stateStore.ResetAsync(subjectId);
     }
 
+    /// <summary>
+    /// Builds a full snapshot of every quest for the subject (e.g. to send the quest log on login)
+    /// without running handlers or publishing. Requirements are evaluated with
+    /// <see cref="QuestTrigger.Enter"/>; failing quests are reported <see cref="QuestStatus.Suspended"/>.
+    /// </summary>
+    /// <param name="baseContext">Subject data.</param>
+    /// <returns>One update per registered quest, in quest order.</returns>
     public async Task<IReadOnlyList<QuestUpdate>> BuildUpdatesAsync(TContext baseContext)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
@@ -259,6 +394,10 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
         return updates;
     }
 
+    /// <summary>Returns the live cached state of one quest for a subject (loading the subject if needed, creating an empty state if absent). Changes made to it are persisted on the next fire.</summary>
+    /// <param name="subjectId">The subject id.</param>
+    /// <param name="questId">The quest id.</param>
+    /// <returns>The quest state.</returns>
     public async Task<QuestState> GetStateAsync(string subjectId, string questId)
     {
         await EnsureStatesLoadedAsync(subjectId);

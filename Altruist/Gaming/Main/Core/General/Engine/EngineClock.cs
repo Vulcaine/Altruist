@@ -14,13 +14,16 @@ namespace Altruist.Engine;
 /// </summary>
 public interface IEngineClock
 {
+    /// <summary>Current time in <see cref="Stopwatch.Frequency"/> ticks (monotonic; arbitrary origin).</summary>
     long NowTicks { get; }
 }
 
 /// <summary>The real clock (<see cref="Stopwatch.GetTimestamp"/>).</summary>
 public sealed class StopwatchEngineClock : IEngineClock
 {
+    /// <summary>The shared instance.</summary>
     public static readonly StopwatchEngineClock Instance = new();
+    /// <inheritdoc/>
     public long NowTicks => Stopwatch.GetTimestamp();
 }
 
@@ -29,12 +32,17 @@ public sealed class ManualEngineClock : IEngineClock
 {
     private long _now;
 
+    /// <summary>Starts at <paramref name="startTicks"/> (non-zero by default, since 0 means "never ran" in the scheduler).</summary>
     public ManualEngineClock(long startTicks = 1) => _now = startTicks;
 
+    /// <inheritdoc/>
     public long NowTicks => Interlocked.Read(ref _now);
 
+    /// <summary>Moves the clock forward by <paramref name="by"/>.</summary>
     public void Advance(TimeSpan by) => Advance(by.TotalSeconds);
 
+    /// <summary>Moves the clock forward by <paramref name="seconds"/> (rounded to stopwatch ticks). Thread-safe.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="seconds"/> is negative.</exception>
     public void Advance(double seconds)
     {
         if (seconds < 0)

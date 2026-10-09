@@ -8,10 +8,11 @@ using System.Numerics;
 namespace Altruist.TwoD.Numerics.Trajectory;
 
 /// <summary>Pure parametric arc math — 2D mirror of
-/// <see cref="Altruist.ThreeD.Numerics.Trajectory.Trajectory"/>. The arc
+/// <see cref="Altruist.ThreeD.Numerics.Trajectory.Trajectory3D"/>. The arc
 /// axis is Y (matching side-view 2D where Y is height); X is linear.
-/// Tuning parameters (<paramref name="riseEndN"/>, <paramref name="hangEndN"/>)
-/// are passed in — Metin2-specific defaults (0.28 / 0.55) live in Valeria.</summary>
+/// Tuning parameters (<c>riseEndN</c>, <c>hangEndN</c>, as fractions of t) are always passed in;
+/// no game-specific defaults live here. Shape differs slightly from the 3D version: quadratic
+/// ease-out / ease-in instead of sine-based, and phase bounds are clamped to [0.01, 0.99].</summary>
 public static class Trajectory2D
 {
     /// <summary>Y offset above the linear lerp at parameter <paramref name="t"/>
@@ -50,7 +51,8 @@ public static class Trajectory2D
     }
 
     /// <summary>Allocation-free polyline emission. Writes <paramref name="dest"/>.Length
-    /// samples evenly spaced over t∈[0,1].</summary>
+    /// samples evenly spaced over t∈[0,1] inclusive. Unlike the 3D version it never throws: an empty
+    /// span is left untouched and a single slot receives <paramref name="start"/>.</summary>
     public static void ParabolicPolyline(Vector2 start, Vector2 end, float peakHeight,
                                          float riseEndN, float hangEndN, Span<Vector2> dest)
     {

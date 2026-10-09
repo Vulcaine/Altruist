@@ -6,27 +6,62 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Combat;
 
+/// <summary>
+/// Routes a combat payload to every matching <see cref="CombatEventAttribute"/> method on
+/// <see cref="CombatHandlerAttribute"/> classes. <see cref="CombatService"/> calls it for every hit, sweep and death;
+/// call it yourself to raise custom <see cref="ICombatEventPayload"/> events through the same handler classes.
+/// </summary>
+/// <remarks>
+/// Registered as a singleton (<c>[Service(typeof(ICombatEventDispatcher))]</c>). Dispatch is synchronous on the
+/// calling thread; handler exceptions are logged, not rethrown. Handler lookup uses exact runtime types
+/// (see <see cref="CombatEventAttribute"/>). For subscribe-to-everything callbacks use the events on
+/// <see cref="ICombatService"/> instead.
+/// </remarks>
 public interface ICombatEventDispatcher
 {
+    /// <summary>
+    /// Invokes single-actor handlers registered for (<c>payload.GetType()</c>, <c>primary.GetType()</c>).
+    /// </summary>
+    /// <typeparam name="TEvent">Payload type.</typeparam>
+    /// <param name="payload">Event data passed as the handler's first argument.</param>
+    /// <param name="primary">The actor the event is about (e.g. the attacker or the victim).</param>
     void Dispatch<TEvent>(TEvent payload, object primary) where TEvent : ICombatEventPayload;
+    /// <summary>
+    /// Invokes single-actor handlers for <paramref name="primary"/>, then two-actor handlers registered for the
+    /// (<paramref name="primary"/>, <paramref name="secondary"/>) runtime-type pair in either order, swapping the
+    /// arguments to fit each handler's declared parameter order. Single-actor handlers for
+    /// <paramref name="secondary"/> are NOT invoked.
+    /// </summary>
+    /// <typeparam name="TEvent">Payload type.</typeparam>
+    /// <param name="payload">Event data passed as the handler's first argument.</param>
+    /// <param name="primary">First actor (e.g. attacker, or victim for deaths).</param>
+    /// <param name="secondary">Second actor (e.g. target, or killer for deaths).</param>
     void Dispatch<TEvent>(TEvent payload, object primary, object secondary) where TEvent : ICombatEventPayload;
 }
 
+/// <summary>
+/// Default <see cref="ICombatEventDispatcher"/>: reads handlers from the static <see cref="CombatEventHandlerRegistry"/>.
+/// Resolve <see cref="ICombatEventDispatcher"/> from DI rather than constructing this directly.
+/// </summary>
 [Service(typeof(ICombatEventDispatcher))]
 public sealed class CombatEventDispatcher : ICombatEventDispatcher
 {
     private readonly ILogger _logger;
 
+    /// <summary>Creates the dispatcher (called by DI).</summary>
+    /// <param name="loggerFactory">Used to log handler failures.</param>
     public CombatEventDispatcher(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<CombatEventDispatcher>();
     }
 
+    /// <inheritdoc/>
     public void Dispatch<TEvent>(TEvent payload, object primary) where TEvent : ICombatEventPayload
     {
         DispatchInternal(payload!, primary, null);
     }
 
+    /// <inheritdoc/>
     public void Dispatch<TEvent>(TEvent payload, object primary, object secondary) where TEvent : ICombatEventPayload
     {
         DispatchInternal(payload!, primary, secondary);
@@ -71,8 +106,29 @@ public sealed class CombatEventDispatcher : ICombatEventDispatcher
     }
 }
 
+/// <summary>
+/// Scans assemblies for <see cref="CombatHandlerAttribute"/> classes and registers their
+/// <see cref="CombatEventAttribute"/> methods in <see cref="CombatEventHandlerRegistry"/> as compiled delegates.
+/// </summary>
+/// <remarks>
+/// Normally invoked once by <see cref="CombatHandlerInitializer"/> at startup; you only call it directly in tests or
+/// custom hosts that bypass the Altruist bootstrap. Calling it twice registers every handler twice (the registry is
+/// static and does not de-duplicate); use <see cref="CombatEventHandlerRegistry.ClearForTests"/> between test runs.
+/// </remarks>
 public static class CombatEventHandlerDiscovery
 {
+    /// <summary>
+    /// Instantiates every <c>[CombatHandler]</c> type found in <paramref name="assemblies"/> and registers its
+    /// <c>[CombatEvent]</c> methods.
+    /// </summary>
+    /// <param name="assemblies">Assemblies to scan.</param>
+    /// <param name="instanceFactory">Returns the handler instance for a type (normally the DI container's
+    /// <c>GetService</c>); when it returns null the type's parameterless constructor is used, and the type is
+    /// skipped with a warning if that also yields null.</param>
+    /// <param name="logger">Receives skip warnings and per-method debug registrations.</param>
+    /// <exception cref="ArgumentNullException">Any argument is null.</exception>
+    /// <exception cref="InvalidOperationException">A <c>[CombatEvent]</c> method has an invalid signature
+    /// (see <see cref="CombatEventAttribute"/>).</exception>
     public static void RegisterCombatHandlers(
         IEnumerable<Assembly> assemblies,
         Func<Type, object?> instanceFactory,
@@ -179,8 +235,24 @@ public static class CombatEventHandlerDiscovery
     }
 }
 
+/// <summary>
+/// Process-wide static table of combat event handlers, keyed by (event type, actor A type, actor B type).
+/// Filled by <see cref="CombatEventHandlerDiscovery"/> and read by <see cref="CombatEventDispatcher"/>.
+/// </summary>
+/// <remarks>
+/// Thread-safe for concurrent registration and lookup. Being static, it is shared by every host in the process;
+/// tests that boot several hosts should call <see cref="ClearForTests"/> to avoid duplicate handlers.
+/// Prefer declaring handlers with <see cref="CombatHandlerAttribute"/>; call <see cref="Register"/> directly only
+/// for handlers built at runtime.
+/// </remarks>
 public static class CombatEventHandlerRegistry
 {
+    /// <summary>One registered handler method.</summary>
+    /// <param name="HandlerType">Declaring <c>[CombatHandler]</c> class.</param>
+    /// <param name="EventType">Payload type from <see cref="CombatEventAttribute.EventType"/>.</param>
+    /// <param name="ParamTypeA">Declared type of the first actor parameter.</param>
+    /// <param name="ParamTypeB">Declared type of the second actor parameter, or null for single-actor handlers.</param>
+    /// <param name="Invoker">Compiled <c>Action&lt;object, object, object?&gt;</c> (payload, a, b) that calls the method.</param>
     public sealed record HandlerDescriptor(
         Type HandlerType,
         Type EventType,
@@ -204,6 +276,12 @@ public static class CombatEventHandlerRegistry
 
     private static readonly ConcurrentDictionary<(Type, Type, Type?), HandlerKey> _keyCache = new();
 
+    /// <summary>Adds a handler under its (event, A, B) key.</summary>
+    /// <param name="descriptor">Handler to add; <see cref="HandlerDescriptor.Invoker"/> must be an
+    /// <c>Action&lt;object, object, object?&gt;</c>.</param>
+    /// <param name="alsoRegisterSymmetric">When true and the handler has two different actor types, also registers it
+    /// under (event, B, A) so it fires regardless of which actor the caller passes first.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is null.</exception>
     public static void Register(HandlerDescriptor descriptor, bool alsoRegisterSymmetric = true)
     {
         if (descriptor is null)
@@ -219,6 +297,10 @@ public static class CombatEventHandlerRegistry
         }
     }
 
+    /// <summary>Returns single-actor handlers registered for exactly (<paramref name="eventType"/>, <paramref name="aType"/>).</summary>
+    /// <param name="eventType">Exact payload runtime type.</param>
+    /// <param name="aType">Exact actor runtime type.</param>
+    /// <returns>The live handler list (do not mutate), or an empty list.</returns>
     public static IReadOnlyList<HandlerDescriptor> GetHandlers(Type eventType, Type aType)
     {
         var key = GetOrCreateKey(eventType, aType, null);
@@ -227,6 +309,11 @@ public static class CombatEventHandlerRegistry
             : Array.Empty<HandlerDescriptor>();
     }
 
+    /// <summary>Returns two-actor handlers registered for exactly (<paramref name="eventType"/>, <paramref name="aType"/>, <paramref name="bType"/>).</summary>
+    /// <param name="eventType">Exact payload runtime type.</param>
+    /// <param name="aType">Exact first actor runtime type.</param>
+    /// <param name="bType">Exact second actor runtime type.</param>
+    /// <returns>The live handler list (do not mutate), or an empty list.</returns>
     public static IReadOnlyList<HandlerDescriptor> GetHandlers(Type eventType, Type aType, Type bType)
     {
         var key = GetOrCreateKey(eventType, aType, bType);
@@ -235,8 +322,10 @@ public static class CombatEventHandlerRegistry
             : Array.Empty<HandlerDescriptor>();
     }
 
+    /// <summary>Total number of registrations across all keys (symmetric registrations count twice).</summary>
     public static int TotalHandlerCount => _handlers.Values.Sum(l => l.Count);
 
+    /// <summary>Removes every registration. Test-only: call between test hosts so handlers are not registered twice.</summary>
     public static void ClearForTests()
     {
         _handlers.Clear();

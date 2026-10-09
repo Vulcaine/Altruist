@@ -38,7 +38,10 @@ public static class Angle
         return Normalize(current + MathF.Sign(diff) * maxDelta);
     }
 
+    /// <summary>Converts <paramref name="degrees"/> to radians (no wrapping; combine with
+    /// <see cref="Normalize"/> if a [-π, π] result is needed).</summary>
     public static float ToRadians(float degrees) => degrees * (MathF.PI / 180f);
+    /// <summary>Converts <paramref name="radians"/> to degrees (no wrapping).</summary>
     public static float ToDegrees(float radians) => radians * (180f / MathF.PI);
 
     // ── Modulo wrap and rates ─────────────────────────────────────────────

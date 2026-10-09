@@ -29,6 +29,9 @@ namespace Altruist.Persistence.Postgres.E2E;
 /// (<c>docker-compose-e2e.yml</c>) that points the server at a separate Postgres
 /// database. Do <em>not</em> enable this flag on a server that shares its database
 /// with production traffic.</para>
+///
+/// <para>Requires a registered <see cref="NpgsqlDataSource"/> (Postgres configuration registers one). For per-test-class
+/// isolated schemas inside the server process use <see cref="SchemaIsolation"/> instead.</para>
 /// </summary>
 [ApiController]
 [Route("/e2e/v1")]
@@ -38,6 +41,10 @@ public sealed class E2ESessionController : ControllerBase
     private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<E2ESessionController> _logger;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="dataSource">Data source the reset runs on.</param>
+    /// <param name="logger">Logger.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public E2ESessionController(NpgsqlDataSource dataSource, ILogger<E2ESessionController> logger)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
@@ -50,6 +57,13 @@ public sealed class E2ESessionController : ControllerBase
     /// at server boot doesn't need to re-execute. Foreign keys are honored via
     /// <c>RESTART IDENTITY CASCADE</c>.
     /// </summary>
+    /// <remarks>
+    /// <c>POST /e2e/v1/reset</c>. Tables are discovered from loaded assemblies (non-abstract classes with
+    /// <see cref="VaultAttribute"/>, deduplicated). All tables are truncated in one statement, so a discovered table
+    /// that does not exist in the database fails the whole request. <c>&lt;table&gt;_history</c> tables are not truncated.
+    /// </remarks>
+    /// <param name="ct">Request cancellation.</param>
+    /// <returns><c>200 OK</c> with <c>{ "truncated": &lt;table count&gt; }</c>.</returns>
     [HttpPost("reset")]
     public async Task<IActionResult> Reset(CancellationToken ct)
     {

@@ -24,6 +24,15 @@ namespace Altruist.Physx.TwoD
     /// Installed by the first <see cref="Box2DWorldEngine2D"/>; idempotent. On a single thread the
     /// pooling behaves exactly as before, so simulations stay bit-identical.
     /// </para>
+    /// <para>
+    /// Mechanism: reflection into Box2DSharp internals (<c>ContactManager._registers</c>,
+    /// <c>ContactRegister</c>, <c>IContactFactory</c>); a Box2DSharp version with another layout makes
+    /// the install fail, leaving the table untouched, <see cref="ParallelWorldsSupported"/> false and
+    /// <see cref="FailureReason"/> set. In that case step worlds from a single thread (or serialize
+    /// their steps). Each thread that steps a world keeps its own factory instances (thread-static);
+    /// they are not released when the thread ends. What is NOT made thread-safe: a single world, its
+    /// bodies and fixtures (one thread at a time), and the static collider/body provider facades.
+    /// </para>
     /// </summary>
     public static class Box2DThreading
     {
@@ -102,7 +111,9 @@ namespace Altruist.Physx.TwoD
         }
     }
 
-    /// <summary>Forwards a Box2D contact factory's calls to the calling thread's own instance of it.</summary>
+    /// <summary>Forwards a Box2D contact factory's calls to the calling thread's own instance of it.
+    /// Infrastructure for <see cref="Box2DThreading"/> (public only because <see cref="DispatchProxy"/>
+    /// requires it); not meant to be used directly.</summary>
     public class PerThreadContactFactory : DispatchProxy
     {
         [ThreadStatic]
@@ -110,6 +121,10 @@ namespace Altruist.Physx.TwoD
 
         internal Type FactoryType = null!;
 
+        /// <summary>Invokes <paramref name="targetMethod"/> on the calling thread's factory of
+        /// the proxied type (created on first use), rethrowing the inner exception unwrapped.</summary>
+        /// <param name="targetMethod">The factory method being called.</param>
+        /// <param name="args">Its arguments.</param>
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             var factories = _factories ??= new Dictionary<Type, object>();

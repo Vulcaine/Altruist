@@ -12,23 +12,40 @@ using Altruist.Persistence;
 
 namespace Altruist.Migrations;
 
+/// <summary>
+/// Reads the current physical schema (tables, columns, keys, indexes, foreign keys) so <see cref="IMigrationPlanner"/>
+/// can diff it against the vault models. Provider-specific (Postgres: <c>PgSchemaInspector</c>); implement only when
+/// adding a database provider, usually by deriving from <see cref="AbstractSchemaInspector"/>.
+/// </summary>
 public interface ISchemaInspector
 {
+    /// <summary>Loads the current model of one schema.</summary>
+    /// <param name="schema">Schema name; normalized (trimmed, lower-cased, blank means the provider default).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The schema's tables; empty when the schema has none.</returns>
     Task<DatabaseModel> GetCurrentModelAsync(string schema, CancellationToken ct = default);
 }
 
+/// <summary>Base <see cref="ISchemaInspector"/>: providers implement <see cref="LoadSchemaAsync"/>; this class assembles the <see cref="DatabaseModel"/>.</summary>
 public abstract class AbstractSchemaInspector : ISchemaInspector
 {
+    /// <summary>Provider used to query the catalog.</summary>
     protected readonly ISqlDatabaseProvider _provider;
 
+    /// <summary>Creates the inspector.</summary>
+    /// <param name="provider">Provider to query.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="provider"/> is null.</exception>
     protected AbstractSchemaInspector(ISqlDatabaseProvider provider)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
     }
 
+    /// <summary>Raw catalog data for one schema, grouped by table name, returned by <see cref="LoadSchemaAsync"/>.</summary>
     protected readonly struct SchemaSnapshot
     {
+        /// <summary>tableName -&gt; columnName -&gt; column. Tables absent here are not reported.</summary>
         public readonly Dictionary<string, Dictionary<string, ColumnModel>> ColumnsByTable;
+        /// <summary>tableName -&gt; primary key columns in order.</summary>
         public readonly Dictionary<string, List<string>> PrimaryKeysByTable;
 
         /// <summary>
@@ -36,9 +53,17 @@ public abstract class AbstractSchemaInspector : ISchemaInspector
         /// </summary>
         public readonly Dictionary<string, Dictionary<string, UniqueConstraintModel>> UniqueConstraintsByTable;
 
+        /// <summary>tableName -&gt; indexName -&gt; index.</summary>
         public readonly Dictionary<string, Dictionary<string, IndexModel>> IndexesByTable;
+        /// <summary>tableName -&gt; foreign keys.</summary>
         public readonly Dictionary<string, List<ForeignKeyModel>> ForeignKeysByTable;
 
+        /// <summary>Creates the snapshot; every argument is required.</summary>
+        /// <param name="columnsByTable">Columns per table.</param>
+        /// <param name="primaryKeysByTable">Primary key columns per table.</param>
+        /// <param name="uniqueConstraintsByTable">Unique constraints per table.</param>
+        /// <param name="indexesByTable">Indexes per table.</param>
+        /// <param name="foreignKeysByTable">Foreign keys per table.</param>
         public SchemaSnapshot(
             Dictionary<string, Dictionary<string, ColumnModel>> columnsByTable,
             Dictionary<string, List<string>> primaryKeysByTable,
@@ -54,6 +79,7 @@ public abstract class AbstractSchemaInspector : ISchemaInspector
         }
     }
 
+    /// <inheritdoc/>
     public async Task<DatabaseModel> GetCurrentModelAsync(string schema, CancellationToken ct = default)
     {
         if (schema is null)

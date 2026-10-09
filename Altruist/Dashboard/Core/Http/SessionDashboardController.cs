@@ -10,8 +10,15 @@ namespace Altruist.Dashboard
 {
     /// <summary>
     /// Dashboard controller exposing session / room information
-    /// for the live transport (WebSocket / connections).
+    /// for the live transport (WebSocket / connections), route <c>/dashboard/v1/sessions</c>.
+    /// Can list connections (with remote IP addresses) and forcibly disconnect clients or delete rooms.
     /// </summary>
+    /// <remarks>
+    /// Unlike the other dashboard controllers this one has no <c>[ConditionalOnConfig("altruist:dashboard:enabled")]</c>
+    /// gate, so it is mapped whenever the <c>Altruist.Dashboard</c> assembly is loaded and MVC discovers it, even with
+    /// the dashboard disabled. No authentication is applied. Requires <see cref="IConnectionManager"/> and
+    /// <see cref="ISocketManager"/> in DI.
+    /// </remarks>
     [ApiController]
     [Route("/dashboard/v1/sessions")]
     public sealed class SessionDashboardController : ControllerBase
@@ -20,6 +27,10 @@ namespace Altruist.Dashboard
         private readonly ISocketManager _socketManager;
         private readonly ILogger<SessionDashboardController> _logger;
 
+        /// <summary>Creates the controller.</summary>
+        /// <param name="connectionManager">Performs engine-aware disconnects.</param>
+        /// <param name="socketManager">Source of rooms and connections.</param>
+        /// <param name="logger">Logs dashboard-initiated disconnects.</param>
         public SessionDashboardController(
             IConnectionManager connectionManager,
             ISocketManager socketManager,
@@ -31,7 +42,8 @@ namespace Altruist.Dashboard
         }
 
         /// <summary>
-        /// Get all rooms and their active connections.
+        /// <c>GET /dashboard/v1/sessions</c>: 200 with every room (ordered by id, case-insensitive) and its connection ids
+        /// as <see cref="RoomSessionDto"/> items.
         /// </summary>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<RoomSessionDto>>> GetSessions()
@@ -68,7 +80,9 @@ namespace Altruist.Dashboard
         }
 
         /// <summary>
-        /// Get all active connections across the server, with their associated room (if any).
+        /// <c>GET /dashboard/v1/sessions/connections</c>: 200 with every active connection (ordered by id) as
+        /// <see cref="ConnectionWithRoomDto"/>, including its remote address and room. A connection in several rooms
+        /// is reported with the last room enumerated.
         /// </summary>
         [HttpGet("connections")]
         public async Task<ActionResult<IEnumerable<ConnectionWithRoomDto>>> GetAllConnections()
@@ -118,9 +132,10 @@ namespace Altruist.Dashboard
         }
 
         /// <summary>
-        /// Close a specific client session (connection).
-        /// This will disconnect the client and remove it from any rooms.
+        /// <c>DELETE /dashboard/v1/sessions/connections/{connectionId}</c>: disconnects the client (engine-aware) and
+        /// removes it from its rooms. 204 on completion (also for an unknown id), 400 when the id is blank.
         /// </summary>
+        /// <param name="connectionId">Connection to close.</param>
         [HttpDelete("connections/{connectionId}")]
         public async Task<IActionResult> CloseSession(string connectionId)
         {
@@ -135,8 +150,10 @@ namespace Altruist.Dashboard
         }
 
         /// <summary>
-        /// Delete a room and disconnect all its connections.
+        /// <c>DELETE /dashboard/v1/sessions/rooms/{roomId}</c>: disconnects every connection in the room (errors are
+        /// logged and skipped), then deletes the room. 204 on completion, 400 when the id is blank.
         /// </summary>
+        /// <param name="roomId">Room to delete.</param>
         [HttpDelete("rooms/{roomId}")]
         public async Task<IActionResult> DeleteRoom(string roomId)
         {
@@ -168,9 +185,11 @@ namespace Altruist.Dashboard
         }
 
         /// <summary>
-        /// Remove a connection from a specific room.
-        /// For now we treat this as a full disconnect of that connection.
+        /// <c>DELETE /dashboard/v1/sessions/rooms/{roomId}/connections/{connectionId}</c>: currently a full disconnect of
+        /// the connection (not just leaving the room). 204 on success, 404 when it is not in that room, 400 when an id is blank.
         /// </summary>
+        /// <param name="roomId">Room the connection must belong to.</param>
+        /// <param name="connectionId">Connection to disconnect.</param>
         [HttpDelete("rooms/{roomId}/connections/{connectionId}")]
         public async Task<IActionResult> RemoveConnectionFromRoom(string roomId, string connectionId)
         {
@@ -196,13 +215,18 @@ namespace Altruist.Dashboard
     /// </summary>
     public sealed class RoomSessionDto
     {
+        /// <summary>Room id.</summary>
         public string RoomId { get; set; } = string.Empty;
+        /// <summary>Number of connections in the room.</summary>
         public int ConnectionCount { get; set; }
+        /// <summary>Connections in the room, ordered by id.</summary>
         public IEnumerable<ConnectionDto> Connections { get; set; } = Array.Empty<ConnectionDto>();
     }
 
+    /// <summary>A connection id inside a <see cref="RoomSessionDto"/>.</summary>
     public sealed class ConnectionDto
     {
+        /// <summary>Connection id.</summary>
         public string ConnectionId { get; set; } = string.Empty;
     }
 
@@ -212,8 +236,11 @@ namespace Altruist.Dashboard
     /// </summary>
     public sealed class ConnectionWithRoomDto
     {
+        /// <summary>Connection id.</summary>
         public string ConnectionId { get; set; } = string.Empty;
+        /// <summary>Room the connection is in, or null.</summary>
         public string? RoomId { get; set; }
+        /// <summary>Remote address of the connection, if known.</summary>
         public string? IpAddress { get; set; }
     }
 

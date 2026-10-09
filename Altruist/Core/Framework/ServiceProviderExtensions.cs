@@ -19,8 +19,40 @@ using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.DependencyInjection;
 
+/// <summary>
+/// Extension helpers on <see cref="IServiceProvider"/>.
+/// </summary>
 public static class IServiceProviderExtensions
 {
+    /// <summary>
+    /// Resolves every registered service whose instance is assignable to <typeparamref name="TType"/>, regardless
+    /// of the service type it was registered under (e.g. <c>GetAll&lt;object&gt;()</c> resolves the whole container).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Use it for framework-style scans (e.g. finding attribute-annotated methods on all services). To get the
+    /// implementations registered for one service type, use the standard
+    /// <c>provider.GetServices&lt;T&gt;()</c> instead: it is cheaper, typed and does not rely on reflection.
+    /// </para>
+    /// <para>
+    /// Works by reading the container's private service descriptors through reflection (Microsoft DI internals,
+    /// also through wrapper providers). If they cannot be found, the result is empty. Every descriptor is resolved
+    /// via <c>GetService(serviceType)</c>, so this CONSTRUCTS services as a side effect (singletons are created,
+    /// transients are new instances each call); services that throw while resolving are silently skipped, and
+    /// open-generic registrations are skipped. A service registered under several types may appear more than once.
+    /// Call it on the root provider at startup, not in hot paths.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TType">Type the resolved instances must be assignable to.</typeparam>
+    /// <param name="provider">The service provider to scan.</param>
+    /// <returns>A materialized list of the successfully resolved instances.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="provider"/> is null.</exception>
+    /// <example>
+    /// <code>
+    /// foreach (var svc in serviceProvider.GetAll&lt;object&gt;())
+    ///     Inspect(svc.GetType());
+    /// </code>
+    /// </example>
     public static IEnumerable<TType> GetAll<TType>(this IServiceProvider provider)
     {
         if (provider is null)

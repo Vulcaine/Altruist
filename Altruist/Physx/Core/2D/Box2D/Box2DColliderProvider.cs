@@ -18,6 +18,7 @@ namespace Altruist.Physx.TwoD;
 [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
 public sealed class Box2DPhysxColliderApiProvider2D : IPhysxColliderApiProvider2D
 {
+    /// <inheritdoc/>
     public IPhysxCollider2D CreateCollider(in PhysxCollider2DParams p)
     {
         return new Collider2DAdapter(

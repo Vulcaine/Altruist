@@ -13,6 +13,11 @@ namespace Altruist.Gaming.Flow;
 /// expression as the inline form, so a timer ticked here holds the same bits. A timer that is not
 /// running (0) stays 0. <see cref="TickRunning"/> only touches a running timer (the
 /// <c>if (t &gt; 0) { t = MathF.Max(0, t - dt); if (t == 0) ... }</c> form).</para>
+///
+/// <para>Choosing: use these helpers for a few timers stored as individual fields on an entity
+/// (they keep the field a plain <c>float</c>, cheap to snapshot); use <see cref="TimerSet"/> for
+/// an indexed group of timers ticked together (per-slot or per-pad cooldowns) that should report
+/// which ones expired this tick. Units are whatever <c>dt</c> is in (normally seconds).</para>
 /// </summary>
 public static class Countdown
 {
@@ -46,6 +51,9 @@ public static class Countdown
 /// every timer with <c>MathF.Max(0, t - dt)</c> in index order (exactly the inline loop) and
 /// records which ran out in this tick (<see cref="Expired"/>). Optional names map to indices at
 /// setup. No allocation per tick.
+///
+/// <para>Choosing: use this for a fixed, indexable group of timers; for one or two timers kept
+/// in fields use the <see cref="Countdown"/> helpers instead.</para>
 /// </summary>
 public sealed class TimerSet
 {

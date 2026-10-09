@@ -13,12 +13,96 @@ using System.Linq.Expressions;
 namespace Altruist.Persistence.Postgres;
 
 /// <summary>
-/// PostgreSQL vault with a fluent API similar to the CQL vault.
-/// SQL-generic behavior lives in SqlVault; PgVault provides translation + Postgres dialect SQL.
+/// PostgreSQL implementation of <see cref="IVault{TVaultModel}"/>: a typed, immutable, fluent query and
+/// save API over one <c>[Vault]</c> table. Provider-agnostic behaviour (query state, select building,
+/// batching, history, version-based optimistic concurrency) lives in <see cref="SqlVault{TVaultModel}"/>;
+/// this class adds the Postgres expression translation and the Postgres <c>INSERT ... ON CONFLICT</c> upsert dialect.
 /// </summary>
+/// <remarks>
+/// <para><b>Which Postgres API to use</b></para>
+/// <list type="bullet">
+/// <item><description><b>Vault (this type, injected as <c>IVault&lt;TModel&gt;</c>)</b>: single-table CRUD on a
+/// <c>[Vault]</c> model, simple filters, ordering and paging, optimistic-concurrency saves and optional history.
+/// The default choice.</description></item>
+/// <item><description><b>Prefabs (<see cref="IPrefabs"/> / <see cref="IPrefabQuery{TPrefab}"/>)</b>: an aggregate
+/// root plus its component rows from other vault tables, loaded together (eager <c>Include</c>) and saved together
+/// in one transaction.</description></item>
+/// <item><description><b>Raw SQL (<see cref="ISqlDatabaseProvider"/>, e.g. <see cref="PgSqlDbProvider"/>)</b>:
+/// anything the translators cannot express (joins without the querying layer, aggregates, <c>LIKE</c>, <c>IN</c>,
+/// bulk <c>UPDATE</c>, DDL). Use <c>?</c> placeholders with a parameter list.</description></item>
+/// </list>
+/// <para><b>Supported LINQ shapes</b> (translated by an internal translator; values are evaluated client-side and
+/// inlined as escaped SQL literals, not bound as parameters):</para>
+/// <list type="bullet">
+/// <item><description><c>Where</c>: comparisons (<c>==</c>, <c>!=</c>, <c>&lt;</c>, <c>&lt;=</c>, <c>&gt;</c>,
+/// <c>&gt;=</c>) between a model property and a value (either side; captured variables and computed
+/// expressions are evaluated once at translation time), combined with <c>&amp;&amp;</c> / <c>||</c>.
+/// <c>x.Prop == null</c> becomes <c>IS NULL</c>, any other operator against null becomes <c>IS NOT NULL</c>.
+/// Anything else (a bare bool property, <c>!</c>, method calls such as <c>Contains</c>/<c>StartsWith</c>,
+/// arithmetic on the column) throws <see cref="NotSupportedException"/>. Comparing two properties of the
+/// same row is not supported either (the value side cannot be evaluated and throws).</description></item>
+/// <item><description><c>OrderBy</c>/<c>OrderByDescending</c>: a single property access <c>x =&gt; x.Prop</c>;
+/// anything else (including a boxing conversion) throws <see cref="NotSupportedException"/>. Multiple calls
+/// append further sort keys.</description></item>
+/// <item><description><c>SelectAsync</c>: a <c>new { ... }</c>-style <see cref="System.Linq.Expressions.NewExpression"/>
+/// with member mappings; each member name is mapped to its column. Member-init syntax
+/// (<c>new T { A = x.A }</c>) throws <see cref="NotSupportedException"/>.</description></item>
+/// </list>
+/// <para>
+/// Column names come from the model's <see cref="VaultDocument"/> (property → column map); unknown property
+/// names fall back to camelCase. Nested member access (<c>x.A.B</c>) resolves only the last member name.
+/// </para>
+/// <para>
+/// Each fluent call returns a new vault instance; the injected singleton is never mutated, so it is safe to
+/// share across threads. Every terminal call opens a pooled connection, or joins the ambient transaction
+/// (see <see cref="TransactionalDecorator{T}"/> and <see cref="ISqlTransactionProvider"/>).
+/// </para>
+/// <para>
+/// <b>Saving</b>: <c>SaveAsync</c>/<c>SaveBatchAsync</c> call <see cref="IVaultModel.OnSave"/> (assigns id,
+/// timestamp, type), then upsert. The conflict target is the first <c>[VaultUniqueKey]</c> when one exists,
+/// otherwise the primary key. An update only applies when the stored <c>version</c> equals the entity's
+/// <c>Version</c>, and bumps it by one; a mismatch throws <see cref="OptimisticConcurrencyException"/>. The
+/// batch form is atomic: one mismatching row aborts the whole batch.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// [Vault("score", StoreHistory: true)]
+/// public class ScoreVault : VaultModel
+/// {
+///     public string OwnerId { get; set; } = "";
+///     public int Points { get; set; }
+/// }
+///
+/// public sealed class ScoreService(IVault&lt;ScoreVault&gt; scores)
+/// {
+///     public async Task&lt;List&lt;ScoreVault&gt;&gt; TopAsync(int min, CancellationToken ct)
+///         =&gt; await scores.Where(s =&gt; s.Points &gt;= min)
+///                         .OrderByDescending(s =&gt; s.Points)
+///                         .Take(10)
+///                         .ToListAsync(ct);
+///
+///     public async Task AddAsync(string owner, int points, CancellationToken ct)
+///     {
+///         var row = new ScoreVault { OwnerId = owner, Points = points };
+///         await scores.SaveAsync(row, saveHistory: true, ct: ct); // row.StorageId / Version are filled in
+///     }
+///
+///     public Task&lt;List&lt;ScoreVault&gt;&gt; HistoryAsync(string owner, DateTime from, DateTime to)
+///         =&gt; scores.History.Where(s =&gt; s.OwnerId == owner).ToListAsync(from, to);
+/// }
+/// </code>
+/// </example>
 public class PgVault<TVaultModel> : SqlVault<TVaultModel>
     where TVaultModel : class, IVaultModel
 {
+    /// <summary>
+    /// Creates a vault with an empty query. Normally created by <see cref="PostgresServiceFactory"/>;
+    /// inject <c>IVault&lt;TModel&gt;</c> instead of constructing one.
+    /// </summary>
+    /// <param name="databaseProvider">Provider that executes the generated SQL.</param>
+    /// <param name="schema">Postgres schema (keyspace) holding the table.</param>
+    /// <param name="document">Table metadata (name, columns, keys) for <typeparamref name="TVaultModel"/>.</param>
     public PgVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
@@ -27,6 +111,11 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
     {
     }
 
+    /// <summary>Creates a vault carrying an existing query state (used by the fluent operators).</summary>
+    /// <param name="databaseProvider">Provider that executes the generated SQL.</param>
+    /// <param name="schema">Postgres schema (keyspace) holding the table.</param>
+    /// <param name="document">Table metadata for <typeparamref name="TVaultModel"/>.</param>
+    /// <param name="state">Accumulated WHERE / ORDER BY / LIMIT / OFFSET / SELECT fragments.</param>
     protected PgVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
@@ -36,31 +125,40 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
     {
     }
 
+    /// <inheritdoc/>
     protected override SqlVault<TVaultModel> Create(QueryState state)
         => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, state);
 
+    /// <inheritdoc/>
     protected override IHistoricalVault<TVaultModel> CreateHistoryVault()
         => new PgHistoricalVault<TVaultModel>(this);
 
     // ------------------------ Translation ------------------------
 
+    /// <inheritdoc/>
     protected override string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate)
         => PgQueryTranslator.Where(predicate, VaultDocument);
 
+    /// <inheritdoc/>
     protected override string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
         => PgQueryTranslator.OrderBy(keySelector, VaultDocument);
 
+    /// <inheritdoc/>
+    /// <remarks>Returns the same fragment as the ascending form; the base vault appends <c>DESC</c>.</remarks>
     protected override string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
         => PgQueryTranslator.OrderBy(keySelector, VaultDocument);
 
+    /// <inheritdoc/>
     protected override IEnumerable<string> TranslateSelect<TResult>(Expression<Func<TVaultModel, TResult>> selector)
         => PgQueryTranslator.Select(selector, VaultDocument);
 
+    /// <inheritdoc/>
     protected override string QuoteIdent(string ident)
         => $"\"{ident.Replace("\"", "\"\"")}\"";
 
     // ------------------------ Upsert dialect (Versioned) ------------------------
 
+    /// <inheritdoc/>
     protected override string BuildUpsertSql_VersionedReturning(
         string qualifiedTable,
         IReadOnlyList<string> columns,
@@ -93,6 +191,14 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
             $"RETURNING {alias}.\"{storageIdCol}\" AS \"{StorageIdLogical}\", {alias}.\"{versionCol}\" AS \"{VersionLogical}\"";
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Single statement: locks the existing rows matching the conflict key (<c>FOR UPDATE</c>), and if any of them
+    /// has a different version inserts nothing, so fewer rows are returned than were sent and the caller throws
+    /// <see cref="OptimisticConcurrencyException"/>. Throws <see cref="ArgumentOutOfRangeException"/> for
+    /// <paramref name="rowCount"/> &lt;= 0 and <see cref="ArgumentException"/> for an empty
+    /// <paramref name="conflictKeyColumns"/>.
+    /// </remarks>
     protected override string BuildBatchUpsertSql_VersionedReturning(
         string qualifiedTable,
         IReadOnlyList<string> columns,

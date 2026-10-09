@@ -34,6 +34,13 @@ namespace Altruist.Persistence.Postgres;
 /// tests.</item>
 /// </list>
 /// </para>
+///
+/// <para><b>Test infrastructure only.</b> Every call drops/creates schemas with DDL on its own connection; never
+/// point it at a schema that holds real data. Table discovery scans all loaded assemblies for non-abstract classes
+/// carrying <see cref="VaultAttribute"/> (schema = its <c>Keyspace</c>, or <c>public</c> when empty; table = its
+/// <c>Name</c>). All tables land in the one target schema, so two vaults with the same table name in different
+/// keyspaces collide, and <c>&lt;table&gt;_history</c> tables are not cloned. Not to be confused with the
+/// E2E reset endpoint (<see cref="E2E.E2ESessionController"/>), which truncates the real tables instead.</para>
 /// </summary>
 public static class SchemaIsolation
 {
@@ -41,6 +48,9 @@ public static class SchemaIsolation
     /// Compute a per-test-class schema name. Lowercased, alphanumeric +
     /// underscores only, prefixed with <c>test_</c> to avoid colliding with prod names.
     /// </summary>
+    /// <param name="testClass">The test class; only its simple <see cref="System.Reflection.MemberInfo.Name"/> is used,
+    /// so same-named classes in different namespaces share a schema.</param>
+    /// <returns>e.g. <c>test_myfixture</c> (any char other than a letter, digit or underscore becomes <c>_</c>).</returns>
     public static string SchemaNameFor(Type testClass)
     {
         var raw = testClass.Name.ToLowerInvariant();
@@ -53,6 +63,13 @@ public static class SchemaIsolation
     /// discovered <c>[Vault]</c> table from its production schema into the target
     /// schema using <c>CREATE TABLE schema.table (LIKE source.table INCLUDING ALL)</c>.
     /// </summary>
+    /// <remarks>
+    /// Destructive for <paramref name="targetSchema"/> (<c>DROP SCHEMA ... CASCADE</c>). The source tables must already
+    /// exist (i.e. normal startup migration has run); a missing source table throws a <see cref="PostgresException"/>.
+    /// Foreign keys are not copied by <c>LIKE ... INCLUDING ALL</c>.
+    /// </remarks>
+    /// <param name="dataSource">Data source used to open one connection for all statements.</param>
+    /// <param name="targetSchema">Schema to recreate (quoted as-is; pass a trusted name such as <see cref="SchemaNameFor"/>).</param>
     public static async Task EnsureFreshSchemaAsync(NpgsqlDataSource dataSource, string targetSchema)
     {
         var vaults = DiscoverVaultTables();
@@ -70,7 +87,9 @@ public static class SchemaIsolation
         }
     }
 
-    /// <summary>Drop the target schema and everything in it.</summary>
+    /// <summary>Drop the target schema and everything in it (<c>DROP SCHEMA IF EXISTS ... CASCADE</c>).</summary>
+    /// <param name="dataSource">Data source used to open the connection.</param>
+    /// <param name="targetSchema">Schema to drop.</param>
     public static async Task DropSchemaAsync(NpgsqlDataSource dataSource, string targetSchema)
     {
         await using var conn = await dataSource.OpenConnectionAsync();

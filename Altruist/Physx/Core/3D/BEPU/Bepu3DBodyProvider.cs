@@ -11,12 +11,25 @@ using BepuPhysics.Collidables;
 
 namespace Altruist.Physx.ThreeD
 {
+    /// <summary>
+    /// BEPU implementation of <see cref="IPhysxBodyApiProvider3D"/>. Registered in DI as a singleton <see cref="IPhysxBodyApiProvider3D"/>
+    /// when the config key <c>altruist:environment:mode</c> equals <c>3D</c>. Works only with <see cref="BepuWorldEngine3D"/>
+    /// engines and the body adapters it creates.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CreateBody"/> inserts the body into the BEPU simulation immediately (under the engine lock) with a default
+    /// box shape sized from the descriptor (<c>Transform.Size</c> = half extents). Static descriptors become BEPU statics;
+    /// kinematic ones (flag or type) get infinite mass and are not affected by gravity; dynamic ones use the descriptor
+    /// mass (1 if non-positive) with box inertia. Bodies use a 0.1 speculative margin and a 0.01 sleep threshold.
+    /// </remarks>
     [Service(typeof(IPhysxBodyApiProvider3D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     public sealed class BepuPhysxBodyApiProvider3D : IPhysxBodyApiProvider3D
     {
+        /// <summary>Creates the stateless provider.</summary>
         public BepuPhysxBodyApiProvider3D() { }
 
+        /// <inheritdoc/>
         public IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, in PhysxBody3DDesc desc)
         {
             if (engine is not BepuWorldEngine3D engine3D)
@@ -96,6 +109,7 @@ namespace Altruist.Physx.ThreeD
             }
         }
 
+        /// <inheritdoc/>
         public void AddCollider(IPhysxWorldEngine3D engine, IPhysxBody3D body, IPhysxCollider3D collider)
         {
             if (engine is not BepuWorldEngine3D)
@@ -107,6 +121,14 @@ namespace Altruist.Physx.ThreeD
             adapter.AddCollider(collider);
         }
 
+        /// <summary>
+        /// Searches the engine's registered <see cref="BepuWorldEngine3D.Bodies"/> for the body holding this exact collider
+        /// instance and detaches it (restoring the descriptor's original shape). Bodies never passed to
+        /// <see cref="BepuWorldEngine3D.AddBody"/> are not searched.
+        /// </summary>
+        /// <param name="engine">BEPU engine.</param>
+        /// <param name="collider">Collider to detach.</param>
+        /// <exception cref="InvalidOperationException"><paramref name="engine"/> is not a <see cref="BepuWorldEngine3D"/>.</exception>
         public void RemoveCollider(IPhysxWorldEngine3D engine, IPhysxCollider3D collider)
         {
             if (engine is not BepuWorldEngine3D engine3D)

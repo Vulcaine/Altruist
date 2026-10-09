@@ -9,8 +9,8 @@ using Altruist.TwoD.Numerics;
 
 namespace Altruist.Physx.TwoD;
 
-/// <summary>Physics layer. One body (the striker: a bat, a kicker, a vehicle) hitting another (the
-/// target: a ball, a puck) at a contact point, captured before the solver changes the velocities:
+/// <summary>Physics layer. One body (the striker: a paddle, a kicker, a moving body) hitting another (the
+/// target: a projectile, a free body) at a contact point, captured before the solver changes the velocities:
 /// how fast they close in, how hard the striker itself moves into the target, and the motion along
 /// the contact surface on both sides (slip, carry, spin). Build the response with
 /// <see cref="Frame"/> (<c>target.SetVelocityInFrame(impact.Frame, outN, outT)</c>,
@@ -45,6 +45,14 @@ public readonly struct ContactImpact2D
     /// <c>Velocity2D.PointVelocity(StrikerVelocity, StrikerSpin, Point - StrikerCenter)</c>.</summary>
     public Vector2 StrikerPointVelocity { get; }
 
+    /// <summary>Builds an impact from raw values; <see cref="StrikerPointVelocity"/> is computed here.
+    /// Prefer <see cref="Capture"/> when you have the bodies.</summary>
+    /// <param name="point">Contact point (world).</param>
+    /// <param name="normal">Unit normal from striker to target.</param>
+    /// <param name="strikerVelocity">Striker linear velocity at its center of mass.</param>
+    /// <param name="strikerSpin">Striker angular velocity (rad/s, counter-clockwise).</param>
+    /// <param name="strikerCenter">Striker center of mass (world).</param>
+    /// <param name="targetVelocity">Target linear velocity.</param>
     public ContactImpact2D(Vector2 point, Vector2 normal, Vector2 strikerVelocity, float strikerSpin, Vector2 strikerCenter,
                            Vector2 targetVelocity)
     {
@@ -57,7 +65,9 @@ public readonly struct ContactImpact2D
         StrikerPointVelocity = Velocity2D.PointVelocity(strikerVelocity, strikerSpin, point - strikerCenter);
     }
 
-    /// <summary>Captures the bodies' motion at a contact (call it in pre-solve):
+    /// <summary>Captures the bodies' motion at a contact (call it in pre-solve, e.g. from a
+    /// <see cref="ContactRouter2D.OnPreSolve{TA,TB}"/> handler with <c>c.GetWorldManifold()</c>'s
+    /// midpoint and normal oriented striker → target):
     /// <c>new(point, normal, striker.LinearVelocity, striker.AngularVelocityZ, striker.WorldCenter, target.LinearVelocity)</c>.</summary>
     public static ContactImpact2D Capture(Vector2 point, Vector2 normal, IPhysxBody2D striker, IPhysxBody2D target) =>
         new(point, normal, striker.LinearVelocity, striker.AngularVelocityZ, striker.WorldCenter, target.LinearVelocity);

@@ -25,6 +25,16 @@ using Npgsql;
 
 namespace Altruist.Dashboard;
 
+/// <summary>
+/// Dashboard API for database vaults (route <c>/dashboard/v1/vaults</c>): lists registered vault models with their
+/// columns, pages through rows, edits rows by primary key, and runs raw SQL against SQL-backed (PostgreSQL) vaults.
+/// </summary>
+/// <remarks>
+/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication is applied. The query endpoint
+/// executes any SQL text it receives (including DDL and DELETE) on the app's <c>NpgsqlDataSource</c>; never expose the
+/// dashboard to untrusted networks. Row reads and edits go through the registered <see cref="IVault{T}"/>; an unknown
+/// <c>typeKey</c> surfaces as the exception thrown by <see cref="VaultRegistry"/> (500).
+/// </remarks>
 [ApiController]
 [Route("/dashboard/v1/vaults")]
 [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
@@ -33,6 +43,8 @@ public sealed class VaultDashboardController : ControllerBase
 {
     private readonly IServiceProvider _serviceProvider;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="serviceProvider">Resolves <see cref="IVault{T}"/> instances and the PostgreSQL data source.</param>
     public VaultDashboardController(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
@@ -40,65 +52,103 @@ public sealed class VaultDashboardController : ControllerBase
 
     // ---------------- DTOs ----------------
 
+    /// <summary>Body of <c>POST /dashboard/v1/vaults/{typeKey}/batch-update</c>.</summary>
     public sealed class VaultBatchUpdateRequestDto
     {
+        /// <summary>Vault type key (the route value is what is used).</summary>
         public string TypeKey { get; set; } = default!;
 
         // Each item: { fieldName -> newValue }
         // MUST include all primary key fields
+        /// <summary>Rows as field name to new value; each must include every primary-key field.</summary>
         public List<Dictionary<string, object?>> Items { get; set; } = new();
     }
 
+    /// <summary>Response of the batch-update endpoint.</summary>
     public sealed class VaultBatchUpdateResultDto
     {
+        /// <summary>Number of rows passed to <c>UpdateAsync</c>.</summary>
         public int Updated { get; set; }
     }
 
+    /// <summary>One column of a vault model.</summary>
     public sealed class VaultColumnDto
     {
+        /// <summary>Model property name.</summary>
         public string FieldName { get; set; } = default!;
+        /// <summary>Physical column name.</summary>
         public string ColumnName { get; set; } = default!;
+        /// <summary>CLR type name of the field.</summary>
         public string ClrType { get; set; } = default!;
+        /// <summary>Whether the column is nullable.</summary>
         public bool IsNullable { get; set; }
+        /// <summary>Part of the primary key.</summary>
         public bool IsPrimaryKey { get; set; }
+        /// <summary>Has an index.</summary>
         public bool IsIndexed { get; set; }
+        /// <summary>Part of a unique constraint.</summary>
         public bool IsUnique { get; set; }
+        /// <summary>Is a foreign key.</summary>
         public bool IsForeignKey { get; set; }
     }
 
+    /// <summary>One registered vault model, as listed by <c>GET /dashboard/v1/vaults</c>.</summary>
     public sealed class VaultDefinitionDto
     {
+        /// <summary>Registry key used in the routes.</summary>
         public string TypeKey { get; set; } = default!;
+        /// <summary>Assembly-qualified model type name.</summary>
         public string ClrType { get; set; } = default!;
+        /// <summary>Model type name without namespace or generic arity.</summary>
         public string ClrTypeShort { get; set; } = default!;
+        /// <summary>Keyspace / schema.</summary>
         public string Keyspace { get; set; } = default!;
+        /// <summary>Table (document) name.</summary>
         public string TableName { get; set; } = default!;
+        /// <summary>Whether history rows are stored.</summary>
         public bool StoreHistory { get; set; }
+        /// <summary>Whether the query endpoint can be used (SQL-backed vault).</summary>
         public bool SupportsSqlQuery { get; set; }
+        /// <summary>Model columns.</summary>
         public IReadOnlyList<VaultColumnDto> Columns { get; set; } = Array.Empty<VaultColumnDto>();
     }
 
+    /// <summary>Response of <c>GET /dashboard/v1/vaults/{typeKey}/items</c>.</summary>
     public sealed class VaultItemPageDto
     {
+        /// <summary>Vault type key.</summary>
         public string TypeKey { get; set; } = default!;
+        /// <summary>Effective skip.</summary>
         public int Skip { get; set; }
+        /// <summary>Effective page size.</summary>
         public int Take { get; set; }
+        /// <summary>Total row count.</summary>
         public long Total { get; set; }
+        /// <summary>Field names, in model order.</summary>
         public IReadOnlyList<string> Fields { get; set; } = Array.Empty<string>();
+        /// <summary>Rows as field name to value.</summary>
         public List<Dictionary<string, object?>> Items { get; set; } = new();
     }
 
+    /// <summary>Body of <c>POST /dashboard/v1/vaults/{typeKey}/query</c>.</summary>
     public sealed class VaultQueryRequestDto
     {
+        /// <summary>SQL to execute.</summary>
         public string Sql { get; set; } = string.Empty;
     }
 
+    /// <summary>Response of <c>POST /dashboard/v1/vaults/{typeKey}/query</c>.</summary>
     public sealed class VaultQueryResultDto
     {
+        /// <summary>Whether the statement was run as a query returning rows.</summary>
         public bool HasRowset { get; set; }
+        /// <summary>Lower-case first keyword (<c>select</c>, <c>update</c>, ...), or <c>statement</c>.</summary>
         public string StatementKind { get; set; } = "unknown";
+        /// <summary>Rows affected (non-rowset statements only).</summary>
         public long? AffectedRows { get; set; }
+        /// <summary>Result column names.</summary>
         public IReadOnlyList<string> Columns { get; set; } = Array.Empty<string>();
+        /// <summary>Result rows as column name to value.</summary>
         public List<Dictionary<string, object?>> Rows { get; set; } = new();
     }
 
@@ -190,6 +240,15 @@ public sealed class VaultDashboardController : ControllerBase
 
     // ---------------- Endpoints ----------------
 
+    /// <summary>
+    /// <c>POST /dashboard/v1/vaults/{typeKey}/batch-update</c> with a <see cref="VaultBatchUpdateRequestDto"/>: for each
+    /// item, reads the primary-key fields and calls <c>IVault.UpdateAsync(pk, changes)</c> with the remaining known fields
+    /// (unknown fields are ignored; items with no changes are skipped). Items are applied one by one, not in a transaction.
+    /// 200 with the number of updated items; a missing primary-key field or a vault without a primary key throws (500).
+    /// </summary>
+    /// <param name="typeKey">Vault type key from <see cref="VaultDefinitionDto.TypeKey"/>.</param>
+    /// <param name="request">Rows to update.</param>
+    /// <param name="ct">Not observed.</param>
     [HttpPost("{typeKey}/batch-update")]
     public async Task<ActionResult<VaultBatchUpdateResultDto>> BatchUpdate(
     string typeKey,
@@ -293,6 +352,10 @@ public sealed class VaultDashboardController : ControllerBase
         return Convert.ChangeType(rawValue, targetType);
     }
 
+    /// <summary>
+    /// <c>GET /dashboard/v1/vaults</c>: 200 with every registered vault as <see cref="VaultDefinitionDto"/>, ordered by
+    /// keyspace then type key.
+    /// </summary>
     [HttpGet]
     public ActionResult<IEnumerable<VaultDefinitionDto>> GetVaults()
     {
@@ -305,6 +368,16 @@ public sealed class VaultDashboardController : ControllerBase
         return Ok(defs);
     }
 
+    /// <summary>
+    /// <c>POST /dashboard/v1/vaults/{typeKey}/query</c> with a <see cref="VaultQueryRequestDto"/>: sets
+    /// <c>search_path</c> to the vault's keyspace and executes the SQL as-is on a pooled PostgreSQL connection.
+    /// SELECT/WITH/SHOW/VALUES/EXPLAIN return rows (JSON, byte arrays as base64, arrays as lists); any other statement
+    /// returns <see cref="VaultQueryResultDto.AffectedRows"/>. 400 when the SQL is blank, the vault is not SQL-backed or
+    /// no data source is registered.
+    /// </summary>
+    /// <param name="typeKey">Vault type key.</param>
+    /// <param name="request">SQL text.</param>
+    /// <param name="ct">Cancels the database calls.</param>
     [HttpPost("{typeKey}/query")]
     public async Task<ActionResult<VaultQueryResultDto>> QueryVault(
         string typeKey,
@@ -371,6 +444,14 @@ public sealed class VaultDashboardController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// <c>GET /dashboard/v1/vaults/{typeKey}/items?skip=0&amp;take=50</c>: 200 with a <see cref="VaultItemPageDto"/>: the
+    /// total row count and one page of rows (field name to value) read through <see cref="IVault{T}"/>.
+    /// </summary>
+    /// <param name="typeKey">Vault type key.</param>
+    /// <param name="skip">Rows to skip (negative becomes 0).</param>
+    /// <param name="take">Page size (0 or less becomes 50; capped at 500).</param>
+    /// <param name="ct">Not observed.</param>
     [HttpGet("{typeKey}/items")]
     public async Task<ActionResult<VaultItemPageDto>> GetVaultItems(
         string typeKey,

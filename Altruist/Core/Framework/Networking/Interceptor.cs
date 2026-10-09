@@ -16,8 +16,12 @@ limitations under the License.
 
 namespace Altruist;
 
+/// <summary>
+/// Per-packet context handed to every <see cref="IInterceptor"/> before the gate handler runs. Call <see cref="Reject"/> to drop the packet.
+/// </summary>
 public class InterceptContext
 {
+    /// <summary>Event name (gate key) of the incoming packet.</summary>
     public string EventName { get; }
 
     /// <summary>Connection the packet arrived on ("" when unknown).</summary>
@@ -32,6 +36,10 @@ public class InterceptContext
     /// <summary>True once an interceptor rejected the packet; the gate handler is then skipped.</summary>
     public bool Rejected { get; private set; }
 
+    /// <summary>Creates a context without route information (<see cref="Route"/> is <c>""</c>).</summary>
+    /// <param name="eventName">Event name of the packet.</param>
+    /// <param name="clientId">Connection id ("" when unknown).</param>
+    /// <param name="payloadLength">Raw payload size in bytes.</param>
     public InterceptContext(string eventName, string clientId = "", int payloadLength = 0)
     {
         EventName = eventName;
@@ -39,6 +47,11 @@ public class InterceptContext
         PayloadLength = payloadLength;
     }
 
+    /// <summary>Creates a context including the connection's portal route.</summary>
+    /// <param name="eventName">Event name of the packet.</param>
+    /// <param name="clientId">Connection id.</param>
+    /// <param name="payloadLength">Raw payload size in bytes.</param>
+    /// <param name="route">Portal path of the connection; <c>null</c> becomes <c>""</c>.</param>
     public InterceptContext(string eventName, string clientId, int payloadLength, string route)
         : this(eventName, clientId, payloadLength)
     {
@@ -60,6 +73,20 @@ public class InterceptContext
 /// </summary>
 public interface IInterceptor
 {
+    /// <summary>Inspects an incoming packet before its gate handler runs; call <see cref="InterceptContext.Reject"/> to drop it.</summary>
+    /// <param name="context">Packet context (event, client, size, route).</param>
+    /// <param name="eventData">Decoded packet, or <c>null</c> when the event is unknown or could not be decoded.</param>
+    /// <example><code>
+    /// [Service(typeof(IInterceptor))]
+    /// public sealed class MaxSizeInterceptor : IInterceptor
+    /// {
+    ///     public Task Intercept(InterceptContext ctx, IPacket eventData)
+    ///     {
+    ///         if (ctx.PayloadLength &gt; 4096) ctx.Reject();
+    ///         return Task.CompletedTask;
+    ///     }
+    /// }
+    /// </code></example>
     Task Intercept(InterceptContext context, IPacket eventData);
 }
 
@@ -69,19 +96,28 @@ public interface IInterceptor
 /// </summary>
 public interface IConnectionStateInterceptor : IInterceptor
 {
+    /// <summary>Drops any state held for <paramref name="clientId"/>; called by the connection manager after the connection is closed.</summary>
+    /// <param name="clientId">Connection id that disconnected.</param>
     void Forget(string clientId);
 }
 
 
+/// <summary>
+/// Interceptor that forwards every decoded packet to <see cref="IRelayService.Relay(IPacket)"/> (packets with null data are skipped).
+/// It never rejects. Not auto-registered; add it via <see cref="IConnectionManager.AddInterceptor"/> or your own DI registration.
+/// </summary>
 public class RelayInterceptor : IInterceptor
 {
     private readonly IRelayService _relayService;
 
+    /// <summary>Creates the interceptor.</summary>
+    /// <param name="relayService">Relay that receives every packet.</param>
     public RelayInterceptor(IRelayService relayService)
     {
         _relayService = relayService;
     }
 
+    /// <inheritdoc/>
     public async Task Intercept(InterceptContext context, IPacket eventData)
     {
         if (eventData is null)

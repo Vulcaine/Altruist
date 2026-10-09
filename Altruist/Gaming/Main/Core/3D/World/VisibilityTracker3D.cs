@@ -8,6 +8,32 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.ThreeD
 {
+    /// <summary>
+    /// Default 3D <see cref="IVisibilityTracker"/>: each world step it computes, for every registered observer, the set
+    /// of world objects within <see cref="ViewRange"/> (3D sphere on <c>Transform.Position</c>) and raises
+    /// <see cref="OnEntityVisible"/> / <see cref="OnEntityInvisible"/> for the difference to the previous tick.
+    /// Spawns and destroys are also reported immediately via the world's <c>OnObjectCreated</c>/<c>OnObjectDestroyed</c> events.
+    /// </summary>
+    /// <remarks>
+    /// <para>Singleton when <c>altruist:environment:mode</c> is <c>3D</c> and <c>altruist:game</c> is set; ticked by
+    /// <see cref="GameWorldOrganizer3D"/> on a background task. Config: <c>altruist:game:visibility:range</c> (default 5000 world units).
+    /// For 2D use <see cref="Altruist.Gaming.TwoD.VisibilityTracker2D"/>.</para>
+    /// <para>Observers must be registered explicitly with <see cref="Observe"/> and need a non-empty <c>ClientId</c>.
+    /// With 4+ observers the work runs in <see cref="Parallel"/> and events fire on thread-pool threads, so subscribers
+    /// must be thread-safe; with 8+ observers only half of them (alternating groups) are refreshed per tick.
+    /// Above 200 objects a spatial hash grid (cell size max(ViewRange/2, 500)) is used as broadphase.</para>
+    /// <para>When an <see cref="IEntityHibernationService"/> is registered, hibernated entities near observers are woken
+    /// (re-spawned as dynamic objects) and <see cref="IHibernatable"/> objects seen by no observer are destroyed and hibernated.
+    /// When an <see cref="ISpatialCollisionDispatcher"/> is registered, <c>EntityVisible</c>/<c>EntityInvisible</c>
+    /// collision events are dispatched for each change.</para>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// tracker.OnEntityVisible += c =&gt; SendSpawn(c.ObserverClientId, c.Target);
+    /// tracker.OnEntityInvisible += c =&gt; SendDespawn(c.ObserverClientId, c.Target);
+    /// tracker.Observe(playerObject); // playerObject.ClientId must be set
+    /// </code>
+    /// </example>
     [Service(typeof(IVisibilityTracker))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [ConditionalOnConfig("altruist:game")]
@@ -34,13 +60,21 @@ namespace Altruist.Gaming.ThreeD
         // Per-thread scratch buffers for parallel observer processing
         private readonly ConcurrentDictionary<int, (HashSet<string> visible, List<int> gridBuf, List<string> removeBuf)> _threadBuffers = new();
 
+        /// <inheritdoc/>
         public float ViewRange { get; set; } = 5000f;
 
+        /// <inheritdoc/>
         public event Action<VisibilityChange>? OnEntityVisible;
+        /// <inheritdoc/>
         public event Action<VisibilityChange>? OnEntityInvisible;
 
         private readonly ILogger? _logger;
 
+        /// <summary>Creates the tracker; the organizer is wired later by <see cref="WireOrganizer"/>.</summary>
+        /// <param name="viewRange">Visibility radius in world units (<c>altruist:game:visibility:range</c>, default 5000).</param>
+        /// <param name="hibernation">Optional hibernation service; enables wake/hibernate phases.</param>
+        /// <param name="collisionDispatcher">Optional dispatcher for visibility collision events.</param>
+        /// <param name="loggerFactory">Optional logger factory.</param>
         public VisibilityTracker3D(
             [AppConfigValue("altruist:game:visibility:range", "5000")] float viewRange = 5000f,
             IEntityHibernationService? hibernation = null,
@@ -53,6 +87,11 @@ namespace Altruist.Gaming.ThreeD
             _logger = loggerFactory?.CreateLogger<VisibilityTracker3D>();
         }
 
+        /// <summary>
+        /// Sets the organizer used to resolve worlds and subscribes to spawn/destroy events of the worlds registered at this time
+        /// (worlds added later are not subscribed). Normally called by <see cref="WireOrganizer"/>; calling it twice subscribes twice.
+        /// </summary>
+        /// <param name="organizer">The 3D world organizer.</param>
         public void SetOrganizer(IGameWorldOrganizer3D organizer)
         {
             _organizer = organizer;
@@ -133,6 +172,11 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <summary>
+        /// Recomputes visibility for all observers in each world snapshot and raises enter/leave events. Called by
+        /// <see cref="GameWorldOrganizer3D"/> after each world step; no-op until an organizer is wired.
+        /// </summary>
+        /// <param name="snapshots">Per-world object snapshots for this tick.</param>
         public void Tick(WorldSnapshot[] snapshots)
         {
             if (_organizer is null) return;
@@ -495,6 +539,8 @@ namespace Altruist.Gaming.ThreeD
                 previouslyVisible.Remove(removeBuf[i]);
         }
 
+        /// <inheritdoc/>
+        /// <returns><c>false</c> when <paramref name="observer"/> is not an <see cref="IWorldObject3D"/> or has an empty <c>ClientId</c>.</returns>
         public bool Observe(ITypelessWorldObject observer)
         {
             if (observer is not IWorldObject3D worldObject)
@@ -511,11 +557,13 @@ namespace Altruist.Gaming.ThreeD
             return true;
         }
 
+        /// <inheritdoc/>
         public IReadOnlySet<string>? GetVisibleEntities(string clientId)
         {
             return _visibleSets.TryGetValue(clientId, out var set) ? set : null;
         }
 
+        /// <inheritdoc/>
         public IEnumerable<string> GetObserversOf(string entityInstanceId)
         {
             foreach (var (clientId, visibleSet) in _visibleSets)
@@ -525,17 +573,24 @@ namespace Altruist.Gaming.ThreeD
             }
         }
 
+        /// <inheritdoc/>
         public IEnumerable<ITypelessWorldObject> GetObservers()
         {
             foreach (var observer in _observers.Values.ToArray())
                 yield return observer;
         }
 
+        /// <summary>
+        /// Clears the observer's visible set so the next tick re-raises <see cref="OnEntityVisible"/> for everything in range
+        /// (no <see cref="OnEntityInvisible"/> is raised). Use after a teleport or when the client needs a full resend.
+        /// </summary>
+        /// <param name="clientId">Observer client id.</param>
         public void RefreshObserver(string clientId)
         {
             _visibleSets.TryRemove(clientId, out _);
         }
 
+        /// <inheritdoc/>
         public void RemoveObserver(ITypelessWorldObject observer)
         {
             if (observer is not IWorldObject3D worldObject)
@@ -551,6 +606,7 @@ namespace Altruist.Gaming.ThreeD
                 RemoveObserver(worldObject.ClientId);
         }
 
+        /// <inheritdoc/>
         public void RemoveObserver(string clientId)
         {
             int visibleCount = _visibleSets.TryGetValue(clientId, out var existingSet) ? existingSet.Count : 0;

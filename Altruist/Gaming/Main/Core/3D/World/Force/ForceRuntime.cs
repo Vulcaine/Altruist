@@ -25,14 +25,18 @@ public sealed class ForceAgent3D
         IsActive = true;
     }
 
+    /// <summary>The body whose <c>Position</c> the force moves.</summary>
     public IPhysxBody3D Body { get; }
 
     /// <summary>World-space velocity (m/s) applied per tick. XZ components
     /// drive motion; Y is ignored so non-KCC bodies keep their gravity.</summary>
     public Vector3 Velocity { get; }
 
+    /// <summary>Lifetime of the force in seconds.</summary>
     public float Duration { get; }
+    /// <summary>Seconds applied so far.</summary>
     public float Elapsed { get; private set; }
+    /// <summary><c>false</c> once expired or cancelled.</summary>
     public bool IsActive { get; private set; }
 
     /// <summary>Normalized progress in [0, 1].</summary>
@@ -43,7 +47,8 @@ public sealed class ForceAgent3D
     /// onto an entity-shaped wrapper's <c>Transform</c> / colliders / facing
     /// — anything the framework can't reach. The runtime catches and logs
     /// exceptions thrown from this hook so a buggy callback can't fault
-    /// other active forces.</summary>
+    /// other active forces; the throwing agent itself is removed (and
+    /// <see cref="OnExpired"/> fires).</summary>
     public Action<IPhysxBody3D, Vector3>? OnApplied { get; set; }
 
     /// <summary>Invoked exactly once when the force expires (either Duration
@@ -102,33 +107,62 @@ public sealed class ForceAgent3D
 /// <see cref="BodyNavigationExtensions3D.MoveToward(IPhysxBody3D, System.Numerics.Vector3, float, float, ITerrainProvider)"/>
 /// instead when collision integrity matters. For kinematic bodies (mobs,
 /// projectiles), position writes are the natural channel.</para></summary>
+/// <remarks>
+/// Each agent writes its own XZ delta in turn, so concurrent forces add up. For 2D
+/// use <see cref="Altruist.Gaming.TwoD.IForceRuntime2D"/>. Stepped automatically by the world coordinator at 25 Hz.
+/// </remarks>
+/// <example>
+/// <code>
+/// // knock a mob back for 0.3 s at 8 units/s away from the attacker
+/// var away = mobBody.Position - attackerBody.Position;
+/// forces.ApplySustained(mobBody, away, speed: 8f, durationSeconds: 0.3f).OnExpired = b =&gt; ResumeAi(b);
+/// </code>
+/// </example>
 public interface IForceRuntime3D
 {
     /// <summary>Apply <paramref name="worldVelocity"/> (m/s) to
     /// <paramref name="body"/> every tick for <paramref name="durationSeconds"/>.
     /// Y component of the velocity is ignored; the force is XZ-planar.
     /// Multiple concurrent forces stack additively.</summary>
+    /// <param name="body">Body to move.</param>
+    /// <param name="worldVelocity">Velocity in world units per second (Y ignored).</param>
+    /// <param name="durationSeconds">Lifetime in seconds (must be &gt; 0).</param>
+    /// <returns>The registered agent.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="body"/> is <c>null</c>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="durationSeconds"/> ≤ 0.</exception>
     ForceAgent3D ApplySustained(IPhysxBody3D body, Vector3 worldVelocity, float durationSeconds);
 
     /// <summary>Sugar form: <paramref name="direction"/> normalized × <paramref name="speed"/>.
     /// If <paramref name="direction"/> is zero, no force is registered and
     /// the returned agent is already inactive.</summary>
+    /// <param name="body">Body to move.</param>
+    /// <param name="direction">Direction; only X/Z are used and normalized.</param>
+    /// <param name="speed">Speed in world units per second (≤ 0 gives an inactive agent).</param>
+    /// <param name="durationSeconds">Lifetime in seconds (must be &gt; 0).</param>
+    /// <returns>The registered agent, or an inactive, unregistered one (its <c>OnExpired</c> never fires).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="body"/> is <c>null</c>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="durationSeconds"/> ≤ 0.</exception>
     ForceAgent3D ApplySustained(IPhysxBody3D body, Vector3 direction, float speed, float durationSeconds);
 
     /// <summary>Cancel a specific agent (other forces on the body keep
     /// running). No-op if the agent is already inactive.</summary>
+    /// <remarks>Removes the agent immediately and raises its <c>OnExpired</c> synchronously.</remarks>
+    /// <param name="agent">The agent; <c>null</c> is ignored.</param>
     void Cancel(ForceAgent3D agent);
 
     /// <summary>Cancel every active force on <paramref name="body"/>. Use
     /// on death, stun-clear, or any state transition that should reset
     /// physical influences.</summary>
+    /// <param name="body">Body matched by reference; <c>null</c> is ignored.</param>
     void CancelAll(IPhysxBody3D body);
 
+    /// <summary>Number of registered (not yet evicted) agents.</summary>
     int ActiveCount { get; }
 
     /// <summary>Advance every active agent by <paramref name="dt"/> seconds.
     /// Tests drive this manually; in production the world coordinator calls it
     /// at a fixed 25 Hz (<see cref="ForceRuntime3D.FixedStep"/>).</summary>
+    /// <param name="dt">Step length in seconds; ≤ 0 is a no-op.</param>
     void Update(float dt);
 }
 
@@ -137,6 +171,7 @@ public interface IForceRuntime3D
 /// frame rate: a fixed-mode <see cref="IWorldStepper"/> driven by the <see cref="WorldCoordinator"/>
 /// (on the world step, after the frame's next-tick queue, cycles and effects in inline mode).
 /// </summary>
+/// <remarks>Singleton when <c>altruist:game</c> is configured. Launching from other threads is safe (concurrent agent set).</remarks>
 [Service(typeof(IForceRuntime3D))]
 [Service(typeof(IWorldStepper))]
 [ConditionalOnConfig("altruist:game")]
@@ -144,20 +179,28 @@ public sealed class ForceRuntime3D : IForceRuntime3D, IWorldStepper
 {
     private const int TickHz = 25;
 
+    /// <summary>Always <see cref="StepMode.Fixed"/>.</summary>
     public StepMode Mode => StepMode.Fixed;
+    /// <summary>25 steps per second.</summary>
     public int FixedHz => TickHz;
+    /// <summary>Called by the coordinator once per fixed step; forwards to <see cref="Update"/>.</summary>
+    /// <param name="step">The fixed step (its <c>Dt</c> is 0.04 s).</param>
     public void FixedStep(in FixedStep step) => Update(step.Dt);
 
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<ForceAgent3D, byte> _agents = new();
 
+    /// <summary>Creates the runtime.</summary>
+    /// <param name="loggerFactory">Logger factory for callback/agent failures.</param>
     public ForceRuntime3D(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<ForceRuntime3D>();
     }
 
+    /// <inheritdoc/>
     public int ActiveCount => _agents.Count;
 
+    /// <inheritdoc/>
     public ForceAgent3D ApplySustained(IPhysxBody3D body, Vector3 worldVelocity, float durationSeconds)
     {
         if (body == null) throw new ArgumentNullException(nameof(body));
@@ -168,6 +211,7 @@ public sealed class ForceRuntime3D : IForceRuntime3D, IWorldStepper
         return agent;
     }
 
+    /// <inheritdoc/>
     public ForceAgent3D ApplySustained(IPhysxBody3D body, Vector3 direction, float speed, float durationSeconds)
     {
         if (body == null) throw new ArgumentNullException(nameof(body));
@@ -186,6 +230,7 @@ public sealed class ForceRuntime3D : IForceRuntime3D, IWorldStepper
         return ApplySustained(body, unit * speed, durationSeconds);
     }
 
+    /// <inheritdoc/>
     public void Cancel(ForceAgent3D agent)
     {
         if (agent == null) return;
@@ -194,6 +239,7 @@ public sealed class ForceRuntime3D : IForceRuntime3D, IWorldStepper
             FireExpired(agent);
     }
 
+    /// <inheritdoc/>
     public void CancelAll(IPhysxBody3D body)
     {
         if (body == null) return;
@@ -211,6 +257,7 @@ public sealed class ForceRuntime3D : IForceRuntime3D, IWorldStepper
     /// <summary>Advances every agent by one 25 Hz step (the coordinator calls <see cref="FixedStep"/>).</summary>
     public void TickFrame() => Update(1f / TickHz);
 
+    /// <inheritdoc/>
     public void Update(float dt)
     {
         if (dt <= 0f || _agents.IsEmpty) return;

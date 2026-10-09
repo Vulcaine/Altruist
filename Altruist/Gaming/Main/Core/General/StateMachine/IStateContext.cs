@@ -12,9 +12,12 @@ namespace Altruist.Gaming;
 /// </summary>
 public readonly struct StateWindow
 {
+    /// <summary>Normalized start of the window (0 = state entry, 1 = end of the state's duration).</summary>
     public readonly float Start;
+    /// <summary>Normalized end of the window (inclusive).</summary>
     public readonly float End;
 
+    /// <summary>Creates a window over normalized progress <paramref name="start"/>..<paramref name="end"/>.</summary>
     public StateWindow(float start, float end)
     {
         Start = start;

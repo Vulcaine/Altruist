@@ -39,6 +39,7 @@ public sealed record ServerNodeOptions
 [ConditionalOnMissingService(typeof(IServerNode))]
 public sealed class ServerNode : IServerNode, IDisposable
 {
+    /// <summary>Name of the <see cref="System.Diagnostics.Metrics.Meter"/> the node publishes: <c>Altruist.Server</c>.</summary>
     public const string MeterName = "Altruist.Server";
 
     private readonly Lazy<IEnumerable<ICapacityContributor>> _staticContributors;
@@ -56,6 +57,16 @@ public sealed class ServerNode : IServerNode, IDisposable
     private volatile bool _forced;
     private long _lastFaultLog;
 
+    /// <summary>DI constructor reading <c>altruist:server:capacity:max-load</c>, <c>altruist:server:drain:timeout</c> and <c>altruist:server:drain:force-grace</c>.</summary>
+    /// <param name="contributors">DI-registered capacity contributors (resolved lazily).</param>
+    /// <param name="participants">DI-registered drain participants (resolved lazily).</param>
+    /// <param name="maxLoad">Load budget; 0 = unlimited.</param>
+    /// <param name="drainTimeoutSeconds">Drain timeout in seconds.</param>
+    /// <param name="forceGraceSeconds">Wind-down grace after a forced stop, in seconds.</param>
+    /// <param name="status">Optional readiness source; while not alive the node reports <see cref="ServerNodeState.Starting"/>.</param>
+    /// <param name="context">Optional app context; its process id becomes <see cref="NodeId"/>.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Negative/NaN max load or negative drain timeout.</exception>
     [ActivatorUtilitiesConstructor]
     public ServerNode(
         Lazy<IEnumerable<ICapacityContributor>> contributors,
@@ -76,6 +87,12 @@ public sealed class ServerNode : IServerNode, IDisposable
     }
 
     /// <summary>Manual constructor (tests, custom hosts). <paramref name="readiness"/> null: always started.</summary>
+    /// <param name="options">Options; null uses the defaults (unlimited load, 30 s drain).</param>
+    /// <param name="contributors">Capacity contributors known up front.</param>
+    /// <param name="participants">Drain participants known up front.</param>
+    /// <param name="readiness">Readiness source; anything but <c>Alive</c> reports <see cref="ServerNodeState.Starting"/>.</param>
+    /// <param name="nodeId">Node id; null or empty uses <c>{MachineName}-{ProcessId}</c>.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
     public ServerNode(
         ServerNodeOptions? options = null,
         IEnumerable<ICapacityContributor>? contributors = null,
@@ -111,30 +128,40 @@ public sealed class ServerNode : IServerNode, IDisposable
         CreateInstruments();
     }
 
+    /// <summary>Effective options.</summary>
     public ServerNodeOptions Options { get; }
 
     /// <summary>This node's <c>Altruist.Server</c> meter (one per node instance).</summary>
     public Meter Metrics => _meter;
+    /// <inheritdoc/>
     public string NodeId { get; }
+    /// <inheritdoc/>
     public double MaxLoad => Options.MaxLoad;
+    /// <inheritdoc/>
     public TimeSpan DrainTimeout => Options.DrainTimeout;
+    /// <inheritdoc/>
     public bool IsDraining => _draining;
 
     /// <summary>The last drain stopped work that had not finished in time.</summary>
     public bool WasForced => _forced;
 
+    /// <inheritdoc/>
     public event Action? DrainStarted;
 
+    /// <inheritdoc/>
     public ServerNodeState State => StateFor(Load(out _));
 
     // ------------------------------------------------------------------ capacity
 
+    /// <inheritdoc/>
     public ServerCapacity Capacity()
     {
         var total = Load(out var kinds);
         return new ServerCapacity(NodeId, StateFor(total), total, MaxLoad, kinds);
     }
 
+    /// <inheritdoc/>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cost"/> is negative or NaN.</exception>
     public bool CanAccept(double cost = 1)
     {
         if (cost < 0 || double.IsNaN(cost))
@@ -191,6 +218,7 @@ public sealed class ServerNode : IServerNode, IDisposable
         return total;
     }
 
+    /// <inheritdoc/>
     public IDisposable Register(ICapacityContributor contributor)
     {
         ArgumentNullException.ThrowIfNull(contributor);
@@ -203,6 +231,7 @@ public sealed class ServerNode : IServerNode, IDisposable
         });
     }
 
+    /// <inheritdoc/>
     public IDisposable Register(IDrainParticipant participant)
     {
         ArgumentNullException.ThrowIfNull(participant);
@@ -225,6 +254,8 @@ public sealed class ServerNode : IServerNode, IDisposable
 
     // ------------------------------------------------------------------ drain
 
+    /// <inheritdoc/>
+    /// <remarks>Idempotent: later calls return the first drain's task (their <paramref name="timeout"/> is ignored). Cancelling <paramref name="cancellationToken"/> stops waiting, not the drain.</remarks>
     public Task<bool> DrainAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         Task<bool> drain;
@@ -368,6 +399,7 @@ public sealed class ServerNode : IServerNode, IDisposable
             yield return new Measurement<double>(value(k), new KeyValuePair<string, object?>("kind", k.Kind));
     }
 
+    /// <summary>Disposes the node's meter.</summary>
     public void Dispose() => _meter.Dispose();
 
     private sealed class Registration(Action dispose) : IDisposable

@@ -22,7 +22,30 @@ namespace Altruist.Gaming.TwoD;
 /// bits of the formula in its summary (deterministic: same state and inputs, same bits on the same
 /// runtime).</para>
 /// <para>Conventions: side view, +Y up, <c>gravity</c> = magnitude of the pull toward -Y;
-/// rotations counter-clockwise with the body's local +Y as its "up" (Box2D).</para></summary>
+/// rotations counter-clockwise with the body's local +Y as its "up" (Box2D).</para>
+/// <para><b>Which layer to use.</b> Prefer these verbs in gameplay code (rules, abilities, bot
+/// tactics) where the call should read as the intent. Drop to <see cref="BodyMotionExtensions2D"/>
+/// when you need a mechanical velocity operation that has no verb here, and to
+/// <see cref="Velocity2D"/> / <see cref="Ballistics2D"/> / <c>VectorMath2D</c> when you work on a
+/// velocity or position value that is not a live body's (predictions, captured contact velocities).
+/// Write raw <see cref="IPhysxBody2D"/> properties (<c>LinearVelocity</c>, <c>SetTransform</c>) only
+/// for state the verbs do not cover. For a side-view box body that faces left or right use
+/// <see cref="FacingFrame2D"/> for nose / roof / side questions. For walking characters driven by
+/// input intents use <see cref="KinematicCharacterController2D"/> instead of hand-writing movement
+/// with verbs. For a timed push that should keep moving the body over several ticks (knockback,
+/// dashes) without tracking it yourself use <see cref="IForceRuntime2D"/> (it displaces the position
+/// directly rather than changing velocity).</para>
+/// <para>Threading: verbs mutate the body immediately; call them on the world's tick thread (inside
+/// a step / fixed-step callback), not from network handlers. <c>dt</c> is in seconds, angles in
+/// radians.</para>
+/// <example><code>
+/// // one fixed step of a grounded body
+/// body.DriveAlong(groundTangent, targetSpeed: 12f, acceleration: 40f, dt);
+/// body.StickTo(groundNormal, acceleration: 30f, dt);
+/// body.AlignToSurface(groundNormal, rate: 10f);
+/// if (jumpPressed) body.JumpOff(groundNormal, speed: 8f);
+/// body.ClampTopSpeed(20f);
+/// </code></example></summary>
 public static class GameplayVerbs2D
 {
     // ── Launching and jumping ─────────────────────────────────────────────

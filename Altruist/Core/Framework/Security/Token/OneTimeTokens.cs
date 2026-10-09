@@ -34,15 +34,19 @@ public abstract class OneTimeTokenModel : VaultModel
     [VaultColumn("payload", nullable: true)]
     public virtual string? Payload { get; set; }
 
+    /// <summary><see cref="OpaqueToken.Hash"/> of the raw token (the raw token is only sent to the user).</summary>
     [VaultColumn("token_hash")]
     public virtual string TokenHash { get; set; } = "";
 
+    /// <summary>UTC issue time.</summary>
     [VaultColumn("issued_at")]
     public virtual DateTime IssuedAt { get; set; }
 
+    /// <summary>UTC expiry (issue time plus the ttl passed to <see cref="IOneTimeTokenStore.CreateAsync"/>).</summary>
     [VaultColumn("expires_at")]
     public virtual DateTime ExpiresAt { get; set; }
 
+    /// <summary>When it was consumed or superseded by a newer token of the same subject; null while usable.</summary>
     [VaultColumn("used_at", nullable: true)]
     public virtual DateTime? UsedAt { get; set; }
 }
@@ -50,10 +54,13 @@ public abstract class OneTimeTokenModel : VaultModel
 /// <summary><c>altruist:security:one-time-tokens:expired-retention-hours</c> (24): how long expired tokens are kept (to answer "expired" rather than "invalid").</summary>
 public sealed class OneTimeTokenOptions
 {
+    /// <summary>Config section of these options.</summary>
     public const string ConfigPath = "altruist:security:one-time-tokens";
 
+    /// <summary>How long expired tokens are kept before pruning (default 24 hours).</summary>
     public TimeSpan ExpiredRetention { get; set; } = TimeSpan.FromHours(24);
 
+    /// <summary>Reads <see cref="ConfigPath"/>; missing keys keep their defaults.</summary>
     public static OneTimeTokenOptions FromConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -64,24 +71,44 @@ public sealed class OneTimeTokenOptions
     }
 }
 
+/// <summary>Result kind of <see cref="IOneTimeTokenStore.ConsumeAsync"/>.</summary>
 public enum OneTimeTokenStatus
 {
     /// <summary>Valid; it is now used.</summary>
     Ok,
     /// <summary>Unknown or malformed.</summary>
     Invalid,
+    /// <summary>Known but past its expiry (until pruned after <see cref="OneTimeTokenOptions.ExpiredRetention"/>).</summary>
     Expired,
     /// <summary>Consumed before, or replaced by a newer token of the same subject.</summary>
     Used,
 }
 
+/// <summary>Outcome of <see cref="IOneTimeTokenStore.ConsumeAsync"/>. Act on the token only for <see cref="OneTimeTokenStatus.Ok"/>.</summary>
+/// <param name="Status">What happened to the token.</param>
 /// <param name="SubjectId">The token's subject (null for <see cref="OneTimeTokenStatus.Invalid"/>).</param>
+/// <param name="Payload">The data stored with the token (null for <see cref="OneTimeTokenStatus.Invalid"/>).</param>
 public sealed record OneTimeTokenResult(OneTimeTokenStatus Status, string? SubjectId, string? Payload);
 
 /// <summary>
 /// Single-use tokens stored hashed in SQL. Every call joins the ambient SQL transaction, so
 /// consuming a token and acting on it (e.g. marking an email verified) commit or roll back together.
 /// </summary>
+/// <remarks>
+/// Use it for links sent out of band (email verification, password reset, invitations): you choose the ttl per
+/// call. For sign-in sessions use <see cref="IRefreshTokenService"/>; for WebSocket connects use
+/// <see cref="IConnectionTicketService"/>. Registered (singleton) by <see cref="TokenStoreConfiguration"/> as
+/// <see cref="IOneTimeTokenStore{TModel}"/> per <see cref="OneTimeTokenModel"/> vault, and also as this
+/// interface when there is exactly one. Expired rows are pruned by <see cref="TokenPruneService"/>.
+/// </remarks>
+/// <example>
+/// <code>
+/// var raw = await verifications.CreateAsync(accountId, payload: email, ttl: TimeSpan.FromHours(24));
+/// // email a link containing raw ...
+/// var r = await verifications.ConsumeAsync(rawFromLink);
+/// if (r.Status == OneTimeTokenStatus.Ok) { /* mark r.Payload verified for r.SubjectId */ }
+/// </code>
+/// </example>
 public interface IOneTimeTokenStore : ITokenPruner
 {
     /// <summary>
@@ -112,6 +139,11 @@ public sealed class OneTimeTokenStore<TModel> : IOneTimeTokenStore<TModel> where
     private readonly OneTimeTokenOptions _options;
     private readonly Func<DateTime> _utcNow;
 
+    /// <summary>Creates the store over the table of <typeparamref name="TModel"/>.</summary>
+    /// <param name="db">A SQL provider that also implements <see cref="ISqlTransactionProvider"/>.</param>
+    /// <param name="options">Retention settings (defaults when null).</param>
+    /// <param name="utcNow">UTC clock (tests); default <see cref="DateTime.UtcNow"/>.</param>
+    /// <exception cref="InvalidOperationException">When <paramref name="db"/> does not support transactions.</exception>
     public OneTimeTokenStore(ISqlDatabaseProvider db, OneTimeTokenOptions? options = null, Func<DateTime>? utcNow = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
@@ -122,10 +154,14 @@ public sealed class OneTimeTokenStore<TModel> : IOneTimeTokenStore<TModel> where
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
+    /// <inheritdoc/>
     public string PrunedName => $"expired {VaultDocument.From(typeof(TModel)).Name} tokens";
 
     private string C(string property) => _t.Column(property);
 
+    /// <inheritdoc/>
+    /// <exception cref="ArgumentException">When <paramref name="subjectId"/> is empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="ttl"/> is not positive.</exception>
     public async Task<string> CreateAsync(string subjectId, string? payload, TimeSpan ttl, DateTime? now = null, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(subjectId))
@@ -150,6 +186,7 @@ public sealed class OneTimeTokenStore<TModel> : IOneTimeTokenStore<TModel> where
         return raw;
     }
 
+    /// <inheritdoc/>
     public async Task<OneTimeTokenResult> ConsumeAsync(string? rawToken, DateTime? now = null, CancellationToken ct = default)
     {
         if (!OpaqueToken.IsWellFormed(rawToken))

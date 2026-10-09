@@ -24,6 +24,11 @@ public interface IFleetBackplane
     /// <summary>Other processes see what this one writes (a fleet of more than one server is possible).</summary>
     bool Shared { get; }
 
+    /// <summary>Sets (overwrites) a key with an expiry.</summary>
+    /// <param name="key">Key.</param>
+    /// <param name="value">Value.</param>
+    /// <param name="ttl">Time to live from now.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task SetAsync(string key, string value, TimeSpan ttl, CancellationToken cancellationToken = default);
 
     /// <summary>Sets many keys with one expiry (one round trip where the store allows).</summary>
@@ -32,6 +37,9 @@ public interface IFleetBackplane
     /// <summary>Sets the key only when it does not exist (or expired); true when this call set it.</summary>
     Task<bool> SetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken cancellationToken = default);
 
+    /// <summary>Returns the live value of a key, or <c>null</c> when missing or expired.</summary>
+    /// <param name="key">Key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task<string?> GetAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>Gets and deletes the key in one step (null when it is not there).</summary>
@@ -40,6 +48,9 @@ public interface IFleetBackplane
     /// <summary>Every live key starting with <paramref name="prefix"/> (small key sets: the node registry).</summary>
     Task<IReadOnlyDictionary<string, string>> GetByPrefixAsync(string prefix, CancellationToken cancellationToken = default);
 
+    /// <summary>Deletes a key unconditionally (no-op when missing).</summary>
+    /// <param name="key">Key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task DeleteAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes the key only while it still holds <paramref name="value"/> (release your own claim).</summary>
@@ -73,26 +84,34 @@ public sealed class InMemoryFleetBackplane : IFleetBackplane
     private readonly object _gate = new();
     private DateTime _lastSweep;
 
+    /// <summary>DI constructor: a private, non-shared backplane (single-server fleet).</summary>
     [ActivatorUtilitiesConstructor]
     public InMemoryFleetBackplane() : this(shared: false) { }
 
+    /// <summary>Creates an in-memory backplane.</summary>
+    /// <param name="shared">Report <see cref="Shared"/> = true (several in-process fleet members sharing this instance: tests, simulations).</param>
+    /// <param name="utcNow">Clock override (tests).</param>
     public InMemoryFleetBackplane(bool shared, Func<DateTime>? utcNow = null)
     {
         Shared = shared;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
+    /// <inheritdoc/>
     public string Kind => "memory";
+    /// <inheritdoc/>
     public bool Shared { get; }
 
     private bool Live((string Value, DateTime Expires) e) => e.Expires > _utcNow();
 
+    /// <inheritdoc/>
     public Task SetAsync(string key, string value, TimeSpan ttl, CancellationToken cancellationToken = default)
     {
         _data[key] = (value, _utcNow() + ttl);
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public Task SetManyAsync(IReadOnlyCollection<KeyValuePair<string, string>> values, TimeSpan ttl, CancellationToken cancellationToken = default)
     {
         var expires = _utcNow() + ttl;
@@ -100,6 +119,7 @@ public sealed class InMemoryFleetBackplane : IFleetBackplane
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public Task<bool> SetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -110,15 +130,18 @@ public sealed class InMemoryFleetBackplane : IFleetBackplane
         }
     }
 
+    /// <inheritdoc/>
     public Task<string?> GetAsync(string key, CancellationToken cancellationToken = default) =>
         Task.FromResult(_data.TryGetValue(key, out var e) && Live(e) ? e.Value : null);
 
+    /// <inheritdoc/>
     public Task<string?> TakeAsync(string key, CancellationToken cancellationToken = default)
     {
         lock (_gate)
             return Task.FromResult(_data.TryRemove(key, out var e) && Live(e) ? e.Value : null);
     }
 
+    /// <inheritdoc/>
     public Task<IReadOnlyDictionary<string, string>> GetByPrefixAsync(string prefix, CancellationToken cancellationToken = default)
     {
         var now = _utcNow();
@@ -128,12 +151,14 @@ public sealed class InMemoryFleetBackplane : IFleetBackplane
         return Task.FromResult(found);
     }
 
+    /// <inheritdoc/>
     public Task DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
         _data.TryRemove(key, out _);
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public Task<bool> DeleteIfValueAsync(string key, string value, CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -143,6 +168,8 @@ public sealed class InMemoryFleetBackplane : IFleetBackplane
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Expired entries are swept at most once a minute during increments; other expired keys are just ignored on read.</remarks>
     public Task<long> IncrementAsync(string key, TimeSpan ttl, long by = 1, CancellationToken cancellationToken = default)
     {
         lock (_gate)

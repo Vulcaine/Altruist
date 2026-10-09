@@ -51,6 +51,14 @@ public enum RateVerdict
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
 public sealed class RateLimitAttribute : Attribute
 {
+    /// <summary>Names the rate-limit bucket (gate handler) or HTTP policy (controller/action).</summary>
+    /// <param name="bucket">Bucket or policy name; must be non-empty.</param>
+    /// <exception cref="ArgumentException"><paramref name="bucket"/> is null or whitespace.</exception>
+    /// <example><code>
+    /// [Gate("chat")]
+    /// [RateLimit("chat")]   // altruist:server:transport:rate-limit:buckets:chat
+    /// public Task OnChat(ChatPacket packet, string clientId) { ... }
+    /// </code></example>
     public RateLimitAttribute(string bucket)
     {
         if (string.IsNullOrWhiteSpace(bucket))
@@ -58,13 +66,16 @@ public sealed class RateLimitAttribute : Attribute
         Bucket = bucket;
     }
 
+    /// <summary>Bucket (gate) or policy (HTTP) name.</summary>
     public string Bucket { get; }
 }
 
 /// <summary>One token bucket: <see cref="Capacity"/> tokens (the burst), refilled at <see cref="PerSecond"/>.</summary>
 public sealed class RateBucketOptions
 {
+    /// <summary>Maximum tokens, i.e. the burst size (config key <c>capacity</c>). Buckets start full.</summary>
     public double Capacity { get; set; }
+    /// <summary>Refill rate in tokens per second (config key <c>per-second</c>).</summary>
     public double PerSecond { get; set; }
 
     /// <summary>Gates (event names) that draw from this bucket.</summary>
@@ -81,8 +92,10 @@ public sealed class RateBucketOptions
 /// </summary>
 public sealed class RateLimitOptions
 {
+    /// <summary>Configuration section path: <c>altruist:server:transport:rate-limit</c>.</summary>
     public const string ConfigPath = "altruist:server:transport:rate-limit";
 
+    /// <summary>Master switch (<c>enabled</c>); when false <see cref="RateLimitInterceptor"/> is not registered.</summary>
     public bool Enabled { get; set; }
 
     /// <summary>Payloads larger than this are dropped (0 = no limit).</summary>
@@ -94,6 +107,7 @@ public sealed class RateLimitOptions
     /// <summary>Strikes within the window that close the connection (0 = never close, only drop).</summary>
     public int StrikesToDisconnect { get; set; } = 60;
 
+    /// <summary>Length of the strike counting window in seconds (<c>strike-window-seconds</c>); the count resets when a strike arrives after the window elapsed.</summary>
     public double StrikeWindowSeconds { get; set; } = 10;
 
     /// <summary>Bucket of gates that no bucket lists (and of unknown events). Not configured = unlimited.</summary>
@@ -102,6 +116,7 @@ public sealed class RateLimitOptions
     /// <summary>Portal routes the limits apply to (e.g. "/game"); empty = every route.</summary>
     public List<string> Routes { get; set; } = new();
 
+    /// <summary>Configured buckets by name (<c>buckets:&lt;name&gt;</c>).</summary>
     public Dictionary<string, RateBucketOptions> Buckets { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>Reads the options from <c>altruist:server:transport:rate-limit</c> (kebab-case keys, as in config.yml).</summary>
@@ -183,6 +198,9 @@ public interface IRateLimiter
 /// </summary>
 public interface IRateLimitMetrics
 {
+    /// <summary>Called once per checked packet with the verdict (including <see cref="RateVerdict.Allow"/>).</summary>
+    /// <param name="context">Packet context.</param>
+    /// <param name="verdict">Limiter verdict.</param>
     void Checked(InterceptContext context, RateVerdict verdict);
 }
 
@@ -205,6 +223,8 @@ public sealed class TokenBucketRateLimiter : IRateLimiter
     private readonly ConcurrentDictionary<string, BucketDef?> _handlerBuckets = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ClientState> _clients = new();
 
+    /// <summary>Creates the limiter from parsed options (see <see cref="RateLimitOptions.FromConfiguration"/>).</summary>
+    /// <param name="options">Rate-limit options.</param>
     /// <param name="clock">Seconds, monotonic (tests); defaults to the stopwatch.</param>
     public TokenBucketRateLimiter(RateLimitOptions options, Func<double>? clock = null)
     {
@@ -223,11 +243,14 @@ public sealed class TokenBucketRateLimiter : IRateLimiter
         _byName.TryGetValue(options.DefaultBucket ?? "", out _default);
     }
 
+    /// <summary>Options this limiter was built from.</summary>
     public RateLimitOptions Options => _options;
 
     /// <summary>Name of the bucket <paramref name="gate"/> draws from (null = unlimited).</summary>
     public string? BucketOf(string gate) => BucketFor(gate)?.Name;
 
+    /// <inheritdoc/>
+    /// <remarks>Oversize payloads are rejected before any bucket is consulted. Once a connection reached <see cref="RateVerdict.Disconnect"/>, every later packet returns <see cref="RateVerdict.Drop"/> until <see cref="Forget"/>. Thread-safe (per-connection lock).</remarks>
     public RateVerdict Check(string clientId, string gate, int payloadLength)
     {
         var state = _clients.GetOrAdd(clientId, static (_, self) => new ClientState(self._clock(), self._defs.Length), this);
@@ -248,6 +271,7 @@ public sealed class TokenBucketRateLimiter : IRateLimiter
         }
     }
 
+    /// <inheritdoc/>
     public void Forget(string clientId) => _clients.TryRemove(clientId, out _);
 
     private BucketDef? BucketFor(string gate)
@@ -328,6 +352,12 @@ public sealed class RateLimitInterceptor : IConnectionStateInterceptor
     private readonly ILogger _logger;
     private readonly IRateLimitMetrics? _metrics;
 
+    /// <summary>DI constructor: reads <see cref="RateLimitOptions"/> from configuration and closes over-limit connections through the connection store.</summary>
+    /// <param name="configuration">App configuration (<c>altruist:server:transport:rate-limit</c>).</param>
+    /// <param name="store">Connection store used to close offending connections.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="limiter">Optional custom limiter from DI; defaults to <see cref="TokenBucketRateLimiter"/>.</param>
+    /// <param name="metrics">Optional verdict sink from DI.</param>
     public RateLimitInterceptor(IConfiguration configuration, IConnectionStore store, ILoggerFactory loggerFactory,
         IRateLimiter? limiter = null, IRateLimitMetrics? metrics = null)
         : this(RateLimitOptions.FromConfiguration(configuration), limiter, null, loggerFactory.CreateLogger<RateLimitInterceptor>(), metrics)
@@ -351,10 +381,14 @@ public sealed class RateLimitInterceptor : IConnectionStateInterceptor
         ILogger? logger = null, IRateLimitMetrics? metrics = null) =>
         new(options, limiter, disconnect, logger ?? NullLogger.Instance, metrics);
 
+    /// <summary>Effective options.</summary>
     public RateLimitOptions Options { get; }
 
+    /// <summary>Limiter in use (custom from DI or the default token buckets).</summary>
     public IRateLimiter Limiter => _limiter;
 
+    /// <inheritdoc/>
+    /// <remarks>Skips packets without a client id and connections whose route is not in <see cref="RateLimitOptions.Routes"/> (case-insensitive, trailing slash ignored).</remarks>
     public async Task Intercept(InterceptContext context, IPacket eventData)
     {
         if (string.IsNullOrEmpty(context.ClientId))
@@ -373,6 +407,7 @@ public sealed class RateLimitInterceptor : IConnectionStateInterceptor
         }
     }
 
+    /// <inheritdoc/>
     public void Forget(string clientId) => _limiter.Forget(clientId);
 
     private static string NormalizeRoute(string? route)

@@ -22,6 +22,12 @@ namespace Altruist
     /// <c>${NAME:-default}</c> (the default when unset or empty); <c>$${</c> is a literal <c>${</c>.
     /// The expanded value takes the YAML value's place (environment overrides of the key still win).
     /// </para>
+    /// <para>
+    /// Files are read from <see cref="AppContext.BaseDirectory"/> (the build output folder) and are optional;
+    /// YAML files reload on change. The result is cached process-wide: the first <see cref="Load"/> wins and later
+    /// <c>args</c> are ignored. All framework code (DI, attributes) reads this same instance, so use it rather than building
+    /// your own <see cref="IConfiguration"/>; inject <see cref="IConfiguration"/> in services.
+    /// </para>
     /// </summary>
     public static class AppConfigLoader
     {
@@ -33,6 +39,11 @@ namespace Altruist
         private static readonly object _lock = new();
         private static IConfiguration? _config;
 
+        /// <summary>
+        /// Returns the process-wide configuration, building it on first call (thread-safe).
+        /// </summary>
+        /// <param name="args">Command-line arguments (<c>--altruist:server:http:port=8080</c> style); used only on the first call.</param>
+        /// <returns>The cached configuration root (or the instance supplied to <see cref="Set"/>).</returns>
         public static IConfiguration Load(string[]? args = null)
         {
             if (_config is not null)
@@ -87,6 +98,8 @@ namespace Altruist
         /// The environment variable that overrides a configuration path:
         /// <c>myapp:email:api-key</c> -&gt; <c>MYAPP__EMAIL__API_KEY</c>.
         /// </summary>
+        /// <param name="path">Colon-separated configuration path.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
         public static string EnvironmentVariableName(string path) =>
             (path ?? throw new ArgumentNullException(nameof(path))).ToUpperInvariant().Replace(":", "__").Replace('-', '_');
 
@@ -96,6 +109,9 @@ namespace Altruist
         /// <c>_</c> becomes <c>-</c> unless <paramref name="yaml"/> has the underscore key at that
         /// place; <c>ALTRUIST__</c> variables also keep their verbatim path (earlier behaviour).
         /// </summary>
+        /// <param name="yaml">The YAML-only configuration (used to discover roots and underscore keys).</param>
+        /// <param name="environment">Environment variables, e.g. <see cref="Environment.GetEnvironmentVariables()"/>.</param>
+        /// <returns>Configuration path / value pairs to add as an in-memory source.</returns>
         public static IEnumerable<KeyValuePair<string, string?>> MapEnvironment(IConfiguration yaml, IDictionary environment)
         {
             if (yaml is null) throw new ArgumentNullException(nameof(yaml));
@@ -145,6 +161,9 @@ namespace Altruist
         /// The values of <paramref name="yaml"/> that reference environment variables, expanded
         /// (see <see cref="ExpandPlaceholders(string, IDictionary)"/>).
         /// </summary>
+        /// <param name="yaml">The YAML-only configuration.</param>
+        /// <param name="environment">Environment variables.</param>
+        /// <returns>Only the entries whose value contained <c>${</c>, with placeholders expanded.</returns>
         public static IEnumerable<KeyValuePair<string, string?>> ExpandPlaceholders(IConfiguration yaml, IDictionary environment)
         {
             if (yaml is null) throw new ArgumentNullException(nameof(yaml));
@@ -160,6 +179,8 @@ namespace Altruist
         /// Replaces <c>${NAME}</c> with the variable's value (empty when unset), <c>${NAME:-default}</c>
         /// with the value or, when unset or empty, the default, and <c>$${</c> with a literal <c>${</c>.
         /// </summary>
+        /// <param name="value">Raw value containing placeholders.</param>
+        /// <param name="environment">Variable lookup (keys are case-sensitive as given by the dictionary).</param>
         public static string ExpandPlaceholders(string value, IDictionary environment)
         {
             if (value is null) throw new ArgumentNullException(nameof(value));
@@ -173,12 +194,18 @@ namespace Altruist
             });
         }
 
+        /// <summary>
+        /// Replaces the cached configuration returned by <see cref="Load"/>. Intended for tests and custom hosts; call it before
+        /// bootstrap, since services built earlier keep the old instance.
+        /// </summary>
+        /// <param name="configuration">Configuration to use from now on.</param>
         public static void Set(IConfiguration configuration)
         {
             lock (_lock)
             { _config = configuration; }
         }
 
+        /// <summary>Clears the cache so the next <see cref="Load"/> rebuilds from files, environment and the new args (tests).</summary>
         public static void Reset()
         {
             lock (_lock)

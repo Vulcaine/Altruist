@@ -7,12 +7,30 @@ using Altruist.Gaming.Rooms;
 
 namespace Altruist.Gaming.Matchmaking;
 
-public enum QueueState { Idle, Searching, Found }
+/// <summary>A connection's queue state: <c>Idle</c> (not queued), <c>Searching</c> (waiting), <c>Found</c> (a room or a seat was found).</summary>
+public enum QueueState
+{
+    /// <summary>Not queued.</summary>
+    Idle,
+    /// <summary>Waiting in a queue.</summary>
+    Searching,
+    /// <summary>A room or a seat was found.</summary>
+    Found,
+}
 
 /// <summary>A connection's queue status (the game turns it into its packet).</summary>
+/// <param name="State">Idle, searching or found.</param>
+/// <param name="Playlist">The playlist id ("" when unknown).</param>
+/// <param name="Elapsed">Seconds waited so far (0 when not queued).</param>
+/// <param name="PlayersFound">Players waiting in that queue, capped at <paramref name="PlayersNeeded"/> (all of them when found).</param>
+/// <param name="PlayersNeeded">Players in a full room of the playlist.</param>
 public sealed record QueueStatusInfo(QueueState State, string Playlist, float Elapsed, int PlayersFound, int PlayersNeeded);
 
-/// <summary>What matchmaking needs from the game.</summary>
+/// <summary>
+/// What matchmaking needs from the game; implement it (usually on the same class as
+/// <see cref="IRoomGame{TSim,TInput,TPlayer}"/>) when the host uses <see cref="MatchmakingModule{TSim,TInput,TPlayer}"/>.
+/// Called on the engine thread.
+/// </summary>
 public interface IMatchmakingGame<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
@@ -22,6 +40,7 @@ public interface IMatchmakingGame<TSim, TInput, TPlayer>
     /// <summary>Seconds left on the room's clock (join in progress needs enough of it).</summary>
     double TimeLeftSeconds(Room<TSim, TInput, TPlayer> room);
 
+    /// <summary>The packet that tells a connection its queue status (sent on changes and every <see cref="MatchmakingOptions.StatusIntervalSeconds"/> while searching).</summary>
     IPacketBase QueueStatus(QueueStatusInfo status);
 }
 
@@ -47,6 +66,29 @@ internal sealed record RoomRating(double Mean);
 /// and keep their waiting time when they move. A full or draining server sends its queue on.
 /// With one server nothing moves.
 /// </para>
+/// <para>
+/// When to use: public queues where strangers are grouped automatically by playlist (and rating),
+/// bots fill unrated rooms and backfill seats, and join in progress replaces leavers. For friends
+/// playing together through an invite code, with a leader that picks the mode and starts, use
+/// <c>LobbyModule</c> (Altruist.Gaming.Lobbies) instead; both can be added to one host and a
+/// connection is in at most one of them at a time (<see cref="RoomHost{TSim,TInput,TPlayer}.TakeOver"/>).
+/// <see cref="Matchmaker"/> alone is the pure queue logic (no host), for tools and tests.
+/// </para>
+/// <example>
+/// <code>
+/// var playlists = new[]
+/// {
+///     new PlaylistOptions { Id = "duel", Mode = "1v1", TeamSize = 1, Rules = new RoomRules { JoinInProgress = true } },
+///     new PlaylistOptions { Id = "ranked", Mode = "2v2", TeamSize = 2, Rated = true,
+///         Rules = new RoomRules { OnGraceExpired = GraceExpiredAction.Abandon, WhenEmpty = EmptyRoomAction.TeamForfeit } },
+/// };
+/// var mm = new MatchmakingModule&lt;ArenaSim, PadInput, Profile&gt;(game, new MatchmakingOptions { FillAfterSeconds = 10 }, playlists);
+/// host.Use(mm);
+/// // on a "queue" command (engine thread), after the game's own gates:
+/// if (mm.Queue.Playlist(request.Playlist) is { } playlist) mm.Enqueue(session, playlist);
+/// // on "cancel": mm.Cancel(session);
+/// </code>
+/// </example>
 /// </summary>
 public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
@@ -65,15 +107,21 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
 
     private sealed record Arrival(double At);
 
+    /// <summary>Creates the module; add it to a host with <see cref="RoomHost{TSim,TInput,TPlayer}.Use"/>.</summary>
+    /// <param name="game">The game's matchmaking hooks (usually the same object as the host's <see cref="IRoomGame{TSim,TInput,TPlayer}"/>).</param>
+    /// <param name="options">Timings and rating windows.</param>
+    /// <param name="playlists">The queues players may join.</param>
     public MatchmakingModule(IMatchmakingGame<TSim, TInput, TPlayer> game, MatchmakingOptions options, IEnumerable<PlaylistOptions> playlists)
     {
         _game = game;
         Queue = new Matchmaker(options, playlists);
     }
 
+    /// <summary>The queues (read them for status pages; change them through <see cref="Enqueue"/>, <see cref="Cancel"/> and <see cref="Remove"/>).</summary>
     public Matchmaker Queue { get; }
     private MatchmakingOptions O => Queue.Options;
 
+    /// <inheritdoc/>
     public void Attach(RoomHost<TSim, TInput, TPlayer> host) => _host = host;
 
     // ------------------------------------------------------------------ connection commands
@@ -115,6 +163,10 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     /// <summary>Takes the connection out of the queue; true when it was queued.</summary>
     public bool Remove(RoomSession<TSim, TInput, TPlayer> s) => Queue.Remove(s.PrincipalId);
 
+    /// <summary>Sends the connection its queue status (elapsed wait, players found and needed).</summary>
+    /// <param name="s">The connection.</param>
+    /// <param name="state">The state to report.</param>
+    /// <param name="playlistId">The playlist to report on; null uses the one it is queued for.</param>
     public void SendStatus(RoomSession<TSim, TInput, TPlayer> s, QueueState state, string? playlistId = null)
     {
         var entry = Queue.Get(s.PrincipalId);
@@ -142,6 +194,7 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
 
     // ------------------------------------------------------------------ host hooks
 
+    /// <summary>The connection is closing: it leaves the queue and a running join notice.</summary>
     public void OnSessionDropping(RoomSession<TSim, TInput, TPlayer> s)
     {
         Queue.Remove(s.PrincipalId);
@@ -155,6 +208,7 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         Cancel(s);
     }
 
+    /// <summary>The connection is queued.</summary>
     public bool IsBusy(RoomSession<TSim, TInput, TPlayer> s) => Queue.Get(s.PrincipalId) is not null;
 
     /// <summary>Players about to join a room that is going away go back to the queue at their place.</summary>
@@ -172,6 +226,7 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         }
     }
 
+    /// <summary>Every frame: completes due join-in-progress swaps, then (unless draining) fills running rooms and starts new ones.</summary>
     public void BeforeBotRefills()
     {
         RunPendingSwaps();
@@ -291,6 +346,7 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         return false;
     }
 
+    /// <summary>Every frame: fleet queue stats and placement, then the periodic "searching" status updates.</summary>
     public void AfterFrame()
     {
         RunFleet();

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Altruist.Security;
 
+/// <summary>Helpers to read the authenticated principal and client address in controllers and portals.</summary>
 public static class SecurityExtensions
 {
     /// <summary>

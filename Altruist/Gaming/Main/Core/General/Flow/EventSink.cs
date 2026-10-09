@@ -28,6 +28,8 @@ public sealed class EventSink<TEvent> : IEventSink<TEvent>, IReadOnlyList<TEvent
 {
     private readonly List<TEvent> _events;
 
+    /// <summary>Creates an empty sink.</summary>
+    /// <param name="capacity">Initial capacity of the reused backing list.</param>
     public EventSink(int capacity = 16) => _events = new List<TEvent>(capacity);
 
     /// <summary>Number of events collected.</summary>
@@ -71,5 +73,6 @@ public sealed class NullEventSink<TEvent> : IEventSink<TEvent>
 
     private NullEventSink() { }
 
+    /// <summary>Drops the event.</summary>
     public void Emit(TEvent e) { }
 }

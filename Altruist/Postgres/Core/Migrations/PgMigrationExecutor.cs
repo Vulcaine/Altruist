@@ -21,6 +21,27 @@ using Altruist.Persistence;
 
 namespace Altruist.Migrations.Postgres
 {
+    /// <summary>
+    /// Postgres <see cref="IMigrationExecutor"/>: turns each planned <see cref="MigrationOperation"/> into DDL/DML and
+    /// runs it through the <see cref="ISqlDatabaseProvider"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Registered as a singleton <see cref="IMigrationExecutor"/> when <c>altruist:persistence:database:provider</c> is
+    /// <c>postgres</c>; invoked by the vault schema migrator during startup bootstrap (see
+    /// <see cref="Persistence.Postgres.PostgresDatabaseConfiguration"/>), never needed directly.
+    /// </para>
+    /// <para>
+    /// The base class runs all operations of one schema inside a single transaction on one connection (Postgres DDL is
+    /// transactional), so a failing operation rolls the whole schema's migration back and surfaces as a
+    /// <see cref="MigrationException"/>. Creation statements are idempotent (<c>IF NOT EXISTS</c>); drops use
+    /// <c>IF EXISTS</c>, and table/column drops use <c>CASCADE</c> (dependent views, constraints and foreign keys go too).
+    /// </para>
+    /// <para>
+    /// Config: <c>altruist:persistence:migration:batch-size</c> (default 50000) is the row batch for data-copying
+    /// operations.
+    /// </para>
+    /// </remarks>
     [Service(typeof(IMigrationExecutor))]
     [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
     public sealed class PostgresMigrationExecutor : AbstractMigrationExecutor
@@ -61,6 +82,9 @@ namespace Altruist.Migrations.Postgres
         private const string DropForeignKeyTemplate =
             "ALTER TABLE {table_fqn} DROP CONSTRAINT IF EXISTS {constraint_name};";
 
+        /// <summary>Creates the executor.</summary>
+        /// <param name="provider">Provider that executes the statements (and supplies the transaction).</param>
+        /// <param name="batchSize">Rows per batch for column copies (<c>altruist:persistence:migration:batch-size</c>); values &lt;= 0 mean 50000.</param>
         public PostgresMigrationExecutor(
             ISqlDatabaseProvider provider,
             [AppConfigValue("altruist:persistence:migration:batch-size", "50000")] int batchSize = 50_000)
@@ -72,6 +96,11 @@ namespace Altruist.Migrations.Postgres
         // ARCHIVE TABLE ([VaultArchived])
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// <c>CREATE TABLE IF NOT EXISTS archive (LIKE source INCLUDING ALL)</c> then <c>INSERT INTO archive SELECT * FROM source</c>.
+        /// Dropping the source is a separate planned operation.
+        /// </remarks>
         protected override async Task ApplyArchiveTableAsync(string defaultSchema, ArchiveTableOperation op)
         {
             var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
@@ -89,6 +118,9 @@ namespace Altruist.Migrations.Postgres
         // TABLE OPERATIONS
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks><c>CREATE TABLE IF NOT EXISTS</c> with column defaults, <c>NOT NULL</c>, inline <c>UNIQUE</c> and a primary key.</remarks>
+        /// <exception cref="InvalidOperationException">The operation has no primary-key columns.</exception>
         protected override async Task ApplyCreateTableAsync(string defaultSchema, CreateTableOperation createTable)
         {
             // Use operation.Schema if set, otherwise fall back to keyspace name
@@ -135,6 +167,8 @@ namespace Altruist.Migrations.Postgres
             await _provider.ExecuteAsync(sql);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Destructive: <c>DROP TABLE IF EXISTS ... CASCADE</c>.</remarks>
         protected override async Task ApplyDropTableAsync(string defaultSchema, DropTableOperation dropTable)
         {
             var schemaName = string.IsNullOrWhiteSpace(dropTable.Schema)
@@ -153,6 +187,8 @@ namespace Altruist.Migrations.Postgres
         // COLUMN OPERATIONS
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks><c>ADD COLUMN IF NOT EXISTS</c>. A <c>NOT NULL</c> column without a default fails on a non-empty table.</remarks>
         protected override async Task ApplyAddColumnAsync(string defaultSchema, AddColumnOperation addCol)
         {
             var schemaName = string.IsNullOrWhiteSpace(addCol.Schema)
@@ -176,6 +212,8 @@ namespace Altruist.Migrations.Postgres
             await _provider.ExecuteAsync(sql);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Destructive: <c>DROP COLUMN IF EXISTS ... CASCADE</c>.</remarks>
         protected override async Task ApplyDropColumnAsync(string defaultSchema, DropColumnOperation dropCol)
         {
             var schemaName = string.IsNullOrWhiteSpace(dropCol.Schema)
@@ -195,6 +233,8 @@ namespace Altruist.Migrations.Postgres
         // RENAME COLUMN
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks>Metadata-only <c>RENAME COLUMN</c>; data is preserved.</remarks>
         protected override async Task ApplyRenameColumnAsync(string defaultSchema, RenameColumnOperation op)
         {
             var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
@@ -209,6 +249,12 @@ namespace Altruist.Migrations.Postgres
         // ALTER COLUMN TYPE
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Within one type family (integers, floats, text, timestamps, numeric): <c>ALTER COLUMN ... TYPE ... USING col::type</c>.
+        /// Across families: adds a temporary column, copies with a cast in batches of the configured size, drops the
+        /// old column (<c>CASCADE</c>) and renames the temporary one; values that cannot be cast make the migration fail.
+        /// </remarks>
         protected override async Task ApplyAlterColumnTypeAsync(string defaultSchema, AlterColumnTypeOperation op)
         {
             var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
@@ -275,6 +321,8 @@ namespace Altruist.Migrations.Postgres
         // COPY COLUMN DATA ([VaultColumnCopy])
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks>Batched <c>UPDATE target = source::type</c> for rows where the target is null and the source is not.</remarks>
         protected override async Task ApplyCopyColumnDataAsync(string defaultSchema, CopyColumnDataOperation op)
         {
             var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
@@ -297,6 +345,8 @@ namespace Altruist.Migrations.Postgres
         // DELETE MARKED COLUMN ([VaultColumnDelete])
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks>Destructive: <c>DROP COLUMN IF EXISTS ... CASCADE</c>.</remarks>
         protected override async Task ApplyDeleteMarkedColumnAsync(string defaultSchema, DeleteMarkedColumnOperation op)
         {
             var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
@@ -310,6 +360,8 @@ namespace Altruist.Migrations.Postgres
         // CONSTRAINT OPERATIONS
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks><c>ADD CONSTRAINT ... UNIQUE (...)</c>; fails if existing rows violate it.</remarks>
         protected override async Task ApplyAddUniqueConstraintAsync(
             string defaultSchema,
             AddUniqueConstraintOperation addUnique)
@@ -330,6 +382,7 @@ namespace Altruist.Migrations.Postgres
             await _provider.ExecuteAsync(sql);
         }
 
+        /// <inheritdoc/>
         protected override async Task ApplyDropConstraintAsync(
             string defaultSchema,
             DropConstraintOperation dropConstraint)
@@ -351,6 +404,8 @@ namespace Altruist.Migrations.Postgres
         // FOREIGN KEY OPERATIONS
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks>The principal schema defaults to the dependent table's schema when the operation leaves it empty.</remarks>
         protected override async Task ApplyAddForeignKeyAsync(string defaultSchema, AddForeignKeyOperation addFk)
         {
             // Dependent (child) schema
@@ -378,6 +433,7 @@ namespace Altruist.Migrations.Postgres
             await _provider.ExecuteAsync(sql);
         }
 
+        /// <inheritdoc/>
         protected override async Task ApplyDropForeignKeyAsync(string defaultSchema, DropForeignKeyOperation dropFk)
         {
             var schemaName = string.IsNullOrWhiteSpace(dropFk.Schema)
@@ -397,6 +453,8 @@ namespace Altruist.Migrations.Postgres
         // INDEX OPERATIONS
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks>Single-column B-tree <c>CREATE INDEX IF NOT EXISTS</c> in the table's schema.</remarks>
         protected override async Task ApplyCreateIndexAsync(string defaultSchema, CreateIndexOperation createIndex)
         {
             var schemaName = string.IsNullOrWhiteSpace(createIndex.Schema)
@@ -412,6 +470,7 @@ namespace Altruist.Migrations.Postgres
             await _provider.ExecuteAsync(sql);
         }
 
+        /// <inheritdoc/>
         protected override async Task ApplyDropIndexAsync(string defaultSchema, DropIndexOperation dropIndex)
         {
             var schemaName = string.IsNullOrWhiteSpace(dropIndex.Schema)
@@ -430,6 +489,8 @@ namespace Altruist.Migrations.Postgres
         // SCHEMA CREATION (if needed)
         // --------------------------------
 
+        /// <inheritdoc/>
+        /// <remarks><c>CREATE SCHEMA IF NOT EXISTS</c> (name quoted, case preserved).</remarks>
         protected override async Task ApplyCreateSchemaAsync(string defaultSchema, CreateSchemaOperation createSchema)
         {
             var schemaName = string.IsNullOrWhiteSpace(createSchema.Schema)

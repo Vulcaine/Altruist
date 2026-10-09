@@ -16,11 +16,41 @@ namespace Altruist.Security.Http;
 /// Extends <see cref="AuthController"/> to implement JWT-specific login, refresh handling,
 /// and a session upgrade flow using <see cref="IAuthService"/> (HTTP version of AuthPortal).
 /// </summary>
+/// <remarks>
+/// Derive a controller with your own <c>[Route]</c> to get <c>POST signup</c>, <c>login/emailpwd</c>,
+/// <c>login/unamepwd</c>, <c>refresh</c> and <c>upgrade</c>. Credentials are checked by your
+/// <see cref="ILoginService"/>; tokens come from <see cref="IJwtTokenIssuer"/> (access JWT 1 hour) and the session is
+/// stored in <see cref="TokenSessionSyncService"/> (one session per group key). Override <see cref="GetClaimsForLogin"/>
+/// to add claims and <see cref="AuthController.SessionGroupKeyStrategy"/> to group sessions differently.
+/// <para>
+/// For new applications a hand-written controller over <see cref="IAccessTokenIssuer"/>, <see cref="IRefreshTokenService"/>
+/// and <see cref="RefreshCookie"/> gives configurable lifetimes and rotating, revocable refresh tokens.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// [ApiController, Route("api/auth")]
+/// public sealed class MyAuthController : JwtAuthController
+/// {
+///     public MyAuthController(IJwtTokenValidator v, ILoginService l, TokenSessionSyncService s,
+///         IJwtTokenIssuer i, IAuthService a, ILoggerFactory f) : base(v, l, s, i, a, f) { }
+/// }
+/// </code>
+/// </example>
 public abstract class JwtAuthController : AuthController
 {
+    /// <summary>Validates access tokens presented to <see cref="Refresh"/>.</summary>
     protected readonly IJwtTokenValidator _tokenValidator;
+    /// <summary>Performs the <see cref="Upgrade"/> flow.</summary>
     protected readonly IAuthService _authService;
 
+    /// <summary>Creates the controller (derived controllers are resolved by MVC).</summary>
+    /// <param name="jwtTokenValidator">Access-token validator.</param>
+    /// <param name="loginService">Application login/signup logic.</param>
+    /// <param name="tokenSessionSyncService">Session store.</param>
+    /// <param name="issuer">JWT issuer.</param>
+    /// <param name="authService">Upgrade service.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
     protected JwtAuthController(
         IJwtTokenValidator jwtTokenValidator,
         ILoginService loginService,
@@ -60,8 +90,9 @@ public abstract class JwtAuthController : AuthController
         => Task.CompletedTask;
 
     /// <summary>
-    /// Accepts a <see cref="SessionAuthContext"/> in the body, calls <see cref="IAuthService.Upgrade"/>,
-    /// and returns the issued token/packet as JSON. On failure, returns 401/500.
+    /// Accepts an <see cref="UpgradeAuthRequest"/> in the body, calls <see cref="IAuthService.Upgrade"/>,
+    /// and returns the issued token/packet as JSON. On failure, returns 401/500. Retries up to 3 times when the
+    /// session store reports a concurrency conflict.
     /// </summary>
     [HttpPost("upgrade")]
     public async Task<IActionResult> Upgrade([FromBody] UpgradeAuthRequest context)
@@ -106,6 +137,10 @@ public abstract class JwtAuthController : AuthController
         return StatusCode(StatusCodes.Status500InternalServerError, new { reason = "Upgrade failed after retries." });
     }
 
+    /// <summary>
+    /// <c>POST signup</c>: requires email, username and password, then calls <see cref="ILoginService.SignupAsync"/>.
+    /// 200 (empty) when an account was created, 400 with the error otherwise, 500 on exceptions. Issues no tokens.
+    /// </summary>
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignupRequest request)
     {
@@ -150,6 +185,11 @@ public abstract class JwtAuthController : AuthController
         }
     }
 
+    /// <summary>
+    /// <c>POST login/emailpwd</c>: checks the credentials with <see cref="ILoginService.LoginAsync"/>, issues a JWT pair with
+    /// <see cref="GetClaimsForLogin"/> and stores the session (replacing the group's other sessions). Returns an
+    /// <see cref="AltruistLoginResponse"/>, or 401.
+    /// </summary>
     [HttpPost("login/emailpwd")]
     public async Task<IActionResult> EmailPasswordLogin([FromBody] EmailPasswordLoginRequest request)
     {
@@ -179,6 +219,10 @@ public abstract class JwtAuthController : AuthController
         }
     }
 
+    /// <summary>
+    /// <c>POST login/unamepwd</c>: like <see cref="EmailPasswordLogin"/> for user name and password, but currently stores no
+    /// session, so <see cref="Refresh"/> cannot be used with these tokens.
+    /// </summary>
     [HttpPost("login/unamepwd")]
     public async Task<IActionResult> UsernamePasswordLogin([FromBody] UsernamePasswordLoginRequest request)
     {
@@ -209,6 +253,13 @@ public abstract class JwtAuthController : AuthController
         }
     }
 
+    /// <summary>
+    /// <c>POST refresh</c> with <c>Authorization: Bearer &lt;access&gt;;jwt;&lt;refresh&gt;;jwt</c>: checks the stored session
+    /// (refresh token, expiry, fingerprint) and issues a new pair carrying the old claims. The access token must still be
+    /// valid (it is validated with lifetime checks), so refresh before it expires. Returns an
+    /// <see cref="AltruistLoginResponse"/>, or 401.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">When no <see cref="TokenSessionSyncService"/> is registered.</exception>
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh()
     {

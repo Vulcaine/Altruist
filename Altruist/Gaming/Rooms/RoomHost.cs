@@ -26,6 +26,49 @@ namespace Altruist.Gaming.Rooms;
 /// matchmaking and lobbies open rooms only while it fits, and a drain stops new rooms, lets the
 /// running ones end and finally closes what is left.
 /// </para>
+/// <para>
+/// When to use: session-based play (matches, rounds, races, arenas) where a fixed group of players
+/// meets in an isolated, short-lived instance with its own deterministic fixed-step simulation, and
+/// the room ends and is disposed when the match is over. For persistent, shared, open worlds that
+/// players enter and leave at will (spatial partitioning, visibility, world objects, autosave) use
+/// the world organizers instead (<see cref="Altruist.Gaming.TwoD.IGameWorldOrganizer2D"/>,
+/// <see cref="Altruist.Gaming.ThreeD.IGameWorldOrganizer3D"/>). To gather players into rooms add
+/// <c>MatchmakingModule</c> (public queues, playlists, ratings, backfill) and/or <c>LobbyModule</c>
+/// (private invite-code lobbies whose leader starts the room) with <see cref="Use"/>.
+/// </para>
+/// <para>
+/// Setup: the host is not a DI service. The game implements <see cref="IRoomGame{TSim,TInput,TPlayer}"/>
+/// (and <see cref="IRoomTransport"/> for sends), constructs the host, and exposes it to the engine
+/// through its own <c>[Service(typeof(IWorldStepper))]</c> class (forwarding <see cref="BeforeSteps"/>,
+/// <see cref="FixedStep"/> and <see cref="AfterSteps"/>, or subclassing the host). Socket handlers post
+/// <see cref="Connect"/>, <see cref="SubmitInput"/>, <see cref="Return"/>, <see cref="Disconnect"/>
+/// and <see cref="RejoinRequest"/> onto the engine thread.
+/// </para>
+/// <example>
+/// <code>
+/// [Service(typeof(IWorldStepper))]
+/// public sealed class ArenaServer : IWorldStepper
+/// {
+///     private readonly RoomHost&lt;ArenaSim, PadInput, Profile&gt; _host;
+///
+///     public ArenaServer(IAltruistEngine engine, IServerNode node, IFleet fleet, IStepScheduler scheduler)
+///     {
+///         var game = new ArenaGame();                      // IRoomGame + IMatchmakingGame + ILobbyGame
+///         _host = new RoomHost&lt;ArenaSim, PadInput, Profile&gt;(game, new ArenaTransport(), new RoomHostOptions(), fixedHz: 60)
+///             .UseScheduler(scheduler).UseServer(node).UseFleet(fleet);
+///         _host.Use(new MatchmakingModule&lt;ArenaSim, PadInput, Profile&gt;(game, new MatchmakingOptions(), playlists))
+///              .Use(new LobbyModule&lt;ArenaSim, PadInput, Profile&gt;(game, new LobbyOptions { Playlist = privatePlaylist }));
+///     }
+///
+///     public StepMode Mode =&gt; StepMode.Fixed;
+///     public int FixedHz =&gt; _host.FixedHz;
+///     public void BeforeSteps(in FrameInfo f) =&gt; _host.BeforeSteps(f);
+///     public void FixedStep(in FixedStep s) =&gt; _host.FixedStep(s);
+///     public void AfterSteps(in FrameInfo f) =&gt; _host.AfterSteps(f);
+/// }
+/// // socket handler: engine.WaitForNextTick(() =&gt; host.SubmitInput(clientId, seq, input));
+/// </code>
+/// </example>
 /// </summary>
 public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContributor, IDrainParticipant
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
@@ -63,6 +106,12 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
     /// <summary>Connections whose arrival lookup (room elsewhere, handed-over work) is still running.</summary>
     private readonly Dictionary<string, bool> _arriving = new();
 
+    /// <summary>Creates a host with no rooms, modules, scheduler, server or fleet yet (chain <see cref="Use"/>, <see cref="UseScheduler"/>, <see cref="UseServer"/>, <see cref="UseFleet"/>).</summary>
+    /// <param name="game">The game: simulations, bots, results and packets.</param>
+    /// <param name="transport">Where packets go (production: the outbound queues; tests: a recorder).</param>
+    /// <param name="options">Host timings (snapshot rate, grace, bot refill delay, input buffering).</param>
+    /// <param name="fixedHz">Fixed steps per second the engine runs this stepper at (<see cref="FixedDt"/> = 1 / fixedHz).</param>
+    /// <param name="utcNow">Wall clock for <see cref="UtcNow"/> and room start times; null uses <see cref="DateTime.UtcNow"/> (tests pass a fake).</param>
     public RoomHost(IRoomGame<TSim, TInput, TPlayer> game, IRoomTransport transport, RoomHostOptions options, int fixedHz,
         Func<DateTime>? utcNow = null)
     {
@@ -74,20 +123,28 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
+    /// <summary>The timings the host was created with.</summary>
     public RoomHostOptions Options { get; }
+    /// <summary>The game plugged into the host (modules use it to reach their own game interfaces).</summary>
     public IRoomGame<TSim, TInput, TPlayer> Game => _game;
     /// <summary>Host time in seconds (advances with the frames, clamped like the steps).</summary>
     public double Now => _now;
+    /// <summary>The wall clock the host was given (UTC).</summary>
     public DateTime UtcNow => _utcNow();
     /// <summary>Fixed steps taken so far.</summary>
     public int CurrentStep => _stepCounter;
+    /// <summary>Running rooms (started and not disposed), in start order.</summary>
     public IReadOnlyList<Room<TSim, TInput, TPlayer>> Rooms => _rooms;
+    /// <summary>Open connections known to the host.</summary>
     public int SessionCount => _byClient.Count;
 
+    /// <summary>The session of a connection id, or null.</summary>
     public RoomSession<TSim, TInput, TPlayer>? SessionOf(string clientId) => _byClient.GetValueOrDefault(clientId);
 
+    /// <summary>The current (newest) session of a principal (account), or null.</summary>
     public RoomSession<TSim, TInput, TPlayer>? SessionOfPrincipal(string principalId) => _byPrincipal.GetValueOrDefault(principalId);
 
+    /// <summary>The room is running in this host (started and not disposed yet).</summary>
     public bool Contains(Room<TSim, TInput, TPlayer> room) => _rooms.Contains(room);
 
     /// <summary>Adds a module; hooks run in the order modules were added.</summary>
@@ -98,6 +155,7 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         return this;
     }
 
+    /// <summary>The first added module of type <typeparamref name="T"/>, or null.</summary>
     public T? Module<T>() where T : class => _modules.OfType<T>().FirstOrDefault();
 
     /// <summary>
@@ -119,6 +177,7 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         return this;
     }
 
+    /// <summary>The scheduler set with <see cref="UseScheduler"/>, or null (rooms step one by one on the engine thread).</summary>
     public IStepScheduler? Scheduler => _scheduler;
 
     /// <summary>Counts the rooms against the server's capacity and takes part in its drain.</summary>
@@ -132,6 +191,7 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         return this;
     }
 
+    /// <summary>The server node set with <see cref="UseServer"/>, or null (no capacity limit, no drain).</summary>
     public IServerNode? Server => _node;
 
     /// <summary>
@@ -147,6 +207,7 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         return this;
     }
 
+    /// <summary>The fleet set with <see cref="UseFleet"/>, or null (single server).</summary>
     public IFleet? Fleet => _fleet;
 
     /// <summary>The fleet unit kind under which a player's room is claimed.</summary>
@@ -364,7 +425,9 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
 
     // ------------------------------------------------------------------ world stepper
 
+    /// <summary>Always <see cref="StepMode.Fixed"/>: the coordinator steps the host at <see cref="FixedHz"/>.</summary>
     public StepMode Mode => StepMode.Fixed;
+    /// <summary>Fixed steps per second (from the constructor).</summary>
     public int FixedHz => _fixedHz;
 
     /// <summary>Advances host time by the frame's (clamped) duration, before its fixed steps.</summary>
@@ -423,6 +486,7 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         foreach (var mod in _modules) mod.AfterFrame();
     }
 
+    /// <summary>Seconds per fixed step (1 / <see cref="FixedHz"/>).</summary>
     public float FixedDt => _fixedDt;
 
     // ------------------------------------------------------------------ connections
@@ -430,7 +494,12 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
     /// <summary>
     /// An authenticated connection opened. A previous connection of the principal is replaced
     /// (told, dropped, closed); a principal with a live room is seated again when the rules allow.
+    /// Engine thread only: call it from a <c>WaitForNextTick</c> post after authenticating the socket.
     /// </summary>
+    /// <param name="clientId">The connection id (what <see cref="IRoomTransport"/> sends to).</param>
+    /// <param name="principalId">The stable player identity (account id); at most one connection per principal.</param>
+    /// <param name="player">The game's player data (profile, rating, cosmetics).</param>
+    /// <returns>The new session, or null when <paramref name="clientId"/> is already connected.</returns>
     public RoomSession<TSim, TInput, TPlayer>? Connect(string clientId, string principalId, TPlayer player)
     {
         if (_byClient.ContainsKey(clientId)) return null;
@@ -471,7 +540,13 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         }
     }
 
-    /// <summary>A sequenced input of the connection's seat.</summary>
+    /// <summary>
+    /// A sequenced input of the connection's seat, queued in its participant's <see cref="InputBuffer{TInput}"/>
+    /// and applied one per fixed step. Ignored when the connection has no seat. Engine thread only.
+    /// </summary>
+    /// <param name="clientId">The sending connection.</param>
+    /// <param name="seq">The client's input sequence number (increasing from 1; stale and duplicate ones are dropped).</param>
+    /// <param name="input">The input.</param>
     public void SubmitInput(string clientId, int seq, in TInput input)
     {
         if (!_byClient.TryGetValue(clientId, out var s)) return;
@@ -564,8 +639,10 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
     /// <summary>The principal's seat in <paramref name="room"/> may be rejoined from now on.</summary>
     public void Bind(string principalId, Room<TSim, TInput, TPlayer> room) => BindPrincipal(principalId, room);
 
+    /// <summary>The principal may no longer rejoin its bound room (see <see cref="Bind"/>).</summary>
     public void Unbind(string principalId) => UnbindPrincipal(principalId);
 
+    /// <summary>The room the principal may still (re)join, or null.</summary>
     public Room<TSim, TInput, TPlayer>? BoundRoom(string principalId) => _roomOfPrincipal.GetValueOrDefault(principalId);
 
     /// <summary>A participant's connection left the room (closed, replaced or returned).</summary>
@@ -818,14 +895,20 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
 
     // ------------------------------------------------------------------ sends
 
+    /// <summary>Sends a packet through the transport; a null packet (the game sends nothing) is ignored.</summary>
     public void Send(string clientId, IPacketBase? packet)
     {
         if (packet is not null) _transport.Send(clientId, packet);
     }
 
+    /// <summary>Sends the game's welcome packet for <paramref name="m"/> to the connection of <paramref name="s"/>.</summary>
+    /// <param name="s">The receiving connection.</param>
+    /// <param name="p">The participant the welcome is about.</param>
+    /// <param name="m">The room.</param>
     public void SendWelcome(RoomSession<TSim, TInput, TPlayer> s, Participant<TSim, TInput, TPlayer> p, Room<TSim, TInput, TPlayer> m) =>
         Send(s.ClientId, _game.Welcome(m, p));
 
+    /// <summary>Sends the game's roster packet to every active (connected, seated) participant of the room.</summary>
     public void SendRoster(Room<TSim, TInput, TPlayer> m)
     {
         var roster = _game.Roster(m);
@@ -853,6 +936,9 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
         }
     }
 
+    /// <summary>Sends one fresh snapshot to a single participant (on rejoin or join in progress), outside the regular snapshot phase.</summary>
+    /// <param name="m">The room.</param>
+    /// <param name="p">A connected participant of the room.</param>
     public void SendSnapshotTo(Room<TSim, TInput, TPlayer> m, Participant<TSim, TInput, TPlayer> p) =>
         Send(p.ClientId!, _game.PersonalizeSnapshot(_game.CaptureSnapshot(m), p));
 }

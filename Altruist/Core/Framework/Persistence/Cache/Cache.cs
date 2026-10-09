@@ -20,25 +20,44 @@ using Altruist.InMemory;
 
 namespace Altruist;
 
+/// <summary>
+/// Cursor over one in-memory cache bucket, returned by <see cref="InMemoryCache.GetAllAsync{T}(string)"/>.
+/// Enumerate it with <c>foreach</c>; it yields a snapshot of the bucket's current values.
+/// </summary>
+/// <remarks>
+/// Does not support batching: <see cref="NextBatch"/> throws, and <see cref="HasNext"/> stays true while the bucket is
+/// non-empty (it never advances), so do not drive it with a <c>while (cursor.HasNext)</c> loop.
+/// </remarks>
+/// <typeparam name="T">Entry type; values are cast from the stored objects.</typeparam>
 public class InMemoryCacheCursor<T> : ICursor<T>, IEnumerable<T> where T : notnull
 {
     private readonly EfficientConcurrentCache<object> _source;
 
+    /// <summary>True while the underlying bucket is non-empty (does not advance).</summary>
     public bool HasNext => _source.Count > 0;
 
+    /// <summary>Current number of entries in the bucket.</summary>
     public int Count => _source.Count;
 
+    /// <summary>Creates a cursor over <paramref name="source"/>.</summary>
+    /// <param name="source">The cache bucket.</param>
+    /// <param name="batchSize">Ignored (no batching in memory).</param>
     public InMemoryCacheCursor(EfficientConcurrentCache<object> source, int batchSize = int.MaxValue)
     {
         _source = source;
     }
 
+    /// <summary>Not supported for in-memory cursors; enumerate with <c>foreach</c>.</summary>
+    /// <returns>Never returns.</returns>
+    /// <exception cref="NotImplementedException">Always.</exception>
     public Task<IEnumerable<T>> NextBatch()
     {
         // No batching needed for in-memory — just return all current values
         throw new NotImplementedException("No batching needed for in-memory — just return all current values.");
     }
 
+    /// <summary>Enumerates a snapshot of the bucket's values.</summary>
+    /// <returns>The enumerator.</returns>
     public IEnumerator<T> GetEnumerator()
     {
         if (_source == null || _source.Count == 0)

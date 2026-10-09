@@ -38,6 +38,7 @@ public static class SqlAmbientTransaction
         return new Restore(previous);
     }
 
+    /// <summary>An open connection and transaction bound to an async flow by <see cref="Enter"/>.</summary>
     public sealed class Scope
     {
         internal Scope(DbConnection connection, DbTransaction transaction)
@@ -46,7 +47,9 @@ public static class SqlAmbientTransaction
             Transaction = transaction;
         }
 
+        /// <summary>The open connection the transaction runs on; providers execute their commands on it.</summary>
         public DbConnection Connection { get; }
+        /// <summary>The active transaction to attach commands to.</summary>
         public DbTransaction Transaction { get; }
 
         /// <summary>Set once the transaction committed or rolled back; the scope is then ignored.</summary>
@@ -77,6 +80,23 @@ public static class SqlAmbientTransaction
 }
 
 /// <summary>Providers that can run a block of operations atomically.</summary>
+/// <remarks>
+/// Implemented by <see cref="GeneralSqlDatabaseProvider"/>; obtain it by casting the injected
+/// <see cref="ISqlDatabaseProvider"/> (<c>db as ISqlTransactionProvider</c>). Use it for an atomic block
+/// inside a method; to make a whole DI service method atomic declaratively, annotate it with
+/// <see cref="TransactionalAttribute"/> instead.
+/// </remarks>
+/// <example>
+/// <code>
+/// var tx = (ISqlTransactionProvider)db;
+/// var saved = await tx.InTransactionAsync(async ct =&gt;
+/// {
+///     await vault.SaveAsync(order, ct: ct);
+///     await vault.SaveAsync(invoice, ct: ct);
+///     return true;
+/// });
+/// </code>
+/// </example>
 public interface ISqlTransactionProvider
 {
     /// <summary>
@@ -89,12 +109,28 @@ public interface ISqlTransactionProvider
     /// an awaited async method does not flow back to its caller, so a scope "entered" by a
     /// Begin...Async method would never be visible to the code after the await.
     /// </remarks>
+    /// <typeparam name="T">Result type of <paramref name="work"/>.</typeparam>
+    /// <param name="work">The operations to run; receives <paramref name="ct"/>. Must be awaited sequentially (commands on the shared connection are serialized).</param>
+    /// <param name="isolation">Isolation level for a new transaction; ignored when joining an outer one.</param>
+    /// <param name="ct">Cancellation token passed to the work and to begin/commit.</param>
+    /// <returns>The value returned by <paramref name="work"/>, after commit.</returns>
     Task<T> InTransactionAsync<T>(
         Func<CancellationToken, Task<T>> work,
         IsolationLevel isolation = IsolationLevel.ReadCommitted,
         CancellationToken ct = default);
 }
 
+/// <summary>
+/// Shared helper for <see cref="ISqlTransactionProvider"/> implementations: begins a transaction on an
+/// already opened connection, binds it with <see cref="SqlAmbientTransaction.Enter"/>, runs the work,
+/// then commits or rolls back and disposes the connection.
+/// </summary>
+/// <remarks>
+/// Does not check for an existing ambient transaction; callers that support nesting must test
+/// <see cref="SqlAmbientTransaction.Current"/> first and run the work directly when one is active
+/// (as <see cref="GeneralSqlDatabaseProvider.InTransactionAsync{T}"/> does).
+/// Application code should call <see cref="ISqlTransactionProvider.InTransactionAsync{T}"/> instead.
+/// </remarks>
 public static class SqlAmbientTransactionRunner
 {
     /// <summary>Binds a transaction on <paramref name="openConnection"/> (which it then owns) around <paramref name="work"/>.</summary>

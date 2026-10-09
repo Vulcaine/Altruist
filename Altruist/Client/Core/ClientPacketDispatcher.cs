@@ -7,7 +7,7 @@ namespace Altruist.Client;
 /// <summary>
 /// Routes inbound server frames to <see cref="PacketAttribute"/>-decorated
 /// handler methods. Mirrors the server's <c>CombatEventDispatcher</c> shape:
-/// assembly scan → per-method <see cref="Expression.Lambda"/> compile → registry
+/// assembly scan → per-method <c>Expression.Lambda</c> compile → registry
 /// keyed off the packet's auto-detected <see cref="IPacketBase.MessageCode"/>.
 ///
 /// <para>The wire shape is the standard <see cref="MessageEnvelope"/> fixarray(3)
@@ -27,7 +27,28 @@ namespace Altruist.Client;
 /// <para>Errors are caught and routed through <see cref="Logger"/> so one bad
 /// packet or buggy handler doesn't crash the receive loop. Logger is null by
 /// default (silent).</para>
+///
+/// <para><b>Wire-format note:</b> the envelope is always parsed as MessagePack bytes
+/// (<see cref="MessageEnvelopeShape"/>); only the inner packet goes through the supplied
+/// codec. A JSON-encoded envelope therefore reads as MessageCode 0 and is dropped.</para>
+///
+/// <para><b>Threading:</b> handlers run synchronously on whatever thread calls
+/// <see cref="Dispatch"/> — a background pump task when the router auto-pumps, or the
+/// caller of <see cref="IAltruistClientRouter.DrainInbound"/> otherwise.
+/// <see cref="Register"/> is safe to call concurrently with dispatch.</para>
+///
+/// <para><b>Lifetime:</b> DI singleton (<c>[Service]</c>). Handler classes marked
+/// <see cref="PacketHandlerAttribute"/> are registered at boot by
+/// <see cref="ClientPacketHandlerConfig"/>; call <see cref="Register"/> yourself for
+/// handlers built outside DI or when constructing the dispatcher manually.</para>
 /// </summary>
+/// <example>
+/// <code>
+/// var dispatcher = new ClientPacketDispatcher { Logger = Console.WriteLine };
+/// dispatcher.Register(new ChatHandlers());              // methods marked [Packet(typeof(X))]
+/// dispatcher.Dispatch(frameBytes, new MessagePackClientCodec());
+/// </code>
+/// </example>
 [Service]
 public sealed class ClientPacketDispatcher
 {
@@ -44,6 +65,19 @@ public sealed class ClientPacketDispatcher
     /// auto-detected MessageCode. The instance is captured by the compiled
     /// lambda; it must outlive the dispatcher.
     /// </summary>
+    /// <remarks>
+    /// Does not check for <see cref="PacketHandlerAttribute"/>; any object with
+    /// <see cref="PacketAttribute"/> instance methods is accepted. Registering the same
+    /// instance twice makes its handlers fire twice. When several handlers share a code, the
+    /// packet is deserialized once, as the type of the first registered handler.
+    /// </remarks>
+    /// <param name="handlerInstance">Object whose <see cref="PacketAttribute"/> methods to register.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="handlerInstance"/> is <c>null</c>.</exception>
+    /// <exception cref="InvalidOperationException">A <c>[Packet]</c> method does not take exactly one
+    /// parameter of the attribute's packet type, does not return <c>void</c>, or the MessageCode
+    /// cannot be resolved (no public parameterless constructor, not an <see cref="IPacketBase"/>,
+    /// or default MessageCode 0 with no <see cref="PacketAttribute.MessageCode"/> override).
+    /// Handlers registered before the failing method stay registered.</exception>
     public void Register(object handlerInstance)
     {
         if (handlerInstance is null) throw new ArgumentNullException(nameof(handlerInstance));
@@ -96,6 +130,15 @@ public sealed class ClientPacketDispatcher
     /// type, invoke every matching handler. Caught exceptions go through
     /// <see cref="Logger"/>.
     /// </summary>
+    /// <remarks>
+    /// Silently returns for empty frames, code 0, unregistered codes, malformed envelopes,
+    /// deserialization failures and <c>null</c> packets (each logged through <see cref="Logger"/>).
+    /// A throwing handler does not stop the remaining handlers.
+    /// </remarks>
+    /// <param name="envelopeBytes">One complete <see cref="MessageEnvelope"/> frame
+    /// (TCP length prefix already stripped).</param>
+    /// <param name="codec">Codec used to deserialize the inner packet.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="codec"/> is <c>null</c> (and the frame is non-empty).</exception>
     public void Dispatch(byte[] envelopeBytes, IClientCodec codec)
     {
         if (envelopeBytes is null || envelopeBytes.Length == 0) return;
@@ -169,6 +212,8 @@ public sealed class ClientPacketDispatcher
     /// Number of registered handlers for the given MessageCode. Used by tests
     /// to assert registration succeeded.
     /// </summary>
+    /// <param name="mc">MessageCode to look up.</param>
+    /// <returns>Handler count, 0 when none.</returns>
     public int HandlerCountForMC(uint mc) =>
         _handlers.TryGetValue(mc, out var list) ? list.Length : 0;
 

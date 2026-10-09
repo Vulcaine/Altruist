@@ -17,11 +17,29 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Altruist.Email;
 
 /// <summary>One transactional email: HTML plus a plain-text alternative.</summary>
+/// <param name="To">Recipient address (normalize with <see cref="EmailAddress.Normalize"/> first).</param>
+/// <param name="Subject">Subject line.</param>
+/// <param name="Html">HTML body.</param>
+/// <param name="Text">Plain-text body; also what <see cref="LogEmailSender"/> writes to the log.</param>
 public sealed record EmailMessage(string To, string Subject, string Html, string Text);
 
 /// <summary>Delivers transactional emails. Throws when delivery failed.</summary>
+/// <remarks>
+/// Inject this; the DI registration is <see cref="ConfiguredEmailSender"/> (singleton), which picks Resend or
+/// log-only delivery from <c>altruist:email</c>. Inside a request handler prefer
+/// <see cref="EmailSenderExtensions.SendInBackground(IEmailSender, EmailMessage, ILogger)"/> so the caller never waits on the provider.
+/// </remarks>
+/// <example>
+/// <code>
+/// await emailSender.SendAsync(new EmailMessage(to, "Verify your email", html, text), ct);
+/// </code>
+/// </example>
 public interface IEmailSender
 {
+    /// <summary>Sends <paramref name="message"/>; completes when the provider accepted it.</summary>
+    /// <param name="message">The email to send.</param>
+    /// <param name="cancellationToken">Cancels the delivery attempt.</param>
+    /// <exception cref="HttpRequestException">The provider rejected the email (Resend implementation).</exception>
     Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default);
 }
 
@@ -32,17 +50,26 @@ public interface IEmailSender
 /// </summary>
 public sealed class EmailOptions
 {
+    /// <summary>Config section: <c>altruist:email</c>.</summary>
     public const string ConfigPath = "altruist:email";
+    /// <summary>Provider value that logs emails instead of sending them (default).</summary>
     public const string ProviderLog = "log";
+    /// <summary>Provider value that sends through Resend (needs <see cref="ResendApiKey"/>).</summary>
     public const string ProviderResend = "resend";
 
+    /// <summary><c>altruist:email:provider</c>, lower-cased: <see cref="ProviderLog"/> or <see cref="ProviderResend"/>.</summary>
     public string Provider { get; set; } = ProviderLog;
+    /// <summary><c>altruist:email:from</c>: sender address; defaults to <c>no-reply@localhost</c>.</summary>
     public string From { get; set; } = "no-reply@localhost";
+    /// <summary><c>altruist:email:resend-api-key</c>: Resend API key (secret; supply via environment, not a committed file).</summary>
     public string? ResendApiKey { get; set; }
 
     /// <summary>Emails really go out (Resend with a key); otherwise they are logged.</summary>
     public bool SendsRealEmail => Provider == ProviderResend && !string.IsNullOrWhiteSpace(ResendApiKey);
 
+    /// <summary>Reads <c>altruist:email</c> from <paramref name="configuration"/>; missing keys keep their defaults.</summary>
+    /// <param name="configuration">Configuration root.</param>
+    /// <returns>The parsed options.</returns>
     public static EmailOptions FromConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -65,10 +92,15 @@ public sealed class ConfiguredEmailSender : IEmailSender
 {
     private readonly IEmailSender _inner;
 
+    /// <summary>DI constructor: reads <c>altruist:email</c> via <c>AppConfigLoader.Load()</c> (the app config files), not the injected <see cref="IConfiguration"/>.</summary>
+    /// <param name="loggerFactory">Logger factory.</param>
     [ActivatorUtilitiesConstructor]
     public ConfiguredEmailSender(ILoggerFactory loggerFactory)
         : this(EmailOptions.FromConfiguration(AppConfigLoader.Load()), loggerFactory) { }
 
+    /// <summary>Creates a sender from explicit options (tests, tools); picks Resend or log delivery as described on the class.</summary>
+    /// <param name="options">Email options.</param>
+    /// <param name="loggerFactory">Logger factory; <c>null</c> disables logging.</param>
     public ConfiguredEmailSender(EmailOptions options, ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -85,14 +117,18 @@ public sealed class ConfiguredEmailSender : IEmailSender
         _inner = new LogEmailSender(loggerFactory);
     }
 
+    /// <summary>The options this sender was built from (check <see cref="EmailOptions.SendsRealEmail"/> to tell users whether mail really goes out).</summary>
     public EmailOptions Options { get; }
 
+    /// <inheritdoc/>
     public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => _inner.SendAsync(message, cancellationToken);
 }
 
 /// <summary>Resend (https://resend.com) HTTP API: POST /emails with a Bearer API key.</summary>
+/// <remarks>Normally created by <see cref="ConfiguredEmailSender"/>; construct it directly only to bypass config.</remarks>
 public sealed class ResendEmailSender : IEmailSender
 {
+    /// <summary>Resend send-email endpoint.</summary>
     public const string Endpoint = "https://api.resend.com/emails";
 
     private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -101,6 +137,11 @@ public sealed class ResendEmailSender : IEmailSender
     private readonly string _apiKey;
     private readonly string _from;
 
+    /// <summary>Creates a Resend sender.</summary>
+    /// <param name="apiKey">Resend API key.</param>
+    /// <param name="from">Sender address (must be on a domain verified in Resend).</param>
+    /// <param name="http">HTTP client to use; defaults to a shared client with a 15 s timeout.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="apiKey"/> or <paramref name="from"/> is <c>null</c>.</exception>
     public ResendEmailSender(string apiKey, string from, HttpClient? http = null)
     {
         _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
@@ -108,6 +149,8 @@ public sealed class ResendEmailSender : IEmailSender
         _http = http ?? SharedHttp;
     }
 
+    /// <inheritdoc/>
+    /// <exception cref="HttpRequestException">Resend returned a non-success status (message includes up to 300 characters of the response body).</exception>
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint)
@@ -137,8 +180,12 @@ public sealed class LogEmailSender : IEmailSender
 {
     private readonly ILogger<LogEmailSender> _log;
 
+    /// <summary>Creates a log-only sender.</summary>
+    /// <param name="loggerFactory">Logger factory.</param>
     public LogEmailSender(ILoggerFactory loggerFactory) => _log = loggerFactory.CreateLogger<LogEmailSender>();
 
+    /// <inheritdoc/>
+    /// <remarks>Logs recipient, subject and the plain-text body at Information level; never fails.</remarks>
     public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         _log.LogInformation("Email not sent (no email provider configured) to {To}: {Subject}\n{Text}", message.To, message.Subject, message.Text);
@@ -146,6 +193,7 @@ public sealed class LogEmailSender : IEmailSender
     }
 }
 
+/// <summary>Fire-and-forget helpers for <see cref="IEmailSender"/>.</summary>
 public static class EmailSenderExtensions
 {
     /// <summary>
@@ -153,6 +201,12 @@ public static class EmailSenderExtensions
     /// provider; a failure goes to <paramref name="onFailure"/> (never thrown). The returned task
     /// completes when the attempt is over.
     /// </summary>
+    /// <remarks>Use from request handlers (sign-up, password reset) where the response must not depend on mail delivery;
+    /// await <see cref="IEmailSender.SendAsync"/> directly when the caller must know the outcome. No cancellation token is passed to the send.</remarks>
+    /// <param name="sender">The sender.</param>
+    /// <param name="message">The email.</param>
+    /// <param name="onFailure">Called with the delivery exception; its own exceptions are swallowed.</param>
+    /// <returns>A task that completes (never faults) when the attempt finishes.</returns>
     public static Task SendInBackground(this IEmailSender sender, EmailMessage message, Action<Exception> onFailure)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -172,6 +226,10 @@ public static class EmailSenderExtensions
     }
 
     /// <summary><see cref="SendInBackground(IEmailSender, EmailMessage, Action{Exception})"/> that logs failures as warnings.</summary>
+    /// <param name="sender">The sender.</param>
+    /// <param name="message">The email.</param>
+    /// <param name="logger">Logger for failures.</param>
+    /// <returns>A task that completes (never faults) when the attempt finishes.</returns>
     public static Task SendInBackground(this IEmailSender sender, EmailMessage message, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(logger);
@@ -194,6 +252,7 @@ public static partial class EmailAddress
     private static partial Regex Pattern();
 
     /// <summary>Trimmed and lower-cased (the form to store and compare); null for null or blank input.</summary>
+    /// <param name="email">Raw user input.</param>
     public static string? Normalize(string? email)
     {
         var e = email?.Trim();
@@ -201,6 +260,8 @@ public static partial class EmailAddress
     }
 
     /// <summary>Validates a normalized address (see <see cref="Normalize"/>): at most 254 characters, a local part of at most 64.</summary>
+    /// <remarks>Expects lower-case input; an un-normalized address with upper-case letters fails.</remarks>
+    /// <param name="normalized">Output of <see cref="Normalize"/>.</param>
     public static bool IsValid(string? normalized) =>
         normalized is { Length: > 0 and <= MaxLength }
         && normalized.IndexOf('@') is > 0 and <= LocalMaxLength

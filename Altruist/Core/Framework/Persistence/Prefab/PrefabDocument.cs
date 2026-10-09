@@ -3,18 +3,27 @@ using System.Reflection;
 
 namespace Altruist.Persistence;
 
+/// <summary>Shape of a prefab component.</summary>
 public enum PrefabComponentKind
 {
+    /// <summary>The root model (<see cref="PrefabComponentRootAttribute"/>); queries are anchored on its table.</summary>
     Root,
+    /// <summary>One related model; the foreign key lives on the root.</summary>
     Single,
+    /// <summary>Many related models; the foreign key on each dependent points at the root's StorageId.</summary>
     Collection
 }
 
+/// <summary>Resolved metadata of one prefab component property, produced by <see cref="PrefabDocument"/>.</summary>
 public sealed record PrefabComponentMeta
 {
+    /// <summary>Component name (the prefab property name).</summary>
     public string Name { get; init; } = default!;
+    /// <summary>Component shape.</summary>
     public PrefabComponentKind Kind { get; init; }
+    /// <summary>Vault model type of the component (element type for collections).</summary>
     public Type ComponentType { get; init; } = default!;
+    /// <summary>The prefab property holding the component.</summary>
     public PropertyInfo Property { get; init; } = default!;
 
     /// <summary>
@@ -35,11 +44,16 @@ public sealed record PrefabComponentMeta
     public string PrincipalKeyPropertyName { get; init; } = nameof(IVaultModel.StorageId);
 }
 
+/// <summary>Resolved structure of a prefab type: its root and all components, keyed by property name.</summary>
 public sealed record PrefabMeta
 {
+    /// <summary>The prefab type.</summary>
     public Type PrefabType { get; init; } = default!;
+    /// <summary>Name of the root property.</summary>
     public string RootPropertyName { get; init; } = default!;
+    /// <summary>Vault model type of the root.</summary>
     public Type RootComponentType { get; init; } = default!;
+    /// <summary>All components including the root, keyed by property name (ordinal).</summary>
     public IReadOnlyDictionary<string, PrefabComponentMeta> ComponentsByName { get; init; } = default!;
 }
 
@@ -47,13 +61,29 @@ public sealed record PrefabMeta
 /// Builds + caches PrefabMeta from attributes on a prefab type.
 /// This is the SINGLE source of truth for prefab structure.
 /// </summary>
+/// <remarks>
+/// Used by <see cref="IPrefabs"/> implementations; application code only needs it to validate a prefab
+/// declaration early (e.g. call <see cref="Get{TPrefab}"/> in a test). Thread-safe; results are cached per type.
+/// </remarks>
 public static class PrefabDocument
 {
     private static readonly ConcurrentDictionary<Type, PrefabMeta> _cache = new();
 
+    /// <summary>Returns the (cached) structure of <typeparamref name="TPrefab"/>, building and validating it on first use.</summary>
+    /// <typeparam name="TPrefab">The prefab type.</typeparam>
+    /// <returns>The prefab metadata.</returns>
+    /// <exception cref="InvalidOperationException">The prefab declaration is invalid (see <see cref="Get(Type)"/>).</exception>
     public static PrefabMeta Get<TPrefab>() where TPrefab : PrefabModel
         => Get(typeof(TPrefab));
 
+    /// <summary>Returns the (cached) structure of a prefab type, building and validating it on first use.</summary>
+    /// <param name="prefabType">A <see cref="PrefabModel"/> subclass.</param>
+    /// <returns>The prefab metadata.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The type does not derive from <see cref="PrefabModel"/>; it has zero or several <see cref="PrefabComponentRootAttribute"/>
+    /// properties; the root is not a settable <see cref="IVaultModel"/>; a ref's principal is not the root; a ref has no
+    /// foreign key; or a component property is not settable or not an <see cref="IVaultModel"/> / list of them.
+    /// </exception>
     public static PrefabMeta Get(Type prefabType)
         => _cache.GetOrAdd(prefabType, Build);
 

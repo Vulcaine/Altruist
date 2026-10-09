@@ -15,20 +15,32 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Physx
 {
     /// <summary>
-    /// Configuration that discovers and wires up collision handlers.
-    ///
-    /// It behaves like a "service bootstrapper":
-    ///  - Discovers all classes marked with [CollisionHandler]
-    ///  - Registers them in DI so their constructors are autowired
-    ///  - Builds a temporary ServiceProvider and instantiates them
-    ///  - Uses CollisionHandlerDiscovery to find [CollisionEvent] methods
-    ///    and register them into CollisionHandlerRegistry.
+    /// Startup configuration (picked up automatically via <c>[ServiceConfiguration]</c>) that discovers and wires
+    /// up collision handlers. You normally never call it yourself.
     /// </summary>
+    /// <remarks>
+    /// Steps performed by <see cref="Configure"/>:
+    /// <list type="number">
+    /// <item>Scans all loaded, non-dynamic assemblies for classes marked <see cref="CollisionHandlerAttribute"/>.</item>
+    /// <item>Skips types rejected by <c>[ConditionalOnConfig]</c>/<c>[ConditionalOnMissingService]</c>, ensures their
+    /// constructor dependencies are registered, and registers each handler type as a DI <b>singleton</b>.</item>
+    /// <item>Registers an internal bootstrap singleton whose <c>[PostConstruct]</c> step runs once the root provider
+    /// is built: it clears <see cref="CollisionHandlerRegistry"/>, resolves each handler from the root provider and
+    /// registers its <see cref="CollisionEventAttribute"/> methods via
+    /// <see cref="CollisionHandlerDiscovery.RegisterCollisionHandlerTypes"/>.</item>
+    /// </list>
+    /// No dedicated appsettings keys are read; the loaded configuration is only used to evaluate conditional
+    /// attributes on the handler classes. Side effect: builds a throw-away service provider to obtain a logger.
+    /// </remarks>
     [ServiceConfiguration]
     public sealed class AltruistCollisionHandlerConfig : IAltruistConfiguration
     {
+        /// <inheritdoc/>
         public bool IsConfigured { get; set; }
 
+        /// <summary>Discovers <see cref="CollisionHandlerAttribute"/> classes and registers them (and the registry bootstrap) in <paramref name="services"/>.</summary>
+        /// <param name="services">Service collection being configured.</param>
+        /// <returns>A completed task; the work is synchronous.</returns>
         public Task Configure(IServiceCollection services)
         {
             var cfg = GetConfig();

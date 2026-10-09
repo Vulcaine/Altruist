@@ -17,6 +17,8 @@ public sealed class DeterministicRandom
 {
     private uint _state;
 
+    /// <summary>Creates a generator from <paramref name="seed"/> (any int, including 0 and negatives).
+    /// To resume a saved sequence use <see cref="FromState"/> instead.</summary>
     public DeterministicRandom(int seed)
     {
         _state = unchecked((uint)seed * 0x9E3779B1u) ^ 0x2545F491u;

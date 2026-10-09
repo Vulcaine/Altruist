@@ -18,8 +18,15 @@ namespace Altruist.Gaming.ThreeD;
 /// This is intentionally NOT a Recast clone — it can't represent overhangs
 /// or bridges that have walkable surfaces at the same XZ but different Y.
 /// For heightfield maps (Metin2-style) that's fine.</summary>
+/// <remarks>
+/// Build once per zone (cost is O(cells)) and register the result with <see cref="INavMeshService.RegisterMesh"/>.
+/// Cell (x, y) of the grid maps to world X/Z; only <see cref="WalkabilityGrid"/> contributes a world origin
+/// (<c>BaseX</c>/<c>BaseY</c>), other <see cref="IWalkabilityGrid"/> implementations are placed at origin 0.
+/// Output is deterministic for the same inputs.
+/// </remarks>
 public static class NavMeshBuilder
 {
+    /// <summary>Tuning knobs for <see cref="Build"/>.</summary>
     public sealed class Options
     {
         /// <summary>Mask of <see cref="CellAttribute"/> bits that count as
@@ -35,6 +42,10 @@ public static class NavMeshBuilder
 
     /// <summary>Build a nav-mesh from the supplied grid + terrain. Returns
     /// null if the grid is empty / has no walkable cells.</summary>
+    /// <param name="grid">Per-cell attributes; cells matching <see cref="Options.BlockedMask"/> are excluded.</param>
+    /// <param name="terrain">Height source; Y is sampled at cell centers and polygon corners.</param>
+    /// <param name="options">Optional tuning; defaults when <c>null</c>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> or <paramref name="terrain"/> is <c>null</c>.</exception>
     public static NavMeshGraph? Build(
         IWalkabilityGrid grid,
         ITerrainProvider terrain,

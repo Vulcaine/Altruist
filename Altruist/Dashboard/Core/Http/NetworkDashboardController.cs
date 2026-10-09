@@ -25,6 +25,30 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Dashboard;
 
+/// <summary>
+/// In-process ring buffer of recent HTTP requests and socket packets for the dashboard's Network and
+/// Performance pages. The transport and HTTP pipeline call <see cref="RecordAsync"/>; the dashboard reads
+/// through <see cref="GetEvents"/> and <see cref="GetPerformance"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// DI: singleton <see cref="IDashboardNetworkRecorder"/>, registered only when
+/// <c>altruist:dashboard:enabled</c> is <c>true</c> and the <c>Altruist.Dashboard</c> assembly is loaded.
+/// Settings are re-read from configuration on every call (reload-friendly):
+/// <c>altruist:dashboard:network:enabled</c>, <c>:captureHttp</c>, <c>:capturePackets</c> (each on unless
+/// set to <c>false</c>), <c>:retentionMinutes</c> (default 60, clamped 1..1440), <c>:maxEvents</c>
+/// (default 10000, clamped 100..200000), <c>:maxPayloadBytes</c> (default 32768, clamped 0..1 MiB),
+/// <c>:slowHttpMs</c> (default 1000), <c>:slowGateMs</c> (default 50) and <c>:redactFields</c>
+/// (default <c>password</c>, <c>token</c>, <c>authorization</c>).
+/// </para>
+/// <para>
+/// Memory only, per process (no sharing across a fleet). Thread-safe: one lock guards the buffer.
+/// Payloads are kept as text and may contain sensitive data: JSON object fields whose names match
+/// <c>redactFields</c> (case-insensitive, any depth) are replaced by <c>[redacted]</c>; non-JSON payloads
+/// (including hex dumps of binary frames) are not redacted. WebSocket upgrade requests (status 101, or
+/// <c>GET /ws</c>, <c>/ws/...</c>) are not recorded.
+/// </para>
+/// </remarks>
 [Service(typeof(IDashboardNetworkRecorder), ServiceLifetime.Singleton)]
 [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
 [ConditionalOnAssembly("Altruist.Dashboard")]
@@ -36,16 +60,31 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
     private readonly Queue<DashboardNetworkEventDto> _events = new();
     private long _nextId;
 
+    /// <summary>Creates the recorder.</summary>
+    /// <param name="configuration">App configuration; the <c>altruist:dashboard:*</c> keys are read on each call.</param>
+    /// <param name="jsonOptions">Options used to serialize payload objects.</param>
     public DashboardNetworkRecorder(IConfiguration configuration, JsonSerializerOptions jsonOptions)
     {
         _configuration = configuration;
         _jsonOptions = jsonOptions;
     }
 
+    /// <summary><c>altruist:dashboard:enabled</c> is <c>true</c> and <c>altruist:dashboard:network:enabled</c> is not <c>false</c>.</summary>
     public bool IsEnabled => IsDashboardEnabled() && !IsExplicitlyFalse("altruist:dashboard:network:enabled");
+    /// <summary><see cref="IsEnabled"/> and <c>altruist:dashboard:network:captureHttp</c> is not <c>false</c>.</summary>
     public bool CaptureHttp => IsEnabled && !IsExplicitlyFalse("altruist:dashboard:network:captureHttp");
+    /// <summary><see cref="IsEnabled"/> and <c>altruist:dashboard:network:capturePackets</c> is not <c>false</c>.</summary>
     public bool CapturePackets => IsEnabled && !IsExplicitlyFalse("altruist:dashboard:network:capturePackets");
 
+    /// <summary>
+    /// Records one event (synchronously; the returned task is already complete). Skipped when capture of the
+    /// event's kind (<c>"http"</c> / <c>"packet"</c>) is off or it is a WebSocket upgrade. The payload is taken from
+    /// <paramref name="payload"/> (serialized to JSON) or else <paramref name="rawPayload"/> (UTF-8 text or hex),
+    /// redacted and truncated to <c>maxPayloadBytes</c>. Old events are then pruned by age and count.
+    /// </summary>
+    /// <param name="entry">Event metadata (timings in milliseconds are rounded to 2 decimals).</param>
+    /// <param name="payload">Optional decoded payload object.</param>
+    /// <param name="rawPayload">Optional raw bytes, used only when <paramref name="payload"/> is null.</param>
     public Task RecordAsync(DashboardNetworkEvent entry, object? payload = null, byte[]? rawPayload = null)
     {
         if (!IsEnabled)
@@ -100,6 +139,14 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Returns the most recent matching events in ascending id order. Backs <c>GET /dashboard/v1/network/events</c>.
+    /// </summary>
+    /// <param name="sinceId">When &gt; 0, only events with a larger id (incremental polling).</param>
+    /// <param name="take">Maximum events (0 or less means 300; clamped 1..2000); the newest are kept.</param>
+    /// <param name="kind">Optional exact kind filter (<c>http</c> / <c>packet</c>), case-insensitive.</param>
+    /// <param name="direction">Optional exact direction filter (e.g. <c>inbound</c>), case-insensitive.</param>
+    /// <param name="query">Optional case-insensitive substring searched across text fields and the payload preview.</param>
     public DashboardNetworkEventsResponse GetEvents(long? sinceId, int take, string? kind, string? direction, string? query)
     {
         var safeTake = Math.Clamp(take <= 0 ? 300 : take, 1, 2000);
@@ -143,6 +190,11 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
         };
     }
 
+    /// <summary>
+    /// Latency summary of the retained events: HTTP request durations by route, inbound gate handler durations,
+    /// packet decode/encode and transport send timings (p50/p95/p99/max in ms, error counts), and the 10 slowest
+    /// requests/gates over the <c>slowHttpMs</c> / <c>slowGateMs</c> thresholds. Backs <c>GET /dashboard/v1/performance</c>.
+    /// </summary>
     public DashboardPerformanceDto GetPerformance()
     {
         List<DashboardNetworkEventDto> snapshot;
@@ -441,6 +493,10 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
     }
 }
 
+/// <summary>
+/// Dashboard API for recorded network traffic (route <c>/dashboard/v1/network</c>). Only mapped when
+/// <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication is applied.
+/// </summary>
 [ApiController]
 [Route("/dashboard/v1/network")]
 [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
@@ -449,11 +505,22 @@ public sealed class NetworkDashboardController : ControllerBase
 {
     private readonly DashboardNetworkRecorder _recorder;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="recorder">Must be a <see cref="DashboardNetworkRecorder"/> (cast; any other implementation throws).</param>
     public NetworkDashboardController(IDashboardNetworkRecorder recorder)
     {
         _recorder = (DashboardNetworkRecorder)recorder;
     }
 
+    /// <summary>
+    /// <c>GET /dashboard/v1/network/events?sinceId=&amp;take=300&amp;kind=&amp;direction=&amp;query=</c>: 200 with a
+    /// <see cref="DashboardNetworkEventsResponse"/> (see <see cref="DashboardNetworkRecorder.GetEvents"/>).
+    /// </summary>
+    /// <param name="sinceId">Only events with a larger id.</param>
+    /// <param name="take">Maximum events returned.</param>
+    /// <param name="kind">Kind filter.</param>
+    /// <param name="direction">Direction filter.</param>
+    /// <param name="query">Substring search.</param>
     [HttpGet("events")]
     public ActionResult<DashboardNetworkEventsResponse> GetEvents(
         [FromQuery] long? sinceId,
@@ -464,6 +531,10 @@ public sealed class NetworkDashboardController : ControllerBase
         => Ok(_recorder.GetEvents(sinceId, take, kind, direction, query));
 }
 
+/// <summary>
+/// Dashboard API for latency statistics (route <c>/dashboard/v1/performance</c>), computed from the events of
+/// <see cref="DashboardNetworkRecorder"/>. Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication.
+/// </summary>
 [ApiController]
 [Route("/dashboard/v1/performance")]
 [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
@@ -472,76 +543,131 @@ public sealed class PerformanceDashboardController : ControllerBase
 {
     private readonly DashboardNetworkRecorder _recorder;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="recorder">Must be a <see cref="DashboardNetworkRecorder"/> (cast).</param>
     public PerformanceDashboardController(IDashboardNetworkRecorder recorder)
     {
         _recorder = (DashboardNetworkRecorder)recorder;
     }
 
+    /// <summary><c>GET /dashboard/v1/performance</c>: 200 with a <see cref="DashboardPerformanceDto"/> (see <see cref="DashboardNetworkRecorder.GetPerformance"/>).</summary>
     [HttpGet]
     public ActionResult<DashboardPerformanceDto> GetPerformance()
         => Ok(_recorder.GetPerformance());
 }
 
+/// <summary>Response of <c>GET /dashboard/v1/network/events</c>: the events plus the recorder's current limits.</summary>
 public sealed class DashboardNetworkEventsResponse
 {
+    /// <summary>Whether recording is currently on.</summary>
     public bool Enabled { get; set; }
+    /// <summary>Effective <c>altruist:dashboard:network:retentionMinutes</c>.</summary>
     public int RetentionMinutes { get; set; }
+    /// <summary>Effective <c>altruist:dashboard:network:maxEvents</c>.</summary>
     public int MaxEvents { get; set; }
+    /// <summary>Effective <c>altruist:dashboard:network:maxPayloadBytes</c>.</summary>
     public int MaxPayloadBytes { get; set; }
+    /// <summary>Matching events, oldest first.</summary>
     public List<DashboardNetworkEventDto> Events { get; set; } = new();
 }
 
+/// <summary>One recorded HTTP request or socket packet, as returned to the dashboard.</summary>
 public sealed class DashboardNetworkEventDto
 {
+    /// <summary>Monotonic id within this process (use as <c>sinceId</c> for polling).</summary>
     public long Id { get; set; }
+    /// <summary>When the event was recorded (UTC).</summary>
     public DateTime TimestampUtc { get; set; }
+    /// <summary><c>http</c> or <c>packet</c>.</summary>
     public string Kind { get; set; } = string.Empty;
+    /// <summary>Direction as reported by the recorder caller (e.g. <c>inbound</c>, <c>outbound</c>).</summary>
     public string Direction { get; set; } = string.Empty;
+    /// <summary>Transport name as reported by the caller.</summary>
     public string Transport { get; set; } = string.Empty;
+    /// <summary>HTTP method (HTTP events).</summary>
     public string? Method { get; set; }
+    /// <summary>Request path (HTTP events).</summary>
     public string? Path { get; set; }
+    /// <summary>HTTP status code (HTTP events).</summary>
     public int? StatusCode { get; set; }
+    /// <summary>Matched route or packet route.</summary>
     public string? Route { get; set; }
+    /// <summary>Portal that handled the packet, if any.</summary>
     public string? Portal { get; set; }
+    /// <summary>Gate (handler) that handled the packet, if any.</summary>
     public string? Gate { get; set; }
+    /// <summary>Event name, if any.</summary>
     public string? Event { get; set; }
+    /// <summary>Packet type name, if any.</summary>
     public string? PacketType { get; set; }
+    /// <summary>Socket connection id, if any.</summary>
     public string? ConnectionId { get; set; }
+    /// <summary>Client id, if any.</summary>
     public string? ClientId { get; set; }
+    /// <summary>Room id, if any.</summary>
     public string? RoomId { get; set; }
+    /// <summary>Total duration in milliseconds.</summary>
     public double? DurationMs { get; set; }
+    /// <summary>Packet decode time in milliseconds.</summary>
     public double? DecodeDurationMs { get; set; }
+    /// <summary>Handler (gate) time in milliseconds.</summary>
     public double? HandlerDurationMs { get; set; }
+    /// <summary>Packet encode time in milliseconds.</summary>
     public double? EncodeDurationMs { get; set; }
+    /// <summary>Transport send time in milliseconds.</summary>
     public double? SendDurationMs { get; set; }
+    /// <summary>Original payload size in bytes (0 when unknown).</summary>
     public int PayloadBytes { get; set; }
+    /// <summary>Whether <see cref="RawPayload"/> was cut at <c>maxPayloadBytes</c>.</summary>
     public bool PayloadTruncated { get; set; }
+    /// <summary>First 280 characters of the (redacted) payload text.</summary>
     public string? PayloadPreview { get; set; }
+    /// <summary>Redacted payload text up to <c>maxPayloadBytes</c> (UTF-8 text or hex).</summary>
     public string? RawPayload { get; set; }
+    /// <summary>Error message, if the request or packet failed.</summary>
     public string? Error { get; set; }
 }
 
+/// <summary>Response of <c>GET /dashboard/v1/performance</c>.</summary>
 public sealed class DashboardPerformanceDto
 {
+    /// <summary>Whether recording is currently on.</summary>
     public bool Enabled { get; set; }
+    /// <summary>HTTP request durations, grouped by method and path.</summary>
     public DashboardTimingSummaryDto Http { get; set; } = new();
+    /// <summary>Inbound packet handler durations, grouped by gate/event/packet type.</summary>
     public DashboardTimingSummaryDto Gates { get; set; } = new();
+    /// <summary>Packet decode timings.</summary>
     public DashboardTimingSummaryDto PacketDecode { get; set; } = new();
+    /// <summary>Packet encode timings.</summary>
     public DashboardTimingSummaryDto PacketEncode { get; set; } = new();
+    /// <summary>Transport send timings.</summary>
     public DashboardTimingSummaryDto TransportSend { get; set; } = new();
+    /// <summary>Up to 10 slowest HTTP requests at or above <c>slowHttpMs</c>.</summary>
     public List<DashboardNetworkEventDto> SlowRequests { get; set; } = new();
+    /// <summary>Up to 10 slowest packets at or above <c>slowGateMs</c>.</summary>
     public List<DashboardNetworkEventDto> SlowGates { get; set; } = new();
 }
 
+/// <summary>Latency statistics for one group of events. Times in milliseconds, rounded to 2 decimals; 0 when empty.</summary>
 public sealed class DashboardTimingSummaryDto
 {
+    /// <summary>Group name (route, gate, or metric label).</summary>
     public string Name { get; set; } = string.Empty;
+    /// <summary>Number of events with a timing value.</summary>
     public int Count { get; set; }
+    /// <summary>Events with an error or a status code of 500 or more.</summary>
     public int ErrorCount { get; set; }
+    /// <summary>Error percentage (0..100) of all events in the group.</summary>
     public double ErrorRate { get; set; }
+    /// <summary>Median, ms (nearest-rank).</summary>
     public double P50Ms { get; set; }
+    /// <summary>95th percentile, ms (nearest-rank).</summary>
     public double P95Ms { get; set; }
+    /// <summary>99th percentile, ms (nearest-rank).</summary>
     public double P99Ms { get; set; }
+    /// <summary>Maximum, ms.</summary>
     public double MaxMs { get; set; }
+    /// <summary>Up to 20 sub-groups ordered by p95, slowest first (empty for leaf metrics).</summary>
     public List<DashboardTimingSummaryDto> ByName { get; set; } = new();
 }

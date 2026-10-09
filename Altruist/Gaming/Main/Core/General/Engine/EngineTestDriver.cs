@@ -28,6 +28,8 @@ public sealed class EngineTestDriver
 {
     private readonly AltruistEngine _engine;
 
+    /// <summary>Drives <paramref name="engine"/>, which must have been constructed with the same <paramref name="clock"/>.</summary>
+    /// <exception cref="InvalidOperationException">The engine was already started.</exception>
     public EngineTestDriver(AltruistEngine engine, ManualEngineClock clock)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
@@ -36,7 +38,9 @@ public sealed class EngineTestDriver
             throw new InvalidOperationException("EngineTestDriver drives a stopped engine; do not Start it.");
     }
 
+    /// <summary>The driven engine.</summary>
     public AltruistEngine Engine => _engine;
+    /// <summary>The clock advanced before each frame.</summary>
     public ManualEngineClock Clock { get; }
 
     /// <summary>Frames run by the engine so far.</summary>

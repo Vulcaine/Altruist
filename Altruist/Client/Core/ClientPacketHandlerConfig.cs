@@ -15,13 +15,30 @@ namespace Altruist.Client;
 /// <para>Conditional on <c>altruist:client:transport</c> — without a client
 /// transport configured, there are no inbound frames to dispatch, so we skip
 /// discovery entirely.</para>
+///
+/// <para>Runs automatically as a <c>[ServiceConfiguration]</c> step (default order 0); you
+/// never call it. Handlers whose constructor dependencies cannot be resolved are skipped
+/// with a debug log; registration errors (bad <see cref="PacketAttribute"/> signatures)
+/// are logged as errors and do not stop startup.</para>
+///
+/// <para>Note: instances are resolved from a temporary <c>BuildServiceProvider()</c> taken
+/// during configuration, so the dispatcher and handler instances wired here are the ones
+/// from that provider.</para>
 /// </summary>
 [ServiceConfiguration]
 [ConditionalOnConfig("altruist:client:transport")]
 public sealed class ClientPacketHandlerConfig : IAltruistConfiguration
 {
+    /// <inheritdoc/>
     public bool IsConfigured { get; set; }
 
+    /// <summary>
+    /// Discovers <see cref="PacketHandlerAttribute"/> classes in all loaded assemblies,
+    /// adds each as a singleton to <paramref name="services"/>, then resolves them and calls
+    /// <see cref="ClientPacketDispatcher.Register"/>.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>A completed task.</returns>
     public Task Configure(IServiceCollection services)
     {
         if (services is null) throw new ArgumentNullException(nameof(services));

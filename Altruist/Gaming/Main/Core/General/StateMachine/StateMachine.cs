@@ -9,14 +9,42 @@ namespace Altruist.Gaming;
 /// Generic FSM driver. One instance per entity. Consumers (AI service, combo
 /// system) create one from a shared <see cref="StateMachineDef{TContext}"/>
 /// and tick it per entity.
+///
+/// <para>Lifecycle: build a def once with <see cref="StateMachineBuilder{TContext}"/>, create one
+/// machine per entity, call <see cref="Initialize"/> once (runs the initial state's enter hook),
+/// then <see cref="Update"/> every tick. Time is in the same unit as the <c>dt</c> you pass
+/// (seconds by convention; durations, delays and windows assume it). Not thread-safe; the machine
+/// holds no RNG and runs handlers in a fixed order (time advance, delay gate, update, then
+/// exit → metadata → <c>OnStateEnter</c> hook → enter), so it is deterministic if the handlers are.</para>
+///
+/// <para>Choosing: use this for logic with memory (phases, modes, behaviours that persist over
+/// ticks). For AI agents use <see cref="AIStateMachine"/> (same driver, plus discovery by
+/// <see cref="AIBehaviorAttribute"/>); for a stateless "which rule applies now" choice use
+/// <see cref="Flow.FirstMatch{TCtx, TResult}"/>; for scored choices use
+/// <see cref="Flow.UtilitySelector{TOption, TCtx}"/>.</para>
 /// </summary>
+/// <example><code>
+/// var def = new StateMachineBuilder&lt;PhaseContext&gt;()
+///     .RegisterHandlers&lt;MatchPhases&gt;()          // [State("countdown", Initial = true)], [State("play")], ...
+///     .Build();
+/// var fsm = new StateMachine&lt;PhaseContext&gt;(def);
+/// fsm.Initialize(ctx);
+/// // each tick:
+/// if (fsm.Update(ctx, dt)) OnPhaseChanged(fsm.CurrentStateName);
+/// </code></example>
 public class StateMachine<TContext> where TContext : class, IStateContextCore
 {
+    /// <summary>The immutable definition this machine runs.</summary>
     protected readonly StateMachineDef<TContext> Def;
 
+    /// <summary>Name of the current state.</summary>
     public string CurrentStateName { get; private set; }
+    /// <summary>Time since the last transition (sum of <c>dt</c> passed to <see cref="Advance"/>); mirrored to
+    /// <see cref="IStateContextCore.TimeInState"/>.</summary>
     public float  TimeInState      { get; private set; }
 
+    /// <summary>Creates a machine positioned on the def's initial state (no hooks run until <see cref="Initialize"/>).</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="def"/> is null.</exception>
     public StateMachine(StateMachineDef<TContext> def)
     {
         Def = def ?? throw new ArgumentNullException(nameof(def));
@@ -75,7 +103,9 @@ public class StateMachine<TContext> where TContext : class, IStateContextCore
         return false;
     }
 
-    /// <summary>Force-run initial state entry (called on first registration).</summary>
+    /// <summary>Resets to the initial state and runs its entry (metadata, <c>OnStateEnter</c> hook,
+    /// enter hook) without running any exit hook. Call once before the first <see cref="Update"/>;
+    /// use <see cref="Reset"/> to restart a running machine.</summary>
     public void Initialize(TContext context)
     {
         CurrentStateName = Def.InitialState;

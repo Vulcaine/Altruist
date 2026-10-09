@@ -10,6 +10,9 @@ namespace Altruist.Gaming.TwoD
     /// <summary>
     /// Manages spatial zones in a 2D world.
     /// Validates that every zone fits entirely inside a single partition.
+    /// <para>Not registered in DI: each world creates its own lazily, reachable as
+    /// <see cref="IGameWorldManager2D.Zones"/>. Lookups skip inactive zones; when zones overlap,
+    /// <see cref="FindZoneAt"/> returns the first match in registration order. Not thread-safe.</para>
     /// </summary>
     public sealed class ZoneManager2D : IZoneManager2D
     {
@@ -17,6 +20,9 @@ namespace Altruist.Gaming.TwoD
         private readonly IWorldPartitioner2D _partitioner;
         private readonly List<WorldPartition2D> _partitions;
 
+        /// <summary>Creates a zone manager over a world's partitions.</summary>
+        /// <param name="partitioner">Supplies the partition size used to reject oversized zones.</param>
+        /// <param name="partitions">The world's partitions (live list) a zone must fit inside.</param>
         public ZoneManager2D(
             IWorldPartitioner2D partitioner,
             List<WorldPartition2D> partitions)
@@ -25,6 +31,10 @@ namespace Altruist.Gaming.TwoD
             _partitions = partitions;
         }
 
+        /// <summary>Registers <paramref name="zone"/> after validating it.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="zone"/> is null.</exception>
+        /// <exception cref="ZoneValidationException">The name is empty or already used, the zone is larger
+        /// than one partition, or it is not fully inside a single partition.</exception>
         public IZone2D RegisterZone(IZone2D zone)
         {
             if (zone is null)
@@ -59,15 +69,20 @@ namespace Altruist.Gaming.TwoD
             return zone;
         }
 
+        /// <inheritdoc/>
         public IZone2D? GetZone(string name)
             => _zones.TryGetValue(name, out var zone) ? zone : null;
 
+        /// <inheritdoc/>
         public bool RemoveZone(string name)
             => _zones.Remove(name);
 
+        /// <inheritdoc/>
         public IEnumerable<IZone2D> GetAllZones()
             => _zones.Values;
 
+        /// <summary>The first active zone containing (<paramref name="x"/>, <paramref name="y"/>)
+        /// (min edge inclusive, max edge exclusive), or null.</summary>
         public IZone2D? FindZoneAt(int x, int y)
         {
             foreach (var zone in _zones.Values)
@@ -83,6 +98,8 @@ namespace Altruist.Gaming.TwoD
             return null;
         }
 
+        /// <summary>Active zones overlapping the rectangle [<paramref name="minX"/>, <paramref name="maxX"/>) x
+        /// [<paramref name="minY"/>, <paramref name="maxY"/>) (touching edges do not count).</summary>
         public IEnumerable<IZone2D> FindZonesInBounds(int minX, int minY, int maxX, int maxY)
         {
             var result = new List<IZone2D>();

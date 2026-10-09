@@ -7,9 +7,14 @@ using Altruist.Gaming.Rooms;
 
 namespace Altruist.Gaming.Matchmaking;
 
-/// <summary>A queue players can join.</summary>
+/// <summary>
+/// A queue players can join: which room mode it starts, team size, rated or not, and the
+/// <see cref="RoomRules"/> of its rooms. Passed to <see cref="MatchmakingModule{TSim,TInput,TPlayer}"/>.
+/// Rooms always have two teams (0 and 1).
+/// </summary>
 public sealed record PlaylistOptions
 {
+    /// <summary>The playlist id players queue for (also stored as <see cref="Room{TSim,TInput,TPlayer}.Playlist"/>).</summary>
     public required string Id { get; init; }
     /// <summary>The room mode it starts (passed to the game's simulation).</summary>
     public required string Mode { get; init; }
@@ -24,6 +29,7 @@ public sealed record PlaylistOptions
     /// <summary>The lifecycle rules of the rooms it starts (reconnects, leaves, join in progress, bots).</summary>
     public RoomRules Rules { get; init; } = new();
 
+    /// <summary>Players in a full room (two teams of <see cref="TeamSize"/>).</summary>
     public int PlayersNeeded => TeamSize * 2;
 }
 
@@ -38,8 +44,11 @@ public sealed record MatchmakingOptions
     public double SwapIntervalSeconds { get; init; } = 4;
     /// <summary>Seconds between the "joining" notice and the swap.</summary>
     public double SwapNoticeSeconds { get; init; } = 2;
+    /// <summary>Rated: the rating difference a player accepts right after queueing.</summary>
     public int RatingWindowStart { get; init; } = 100;
+    /// <summary>Rated: how much the window widens per whole second waited.</summary>
     public int RatingWindowGrowthPerSecond { get; init; } = 25;
+    /// <summary>Rated: the widest the window gets.</summary>
     public int RatingWindowMax { get; init; } = 500;
     /// <summary>Seconds between "searching" status updates.</summary>
     public double StatusIntervalSeconds { get; init; } = 1;
@@ -47,11 +56,20 @@ public sealed record MatchmakingOptions
     public double FleetMoveCooldownSeconds { get; init; } = 3;
 }
 
+/// <summary>One waiting player.</summary>
+/// <param name="PrincipalId">The player identity.</param>
+/// <param name="Playlist">The playlist id it waits for.</param>
+/// <param name="Rating">Its rating in that playlist (from <see cref="IMatchmakingGame{TSim,TInput,TPlayer}.RatingOf"/>).</param>
+/// <param name="QueuedAt">Host time (seconds) it started waiting; orders the queue (FIFO) and grows its rating window.</param>
 public sealed record QueueEntry(string PrincipalId, string Playlist, int Rating, double QueuedAt);
 
 /// <summary>
 /// Queues per playlist and the rules that turn waiting players into groups. Pure (no clock, no
-/// networking): callers pass the current time.
+/// networking): callers pass the current time. Not thread-safe.
+/// <para>
+/// <see cref="MatchmakingModule{TSim,TInput,TPlayer}"/> owns one (its <c>Queue</c>) and drives it every
+/// frame; use a <see cref="Matchmaker"/> directly only for tools, simulations of queue behaviour or tests.
+/// </para>
 /// </summary>
 public sealed class Matchmaker
 {
@@ -60,6 +78,9 @@ public sealed class Matchmaker
     private readonly Dictionary<string, List<QueueEntry>> _queues = new();
     private readonly Dictionary<string, QueueEntry> _byPrincipal = new();
 
+    /// <summary>Creates empty queues, one per playlist.</summary>
+    /// <param name="options">Timings and rating windows.</param>
+    /// <param name="playlists">The playlists players may queue for (ids must be unique).</param>
     public Matchmaker(MatchmakingOptions options, IEnumerable<PlaylistOptions> playlists)
     {
         _options = options;
@@ -70,10 +91,14 @@ public sealed class Matchmaker
         }
     }
 
+    /// <summary>The options it was created with.</summary>
     public MatchmakingOptions Options => _options;
+    /// <summary>Every known playlist.</summary>
     public IEnumerable<PlaylistOptions> Playlists => _playlists.Values;
+    /// <summary>Players waiting in all queues.</summary>
     public int Count => _byPrincipal.Count;
 
+    /// <summary>The playlist with this id, or null (unknown or null id). Use it to validate a client's queue request.</summary>
     public PlaylistOptions? Playlist(string? id) => id is not null ? _playlists.GetValueOrDefault(id) : null;
 
     /// <summary>Adds (or moves) the principal to the playlist queue, keeping FIFO order by queue time.</summary>
@@ -88,6 +113,7 @@ public sealed class Matchmaker
         _byPrincipal[entry.PrincipalId] = entry;
     }
 
+    /// <summary>Takes the principal out of its queue; true when it was queued.</summary>
     public bool Remove(string principalId)
     {
         if (!_byPrincipal.Remove(principalId, out var e)) return false;
@@ -95,8 +121,10 @@ public sealed class Matchmaker
         return true;
     }
 
+    /// <summary>The principal's queue entry, or null.</summary>
     public QueueEntry? Get(string principalId) => _byPrincipal.GetValueOrDefault(principalId);
 
+    /// <summary>The playlist's queue, oldest first (a live view: copy it before changing the queue while iterating).</summary>
     public IReadOnlyList<QueueEntry> Waiting(string playlist) => _queues[playlist];
 
     /// <summary>The oldest waiting player of a playlist, removed from the queue.</summary>
@@ -171,7 +199,11 @@ public sealed class Matchmaker
     /// <summary>
     /// Splits players into two teams. By rating: the split with the smallest rating-sum difference
     /// (equal sizes). Otherwise players alternate, so team sizes differ by at most one.
+    /// The rating split tries every subset (2^n): meant for room-sized groups (cost doubles per player; keep it to about 20).
     /// </summary>
+    /// <param name="players">The group, in queue order.</param>
+    /// <param name="byRating">Balance by rating sum (rated playlists); false alternates.</param>
+    /// <returns>Team 0 and team 1.</returns>
     public static (List<QueueEntry> Team0, List<QueueEntry> Team1) BalanceTeams(IReadOnlyList<QueueEntry> players, bool byRating)
     {
         if (!byRating || players.Count < 2)

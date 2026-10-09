@@ -20,23 +20,49 @@ namespace Altruist.Persistence;
 /// fluent query state, select building, save batching, history, and Version-based optimistic concurrency.
 /// Provider-specific vaults implement translation + dialect-specific upsert SQL.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Application code does not use this type directly: inject <see cref="IVault{TVaultModel}"/> (registered as a
+/// singleton per <see cref="Altruist.UORM.VaultAttribute"/> model by the provider configuration). Derive from it
+/// only when writing a new SQL provider (e.g. Postgres' <c>PgVault</c>).
+/// </para>
+/// <para>
+/// Instances are immutable query builders: each fluent call (<see cref="Where"/>, <see cref="OrderBy{TKey}"/>,
+/// <see cref="Take"/>, ...) returns a new vault with an extended <see cref="QueryState"/>, so the shared singleton is
+/// safe to use concurrently. Predicate values are rendered into the SQL text by the provider's translator (no
+/// bind parameters for queries); saves use positional <c>?</c> parameters.
+/// </para>
+/// <para>
+/// Saves are versioned upserts: <see cref="IVaultModel.OnSave"/> is called first, a version &lt;= 0 becomes 1, the
+/// update only applies when the stored version equals the entity's, and the returned StorageId/Version are written
+/// back onto the entity. A mismatch throws <see cref="OptimisticConcurrencyException"/>.
+/// </para>
+/// </remarks>
+/// <typeparam name="TVaultModel">The vault model type.</typeparam>
 public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     where TVaultModel : class, IVaultModel
 {
     #region Versioning (framework guarantees Version column exists)
+    /// <summary>Logical (CLR) property name of the storage id.</summary>
     protected const string StorageIdLogical = nameof(IVaultModel.StorageId);
+    /// <summary>Logical (CLR) property name of the optimistic-concurrency version.</summary>
     protected const string VersionLogical = "Version"; // matches your VaultModel property name
 
+    /// <summary>Physical column of the storage id (falls back to the logical name when unmapped).</summary>
     protected string StorageIdColumn()
         => VaultDocument.Columns.TryGetValue(StorageIdLogical, out var col)
             ? col
             : StorageIdLogical;
 
+    /// <summary>Physical column of the version (falls back to <c>version</c> when unmapped).</summary>
     protected string VersionColumn()
         => VaultDocument.Columns.TryGetValue(VersionLogical, out var col)
             ? col
             : "version";
 
+    /// <summary>Reads the entity's <c>Version</c> property via reflection; 0 when absent or null.</summary>
+    /// <param name="entity">The model instance.</param>
+    /// <returns>The current version.</returns>
     protected static long GetVersionValue(object entity)
     {
         var p = entity.GetType().GetProperty(VersionLogical);
@@ -50,6 +76,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return (long)v;
     }
 
+    /// <summary>Writes the entity's <c>Version</c> property when it exists, is writable and is <see cref="long"/>.</summary>
+    /// <param name="entity">The model instance.</param>
+    /// <param name="version">The new version.</param>
     protected static void SetVersionValue(object entity, long version)
     {
         var p = entity.GetType().GetProperty(VersionLogical);
@@ -60,6 +89,8 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
             p.SetValue(entity, version);
     }
 
+    /// <summary>Sets the version to 1 when it is 0 or negative (new entity).</summary>
+    /// <param name="entity">The model instance.</param>
     protected static void EnsureInsertVersion(object entity)
     {
         var current = GetVersionValue(entity);
@@ -67,6 +98,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
             SetVersionValue(entity, 1);
     }
 
+    /// <summary>Writes the entity's <c>StorageId</c> when it exists, is writable and is a string.</summary>
+    /// <param name="entity">The model instance.</param>
+    /// <param name="storageId">The id to write.</param>
     protected static void SetStorageIdValue(object entity, string storageId)
     {
         var p = entity.GetType().GetProperty(StorageIdLogical);
@@ -77,23 +111,33 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
             p.SetValue(entity, storageId);
     }
 
+    /// <summary>Row shape returned by the versioned upsert SQL (<c>RETURNING</c> StorageId, Version).</summary>
     protected sealed class UpsertReturnRow
     {
+        /// <summary>Storage id of the written row.</summary>
         public string StorageId { get; set; } = string.Empty;
+        /// <summary>Version of the written row after the upsert.</summary>
         public long Version { get; set; }
     }
     #endregion
 
+    /// <summary>Provider all SQL is executed on (honours an ambient <see cref="SqlAmbientTransaction"/>).</summary>
     protected readonly ISqlDatabaseProvider _databaseProvider;
+    /// <summary>The query state accumulated by fluent calls on this instance.</summary>
     protected readonly QueryState _state;
 
+    /// <summary>Schema / keyspace the table lives in.</summary>
     public IKeyspace Keyspace { get; }
+    /// <summary>Table metadata (name, column map, keys, history flag) built from the model's attributes.</summary>
     public VaultDocument VaultDocument { get; }
 
+    /// <summary>The database provider this vault executes on; use it for raw SQL that the fluent API cannot express.</summary>
     public ISqlDatabaseProvider DatabaseProvider => _databaseProvider;
 
     private readonly Lazy<IHistoricalVault<TVaultModel>> _history;
 
+    /// <summary>Query interface over the <c>&lt;table&gt;_history</c> table.</summary>
+    /// <exception cref="InvalidOperationException">History is not enabled (<c>StoreHistory</c> is false on the model's <see cref="Altruist.UORM.VaultAttribute"/>).</exception>
     public IHistoricalVault<TVaultModel> History
     {
         get
@@ -105,6 +149,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         }
     }
 
+    /// <summary>Creates a vault with an empty query state.</summary>
+    /// <param name="databaseProvider">Provider to execute SQL on.</param>
+    /// <param name="schema">Schema / keyspace.</param>
+    /// <param name="document">Table metadata.</param>
     protected SqlVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
@@ -113,6 +161,11 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     {
     }
 
+    /// <summary>Creates a vault carrying an existing query state (used by <see cref="Create"/>).</summary>
+    /// <param name="databaseProvider">Provider to execute SQL on.</param>
+    /// <param name="schema">Schema / keyspace.</param>
+    /// <param name="document">Table metadata.</param>
+    /// <param name="state">Query state to carry.</param>
     protected SqlVault(
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
@@ -129,6 +182,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
     /// <summary>Provider creates a new vault instance with new query state.</summary>
     protected abstract SqlVault<TVaultModel> Create(QueryState state);
+    /// <summary>Alias for <see cref="Create"/>.</summary>
+    /// <param name="state">Query state for the new instance.</param>
+    /// <returns>A new vault.</returns>
     protected SqlVault<TVaultModel> New(QueryState state) => Create(state);
 
     /// <summary>Provider-specific history vault creation (only used if StoreHistory=true).</summary>
@@ -137,10 +193,25 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
     // ------------------------ Provider hooks (translation / dialect) ------------------------
 
+    /// <summary>Translates a predicate to a SQL boolean expression (values inlined as literals).</summary>
+    /// <param name="predicate">The predicate.</param>
+    /// <returns>SQL fragment without the WHERE keyword.</returns>
     protected abstract string ConvertWherePredicateToString(Expression<Func<TVaultModel, bool>> predicate);
+    /// <summary>Translates an ascending order key to a SQL expression.</summary>
+    /// <typeparam name="TKey">Key type.</typeparam>
+    /// <param name="keySelector">The key selector.</param>
+    /// <returns>SQL fragment without ORDER BY.</returns>
     protected abstract string ConvertOrderByToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
+    /// <summary>Translates a descending order key to a SQL expression (the base appends <c>DESC</c>).</summary>
+    /// <typeparam name="TKey">Key type.</typeparam>
+    /// <param name="keySelector">The key selector.</param>
+    /// <returns>SQL fragment without ORDER BY or DESC.</returns>
     protected abstract string ConvertOrderByDescendingToString<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
 
+    /// <summary>Translates a projection into SELECT list entries.</summary>
+    /// <typeparam name="TResult">Projected type.</typeparam>
+    /// <param name="selector">The projection.</param>
+    /// <returns>SELECT list items.</returns>
     protected abstract IEnumerable<string> TranslateSelect<TResult>(
         Expression<Func<TVaultModel, TResult>> selector)
         where TResult : class, IVaultModel;
@@ -175,10 +246,16 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         string? conflictConstraintName,
         int rowCount);
 
+    /// <summary>Quotes an identifier in the provider's dialect.</summary>
+    /// <param name="ident">Identifier to quote.</param>
+    /// <returns>The quoted identifier.</returns>
     protected abstract string QuoteIdent(string ident);
 
     // ------------------------ Fluent query ops (return NEW instance) ------------------------
 
+    /// <summary>Returns a new vault with an extra filter; several calls are combined with AND.</summary>
+    /// <param name="predicate">Filter on model properties; supported shapes depend on the provider translator.</param>
+    /// <returns>A new vault; this instance is unchanged.</returns>
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
     {
         var whereClause = ConvertWherePredicateToString(predicate);
@@ -187,6 +264,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return New(next);
     }
 
+    /// <summary>Returns a new vault that additionally sorts ascending by the key (keys apply in call order).</summary>
+    /// <typeparam name="TKey">Key type.</typeparam>
+    /// <param name="keySelector">Property to sort by.</param>
+    /// <returns>A new vault.</returns>
     public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         var orderByClause = ConvertOrderByToString(keySelector);
@@ -197,6 +278,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return New(next);
     }
 
+    /// <summary>Returns a new vault that additionally sorts descending by the key.</summary>
+    /// <typeparam name="TKey">Key type.</typeparam>
+    /// <param name="keySelector">Property to sort by.</param>
+    /// <returns>A new vault.</returns>
     public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
         var orderByClause = ConvertOrderByDescendingToString(keySelector);
@@ -205,6 +290,13 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return New(next);
     }
 
+    /// <summary>Returns a new vault limited to <paramref name="count"/> rows (SQL LIMIT).</summary>
+    /// <remarks>
+    /// Call it at most once per chain, and do not combine it with <see cref="FirstOrDefaultAsync"/>/<see cref="FirstAsync"/>
+    /// (which add their own LIMIT 1): limit parts accumulate, so a second LIMIT produces invalid SQL.
+    /// </remarks>
+    /// <param name="count">Maximum number of rows.</param>
+    /// <returns>A new vault.</returns>
     public IVault<TVaultModel> Take(int count)
     {
         var next = _state.With(QueryPosition.LIMIT, $"LIMIT {count}")
@@ -212,6 +304,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return New(next);
     }
 
+    /// <summary>Returns a new vault that skips <paramref name="count"/> rows (SQL OFFSET); combine with an OrderBy for stable paging. Call at most once per chain.</summary>
+    /// <param name="count">Rows to skip.</param>
+    /// <returns>A new vault.</returns>
     public IVault<TVaultModel> Skip(int count)
     {
         var next = _state.With(QueryPosition.OFFSET, $"OFFSET {count}")
@@ -221,6 +316,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
     // ------------------------ Terminal ops (use current state) ------------------------
 
+    /// <summary>Executes the query and returns all matching rows.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The rows (empty when none match).</returns>
     public virtual async Task<List<TVaultModel>> ToListAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -237,6 +335,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return rows.ToList();
     }
 
+    /// <summary>Executes the query with LIMIT 1 and returns the first row, or null.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The first row or null.</returns>
     public virtual async Task<TVaultModel?> FirstOrDefaultAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -254,6 +355,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return result.FirstOrDefault();
     }
 
+    /// <summary>Executes the query with LIMIT 1 and returns the first row. Prefer <see cref="FirstOrDefaultAsync"/> when no match is a normal outcome.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The first row.</returns>
+    /// <exception cref="InvalidOperationException">No row matches.</exception>
     public virtual async Task<TVaultModel?> FirstAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -271,6 +376,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return result.First();
     }
 
+    /// <summary>Shortcut for <c>Where(predicate).ToListAsync(ct)</c>.</summary>
+    /// <param name="predicate">Extra filter.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The matching rows.</returns>
     public virtual async Task<List<TVaultModel>> ToListAsync(
         Expression<Func<TVaultModel, bool>> predicate,
         CancellationToken ct = default)
@@ -281,6 +390,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return await next.ToListAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>Counts rows matching the Where filters (<c>SELECT COUNT(*)</c>). Take/Skip/OrderBy are ignored.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Row count.</returns>
     public virtual async Task<long> CountAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -301,6 +413,12 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return count;
     }
 
+    /// <summary>Executes the query with a custom projection instead of the full column list.</summary>
+    /// <typeparam name="TResult">Projected vault model type.</typeparam>
+    /// <param name="selector">The projection; translated by the provider.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The projected rows.</returns>
+    /// <exception cref="InvalidOperationException">The state already selects <c>*</c>.</exception>
     public virtual async Task<IEnumerable<TResult>> SelectAsync<TResult>(
         Expression<Func<TVaultModel, TResult>> selector,
         CancellationToken ct = default)
@@ -326,6 +444,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return result;
     }
 
+    /// <summary>Returns whether any row matches the current filters plus <paramref name="predicate"/> (via COUNT(*)).</summary>
+    /// <param name="predicate">Extra filter.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True when at least one row matches.</returns>
     public virtual async Task<bool> AnyAsync(
         Expression<Func<TVaultModel, bool>> predicate,
         CancellationToken ct = default)
@@ -351,6 +473,25 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
     // ------------------------ Update / Delete ------------------------
 
+    /// <summary>
+    /// Updates matching rows: loads them (respecting Where/OrderBy/Take/Skip), applies the <c>SetProperty</c>
+    /// assignments in memory, then saves them with one versioned batch upsert (no history).
+    /// </summary>
+    /// <remarks>
+    /// Not a single SQL UPDATE: every matching row is loaded, and a concurrent change to any of them makes the whole
+    /// batch fail with <see cref="OptimisticConcurrencyException"/>. For large sets prefer raw SQL through
+    /// <see cref="DatabaseProvider"/>.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// await vault.Where(x =&gt; x.Level &lt; 5)
+    ///            .UpdateAsync(s =&gt; s.SetProperty(x =&gt; x.Level, x =&gt; 5));
+    /// </code>
+    /// </example>
+    /// <param name="setPropertyCalls">EF Core style <c>SetProperty(property, value)</c> chain.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Number of rows updated.</returns>
+    /// <exception cref="NotSupportedException">The expression contains no recognisable assignments.</exception>
     public virtual async Task<long> UpdateAsync(
         Expression<Func<SetPropertyCalls<TVaultModel>, SetPropertyCalls<TVaultModel>>> setPropertyCalls,
         CancellationToken ct = default)
@@ -370,6 +511,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return targets.Count;
     }
 
+    /// <summary>Deletes rows matching the Where filters (Take/Skip/OrderBy are ignored).</summary>
+    /// <remarks>Without any Where filter this deletes every row of the table.</remarks>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True when at least one row was deleted.</returns>
     public virtual async Task<bool> DeleteAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -390,19 +535,52 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return affected > 0;
     }
 
+    /// <summary>Not implemented by the SQL base vault; use <see cref="Take"/>/<see cref="Skip"/> paging instead.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Never returns.</returns>
+    /// <exception cref="NotImplementedException">Always.</exception>
     public virtual Task<ICursor<TVaultModel>> ToCursorAsync(CancellationToken ct = default)
         => throw new NotImplementedException();
 
     // ------------------------ Save ------------------------
 
+    /// <summary>
+    /// Inserts or updates one entity with a versioned upsert, then writes the stored StorageId and Version back onto it.
+    /// </summary>
+    /// <remarks>
+    /// Calls <see cref="IVaultModel.OnSave"/> first (assigns an id when empty, stamps timestamp/type on <see cref="VaultModel"/>).
+    /// The conflict target is the primary key, or the first <see cref="Altruist.UORM.VaultUniqueKeyAttribute"/> when one exists.
+    /// Runs inside the ambient transaction when one is active. For many entities prefer <see cref="SaveBatchAsync"/>.
+    /// </remarks>
+    /// <param name="entity">The entity to save.</param>
+    /// <param name="saveHistory">When true, also appends a timestamped copy to the history table (requires <c>StoreHistory</c>).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <exception cref="OptimisticConcurrencyException">The stored version differs from the entity's version.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="saveHistory"/> is true but history is not enabled.</exception>
     public virtual Task SaveAsync(TVaultModel entity, bool? saveHistory = false, CancellationToken ct = default)
         => SaveEntityAsync(entity, saveHistory, ct);
 
+    /// <summary>
+    /// Upserts many entities in one atomic statement (all or nothing) and syncs versions back by StorageId.
+    /// </summary>
+    /// <remarks>
+    /// Any failure of the batch statement (not only a version mismatch) is reported as
+    /// <see cref="OptimisticConcurrencyException"/> with the original error as inner exception.
+    /// When the conflict target is a unique key, versions are synced back only for entities whose StorageId matches the stored row.
+    /// </remarks>
+    /// <param name="entities">The entities; must not be empty.</param>
+    /// <param name="saveHistory">When true, also appends history rows (requires <c>StoreHistory</c>).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <exception cref="ArgumentException"><paramref name="entities"/> is empty.</exception>
+    /// <exception cref="OptimisticConcurrencyException">The batch failed or returned fewer rows than entities.</exception>
     public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false, CancellationToken ct = default)
         => SaveEntitiesAsync(entities, saveHistory, ct);
 
     // ------------------------ Query building helpers ------------------------
 
+    /// <summary>Builds the SELECT statement (projection, FROM, WHERE, ORDER BY, LIMIT, OFFSET) for a query state.</summary>
+    /// <param name="st">The query state.</param>
+    /// <returns>SQL text.</returns>
     protected virtual string BuildSelectQuery(QueryState st)
     {
         var select =
@@ -434,6 +612,8 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return sb.ToString();
     }
 
+    /// <summary>Returns the quoted <c>"keyspace"."table"</c> name.</summary>
+    /// <returns>Qualified table name.</returns>
     protected virtual string QualifiedTableName()
         => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
 
@@ -615,6 +795,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         }
     }
 
+    /// <summary>Builds the INSERT into <c>&lt;table&gt;_history</c> with the given columns plus <c>timestamp</c>, using <c>?</c> placeholders.</summary>
+    /// <param name="columns">Physical column names.</param>
+    /// <returns>SQL text without trailing semicolon.</returns>
     protected virtual string BuildHistoryQuery(IReadOnlyList<string> columns)
     {
         var histQualified = $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name + "_history")}";
@@ -624,6 +807,11 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return $"INSERT INTO {histQualified} ({cols}, {QuoteIdent("timestamp")}) VALUES ({vals}, ?)";
     }
 
+    /// <summary>Reads the entity's values for <paramref name="fields"/> in order, optionally appending <see cref="DateTime.UtcNow"/>.</summary>
+    /// <param name="entity">The entity.</param>
+    /// <param name="fields">Logical field names.</param>
+    /// <param name="includeTimestamp">Append the current UTC time (history inserts).</param>
+    /// <returns>Positional parameter values.</returns>
     protected List<object?> GetParameterValues(TVaultModel entity, IReadOnlyList<string> fields, bool includeTimestamp)
     {
         var values = fields.Select(field => VaultDocument.PropertyAccessors[field](entity)).ToList();

@@ -20,6 +20,7 @@ namespace Altruist.Persistence;
 public static class ConstraintUtil
 {
     // Keep in sync with migration planner
+    /// <summary>Maximum generated constraint name length; longer names are truncated with a 12-hex-char SHA-256 suffix.</summary>
     public const int MaxConstraintNameLength = 60;
 
     /// <summary>
@@ -73,7 +74,7 @@ public static class ConstraintUtil
 
     /// <summary>
     /// Same ConstructConstraintName algorithm used by the migration planner.
-    /// Ensures <= MaxConstraintNameLength with deterministic hash suffix.
+    /// Ensures &lt;= MaxConstraintNameLength with deterministic hash suffix.
     /// </summary>
     public static string ConstructConstraintName(string prefix, params string[] parts)
     {

@@ -6,6 +6,8 @@ namespace Altruist.Client.Inventory.Packets;
 /// </summary>
 public static class ClientInventoryPacketCodes
 {
+    /// <summary>Code of <see cref="ItemSnapshotPacket"/>.</summary>
     public const uint ItemSnapshot = 3000;
+    /// <summary>Code of <see cref="ItemSlotClearedPacket"/>.</summary>
     public const uint ItemSlotCleared = 3001;
 }

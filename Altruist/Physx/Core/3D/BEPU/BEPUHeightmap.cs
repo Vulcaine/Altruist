@@ -15,9 +15,17 @@ public interface IHeightmapLoader3D : IHeightmapLoader
     /// <summary>
     /// Builds a BEPU <see cref="Mesh"/> from already loaded heightmap data.
     /// </summary>
+    /// <param name="data">Height samples.</param>
+    /// <param name="pool">BEPU buffer pool that owns the triangle buffer (normally the simulation's pool).</param>
+    /// <returns>A mesh in the heightfield's local space (origin at sample (0, 0)).</returns>
     Mesh LoadHeightmapMesh(HeightfieldData data, BufferPool pool);
 }
 
+/// <summary>
+/// BEPU heightmap loader: forwards the format loaders of the core <see cref="IHeightmapLoader"/> and builds triangle
+/// meshes for heightfield colliders. Registered in DI as a singleton <see cref="IHeightmapLoader3D"/> when the config section
+/// <c>altruist:game</c> is present.
+/// </summary>
 [Service(typeof(IHeightmapLoader3D))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class BepuHeightmapLoader : IHeightmapLoader3D
@@ -33,16 +41,26 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
     }
 
     // IHeightmapLoader facade passthrough
+    /// <inheritdoc/>
     public IRawHeightmapLoader RAW => _coreLoader.RAW;
+    /// <inheritdoc/>
     public IPngHeightmapLoader PNG => _coreLoader.PNG;
+    /// <inheritdoc/>
     public ITiffHeightmapLoader TIFF => _coreLoader.TIFF;
+    /// <inheritdoc/>
     public IJpegHeightmapLoader JPEG => _coreLoader.JPEG;
 
     /// <summary>
-    /// Builds a BEPU mesh from the given <see cref="HeightfieldData"/>.
-    /// This matches the layout used by the RAW/PNG/TIFF/JPEG loaders:
-    /// Heights[x, z] with cell sizes in X/Z and height scaled by <see cref="HeightfieldData.HeightScale"/>.
+    /// Builds a BEPU mesh from the given <see cref="HeightfieldData"/>: two triangles per grid cell, vertex
+    /// <c>(x, z)</c> at <c>(x * CellSizeX, Heights[x, z], z * CellSizeZ)</c>.
     /// </summary>
+    /// <remarks>
+    /// Note: the current implementation uses the raw <c>Heights</c> values and does not multiply by
+    /// <see cref="HeightfieldData.HeightScale"/> (unlike <see cref="HeightfieldDataExtensions.SampleHeight"/>), so loaders
+    /// whose data relies on a scale other than 1 produce a flatter mesh. Allocates the triangle buffer from <paramref name="pool"/>.
+    /// </remarks>
+    /// <param name="hf">Height samples (at least 2×2).</param>
+    /// <param name="pool">Buffer pool that will own the mesh's triangles.</param>
     public Mesh LoadHeightmapMesh(HeightfieldData hf, BufferPool pool)
     {
         int width = hf.Width;

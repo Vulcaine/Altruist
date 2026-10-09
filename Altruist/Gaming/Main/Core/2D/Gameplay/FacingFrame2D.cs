@@ -23,6 +23,12 @@ namespace Altruist.Gaming.TwoD;
 /// native ones), so it gives the bits of the same code written inline.</para></summary>
 public readonly struct FacingFrame2D
 {
+    /// <summary>Wraps <paramref name="body"/> as a box of the given half extents facing
+    /// <paramref name="facing"/>. Allocation-free; nothing is read from the body until a member is used.</summary>
+    /// <param name="body">The body to view (its live transform is read on every member access).</param>
+    /// <param name="facing">+1 = nose on local +X, -1 = nose on local -X.</param>
+    /// <param name="halfWidth">Half the box length along the nose axis (local X), in world units.</param>
+    /// <param name="halfHeight">Half the box height along the roof axis (local Y), in world units.</param>
     public FacingFrame2D(IPhysxBody2D body, int facing, float halfWidth, float halfHeight)
     {
         Body = body;
@@ -31,12 +37,15 @@ public readonly struct FacingFrame2D
         HalfHeight = halfHeight;
     }
 
+    /// <summary>The viewed body.</summary>
     public IPhysxBody2D Body { get; }
 
     /// <summary>+1: the nose is local +X; -1: local -X.</summary>
     public int Facing { get; }
 
+    /// <summary>Half the box length along the nose axis (local X).</summary>
     public float HalfWidth { get; }
+    /// <summary>Half the box height along the roof axis (local Y).</summary>
     public float HalfHeight { get; }
 
     /// <summary>The unit direction out of the nose: <c>Body.GetWorldVector((Facing, 0))</c>.</summary>

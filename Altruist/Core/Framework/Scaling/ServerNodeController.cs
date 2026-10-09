@@ -29,20 +29,26 @@ namespace Altruist;
 [Route("altruist/server")]
 public sealed class ServerNodeController : ControllerBase
 {
+    /// <summary>Header carrying the drain token when <c>altruist:server:drain:token</c> is set.</summary>
     public const string TokenHeader = "X-Altruist-Drain-Token";
 
     private readonly IServerNode _node;
     private readonly IConfiguration? _config;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="node">This server's node.</param>
+    /// <param name="config">Configuration (reads <c>altruist:server:drain:token</c>).</param>
     public ServerNodeController(IServerNode node, IConfiguration? config = null)
     {
         _node = node;
         _config = config;
     }
 
+    /// <summary>Liveness probe: always 200 with the node id.</summary>
     [HttpGet("live")]
     public IActionResult Live() => Ok(new { node = _node.NodeId });
 
+    /// <summary>Readiness probe: 200 when <see cref="ServerNodeState.Ready"/>, else 503 with the state.</summary>
     [HttpGet("ready")]
     public IActionResult Ready()
     {
@@ -51,9 +57,13 @@ public sealed class ServerNodeController : ControllerBase
         return state == ServerNodeState.Ready ? Ok(body) : StatusCode(StatusCodes.Status503ServiceUnavailable, body);
     }
 
+    /// <summary>Returns the current <see cref="ServerCapacity"/> report.</summary>
     [HttpGet("capacity")]
     public ActionResult<ServerCapacity> Capacity() => Ok(_node.Capacity());
 
+    /// <summary>Starts (or joins) the drain. 403 unless loopback or a valid drain token; 400 for a negative/NaN timeout.</summary>
+    /// <param name="wait">Wait for completion: 200 when drained in time, 202 when it timed out. Without it answers 202 at once.</param>
+    /// <param name="timeoutSeconds">Drain timeout override in seconds (only used by the first drain call).</param>
     [HttpPost("drain")]
     public async Task<IActionResult> Drain([FromQuery] bool wait = false, [FromQuery] double? timeoutSeconds = null)
     {

@@ -4,14 +4,35 @@ using Altruist;
 
 using Microsoft.Extensions.Logging;
 
+/// <summary>Packets produced by a session operation: some for the client, some broadcast to socket rooms.</summary>
 public sealed class GameSessionResult
 {
+    /// <summary>Packets for the requesting client.</summary>
     public List<IPacketBase> ClientPackets { get; } = new();
+    /// <summary>Packets for every connection of a socket room.</summary>
     public List<RoomBroadcast> RoomBroadcasts { get; } = new();
 
+    /// <summary>A new empty result (a fresh instance on every call).</summary>
     public static GameSessionResult Empty => new GameSessionResult();
 }
 
+/// <summary>
+/// A server-side session: a TTL plus typed context objects stored under inner ids (one value per
+/// (id, type)). Thread-safe. Get one from <see cref="IGameSessionService"/>; <see cref="Altruist.Gaming.AltruistGameSessionPortal"/>
+/// creates one per connection keyed by the client id.
+/// <para>
+/// When to use: ad-hoc per-player or per-connection state that should expire on its own (pending
+/// requests, selected character, temporary flags). Long-lived game state belongs in your world objects or
+/// persistence; match state belongs in the room's simulation (<c>RoomHost</c>).
+/// </para>
+/// <example>
+/// <code>
+/// var session = sessions.CreateSession(accountId, DateTime.UtcNow.AddMinutes(30));
+/// session.SetContext("party", new PartyInvite(fromId));
+/// var invite = session.GetContext&lt;PartyInvite&gt;("party");
+/// </code>
+/// </example>
+/// </summary>
 public interface IGameSession
 {
     /// <summary>
@@ -27,6 +48,7 @@ public interface IGameSession
     /// <summary>
     /// Extend / change the expiry time of this session.
     /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="newExpiresAtUtc"/> is not in the future (UTC).</exception>
     void Renew(DateTime newExpiresAtUtc);
 
     /// <summary>
@@ -45,10 +67,13 @@ public interface IGameSession
     /// </summary>
     T? GetContext<T>(string id);
 
+    /// <summary>Every stored context assignable to <typeparamref name="T"/>, across all inner ids.</summary>
     IEnumerable<T> FindAllContexts<T>();
 
+    /// <summary>Every stored context that is an instance of one of <paramref name="types"/> (no types: all of them), as a snapshot list.</summary>
     IEnumerable<object> FindContexts(params Type[] types);
 
+    /// <summary>Every stored context, across all inner ids.</summary>
     IEnumerable<object> FindAllContexts();
 
     /// <summary>
@@ -62,6 +87,13 @@ public interface IGameSession
     void ClearAllContexts();
 }
 
+/// <summary>
+/// Registry of <see cref="IGameSession"/>s by a global id (account id, user id or client id), plus the
+/// default logic of the classic handshake / join / leave packets used by
+/// <see cref="Altruist.Gaming.AltruistGameSessionPortal"/>. The default implementation is
+/// <see cref="GameSessionService"/> (singleton <c>[Service]</c>); replace or subclass it to change the
+/// join/leave rules. Thread-safe.
+/// </summary>
 public interface IGameSessionService
 {
     // -------------------------
@@ -71,11 +103,19 @@ public interface IGameSessionService
     /// <summary>
     /// Create or get a session for the given global session id (e.g. accountId),
     /// with a specific expiry time (UTC).
-    ///   var session = _gameSessionService.CreateSession(globalSessionId, expiresAtUtc);
-    ///   await session.SetContext(innerId, value);
     /// If a non-expired session already exists, its expiry is renewed to the given time.
     /// If an expired session exists, it is cleared and replaced with a new one.
     /// </summary>
+    /// <param name="sessionId">The global id (non-empty).</param>
+    /// <param name="expiresAtUtc">Expiry, strictly in the future (UTC).</param>
+    /// <returns>The live session.</returns>
+    /// <exception cref="ArgumentException">The id is blank or the expiry is not in the future.</exception>
+    /// <example>
+    /// <code>
+    /// var session = _gameSessionService.CreateSession(globalSessionId, DateTime.UtcNow.AddMinutes(30));
+    /// session.SetContext(innerId, value);
+    /// </code>
+    /// </example>
     IGameSession CreateSession(string sessionId, DateTime expiresAtUtc);
 
     /// <summary>
@@ -93,7 +133,8 @@ public interface IGameSessionService
     /// <summary>
     /// Migrate all contexts from one session id to another.
     /// Creates or renews the target session with the given expiry,
-    /// moves all contexts, and removes the source session.
+    /// moves all contexts, and removes the source session (use it when a guest/connection id becomes
+    /// an account id after login). Returns null, changing nothing, when the expiry is not in the future.
     /// </summary>
     IGameSession? MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc);
 
@@ -107,12 +148,16 @@ public interface IGameSessionService
     /// </summary>
     Task Cleanup();
 
+    /// <summary>Every context assignable to <typeparamref name="T"/> across all sessions (expired ones included until cleaned up).</summary>
     IEnumerable<T> FindAllContexts<T>();
 
+    /// <summary>Every context assignable to <typeparamref name="T"/> in one live session (empty when it does not exist or expired).</summary>
     IEnumerable<T> FindAllContexts<T>(string id);
 
+    /// <summary>Every context of one live session (empty when it does not exist or expired). Note the misspelled name.</summary>
     IEnumerable<object> FindAllContexsts(string sessionId);
 
+    /// <summary>Contexts of one live session that are instances of one of <paramref name="types"/> (no types: all).</summary>
     IEnumerable<object> FindContexts(string id, params Type[] types);
 
     /// <summary>
@@ -370,6 +415,12 @@ internal sealed class GameSession : IGameSession
 
 }
 
+/// <summary>
+/// Default <see cref="IGameSessionService"/>: in-memory sessions in a concurrent dictionary (per process,
+/// not shared across servers), and default handshake / join / leave logic on the socket rooms of
+/// <see cref="ISocketManager"/>. Registered as <c>[Service(typeof(IGameSessionService))]</c>; the
+/// packet methods are virtual, so subclass it (and register the subclass) to change them.
+/// </summary>
 [Service(typeof(IGameSessionService))]
 public class GameSessionService : IGameSessionService
 {
@@ -380,6 +431,9 @@ public class GameSessionService : IGameSessionService
     private readonly ConcurrentDictionary<string, GameSession> _sessions =
         new(StringComparer.Ordinal);
 
+    /// <summary>Created by DI.</summary>
+    /// <param name="socketManager">Connection and socket-room registry.</param>
+    /// <param name="loggerFactory">Logging.</param>
     public GameSessionService(
         ISocketManager socketManager,
         ILoggerFactory loggerFactory)
@@ -392,6 +446,7 @@ public class GameSessionService : IGameSessionService
     // Session object API
     // -------------------------
 
+    /// <inheritdoc/>
     public IGameSession CreateSession(string sessionId, DateTime expiresAtUtc)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
@@ -425,6 +480,7 @@ public class GameSessionService : IGameSessionService
         }
     }
 
+    /// <inheritdoc/>
     public IGameSession? GetSession(string sessionId)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
@@ -443,6 +499,7 @@ public class GameSessionService : IGameSessionService
         return session;
     }
 
+    /// <inheritdoc/>
     public void ClearSession(string sessionId)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
@@ -455,6 +512,7 @@ public class GameSessionService : IGameSessionService
         }
     }
 
+    /// <inheritdoc/>
     public IGameSession? MigrateSession(string fromSessionId, string toSessionId, DateTime newExpiresAtUtc)
     {
         if (string.IsNullOrWhiteSpace(fromSessionId))
@@ -520,6 +578,10 @@ public class GameSessionService : IGameSessionService
     // Core session lifecycle methods
     // -------------------------
 
+    /// <summary>Answers a handshake with the list of every socket room (<see cref="HandshakeResponsePacket"/>, accepted).</summary>
+    /// <param name="message">The request.</param>
+    /// <param name="clientId">The client.</param>
+    /// <returns>A success result carrying the room list.</returns>
     public virtual async Task<IResultPacket> HandshakeAsync(
         HandshakeRequestPacket message,
         string clientId)
@@ -531,6 +593,14 @@ public class GameSessionService : IGameSessionService
         return ResultPacket.Success(TransportCode.Accepted, responsePacket);
     }
 
+    /// <summary>
+    /// Removes the client from its socket room (deleting the room when it becomes empty), clears the session
+    /// keyed by <paramref name="clientId"/>, and returns a <see cref="LeaveGamePacket"/> broadcast for that room
+    /// (null when the client was in no room).
+    /// </summary>
+    /// <param name="message">The request.</param>
+    /// <param name="clientId">The client.</param>
+    /// <returns>The broadcast, or null.</returns>
     public virtual async Task<RoomBroadcast?> ExitGameAsync(
         LeaveGamePacket message,
         string clientId)
@@ -564,6 +634,14 @@ public class GameSessionService : IGameSessionService
         return new RoomBroadcast(room.Id, broadcastPacket);
     }
 
+    /// <summary>
+    /// Validates a join: a name is required; the given room (or, without a room id, the first socket room
+    /// with free capacity) must exist and must not already contain the client. It does not add the client to
+    /// the room: do that in an override or in <see cref="Altruist.Gaming.AltruistGameSessionPortal"/>'s join hook.
+    /// </summary>
+    /// <param name="message">The request.</param>
+    /// <param name="clientId">The client.</param>
+    /// <returns>A failed result with the reason, or a success result with a message.</returns>
     public virtual async Task<IResultPacket> JoinGameAsync(
         JoinGamePacket message,
         string clientId)
@@ -615,6 +693,7 @@ public class GameSessionService : IGameSessionService
         return ResultPacket.Success(TransportCode.BadRequest, successMsg);
     }
 
+    /// <inheritdoc/>
     public async Task Cleanup()
     {
         try
@@ -642,24 +721,28 @@ public class GameSessionService : IGameSessionService
         }
     }
 
+    /// <inheritdoc/>
     public IEnumerable<T> FindAllContexts<T>()
     {
         var allSessions = _sessions.Values;
         return allSessions.SelectMany(s => s.FindAllContexts<T>());
     }
 
+    /// <inheritdoc/>
     public IEnumerable<object> FindAllContexsts(string sessionId)
     {
         var session = GetSession(sessionId);
         return session?.FindAllContexts() ?? Enumerable.Empty<object>();
     }
 
+    /// <inheritdoc/>
     public IEnumerable<object> FindContexts(string id, params Type[] types)
     {
         var session = GetSession(id);
         return session?.FindContexts(types) ?? Enumerable.Empty<object>();
     }
 
+    /// <inheritdoc/>
     public IEnumerable<T> FindAllContexts<T>(string id)
     {
         var session = GetSession(id);

@@ -28,12 +28,20 @@ public sealed class CombatHandlerInitializer
     private readonly IServiceProvider _provider;
     private readonly ILogger<CombatHandlerInitializer> _logger;
 
+    /// <summary>Created by DI; registered by <see cref="CombatEventHandlerConfig"/> only when handlers exist.</summary>
+    /// <param name="provider">The live root service provider used to resolve handler instances.</param>
+    /// <param name="logger">Logger for discovery output.</param>
     public CombatHandlerInitializer(IServiceProvider provider, ILogger<CombatHandlerInitializer> logger)
     {
         _provider = provider;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Invoked by the framework (<c>[PostConstruct]</c>) after the container is built; registers every handler
+    /// method via <see cref="CombatEventHandlerDiscovery.RegisterCombatHandlers"/>. Do not call manually, or
+    /// handlers are registered twice.
+    /// </summary>
     [PostConstruct]
     public void Initialize()
     {

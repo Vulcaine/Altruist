@@ -21,8 +21,14 @@ public class ServerStatusController : ControllerBase
 {
     private readonly IConnectionGate _gate;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="gate">Connection gate to report on.</param>
     public ServerStatusController(IConnectionGate gate) => _gate = gate;
 
+    /// <summary>
+    /// <c>GET api/v1/server/health</c> (anonymous): <c>status</c> (<c>ok</c>, <c>busy</c> above 90 %, <c>full</c>), connection count,
+    /// max, queue length and free slots. For orchestrator probes prefer <c>/altruist/server/ready</c> (<see cref="ServerNodeController"/>).
+    /// </summary>
     [HttpGet("health")]
     public IActionResult Health()
     {
@@ -49,8 +55,11 @@ public class QueueStatusController : ControllerBase
 {
     private readonly IConnectionGate _gate;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="gate">Connection gate holding the queue.</param>
     public QueueStatusController(IConnectionGate gate) => _gate = gate;
 
+    /// <summary><c>GET api/v1/server/queue/status</c>: the caller's queue position and ETA (user id from the <c>sub</c>/<c>userId</c> claim or name).</summary>
     [HttpGet("queue/status")]
     public IActionResult QueueStatus()
     {
@@ -85,6 +94,7 @@ public class QueueStatusController : ControllerBase
         });
     }
 
+    /// <summary><c>POST api/v1/server/queue/join</c>: queues the caller when the server is full; answers <c>not_needed</c> otherwise.</summary>
     [HttpPost("queue/join")]
     public IActionResult JoinQueue()
     {
@@ -117,6 +127,7 @@ public class QueueStatusController : ControllerBase
         });
     }
 
+    /// <summary><c>DELETE api/v1/server/queue/leave</c>: removes the caller's queue position (see <see cref="ConnectionGate.RemoveFromQueue"/> for its limits).</summary>
     [HttpDelete("queue/leave")]
     public IActionResult LeaveQueue()
     {

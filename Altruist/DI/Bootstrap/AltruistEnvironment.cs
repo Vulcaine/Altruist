@@ -14,19 +14,24 @@ namespace Altruist
     /// </summary>
     public static class AltruistEnvironment
     {
+        /// <summary>The <c>Development</c> environment name (enables dev-only diagnostics, loads <c>config.Development.yml</c>).</summary>
         public const string Development = "Development";
+
+        /// <summary>The <c>Production</c> environment name; the default when no variable is set.</summary>
         public const string Production = "Production";
 
         /// <summary>The environment name (unset or blank variables count as unset).</summary>
         public static string Name =>
             Read("DOTNET_ENVIRONMENT") ?? Read("ASPNETCORE_ENVIRONMENT") ?? Production;
 
+        /// <summary>True when the environment is Development (case-insensitive).</summary>
         public static bool IsDevelopment => Is(Development);
 
         /// <summary>True when the environment is Production, including when none is set.</summary>
         public static bool IsProduction => Is(Production);
 
         /// <summary>Case-insensitive comparison with the current <see cref="Name"/>.</summary>
+        /// <param name="name">Environment name to test (trimmed), e.g. <c>Staging</c>.</param>
         public static bool Is(string name) => string.Equals(Name, name?.Trim(), StringComparison.OrdinalIgnoreCase);
 
         private static string? Read(string variable)

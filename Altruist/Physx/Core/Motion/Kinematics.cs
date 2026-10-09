@@ -9,6 +9,16 @@ namespace Altruist.Physx;
 /// Dimension-agnostic (a speed along any axis).
 /// <para>Deterministic: same inputs give the same bits on the same runtime; each helper evaluates
 /// exactly the expressions in its summary.</para></summary>
+/// <remarks>Scalar planning math only: pure functions on numbers, no body is read or changed. Units are whatever
+/// you pass, as long as they are consistent (e.g. units, units/s, units/s², seconds). Alternatives:
+/// <see cref="Altruist.Physx.TwoD.Ballistics2D"/> for 2D vector trajectories under gravity
+/// (<see cref="Altruist.Physx.TwoD.Ballistics2D.ApexHeight"/> is the same formula as <see cref="StoppingDistance"/>
+/// but returns 0 for non-upward speeds); <see cref="Altruist.Physx.TwoD.BodyMotionExtensions2D"/> (2D) or
+/// <see cref="Altruist.Physx.ThreeD.BodySteeringExtensions3D"/> (3D) to actually change a body's velocity.</remarks>
+/// <example><code>
+/// float brakeAt = Kinematics.StoppingDistance(speed: 12f, deceleration: 30f);   // 2.4 units
+/// float eta     = Kinematics.TimeToCover(distance: 20f, initialSpeed: 0f, acceleration: 10f, maxSpeed: 8f);
+/// </code></example>
 public static class Kinematics
 {
     /// <summary>Distance to stop from <paramref name="speed"/> at a constant

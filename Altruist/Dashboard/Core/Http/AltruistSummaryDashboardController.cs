@@ -25,6 +25,16 @@ using Microsoft.Extensions.Options;
 
 namespace Altruist.Dashboard;
 
+/// <summary>
+/// Dashboard overview API (route <c>/dashboard/v1/summary</c>): the app's <c>altruist*</c> configuration, the
+/// registered portals/services/factories/configurations, engine settings, and live editing of config keys marked
+/// live-editable.
+/// </summary>
+/// <remarks>
+/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication is applied. The summary returns
+/// configuration values verbatim (connection strings and secrets under <c>altruist:</c> included), and the update
+/// endpoints change running configuration; do not expose this publicly.
+/// </remarks>
 [ApiController]
 [Route("/dashboard/v1/summary")]
 [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
@@ -36,6 +46,11 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly IServiceProvider _serviceProvider;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="configuration">App configuration (read, and written through its mutable provider).</param>
+    /// <param name="engineOptions">Engine settings reported in <see cref="AltruistSummaryDto.Engine"/>.</param>
+    /// <param name="jsonOptions">JSON options.</param>
+    /// <param name="serviceProvider">Container whose services are listed.</param>
     public AltruistSummaryDashboardController(
         IConfiguration configuration,
         IOptions<EngineConfigOptions> engineOptions,
@@ -50,68 +65,110 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
 
     // ------------------ DTOs ------------------
 
+    /// <summary>One configuration key/value; also the body of the config update endpoints.</summary>
     public sealed class ConfigEntryDto
     {
+        /// <summary>Full configuration path (e.g. <c>altruist:dashboard:enabled</c>).</summary>
         public string Key { get; set; } = default!;
+        /// <summary>Current value (string form).</summary>
         public string? Value { get; set; }
+        /// <summary>Whether the key is live-editable through the update endpoints.</summary>
         public bool Modifiable { get; set; }
     }
 
+    /// <summary>A 3-component vector (engine gravity).</summary>
     public sealed class Vector3Dto
     {
+        /// <summary>X component.</summary>
         public float X { get; set; }
+        /// <summary>Y component.</summary>
         public float Y { get; set; }
+        /// <summary>Z component.</summary>
         public float Z { get; set; }
     }
 
+    /// <summary>Engine settings from <see cref="EngineConfigOptions"/>.</summary>
     public sealed class EngineInfoDto
     {
+        /// <summary>Engine diagnostics flag.</summary>
         public bool Diagnostics { get; set; }
+        /// <summary>Engine tick rate in Hz.</summary>
         public int FramerateHz { get; set; }
+        /// <summary>Unit of the tick rate setting.</summary>
         public string Unit { get; set; } = "Ticks";
+        /// <summary>Engine throttle setting, if any.</summary>
         public int? Throttle { get; set; }
+        /// <summary>Configured gravity, or null when it could not be read.</summary>
         public Vector3Dto? Gravity { get; set; }
     }
 
+    /// <summary>Why a type appears in the service list.</summary>
     public enum ServiceCategoryDto
     {
+        /// <summary>Has a <c>[Portal]</c> attribute (one entry per attribute).</summary>
         Portal,
+        /// <summary>Has a <c>[Service]</c> attribute (one entry per attribute).</summary>
         Service,
+        /// <summary>Implements <see cref="IServiceFactory"/>.</summary>
         ServiceFactory,
+        /// <summary>Implements <see cref="IAltruistConfiguration"/>.</summary>
         ServiceConfiguration
     }
 
+    /// <summary>One registered type (a type can appear once per matching category/attribute).</summary>
     public sealed class ServiceInfoDto
     {
+        /// <summary>Type name.</summary>
         public string Name { get; set; } = default!;
+        /// <summary>Full type name.</summary>
         public string FullName { get; set; } = default!;
+        /// <summary>Assembly name.</summary>
         public string Assembly { get; set; } = default!;
+        /// <summary>Why this entry is listed.</summary>
         public ServiceCategoryDto Category { get; set; }
 
         // Only for [Service]
+        /// <summary>DI lifetime (<see cref="ServiceCategoryDto.Service"/> only).</summary>
         public string? Lifetime { get; set; }
+        /// <summary>Registered service type (<see cref="ServiceCategoryDto.Service"/> only).</summary>
         public string? ServiceType { get; set; }
 
         // Only for [Portal]
+        /// <summary>Portal endpoint (<see cref="ServiceCategoryDto.Portal"/> only).</summary>
         public string? Endpoint { get; set; }
+        /// <summary>Portal context (<see cref="ServiceCategoryDto.Portal"/> only).</summary>
         public string? Context { get; set; }
     }
 
+    /// <summary>Response of <c>GET /dashboard/v1/summary</c>.</summary>
     public sealed class AltruistSummaryDto
     {
+        /// <summary>Leaf <c>altruist*</c> configuration entries.</summary>
         public List<ConfigEntryDto> Configs { get; set; } = new();
+        /// <summary>Number of distinct listed types.</summary>
         public int ServiceCount { get; set; }
+        /// <summary>Listed types by category, then name.</summary>
         public List<ServiceInfoDto> Services { get; set; } = new();
+        /// <summary>Engine settings, or null.</summary>
         public EngineInfoDto? Engine { get; set; }
     }
 
+    /// <summary>Response of <c>POST /dashboard/v1/summary/config/update-batch</c>.</summary>
     public sealed class ConfigBatchUpdateResultDto
     {
+        /// <summary>Number of keys set.</summary>
         public int Updated { get; set; }
     }
 
     // ------------------ Endpoint ------------------
 
+    /// <summary>
+    /// <c>POST /dashboard/v1/summary/config/update</c> with a <see cref="ConfigEntryDto"/> body: sets one live-editable
+    /// key in the in-memory mutable configuration provider (fires the configuration reload token). 200 with
+    /// <c>{ updated, value }</c>; 400 when the key is blank or not live-editable; 500 when no mutable provider is present.
+    /// The change is not persisted to any file.
+    /// </summary>
+    /// <param name="dto">Key and new value (<c>null</c> is stored as an empty string).</param>
     [HttpPost("config/update")]
     public ActionResult UpdateConfig([FromBody] ConfigEntryDto dto)
     {
@@ -132,6 +189,12 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         return Ok(new { Updated = dto.Key, Value = dto.Value });
     }
 
+    /// <summary>
+    /// <c>POST /dashboard/v1/summary/config/update-batch</c> with a JSON array of <see cref="ConfigEntryDto"/>: validates every
+    /// key first (400 if any is blank or not live-editable; nothing is applied), then sets them all. 200 with a
+    /// <see cref="ConfigBatchUpdateResultDto"/> (0 for an empty or missing body); 500 when no mutable provider is present.
+    /// </summary>
+    /// <param name="entries">Entries to set.</param>
     [HttpPost("config/update-batch")]
     public ActionResult<ConfigBatchUpdateResultDto> UpdateConfigBatch([FromBody] List<ConfigEntryDto>? entries)
     {
@@ -157,6 +220,11 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         return Ok(new ConfigBatchUpdateResultDto { Updated = entries.Count });
     }
 
+    /// <summary>
+    /// <c>GET /dashboard/v1/summary</c>: 200 with an <see cref="AltruistSummaryDto"/>: every leaf configuration key starting
+    /// with <c>altruist</c> (live-editable keys first), the registered service types, and engine settings.
+    /// </summary>
+    /// <remarks>Resolves every registered service from the container to list it, which may instantiate lazily created singletons.</remarks>
     [HttpGet]
     public ActionResult<AltruistSummaryDto> GetSummary()
     {

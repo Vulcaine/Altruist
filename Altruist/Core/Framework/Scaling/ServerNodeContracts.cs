@@ -28,6 +28,7 @@ public enum ServerNodeState
 /// <param name="Load">Their cost in the server's load units (compared with <c>max-load</c>).</param>
 public readonly record struct CapacitySample(int Units, double Load)
 {
+    /// <summary>No units, no load.</summary>
     public static readonly CapacitySample Empty = new(0, 0);
 }
 
@@ -52,6 +53,7 @@ public interface ICapacityContributor
 /// </summary>
 public interface IDrainParticipant
 {
+    /// <summary>Kind of work (used in logs and drain reports).</summary>
     string Kind { get; }
 
     /// <summary>The drain began: take no new work, let the running work finish. Called once, from any thread.</summary>
@@ -65,15 +67,20 @@ public interface IDrainParticipant
 }
 
 /// <summary>One kind of work in a <see cref="ServerCapacity"/> report.</summary>
+/// <param name="Kind">Kind of work.</param>
+/// <param name="Units">Live units of that kind.</param>
+/// <param name="Load">Their summed load.</param>
 public sealed record CapacityByKind(string Kind, int Units, double Load);
 
 /// <summary>A point-in-time capacity report of this server.</summary>
+/// <param name="NodeId">Id of the server.</param>
 /// <param name="State">Whether it takes new work.</param>
 /// <param name="Load">Summed load of every contributor.</param>
 /// <param name="MaxLoad">The configured budget (<c>altruist:server:capacity:max-load</c>); 0 = unlimited.</param>
 /// <param name="Kinds">Units and load per kind of work.</param>
 public sealed record ServerCapacity(string NodeId, ServerNodeState State, double Load, double MaxLoad, IReadOnlyList<CapacityByKind> Kinds)
 {
+    /// <summary>True when no load budget is configured (<c>MaxLoad &lt;= 0</c>).</summary>
     public bool Unlimited => MaxLoad <= 0;
 
     /// <summary>Load still available; null when unlimited (JSON has no infinity).</summary>
@@ -82,8 +89,11 @@ public sealed record ServerCapacity(string NodeId, ServerNodeState State, double
     /// <summary>Load / MaxLoad (0 when unlimited).</summary>
     public double Utilization => Unlimited ? 0 : Load / MaxLoad;
 
+    /// <summary>True when <see cref="ServerNodeState.Ready"/>.</summary>
     public bool Accepting => State == ServerNodeState.Ready;
 
+    /// <summary>Returns the live units of one kind, or 0.</summary>
+    /// <param name="kind">Kind of work.</param>
     public int UnitsOf(string kind) => Kinds.FirstOrDefault(k => k.Kind == kind)?.Units ?? 0;
 }
 
@@ -101,6 +111,7 @@ public interface IServerNode
     /// <summary>The process id (<see cref="IAltruistContext.ProcessId"/>), or a generated one.</summary>
     string NodeId { get; }
 
+    /// <summary>Current state, computed from drain status, readiness and load.</summary>
     ServerNodeState State { get; }
 
     /// <summary>The configured load budget; 0 = unlimited.</summary>
@@ -109,8 +120,10 @@ public interface IServerNode
     /// <summary>How long a drain waits for its participants before stopping them.</summary>
     TimeSpan DrainTimeout { get; }
 
+    /// <summary>True once a drain has started.</summary>
     bool IsDraining { get; }
 
+    /// <summary>Takes a capacity report (samples every contributor).</summary>
     ServerCapacity Capacity();
 
     /// <summary>New work of this cost may start: the server is <see cref="ServerNodeState.Ready"/> and the cost fits the budget.</summary>

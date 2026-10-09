@@ -22,6 +22,18 @@ namespace Altruist.Gaming.Rooms;
 /// <item>catch up after a stall or a burst by merging two inputs into one step only when no press
 /// is lost and none changes order (<see cref="TryMerge"/>).</item>
 /// </list>
+/// Return it from <see cref="IRoomGame{TSim,TInput,TPlayer}.InputModel"/>; declare it whenever the
+/// input has buttons that act on their press, so starvation and catch-up never drop or repeat a press.
+/// <example>
+/// <code>
+/// public RoomInputModel&lt;PadInput&gt; InputModel { get; } = RoomInputModel&lt;PadInput&gt;.Describe()
+///     .Buttons(i =&gt; i.Buttons, (i, b) =&gt; i with { Buttons = b }) // held-buttons bitmask
+///     .Action(Jump, stage: 0)        // acts on its press; applied first in a step
+///     .Action(Fire, stage: 1)
+///     .WhenStarved(i =&gt; i with { AimDelta = 0 })                   // clear one-shot fields on repeats
+///     .Build();
+/// </code>
+/// </example>
 /// </summary>
 public sealed class RoomInputModel<TInput> where TInput : struct
 {
@@ -63,6 +75,7 @@ public sealed class RoomInputModel<TInput> where TInput : struct
     /// <summary>Starts a declaration.</summary>
     public static Builder Describe() => new();
 
+    /// <summary>Fluent declaration of an input model; start with <see cref="Describe"/>, finish with <see cref="Build"/>.</summary>
     public sealed class Builder
     {
         private Func<TInput, int>? _buttons;
@@ -100,6 +113,10 @@ public sealed class RoomInputModel<TInput> where TInput : struct
             return this;
         }
 
+        /// <summary>The declared model.</summary>
+        /// <exception cref="InvalidOperationException">Actions were declared without <see cref="Buttons"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A stage is outside 0..30.</exception>
+        /// <exception cref="ArgumentException">A button bit is declared in two actions.</exception>
         public RoomInputModel<TInput> Build()
         {
             if (_actions.Count > 0 && _buttons is null) throw new InvalidOperationException("Action buttons need Buttons(get, with) first.");

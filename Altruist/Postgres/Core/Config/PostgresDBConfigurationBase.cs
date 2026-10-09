@@ -10,22 +10,38 @@ using Npgsql;
 
 namespace Altruist.Persistence.Postgres;
 
+/// <summary>
+/// Shared startup helpers for the Postgres <c>[ServiceConfiguration]</c> classes (see
+/// <see cref="PostgresDatabaseConfiguration"/>): assembly scanning, keyspace registration, <c>[Transactional]</c>
+/// proxy wrapping and the <see cref="NpgsqlDataSource"/> registration. Not meant to be used by application code.
+/// </summary>
 public abstract class PostgresConfigurationBase
 {
     // ----------------- discovery helpers -----------------
 
+    /// <summary>All non-dynamic assemblies currently loaded in the app domain.</summary>
     protected static Assembly[] DiscoverAssemblies() =>
         AppDomain.CurrentDomain.GetAssemblies()
             .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
             .ToArray();
 
+    /// <summary>Concrete <see cref="IKeyspace"/> classes annotated with <see cref="KeyspaceAttribute"/>.</summary>
+    /// <param name="assemblies">Assemblies to scan.</param>
     protected static IEnumerable<Type> FindSchemaTypes(Assembly[] assemblies) =>
         TypeDiscovery.FindTypesWithAttribute<KeyspaceAttribute>(assemblies)
             .Where(t => t.IsClass && !t.IsAbstract && typeof(IKeyspace).IsAssignableFrom(t));
 
+    /// <summary>Types implementing <see cref="IDatabaseInitializer"/> (run once after migration at startup).</summary>
+    /// <param name="assemblies">Assemblies to scan.</param>
     protected static IEnumerable<Type> FindInitializers(Assembly[] assemblies) =>
         TypeDiscovery.FindTypesImplementing<IDatabaseInitializer>(assemblies);
 
+    /// <summary>
+    /// Schema of a model: the trimmed <c>Keyspace</c> of its <see cref="VaultAttribute"/> (or subclass, inherited), or
+    /// <c>public</c> when that is empty or the attribute is missing. Note the attribute's own default keyspace is
+    /// <c>altruist</c>.
+    /// </summary>
+    /// <param name="modelType">The vault model type.</param>
     protected static string GetSchemaName(Type modelType)
     {
         // Works for [Vault], [Prefab], and any future : VaultAttribute attribute.
@@ -38,6 +54,14 @@ public abstract class PostgresConfigurationBase
 
     // ----------------- schema registration -----------------
 
+    /// <summary>
+    /// Registers each keyspace class as a singleton (built with configuration binding) and also as an
+    /// <see cref="IKeyspace"/>. Types already registered are skipped.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <param name="cfg">Application configuration used to construct the keyspaces.</param>
+    /// <param name="schemaTypes">Keyspace types to register.</param>
+    /// <param name="logger">Logger passed to the resolver.</param>
     protected static void RegisterSchemas(
         IServiceCollection services,
         IConfiguration cfg,
@@ -61,6 +85,18 @@ public abstract class PostgresConfigurationBase
 
     // ----------------- transactional wrapping -----------------
 
+    /// <summary>
+    /// Wraps every service whose implementation has <see cref="TransactionalAttribute"/> methods in a
+    /// <see cref="TransactionalDecorator{T}"/> proxy, keeping the original lifetime.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilds the whole service collection (clear + re-add), so it only sees services registered before it runs.
+    /// Only descriptors with an <c>ImplementationType</c> are wrapped (factory or instance registrations are not).
+    /// The proxy is a <see cref="DispatchProxy"/>, so the service type must be an interface: a class registered as
+    /// itself cannot be proxied. The inner instance is created with <see cref="ActivatorUtilities"/>.
+    /// </remarks>
+    /// <param name="services">Service collection being configured.</param>
+    /// <param name="assemblies">Assemblies scanned for <c>[Transactional]</c> methods.</param>
     protected static void RegisterTransactionalServices(IServiceCollection services, Assembly[] assemblies)
     {
         TransactionalRegistry.WarmUp(assemblies);
@@ -117,6 +153,20 @@ public abstract class PostgresConfigurationBase
 
     // ----------------- Npgsql data source -----------------
 
+    /// <summary>
+    /// Registers a singleton <see cref="NpgsqlDataSource"/> (used by <see cref="TransactionalDecorator{T}"/>), once.
+    /// </summary>
+    /// <remarks>
+    /// Connection string: <c>ConnectionStrings:postgres</c> if present; otherwise built from
+    /// <c>altruist:persistence:database</c> <c>host</c> (default <c>localhost</c>), <c>port</c> (5432), <c>username</c>,
+    /// <c>password</c> and <c>database</c>. Unlike <see cref="PgSqlDbProvider"/>, this path does not apply
+    /// <c>pooling</c>, <c>max-pool-size</c>, <c>ssl-mode</c>, lower-casing or the UTC session time zone.
+    /// </remarks>
+    /// <param name="services">Service collection being configured.</param>
+    /// <param name="cfg">Application configuration.</param>
+    /// <exception cref="InvalidOperationException">
+    /// No connection string and the provider is not <c>postgres</c>, or username/password/database is missing.
+    /// </exception>
     protected static void RegisterNpgsqlDataSource(IServiceCollection services, IConfiguration cfg)
     {
         if (services.Any(d => d.ServiceType == typeof(NpgsqlDataSource)))

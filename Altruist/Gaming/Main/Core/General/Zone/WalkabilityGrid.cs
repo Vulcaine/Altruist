@@ -12,9 +12,13 @@ namespace Altruist.Gaming;
 [Flags]
 public enum CellAttribute : byte
 {
+    /// <summary>No flags: walkable.</summary>
     None = 0,
+    /// <summary>Not walkable (the only flag the grid itself checks).</summary>
     Blocked = 0x01,
+    /// <summary>Water cell (informational).</summary>
     Water = 0x02,
+    /// <summary>No-combat / safe area cell (informational).</summary>
     Banpk = 0x04,
 }
 
@@ -25,10 +29,16 @@ public enum CellAttribute : byte
 /// Game coordinates are converted to cell indices using CellScale
 /// (e.g., cellX = gameX / CellScale).
 /// </summary>
+/// <remarks>Choosing: a walkability grid answers cheap "can stand / can walk straight" checks for tile-like
+/// maps (e.g. validating client movement). For path finding in 3D use the navmesh services; for
+/// collision response use the physics world.</remarks>
 public interface IWalkabilityGrid
 {
+    /// <summary>Cells along X.</summary>
     int Width { get; }
+    /// <summary>Cells along Y.</summary>
     int Height { get; }
+    /// <summary>World units per cell.</summary>
     int CellScale { get; }
 
     /// <summary>Get the raw attribute byte at a cell coordinate.</summary>
@@ -52,14 +62,20 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
 {
     private readonly byte[] _cells;
 
+    /// <inheritdoc/>
     public int Width { get; }
+    /// <inheritdoc/>
     public int Height { get; }
+    /// <inheritdoc/>
     public int CellScale { get; }
 
     /// <summary>World-space origin of this grid. Cell (0,0) maps to (BaseX, BaseY) in world coords.</summary>
     public float BaseX { get; }
+    /// <summary>World-space Y of cell row 0 (see <see cref="BaseX"/>).</summary>
     public float BaseY { get; }
 
+    /// <summary>Wraps row-major cell data (<c>cells[y * width + x]</c>, <see cref="CellAttribute"/> flags).</summary>
+    /// <exception cref="ArgumentException"><paramref name="cells"/> has fewer than <c>width * height</c> entries.</exception>
     public WalkabilityGrid(int width, int height, int cellScale, byte[] cells, float baseX = 0, float baseY = 0)
     {
         if (cells.Length < width * height)
@@ -73,6 +89,7 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
         _cells = cells;
     }
 
+    /// <summary>The cell's flags; cells outside the grid read as <see cref="CellAttribute.None"/> (walkable).</summary>
     public byte GetCell(int cellX, int cellY)
     {
         if (cellX < 0 || cellX >= Width || cellY < 0 || cellY >= Height)
@@ -80,11 +97,13 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
         return _cells[cellY * Width + cellX];
     }
 
+    /// <inheritdoc/>
     public bool IsWalkable(int cellX, int cellY)
     {
         return (GetCell(cellX, cellY) & (byte)CellAttribute.Blocked) == 0;
     }
 
+    /// <inheritdoc/>
     public bool IsPositionWalkable(float worldX, float worldY)
     {
         int cellX = (int)((worldX - BaseX) / CellScale);
@@ -92,6 +111,7 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
         return IsWalkable(cellX, cellY);
     }
 
+    /// <summary>Bresenham walk over the cells between the two positions; false if any is blocked.</summary>
     public bool CanMoveTo(float fromX, float fromY, float toX, float toY)
     {
         // Simple Bresenham line check — every cell along the path must be walkable
@@ -125,29 +145,40 @@ public sealed class WalkabilityGrid : IWalkabilityGrid
 /// </summary>
 public interface IWalkabilityService
 {
+    /// <summary>Registers (or replaces) the grid of a zone.</summary>
     void RegisterGrid(string zoneName, IWalkabilityGrid grid);
+    /// <summary>Removes the grid of a zone.</summary>
     void UnregisterGrid(string zoneName);
+    /// <summary>The zone's grid, or null.</summary>
     IWalkabilityGrid? GetGrid(string zoneName);
+    /// <summary>Whether the position is walkable in the zone; true when the zone has no grid.</summary>
     bool IsPositionWalkable(string zoneName, float worldX, float worldY);
+    /// <summary>Whether a straight move is walkable in the zone; true when the zone has no grid.</summary>
     bool CanMoveTo(string zoneName, float fromX, float fromY, float toX, float toY);
 }
 
+/// <summary>Default thread-safe <see cref="IWalkabilityService"/> (registered when <c>altruist:game</c> exists).</summary>
 [Service(typeof(IWalkabilityService))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class WalkabilityService : IWalkabilityService
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IWalkabilityGrid> _grids = new();
 
+    /// <inheritdoc/>
     public void RegisterGrid(string zoneName, IWalkabilityGrid grid) => _grids[zoneName] = grid;
+    /// <inheritdoc/>
     public void UnregisterGrid(string zoneName) => _grids.TryRemove(zoneName, out _);
+    /// <inheritdoc/>
     public IWalkabilityGrid? GetGrid(string zoneName) => _grids.GetValueOrDefault(zoneName);
 
+    /// <inheritdoc/>
     public bool IsPositionWalkable(string zoneName, float worldX, float worldY)
     {
         var grid = GetGrid(zoneName);
         return grid?.IsPositionWalkable(worldX, worldY) ?? true;
     }
 
+    /// <inheritdoc/>
     public bool CanMoveTo(string zoneName, float fromX, float fromY, float toX, float toY)
     {
         var grid = GetGrid(zoneName);

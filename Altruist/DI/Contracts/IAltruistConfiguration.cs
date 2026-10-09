@@ -18,6 +18,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Contracts;
 
+/// <summary>
+/// A startup configuration step that adds registrations to the <see cref="IServiceCollection"/> by hand. Mark implementations
+/// with <c>[ServiceConfiguration]</c> (Altruist.ServiceConfigurationAttribute) so they are discovered, ordered and run
+/// once during bootstrap; constructor parameters (including <c>[AppConfigValue]</c>) are injected.
+/// </summary>
+/// <remarks>
+/// Use a plain <c>[Service]</c> class for ordinary services; implement this only when you must call
+/// <c>services.Add...</c> yourself (options, authentication, framework integrations). A service can require a step with
+/// <c>[Service(DependsOn = new[] { typeof(MyStep) })]</c>.
+/// </remarks>
 public interface IAltruistConfiguration
 {
     /// <summary>

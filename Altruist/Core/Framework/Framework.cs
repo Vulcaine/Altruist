@@ -18,21 +18,40 @@ using Altruist.Contracts;
 
 namespace Altruist
 {
+    /// <summary>
+    /// Default <see cref="IAltruistContext"/>: process-wide server facts (address, portal endpoints, active transport /
+    /// database / cache tokens) used for the startup banner and diagnostics. Singleton, registered by <see cref="ServiceAttribute"/>;
+    /// inject <see cref="IAltruistContext"/>.
+    /// </summary>
     [Service(typeof(IAltruistContext))]
     public class AltruistServerContext : IAltruistContext
     {
+        /// <summary>Public address; replaced with the configured HTTP host/port when the host starts.</summary>
         public ServerInfo ServerInfo { get; set; } = new ServerInfo("Altruist Server", "ws", "localhost", 3001);
 
+        /// <summary>Portal endpoint paths, filled during portal warmup.</summary>
         public HashSet<string> Endpoints { get; set; } = new HashSet<string>();
 
+        /// <summary>True when an engine configuration (<see cref="EngineConfigOptions"/>, i.e. <c>altruist:game:engine</c>) was present at construction.</summary>
         public bool EngineEnabled { get; set; }
 
+        /// <summary>Unique id of this process instance (<c>machine-pid-guid</c>).</summary>
         public string ProcessId { get; } = $"{Environment.MachineName}-{Environment.ProcessId}-{Guid.NewGuid():N}";
 
+        /// <summary>The active transport's token, if any.</summary>
         public ITransportServiceToken? TransportToken { get; set; }
+
+        /// <summary>Tokens of all configured database providers.</summary>
         public List<IDatabaseServiceToken> DatabaseTokens { get; set; }
+
+        /// <summary>The active cache provider's token, if any.</summary>
         public ICacheServiceToken? CacheToken { get; set; }
 
+        /// <summary>Created by DI.</summary>
+        /// <param name="databaseServiceTokens">All registered database tokens.</param>
+        /// <param name="token">Transport token, if registered.</param>
+        /// <param name="cacheToken">Cache token, if registered.</param>
+        /// <param name="configOptions">Engine options; non-null enables <see cref="EngineEnabled"/>.</param>
         public AltruistServerContext(
             List<IDatabaseServiceToken> databaseServiceTokens,
             ITransportServiceToken? token = null,
@@ -45,8 +64,12 @@ namespace Altruist
             CacheToken = cacheToken;
         }
 
+        /// <summary>Adds a portal endpoint path (duplicates ignored).</summary>
+        /// <param name="endpoint">Endpoint path, e.g. <c>/game</c>.</param>
         public void AddEndpoint(string endpoint) => Endpoints.Add(endpoint);
 
+        /// <summary>Throws when no endpoint or no transport token is set.</summary>
+        /// <exception cref="ArgumentException">No endpoints, or no transport configured.</exception>
         public void Validate()
         {
             if (Endpoints.Count == 0)
@@ -60,6 +83,7 @@ namespace Altruist
             }
         }
 
+        /// <summary>Multi-line summary (addresses per endpoint plus token descriptions) used in the startup banner.</summary>
         public override string ToString()
         {
             var lines = new List<string>();

@@ -29,6 +29,16 @@ public static class AIBehaviorDiscovery
     private static readonly object _lock = new();
     private static bool _discovered;
 
+    /// <summary>
+    /// Builds a template for every <see cref="AIBehaviorAttribute"/> class in
+    /// <paramref name="assemblies"/>. Runs once per process (later calls return immediately); a
+    /// behavior that cannot be created or whose handlers have a wrong signature is logged and skipped.
+    /// A later class registering the same name replaces the earlier one.
+    /// </summary>
+    /// <param name="assemblies">Assemblies to scan.</param>
+    /// <param name="instanceFactory">Resolves a behavior instance (typically from DI); when it returns
+    /// null or throws, a parameterless constructor is tried.</param>
+    /// <param name="logger">Receives discovery diagnostics.</param>
     public static void DiscoverBehaviors(
         IEnumerable<Assembly> assemblies,
         Func<Type, object?> instanceFactory,
@@ -98,7 +108,9 @@ public static class AIBehaviorDiscovery
         }
     }
 
-    /// <summary>Create a new FSM instance from a registered behavior template.</summary>
+    /// <summary>Create a new FSM instance from a registered behavior template, or null when no
+    /// behavior is registered under <paramref name="behaviorName"/>. The caller must
+    /// <see cref="StateMachine{TContext}.Initialize"/> it before the first update.</summary>
     public static AIStateMachine? CreateStateMachine(string behaviorName)
     {
         lock (_lock)
@@ -144,6 +156,8 @@ public static class AIBehaviorDiscovery
         return new AIStateMachine(def);
     }
 
+    /// <summary>True when a behavior template is registered under <paramref name="name"/> (by the scan or
+    /// by <see cref="CreateStateMachine{TBehavior}"/>).</summary>
     public static bool HasBehavior(string name)
     {
         lock (_lock) return _templates.ContainsKey(name);

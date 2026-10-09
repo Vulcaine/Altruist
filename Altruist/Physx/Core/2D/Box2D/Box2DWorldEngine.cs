@@ -15,20 +15,43 @@ namespace Altruist.Physx.TwoD
     [Service(typeof(IPhysxWorldEngineFactory2D))]
     public sealed class WorldEngineFactory2D : IPhysxWorldEngineFactory2D
     {
+        /// <inheritdoc/>
         public IPhysxWorldEngine2D Create(Vector2 gravity, float fixedDeltaTime = 1f / 60f)
             => new Box2DWorldEngine2D(gravity, fixedDeltaTime);
 
+        /// <inheritdoc/>
         public IPhysxWorldEngine2D Create(PhysxWorldSettings2D settings) => new Box2DWorldEngine2D(settings);
     }
 
+    /// <summary>
+    /// The Box2D (Box2DSharp, Box2D 2.4 port) implementation of <see cref="IPhysxWorldEngine2D"/>. Create
+    /// it through <see cref="PhysxWorldEngine2D.Create"/> or <see cref="IPhysxWorldEngineFactory2D"/>.
+    /// <para>Contact events: the installed <see cref="IPhysxContactListener2D"/> gets Box2D's callbacks
+    /// inside the step through one reused contact view (no allocation per contact). Fixture events:
+    /// trigger enter/exit inside the step; collision enter after the step that began the touch, with
+    /// the normal impulse summed over that step's post-solves; collision stay after each step (only
+    /// while some fixture subscribes); collision exit inside the step. A collision that begins and
+    /// ends within one step still raises enter before exit.</para>
+    /// <para>Contact views from <see cref="Contacts"/> are invalidated by a step, body removal, body
+    /// disable, fixture destruction or <see cref="Dispose"/> (they throw
+    /// <see cref="InvalidOperationException"/> afterwards).</para>
+    /// <para>Threading: see <see cref="IPhysxWorldEngine2D"/> and <see cref="Box2DThreading"/>
+    /// (installed by the static constructor).</para>
+    /// </summary>
     public sealed class Box2DWorldEngine2D : IPhysxWorldEngine2D
     {
+        /// <inheritdoc/>
         public float FixedDeltaTime { get; private set; }
+
+        /// <summary>The settings in effect (constructor or last <see cref="ApplySettings"/>).</summary>
         public PhysxWorldSettings2D Settings { get; private set; }
+
+        /// <summary>A new list of the added bodies on every call (allocates; order of a dictionary).</summary>
         public IReadOnlyCollection<IPhysxBody> Bodies => _bodies.Values.Cast<IPhysxBody>().ToList();
 
         internal World World => _world;
 
+        /// <summary>Unused index; always 0.</summary>
         public int Index { get; }
         private readonly World _world;
         private readonly Dictionary<string, Body2DAdapter> _bodies = new();
@@ -45,6 +68,9 @@ namespace Altruist.Physx.TwoD
         // only runs while there are some.
         internal int StaySubscribers;
 
+        /// <summary>A world with <paramref name="gravity"/> and <paramref name="fixedDeltaTime"/>; other settings default.</summary>
+        /// <param name="gravity">World gravity in units/s² (+Y up).</param>
+        /// <param name="fixedDeltaTime">Fixed step in seconds (only used with fixed stepping).</param>
         public Box2DWorldEngine2D(
             Vector2 gravity,
             float fixedDeltaTime = 1f / 60f
@@ -54,6 +80,8 @@ namespace Altruist.Physx.TwoD
 
         static Box2DWorldEngine2D() => Box2DThreading.EnsureInstalled();
 
+        /// <summary>A world with every setting.</summary>
+        /// <param name="settings">Gravity, step and solver settings.</param>
         public Box2DWorldEngine2D(PhysxWorldSettings2D settings)
         {
             Settings = settings;
@@ -63,6 +91,8 @@ namespace Altruist.Physx.TwoD
             _world.SetContactListener(_contacts);
         }
 
+        /// <summary>Replaces the settings, sets the world's gravity and resets the fixed-step accumulator.</summary>
+        /// <param name="settings">The new settings.</param>
         public void ApplySettings(PhysxWorldSettings2D settings)
         {
             Settings = settings;
@@ -71,6 +101,7 @@ namespace Altruist.Physx.TwoD
             _accumulator = 0f;
         }
 
+        /// <inheritdoc/>
         public void Step(float deltaTime)
         {
             if (_world.BodyCount == 0)
@@ -104,6 +135,7 @@ namespace Altruist.Physx.TwoD
             _contacts.AfterStep(_world, StaySubscribers > 0);
         }
 
+        /// <inheritdoc/>
         public IPhysxBody2D AddBody(IPhysxBody2D body)
         {
             if (body is not Body2DAdapter adapter)
@@ -115,6 +147,7 @@ namespace Altruist.Physx.TwoD
             return adapter;
         }
 
+        /// <inheritdoc/>
         public IPhysxBody2D CreateBody(in PhysxBodyDef2D def)
         {
             var body = _world.CreateBody(new BodyDef
@@ -138,6 +171,7 @@ namespace Altruist.Physx.TwoD
             return AddBody(adapter);
         }
 
+        /// <inheritdoc/>
         public IPhysxFixture2D CreateFixture(IPhysxBody2D body, in PhysxFixtureDef2D def)
         {
             if (body is not Body2DAdapter owner)
@@ -157,6 +191,7 @@ namespace Altruist.Physx.TwoD
             return fixture;
         }
 
+        /// <inheritdoc/>
         public void RemoveBody(IPhysxBody body)
         {
             if (body is Body2DAdapter b && _bodies.Remove(b.Id))
@@ -167,6 +202,7 @@ namespace Altruist.Physx.TwoD
             }
         }
 
+        /// <inheritdoc/>
         public void SetContactListener(IPhysxContactListener2D? listener) => _contacts.Listener = listener;
 
         /// <summary>
@@ -190,6 +226,7 @@ namespace Altruist.Physx.TwoD
             return hits;
         }
 
+        /// <inheritdoc/>
         public void RayCast(Vector2 from, Vector2 to, IPhysxRayCastCallback2D callback)
         {
             // Reused bridge; a nested ray cast from inside a callback gets its own.
@@ -221,6 +258,8 @@ namespace Altruist.Physx.TwoD
             }
         }
 
+        /// <summary>Destroys every added body (contact views become invalid). The world object itself
+        /// stays usable but empty.</summary>
         public void Dispose()
         {
             ContactGeneration++;

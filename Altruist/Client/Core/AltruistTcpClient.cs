@@ -21,13 +21,17 @@ namespace Altruist.Client;
 /// <list type="bullet">
 ///   <item><see cref="StartReadLoop"/> spins a background thread that pumps inbound
 ///   frames into <see cref="IncomingQueue"/>. Drain on your main loop tick. Unity-shape.</item>
-///   <item><see cref="DrainAsync"/> awaits inbound frames inside <paramref name="timeout"/>
+///   <item><see cref="DrainAsync"/> awaits inbound frames inside <c>timeout</c>
 ///   and returns them. Test-shape.</item>
 /// </list>
 ///
 /// <para><b>Concurrency:</b> <see cref="SendAsync"/> locks the underlying stream
 /// so multi-thread send won't interleave bytes (we caught a real bug in production
 /// from this; <c>ConcurrentSendTests</c> is the regression guard).</para>
+///
+/// <para>Internal: application code sends through <see cref="IAltruistClientRouter"/> /
+/// <see cref="ITransportSender"/>, which own this instance. Registered as a DI singleton only
+/// when <c>altruist:client:transport:tcp</c> is configured.</para>
 /// </summary>
 [Service]
 [ConditionalOnConfig("altruist:client:transport:tcp")]
@@ -51,10 +55,14 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
     /// <see cref="ConnectAsync"/> completes the handshake.</summary>
     public string ClientId { get; private set; } = "";
 
+    /// <summary>True after <see cref="ConnectAsync"/> succeeded and until <see cref="Disconnect"/>,
+    /// as long as the socket still reports connected.</summary>
     public bool IsConnected => _stream is not null && _tcp.Connected;
 
     /// <summary>Background-thread inbound queue. Drain from your main loop:
-    /// <c>while (client.IncomingQueue.TryDequeue(out var p)) router.Dispatch(p);</c>.
+    /// <c>while (client.IncomingQueue.TryDequeue(out var p)) dispatcher.Dispatch(p, client.Codec);</c>
+    /// (the router does this in its pump or in <see cref="IAltruistClientRouter.DrainInbound"/>).
+    /// Each item is one envelope payload with the length prefix stripped.
     /// Only populated after <see cref="StartReadLoop"/> is called.</summary>
     public ConcurrentQueue<byte[]> IncomingQueue { get; } = new();
 
@@ -68,6 +76,9 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
     /// <summary>Fires for caught read-loop errors. Receive loop ends right after.</summary>
     public event Action<Exception>? OnError;
 
+    /// <summary>Explicit ctor for manual wiring (tests, programmatic setup).</summary>
+    /// <param name="endpoint">Server host and port.</param>
+    /// <param name="codec">Codec used to encode outbound packets.</param>
     public AltruistTcpClient(EndpointConfig endpoint, IClientCodec codec)
     {
         _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
@@ -106,6 +117,14 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
         return codecResolver.Resolve(tcp.Codec.Provider);
     }
 
+    /// <summary>
+    /// Opens the socket (NoDelay, 16 KiB buffers), reads the server's
+    /// <c>[4 LE length][UTF-8 ClientId]</c> handshake into <see cref="ClientId"/>, then raises
+    /// <see cref="OnConnected"/>. Does not start reading frames; call <see cref="StartReadLoop"/>
+    /// or <see cref="DrainAsync"/> afterwards.
+    /// </summary>
+    /// <param name="ct">Cancels the handshake read (the TCP connect itself is not cancellable).</param>
+    /// <exception cref="InvalidOperationException">Already connected, or the handshake length is outside 1..1024.</exception>
     public async Task ConnectAsync(CancellationToken ct = default)
     {
         if (_stream is not null) throw new InvalidOperationException(
@@ -276,6 +295,8 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
         }
     }
 
+    /// <summary>Stops the read loop and closes the stream and socket. Errors are swallowed.
+    /// The instance cannot be reconnected afterwards (the underlying <c>TcpClient</c> is closed).</summary>
     public void Disconnect()
     {
         _readLoopRunning = false;
@@ -284,12 +305,15 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
         _stream = null;
     }
 
+    /// <summary>Synchronous <see cref="Dispose"/> wrapped in a completed task.</summary>
+    /// <returns>A completed task.</returns>
     public ValueTask DisposeAsync()
     {
         Dispose();
         return default;
     }
 
+    /// <summary><see cref="Disconnect"/> and dispose the socket.</summary>
     public void Dispose()
     {
         Disconnect();

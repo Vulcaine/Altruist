@@ -7,15 +7,39 @@ using Altruist.TwoD.Numerics;
 namespace Altruist.Physx.TwoD
 {
 
+    /// <summary>
+    /// A 2D rigid body (engine-agnostic). Conventions: world units, +Y up, angles in radians
+    /// counter-clockwise positive (Box2D), velocities per second.
+    /// <para>Create one with <see cref="IPhysxWorldEngine2D.CreateBody"/> (standalone
+    /// worlds; preferred) or, in a world-organizer setup, through <see cref="IPhysxBodyApiProvider2D"/>.
+    /// To change its motion use the layers built on it: <see cref="BodyMotionExtensions2D"/> (physics
+    /// layer: one velocity formula per call), <see cref="BodySteeringExtensions2D"/> (simple
+    /// move/face/impulse helpers) and the Gaming package's <c>GameplayVerbs2D</c> (intent-level verbs).</para>
+    /// <para>Threading: not thread-safe; touch a body only from the thread that steps its world, and
+    /// not from another thread while it steps.</para>
+    /// <example><code>
+    /// var body = world.CreateBody(new PhysxBodyDef2D { Type = PhysxBodyType.Dynamic, Position = new(0, 2) });
+    /// world.CreateFixture(body, new PhysxFixtureDef2D { Shape = PhysxShape2D.Circle(0.5f), Density = 1f });
+    /// body.LinearVelocity = new Vector2(3, 0);
+    /// </code></example>
+    /// </summary>
     public interface IPhysxBody2D : IPhysxBody
     {
-        // Existing members (examples)
+        /// <summary>Body origin in world units. On Box2D, setting it calls <c>SetTransform</c> (keeps
+        /// the angle, refreshes the broad-phase); prefer <see cref="SetTransform"/> to
+        /// change both position and angle.</summary>
         Vector2 Position { get; set; }
 
+        /// <summary>Linear velocity of the center of mass in units/s. On Box2D, setting a non-zero value
+        /// wakes the body; static bodies ignore it.</summary>
         Vector2 LinearVelocity { get; set; }
 
+        /// <summary>Angular velocity in rad/s, counter-clockwise positive. On Box2D, setting a non-zero
+        /// value wakes the body; static bodies ignore it.</summary>
         float AngularVelocityZ { get; set; }
 
+        /// <summary>Rotation in radians, counter-clockwise positive (local +Y is the body's "up").
+        /// Not wrapped: it accumulates turns. Setting it on Box2D calls <c>SetTransform</c>.</summary>
         float RotationZ { get; set; }
 
         // Rigid-body members. Engine-backed bodies implement them natively; the defaults keep
@@ -30,10 +54,14 @@ namespace Altruist.Physx.TwoD
         /// <summary>A disabled body takes no part in the simulation (no contacts, no motion).</summary>
         bool IsEnabled { get => true; set { } }
 
-        /// <summary>Center of mass in world coordinates.</summary>
+        /// <summary>Center of mass in world coordinates (the default implementation returns
+        /// <see cref="Position"/>).</summary>
         Vector2 WorldCenter => Position;
 
-        /// <summary>Moves and rotates the body in one call (radians).</summary>
+        /// <summary>Moves and rotates the body in one call (radians, counter-clockwise). Teleports: no
+        /// velocity change, no swept collision.</summary>
+        /// <param name="position">New body origin (world).</param>
+        /// <param name="angle">New rotation in radians.</param>
         void SetTransform(Vector2 position, float angle)
         {
             Position = position;
@@ -54,16 +82,42 @@ namespace Altruist.Physx.TwoD
     }
 
 
+    /// <summary>
+    /// The 2D physics world as used by the game-world organizer (one per world index). A thin
+    /// facade over an <see cref="IPhysxWorldEngine2D"/> (<see cref="Altruist.Physx.PhysxWorld2D"/>).
+    /// For standalone simulations (rooms, prediction, rollback) use
+    /// <see cref="IPhysxWorldEngine2D"/> directly, which also exposes body/fixture creation,
+    /// contacts and listeners.
+    /// </summary>
     public interface IPhysxWorld2D : IPhysxWorld
     {
+        /// <summary>Registers a body created by the matching provider with this world.</summary>
         void AddBody(IPhysxBody2D body);
+
+        /// <summary>Removes and destroys a body (its contacts end). No-op for unknown bodies.</summary>
         void RemoveBody(IPhysxBody body);
+
+        /// <summary>The closest <paramref name="maxHits"/> bodies along the ray, closest first
+        /// (see <see cref="IPhysxWorldEngine2D.RayCast(PhysxRay2D,int)"/>).</summary>
         IEnumerable<PhysxRaycastHit2D> RayCast(PhysxRay2D ray, int maxHits = 1);
     }
 
 
+    /// <summary>
+    /// Creates bodies and attaches <see cref="IPhysxCollider2D"/> colliders for the world-organizer
+    /// path (DI service; the Box2D implementation is registered when
+    /// <c>altruist:environment:mode</c> is <c>2D</c>). For standalone worlds prefer
+    /// <see cref="IPhysxWorldEngine2D.CreateBody"/> and
+    /// <see cref="IPhysxWorldEngine2D.CreateFixture"/>, which take full definitions (material,
+    /// filter, sleep, damping) and register the body at once.
+    /// </summary>
     public interface IPhysxBodyApiProvider2D
     {
+        /// <summary>Creates a body. Depending on the implementation it may still need to be added to a
+        /// world (<see cref="IPhysxWorld2D.AddBody"/>).</summary>
+        /// <param name="type">Static, dynamic or kinematic.</param>
+        /// <param name="mass">Requested mass (implementations may derive mass from fixtures instead).</param>
+        /// <param name="transform">Initial position and rotation.</param>
         IPhysxBody2D CreateBody(PhysxBodyType type, float mass, Transform2D transform);
 
         /// <summary>Attach a collider to a body (creates a fixture under the hood).</summary>
@@ -73,13 +127,27 @@ namespace Altruist.Physx.TwoD
         void RemoveCollider(IPhysxCollider2D collider);
     }
 
+    /// <summary>
+    /// Static shortcut over an <see cref="IPhysxBodyApiProvider2D"/>. <see cref="Provider"/> must be
+    /// assigned first (nothing in the framework assigns it); otherwise calls throw
+    /// <see cref="NullReferenceException"/>. Prefer injecting <see cref="IPhysxBodyApiProvider2D"/>,
+    /// or <see cref="IPhysxWorldEngine2D.CreateBody"/> for standalone worlds.
+    /// </summary>
     public static class PhysxBody2D
     {
+        /// <summary>The provider all <c>Create</c> calls go to (process-wide, not thread-safe to change).</summary>
         public static IPhysxBodyApiProvider2D Provider { get; set; } = default!;
 
+        /// <summary>Creates a dynamic body when <paramref name="mass"/> &gt; 0, else a static one.</summary>
+        /// <param name="mass">Mass; &gt; 0 selects <see cref="PhysxBodyType.Dynamic"/>.</param>
+        /// <param name="transform">Initial position and rotation.</param>
         public static IPhysxBody2D Create(float mass, Transform2D transform) =>
             Provider.CreateBody(mass > 0 ? PhysxBodyType.Dynamic : PhysxBodyType.Static, mass, transform);
 
+        /// <summary>Creates a body of an explicit <paramref name="type"/>.</summary>
+        /// <param name="type">Static, dynamic or kinematic.</param>
+        /// <param name="mass">Requested mass (see <see cref="IPhysxBodyApiProvider2D.CreateBody"/>).</param>
+        /// <param name="transform">Initial position and rotation.</param>
         public static IPhysxBody2D Create(PhysxBodyType type, float mass, Transform2D transform) =>
             Provider.CreateBody(type, mass, transform);
     }

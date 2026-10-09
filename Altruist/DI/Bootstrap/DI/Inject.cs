@@ -2,6 +2,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist;
 
+/// <summary>
+/// Static service locator over the root provider built at bootstrap. Use it only where constructor injection is impossible
+/// (static helpers, objects created by third-party code, attribute-instantiated types); everywhere else take dependencies
+/// through the constructor of a <see cref="ServiceAttribute"/> class.
+/// </summary>
+/// <example>
+/// <code>
+/// var clock = Dependencies.Inject&lt;IClock&gt;();
+/// </code>
+/// </example>
 public static class Dependencies
 {
     private static IServiceProvider? _provider;
@@ -15,6 +25,7 @@ public static class Dependencies
     /// </summary>
     private static readonly AsyncLocal<IServiceProvider?> _scope = new();
 
+    /// <summary>The root provider set by <see cref="UseRootProvider"/>; null before bootstrap finishes building it.</summary>
     public static IServiceProvider? RootProvider => _provider;
 
     /// <summary>The provider in effect for the current async flow — the scoped
@@ -54,6 +65,12 @@ public static class Dependencies
     /// Resolve a service. Honors any active <see cref="PushScope"/> before falling
     /// back to the root provider, so test-time overrides take precedence.
     /// </summary>
+    /// <remarks>
+    /// Before the root provider exists (during bootstrap) it builds a throw-away provider from the registered
+    /// collection on every call, so singletons obtained that way are NOT the instances the app later uses.
+    /// </remarks>
+    /// <typeparam name="T">Service type.</typeparam>
+    /// <exception cref="InvalidOperationException">Nothing configured yet, or <typeparamref name="T"/> is not registered.</exception>
     public static T Inject<T>() where T : notnull
     {
         var sp = _scope.Value ?? _provider;
@@ -68,8 +85,11 @@ public static class Dependencies
     }
 
     /// <summary>
-    /// Non-generic resolve if you ever need it.
+    /// Non-generic resolve if you ever need it. Same lookup rules as <see cref="Inject{T}"/>.
     /// </summary>
+    /// <param name="serviceType">Service type to resolve.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="serviceType"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">Nothing configured yet, or the type is not registered.</exception>
     public static object Inject(Type serviceType)
     {
         if (serviceType is null)

@@ -12,6 +12,9 @@ namespace Altruist.Client;
 /// <para>Disposes everything: cancels read pumps, closes sockets, drops the
 /// dispatcher reference (the dispatcher itself is a separate singleton that
 /// outlives the router).</para>
+///
+/// <para>Inject <see cref="IAltruistClientRouter"/> rather than this class. Construct it
+/// directly only outside DI (tests, programmatic setup).</para>
 /// </summary>
 [Service(typeof(IAltruistClientRouter))]
 [ConditionalOnConfig("altruist:client:transport")]
@@ -37,20 +40,52 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
     private Task? _udpPump;
     private Task? _wsPump;
 
+    /// <inheritdoc/>
     public string ClientId => _tcp?.ClientId ?? string.Empty;
+    /// <inheritdoc/>
     public bool IsConnected => (_tcp?.IsConnected ?? false) || (_ws?.IsConnected ?? false);
 
+    /// <inheritdoc/>
     public ITransportSender Tcp => _tcpSender ?? throw new InvalidOperationException(
         "TCP transport is not configured (set 'altruist:client:transport:tcp' in config.yml).");
+    /// <inheritdoc/>
     public ITransportSender Udp => _udpSender ?? throw new InvalidOperationException(
         "UDP transport is not configured (set 'altruist:client:transport:udp' in config.yml).");
+    /// <inheritdoc/>
     public ITransportSender Ws => _wsSender ?? throw new InvalidOperationException(
         "WebSocket transport is not configured (set 'altruist:client:transport:ws' in config.yml).");
 
+    /// <inheritdoc/>
     public event Action? OnConnected;
+    /// <inheritdoc/>
     public event Action? OnDisconnected;
+    /// <inheritdoc/>
     public event Action<Exception>? OnError;
 
+    /// <summary>
+    /// Creates the router. Transport clients are taken from <paramref name="services"/> when
+    /// it can resolve them (each transport is its own conditional DI service); any transport
+    /// that has a config block but was not resolved is built manually from
+    /// <paramref name="config"/> with a codec from <paramref name="codecResolver"/>.
+    /// </summary>
+    /// <param name="config">Bound <c>altruist:client:transport</c> section.</param>
+    /// <param name="codecResolver">Resolves each transport's <see cref="CodecOptions.Provider"/>.</param>
+    /// <param name="dispatcher">Dispatcher that receives every inbound frame.</param>
+    /// <param name="services">Optional container used to resolve the transport clients; <c>null</c> outside DI.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="config"/>, <paramref name="codecResolver"/> or <paramref name="dispatcher"/> is <c>null</c>.</exception>
+    /// <example>
+    /// <code>
+    /// var config = new ClientTransportConfig
+    /// {
+    ///     Tcp = new TransportEndpointOptions { Host = "127.0.0.1", Port = 5566 },
+    /// };
+    /// var dispatcher = new ClientPacketDispatcher();
+    /// dispatcher.Register(new MyHandlers());
+    /// var router = new AltruistClientRouter(
+    ///     config, new ClientCodecResolver(new IClientCodec[] { new MessagePackClientCodec() }), dispatcher);
+    /// await router.ConnectAsync();
+    /// </code>
+    /// </example>
     public AltruistClientRouter(
         ClientTransportConfig config,
         ClientCodecResolver codecResolver,
@@ -115,12 +150,14 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
         }
     }
 
+    /// <inheritdoc/>
     public Task SendAsync<T>(string gate, T packet, CancellationToken ct = default)
     {
         var sender = ResolveDefaultSender();
         return sender.SendAsync(gate, packet, ct);
     }
 
+    /// <inheritdoc/>
     public async Task ConnectAsync(bool autoPump = true, CancellationToken ct = default)
     {
         if (_tcp is not null) await _tcp.ConnectAsync(ct).ConfigureAwait(false);
@@ -146,6 +183,7 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
         OnConnected?.Invoke();
     }
 
+    /// <inheritdoc/>
     public int DrainInbound(int maxFrames)
     {
         int dispatched = 0;
@@ -163,6 +201,7 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
         return dispatched;
     }
 
+    /// <inheritdoc/>
     public async Task DisconnectAsync()
     {
         try { _readCts?.Cancel(); } catch { }
@@ -181,6 +220,8 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
         _readCts = null;
     }
 
+    /// <summary>Same as <see cref="DisconnectAsync"/>.</summary>
+    /// <returns>A task that completes when every transport is closed.</returns>
     public ValueTask DisposeAsync() => new(DisconnectAsync());
 
     private ITransportSender ResolveDefaultSender()

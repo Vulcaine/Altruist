@@ -24,8 +24,10 @@ namespace Altruist.Security;
 [ServiceConfiguration]
 public sealed class TokenStoreConfiguration : IAltruistConfiguration
 {
+    /// <summary>True once <see cref="Configure"/> ran.</summary>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Scans the loaded assemblies for <c>[Vault]</c> types and registers the token stores (see <see cref="Register"/>). Called by Altruist at start-up.</summary>
     public Task Configure(IServiceCollection services)
     {
         var models = TypeDiscovery.FindTypesWithAttribute<VaultAttribute>(
@@ -80,6 +82,7 @@ public sealed class TokenStoreConfiguration : IAltruistConfiguration
 /// </summary>
 public sealed class TokenPruneService : IHostedService
 {
+    /// <summary>Config key of the prune interval, in minutes.</summary>
     public const string IntervalKey = "altruist:security:token-prune:interval-minutes";
 
     private readonly Func<IEnumerable<ITokenPruner>> _pruners;
@@ -88,13 +91,17 @@ public sealed class TokenPruneService : IHostedService
     private CancellationTokenSource? _stop;
     private Task? _loop;
 
+    /// <summary>DI constructor: prunes every registered <see cref="ITokenPruner"/> at the interval from <see cref="IntervalKey"/> (default 60 minutes).</summary>
     [ActivatorUtilitiesConstructor]
     public TokenPruneService(IServiceProvider services, ILoggerFactory loggerFactory)
         : this(services.GetServices<ITokenPruner>, loggerFactory, TimeSpan.FromMinutes(
             TokenConfig.Number(AppConfigLoader.Load().GetSection("altruist:security:token-prune"), "interval-minutes") ?? 60))
     { }
 
+    /// <summary>Creates the service with explicit pruners and interval (tests).</summary>
     /// <param name="pruners">Resolved at every run, so a store that cannot be built yet (database down) is retried.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="interval">Time between runs; zero or negative disables pruning.</param>
     public TokenPruneService(Func<IEnumerable<ITokenPruner>> pruners, ILoggerFactory loggerFactory, TimeSpan interval)
     {
         _pruners = pruners;
@@ -102,6 +109,7 @@ public sealed class TokenPruneService : IHostedService
         _log = loggerFactory.CreateLogger<TokenPruneService>();
     }
 
+    /// <summary>Starts a background loop that prunes immediately and then every interval (does nothing when the interval is not positive).</summary>
     public Task StartAsync(CancellationToken cancellationToken)
     {
         if (_interval <= TimeSpan.Zero)
@@ -151,6 +159,7 @@ public sealed class TokenPruneService : IHostedService
         return total;
     }
 
+    /// <summary>Stops the loop and waits for a run in progress.</summary>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _stop?.Cancel();

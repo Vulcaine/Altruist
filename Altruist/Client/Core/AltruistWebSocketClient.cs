@@ -9,6 +9,10 @@ namespace Altruist.Client;
 /// expects: <c>{ event, payload }</c>, codec-encoded.
 ///
 /// <para>JSON codec → text frames; MessagePack codec → binary frames.</para>
+///
+/// <para>Internal: send through <see cref="IAltruistClientRouter.Ws"/>. Registered as a DI
+/// singleton only when <c>altruist:client:transport:ws</c> is configured. Always connects to
+/// <c>ws://{host}:{port}</c> from config (no TLS).</para>
 /// </summary>
 [Service]
 [ConditionalOnConfig("altruist:client:transport:ws")]
@@ -19,13 +23,19 @@ internal sealed class AltruistWebSocketClient : IAsyncDisposable, IDisposable
     private readonly ClientWebSocket _ws = new();
     private readonly WebSocketMessageType _messageType;
 
+    /// <summary>Codec used to encode outbound messages (and by the router to decode inbound ones).</summary>
     public IClientCodec Codec => _codec;
+    /// <summary>True while the socket state is <see cref="WebSocketState.Open"/>.</summary>
     public bool IsConnected => _ws.State == WebSocketState.Open;
 
+    /// <summary>Fires after <see cref="ConnectAsync"/> completes.</summary>
     public event Action? OnConnected;
+    /// <summary>Fires from <see cref="DisposeAsync"/> (not when the server closes the socket).</summary>
     public event Action? OnDisconnected;
 
     /// <summary>Explicit ctor — used by tests.</summary>
+    /// <param name="url">Server WebSocket URL.</param>
+    /// <param name="codec">Codec; provider <c>"json"</c> selects text frames, anything else binary.</param>
     public AltruistWebSocketClient(Uri url, IClientCodec codec)
     {
         _url = url ?? throw new ArgumentNullException(nameof(url));
@@ -60,6 +70,8 @@ internal sealed class AltruistWebSocketClient : IAsyncDisposable, IDisposable
         return codecResolver.Resolve(ws.Codec.Provider);
     }
 
+    /// <summary>Opens the WebSocket and raises <see cref="OnConnected"/>.</summary>
+    /// <param name="ct">Cancels the connect.</param>
     public async Task ConnectAsync(CancellationToken ct = default)
     {
         await _ws.ConnectAsync(_url, ct).ConfigureAwait(false);
@@ -105,6 +117,8 @@ internal sealed class AltruistWebSocketClient : IAsyncDisposable, IDisposable
         catch (OperationCanceledException) { return null; }
     }
 
+    /// <summary>Closes the socket gracefully if open, raises <see cref="OnDisconnected"/>, then disposes.</summary>
+    /// <returns>A task that completes when the socket is closed.</returns>
     public async ValueTask DisposeAsync()
     {
         try
@@ -118,5 +132,6 @@ internal sealed class AltruistWebSocketClient : IAsyncDisposable, IDisposable
         Dispose();
     }
 
+    /// <summary>Disposes the socket without a close handshake and without raising <see cref="OnDisconnected"/>.</summary>
     public void Dispose() => _ws.Dispose();
 }

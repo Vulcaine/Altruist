@@ -17,19 +17,39 @@ namespace Altruist;
 /// Standalone DI entry point. Scans assemblies for [Service] attributes,
 /// resolves dependencies, binds config values, and runs [PostConstruct] hooks.
 /// No server, no networking, no gaming — just DI.
-///
-/// Usage:
-///   await AltruistDI.Run(args);
-///
-/// The full framework (AltruistApplication.Run) delegates to this internally
-/// and adds Portal/Module/Transport on top.
 /// </summary>
+/// <remarks>
+/// <para>Use <see cref="Run"/> for a console tool / worker that only wants the attribute-driven container. For a server
+/// (HTTP, transports, portals, modules) use <c>AltruistApplication.Run</c> instead, which shares
+/// <see cref="Services"/> and the pieces below (<see cref="BindConfigurationClasses"/>, PostConstruct handling) but
+/// registers services through the full framework configuration.</para>
+/// <para>After <see cref="Run"/>, resolve services with <see cref="Dependencies.Inject{T}"/>.</para>
+/// </remarks>
+/// <example>
+/// <code>
+/// public static async Task Main(string[] args)
+/// {
+///     await AltruistDI.Run(args);
+///     var jobs = Dependencies.Inject&lt;IJobRunner&gt;();
+///     await jobs.RunAllAsync();
+/// }
+/// </code>
+/// </example>
 public static class AltruistDI
 {
+    /// <summary>The process-wide service collection all bootstrap steps register into. Add manual registrations here before calling <see cref="Run"/>.</summary>
     public static readonly IServiceCollection Services = new ServiceCollection();
 
     private static readonly HashSet<string> _constructionCache = new();
 
+    /// <summary>
+    /// Boots the DI container: loads configuration (<see cref="AppConfigLoader.Load"/>), loads all referenced assemblies,
+    /// configures console logging (<c>altruist:logging:console</c>), binds <see cref="ConfigurationPropertiesAttribute"/>
+    /// classes, registers beans, <see cref="ServiceAttribute"/> classes and <see cref="ServiceConfigurationAttribute"/> steps,
+    /// builds the root provider (published via <see cref="Dependencies.UseRootProvider"/>) and runs
+    /// <see cref="PostConstructAttribute"/> hooks. Call once per process.
+    /// </summary>
+    /// <param name="args">Command-line arguments, added as the highest-priority configuration source (only if configuration was not loaded yet).</param>
     public static async Task Run(string[]? args = null)
     {
         var cfg = AppConfigLoader.Load(args);
@@ -56,6 +76,14 @@ public static class AltruistDI
         await RunPostConstructsAsync(provider, Services);
     }
 
+    /// <summary>
+    /// Registers bean methods and <see cref="ServiceAttribute"/> classes (<see cref="AltruistDIServiceConfig"/>), then discovers
+    /// and runs <see cref="ServiceConfigurationAttribute"/> steps (<see cref="ConfigAttributeConfiguration"/>) on <paramref name="services"/>.
+    /// Use this when you own the <see cref="IServiceCollection"/> (e.g. tests or a custom host) instead of <see cref="Run"/>.
+    /// The collection must already contain logging.
+    /// </summary>
+    /// <param name="services">Collection to register into.</param>
+    /// <param name="log">Logger for registration messages; created from <paramref name="services"/> when null.</param>
     public static async Task BootstrapServices(IServiceCollection services, ILogger? log = null)
     {
         if (log is null)
@@ -71,6 +99,12 @@ public static class AltruistDI
         await new ConfigAttributeConfiguration().Configure(services);
     }
 
+    /// <summary>
+    /// Adds logging with the console provider, unless <c>altruist:logging:console</c> is <c>false</c> or <c>0</c>
+    /// (then no provider is added). Clears any previously added providers.
+    /// </summary>
+    /// <param name="services">Collection to configure.</param>
+    /// <param name="cfg">Configuration to read the switch from; null keeps the console on.</param>
     public static void ConfigureLogging(IServiceCollection services, IConfiguration? cfg = null)
     {
         bool consoleEnabled = true;
@@ -89,6 +123,14 @@ public static class AltruistDI
         });
     }
 
+    /// <summary>
+    /// Binds every class marked with <see cref="ConfigurationPropertiesAttribute"/> to its section and registers the result
+    /// as a singleton (list sections as <c>List&lt;T&gt;</c> / <c>IEnumerable&lt;T&gt;</c> / <c>IReadOnlyList&lt;T&gt;</c>).
+    /// Missing sections are skipped (the type is then not registered).
+    /// </summary>
+    /// <param name="services">Collection to register into.</param>
+    /// <param name="cfg">Configuration root.</param>
+    /// <param name="logger">Logger for diagnostics.</param>
     public static void BindConfigurationClasses(IServiceCollection services, IConfiguration cfg, ILogger logger)
     {
         var assemblies = AppDomain.CurrentDomain.GetAssemblies()
@@ -151,6 +193,14 @@ public static class AltruistDI
         }
     }
 
+    /// <summary>
+    /// Resolves every distinct service type in <paramref name="services"/> from <paramref name="provider"/> (which eagerly
+    /// creates singletons) and invokes its <see cref="PostConstructAttribute"/> method, once per implementation type per
+    /// process. Resolution failures and resolutions taking over 10 s are written to stderr and skipped, not thrown; an
+    /// exception thrown by a hook propagates.
+    /// </summary>
+    /// <param name="provider">The built root provider.</param>
+    /// <param name="services">The collection the provider was built from.</param>
     public static async Task RunPostConstructsAsync(IServiceProvider provider, IServiceCollection services)
     {
         var cfg = AppConfigLoader.Load();

@@ -33,6 +33,12 @@ public sealed class FixedStepClock
     private readonly double _dt;
     private double _accumulator;
 
+    /// <summary>Creates a clock of <paramref name="hz"/> steps per second.</summary>
+    /// <param name="hz">Steps per second (positive).</param>
+    /// <param name="maxFrameDelta">Longest frame time (seconds) counted per <see cref="Advance"/>; longer frames are clamped.</param>
+    /// <param name="maxStepsPerFrame">Most steps one frame may produce.</param>
+    /// <param name="overrun">What happens to time beyond <paramref name="maxStepsPerFrame"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A non-positive argument.</exception>
     public FixedStepClock(int hz, double maxFrameDelta = 0.25, int maxStepsPerFrame = 8, OverrunPolicy overrun = OverrunPolicy.Drop)
     {
         if (hz <= 0)
@@ -56,8 +62,11 @@ public sealed class FixedStepClock
     /// <summary>The step length every step gets (<c>1f / Hz</c>).</summary>
     public float Dt { get; }
 
+    /// <summary>Longest frame time (seconds) one <see cref="Advance"/> counts.</summary>
     public double MaxFrameDelta { get; }
+    /// <summary>Most steps one frame may produce.</summary>
     public int MaxStepsPerFrame { get; }
+    /// <summary>Policy for time beyond <see cref="MaxStepsPerFrame"/>.</summary>
     public OverrunPolicy Overrun { get; }
 
     /// <summary>Time not yet stepped (seconds).</summary>

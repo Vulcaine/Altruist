@@ -6,11 +6,25 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Gaming.Combat;
 
+/// <summary>
+/// Startup configuration (auto-discovered via <c>[ServiceConfiguration]</c>) that registers every
+/// <see cref="CombatHandlerAttribute"/> class as a DI singleton and, if any were registered, adds
+/// <see cref="CombatHandlerInitializer"/> to wire their methods once the real container exists.
+/// </summary>
+/// <remarks>
+/// You never call this yourself; referencing the Combat package is enough. Handler types are filtered through the
+/// framework's conditional-registration rules (<c>DependencyResolver.ShouldRegister</c>) and their constructor
+/// dependencies are planned like any other service.
+/// </remarks>
 [ServiceConfiguration]
 public sealed class CombatEventHandlerConfig : IAltruistConfiguration
 {
+    /// <summary>True once <see cref="Configure"/> has run.</summary>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Registers discovered combat handler types and the deferred initializer.</summary>
+    /// <param name="services">The application's service collection.</param>
+    /// <returns>A completed task.</returns>
     public Task Configure(IServiceCollection services)
     {
         var cfg = AppConfigLoader.Load();

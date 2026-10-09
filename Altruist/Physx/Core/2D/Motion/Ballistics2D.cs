@@ -17,7 +17,16 @@ namespace Altruist.Physx.TwoD;
 /// <para>Deterministic: same inputs give the same bits on the same runtime. Each helper evaluates
 /// exactly the expressions in its summary. The stepped predictor is semi-implicit Euler (velocity
 /// first, then position): it is NOT bit-identical to a physics engine's integration, use the
-/// engine itself (a scratch world) when you need that.</para></summary>
+/// engine itself (a scratch world) when you need that.</para>
+/// <para>Pure functions on values (no body). The Gaming package's <c>GameplayVerbs2D</c> wraps them
+/// for a body's current state (<c>GameplayVerbs2D.PredictPosition</c>, <c>GameplayVerbs2D.PredictLanding</c>,
+/// <c>GameplayVerbs2D.VelocityToHit</c>, <c>GameplayVerbs2D.PredictZoneEntry</c>). Ignores drag
+/// and collisions (except the optional floor). Units: seconds, units/s, units/s². The TypeScript
+/// twin is <c>@altruist/sim2d</c> <c>physics/ballistics2D.ts</c>.</para>
+/// <example><code>
+/// var v0 = Ballistics2D.LaunchVelocity(target - start, gravity: 9.81f, t: 0.8f);
+/// var (p, v) = Ballistics2D.Predict(start, v0, 9.81f, dt: 1f / 60f, steps: 48);
+/// </code></example></summary>
 public static class Ballistics2D
 {
     /// <summary>Closed-form position after <paramref name="t"/> seconds:

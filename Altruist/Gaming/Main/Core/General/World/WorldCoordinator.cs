@@ -20,6 +20,7 @@ namespace Altruist.Gaming
     /// </summary>
     public interface IGameWorldOrganizer
     {
+        /// <summary>Advances everything by one engine frame of <paramref name="deltaTime"/> seconds of real time.</summary>
         void Step(float deltaTime);
     }
 
@@ -57,8 +58,16 @@ namespace Altruist.Gaming
     /// steps every registered stepper once per frame, in registration order:
     /// <c>BeforeSteps</c>, then <c>Step</c> (variable) or <c>FixedStep</c> × N (fixed), then <c>AfterSteps</c>.
     /// </summary>
+    /// <remarks>
+    /// Choosing: implement a stepper when your simulation needs to advance with the engine — use
+    /// <see cref="StepMode.Fixed"/> for deterministic simulations (physics, match rooms) and
+    /// <see cref="StepMode.Variable"/> for real-time bookkeeping. For periodic service work that is not
+    /// a simulation (cleanup, persistence) a <c>[Cycle]</c> method is simpler; for running many
+    /// independent units in parallel inside one step use <see cref="IStepScheduler"/>.
+    /// </remarks>
     public interface IWorldStepper
     {
+        /// <summary>Variable (default) or fixed stepping; read once when the coordinator first resolves the steppers.</summary>
         StepMode Mode => StepMode.Variable;
 
         /// <summary>Fixed mode: steps per second. Ignored in variable mode.</summary>
@@ -169,8 +178,11 @@ namespace Altruist.Gaming
             _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<WorldCoordinator>();
         }
 
+        /// <summary><c>max-frame-delta</c> (seconds) given to every fixed stepper's clock.</summary>
         public double MaxFrameDelta => _maxFrameDelta;
+        /// <summary><c>max-steps-per-frame</c> given to every fixed stepper's clock.</summary>
         public int MaxStepsPerFrame => _maxSteps;
+        /// <summary><c>overrun</c> policy given to every fixed stepper's clock.</summary>
         public OverrunPolicy Overrun => _overrun;
 
         /// <summary>Frames stepped so far.</summary>
@@ -183,6 +195,8 @@ namespace Altruist.Gaming
         public FixedStepClock? ClockOf(IWorldStepper stepper) =>
             Entries().FirstOrDefault(e => ReferenceEquals(e.Stepper, stepper))?.Clock;
 
+        /// <summary>Steps every registered stepper once for this frame (see <see cref="IWorldStepper"/> for the
+        /// per-stepper order). Called by the engine; not thread-safe.</summary>
         public void Step(float deltaTime)
         {
             var entries = Entries();

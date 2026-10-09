@@ -16,11 +16,27 @@ namespace Altruist.Client;
 ///
 /// <para>Originated as Unity <c>PacketRouter.cs</c>'s hand-rolled parser. Lifted
 /// here so the same code is used by every client.</para>
+///
+/// <para>Used internally by <see cref="ClientPacketDispatcher"/>; call it directly only when
+/// routing frames yourself. Only understands MessagePack-encoded envelopes.</para>
 /// </summary>
+/// <example>
+/// <code>
+/// uint mc = MessageEnvelopeShape.PeekMessageCode(frame);
+/// if (mc == 1001)
+/// {
+///     var chat = codec.Deserialize&lt;ChatMessagePacket&gt;(MessageEnvelopeShape.ExtractMessage(frame));
+/// }
+/// </code>
+/// </example>
 public static class MessageEnvelopeShape
 {
     /// <summary>Read the MessageCode (element [0] of the envelope). Returns 0 if
     /// the bytes don't look like a valid envelope.</summary>
+    /// <remarks>Accepts fixarray / array16 / array32 headers and positive fixint, uint8, uint16
+    /// and uint32 codes; any other encoding yields 0.</remarks>
+    /// <param name="data">Envelope bytes.</param>
+    /// <returns>The MessageCode, or 0.</returns>
     public static uint PeekMessageCode(ReadOnlySpan<byte> data)
     {
         if (data.Length < 2) return 0;
@@ -38,6 +54,10 @@ public static class MessageEnvelopeShape
     /// <summary>Slice element [2] (the actual packet bytes) out of the envelope.
     /// Returns an empty array if the envelope is malformed or shorter than 3 elements.
     /// Callers feed the result to their codec's <c>Deserialize&lt;T&gt;</c>.</summary>
+    /// <remarks>Requires a fixarray(3) header (<c>0x93</c>); returns every byte after the
+    /// header element, copied into a new array.</remarks>
+    /// <param name="data">Envelope bytes.</param>
+    /// <returns>The inner message bytes, or an empty array.</returns>
     public static byte[] ExtractMessage(byte[] data)
     {
         if (data.Length < 3) return Array.Empty<byte>();
@@ -57,6 +77,12 @@ public static class MessageEnvelopeShape
     /// <summary>Skip one MessagePack value starting at <paramref name="p"/>;
     /// return the position after it, or -1 if the value type is unknown / data
     /// is truncated.</summary>
+    /// <remarks>Supports nil, bool, all int/uint/float widths, fixstr/str8/16/32, bin8/16,
+    /// fixarray/array16/32 and fixmap/map16. bin32, map32 and ext types return -1. Truncated
+    /// variable-length headers can throw <see cref="IndexOutOfRangeException"/>.</remarks>
+    /// <param name="d">MessagePack buffer.</param>
+    /// <param name="p">Offset of the value to skip.</param>
+    /// <returns>Offset just past the value, or -1.</returns>
     public static int SkipValue(byte[] d, int p)
     {
         if (p >= d.Length) return -1;

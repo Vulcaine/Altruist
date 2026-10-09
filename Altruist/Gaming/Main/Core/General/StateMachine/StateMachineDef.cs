@@ -13,15 +13,25 @@ namespace Altruist.Gaming;
 /// </summary>
 public sealed class StateMachineDef<TContext> where TContext : class, IStateContextCore
 {
+    /// <summary>Name of the state entered by <see cref="StateMachine{TContext}.Initialize"/>.</summary>
     public string InitialState { get; }
+    /// <summary>Update handler per state; a state exists only if it has an entry here.</summary>
     public IReadOnlyDictionary<string, Func<TContext, float, string?>> Updates { get; }
+    /// <summary>Enter hooks per state.</summary>
     public IReadOnlyDictionary<string, Action<TContext>> Enters { get; }
+    /// <summary>Exit hooks per state.</summary>
     public IReadOnlyDictionary<string, Action<TContext>> Exits { get; }
+    /// <summary>Delay (seconds) before a state's update handler runs, per state.</summary>
     public IReadOnlyDictionary<string, float> Delays { get; }
+    /// <summary>Base duration (seconds) per state; missing = open-ended.</summary>
     public IReadOnlyDictionary<string, float> Durations { get; }
+    /// <summary>Optional tag per state.</summary>
     public IReadOnlyDictionary<string, string?> Tags { get; }
+    /// <summary>Named normalized windows per state.</summary>
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, StateWindow>> Windows { get; }
+    /// <summary>Opaque user data per state.</summary>
     public IReadOnlyDictionary<string, object?> Data { get; }
+    /// <summary>Motion profile per state.</summary>
     public IReadOnlyDictionary<string, StateMotionProfile> Motions { get; }
 
     /// <summary>Consumer-supplied hook invoked on every state entry as

@@ -20,12 +20,22 @@ namespace Altruist.Client.Inventory;
 /// <para>Order is set high enough to run after <see cref="ClientPacketHandlerConfig"/>
 /// (default <c>0</c>) so the concrete singleton is registered before we
 /// forward.</para>
+///
+/// <para>Runs automatically as a <c>[ServiceConfiguration]</c> step; you never call it.
+/// The concrete <see cref="ClientInventoryService"/> is only registered when
+/// <c>altruist:client:transport</c> is configured, so resolving
+/// <see cref="IClientInventoryService"/> without that section fails.</para>
 /// </summary>
 [ServiceConfiguration(order: 100)]
 public sealed class ClientInventoryServiceConfig : IAltruistConfiguration
 {
+    /// <inheritdoc/>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Adds a singleton <see cref="IClientInventoryService"/> registration that resolves
+    /// the concrete <see cref="ClientInventoryService"/> singleton.</summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>A completed task.</returns>
     public Task Configure(IServiceCollection services)
     {
         if (services is null) throw new ArgumentNullException(nameof(services));

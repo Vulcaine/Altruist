@@ -12,9 +12,13 @@ namespace Altruist.TwoD.Numerics;
 /// <see cref="Geometry2D.ClassifyBoxSide"/>.</summary>
 public enum BoxSide2D
 {
+    /// <summary>Local +X side (the facing side).</summary>
     Front,
+    /// <summary>Local -X side.</summary>
     Back,
+    /// <summary>Local +Y side.</summary>
     Top,
+    /// <summary>Local -Y side.</summary>
     Bottom,
 }
 

@@ -5,6 +5,20 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Dashboard
 {
+    /// <summary>
+    /// Websocket portal at <c>/ws/dashboard</c> that pushes live 3D world state deltas to the dashboard viewer as
+    /// <see cref="DashboardWorldObjectStatePacket"/>s: changed object positions per partition, removed objects, and gizmo
+    /// changes from <see cref="IDashboardGizmoRegistry"/> plus auto-generated visibility-radius circles.
+    /// </summary>
+    /// <remarks>
+    /// <para>Active only when <c>altruist:dashboard:enabled = true</c> and the <c>Altruist.Dashboard</c> assembly is loaded. The
+    /// full snapshot (with colliders and terrain) is served over HTTP by <see cref="WorldDashboardController"/>; this portal
+    /// only streams deltas, so a viewer should load the snapshot first and then apply packets. Framework-internal: games do
+    /// not call it, they publish debug visuals through <see cref="IDashboardGizmoRegistry"/>.</para>
+    /// <para>Runs every frame via <see cref="CycleAttribute"/> but throttles itself to one diff every 250 ms and does nothing while
+    /// no dashboard is connected. When an <see cref="IVisibilityTracker"/> is registered, only player-owned objects (non-empty
+    /// <c>ClientId</c>) and objects someone observes are included. Positions come from the physics body when present.</para>
+    /// </remarks>
     [Portal("/ws/dashboard")]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     [ConditionalOnAssembly("Altruist.Dashboard")]
@@ -28,6 +42,12 @@ namespace Altruist.Dashboard
         private readonly Dictionary<int, HashSet<string>> _visibilityGizmoIds =
             new();
 
+        /// <summary>Created by the portal infrastructure through DI.</summary>
+        /// <param name="gameWorldOrganizer">Source of the 3D worlds to stream.</param>
+        /// <param name="gizmos">Gizmo registry whose changes are drained into each packet.</param>
+        /// <param name="router">Router used to send packets to dashboard connections.</param>
+        /// <param name="connectionManager">Used to list this portal's connections.</param>
+        /// <param name="visibilityTracker">Optional; filters objects and adds visibility-radius gizmos.</param>
         public DashboardPortal(
             IGameWorldOrganizer3D gameWorldOrganizer,
             IDashboardGizmoRegistry gizmos,
@@ -42,6 +62,8 @@ namespace Altruist.Dashboard
             _visibilityTracker = visibilityTracker;
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Sets the connection id to the fixed value <c>"dashboard"</c>.</remarks>
         public Task OnConnectingAsync(
             string clientId,
             ConnectionManager connectionManager,
@@ -51,6 +73,8 @@ namespace Altruist.Dashboard
             return Task.CompletedTask;
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Refreshes the cached list of dashboard connections.</remarks>
         public async Task OnConnectedAsync(
             string clientId,
             ConnectionManager connectionManager,
@@ -59,11 +83,18 @@ namespace Altruist.Dashboard
             _connections = await _connectionManager.GetConnectionsForPortal(this);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Refreshes the cached list of dashboard connections.</remarks>
         public async Task OnDisconnectedAsync(string clientId, Exception? exception)
         {
             _connections = await _connectionManager.GetConnectionsForPortal(this);
         }
 
+        /// <summary>
+        /// Per-frame cycle: at most every 250 ms, diffs every world against the last sent state (position epsilon 1e-4,
+        /// archetype, name) and sends one <see cref="DashboardWorldObjectStatePacket"/> per world that changed to every
+        /// dashboard connection. Consumes <see cref="IDashboardGizmoRegistry.DrainChanges"/> for each world.
+        /// </summary>
         [Cycle]
         public async Task UpdateDashboard()
         {

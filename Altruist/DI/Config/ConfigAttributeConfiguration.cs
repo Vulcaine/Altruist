@@ -9,10 +9,23 @@ using Microsoft.Extensions.Primitives;
 
 namespace Altruist
 {
+    /// <summary>
+    /// Discovers all <see cref="ServiceConfigurationAttribute"/> classes, registers them, and runs their
+    /// <see cref="IAltruistConfiguration.Configure"/> in ascending <see cref="ServiceConfigurationAttribute.Order"/>.
+    /// Run by both bootstrap paths after <see cref="ServiceAttribute"/> registration; you normally do not call it yourself.
+    /// </summary>
+    /// <remarks>
+    /// Each step's <c>Configure</c> runs at most once per <see cref="IServiceCollection"/>, even if it is also reached through
+    /// <see cref="ServiceAttribute.DependsOn"/>. Also registers the <see cref="IServiceCollection"/> itself as a singleton
+    /// (if absent) so later code can inspect it.
+    /// </remarks>
     public sealed class ConfigAttributeConfiguration : IAltruistConfiguration
     {
+        /// <inheritdoc/>
         public bool IsConfigured { get; set; }
 
+        /// <summary>Registers then configures every discovered <see cref="ServiceConfigurationAttribute"/> step. Writes the discovered list to stderr.</summary>
+        /// <param name="services">Collection to configure.</param>
         public async Task Configure(IServiceCollection services)
         {
             if (!services.Any(d => d.ServiceType == typeof(IServiceCollection)))
@@ -62,6 +75,16 @@ namespace Altruist
             IsConfigured = true;
         }
 
+        /// <summary>
+        /// Registers <paramref name="configType"/> (if not registered and its conditions match) and synchronously runs its
+        /// <c>Configure</c> unless it already ran for <paramref name="services"/>. Used for <see cref="ServiceAttribute.DependsOn"/>.
+        /// Types not implementing <see cref="IAltruistConfiguration"/> are ignored.
+        /// </summary>
+        /// <param name="services">Collection being built.</param>
+        /// <param name="configType">Configuration step type.</param>
+        /// <param name="cfg">Configuration.</param>
+        /// <param name="log">Logger.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="configType"/> is null.</exception>
         public static void EnsureConfigurationRegisteredAndConfigured(
     IServiceCollection services,
     Type configType,
@@ -305,17 +328,27 @@ namespace Altruist
         }
     }
 
+    /// <summary>
+    /// <see cref="IConfiguration"/> decorator that rewrites <see cref="GetSection"/> keys containing <c>*</c> into absolute
+    /// paths, using the list-style <see cref="ConditionalOnConfigAttribute"/> of the declaring type (or the wrapped section's
+    /// own path) as the root. Used internally when constructing <see cref="ServiceConfigurationAttribute"/> steps.
+    /// </summary>
     public sealed class WildcardConfigWrapper : IConfiguration
     {
         private readonly IConfiguration _inner;
         private readonly Type _declaring;
 
+        /// <summary>Wraps <paramref name="inner"/> for the type <paramref name="declaring"/>.</summary>
+        /// <param name="inner">Configuration to delegate to.</param>
+        /// <param name="declaring">Type whose <see cref="ConditionalOnConfigAttribute"/> defines the wildcard root.</param>
         public WildcardConfigWrapper(IConfiguration inner, Type declaring)
         {
             _inner = inner;
             _declaring = declaring;
         }
 
+        /// <summary>Returns the section for <paramref name="key"/>, expanding a <c>*</c> wildcard first.</summary>
+        /// <param name="key">Configuration path, optionally starting with <c>*</c>.</param>
         public IConfigurationSection GetSection(string key)
         {
             // If key contains wildcard -> rewrite to full path
@@ -328,9 +361,14 @@ namespace Altruist
         }
 
         // Passthrough
+        /// <inheritdoc/>
         public IEnumerable<IConfigurationSection> GetChildren() => _inner.GetChildren();
+
+        /// <inheritdoc/>
         public IChangeToken GetReloadToken() => _inner.GetReloadToken();
 
+        /// <summary>Gets or sets a value by key (no wildcard expansion).</summary>
+        /// <param name="key">Configuration path.</param>
         public string? this[string key]
         {
             get => _inner[key];

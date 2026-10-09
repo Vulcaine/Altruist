@@ -16,7 +16,9 @@ public readonly record struct Aabb2D(float MinX, float MaxX, float MinY, float M
     public static Aabb2D FromCorners(Vector2 a, Vector2 b) =>
         new(MathF.Min(a.X, b.X), MathF.Max(a.X, b.X), MathF.Min(a.Y, b.Y), MathF.Max(a.Y, b.Y));
 
+    /// <summary><c>MaxX - MinX</c>.</summary>
     public float Width => MaxX - MinX;
+    /// <summary><c>MaxY - MinY</c>.</summary>
     public float Height => MaxY - MinY;
 
     /// <summary><c>((MinX + MaxX) / 2, (MinY + MaxY) / 2)</c>.</summary>
@@ -25,6 +27,7 @@ public readonly record struct Aabb2D(float MinX, float MaxX, float MinY, float M
     /// <summary><c>x &gt;= MinX &amp;&amp; x &lt;= MaxX &amp;&amp; y &gt;= MinY &amp;&amp; y &lt;= MaxY</c>.</summary>
     public bool Contains(float x, float y) => x >= MinX && x <= MaxX && y >= MinY && y <= MaxY;
 
+    /// <summary><see cref="Contains(float,float)"/> for a point.</summary>
     public bool Contains(Vector2 p) => Contains(p.X, p.Y);
 
     /// <summary>Contains with the box grown by a margin on each side (negative shrinks):

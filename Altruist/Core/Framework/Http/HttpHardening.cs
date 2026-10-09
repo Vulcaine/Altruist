@@ -33,27 +33,61 @@ namespace Altruist.Http;
 /// The middleware runs first in the pipeline (before the fleet relay, routing and authentication),
 /// in this order: forwarded headers, response headers, path rate limits (<see cref="HttpRateLimitOptions"/>), API body limit.
 /// </summary>
+/// <remarks>
+/// Read once at startup by <see cref="HttpApiConfiguration"/>; configure it in YAML rather than constructing it. Enable
+/// <c>forwarded-headers</c> only behind a reverse proxy you control, and list that proxy in <c>known-proxies</c>
+/// unless it runs on loopback; otherwise client addresses (used by rate limits) are spoofable or wrong.
+/// </remarks>
+/// <example>
+/// <code>
+/// altruist:
+///   server:
+///     http:
+///       hardening:
+///         server-header: false
+///         max-body-bytes: 1048576
+///         forwarded-headers: { enabled: true, forward-limit: 1, known-proxies: [ "10.0.0.5" ] }
+///         security-headers: { enabled: true, hsts-max-age-seconds: 31536000 }
+///         api: { path: /api, content-security-policy: "default-src 'none'", no-store: true, max-body-bytes: 65536 }
+/// </code>
+/// </example>
 public sealed class HttpHardeningOptions
 {
+    /// <summary>Config section: <c>altruist:server:http:hardening</c>.</summary>
     public const string ConfigPath = "altruist:server:http:hardening";
 
+    /// <summary><c>server-header</c>: keep Kestrel's <c>Server</c> response header (default <c>true</c>).</summary>
     public bool ServerHeader { get; set; } = true;
+    /// <summary><c>max-body-bytes</c>: Kestrel request body limit in bytes for all requests; <c>null</c> keeps Kestrel's default (30 MB).</summary>
     public long? MaxBodyBytes { get; set; }
 
+    /// <summary><c>forwarded-headers:enabled</c>: honour <c>X-Forwarded-For</c>/<c>X-Forwarded-Proto</c> from trusted proxies.</summary>
     public bool ForwardedHeaders { get; set; }
+    /// <summary><c>forwarded-headers:forward-limit</c>: number of proxy hops to unwind (default 1).</summary>
     public int ForwardLimit { get; set; } = 1;
+    /// <summary><c>forwarded-headers:known-proxies</c>: trusted proxy addresses, added to ASP.NET Core's loopback defaults.</summary>
     public List<IPAddress> KnownProxies { get; set; } = new();
 
+    /// <summary><c>security-headers:enabled</c>: add nosniff, <c>Referrer-Policy</c>, <c>X-Frame-Options</c> and <c>Cross-Origin-Resource-Policy</c> to every response.</summary>
     public bool SecurityHeaders { get; set; }
+    /// <summary><c>security-headers:hsts-max-age-seconds</c>: HSTS max-age in seconds on HTTPS requests (0 = no HSTS). Only applied when <see cref="SecurityHeaders"/> is on.</summary>
     public int HstsMaxAgeSeconds { get; set; }
 
+    /// <summary><c>api:path</c>: path prefix (segment match) the <c>Api*</c> settings apply to; without it they are ignored.</summary>
     public string? ApiPath { get; set; }
+    /// <summary><c>api:content-security-policy</c>: <c>Content-Security-Policy</c> header value for API responses.</summary>
     public string? ApiContentSecurityPolicy { get; set; }
+    /// <summary><c>api:no-store</c>: send <c>Cache-Control: no-store</c> on API responses.</summary>
     public bool ApiNoStore { get; set; }
+    /// <summary><c>api:max-body-bytes</c>: body limit in bytes for API requests; larger declared bodies get 413 <c>payload_too_large</c>, chunked ones are cut off by Kestrel.</summary>
     public long? ApiMaxBodyBytes { get; set; }
 
     internal bool HasApi => !string.IsNullOrEmpty(ApiPath) && (ApiContentSecurityPolicy is not null || ApiNoStore || ApiMaxBodyBytes is not null);
 
+    /// <summary>Reads <c>altruist:server:http:hardening</c>; a missing section yields all-defaults (nothing enabled).</summary>
+    /// <param name="configuration">Configuration root.</param>
+    /// <returns>The parsed options.</returns>
+    /// <exception cref="ArgumentException">A <c>known-proxies</c> entry is not an IP address.</exception>
     public static HttpHardeningOptions FromConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -118,6 +152,8 @@ public sealed class HttpHardeningOptions
 }
 
 /// <summary>Response headers, path rate limits and the API body limit (see <see cref="HttpHardeningOptions"/>).</summary>
+/// <remarks>Added by <see cref="HttpHardeningExtensions.UseAltruistHttpHardening"/>; do not add it manually.
+/// Path rate limits use the <see cref="IRequestRateLimiter"/> singleton and answer 429 <c>rate_limited</c> with <c>Retry-After</c>.</remarks>
 public sealed class HttpHardeningMiddleware
 {
     private readonly RequestDelegate _next;
@@ -125,6 +161,9 @@ public sealed class HttpHardeningMiddleware
     private readonly HttpRateLimitPolicy[] _pathPolicies;
     private readonly string? _hsts;
 
+    /// <summary>Creates the middleware.</summary>
+    /// <param name="next">Next middleware.</param>
+    /// <param name="settings">HTTP API settings (hardening and path rate-limit policies).</param>
     public HttpHardeningMiddleware(RequestDelegate next, HttpApiSettings settings)
     {
         _next = next;
@@ -133,6 +172,8 @@ public sealed class HttpHardeningMiddleware
         _hsts = _options.HstsMaxAgeSeconds > 0 ? "max-age=" + _options.HstsMaxAgeSeconds.ToString(CultureInfo.InvariantCulture) : null;
     }
 
+    /// <summary>Applies headers, path rate limits and the API body limit, then calls the next middleware unless the request was rejected.</summary>
+    /// <param name="context">The request context.</param>
     public async Task InvokeAsync(HttpContext context)
     {
         var headers = context.Response.Headers;
@@ -191,6 +232,7 @@ public sealed class HttpHardeningMiddleware
     }
 }
 
+/// <summary>Pipeline entry point for <see cref="HttpHardeningOptions"/>.</summary>
 public static class HttpHardeningExtensions
 {
     /// <summary>
@@ -198,6 +240,14 @@ public static class HttpHardeningExtensions
     /// body limit) to the pipeline. Altruist's server calls it first; call it yourself only on a
     /// host you build (tests). Does nothing when none of it is configured.
     /// </summary>
+    /// <param name="app">The application builder.</param>
+    /// <param name="settings">Settings, normally the <see cref="HttpApiSettings"/> singleton from DI.</param>
+    /// <returns><paramref name="app"/>.</returns>
+    /// <example>
+    /// <code>
+    /// app.UseAltruistHttpHardening(app.ApplicationServices.GetRequiredService&lt;HttpApiSettings&gt;());
+    /// </code>
+    /// </example>
     public static IApplicationBuilder UseAltruistHttpHardening(this IApplicationBuilder app, HttpApiSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

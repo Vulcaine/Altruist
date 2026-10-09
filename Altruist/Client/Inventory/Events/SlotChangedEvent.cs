@@ -10,4 +10,5 @@ namespace Altruist.Client.Inventory.Events;
 /// route them differently without inspecting <see cref="ItemSnapshot.IsEmpty"/>.
 /// </para>
 /// </summary>
+/// <param name="Snapshot">The item now anchored at <c>Snapshot.Cell</c>.</param>
 public sealed record SlotChangedEvent(ItemSnapshot Snapshot);

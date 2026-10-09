@@ -16,32 +16,70 @@ limitations under the License.
 
 namespace Altruist;
 
+/// <summary>A named framework service; the name identifies it in logs and health output.</summary>
 public interface IService
 {
+    /// <summary>Human-readable service name (shown in logs and <c>GET /altruist/health/details</c>).</summary>
     public string ServiceName { get; }
 }
 
+/// <summary>
+/// A service backed by an external connection (database, cache, broker) whose availability gates server readiness.
+/// </summary>
+/// <remarks>
+/// Every <see cref="IConnectable"/> registered in DI (plus the active database and cache providers) is tracked by the
+/// server status: at startup it calls the parameterless <see cref="ConnectAsync()"/> on each one that is not yet
+/// connected, turns <see cref="ReadyState.Alive"/> once all have raised <see cref="OnConnected"/>, drops to
+/// <see cref="ReadyState.Failed"/> (engine stopped) on <see cref="OnFailed"/>, and shuts the application down on
+/// <see cref="OnRetryExhausted"/>. Implementations must raise these events themselves via the <c>Raise*</c> methods,
+/// including on reconnect.
+/// </remarks>
 public interface IConnectable : IService
 {
+    /// <summary>Whether the connection is currently up.</summary>
     bool IsConnected { get; }
+    /// <summary>Raised when the connection is (re)established.</summary>
     event Action? OnConnected;
+    /// <summary>Raised when an established connection is lost; the server goes to <see cref="ReadyState.Failed"/> until reconnected.</summary>
     event Action<Exception> OnFailed;
+    /// <summary>Raised when connecting gave up after all retries; the server shuts down.</summary>
     event Action<Exception> OnRetryExhausted;
 
+    /// <summary>Connects to an explicit endpoint, retrying on failure.</summary>
+    /// <param name="protocol">Scheme or protocol name expected by the implementation.</param>
+    /// <param name="host">Host name or address.</param>
+    /// <param name="port">Port.</param>
+    /// <param name="maxRetries">Attempts before raising <see cref="OnRetryExhausted"/>.</param>
+    /// <param name="delayMilliseconds">Delay between attempts, in milliseconds.</param>
     Task ConnectAsync(
         string protocol, string host, int port,
         int maxRetries = 30, int delayMilliseconds = 2000);
 
+    /// <summary>Connects using the implementation's configured endpoint. This is the overload the framework calls at startup.</summary>
     Task ConnectAsync();
 
+    /// <summary>Raises <see cref="OnRetryExhausted"/>.</summary>
+    /// <param name="ex">The last connection error.</param>
     void RaiseOnRetryExhaustedEvent(Exception ex);
+    /// <summary>Raises <see cref="OnFailed"/>.</summary>
+    /// <param name="ex">The connection error.</param>
     void RaiseFailedEvent(Exception ex);
+    /// <summary>Raises <see cref="OnConnected"/>.</summary>
     void RaiseConnectedEvent();
 }
 
+/// <summary>
+/// Forwards packets to an external system (another server or broker). Used by the relay interceptor, which passes every
+/// decoded inbound packet to <see cref="Relay(IPacket)"/>. No built-in implementation is registered; provide one with
+/// <c>[Service(typeof(IRelayService))]</c> if you use relaying.
+/// </summary>
 public interface IRelayService : IConnectable
 {
+    /// <summary>Forwards a decoded packet.</summary>
+    /// <param name="data">The packet.</param>
     Task Relay(IPacket data);
+    /// <summary>Forwards already-encoded bytes.</summary>
+    /// <param name="message">The encoded packet.</param>
     Task Relay(byte[] message);
 }
 

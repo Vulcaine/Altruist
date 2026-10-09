@@ -19,6 +19,13 @@ namespace Altruist.Gaming.Autosave;
 /// One file per entity type: PlayerVault.wal, ItemVault.wal, etc.
 /// Files are self-rotating — truncated after every successful DB flush.
 /// </summary>
+/// <remarks>
+/// Internal machinery of <see cref="AutosaveService{T}"/>; enable/disable it with <see cref="AutosaveAttribute.Wal"/>
+/// or <c>altruist:game:autosave:wal:*</c> config rather than using it directly. Durability window: entries reach disk
+/// only on the timer (flush interval), so a crash can still lose up to one interval of changes. Thread-safe.
+/// Entities are serialized with System.Text.Json, so models must round-trip through it for recovery to work.
+/// </remarks>
+/// <typeparam name="T">Vault model type; the file is named <c>{typeof(T).Name}.wal</c>.</typeparam>
 public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
 {
     private readonly ConcurrentQueue<WalEntry> _buffer = new();
@@ -28,9 +35,15 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private bool _disposed;
 
+    /// <summary>Full path of the WAL file.</summary>
     public string FilePath => _walFilePath;
+    /// <summary>Entries buffered in memory and not yet written to disk.</summary>
     public int BufferCount => _buffer.Count;
 
+    /// <summary>Creates the directory if needed and starts the periodic disk-flush timer.</summary>
+    /// <param name="walDirectory">Directory for the WAL file.</param>
+    /// <param name="flushIntervalSeconds">Seconds between buffer-to-disk appends.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
     public WriteAheadLog(string walDirectory, int flushIntervalSeconds, ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger($"WAL<{typeof(T).Name}>");
@@ -48,6 +61,8 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
     /// <summary>
     /// Append a dirty entity to the in-memory buffer. Zero disk I/O.
     /// </summary>
+    /// <param name="entity">Entity snapshot to serialize now.</param>
+    /// <param name="ownerId">Owner id recorded with the entry.</param>
     public void Append(T entity, string ownerId)
     {
         var json = JsonSerializer.Serialize(entity, entity.GetType());
@@ -57,6 +72,8 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
     /// <summary>
     /// Flush the in-memory buffer to the WAL file on disk. One sequential async write.
     /// </summary>
+    /// <remarks>Called by the internal timer; on I/O failure the entries are re-queued (order may change).</remarks>
+    /// <returns>A task completing after the append.</returns>
     public async Task FlushBufferToDiskAsync()
     {
         if (_disposed) return;
@@ -90,6 +107,7 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
     /// Truncate the WAL file after a successful DB flush.
     /// Also drains any remaining buffer entries (they're already in the DB).
     /// </summary>
+    /// <returns>A task completing after the file is deleted.</returns>
     public async Task TruncateAsync()
     {
         // Drain buffer (already flushed to DB)
@@ -111,6 +129,7 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
     /// Read all entries from the WAL file (for crash recovery on startup).
     /// Deduplicates by StorageId, keeping the latest entry per entity.
     /// </summary>
+    /// <returns>Latest entry per storage id; empty when no file exists. Corrupt lines are skipped.</returns>
     public async Task<List<WalEntry>> RecoverAsync()
     {
         if (!File.Exists(_walFilePath))
@@ -147,6 +166,7 @@ public sealed class WriteAheadLog<T> : IDisposable where T : class, IVaultModel
         }
     }
 
+    /// <summary>Stops the timer. Buffered entries not yet on disk are NOT written.</summary>
     public void Dispose()
     {
         if (_disposed) return;

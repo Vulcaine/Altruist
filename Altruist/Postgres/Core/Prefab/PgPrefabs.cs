@@ -8,21 +8,82 @@ using Altruist.UORM;
 
 namespace Altruist.Persistence;
 
+/// <summary>
+/// Postgres implementation of <see cref="IPrefabs"/>: queries prefab aggregates (a root vault row plus related
+/// component rows from other vault tables) and saves their components back with plain upserts.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Registered as a singleton <see cref="IPrefabs"/> when <c>altruist:persistence:database:provider</c> is
+/// <c>postgres</c>. Choose prefabs when you want an aggregate loaded as objects in a few round trips (one query for
+/// the roots, one per included component). For one table use <c>IVault&lt;T&gt;</c>; for flat multi-table rows or
+/// projections use the join querying layer (<see cref="Postgres.PgVaultQuery"/>).
+/// </para>
+/// <para>
+/// Queries and saves always run on the unkeyed <see cref="ISqlDatabaseProvider"/>, regardless of any
+/// <c>DbInstance</c> on the component vaults. Unlike <c>IVault&lt;T&gt;.SaveAsync</c>, prefab saves do <b>not</b>
+/// call <see cref="IVaultModel.OnSave"/> and do <b>not</b> do version-checked optimistic concurrency: each dirty model
+/// is upserted on its <c>StorageId</c> column and every other column (including <c>version</c>) is overwritten with
+/// the in-memory value. A model whose table also has a <c>[VaultUniqueKey]</c> may therefore fail with a unique
+/// violation instead of updating. All upserts go to the database as one multi-statement command.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// // load roots matching a filter, with two components hydrated
+/// var list = await prefabs.Query&lt;PlayerPrefab&gt;()
+///     .Where(p =&gt; p.Account.Region == region &amp;&amp; p.Items.Any(i =&gt; i.Kind == "rare"))
+///     .Include(p =&gt; p.Items)
+///     .Include(p =&gt; p.Guild)
+///     .ToListAsync(ct);
+///
+/// var player = list[0];
+/// player.Items.Add(new ItemVault { StorageId = Guid.NewGuid().ToString(), AccountId = player.Account.StorageId });
+/// await prefabs.SaveComponentAsync(player, nameof(PlayerPrefab.Items), ct); // upserts the Items rows only
+/// </code>
+/// </example>
 [Service(typeof(IPrefabs))]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PgPrefabs : IPrefabs
 {
     private readonly ISqlDatabaseProvider _db;
 
+    /// <summary>Creates the service.</summary>
+    /// <param name="db">Provider used for all prefab queries and saves.</param>
     public PgPrefabs(ISqlDatabaseProvider db) => _db = db;
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The returned builder is mutable and single-use. Filter support (translated to bound parameters):
+    /// <c>&amp;&amp;</c>, <c>||</c>, and <c>==</c> / <c>!=</c> between <c>p.Component.Member</c> and a value, where the
+    /// component is the root (direct column test) or a single reference (<c>EXISTS</c> sub-query); on collection
+    /// components only <c>p.Items.Any()</c> or <c>p.Items.Any(i =&gt; ...)</c> with the same <c>==</c>/<c>!=</c>,
+    /// <c>&amp;&amp;</c>, <c>||</c> rules inside. Comparing to <c>null</c> becomes <c>IS [NOT] NULL</c>. Not supported
+    /// (throws <see cref="NotSupportedException"/>): <c>!</c>, <c>&lt;</c>/<c>&gt;</c>-style operators, bare bool members,
+    /// other method calls, nested <c>Any</c>, and (inside <c>Any</c>) members wrapped in a conversion such as enum or
+    /// nullable comparisons. An unknown <c>Any</c> component throws <see cref="InvalidOperationException"/>.
+    /// Results have no defined order; <c>FirstOrDefaultAsync</c> returns an arbitrary match. <c>Include</c> of a name
+    /// that is not a component is ignored.
+    /// </remarks>
     public IPrefabQuery<TPrefab> Query<TPrefab>()
         where TPrefab : PrefabModel, new()
         => new PgPrefabQuery<TPrefab>(_db);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The root must be non-null even when saving another component. A null component is a no-op. Passing the root
+    /// property name saves only the root.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="prefab"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The root is null, <paramref name="componentName"/> is unknown, or a model has an empty StorageId.</exception>
     public Task SaveComponentAsync(PrefabModel prefab, string componentName, CancellationToken ct = default)
         => SaveInternalAsync(prefab, componentName, ct);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Models are de-duplicated by type and StorageId. After a successful write, a public parameterless
+    /// <c>AcceptChanges()</c> on each written model is invoked when present.
+    /// </remarks>
     public Task SaveAsync(PrefabModel prefab, CancellationToken ct = default)
         => SaveInternalAsync(prefab, componentName: null, ct);
 

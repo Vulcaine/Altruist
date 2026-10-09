@@ -105,6 +105,8 @@ public sealed class OverlapLatch<TId> where TId : notnull
     private HashSet<TId> _current;
     private readonly List<TId> _entered = new();
 
+    /// <summary>Creates an empty latch.</summary>
+    /// <param name="comparer">Equality for ids; <c>null</c> uses <see cref="EqualityComparer{T}.Default"/>.</param>
     public OverlapLatch(IEqualityComparer<TId>? comparer = null)
     {
         _previous = new HashSet<TId>(comparer);
