@@ -42,13 +42,16 @@ namespace Altruist.Gaming.TwoD
 
         private static string GetKey(int x, int y) => $"{x}:{y}";
 
+        // Cells are [k * CellSize, (k + 1) * CellSize): floor, so negative coordinates get their own cells.
+        private string CellKeyOf(IWorldObject2D obj) => GetKey(
+            (int)MathF.Floor(obj.Transform.Position.X / CellSize),
+            (int)MathF.Floor(obj.Transform.Position.Y / CellSize));
+
         /// <summary>Files <paramref name="obj"/> under its current position cell and archetype (re-adding
         /// an id overwrites the instance but does not remove the old cell entry).</summary>
         public virtual void Add(IWorldObject2D obj)
         {
-            string key = GetKey(
-                obj.Transform.Position.X / CellSize,
-                obj.Transform.Position.Y / CellSize);
+            string key = CellKeyOf(obj);
 
             if (!Grid.TryGetValue(key, out var list))
                 Grid[key] = list = new HashSet<string>();
@@ -70,9 +73,7 @@ namespace Altruist.Gaming.TwoD
             if (!InstanceMap.TryGetValue(instanceId, out var obj))
                 return null;
 
-            string key = GetKey(
-                obj.Transform.Position.X / CellSize,
-                obj.Transform.Position.Y / CellSize);
+            string key = CellKeyOf(obj);
 
             if (Grid.TryGetValue(key, out var list))
             {
@@ -103,10 +104,10 @@ namespace Altruist.Gaming.TwoD
             float radius,
             string zoneId)
         {
-            int minX = (int)((x - radius) / CellSize);
-            int maxX = (int)((x + radius) / CellSize);
-            int minY = (int)((y - radius) / CellSize);
-            int maxY = (int)((y + radius) / CellSize);
+            int minX = (int)MathF.Floor((x - radius) / CellSize);
+            int maxX = (int)MathF.Floor((x + radius) / CellSize);
+            int minY = (int)MathF.Floor((y - radius) / CellSize);
+            int maxY = (int)MathF.Floor((y + radius) / CellSize);
 
             float sqrRadius = radius * radius;
             var result = new HashSet<IWorldObject2D>();

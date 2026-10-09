@@ -60,7 +60,7 @@ internal sealed class FakeWorldObject2D : AnonymousWorldObject2D
 {
     public FakeWorldObject2D(Vector2 position)
         : base(new Transform2D(
-            Position2D.Of((int)MathF.Round(position.X), (int)MathF.Round(position.Y)),
+            Position2D.From(position),
             Size2D.One, Scale2D.One, Rotation2D.Zero))
     {
     }

@@ -45,10 +45,13 @@ namespace Altruist.Gaming.TwoD
     /// <summary>Default <see cref="IGameWorldOrganizer2D"/>, registered as a singleton service and as an
     /// <see cref="IWorldStepper"/> (variable mode) when <c>altruist:environment:mode</c> is <c>2D</c>. On
     /// construction it creates one <see cref="GameWorldManager2D"/> per configured <see cref="IWorldIndex2D"/>
-    /// (each with its own physics engine from <see cref="IPhysxWorldEngineFactory2D"/>).
+    /// (each with its own physics engine from <see cref="IPhysxWorldEngineFactory2D"/>, set up by
+    /// <see cref="WorldPhysicsSettings2D.For"/>). A <see cref="WorldIndex2D"/> with a <c>data-path</c> is loaded
+    /// through the <see cref="IWorldLoader2D"/> instead.
     /// <para>Each <see cref="Step"/>, per world: destroys <c>Expired</c> objects and calls every object's
-    /// <c>Step(dt, world)</c>; then steps each physics world once with the frame's <c>dt</c>; copies body
-    /// positions back to <c>Transform.Position</c> (truncated to integers; partitions are not re-filed);
+    /// <c>Step(dt, world)</c>; then advances each physics world by the frame's <c>dt</c> in whole steps of the
+    /// world's fixed step (the remainder carries over); copies body positions back to
+    /// <c>Transform.Position</c> (partitions are not re-filed);
     /// then ticks <see cref="IAIBehaviorService"/>, the <see cref="VisibilityTracker2D"/> and
     /// <see cref="IEntitySyncService"/> (at <see cref="EntitySyncHz"/>). Exceptions from objects and services
     /// are swallowed so one failure does not stop the tick.</para>
@@ -88,6 +91,7 @@ namespace Altruist.Gaming.TwoD
         /// <param name="colliderApi">Optional collider factory passed to each world.</param>
         /// <param name="aiBehaviorService">Optional AI service ticked after physics.</param>
         /// <param name="entitySyncService">Optional entity sync ticked last.</param>
+        /// <param name="worldLoader">Loads the worlds whose index has a <c>data-path</c> (required for them).</param>
         /// <param name="entitySyncHz">Config <c>altruist:game:worlds:entity-sync-hz</c> (default 25; non-positive falls back to it).</param>
         public GameWorldOrganizer2D(
             IWorldPartitioner2D partitioner,
@@ -98,6 +102,7 @@ namespace Altruist.Gaming.TwoD
             IPhysxColliderApiProvider2D? colliderApi = null,
             IAIBehaviorService? aiBehaviorService = null,
             IEntitySyncService? entitySyncService = null,
+            IWorldLoader2D? worldLoader = null,
             [AppConfigValue("altruist:game:worlds:entity-sync-hz", "25")] float entitySyncHz = DefaultEntitySyncHz)
         {
             _partitioner = partitioner;
@@ -108,11 +113,23 @@ namespace Altruist.Gaming.TwoD
             _aiBehaviorService = aiBehaviorService;
             _entitySyncService = entitySyncService;
             _engineFrequencyHz = entitySyncHz > 0 ? entitySyncHz : DefaultEntitySyncHz;
-            _worlds = gameWorlds
-                .Select(index2d => AddWorld(
-                    index2d,
-                    new PhysxWorld2D(_physxWorldEngineFactory.Create(index2d.Gravity, index2d.FixedDeltaTime))))
-                .ToDictionary(x => x.Index.Index);
+            foreach (var index2d in gameWorlds)
+            {
+                if (index2d is WorldIndex2D { DataPath: { } path } && !string.IsNullOrWhiteSpace(path))
+                    RegisterLoadedWorld(index2d, worldLoader);
+                else
+                    AddWorld(index2d, new PhysxWorld2D(_physxWorldEngineFactory.Create(WorldPhysicsSettings2D.For(index2d))));
+            }
+        }
+
+        private void RegisterLoadedWorld(IWorldIndex2D index, IWorldLoader2D? worldLoader)
+        {
+            if (worldLoader is null)
+                throw new InvalidOperationException($"World {index.Index} has a data-path but no IWorldLoader2D is registered (it needs altruist:game).");
+            if (_worlds.ContainsKey(index.Index))
+                throw new InvalidOperationException($"World {index.Index} already exists.");
+
+            _worlds[index.Index] = worldLoader.LoadFromIndex(index).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -259,7 +276,7 @@ namespace Altruist.Gaming.TwoD
             if (obj.Body is not IPhysxBody2D body)
                 return;
 
-            var newPos = Position2D.Of((int)body.Position.X, (int)body.Position.Y);
+            var newPos = Position2D.From(body.Position);
             obj.Transform = obj.Transform.WithPosition(newPos);
         }
 

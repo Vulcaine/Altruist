@@ -270,8 +270,8 @@ namespace Altruist.Gaming.TwoD
             }
 
             var partition = FindPartitionForPosition(
-                obj.Transform.Position.X,
-                obj.Transform.Position.Y);
+                (int)MathF.Floor(obj.Transform.Position.X),
+                (int)MathF.Floor(obj.Transform.Position.Y));
 
             if (partition is WorldPartition2D p2d)
                 p2d.AddObject(obj);

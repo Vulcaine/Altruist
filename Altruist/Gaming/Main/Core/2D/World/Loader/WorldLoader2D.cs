@@ -30,8 +30,8 @@ namespace Altruist.Gaming.TwoD
         /// <summary>
         /// Load a game world manager from a JSON string and a WorldIndex2D descriptor.
         /// Side effect: overwrites <paramref name="index"/>'s <c>Size</c> (truncated to integers) and
-        /// <c>Position</c> with the schema's root transform. Creates a new physics engine from the index's
-        /// gravity and fixed step.
+        /// <c>Position</c> with the schema's root transform. Creates a new physics engine with
+        /// <see cref="WorldPhysicsSettings2D.For"/> (the index's gravity, fixed stepping at its fixed step).
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="index"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="json"/> is null or blank.</exception>
@@ -130,7 +130,7 @@ namespace Altruist.Gaming.TwoD
             if (index is WorldIndex2D wi && string.IsNullOrWhiteSpace(wi.DataPath))
             {
                 _spawnedWorldObjects.Clear();
-                var emptyEngine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
+                var emptyEngine = _engineFactory.Create(WorldPhysicsSettings2D.For(index));
                 var emptyPhysxWorld = new PhysxWorld2D(emptyEngine);
                 return new GameWorldManager2D(index, emptyPhysxWorld, _worldPartitioner,
                     null, _bodyApi, _colliderApi);
@@ -153,7 +153,7 @@ namespace Altruist.Gaming.TwoD
         {
             _spawnedWorldObjects.Clear();
 
-            var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
+            var engine = _engineFactory.Create(WorldPhysicsSettings2D.For(index));
             var physxWorld = new PhysxWorld2D(engine);
 
             var manager = new GameWorldManager2D(index, physxWorld, _worldPartitioner,
@@ -222,7 +222,7 @@ namespace Altruist.Gaming.TwoD
             AccumulatedTransform2D worldTransform,
             WorldObjectSchema2D node)
         {
-            var pos = Position2D.Of((int)worldTransform.Position.X, (int)worldTransform.Position.Y);
+            var pos = Position2D.From(worldTransform.Position);
             var size = Size2D.Of(node.Size.X, node.Size.Y);
             var rot = Rotation2D.FromRadians(worldTransform.Rotation);
             return new Transform2D(pos, size, Scale2D.One, rot);
@@ -244,7 +244,7 @@ namespace Altruist.Gaming.TwoD
 
                 var center = col.Center?.ToNumerics() ?? Vector2.Zero;
                 var colWorldPos = worldTransform.Position + center;
-                var colPos = Position2D.Of((int)colWorldPos.X, (int)colWorldPos.Y);
+                var colPos = Position2D.From(colWorldPos);
 
                 Size2D colSize;
                 switch (shape)

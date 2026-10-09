@@ -5,35 +5,39 @@ using Altruist.Numerics;
 
 namespace Altruist.TwoD.Numerics
 {
-    /// <summary>An immutable 2D position in integer world units, used by <see cref="Transform2D"/>.
-    /// Integer only: callers converting from float positions (e.g. <c>Position2D.Of((int)p.X, (int)p.Y)</c>)
-    /// truncate toward zero and lose sub-unit precision. For continuous simulation math work in
-    /// <see cref="Vector2"/> and convert with <see cref="ToFloatVector2"/>.</summary>
+    /// <summary>An immutable 2D world position (float), used by <see cref="Transform2D"/>; the 2D mirror of
+    /// <see cref="Altruist.ThreeD.Numerics.Position3D"/>. Positions of physics bodies convert without loss
+    /// (<see cref="From(Vector2)"/>); integer grid cells convert with <see cref="From(IntVector2)"/>. For
+    /// continuous math use <see cref="ToVector2"/>.</summary>
     public readonly struct Position2D
     {
-        private readonly IntVector2 _v;
+        private readonly Vector2 _v;
         /// <summary>X coordinate (world units).</summary>
-        public int X => _v.X;
+        public float X => _v.X;
         /// <summary>Y coordinate (world units).</summary>
-        public int Y => _v.Y;
+        public float Y => _v.Y;
 
-        /// <summary>Creates a position from integer coordinates.</summary>
-        public Position2D(int x, int y) => _v = new IntVector2(x, y);
-        private Position2D(IntVector2 v) => _v = v;
+        /// <summary>Creates a position from its coordinates (integers convert implicitly).</summary>
+        public Position2D(float x, float y) => _v = new Vector2(x, y);
+        private Position2D(Vector2 v) => _v = v;
 
         /// <summary>The origin (0, 0).</summary>
-        public static Position2D Zero => new(new IntVector2(0, 0));
+        public static Position2D Zero => new(Vector2.Zero);
         /// <summary>(1, 1).</summary>
-        public static Position2D One => new(new IntVector2(1, 1));
+        public static Position2D One => new(Vector2.One);
         /// <summary>Factory alias of the constructor: <c>Position2D.Of(x, y)</c>.</summary>
-        public static Position2D Of(int x, int y) => new(x, y);
-        /// <summary>Wraps an existing <see cref="IntVector2"/>.</summary>
-        public static Position2D From(IntVector2 v) => new(v);
-        /// <summary>The underlying integer vector.</summary>
-        public IntVector2 ToVector2() => _v;
-        /// <summary>The position as a float <see cref="Vector2"/> (what <see cref="Distance2D"/>,
+        public static Position2D Of(float x, float y) => new(x, y);
+        /// <summary>Converts an integer vector (e.g. a grid cell) to a position.</summary>
+        public static Position2D From(IntVector2 v) => new(v.X, v.Y);
+        /// <summary>Wraps an existing <see cref="Vector2"/> (e.g. a body position) without rounding.</summary>
+        public static Position2D From(Vector2 v) => new(v);
+        /// <summary>The position as a <see cref="Vector2"/>.</summary>
+        public Vector2 ToVector2() => _v;
+        /// <summary>The same as <see cref="ToVector2"/> (what the <see cref="Distance2D"/>,
         /// <see cref="Direction2D"/> and <see cref="SpatialQueries2D"/> overloads use).</summary>
-        public Vector2 ToFloatVector2() => new(_v.X, _v.Y);
+        public Vector2 ToFloatVector2() => _v;
+        /// <summary>Formats the coordinates, e.g. <c>&lt;1.5, 2&gt;</c>.</summary>
+        public override string ToString() => _v.ToString();
     }
 
     /// <summary>An immutable 2D size in world units. Its meaning depends on the collider/body shape it
@@ -146,7 +150,7 @@ namespace Altruist.TwoD.Numerics
         }
     }
 
-    /// <summary>An immutable 2D transform: integer <see cref="Position"/>, shape <see cref="Size"/>,
+    /// <summary>An immutable 2D transform: <see cref="Position"/>, shape <see cref="Size"/>,
     /// unitless <see cref="Scale"/> and counter-clockwise <see cref="Rotation"/>. Used to describe where a
     /// body/collider/world object sits and how big it is. Modify with the <c>With*</c> methods, which return
     /// copies.</summary>
@@ -156,7 +160,7 @@ namespace Altruist.TwoD.Numerics
     /// </code></example>
     public readonly struct Transform2D
     {
-        /// <summary>World position (integer units).</summary>
+        /// <summary>World position.</summary>
         public Position2D Position { get; }
         /// <summary>Shape size (half extents / radius; see <see cref="Size2D"/>).</summary>
         public Size2D Size { get; }
