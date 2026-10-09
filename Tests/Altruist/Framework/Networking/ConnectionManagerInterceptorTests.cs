@@ -134,7 +134,7 @@ public sealed class ConnectionManagerInterceptorTests
     }
 
     [Fact]
-    public async Task Undecodable_payload_is_dropped_instead_of_reaching_the_handler_as_a_default_packet()
+    public async Task Undecodable_payload_is_dropped_keeps_the_connection_and_still_passes_the_interceptors()
     {
         var handled = 0;
         var evt = RegisterGate((_, _) => { handled++; return Task.CompletedTask; });
@@ -143,12 +143,13 @@ public sealed class ConnectionManagerInterceptorTests
 
         // A string where an int array is expected, and a nesting bomb.
         var garbage = MessagePackSerializer.Serialize("not a move packet");
-        Assert.False(await manager.ProcessPacket(Packet(evt), garbage, "/game", "client-1"));
+        Assert.True(await manager.ProcessPacket(Packet(evt), garbage, "/game", "client-1"));
         var bomb = Enumerable.Repeat((byte)0x91, 10_000).Append((byte)0xc0).ToArray();
-        Assert.False(await manager.ProcessPacket(Packet(evt), bomb, "/game", "client-1"));
+        Assert.True(await manager.ProcessPacket(Packet(evt), bomb, "/game", "client-1"));
 
         Assert.Equal(0, handled);
-        Assert.Empty(interceptor.Calls);
+        Assert.Equal(2, interceptor.Calls.Count);
+        Assert.All(interceptor.Calls, c => Assert.Null(c.Packet));
     }
 
     [Fact]

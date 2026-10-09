@@ -114,8 +114,8 @@ public class ShieldAttribute : Attribute, IAsyncAuthorizationFilter
     /// <summary>
     /// Runs the handler for a non-HTTP connection (TCP/UDP transports). Returns the <see cref="AuthDetails"/> on
     /// success, or null when there is no handler, it cannot be resolved, it fails or it throws. Note that the
-    /// built-in <see cref="JwtAuth"/> and <see cref="TicketShieldAuth"/> handlers only accept <see cref="HttpAuthContext"/>,
-    /// so they always yield null here.
+    /// built-in <see cref="JwtAuth"/> reads the credential from <see cref="IAuthContext.Token"/> here, while <see cref="TicketShieldAuth"/>
+    /// only accepts <see cref="HttpAuthContext"/> and so always yields null.
     /// </summary>
     /// <param name="serviceProvider">Provider the handler is resolved from.</param>
     /// <param name="context">The connection's credentials.</param>

@@ -11,11 +11,11 @@ namespace Altruist.Client;
 /// <para>Provider name <c>"json"</c>. UTF-8 <c>System.Text.Json</c> with
 /// case-insensitive property matching and public fields included. On the WebSocket
 /// transport it makes frames text instead of binary.</para>
-/// <para>Outbound only in practice: <see cref="ClientPacketDispatcher"/> parses inbound
-/// envelopes as MessagePack, so JSON-encoded server frames are not dispatched.</para>
+/// <para>Reads the server's JSON envelopes <c>{"messageCode", "header", "message"}</c> (<see cref="IClientEnvelopeCodec"/>), so
+/// <see cref="ClientPacketDispatcher"/> dispatches frames from a server using the JSON codec.</para>
 /// </remarks>
 [Service(typeof(IClientCodec))]
-public sealed class JsonClientCodec : IClientCodec
+public sealed class JsonClientCodec : IClientEnvelopeCodec
 {
     private static readonly JsonSerializerOptions Opts = new()
     {
@@ -37,4 +37,34 @@ public sealed class JsonClientCodec : IClientCodec
     /// <inheritdoc/>
     public T? Deserialize<T>(ReadOnlySpan<byte> data) =>
         data.IsEmpty ? default : JsonSerializer.Deserialize<T>(data, Opts);
+
+    /// <inheritdoc/>
+    public bool TryReadEnvelope(byte[] frame, out uint messageCode, out byte[] message)
+    {
+        messageCode = 0;
+        message = Array.Empty<byte>();
+        if (frame is null || frame.Length == 0) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(frame);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            JsonElement? code = null, inner = null;
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "messageCode", StringComparison.OrdinalIgnoreCase))
+                    code = property.Value;
+                else if (string.Equals(property.Name, "message", StringComparison.OrdinalIgnoreCase))
+                    inner = property.Value;
+            }
+            if (code is not { ValueKind: JsonValueKind.Number } c || !c.TryGetUInt32(out var mc) || inner is not { } m)
+                return false;
+            messageCode = mc;
+            message = Encoding.UTF8.GetBytes(m.GetRawText());
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 }

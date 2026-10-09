@@ -36,25 +36,23 @@ public class PacketBaseFormatter : IMessagePackFormatter<IPacketBase?>
         }
 
         var type = value.GetType();
-        var typeName = type.AssemblyQualifiedName;
-
         writer.WriteArrayHeader(2);
-        writer.Write(typeName);
+        writer.Write(type.AssemblyQualifiedName);
 
-        var formatter = options.Resolver.GetFormatterDynamic(type);
-        var specificFormatter = (IMessagePackFormatter<IPacketBase?>)formatter!;
-
-        specificFormatter.Serialize(ref writer, value, options);
+        // The resolver's formatter is an IMessagePackFormatter<TConcrete>, which does not convert to
+        // IMessagePackFormatter<IPacketBase?> (the interface is invariant): go through the runtime-typed API.
+        MessagePackSerializer.Serialize(type, ref writer, value, options);
     }
 
     /// <summary>
     /// Reads the shape written by <see cref="Serialize"/>: resolves the type by name with
-    /// <see cref="Type.GetType(string)"/> and deserializes the packet with that type's formatter.
+    /// <see cref="Type.GetType(string)"/> and deserializes the packet with that type's formatter. Only types
+    /// implementing <see cref="IPacketBase"/> are accepted, so the wire cannot name an arbitrary type to instantiate.
     /// </summary>
     /// <param name="reader">MessagePack reader.</param>
     /// <param name="options">Serializer options whose resolver supplies the concrete formatter.</param>
     /// <returns>The packet, or <c>null</c> when the value is <c>nil</c>.</returns>
-    /// <exception cref="InvalidOperationException">The array length is not 2 or the type name cannot be resolved.</exception>
+    /// <exception cref="InvalidOperationException">The array length is not 2, or the type name cannot be resolved to an <see cref="IPacketBase"/> type.</exception>
     public IPacketBase? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)
     {
         if (reader.TryReadNil())
@@ -65,14 +63,12 @@ public class PacketBaseFormatter : IMessagePackFormatter<IPacketBase?>
             throw new InvalidOperationException($"Invalid array length: {count}");
 
         var typeName = reader.ReadString();
-        var type = Type.GetType(typeName!);
+        var type = typeName is null ? null : Type.GetType(typeName);
         if (type == null)
             throw new InvalidOperationException($"Cannot find type: {typeName}");
+        if (!typeof(IPacketBase).IsAssignableFrom(type))
+            throw new InvalidOperationException($"Type {typeName} is not an {nameof(IPacketBase)}.");
 
-        var formatter = options.Resolver.GetFormatterDynamic(type);
-        var specificFormatter = (IMessagePackFormatter<IPacketBase?>)formatter!;
-
-        var result = specificFormatter.Deserialize(ref reader, options);
-        return result;
+        return (IPacketBase?)MessagePackSerializer.Deserialize(type, ref reader, options);
     }
 }

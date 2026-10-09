@@ -430,13 +430,18 @@ public sealed class Fleet : IFleet
             _claims.TryAdd(key, 0);
             return true;
         }
-        // Held by a server that is gone: take it over.
+        // Held by a server that is gone: take it over. Remove the dead owner's claim only while it still holds
+        // it, then claim like a free unit: of several servers taking over at once exactly one wins.
         var owner = await _backplane.GetAsync(key, cancellationToken).ConfigureAwait(false);
         if (owner is not null && owner != NodeId && Find(owner) is null)
         {
-            await _backplane.SetAsync(key, NodeId, Options.ClaimTtl, cancellationToken).ConfigureAwait(false);
-            _claims.TryAdd(key, 0);
-            return true;
+            await _backplane.DeleteIfValueAsync(key, owner, cancellationToken).ConfigureAwait(false);
+            if (await _backplane.SetIfAbsentAsync(key, NodeId, Options.ClaimTtl, cancellationToken).ConfigureAwait(false))
+            {
+                _claims.TryAdd(key, 0);
+                return true;
+            }
+            return false;
         }
         return owner == NodeId;
     }

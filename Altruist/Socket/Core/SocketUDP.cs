@@ -182,6 +182,9 @@ public sealed class CachedUdpConnection : AltruistConnection
     /// <summary>Transport type tag (hides the base <c>Type</c>).</summary>
     public new string Type { get; } = "udp";
 
+    /// <summary>Always <c>udp</c> (selects <c>altruist:server:transport:udp:codec</c>).</summary>
+    public override string? TransportMode => "udp";
+
     /// <summary>Wraps a UDP endpoint connection.</summary>
     /// <param name="udpConnection">Underlying connection.</param>
     public CachedUdpConnection(UdpConnection udpConnection)
@@ -259,6 +262,9 @@ public sealed class UdpConnection : AltruistConnection
 
     /// <summary>Transport type tag (hides the base <c>Type</c>).</summary>
     public new string Type { get; } = "udp";
+
+    /// <summary>Always <c>udp</c> (selects <c>altruist:server:transport:udp:codec</c>).</summary>
+    public override string? TransportMode => "udp";
 
     /// <summary>Creates an endpoint connection.</summary>
     /// <param name="client">Shared server socket.</param>

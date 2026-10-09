@@ -22,11 +22,12 @@ namespace Altruist.Client.Inventory;
 /// forward.</para>
 ///
 /// <para>Runs automatically as a <c>[ServiceConfiguration]</c> step; you never call it.
-/// The concrete <see cref="ClientInventoryService"/> is only registered when
-/// <c>altruist:client:transport</c> is configured, so resolving
-/// <see cref="IClientInventoryService"/> without that section fails.</para>
+/// Like <see cref="ClientPacketHandlerConfig"/> it only runs when <c>altruist:client:transport</c> is configured (the
+/// concrete service exists only then), so <see cref="IClientInventoryService"/> is not registered without a client
+/// transport.</para>
 /// </summary>
 [ServiceConfiguration(order: 100)]
+[ConditionalOnConfig("altruist:client:transport")]
 public sealed class ClientInventoryServiceConfig : IAltruistConfiguration
 {
     /// <inheritdoc/>

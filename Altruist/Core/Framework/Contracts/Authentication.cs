@@ -72,7 +72,7 @@ public interface IAuthContext
 }
 
 /// <summary><see cref="IAuthContext"/> for non-HTTP (TCP/UDP) connections; the transport fills the properties.</summary>
-/// <remarks>The built-in <see cref="JwtAuth"/> handler only supports <see cref="HttpAuthContext"/>, so socket connections need a custom <see cref="IShieldAuth"/>.</remarks>
+/// <remarks><see cref="JwtAuth"/> authenticates a socket context from its <see cref="IAuthContext.Token"/>; the ticket handler only supports <see cref="HttpAuthContext"/>.</remarks>
 public class SocketAuthContext : IAuthContext
 {
     /// <inheritdoc/>

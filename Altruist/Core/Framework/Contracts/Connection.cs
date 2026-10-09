@@ -95,6 +95,14 @@ public class AltruistConnection : StoredModel, IAltruistConnection
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public override string Type { get => GetType().Name; set { } }
 
+    /// <summary>
+    /// The transport's config name (<c>websocket</c>, <c>tcp</c>, <c>udp</c>): selects the per-transport codec
+    /// (<c>altruist:server:transport:{mode}:codec:provider</c>, see <see cref="ICodecResolver.ResolveForConnection"/>).
+    /// Null for connections of no particular transport (they use the global codec). Transports override it.
+    /// </summary>
+    [JsonIgnore]
+    public virtual string? TransportMode => null;
+
     /// <summary>The connection id. Setting it (e.g. on deserialization) allows empty; use <see cref="SetId"/> to validate.</summary>
     [JsonPropertyName("connectionId")]
     public string ConnectionId

@@ -25,6 +25,7 @@ internal sealed class AltruistUdpClient : IAsyncDisposable, IDisposable
     private readonly IClientCodec _codec;
     private readonly UdpClient _udp = new();
     private readonly IPEndPoint _serverEndpoint;
+    private Task<UdpReceiveResult>? _pendingReceive;
 
     /// <summary>Codec used to encode outbound packets (and by the router to decode inbound ones).</summary>
     public IClientCodec Codec => _codec;
@@ -83,49 +84,34 @@ internal sealed class AltruistUdpClient : IAsyncDisposable, IDisposable
     }
 
     /// <summary>Send one datagram with a gate name + codec-encoded payload.</summary>
-    /// <remarks>On netstandard2.1 cancelling <paramref name="ct"/> closes the socket.</remarks>
+    /// <remarks>A datagram send does not wait for the peer, so <paramref name="ct"/> is only checked before sending.</remarks>
     /// <typeparam name="T">Static packet type used for serialization.</typeparam>
-    /// <param name="gate">Server gate name (at most 255 UTF-8 bytes).</param>
+    /// <param name="gate">Server gate name (1..127 UTF-8 bytes).</param>
     /// <param name="payload">Packet to send.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <exception cref="ArgumentException"><paramref name="gate"/> is empty or longer than 127 UTF-8 bytes (the server's limit).</exception>
     public async Task SendAsync<T>(string gate, T payload, CancellationToken ct = default)
     {
-        var gateBytes = Encoding.UTF8.GetBytes(gate);
-        if (gateBytes.Length > byte.MaxValue) throw new InvalidOperationException(
-            $"Gate name too long ({gateBytes.Length} bytes); max is 255.");
-
-        var payloadBytes = _codec.Serialize(payload);
-        var datagram = new byte[1 + gateBytes.Length + payloadBytes.Length];
-        datagram[0] = (byte)gateBytes.Length;
-        Buffer.BlockCopy(gateBytes, 0, datagram, 1, gateBytes.Length);
-        Buffer.BlockCopy(payloadBytes, 0, datagram, 1 + gateBytes.Length, payloadBytes.Length);
-
-#if NETSTANDARD2_1
-        // ns2.1 SendAsync takes (datagram, len, endpoint) — no token overload.
-        using var reg = ct.Register(() => _udp.Close());
+        var datagram = ClientFrame.Build(ClientFrame.GateBytes(gate), _codec.Serialize(payload));
+        ct.ThrowIfCancellationRequested();
         await _udp.SendAsync(datagram, datagram.Length, _serverEndpoint).ConfigureAwait(false);
-#else
-        await _udp.SendAsync(datagram, _serverEndpoint, ct).ConfigureAwait(false);
-#endif
     }
 
     /// <summary>Receive one datagram or throw <see cref="OperationCanceledException"/>
     /// on timeout.</summary>
-    /// <remarks>On netstandard2.1 the timeout is implemented by closing the socket: a timeout
-    /// then surfaces as <see cref="ObjectDisposedException"/> / <see cref="System.Net.Sockets.SocketException"/>
-    /// rather than <see cref="OperationCanceledException"/>, and the client is unusable afterwards.</remarks>
+    /// <remarks>A timeout leaves the socket open and the receive pending: the next call picks it up, so a datagram
+    /// arriving after a timeout is not lost. Not safe for concurrent callers (one receive pump per client).</remarks>
     /// <param name="timeout">Maximum wait.</param>
     /// <returns>The datagram bytes (one <see cref="MessageEnvelope"/>).</returns>
     public async Task<byte[]> ReceiveAsync(TimeSpan timeout)
     {
-        using var cts = new CancellationTokenSource(timeout);
-#if NETSTANDARD2_1
-        using var reg = cts.Token.Register(() => _udp.Close());
-        var result = await _udp.ReceiveAsync().ConfigureAwait(false);
-#else
-        var result = await _udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
-#endif
-        return result.Buffer;
+        // Neither target cancels a UDP receive without closing the socket (netstandard2.1 has no
+        // token overload), so a timed-out receive stays pending for the next call instead.
+        var receive = _pendingReceive ??= _udp.ReceiveAsync();
+        if (receive != await Task.WhenAny(receive, Task.Delay(timeout)).ConfigureAwait(false))
+            throw new OperationCanceledException($"No datagram within {timeout}.");
+        _pendingReceive = null;
+        return (await receive.ConfigureAwait(false)).Buffer;
     }
 
     /// <summary>Synchronous <see cref="Dispose"/> wrapped in a completed task.</summary>

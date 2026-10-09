@@ -54,16 +54,20 @@ public static class MessageEnvelopeShape
     /// <summary>Slice element [2] (the actual packet bytes) out of the envelope.
     /// Returns an empty array if the envelope is malformed or shorter than 3 elements.
     /// Callers feed the result to their codec's <c>Deserialize&lt;T&gt;</c>.</summary>
-    /// <remarks>Requires a fixarray(3) header (<c>0x93</c>); returns every byte after the
-    /// header element, copied into a new array.</remarks>
+    /// <remarks>Requires a 3-element array header (fixarray <c>0x93</c>, or array16 / array32 with a count of 3, the
+    /// headers <see cref="PeekMessageCode"/> accepts); returns every byte after the header element, copied into a new array.</remarks>
     /// <param name="data">Envelope bytes.</param>
     /// <returns>The inner message bytes, or an empty array.</returns>
     public static byte[] ExtractMessage(byte[] data)
     {
-        if (data.Length < 3) return Array.Empty<byte>();
-        if (data[0] != 0x93) return Array.Empty<byte>();
+        if (data is null || data.Length < 3) return Array.Empty<byte>();
 
-        int pos = 1;
+        int pos;
+        if (data[0] == 0x93) pos = 1;
+        else if (data[0] == 0xdc && data.Length >= 3 && ReadBigEndian(data, 1, 2) == 3) pos = 3;
+        else if (data[0] == 0xdd && data.Length >= 5 && ReadBigEndian(data, 1, 4) == 3) pos = 5;
+        else return Array.Empty<byte>();
+
         pos = SkipValue(data, pos);
         if (pos < 0) return Array.Empty<byte>();
         pos = SkipValue(data, pos);
@@ -75,79 +79,86 @@ public static class MessageEnvelopeShape
     }
 
     /// <summary>Skip one MessagePack value starting at <paramref name="p"/>;
-    /// return the position after it, or -1 if the value type is unknown / data
-    /// is truncated.</summary>
-    /// <remarks>Supports nil, bool, all int/uint/float widths, fixstr/str8/16/32, bin8/16,
-    /// fixarray/array16/32 and fixmap/map16. bin32, map32 and ext types return -1. Truncated
-    /// variable-length headers can throw <see cref="IndexOutOfRangeException"/>.</remarks>
+    /// return the position after it, or -1 if the value is malformed or truncated.</summary>
+    /// <remarks>Supports every MessagePack type (nil, bool, ints, floats, str, bin, array, map and ext in all widths).
+    /// Never reads past the buffer and never throws for malformed input; nesting deeper than 100 levels is rejected.</remarks>
     /// <param name="d">MessagePack buffer.</param>
     /// <param name="p">Offset of the value to skip.</param>
     /// <returns>Offset just past the value, or -1.</returns>
-    public static int SkipValue(byte[] d, int p)
+    public static int SkipValue(byte[] d, int p) => Skip(d, p, 0);
+
+    private const int MaxDepth = 100;
+
+    private static int Skip(byte[] d, int p, int depth)
     {
-        if (p >= d.Length) return -1;
+        if (depth > MaxDepth || p < 0 || p >= d.Length) return -1;
         byte b = d[p];
 
-        // Positive fixint (0x00-0x7f)
-        if (b <= 0x7f) return p + 1;
-        // Negative fixint (0xe0-0xff)
-        if (b >= 0xe0) return p + 1;
-        // fixstr (0xa0-0xbf)
-        if ((b & 0xe0) == 0xa0) { int len = b & 0x1f; return p + 1 + len; }
-        // fixarray (0x90-0x9f)
-        if ((b & 0xf0) == 0x90)
-        {
-            int count = b & 0x0f; p++;
-            for (int i = 0; i < count; i++) { p = SkipValue(d, p); if (p < 0) return -1; }
-            return p;
-        }
-        // fixmap (0x80-0x8f)
-        if ((b & 0xf0) == 0x80)
-        {
-            int count = b & 0x0f; p++;
-            for (int i = 0; i < count * 2; i++) { p = SkipValue(d, p); if (p < 0) return -1; }
-            return p;
-        }
+        if (b <= 0x7f || b >= 0xe0) return p + 1;                       // positive / negative fixint
+        if ((b & 0xe0) == 0xa0) return Advance(d, p + 1, b & 0x1f);     // fixstr
+        if ((b & 0xf0) == 0x90) return SkipItems(d, p + 1, b & 0x0f, depth);       // fixarray
+        if ((b & 0xf0) == 0x80) return SkipItems(d, p + 1, (b & 0x0f) * 2L, depth); // fixmap
 
         switch (b)
         {
-            case 0xc0: return p + 1; // nil
-            case 0xc2: case 0xc3: return p + 1; // false, true
-            case 0xcc: return p + 2; // uint8
-            case 0xcd: return p + 3; // uint16
-            case 0xce: return p + 5; // uint32
-            case 0xcf: return p + 9; // uint64
-            case 0xd0: return p + 2; // int8
-            case 0xd1: return p + 3; // int16
-            case 0xd2: return p + 5; // int32
-            case 0xd3: return p + 9; // int64
-            case 0xca: return p + 5; // float32
-            case 0xcb: return p + 9; // float64
-            case 0xd9: return p + 2 + d[p + 1]; // str8
-            case 0xda: return p + 3 + ((d[p + 1] << 8) | d[p + 2]); // str16
-            case 0xdb: return p + 5 + ((d[p + 1] << 24) | (d[p + 2] << 16) | (d[p + 3] << 8) | d[p + 4]); // str32
-            case 0xc4: return p + 2 + d[p + 1]; // bin8
-            case 0xc5: return p + 3 + ((d[p + 1] << 8) | d[p + 2]); // bin16
-            case 0xdc: // array16
-            {
-                int count = (d[p + 1] << 8) | d[p + 2]; p += 3;
-                for (int i = 0; i < count; i++) { p = SkipValue(d, p); if (p < 0) return -1; }
-                return p;
-            }
-            case 0xdd: // array32
-            {
-                int count = (d[p + 1] << 24) | (d[p + 2] << 16) | (d[p + 3] << 8) | d[p + 4]; p += 5;
-                for (int i = 0; i < count; i++) { p = SkipValue(d, p); if (p < 0) return -1; }
-                return p;
-            }
-            case 0xde: // map16
-            {
-                int count = (d[p + 1] << 8) | d[p + 2]; p += 3;
-                for (int i = 0; i < count * 2; i++) { p = SkipValue(d, p); if (p < 0) return -1; }
-                return p;
-            }
+            case 0xc0: case 0xc2: case 0xc3: return p + 1;               // nil, false, true
+            case 0xcc: case 0xd0: return Advance(d, p + 1, 1);           // uint8, int8
+            case 0xcd: case 0xd1: return Advance(d, p + 1, 2);           // uint16, int16
+            case 0xce: case 0xd2: case 0xca: return Advance(d, p + 1, 4); // uint32, int32, float32
+            case 0xcf: case 0xd3: case 0xcb: return Advance(d, p + 1, 8); // uint64, int64, float64
+            case 0xd9: case 0xc4: return Sized(d, p, 1, 0);              // str8, bin8
+            case 0xda: case 0xc5: return Sized(d, p, 2, 0);              // str16, bin16
+            case 0xdb: case 0xc6: return Sized(d, p, 4, 0);              // str32, bin32
+            case 0xd4: return Advance(d, p + 1, 2);                      // fixext1 (type + 1)
+            case 0xd5: return Advance(d, p + 1, 3);                      // fixext2
+            case 0xd6: return Advance(d, p + 1, 5);                      // fixext4
+            case 0xd7: return Advance(d, p + 1, 9);                      // fixext8
+            case 0xd8: return Advance(d, p + 1, 17);                     // fixext16
+            case 0xc7: return Sized(d, p, 1, 1);                         // ext8 (+ type byte)
+            case 0xc8: return Sized(d, p, 2, 1);                         // ext16
+            case 0xc9: return Sized(d, p, 4, 1);                         // ext32
+            case 0xdc: return Counted(d, p, 2, 1, depth);                // array16
+            case 0xdd: return Counted(d, p, 4, 1, depth);                // array32
+            case 0xde: return Counted(d, p, 2, 2, depth);                // map16
+            case 0xdf: return Counted(d, p, 4, 2, depth);                // map32
+            default: return -1;                                          // 0xc1 (never used)
         }
-        return -1;
+    }
+
+    // p + n when the buffer holds n more bytes at p, else -1.
+    private static int Advance(byte[] d, int p, long n) => p >= 0 && n >= 0 && p + n <= d.Length ? (int)(p + n) : -1;
+
+    // A length-prefixed value: [type][len (lenBytes, big endian)][extra bytes][len bytes].
+    private static int Sized(byte[] d, int p, int lenBytes, int extra)
+    {
+        if (p + 1 + lenBytes > d.Length) return -1;
+        return Advance(d, p + 1 + lenBytes, extra + ReadBigEndian(d, p + 1, lenBytes));
+    }
+
+    // An array/map: [type][count (countBytes, big endian)] then count * perItem values.
+    private static int Counted(byte[] d, int p, int countBytes, int perItem, int depth)
+    {
+        if (p + 1 + countBytes > d.Length) return -1;
+        return SkipItems(d, p + 1 + countBytes, ReadBigEndian(d, p + 1, countBytes) * perItem, depth);
+    }
+
+    private static int SkipItems(byte[] d, int p, long count, int depth)
+    {
+        // Every value takes at least one byte: a count beyond the remaining bytes is truncated input.
+        if (count > d.Length - p) return -1;
+        for (long i = 0; i < count; i++)
+        {
+            p = Skip(d, p, depth + 1);
+            if (p < 0) return -1;
+        }
+        return p;
+    }
+
+    private static long ReadBigEndian(byte[] d, int p, int bytes)
+    {
+        long value = 0;
+        for (int i = 0; i < bytes; i++) value = (value << 8) | d[p + i];
+        return value;
     }
 
     private static uint ReadUInt(ReadOnlySpan<byte> d, int p)

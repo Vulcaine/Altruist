@@ -19,14 +19,24 @@ using System.Text.Json;
 namespace Altruist.Codec;
 
 /// <summary>
-/// System.Text.Json encoder (UTF-8 bytes, default serializer options, runtime type of the message).
-/// Registered as the standalone <see cref="IEncoder"/> singleton only when
+/// System.Text.Json encoder (UTF-8 bytes, runtime type of the message) using the DI-registered
+/// <see cref="JsonSerializerOptions"/>, the same options <see cref="JsonMessageDecoder"/> reads with, so property naming
+/// matches in both directions. Registered as the standalone <see cref="IEncoder"/> singleton only when
 /// <c>altruist:server:transport:codec:provider</c> is <c>json</c>; normally reached through <see cref="JsonCodec"/>.
 /// </summary>
 [Service(typeof(IEncoder))]
 [ConditionalOnConfig("altruist:server:transport:codec:provider", havingValue: "json")]
 public class JsonMessageEncoder : IEncoder
 {
+    private readonly JsonSerializerOptions _jsonOptions;
+
+    /// <summary>Creates an encoder with the given serializer options.</summary>
+    /// <param name="options">Options used for every serialization (the DI-registered ones by default).</param>
+    public JsonMessageEncoder(JsonSerializerOptions options)
+    {
+        _jsonOptions = options;
+    }
+
     /// <inheritdoc/>
     /// <remarks>Serializes by the message's runtime type; a <c>null</c> message yields an empty array.</remarks>
     public byte[] Encode<TPacket>(TPacket message)
@@ -35,13 +45,13 @@ public class JsonMessageEncoder : IEncoder
         {
             return Array.Empty<byte>();
         }
-        return JsonSerializer.SerializeToUtf8Bytes(message, message!.GetType());
+        return JsonSerializer.SerializeToUtf8Bytes(message, message!.GetType(), _jsonOptions);
     }
 
     /// <inheritdoc/>
     public byte[] Encode(object message, Type type)
     {
-        return JsonSerializer.SerializeToUtf8Bytes(message, type);
+        return JsonSerializer.SerializeToUtf8Bytes(message, type, _jsonOptions);
     }
 }
 
@@ -88,15 +98,14 @@ public class JsonMessageDecoder : IDecoder
 /// Select it with <c>altruist:server:transport:codec:provider: json</c>.
 /// </summary>
 /// <remarks>Does not implement <see cref="IBufferEncoder"/>, so every outbound packet allocates a new array.</remarks>
-[Service(typeof(ICodec))]
 [CodecProvider("json")]
 public class JsonCodec : ICodec
 {
-    /// <summary>Creates the codec; <paramref name="options"/> (from DI) apply to decoding only.</summary>
-    /// <param name="options">Serializer options for the decoder.</param>
+    /// <summary>Creates the codec; <paramref name="options"/> (from DI) apply to encoding and decoding.</summary>
+    /// <param name="options">Serializer options for the encoder and the decoder.</param>
     public JsonCodec(JsonSerializerOptions options)
     {
-        Encoder = new JsonMessageEncoder();
+        Encoder = new JsonMessageEncoder(options);
         Decoder = new JsonMessageDecoder(options);
     }
     /// <inheritdoc/>

@@ -16,7 +16,7 @@ namespace Altruist.Client;
 /// registered via <c>[ConditionalOnConfig("altruist:client:transport:tcp|udp|ws")]</c>, and
 /// <see cref="AltruistClientRouter"/> itself only registers when the
 /// <c>altruist:client:transport</c> section exists. The WebSocket URL is built as
-/// <c>ws://{host}:{port}</c> (no TLS, no path).</para>
+/// <c>ws[s]://{host}:{port}{path}</c> (<see cref="TransportEndpointOptions.WebSocketUri"/>).</para>
 ///
 /// <example>
 /// <code>
@@ -26,7 +26,7 @@ namespace Altruist.Client;
 ///       defaultTransport: tcp
 ///       tcp: { host: 127.0.0.1, port: 5566, codec: { provider: messagepack } }
 ///       udp: { host: 127.0.0.1, port: 5567, codec: { provider: messagepack } }
-///       ws:  { host: 127.0.0.1, port: 5568, codec: { provider: json } }
+///       ws:  { host: game.example.com, port: 443, secure: true, path: /game, codec: { provider: messagepack } }
 /// </code>
 /// </example>
 /// </summary>
@@ -59,6 +59,17 @@ public sealed class TransportEndpointOptions
     public int Port { get; set; }
     /// <summary>Codec for this transport (<c>codec: { provider: ... }</c>); defaults to MessagePack.</summary>
     public CodecOptions Codec { get; set; } = new();
+    /// <summary>WebSocket only: connect with TLS (<c>wss://</c>) instead of <c>ws://</c>. Default false; use true for any server reached over the internet.</summary>
+    public bool Secure { get; set; }
+    /// <summary>WebSocket only: the portal route to connect to (e.g. <c>/game</c>). Default <c>""</c> (the server root).</summary>
+    public string Path { get; set; } = "";
+
+    /// <summary>The WebSocket URL of this endpoint: <c>ws[s]://{Host}:{Port}{Path}</c>.</summary>
+    public Uri WebSocketUri()
+    {
+        var path = string.IsNullOrEmpty(Path) || Path.StartsWith("/", StringComparison.Ordinal) ? Path : "/" + Path;
+        return new UriBuilder(Secure ? "wss" : "ws", Host, Port, path).Uri;
+    }
 }
 
 /// <summary>Codec selection for a single transport.</summary>

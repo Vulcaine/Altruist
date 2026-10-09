@@ -127,7 +127,7 @@ public class QueueStatusController : ControllerBase
         });
     }
 
-    /// <summary><c>DELETE api/v1/server/queue/leave</c>: removes the caller's queue position (see <see cref="ConnectionGate.RemoveFromQueue"/> for its limits).</summary>
+    /// <summary><c>DELETE api/v1/server/queue/leave</c>: removes the caller from the queue (see <see cref="ConnectionGate.RemoveFromQueue"/>).</summary>
     [HttpDelete("queue/leave")]
     public IActionResult LeaveQueue()
     {

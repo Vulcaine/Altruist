@@ -152,7 +152,6 @@ public static class MessagePackStructureGuard
 /// traffic; use <see cref="Altruist.Codec.JsonCodec"/> (<c>json</c>) when clients need readable text.
 /// Select it with <c>altruist:server:transport:codec:provider: messagepack</c>.
 /// </summary>
-[Service(typeof(ICodec))]
 [CodecProvider("messagepack")]
 public class MessagePackCodec : ICodec
 {

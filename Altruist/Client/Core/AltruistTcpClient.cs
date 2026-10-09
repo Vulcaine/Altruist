@@ -123,14 +123,23 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
     /// <see cref="OnConnected"/>. Does not start reading frames; call <see cref="StartReadLoop"/>
     /// or <see cref="DrainAsync"/> afterwards.
     /// </summary>
-    /// <param name="ct">Cancels the handshake read (the TCP connect itself is not cancellable).</param>
+    /// <param name="ct">Cancels the connect and the handshake read. A cancelled client is closed: create a new one to retry.</param>
     /// <exception cref="InvalidOperationException">Already connected, or the handshake length is outside 1..1024.</exception>
     public async Task ConnectAsync(CancellationToken ct = default)
     {
         if (_stream is not null) throw new InvalidOperationException(
             "AltruistTcpClient already connected.");
 
-        await _tcp.ConnectAsync(_endpoint.Host, _endpoint.Port).ConfigureAwait(false);
+#if NETSTANDARD2_1
+        // No cancellable connect on netstandard2.1: closing the socket is what aborts a pending connect.
+        using (ct.Register(() => _tcp.Close()))
+        {
+            try { await _tcp.ConnectAsync(_endpoint.Host, _endpoint.Port).ConfigureAwait(false); }
+            catch (Exception) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+        }
+#else
+        await _tcp.ConnectAsync(_endpoint.Host, _endpoint.Port, ct).ConfigureAwait(false);
+#endif
         _tcp.NoDelay = true;
         _tcp.ReceiveBufferSize = 16384;
         _tcp.SendBufferSize = 16384;
@@ -149,22 +158,15 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
     }
 
     /// <summary>Frame a packet (gate + codec(payload)) and write it. Thread-safe.</summary>
+    /// <exception cref="ArgumentException"><paramref name="gate"/> is empty or longer than 127 UTF-8 bytes (the server's limit).</exception>
     public async Task SendAsync<T>(string gate, T payload, CancellationToken ct = default)
     {
         var stream = _stream ?? throw new InvalidOperationException(
             "AltruistTcpClient not connected. Call ConnectAsync first.");
 
-        var gateBytes = Encoding.UTF8.GetBytes(gate);
-        if (gateBytes.Length > byte.MaxValue) throw new InvalidOperationException(
-            $"Gate name too long ({gateBytes.Length} bytes); max is 255.");
-
-        var payloadBytes = _codec.Serialize(payload);
-        var bodyLen = 1 + gateBytes.Length + payloadBytes.Length;
-        var frame = new byte[4 + bodyLen];
-        BinaryPrimitives.WriteInt32LittleEndian(frame, bodyLen);
-        frame[4] = (byte)gateBytes.Length;
-        Buffer.BlockCopy(gateBytes, 0, frame, 5, gateBytes.Length);
-        Buffer.BlockCopy(payloadBytes, 0, frame, 5 + gateBytes.Length, payloadBytes.Length);
+        var gateBytes = ClientFrame.GateBytes(gate);
+        var frame = ClientFrame.Build(gateBytes, _codec.Serialize(payload), headroom: 4);
+        BinaryPrimitives.WriteInt32LittleEndian(frame, frame.Length - 4);
 
         // SemaphoreSlim — async-friendly mutex. Holds across the await so two
         // concurrent SendAsync calls can't interleave bytes on the wire.

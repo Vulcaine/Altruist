@@ -97,9 +97,9 @@ internal sealed class ContainerSnapshot
     public bool CanAnchorItemAt(ushort anchorCell, int width, int height, ReadOnlySpan<ushort> ignoreAnchors)
     {
         if (width <= 0 || height <= 0) return false;
-        if (!IsAnchorValid(anchorCell, (byte)width, (byte)height)) return false;
+        if (!IsAnchorValid(anchorCell, width, height)) return false;
 
-        foreach (var (cell, _) in EnumerateFootprint(anchorCell, (byte)width, (byte)height))
+        foreach (var (cell, _) in EnumerateFootprint(anchorCell, width, height))
         {
             if (!_coverage.TryGetValue(cell, out var occupantAnchor)) continue;
             if (ContainsAnchor(ignoreAnchors, occupantAnchor)) continue;
@@ -148,20 +148,20 @@ internal sealed class ContainerSnapshot
     /// For grids, footprint extends right + down; equipment containers always
     /// produce just the single anchor cell.
     /// </summary>
-    private IEnumerable<(ushort cell, byte dx)> EnumerateFootprint(ushort anchorCell, byte w, byte h)
+    private IEnumerable<(ushort cell, int dx)> EnumerateFootprint(ushort anchorCell, int w, int h)
     {
         switch (Layout)
         {
             case GridLayout grid:
                 if (!grid.TryToCoords(anchorCell, out short ax, out short ay)) yield break;
-                for (byte dy = 0; dy < h; dy++)
+                for (int dy = 0; dy < h; dy++)
                 {
-                    for (byte dx = 0; dx < w; dx++)
+                    for (int dx = 0; dx < w; dx++)
                     {
-                        short cx = (short)(ax + dx);
-                        short cy = (short)(ay + dy);
+                        int cx = ax + dx;
+                        int cy = ay + dy;
                         if (cx >= grid.Columns || cy >= grid.Rows) continue;
-                        yield return (grid.ToCell(cx, cy), dx);
+                        yield return (grid.ToCell((short)cx, (short)cy), dx);
                     }
                 }
                 break;
@@ -173,7 +173,7 @@ internal sealed class ContainerSnapshot
         }
     }
 
-    private bool IsAnchorValid(ushort anchorCell, byte width, byte height)
+    private bool IsAnchorValid(ushort anchorCell, int width, int height)
     {
         switch (Layout)
         {

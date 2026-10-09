@@ -126,7 +126,7 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
         {
             var codec = codecResolver.Resolve(wsConf.Codec.Provider);
             _ws = new AltruistWebSocketClient(
-                new Uri($"ws://{wsConf.Host}:{wsConf.Port}"),
+                wsConf.WebSocketUri(),
                 codec);
         }
 
@@ -160,6 +160,7 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
     /// <inheritdoc/>
     public async Task ConnectAsync(bool autoPump = true, CancellationToken ct = default)
     {
+        _dispatcher.RegisterDiscoveredHandlers();
         if (_tcp is not null) await _tcp.ConnectAsync(ct).ConfigureAwait(false);
         _udp?.Bind(0);
         if (_ws is not null) await _ws.ConnectAsync(ct).ConfigureAwait(false);
@@ -267,12 +268,9 @@ public sealed class AltruistClientRouter : IAltruistClientRouter, IAsyncDisposab
     {
         while (!ct.IsCancellationRequested)
         {
-            try
-            {
-                var bytes = await _ws!.ReceiveAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-                if (bytes is { Length: > 0 }) _dispatcher.Dispatch(bytes, _wsCodec!);
-            }
-            catch (Exception ex) { OnError?.Invoke(ex); return; }
+            var bytes = await _ws!.ReceiveAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            if (bytes is { Length: > 0 }) _dispatcher.Dispatch(bytes, _wsCodec!);
+            else if (bytes is null && !_ws.IsConnected) return; // closed: OnDisconnected was raised
         }
     }
 

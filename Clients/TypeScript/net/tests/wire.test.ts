@@ -170,7 +170,11 @@ describe('envelopes', () => {
     assert.equal(peekMessageCode(new Uint8Array([0x93, 0xcc, 200]).buffer), 200);
   });
 
-  it('extractMessage returns empty for non-fixarray(3) and malformed frames', () => {
+  it('extractMessage returns empty for non-envelope arrays and malformed frames, and reads array16/32 envelopes like C#', () => {
+    assert.deepEqual([...extractMessage(bytes('dc000301c0cd1092'))], [0xcd, 0x10, 0x92]);
+    assert.deepEqual([...extractMessage(bytes('dd0000000301c0c3'))], [0xc3]);
+    assert.equal(extractMessage(bytes('dc000201c0')).length, 0);
+    assert.equal(extractMessage(bytes('9301c7ff')).length, 0); // truncated ext8 header
     assert.equal(extractMessage(bytes('9100')).length, 0);
     assert.equal(extractMessage(bytes('9301')).length, 0);
     assert.equal(extractMessage(bytes('9301c0')).length, 0);

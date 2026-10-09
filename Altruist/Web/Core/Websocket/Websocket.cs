@@ -25,6 +25,9 @@ namespace Altruist.Web
     {
         [JsonIgnore] private readonly WebSocket? _webSocket;
 
+        /// <summary>Always <c>websocket</c> (selects <c>altruist:server:transport:websocket:codec</c>).</summary>
+        public override string? TransportMode => "websocket";
+
         /// <summary>Upper bound for one reassembled inbound message; larger messages close the connection.</summary>
         public const int MaxMessageBytes = 1024 * 1024;
 

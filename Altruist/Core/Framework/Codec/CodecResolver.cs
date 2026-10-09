@@ -13,7 +13,7 @@ namespace Altruist;
 
 /// <summary>
 /// Resolves the correct ICodec based on transport mode and config.
-/// Resolution order: transport-specific config → global config → first available.
+/// Resolution order: transport-specific config → global config → <c>messagepack</c>.
 ///
 /// Discovers all [CodecProvider("name")] types at startup and instantiates them on demand.
 /// This works independently of ConditionalOnConfig — codecs that aren't the global default
@@ -22,8 +22,8 @@ namespace Altruist;
 /// <remarks>
 /// Config keys: <c>altruist:server:transport:&lt;mode&gt;:codec:provider</c> (per transport, e.g. <c>websocket</c>,
 /// <c>tcp</c>) and <c>altruist:server:transport:codec:provider</c> (global). Unknown names fall through to the next step
-/// silently. Registered as a singleton by <see cref="CodecResolver"/> only when <c>altruist:server:transport</c> is
-/// configured. Inject this instead of <see cref="ICodec"/> when the codec must follow config or differ per transport.
+/// <c>tcp</c>) and <c>altruist:server:transport:codec:provider</c> (global, default <c>messagepack</c>). A configured name that no
+/// codec provides throws. Registered as a singleton by <see cref="CodecResolver"/> only when <c>altruist:server:transport</c> is
 /// </remarks>
 /// <example>
 /// <code>
@@ -38,15 +38,15 @@ public interface ICodecResolver
     /// Pass null for the global default.
     /// </summary>
     /// <param name="transportMode">Transport name as used in config (e.g. <c>websocket</c>, <c>tcp</c>), or <c>null</c>.</param>
-    /// <returns>The per-transport codec, else the global default, else the first discovered codec.</returns>
-    /// <exception cref="InvalidOperationException">No <see cref="CodecProviderAttribute"/> codec exists at all.</exception>
+    /// <returns>The per-transport codec, else the global one (<c>messagepack</c> when unconfigured).</returns>
+    /// <exception cref="InvalidOperationException">A configured provider name has no <see cref="CodecProviderAttribute"/> codec.</exception>
     ICodec Resolve(string? transportMode = null);
 
     /// <summary>
     /// Resolve the codec based on the connection type (WebSocketConnection → "websocket", etc.).
     /// </summary>
-    /// <remarks>The mode is inferred from the connection's class name: containing "WebSocket" maps to <c>websocket</c>,
-    /// containing "Tcp" to <c>tcp</c>, anything else to the global default.</remarks>
+    /// <remarks>The mode is the connection's <see cref="AltruistConnection.TransportMode"/> (<c>websocket</c>, <c>tcp</c>,
+    /// <c>udp</c>); connections without one use the global default.</remarks>
     /// <param name="connection">The connection whose transport decides the codec.</param>
     ICodec ResolveForConnection(AltruistConnection connection);
 
@@ -66,56 +66,26 @@ public class CodecResolver : ICodecResolver
     private readonly IConfiguration _config;
     private readonly ILogger _logger;
 
-    /// <summary>Discovers and instantiates all codec providers. Constructed by DI.</summary>
+    /// <summary>Instantiates every codec provider (reusing the DI-registered global <see cref="ICodec"/>). Constructed by DI.</summary>
     public CodecResolver(IServiceProvider serviceProvider, IConfiguration config, ILoggerFactory loggerFactory)
     {
         _config = config;
         _logger = loggerFactory.CreateLogger<CodecResolver>();
 
-        // 1. Collect DI-registered codecs (the global default from ConditionalOnConfig)
-        var diCodecs = serviceProvider.GetServices<ICodec>();
-        foreach (var codec in diCodecs)
+        // The global codec is a DI singleton: share that instance.
+        foreach (var codec in serviceProvider.GetServices<ICodec>())
         {
             var attr = codec.GetType().GetCustomAttribute<CodecProviderAttribute>();
             if (attr != null)
                 _codecs[attr.Name] = codec;
         }
 
-        // 2. Discover all [CodecProvider] types not yet registered (for per-transport overrides)
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies()
-            .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName));
-
-        foreach (var assembly in assemblies)
+        foreach (var (name, type) in CodecProviders.FindTypes())
         {
-            try
-            {
-                foreach (var type in assembly.GetTypes())
-                {
-                    if (type.IsAbstract || type.IsInterface || !typeof(ICodec).IsAssignableFrom(type))
-                        continue;
-
-                    var providerAttr = type.GetCustomAttribute<CodecProviderAttribute>();
-                    if (providerAttr == null || _codecs.ContainsKey(providerAttr.Name))
-                        continue;
-
-                    // Instantiate codec not yet in DI (needed for per-transport override)
-                    try
-                    {
-                        var instance = ActivatorUtilities.CreateInstance(serviceProvider, type) as ICodec;
-                        if (instance != null)
-                        {
-                            _codecs[providerAttr.Name] = instance;
-                            _logger.LogDebug("Discovered codec provider: {Name} ({Type})", providerAttr.Name, type.Name);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to instantiate codec provider {Name} ({Type})",
-                            providerAttr.Name, type.Name);
-                    }
-                }
-            }
-            catch (ReflectionTypeLoadException) { }
+            if (_codecs.ContainsKey(name))
+                continue;
+            _codecs[name] = (ICodec)ActivatorUtilities.CreateInstance(serviceProvider, type);
+            _logger.LogDebug("Discovered codec provider: {Name} ({Type})", name, type.Name);
         }
 
         if (_codecs.Count > 0)
@@ -123,44 +93,69 @@ public class CodecResolver : ICodecResolver
     }
 
     /// <inheritdoc/>
+    /// <exception cref="InvalidOperationException">A configured provider name has no <see cref="CodecProviderAttribute"/> codec.</exception>
     public ICodec Resolve(string? transportMode = null)
     {
-        // 1. Transport-specific override
         if (!string.IsNullOrEmpty(transportMode))
         {
             var specific = _config[$"altruist:server:transport:{transportMode}:codec:provider"];
-            if (!string.IsNullOrEmpty(specific) && _codecs.TryGetValue(specific, out var c))
-                return c;
+            if (!string.IsNullOrEmpty(specific))
+                return Named(specific, $"altruist:server:transport:{transportMode}:codec:provider");
         }
 
-        // 2. Global default
-        var global = _config["altruist:server:transport:codec:provider"];
-        if (!string.IsNullOrEmpty(global) && _codecs.TryGetValue(global, out var g))
-            return g;
-
-        // 3. First available
-        if (_codecs.Count > 0)
-            return _codecs.Values.First();
-
-        throw new InvalidOperationException(
-            "No codec providers found. Implement ICodec with [CodecProvider(\"name\")] " +
-            "and configure altruist:server:transport:codec:provider in config.yml.");
+        var global = _config[CodecProviders.GlobalProviderKey];
+        return Named(string.IsNullOrEmpty(global) ? CodecProviders.DefaultProvider : global, CodecProviders.GlobalProviderKey);
     }
+
+    private ICodec Named(string provider, string key) =>
+        _codecs.TryGetValue(provider, out var codec)
+            ? codec
+            : throw new InvalidOperationException(
+                $"{key} is '{provider}', but no codec has [CodecProvider(\"{provider}\")]. Available: {string.Join(", ", _codecs.Keys)}.");
 
     /// <inheritdoc/>
-    public ICodec ResolveForConnection(AltruistConnection connection)
-    {
-        var transportMode = connection switch
-        {
-            _ when connection.GetType().Name.Contains("WebSocket", StringComparison.OrdinalIgnoreCase) => "websocket",
-            _ when connection.GetType().Name.Contains("Tcp", StringComparison.OrdinalIgnoreCase) => "tcp",
-            _ => null
-        };
-
-        return Resolve(transportMode);
-    }
+    public ICodec ResolveForConnection(AltruistConnection connection) => Resolve(connection.TransportMode);
 
     /// <inheritdoc/>
     public ICodec? GetByName(string providerName)
         => _codecs.TryGetValue(providerName, out var codec) ? codec : null;
+}
+
+/// <summary>
+/// Finds and builds <see cref="CodecProviderAttribute"/> codecs by name, and registers the application's
+/// <see cref="ICodec"/>: the codec named by <c>altruist:server:transport:codec:provider</c> (default
+/// <see cref="DefaultProvider"/>). Inject <see cref="ICodec"/> for the global codec; inject <see cref="ICodecResolver"/>
+/// when the codec may differ per transport.
+/// </summary>
+public sealed class CodecProviders
+{
+    /// <summary>Config key of the global codec provider.</summary>
+    public const string GlobalProviderKey = "altruist:server:transport:codec:provider";
+
+    /// <summary>The provider used when <see cref="GlobalProviderKey"/> is not set.</summary>
+    public const string DefaultProvider = "messagepack";
+
+    private CodecProviders() { }
+
+    /// <summary>The application's global <see cref="ICodec"/> (a DI bean; singleton).</summary>
+    /// <param name="services">Provider the codec's own dependencies are resolved from.</param>
+    /// <param name="provider">The configured provider name.</param>
+    /// <exception cref="InvalidOperationException">No codec has that provider name.</exception>
+    [Bean]
+    public static ICodec GlobalCodec(IServiceProvider services, [AppConfigValue(GlobalProviderKey, DefaultProvider)] string provider)
+    {
+        var type = FindTypes().FirstOrDefault(t => string.Equals(t.Name, provider, StringComparison.OrdinalIgnoreCase)).Type
+            ?? throw new InvalidOperationException($"{GlobalProviderKey} is '{provider}', but no codec has [CodecProvider(\"{provider}\")].");
+        return (ICodec)ActivatorUtilities.CreateInstance(services, type);
+    }
+
+    /// <summary>Every concrete <see cref="ICodec"/> with a <see cref="CodecProviderAttribute"/> in the loaded assemblies.</summary>
+    public static IEnumerable<(string Name, Type Type)> FindTypes() =>
+        AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
+            .SelectMany(TypeDiscovery.SafeGetTypes)
+            .Where(t => t is { IsAbstract: false, IsInterface: false } && typeof(ICodec).IsAssignableFrom(t))
+            .Select(t => (Attribute: t.GetCustomAttribute<CodecProviderAttribute>(), Type: t))
+            .Where(x => x.Attribute is not null)
+            .Select(x => (x.Attribute!.Name, x.Type));
 }

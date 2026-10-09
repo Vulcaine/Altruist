@@ -59,10 +59,12 @@ namespace Altruist
         private readonly OutboundQueues? _outbound;
 
         private readonly int _idleTimeout;
+        private readonly Task _waitingRoom;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ConnectionSession> _sessions = new();
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<System.Reflection.MethodInfo, System.Reflection.ParameterInfo[]> ParameterCache = new();
 
-        /// <summary>DI constructor. Also ensures the waiting room exists (fire-and-forget).</summary>
+        /// <summary>DI constructor. Also starts creating the waiting room, which every connection awaits before joining it.</summary>
         /// <param name="socketManager">Connection/room registry.</param>
         /// <param name="codecResolver">Resolves the default codec used to decode packets.</param>
         /// <param name="loggerFactory">Logger factory.</param>
@@ -95,13 +97,11 @@ namespace Altruist
                 foreach (var interceptor in interceptors)
                     AddInterceptor(interceptor);
 
-            Initialize();
+            // Started here, awaited before the first connection joins it (it used to be fire-and-forget:
+            // a connection could arrive before the room existed, and a failure went unnoticed).
+            _waitingRoom = CreateRoomAsync(StoreConstants.WaitingRoomId);
         }
 
-        private void Initialize()
-        {
-            CreateRoomAsync(StoreConstants.WaitingRoomId).GetAwaiter();
-        }
 
         /// <summary>
         /// Adds an interceptor that runs before gate handlers. Prefer registering it in DI with <c>[Service(typeof(IInterceptor))]</c>;
@@ -138,21 +138,26 @@ namespace Altruist
 
         /// <summary>
         /// Dispatches one decoded packet: resolves the gate handler for <c>packet.Event</c>, decodes the payload into the
-        /// handler's packet parameter type, runs interceptors (a rejection skips the handler), sets <see cref="PacketContext"/>
-        /// (raw bytes and, for <see cref="ILagCompensated"/> packets, the client tick) and invokes the handler.
-        /// Called by the read loop; call it directly only for custom transports/relays.
+        /// handler's packet parameter type with the global codec, runs interceptors (a rejection skips the handler), sets
+        /// <see cref="PacketContext"/> (raw bytes and, for <see cref="ILagCompensated"/> packets, the client tick) and
+        /// invokes the handler. Called by the read loop (with the connection's per-transport codec); call it directly only
+        /// for custom transports/relays.
         /// </summary>
         /// <remarks>
         /// Supported handler shapes: <c>()</c>, <c>(string clientId)</c>, <c>(TPacket packet, string clientId)</c>.
-        /// Interceptors are only run when a packet object exists (handlers with a packet parameter) or for unknown events.
+        /// Interceptors run for every packet: handlers of any shape (with a null packet for the first two), unknown events
+        /// and undecodable payloads (null packet). An undecodable payload is dropped; the connection stays open.
         /// Exceptions thrown by the handler propagate (and end the read loop).
         /// </remarks>
         /// <param name="packet">Envelope carrying the event name.</param>
         /// <param name="bytes">Payload bytes to decode into the handler's packet type.</param>
         /// <param name="event">Route (portal path) of the connection.</param>
         /// <param name="clientId">Connection id of the sender.</param>
-        /// <returns><c>false</c> when the packet has no event or the payload failed to decode (the read loop then closes the connection); otherwise <c>true</c>, including for rejected and unknown events.</returns>
-        public async Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId)
+        /// <returns><c>false</c> when the packet has no event (the read loop then closes the connection); otherwise <c>true</c>, including for rejected, unknown and undecodable packets.</returns>
+        public Task<bool> ProcessPacket(AltruistPacket packet, byte[] bytes, string @event, string clientId) =>
+            ProcessPacketAsync(_defaultCodec, packet, bytes, @event, clientId);
+
+        private async Task<bool> ProcessPacketAsync(ICodec codec, AltruistPacket packet, byte[] bytes, string @event, string clientId)
         {
             if (string.IsNullOrEmpty(packet.Event))
                 return false;
@@ -181,7 +186,7 @@ namespace Altruist
                     var decodeStart = Stopwatch.GetTimestamp();
                     if (hasPacketPayload && parameterType is not null && data.Length > 0)
                     {
-                        message = _defaultCodec.Decoder.Decode<IPacket>(data, parameterType);
+                        message = codec.Decoder.Decode<IPacket>(data, parameterType);
                     }
                     else if (hasPacketPayload && parameterType is not null)
                     {
@@ -192,9 +197,12 @@ namespace Altruist
                 catch (Exception decodeEx)
                 {
                     decodeMs = 0;
-                    _logger.LogWarning("Failed to decode {Len} bytes as {Type}: {Error}", data.Length, parameterType?.Name ?? "empty", decodeEx.Message);
+                    // Client input: logged at debug only. The packet is dropped (a default-constructed packet never
+                    // reaches the handler) and the connection stays open; the interceptors still see it, like an
+                    // unknown event, so a client cannot spam undecodable payloads past the rate limits.
+                    _logger.LogDebug("Failed to decode {Len} bytes as {Type}: {Error}", data.Length, parameterType?.Name ?? "empty", decodeEx.Message);
                     error = decodeEx.Message;
-                    // Never hand a default-constructed packet to the handler: drop the message.
+                    await RunInterceptorsAsync(context, null);
                     await RecordPacketAsync(
                         connectionId: clientId,
                         route: @event,
@@ -207,26 +215,13 @@ namespace Altruist
                         decodeMs: null,
                         handlerMs: null,
                         error: error);
-                    return false;
+                    return true;
                 }
 
-                // Interceptors finish before the handler runs so they can veto the packet
-                // (rate limits, size caps). A single interceptor is awaited directly (no array/WhenAll).
-                if (_interceptors.Count == 1 && message is not null)
-                {
-                    await _interceptors[0].Intercept(context, message);
-                    if (context.Rejected)
-                        return true;
-                }
-                else if (_interceptors.Count > 0 && message is not null)
-                {
-                    var tasks = new Task[_interceptors.Count];
-                    for (int i = 0; i < _interceptors.Count; i++)
-                        tasks[i] = _interceptors[i].Intercept(context, message);
-                    await Task.WhenAll(tasks);
-                    if (context.Rejected)
-                        return true;
-                }
+                // Interceptors finish before the handler runs so they can veto the packet (rate limits, size caps),
+                // whatever the handler's shape: a () or (clientId) gate has no packet object but is still rate-limited.
+                if (await RunInterceptorsAsync(context, message))
+                    return true;
 
                 PacketContext.Set(data);
 
@@ -277,14 +272,7 @@ namespace Altruist
             {
                 // Unknown events still pass the interceptors (rate limits) so a client cannot spam
                 // them for free. The name is client-chosen: sanitized and logged at debug only.
-                if (_interceptors.Count > 0)
-                {
-                    var context = new InterceptContext(packet.Event, clientId, bytes.Length, @event);
-                    var tasks = new Task[_interceptors.Count];
-                    for (int i = 0; i < _interceptors.Count; i++)
-                        tasks[i] = _interceptors[i].Intercept(context, null!);
-                    await Task.WhenAll(tasks);
-                }
+                await RunInterceptorsAsync(new InterceptContext(packet.Event, clientId, bytes.Length, @event), null);
                 _logger.LogDebug("No handler found for event: {Event}", SanitizeForLog(packet.Event));
                 await RecordPacketAsync(
                     connectionId: clientId,
@@ -301,6 +289,23 @@ namespace Altruist
             }
 
             return true;
+        }
+
+        // Returns true when an interceptor rejected the packet. A single interceptor is awaited directly (no array/WhenAll).
+        private async Task<bool> RunInterceptorsAsync(InterceptContext context, IPacket? message)
+        {
+            if (_interceptors.Count == 0)
+                return false;
+            if (_interceptors.Count == 1)
+            {
+                await _interceptors[0].Intercept(context, message!);
+                return context.Rejected;
+            }
+            var tasks = new Task[_interceptors.Count];
+            for (int i = 0; i < _interceptors.Count; i++)
+                tasks[i] = _interceptors[i].Intercept(context, message!);
+            await Task.WhenAll(tasks);
+            return context.Rejected;
         }
 
         /// <summary>Printable ASCII only, at most 64 chars (event names come from clients).</summary>
@@ -410,6 +415,9 @@ namespace Altruist
                 ? clientId
                 : connection.ConnectionId;
 
+            await _waitingRoom;
+            var session = new ConnectionSession(portals);
+            _sessions[clientId] = session;
             await _socketManager.AddConnectionAsync(clientId, connection, StoreConstants.WaitingRoomId);
 
             foreach (var portal in portals)
@@ -429,13 +437,14 @@ namespace Altruist
 
             Exception? failureException = null;
             var idleTimeout = TimeSpan.FromSeconds(_idleTimeout);
+            var codec = _codecResolver.ResolveForConnection(connection);
 
             try
             {
-                if (_defaultCodec is IFramedCodec framedCodec)
-                    await RunFramedReadLoop(connection, framedCodec.Framer, @event, clientId, idleTimeout);
+                if (codec is IFramedCodec framedCodec)
+                    await RunFramedReadLoop(connection, codec, framedCodec.Framer, @event, clientId, idleTimeout);
                 else
-                    await RunStandardReadLoop(connection, @event, clientId, idleTimeout);
+                    await RunStandardReadLoop(connection, codec, @event, clientId, idleTimeout);
             }
             catch (TimeoutException tex)
             {
@@ -453,7 +462,7 @@ namespace Altruist
             {
                 try
                 {
-                    await DisconnectAsync(clientId, portals, failureException);
+                    await DisconnectSessionAsync(clientId, session, failureException);
                 }
                 catch (Exception ex)
                 {
@@ -467,12 +476,12 @@ namespace Altruist
         /// Each ReceiveAsync call returns exactly one complete message.
         /// </summary>
         private async Task RunStandardReadLoop(
-            AltruistConnection connection, string @event, string clientId, TimeSpan idleTimeout)
+            AltruistConnection connection, ICodec codec, string @event, string clientId, TimeSpan idleTimeout)
         {
             // One timeout source per connection, re-armed per message (a new source plus timer per
             // message was a large share of the per-packet allocations at 60 inputs/s).
             using var cts = new CancellationTokenSource();
-            bool isJsonCodec = _defaultCodec.GetType().Name.Contains("Json", StringComparison.OrdinalIgnoreCase);
+            bool isJsonCodec = codec.GetType().Name.Contains("Json", StringComparison.OrdinalIgnoreCase);
             while (true)
             {
                 byte[] packetData;
@@ -511,13 +520,13 @@ namespace Altruist
                     }
                     else
                     {
-                        packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
+                        packet = codec.Decoder.Decode<AltruistPacket>(packetData);
                         payloadBytes = packetData;
                     }
                 }
                 else
                 {
-                    packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
+                    packet = codec.Decoder.Decode<AltruistPacket>(packetData);
 
                     // For JSON: extract the "data" field as the payload for gate handlers.
                     // Client sends: {"event":"hello","data":{"text":"Hi!"}}
@@ -548,7 +557,7 @@ namespace Altruist
                     }
                 }
 
-                if (!await ProcessPacket(packet, payloadBytes, @event, clientId))
+                if (!await ProcessPacketAsync(codec, packet, payloadBytes, @event, clientId))
                     break;
             }
         }
@@ -559,7 +568,7 @@ namespace Altruist
         /// Multiple packets per read are processed; partial packets are carried over.
         /// </summary>
         private async Task RunFramedReadLoop(
-            AltruistConnection connection, IPacketFramer framer, string @event, string clientId, TimeSpan idleTimeout)
+            AltruistConnection connection, ICodec codec, IPacketFramer framer, string @event, string clientId, TimeSpan idleTimeout)
         {
             // Use a growable buffer backed by ArrayPool to avoid per-receive allocations
             int accLength = 0;
@@ -614,8 +623,8 @@ namespace Altruist
                             accLength -= consumed;
                         }
 
-                        var packet = _defaultCodec.Decoder.Decode<AltruistPacket>(packetData);
-                        if (!await ProcessPacket(packet, packetData, @event, clientId))
+                        var packet = codec.Decoder.Decode<AltruistPacket>(packetData);
+                        if (!await ProcessPacketAsync(codec, packet, packetData, @event, clientId))
                             return;
                     }
                 }
@@ -655,15 +664,37 @@ namespace Altruist
         }
 
         /// <summary>
-        /// Closes the client's connection immediately and runs the disconnect path (portal <c>OnDisconnectedAsync</c>, per-connection
-        /// state cleanup, store removal). Note: this overload notifies every portal, not only those on the client's route.
-        /// To close gracefully after pending sends, use the outbound sender's <c>CloseAfterFlush</c>; from engine/tick code prefer
-        /// <see cref="DisconnectEngineAwareAsync"/>.
+        /// Closes the client's connection immediately and runs the disconnect path (<c>OnDisconnectedAsync</c> of the portals
+        /// on the connection's route, per-connection state cleanup, store removal) exactly once: the read loop ending
+        /// because of this close does not run it again. Returns when the path has completed. A client this manager does not
+        /// own a read loop for gets the path with every portal. To close gracefully after pending sends, use the outbound
+        /// sender's <c>CloseAfterFlush</c>; from engine/tick code prefer <see cref="DisconnectEngineAwareAsync"/>.
         /// </summary>
         /// <param name="clientId">Connection id.</param>
-        public async Task DisconnectAsync(string clientId) => await DisconnectAsync(clientId, PortalGateRegistry<IPortal>.GetAllHandlers(), null);
+        public Task DisconnectAsync(string clientId) =>
+            _sessions.TryGetValue(clientId, out var session)
+                ? DisconnectSessionAsync(clientId, session, null)
+                : RunDisconnectPathAsync(clientId, PortalGateRegistry<IPortal>.GetAllHandlers(), null);
 
-        private async Task DisconnectAsync(string clientId, IReadOnlyList<IPortal> portals, Exception? failureException)
+        private async Task DisconnectSessionAsync(string clientId, ConnectionSession session, Exception? failureException)
+        {
+            if (!session.TryBegin())
+            {
+                await session.Completion;
+                return;
+            }
+            try
+            {
+                await RunDisconnectPathAsync(clientId, session.Portals, failureException);
+            }
+            finally
+            {
+                _sessions.TryRemove(new KeyValuePair<string, ConnectionSession>(clientId, session));
+                session.Complete();
+            }
+        }
+
+        private async Task RunDisconnectPathAsync(string clientId, IReadOnlyList<IPortal> portals, Exception? failureException)
         {
             await CloseConnection(clientId);
 
@@ -701,6 +732,20 @@ namespace Altruist
 
             await _socketManager.RemoveConnectionAsync(clientId);
             await _socketManager.Cleanup();
+        }
+
+        // One accepted connection: the portals on its route and whether its disconnect path has started.
+        private sealed class ConnectionSession
+        {
+            private int _started;
+            private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public ConnectionSession(IReadOnlyList<IPortal> portals) => Portals = portals;
+
+            public IReadOnlyList<IPortal> Portals { get; }
+            public Task Completion => _completion.Task;
+            public bool TryBegin() => Interlocked.Exchange(ref _started, 1) == 0;
+            public void Complete() => _completion.TrySetResult();
         }
 
         /// <summary>Removes the connection from the store without closing it or running disconnect hooks (see <see cref="DisconnectAsync(string)"/>).</summary>

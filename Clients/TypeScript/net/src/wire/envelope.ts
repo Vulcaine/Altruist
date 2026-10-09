@@ -64,15 +64,20 @@ export function peekMessageCode(frame: BytesLike): number {
 }
 
 /**
- * The packet bytes (element 2) of a fixarray(3) envelope, as a view into `frame` (no copy), or
- * an empty array when the frame is not a `0x93` array or is malformed (exactly C#
- * `MessageEnvelopeShape.ExtractMessage`, except that it returns a view instead of a copy and
- * supports every MessagePack type in the header). Feed the result to {@link decodeMsgPack}.
+ * The packet bytes (element 2) of a 3-element envelope array (fixarray `0x93`, or array16 / array32 with a count of 3:
+ * the headers {@link peekMessageCode} accepts), as a view into `frame` (no copy), or an empty array when the frame is
+ * not such an array or is malformed (exactly C# `MessageEnvelopeShape.ExtractMessage`, except that it returns a view
+ * instead of a copy). Feed the result to {@link decodeMsgPack}.
  */
 export function extractMessage(frame: BytesLike): Uint8Array {
   const d = asBytes(frame);
-  if (d.length < 3 || d[0] !== 0x93) return new Uint8Array(0);
-  let p = skipMsgPackValue(d, 1);
+  if (d.length < 3) return new Uint8Array(0);
+  let p: number;
+  if (d[0] === 0x93) p = 1;
+  else if (d[0] === 0xdc && ((d[1]! << 8) | d[2]!) === 3) p = 3;
+  else if (d[0] === 0xdd && d.length >= 5 && ((d[1]! << 24) | (d[2]! << 16) | (d[3]! << 8) | d[4]!) >>> 0 === 3) p = 5;
+  else return new Uint8Array(0);
+  p = skipMsgPackValue(d, p);
   if (p < 0) return new Uint8Array(0);
   p = skipMsgPackValue(d, p);
   if (p < 0 || p >= d.length) return new Uint8Array(0);

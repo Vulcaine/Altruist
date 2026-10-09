@@ -386,6 +386,59 @@ public class FleetTests
         Assert.Equal("b", await b.LocateAsync("lobby", "ABCDE"));
     }
 
+
+    /// <summary>Holds every GetAsync of a key until two callers have read it (both see the same owner).</summary>
+    private sealed class ReadTogetherBackplane : IFleetBackplane
+    {
+        private readonly IFleetBackplane _inner;
+        private readonly string _key;
+        private readonly TaskCompletionSource _both = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _readers;
+        public ReadTogetherBackplane(IFleetBackplane inner, string key) { _inner = inner; _key = key; }
+        public string Kind => _inner.Kind;
+        public bool Shared => _inner.Shared;
+        public Task SetAsync(string key, string value, TimeSpan ttl, CancellationToken ct = default) => _inner.SetAsync(key, value, ttl, ct);
+        public Task SetManyAsync(IReadOnlyCollection<KeyValuePair<string, string>> values, TimeSpan ttl, CancellationToken ct = default) => _inner.SetManyAsync(values, ttl, ct);
+        public Task<bool> SetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken ct = default) => _inner.SetIfAbsentAsync(key, value, ttl, ct);
+        public async Task<string?> GetAsync(string key, CancellationToken ct = default)
+        {
+            var value = await _inner.GetAsync(key, ct);
+            if (key == _key)
+            {
+                if (Interlocked.Increment(ref _readers) == 2) _both.TrySetResult();
+                await _both.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return value;
+        }
+        public Task<string?> TakeAsync(string key, CancellationToken ct = default) => _inner.TakeAsync(key, ct);
+        public Task<IReadOnlyDictionary<string, string>> GetByPrefixAsync(string prefix, CancellationToken ct = default) => _inner.GetByPrefixAsync(prefix, ct);
+        public Task DeleteAsync(string key, CancellationToken ct = default) => _inner.DeleteAsync(key, ct);
+        public Task<bool> DeleteIfValueAsync(string key, string value, CancellationToken ct = default) => _inner.DeleteIfValueAsync(key, value, ct);
+    }
+
+    [Fact]
+    public async Task Two_servers_taking_over_a_dead_owners_claim_at_once_yield_one_owner()
+    {
+        var (_, a) = Member("a");
+        await a.HeartbeatAsync();
+        Assert.True(await a.TryClaimAsync("lobby", "XYZ"));
+        _clock.Advance(TimeSpan.FromSeconds(7)); // a is gone, its claim still stored
+
+        var shared = new ReadTogetherBackplane(_backplane, "fleet:test:unit:lobby:XYZ");
+        Fleet Server(string id)
+        {
+            var node = new ServerNode(new ServerNodeOptions(), null, nodeId: id);
+            return new Fleet(shared, node, new FleetOptions { Cluster = "test", InternalAddress = "10.0.0.9:8080" }, utcNow: () => _clock.Now);
+        }
+        var b = Server("b");
+        var c = Server("c");
+        await b.HeartbeatAsync();
+        await c.HeartbeatAsync();
+
+        var won = await Task.WhenAll(b.TryClaimAsync("lobby", "XYZ"), c.TryClaimAsync("lobby", "XYZ"));
+
+        Assert.Single(won, w => w);
+    }
     [Fact]
     public async Task Work_handed_over_is_taken_once()
     {
