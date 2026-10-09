@@ -358,7 +358,7 @@ public abstract class AbstractConnectionStore : IConnectionStore
         var cursor = await _memoryCache.GetAllAsync<RoomPacket>();
         foreach (var room in cursor)
         {
-            if (room.ConnectionIds.Count < room.MaxCapactiy)
+            if (room.ConnectionIds.Count < room.MaxCapacity)
             {
                 return room;
             }

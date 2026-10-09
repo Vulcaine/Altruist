@@ -690,7 +690,7 @@ public class GameSessionService : IGameSessionService
         _logger.LogInformation(successMsg);
 
         // Success → ResultPacket(SuccessPacket)
-        return ResultPacket.Success(TransportCode.BadRequest, successMsg);
+        return ResultPacket.Success(TransportCode.Ok, successMsg);
     }
 
     /// <inheritdoc/>

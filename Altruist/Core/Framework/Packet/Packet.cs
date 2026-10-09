@@ -185,9 +185,9 @@ namespace Altruist
 
     /// <summary>Marker for the result of a framework request handler (handshake, join game): either a
     /// <see cref="SuccessPacket"/> or a <see cref="FailedPacket"/>. Create them with
-    /// <see cref="ResultPacket"/>. Note: the session portal only sends results that implement
-    /// <see cref="IResultPacketWithPayload"/>, and then only the payload itself, so a
-    /// <see cref="FailedPacket"/> returned from such a handler is not delivered to the client.</summary>
+    /// <see cref="ResultPacket"/>. The session portal delivers a success's payload when it has one, and
+    /// otherwise the result packet itself (a <see cref="FailedPacket"/> with its code and reason, or a
+    /// payload-less <see cref="SuccessPacket"/> with its code).</summary>
     public interface IResultPacket
     {
     }
@@ -398,18 +398,18 @@ namespace Altruist
         [Key(4)]
         public float[]? Position { get; set; }
 
-        /// <summary>An empty request: empty name, empty room id, world 0, position <c>[0, 0]</c>.</summary>
+        /// <summary>An empty request: empty name, no room id (null, the server chooses), world 0, position
+        /// <c>[0, 0]</c>. The same defaults as the other constructor.</summary>
         public JoinGamePacket()
         {
             MessageCode = PacketCodes.JoinGame;
             Name = string.Empty;
-            RoomId = string.Empty;
+            RoomId = null;
             Position = new[] { 0f, 0f };
             WorldIndex = 0;
         }
 
-        /// <summary>A join request. Note: <paramref name="roomId"/> defaults to null here, whereas the
-        /// parameterless constructor sets it to an empty string.</summary>
+        /// <summary>A join request; a null <paramref name="roomId"/> lets the server choose the room.</summary>
         public JoinGamePacket(string name, string? roomId = null, int? worldIndex = 0, float[]? position = null)
         {
             MessageCode = PacketCodes.JoinGame;
@@ -464,11 +464,16 @@ namespace Altruist
         [Key(1)]
         public string Id { get; set; }
 
-        /// <summary>Maximum number of connections (default 100; JSON <c>maxCapacity</c>). The property name is
-        /// misspelled (<c>MaxCapactiy</c>) in code; the wire name is correct.</summary>
+        /// <summary>Maximum number of connections (default 100; JSON <c>maxCapacity</c>).</summary>
         [JsonPropertyName("maxCapacity")]
         [Key(2)]
-        public uint MaxCapactiy { get; set; }
+        public uint MaxCapacity { get; set; }
+
+        /// <summary>Misspelled former name of <see cref="MaxCapacity"/> (not serialized).</summary>
+        [IgnoreMember]
+        [JsonIgnore]
+        [Obsolete("Use MaxCapacity.")]
+        public uint MaxCapactiy { get => MaxCapacity; set => MaxCapacity = value; }
 
         /// <summary>Connection ids currently in the room (JSON <c>connectionIds</c>).</summary>
         [JsonPropertyName("connectionIds")]
@@ -484,7 +489,7 @@ namespace Altruist
         {
             MessageCode = PacketCodes.Room;
             Id = string.Empty;
-            MaxCapactiy = 100;
+            MaxCapacity = 100;
             ConnectionIds = new HashSet<string>();
         }
 
@@ -493,7 +498,7 @@ namespace Altruist
         {
             MessageCode = PacketCodes.Room;
             Id = roomId;
-            MaxCapactiy = maxCapacity;
+            MaxCapacity = maxCapacity;
             ConnectionIds = new HashSet<string>();
         }
 
@@ -501,15 +506,10 @@ namespace Altruist
         public bool Has(string connectionId) => ConnectionIds.Contains(connectionId);
 
         /// <summary>Whether the room is at or over capacity.</summary>
-        public bool Full() => PlayerCount >= MaxCapactiy;
+        public bool Full() => PlayerCount >= MaxCapacity;
 
         /// <summary>Whether the room has no connections.</summary>
         public bool Empty() => PlayerCount == 0;
-
-        /// <summary>Compares this instance with <c>default</c> (null for a class), so it is always false on a
-        /// live instance.</summary>
-        public bool IsDefault() =>
-            EqualityComparer<RoomPacket>.Default.Equals(this, default);
 
         /// <summary>Adds <paramref name="connectionId"/> (mutates this instance) and returns it for chaining.</summary>
         public RoomPacket AddConnection(string connectionId)
@@ -530,7 +530,7 @@ namespace Altruist
         /// <summary>Formats as <c>Room[id]: count/capacity</c>.</summary>
         public override string ToString()
         {
-            return $"Room[{Id}]: {PlayerCount}/{MaxCapactiy}";
+            return $"Room[{Id}]: {PlayerCount}/{MaxCapacity}";
         }
     }
 }

@@ -106,7 +106,7 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
         await PublishResultAsync(finalResult);
     }
 
-    /// <summary>Handles <see cref="IngressEP.JoinGame"/>: the service validates the join, <see cref="OnJoinGameReceived"/> may change the result, and its payload is sent to the client.</summary>
+    /// <summary>Handles <see cref="IngressEP.JoinGame"/>: the service validates the join, <see cref="OnJoinGameReceived"/> may change the result, and the result goes to the client (see <see cref="PublishResultAsync(string, IResultPacket)"/>).</summary>
     /// <param name="message">The join request (player name, optional room id).</param>
     /// <param name="clientId">The sending client.</param>
     [Gate(IngressEP.JoinGame)]
@@ -244,18 +244,25 @@ public abstract class AltruistGameSessionPortal : Portal, OnConnectedAsync, OnDi
     // -----------------------------------
 
     // For handshake / join (ResultPacket → client)
-    /// <summary>Sends the payload of a result to the client (results without payload send nothing).</summary>
+    /// <summary>Sends a result to the client: the payload of a result that carries one (the answer packet
+    /// itself, e.g. a handshake response), otherwise the result packet (a <see cref="FailedPacket"/> with its
+    /// code and reason, or a payload-less <see cref="SuccessPacket"/> with its code). A result that is not a
+    /// packet and has no payload sends nothing.</summary>
     /// <param name="clientId">The client.</param>
     /// <param name="result">The result.</param>
     protected virtual async Task PublishResultAsync(string clientId, IResultPacket result)
     {
-        if (result is not IResultPacketWithPayload payloadPacket)
+        var packet = result switch
+        {
+            IResultPacketWithPayload { Payload: { } payload } => payload,
+            IPacketBase resultPacket => resultPacket,
+            _ => null
+        };
+
+        if (packet is null)
             return;
 
-        if (payloadPacket.Payload is null)
-            return;
-
-        await _router.Client.SendAsync(clientId, payloadPacket.Payload);
+        await _router.Client.SendAsync(clientId, packet);
     }
 
     // For exit game (RoomBroadcast → room)
