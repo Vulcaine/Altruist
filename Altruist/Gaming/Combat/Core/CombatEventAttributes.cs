@@ -52,9 +52,9 @@ public sealed class CombatHandlerAttribute : Attribute
 /// and <c>TA</c>/<c>TB</c> are concrete (non-abstract, non-interface) classes. Return type must be <c>void</c>.
 /// </para>
 /// <para>
-/// Matching is by EXACT runtime type: the dispatcher looks handlers up by <c>payload.GetType()</c> and the actors'
-/// <c>GetType()</c>, so a handler declared for a base class does not fire for a subclass, and <see cref="EventType"/>
-/// should be the concrete payload type raised (<see cref="HitEvent"/>, <see cref="SweepEvent"/>, <see cref="DeathEvent"/>).
+/// Matching: the payload by its exact runtime type, so <see cref="EventType"/> should be the concrete payload type raised
+/// (<see cref="HitEvent"/>, <see cref="SweepEvent"/>, <see cref="DeathEvent"/>); the actors by assignability, so a handler
+/// declared for a base class also fires for its subclasses.
 /// Single-actor handlers match the dispatch's primary actor only; two-actor handlers match the (primary, secondary)
 /// pair in either order (arguments are swapped to fit the declared parameter order).
 /// Actor order raised by <see cref="CombatService"/>: hit = (attacker, target); sweep = (attacker) only;

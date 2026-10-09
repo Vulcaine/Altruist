@@ -110,7 +110,7 @@ public class CombatService : ICombatService
         OnHit?.Invoke(hitEvent);
 
         if (killed)
-            Kill(target, source);
+            RaiseDeath(target, source);
 
         return new HitResult(target, damage, flags, killed);
     }
@@ -160,7 +160,13 @@ public class CombatService : ICombatService
     /// <inheritdoc/>
     public void Kill(ICombatEntity entity, ICombatEntity? killer = null)
     {
+        if (entity.IsDead) return;
         entity.Health = 0;
+        RaiseDeath(entity, killer);
+    }
+
+    private void RaiseDeath(ICombatEntity entity, ICombatEntity? killer)
+    {
         var deathEvent = new DeathEvent(entity, killer, entity.X, entity.Y, entity.Z);
         if (killer != null)
             _combatEvents?.Dispatch(deathEvent, entity, killer);
@@ -334,7 +340,8 @@ public class CombatService : ICombatService
             _ => new Vector3(query.DirectionX, query.DirectionY, query.DirectionZ),
         };
 
+    // The grid filters by 3D distance, so only a 3D sphere may use it: a planar circle ignores one axis.
     private static bool CanUseSpatialGrid(SweepQuery3D query)
-        => query.Space is SweepSpace.PlanarXZ or SweepSpace.ThreeD;
+        => query.Space == SweepSpace.ThreeD;
 
 }

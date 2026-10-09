@@ -229,8 +229,7 @@ public enum SweepSpace
     /// <summary>2D test on X/Y, Z ignored. Default for the float factories; matches XY-plane (2D-style) worlds.</summary>
     PlanarXY = 0,
     /// <summary>2D test on the X/Z ground plane, Y (height) ignored; the usual choice for +Y-up 3D games and what the
-    /// yaw factories use. Note: sphere queries over more than 50 world objects go through a 3D spatial-hash
-    /// broadphase that also bounds Y by the radius, so very tall height differences can be missed.</summary>
+    /// yaw factories use; height never limits the result, whatever the world's object count.</summary>
     PlanarXZ = 1,
     /// <summary>2D test on Y/Z, X ignored.</summary>
     PlanarYZ = 2,

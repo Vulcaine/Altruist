@@ -109,9 +109,9 @@ public interface ICombatService
     HitResult ApplyDamage(ICombatEntity source, ICombatEntity target, int damage, DamageFlags flags = DamageFlags.Normal, object? context = null);
 
     /// <summary>Kill an entity immediately.</summary>
-    /// <remarks>Sets health to 0 and raises <see cref="DeathEvent"/> (handlers + <see cref="OnDeath"/>). Does not
-    /// check whether the entity was already dead, so calling it twice raises two death events. Despawning/respawning
-    /// is up to the game.</remarks>
+    /// <remarks>Sets health to 0 and raises <see cref="DeathEvent"/> (handlers + <see cref="OnDeath"/>). An entity that
+    /// is already dead (<see cref="ICombatEntity.IsDead"/>) is left alone and raises no second death event.
+    /// Despawning/respawning is up to the game.</remarks>
     /// <param name="entity">Entity to kill.</param>
     /// <param name="killer">Credited killer, or null.</param>
     void Kill(ICombatEntity entity, ICombatEntity? killer = null);

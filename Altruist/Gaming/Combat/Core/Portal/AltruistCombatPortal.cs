@@ -47,11 +47,20 @@ public class DamagePacket : IPacketBase
     [Key(0)] public uint MessageCode { get; set; }
     /// <summary>Virtual id of the entity that was hit.</summary>
     [Key(1)] public uint VID { get; set; }
-    /// <summary>Low 8 bits of the hit's <see cref="DamageFlags"/> (<see cref="DamageFlags.Killed"/> does not fit;
-    /// a <see cref="DeathPacket"/> follows instead).</summary>
-    [Key(2)] public byte Flags { get; set; }
+    /// <summary>The hit's <see cref="DamageFlags"/>, with <see cref="DamageFlags.Killed"/> set on a lethal hit
+    /// (a <see cref="DeathPacket"/> follows it).</summary>
+    [Key(2)] public uint Flags { get; set; }
     /// <summary>Damage applied.</summary>
     [Key(3)] public int Damage { get; set; }
+
+    /// <summary>The packet announcing <paramref name="hit"/>.</summary>
+    /// <param name="hit">An applied hit.</param>
+    public static DamagePacket From(HitResult hit) => new()
+    {
+        VID = hit.Target.VirtualId,
+        Flags = (uint)(hit.Killed ? hit.Flags | DamageFlags.Killed : hit.Flags),
+        Damage = hit.Damage,
+    };
 }
 
 /// <summary>Server → client broadcast that an entity died, sent after its <see cref="DamagePacket"/>.</summary>
@@ -203,12 +212,7 @@ public abstract class AltruistCombatPortal : Portal
     /// <returns>A task completing when all sends finished (sequential).</returns>
     protected async Task BroadcastHit(ICombatEntity center, HitResult hit)
     {
-        var packet = new DamagePacket
-        {
-            VID = hit.Target.VirtualId,
-            Flags = (byte)hit.Flags,
-            Damage = hit.Damage,
-        };
+        var packet = DamagePacket.From(hit);
 
         foreach (var cid in GetNearbyClientIds(center, 5000f))
             await Router.Client.SendAsync(cid, packet);
