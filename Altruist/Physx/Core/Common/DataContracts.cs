@@ -24,9 +24,9 @@ namespace Altruist.Physx.Contracts
     /// </summary>
     /// <remarks>
     /// A body only honours the kinds of its own dimension (2D bodies ignore 3D kinds and vice versa); static bodies ignore
-    /// all. Backend semantics differ for forces/torques: Box2D accumulates <c>AddForce2D</c>/<c>AddTorque2D</c> over the next
-    /// step, while BEPU converts <c>AddForce3D</c> to the impulse <c>force * FixedDeltaTime</c> and applies
-    /// <c>AddTorque3D</c> as an angular impulse. Commands wake the body. For intent-level helpers prefer
+    /// all. Forces and torques are continuous: Box2D accumulates <c>AddForce2D</c>/<c>AddTorque2D</c> over the next step, and
+    /// BEPU applies <c>AddForce3D</c>/<c>AddTorque3D</c> during every fixed timestep of the next engine step that runs one.
+    /// Commands wake the body. For intent-level helpers prefer
     /// <c>BodyMotionExtensions2D</c> / <c>BodySteeringExtensions3D</c>.
     /// </remarks>
     /// <example><code>body.ApplyForce(PhysxForce.Impulse3D(new Vector3(0, 4f, 0)));</code></example>
@@ -37,7 +37,7 @@ namespace Altruist.Physx.Contracts
         {
             /// <summary>Continuous 2D force at the centre of mass.</summary>
             AddForce2D,
-            /// <summary>Continuous 3D force (BEPU: applied as impulse <c>force * FixedDeltaTime</c>).</summary>
+            /// <summary>Continuous 3D force (BEPU: acts over every timestep of the next engine step).</summary>
             AddForce3D,
             /// <summary>Instantaneous 2D linear impulse at the centre of mass.</summary>
             AddImpulse2D,
@@ -45,7 +45,7 @@ namespace Altruist.Physx.Contracts
             AddImpulse3D,
             /// <summary>2D torque about Z (counter-clockwise positive).</summary>
             AddTorque2D,
-            /// <summary>3D torque (BEPU: applied as an angular impulse).</summary>
+            /// <summary>Continuous 3D torque (BEPU: acts over every timestep of the next engine step).</summary>
             AddTorque3D,
             /// <summary>Overwrite the 2D linear velocity.</summary>
             SetLinearVelocity2D,
@@ -84,13 +84,13 @@ namespace Altruist.Physx.Contracts
         /// <param name="wZ">New angular velocity (radians/s, counter-clockwise positive).</param>
         public static PhysxForce AngularVelocity2D(float wZ) => new(Kind.SetAngularVelocity2D, new Vector3(0, 0, wZ));
 
-        /// <summary>Continuous 3D force (BEPU applies <c>f * FixedDeltaTime</c> as an impulse once per command).</summary>
+        /// <summary>Continuous 3D force (BEPU applies it during every timestep of the next engine step that runs one).</summary>
         /// <param name="f">Force (mass·units/s²).</param>
         public static PhysxForce Force3D(Vector3 f) => new(Kind.AddForce3D, f);
         /// <summary>Instantaneous 3D linear impulse.</summary>
         /// <param name="j">Impulse (mass·units/s).</param>
         public static PhysxForce Impulse3D(Vector3 j) => new(Kind.AddImpulse3D, j);
-        /// <summary>3D torque (BEPU applies it as an angular impulse, not scaled by the time step).</summary>
+        /// <summary>Continuous 3D torque (BEPU applies it during every timestep of the next engine step that runs one).</summary>
         /// <param name="tau">World-space axis × magnitude.</param>
         public static PhysxForce Torque3D(Vector3 tau) => new(Kind.AddTorque3D, tau);
         /// <summary>Overwrite the 3D linear velocity.</summary>

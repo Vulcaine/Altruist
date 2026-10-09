@@ -5,18 +5,15 @@ Licensed under the Apache License, Version 2.0
 */
 
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Numerics;
-using System.Runtime.InteropServices;
 
 using Altruist.Physx.Contracts;
 
 using BepuPhysics;
 using BepuPhysics.Collidables;
-using BepuPhysics.CollisionDetection;
-using BepuPhysics.Constraints;
 using BepuPhysics.Trees;
 
-using BepuUtilities;
 using BepuUtilities.Memory;
 
 namespace Altruist.Physx.ThreeD
@@ -35,35 +32,50 @@ namespace Altruist.Physx.ThreeD
 
     /// <summary>
     /// <see cref="IPhysxWorldEngine3D"/> backed by a BEPUphysics v2 <c>Simulation</c>. Create it through
-    /// <see cref="IPhysxWorldEngineFactory3D"/>, create bodies with <see cref="BepuPhysxBodyApiProvider3D"/>, then register
-    /// them with <see cref="AddBody"/>.
+    /// <see cref="IPhysxWorldEngineFactory3D"/> and create bodies with <see cref="BepuPhysxBodyApiProvider3D"/>; a body is
+    /// part of the simulation, <see cref="Bodies"/> and every query from creation until <see cref="RemoveBody"/>.
     /// </summary>
     /// <remarks>
     /// <para><b>Stepping.</b> <see cref="Step"/> clamps the frame delta to 0.25 s, accumulates it and runs whole
     /// <see cref="FixedDeltaTime"/> timesteps (0, 1 or several per call). Solver: 16 velocity iterations, 1 substep.
-    /// Gravity is added to every non-kinematic body's linear velocity each timestep; there is no damping.</para>
+    /// Gravity is added to every dynamic body's linear velocity each timestep; there is no damping. Continuous forces and
+    /// torques (<see cref="PhysxForce.Kind.AddForce3D"/>, <see cref="PhysxForce.Kind.AddTorque3D"/>) act during every
+    /// timestep of the next <see cref="Step"/> call that runs at least one timestep, then are cleared.</para>
+    /// <para><b>Shapes.</b> A body's colliders form one BEPU compound (one child per collider). A body without colliders
+    /// uses the descriptor's default box; a heightfield collider must be the only collider of a static or kinematic body.
+    /// Colliders are placed at the body origin with the body's orientation: their transform's position and rotation are
+    /// not applied. Replaced shapes are returned to the engine's buffer pool.</para>
     /// <para><b>Contacts.</b> Every pair collides (no layer filtering in the narrow phase) with fixed material
-    /// properties: friction 0.8, maximum recovery velocity 2, contact spring (frequency 30, damping ratio 1).
-    /// No collision or trigger events are raised.</para>
+    /// properties: friction 0.8, maximum recovery velocity 2, contact spring (frequency 30, damping ratio 1). A pair in
+    /// which either collider has <see cref="IPhysxCollider.IsTrigger"/> set produces no contact response.</para>
+    /// <para><b>Events.</b> After every timestep the engine raises, on both colliders of each touching collider pair,
+    /// <see cref="IPhysxCollider3D.OnCollisionEnter"/>/<see cref="IPhysxCollider3D.OnCollisionStay"/>/<see cref="IPhysxCollider3D.OnCollisionExit"/>
+    /// for solid pairs, or <see cref="IPhysxCollider.OnTriggerEnter"/>/<see cref="IPhysxCollider.OnTriggerExit"/> for
+    /// trigger pairs. Pairs whose non-static bodies are all asleep keep touching. Bodies without colliders raise nothing.
+    /// Handlers run on the stepping thread inside <see cref="Step"/> (under the engine lock); their exceptions propagate
+    /// out of <see cref="Step"/>.</para>
     /// <para><b>Threading.</b> The BEPU timestep runs on the calling thread (no thread dispatcher). All simulation access
     /// (stepping, queries, every body property get/set, collider attach) is serialised by one engine lock, so it is safe
     /// to call from several threads but they contend; a long <see cref="Step"/> blocks property reads.
     /// <see cref="RemoveBody"/> is lock-free and deferred to the next <see cref="Step"/>.</para>
     /// <para>Units: world units, seconds, radians; gravity is a per-second² vector supplied by the caller (typically −Y).</para>
     /// </remarks>
-    public sealed class BepuWorldEngine3D : IPhysxWorldEngine3D
+    public sealed partial class BepuWorldEngine3D : IPhysxWorldEngine3D
     {
+        private const float SpeculativeMargin = 0.1f;
+        private const float SleepThreshold = 0.01f;
+
         /// <inheritdoc/>
         public float FixedDeltaTime { get; }
 
-        /// <summary>Snapshot (new array per call) of the bodies registered with <see cref="AddBody"/>, taken under the engine lock.</summary>
+        /// <summary>Snapshot (new array per call) of the live bodies of this engine, taken under the engine lock.</summary>
         public IReadOnlyCollection<IPhysxBody3D> Bodies
         {
             get
             {
                 lock (_sync)
                 {
-                    return _bodies.Values.ToArray();
+                    return _bodies.Values.ToArray<IPhysxBody3D>();
                 }
             }
         }
@@ -73,13 +85,19 @@ namespace Altruist.Physx.ThreeD
         private readonly Simulation _simulation;
         private readonly BufferPool _pool = new();
 
-        private readonly Dictionary<string, IPhysxBody3D> _bodies = new();
+        private readonly Dictionary<string, Body3DAdapterBase> _bodies = new();
+        private readonly Dictionary<BodyHandle, DynamicBody3DAdapter> _bodiesByHandle = new();
+        private readonly Dictionary<StaticHandle, StaticBody3DAdapter> _staticsByHandle = new();
+        private readonly Dictionary<BodyHandle, ContinuousLoad> _continuousLoads = new();
+        private readonly ContactEventTracker _contacts;
 
         internal readonly object _sync = new();
 
         private readonly ConcurrentQueue<Action> _pending = new();
 
         private volatile bool _disposed;
+
+        private float _accumulator;
 
         /// <summary>Creates an engine with its own buffer pool and simulation. In DI-built code prefer <see cref="IPhysxWorldEngineFactory3D.Create"/>.</summary>
         /// <param name="gravity">Gravity acceleration in units per second².</param>
@@ -91,7 +109,9 @@ namespace Altruist.Physx.ThreeD
 
             FixedDeltaTime = fixedDeltaTime;
 
-            var narrow = new NarrowPhaseCallbacks();
+            _contacts = new ContactEventTracker(this);
+
+            var narrow = new NarrowPhaseCallbacks(_contacts);
             var pose = new PoseIntegratorCallbacks(gravity);
             var solve = new SolveDescription(16, 1);
             var stepper = new DefaultTimestepper();
@@ -117,12 +137,10 @@ namespace Altruist.Physx.ThreeD
                 action();
         }
 
-        private float _accumulator;
-
         /// <summary>
         /// Applies pending removals, advances the simulation by whole fixed timesteps covering
-        /// <c>min(deltaTime, 0.25)</c> plus the carried-over remainder, then applies removals queued meanwhile.
-        /// Holds the engine lock for the whole call.
+        /// <c>min(deltaTime, 0.25)</c> plus the carried-over remainder (raising contact events after each timestep), then
+        /// applies removals queued meanwhile. Holds the engine lock for the whole call.
         /// </summary>
         /// <param name="deltaTime">Elapsed frame time in seconds.</param>
         /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
@@ -134,76 +152,91 @@ namespace Altruist.Physx.ThreeD
 
                 DrainPending_NoLock();
 
-                deltaTime = MathF.Min(deltaTime, 0.25f);
-                _accumulator += deltaTime;
+                _accumulator += MathF.Min(deltaTime, 0.25f);
 
+                bool stepped = false;
                 while (_accumulator >= FixedDeltaTime)
                 {
+                    ApplyContinuousLoads_NoLock();
                     _simulation.Timestep(FixedDeltaTime);
                     _accumulator -= FixedDeltaTime;
+                    stepped = true;
+                    _contacts.Flush();
                 }
+
+                if (stepped)
+                    _continuousLoads.Clear();
 
                 DrainPending_NoLock();
             }
         }
 
         /// <summary>
-        /// Registers a body created by <see cref="BepuPhysxBodyApiProvider3D"/> (keyed by <see cref="IPhysxBody.Id"/>; an
-        /// existing entry with the same id is replaced). The body already exists in the simulation from creation; this makes
-        /// it visible in <see cref="Bodies"/> and query results; unregistered bodies still collide but are skipped by casts.
+        /// Confirms that <paramref name="body"/> belongs to this engine. Bodies join the simulation, <see cref="Bodies"/>
+        /// and queries when <see cref="BepuPhysxBodyApiProvider3D.CreateBody"/> creates them, so this registers nothing
+        /// new; it exists for the backend-agnostic <see cref="IPhysxWorldEngine3D"/> contract.
         /// </summary>
         /// <param name="body">BEPU body adapter.</param>
-        /// <exception cref="InvalidOperationException"><paramref name="body"/> was not created by the BEPU provider.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <paramref name="body"/> was not created by the BEPU provider for this engine, or it was removed.
+        /// </exception>
         /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
         public void AddBody(IPhysxBody3D body)
         {
-            if (body is not Body3DAdapterBase)
-                throw new InvalidOperationException("This engine can only add bodies created by the BEPU provider.");
+            var adapter = OwnBodyOrThrow(body);
 
             lock (_sync)
             {
                 ThrowIfDisposed();
 
-                var b = (Body3DAdapterBase)body;
-                _bodies[b.Id] = body;
+                if (!_bodies.TryGetValue(adapter.Id, out var registered) || !ReferenceEquals(registered, adapter))
+                    throw new InvalidOperationException($"Body '{adapter.Id}' has been removed from this engine.");
             }
         }
 
         /// <summary>
-        /// Queues removal of a registered body; it is removed from the simulation at the start (or end) of the next
-        /// <see cref="Step"/>, or on <see cref="Dispose"/>. After that, accessing the body's pose/velocity throws.
-        /// Non-BEPU and unregistered bodies are ignored.
+        /// Queues removal of a body; it is removed from the simulation (and its shape released) at the start (or end) of
+        /// the next <see cref="Step"/>, or on <see cref="Dispose"/>. Its colliders get exit events on the next timestep.
+        /// After that, accessing the body's pose/velocity throws. Non-BEPU bodies and bodies already removed are ignored.
         /// </summary>
         /// <param name="body">Body to remove.</param>
         /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
         public void RemoveBody(IPhysxBody3D body)
         {
-            if (body is not Body3DAdapterBase b)
+            if (body is not Body3DAdapterBase b || !ReferenceEquals(b.Engine, this))
                 return;
 
-            Enqueue(() =>
+            Enqueue(() => RemoveBody_NoLock(b));
+        }
+
+        private void RemoveBody_NoLock(Body3DAdapterBase body)
+        {
+            if (!_bodies.TryGetValue(body.Id, out var registered) || !ReferenceEquals(registered, body))
+                return;
+
+            _bodies.Remove(body.Id);
+            body.MarkRemoved();
+
+            switch (body)
             {
-                if (!_bodies.Remove(b.Id))
-                    return;
-
-                b.MarkRemoved();
-
-                if (b is DynamicBody3DAdapter dyn)
-                {
+                case DynamicBody3DAdapter dyn:
+                    _bodiesByHandle.Remove(dyn.Handle);
+                    _continuousLoads.Remove(dyn.Handle);
                     _simulation.Bodies.Remove(dyn.Handle);
-                }
-                else if (b is StaticBody3DAdapter stat)
-                {
+                    break;
+                case StaticBody3DAdapter stat:
+                    _staticsByHandle.Remove(stat.Handle);
                     _simulation.Statics.Remove(stat.Handle);
-                }
-            });
+                    break;
+            }
+
+            DisposeShape(body.Shape);
         }
 
         /// <inheritdoc/>
         /// <remarks>
-        /// Collects every hit along the segment, sorts by distance, then filters by layer and registration until
-        /// <paramref name="maxHits"/> are found. Allocates per call; mapping a hit to its body is a linear scan of the
-        /// registered bodies.
+        /// Bodies outside <paramref name="layerMask"/> are skipped during the cast, so they never hide bodies behind them.
+        /// Allocates per call.
         /// </remarks>
         public IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1, uint layerMask = 0xFFFFFFFFu)
         {
@@ -218,18 +251,17 @@ namespace Altruist.Physx.ThreeD
 
                 d /= maxT;
 
-                var collector = new QueryHitsCollector();
+                var collector = new QueryHitsCollector(this, layerMask, ignored: null);
                 _simulation.RayCast(ray.From, d, maxT, ref collector);
 
-                return BuildFilteredResults(collector, maxHits, layerMask);
+                return BuildResults(collector, maxHits);
             }
         }
 
         /// <inheritdoc/>
         /// <remarks>
-        /// The capsule is always upright (identity orientation). Implemented with a BEPU sweep (convergence 1e-4,
-        /// max 16 iterations). Hits on the body being moved itself are not excluded, so callers sweeping a body's own
-        /// shape should filter it out of the results.
+        /// Upright capsule (identity orientation) that can also hit the caller's own body; use
+        /// <see cref="CapsuleCast(in PhysxCapsuleCast3D)"/> to tilt the capsule or exclude a body.
         /// </remarks>
         public IEnumerable<PhysxRaycastHit3D> CapsuleCast(
             Vector3 center,
@@ -239,36 +271,48 @@ namespace Altruist.Physx.ThreeD
             float maxDistance,
             int maxHits = 1,
             uint layerMask = 0xFFFFFFFFu)
+            => CapsuleCast(new PhysxCapsuleCast3D(center, radius, halfLength, direction, maxDistance)
+            {
+                MaxHits = maxHits,
+                LayerMask = layerMask,
+            });
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Implemented with a BEPU sweep (convergence 1e-4, max 16 iterations). The ignored body and bodies outside the
+        /// layer mask are skipped during the sweep, so they never end it early.
+        /// </remarks>
+        public IEnumerable<PhysxRaycastHit3D> CapsuleCast(in PhysxCapsuleCast3D cast)
         {
+            var orientationLength = cast.Orientation.Length();
+            if (!float.IsFinite(orientationLength) || orientationLength <= 1e-6f)
+                throw new ArgumentException("The capsule orientation must be a finite, non-zero quaternion.", nameof(cast));
+
+            var ignored = cast.IgnoredBody is null ? null : OwnBodyOrThrow(cast.IgnoredBody);
+
             lock (_sync)
             {
                 ThrowIfDisposed();
 
-                if (maxHits <= 0)
+                if (cast.MaxHits <= 0)
                     return Array.Empty<PhysxRaycastHit3D>();
 
-                if (maxDistance <= 0f || float.IsNaN(maxDistance) || float.IsInfinity(maxDistance))
+                if (cast.MaxDistance <= 0f || !float.IsFinite(cast.MaxDistance))
                     return Array.Empty<PhysxRaycastHit3D>();
 
-                float dirLen = direction.Length();
+                float dirLen = cast.Direction.Length();
                 if (dirLen <= 1e-10f)
                     return Array.Empty<PhysxRaycastHit3D>();
 
-                var dir = direction / dirLen;
+                // BEPU's capsule length is the distance between the hemisphere centres.
+                var capsule = new Capsule(MathF.Max(0f, cast.Radius), MathF.Max(0f, cast.HalfLength * 2f));
+                var pose = new RigidPose(cast.Center, Quaternion.Normalize(cast.Orientation));
 
-                // BEPU capsule length parameter = distance between hemisphere centers
-                float segmentLength = MathF.Max(0f, halfLength * 2f);
-                var capsule = new Capsule(MathF.Max(0f, radius), segmentLength);
+                // A unit velocity makes the sweep's maximumT a distance.
+                var velocity = new BodyVelocity(cast.Direction / dirLen, Vector3.Zero);
 
-                // Upright capsule (Y axis)
-                var pose = new RigidPose(center, Quaternion.Identity);
+                var collector = new QueryHitsCollector(this, cast.LayerMask, ignored);
 
-                // Sweep uses BodyVelocity; we use a *unit* velocity so maximumT is in distance units.
-                var velocity = new BodyVelocity(dir, Vector3.Zero);
-
-                var collector = new QueryHitsCollector();
-
-                // Tuning knobs (stable defaults)
                 const float minimumProgression = 1e-4f;
                 const float convergenceThreshold = 1e-4f;
                 const int maximumIterationCount = 16;
@@ -277,204 +321,100 @@ namespace Altruist.Physx.ThreeD
                     capsule,
                     pose,
                     velocity,
-                    maxDistance,
-                    _pool,              // BufferPool required by this overload
+                    cast.MaxDistance,
+                    _pool,
                     ref collector,
                     minimumProgression,
                     convergenceThreshold,
                     maximumIterationCount);
 
-                return BuildFilteredResults(collector, maxHits, layerMask);
+                return BuildResults(collector, cast.MaxHits);
             }
         }
 
-        private IEnumerable<PhysxRaycastHit3D> BuildFilteredResults(QueryHitsCollector collector, int maxHits, uint layerMask)
+        private IEnumerable<PhysxRaycastHit3D> BuildResults(QueryHitsCollector collector, int maxHits)
         {
-            if (collector.Count == 0)
+            if (collector.Hits.Count == 0)
                 return Array.Empty<PhysxRaycastHit3D>();
 
-            collector.SortByT();
-
-            var results = new List<PhysxRaycastHit3D>(Math.Min(maxHits, collector.Count));
-
-            for (int i = 0; i < collector.Count && results.Count < maxHits; i++)
-            {
-                var h = collector.Hits[i];
-
-                IPhysxBody3D? found = null;
-
-                if (h.IsStatic)
-                {
-                    foreach (var b in _bodies.Values)
-                    {
-                        if (b is StaticBody3DAdapter stat && stat.Handle.Equals(h.Static))
-                        {
-                            found = stat;
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    foreach (var b in _bodies.Values)
-                    {
-                        if (b is DynamicBody3DAdapter dyn && dyn.Handle.Equals(h.Body))
-                        {
-                            found = dyn;
-                            break;
-                        }
-                    }
-                }
-
-                if (found is not Body3DAdapterBase adapter)
-                    continue;
-
-                uint bodyMask = adapter.PhysxTag?.Layer ?? (uint)PhysxLayer.All;
-                if ((bodyMask & layerMask) == 0u)
-                    continue;
-
-                results.Add(new PhysxRaycastHit3D(found, h.Point, h.Normal, h.T));
-            }
-
-            return results.Count == 0 ? Array.Empty<PhysxRaycastHit3D>() : results;
+            return collector.Hits
+                .OrderBy(h => h.T)
+                .Take(maxHits)
+                .Select(h => new PhysxRaycastHit3D(FindBody(h.Collidable)!, h.Point, h.Normal, h.T))
+                .ToArray();
         }
 
-        private struct QueryHitsCollector : IRayHitHandler, ISweepHitHandler
+        private bool IsQueryable(CollidableReference collidable, uint layerMask, Body3DAdapterBase? ignored)
         {
-            public struct Hit
+            var body = FindBody(collidable);
+            if (body is null || ReferenceEquals(body, ignored))
+                return false;
+
+            uint bodyMask = body.PhysxTag?.Layer ?? (uint)PhysxLayer.All;
+            return (bodyMask & layerMask) != 0u;
+        }
+
+        internal Body3DAdapterBase? FindBody(CollidableReference collidable)
+        {
+            if (collidable.Mobility == CollidableMobility.Static)
+                return _staticsByHandle.GetValueOrDefault(collidable.StaticHandle);
+
+            return _bodiesByHandle.GetValueOrDefault(collidable.BodyHandle);
+        }
+
+        internal RigidPose PoseOf(CollidableReference collidable) =>
+            collidable.Mobility == CollidableMobility.Static
+                ? _simulation.Statics.GetStaticReference(collidable.StaticHandle).Pose
+                : _simulation.Bodies.GetBodyReference(collidable.BodyHandle).Pose;
+
+        private Body3DAdapterBase OwnBodyOrThrow(IPhysxBody3D body)
+        {
+            ArgumentNullException.ThrowIfNull(body);
+
+            if (body is not Body3DAdapterBase adapter || !ReferenceEquals(adapter.Engine, this))
+                throw new InvalidOperationException("This engine only accepts bodies created for it by the BEPU provider.");
+
+            return adapter;
+        }
+
+        private readonly struct QueryHit
+        {
+            public float T { get; init; }
+            public Vector3 Point { get; init; }
+            public Vector3 Normal { get; init; }
+            public CollidableReference Collidable { get; init; }
+        }
+
+        private readonly struct QueryHitsCollector : IRayHitHandler, ISweepHitHandler
+        {
+            private readonly BepuWorldEngine3D _engine;
+            private readonly uint _layerMask;
+            private readonly Body3DAdapterBase? _ignored;
+
+            public List<QueryHit> Hits { get; }
+
+            public QueryHitsCollector(BepuWorldEngine3D engine, uint layerMask, Body3DAdapterBase? ignored)
             {
-                public float T;
-                public Vector3 Point;
-                public Vector3 Normal;
-
-                public bool IsStatic;
-                public BodyHandle Body;
-                public StaticHandle Static;
-
-                public bool IsZeroT;
+                _engine = engine;
+                _layerMask = layerMask;
+                _ignored = ignored;
+                Hits = new List<QueryHit>(8);
             }
 
-            public List<Hit> Hits;
-            public int Count => Hits?.Count ?? 0;
-
-            // Shared "allow" filters (you can add child filtering later if needed)
-            public bool AllowTest(CollidableReference collidable) => true;
+            public bool AllowTest(CollidableReference collidable) => _engine.IsQueryable(collidable, _layerMask, _ignored);
             public bool AllowTest(CollidableReference collidable, int childIndex) => true;
 
-            // ----------------------------
-            // Ray hits
-            // ----------------------------
             public void OnRayHit(in RayData ray, ref float maximumT, float t, in Vector3 normal, CollidableReference collidable, int childIndex)
-            {
-                Hits ??= new List<Hit>(8);
+                => Hits.Add(new QueryHit { T = t, Point = ray.Origin + ray.Direction * t, Normal = normal, Collidable = collidable });
 
-                var point = ray.Origin + ray.Direction * t;
+            public void OnHit(ref float maximumT, float t, in Vector3 hitLocation, in Vector3 hitNormal, CollidableReference collidable)
+                => Hits.Add(new QueryHit { T = t, Point = hitLocation, Normal = hitNormal, Collidable = collidable });
 
-                if (collidable.Mobility == CollidableMobility.Static)
-                {
-                    Hits.Add(new Hit
-                    {
-                        T = t,
-                        Point = point,
-                        Normal = normal,
-                        IsStatic = true,
-                        Static = collidable.StaticHandle,
-                        Body = default,
-                        IsZeroT = false
-                    });
-                }
-                else
-                {
-                    Hits.Add(new Hit
-                    {
-                        T = t,
-                        Point = point,
-                        Normal = normal,
-                        IsStatic = false,
-                        Body = collidable.BodyHandle,
-                        Static = default,
-                        IsZeroT = false
-                    });
-                }
-            }
-
-            // ----------------------------
-            // Sweep hits
-            // ----------------------------
-            public void OnHit(ref float maximumT, float t, in Vector3 normal, in Vector3 hitLocation, CollidableReference collidable)
-            {
-                Hits ??= new List<Hit>(8);
-
-                if (collidable.Mobility == CollidableMobility.Static)
-                {
-                    Hits.Add(new Hit
-                    {
-                        T = t,
-                        Point = hitLocation,
-                        Normal = normal,
-                        IsStatic = true,
-                        Static = collidable.StaticHandle,
-                        Body = default,
-                        IsZeroT = false
-                    });
-                }
-                else
-                {
-                    Hits.Add(new Hit
-                    {
-                        T = t,
-                        Point = hitLocation,
-                        Normal = normal,
-                        IsStatic = false,
-                        Body = collidable.BodyHandle,
-                        Static = default,
-                        IsZeroT = false
-                    });
-                }
-            }
-
+            // The sweep starts inside this collidable: record it and end the sweep, since nothing behind it is reachable.
             public void OnHitAtZeroT(ref float maximumT, CollidableReference collidable)
             {
-                // This means: we started overlapping something.
-                // Still record it (useful for depenetration logic later), and clamp maximumT to 0 to early out.
-                Hits ??= new List<Hit>(4);
-
-                if (collidable.Mobility == CollidableMobility.Static)
-                {
-                    Hits.Add(new Hit
-                    {
-                        T = 0f,
-                        Point = Vector3.Zero,
-                        Normal = Vector3.Zero,
-                        IsStatic = true,
-                        Static = collidable.StaticHandle,
-                        Body = default,
-                        IsZeroT = true
-                    });
-                }
-                else
-                {
-                    Hits.Add(new Hit
-                    {
-                        T = 0f,
-                        Point = Vector3.Zero,
-                        Normal = Vector3.Zero,
-                        IsStatic = false,
-                        Body = collidable.BodyHandle,
-                        Static = default,
-                        IsZeroT = true
-                    });
-                }
-
+                Hits.Add(new QueryHit { T = 0f, Point = Vector3.Zero, Normal = Vector3.Zero, Collidable = collidable });
                 maximumT = 0f;
-            }
-
-            public void SortByT()
-            {
-                if (Hits is null || Hits.Count <= 1)
-                    return;
-
-                Hits.Sort(static (a, b) => a.T.CompareTo(b.T));
             }
         }
 
@@ -489,629 +429,97 @@ namespace Altruist.Physx.ThreeD
                 if (_disposed)
                     return;
 
+                DrainPending_NoLock();
                 _disposed = true;
 
-                DrainPending_NoLock();
                 _bodies.Clear();
+                _bodiesByHandle.Clear();
+                _staticsByHandle.Clear();
+                _continuousLoads.Clear();
 
                 _simulation.Dispose();
                 _pool.Clear();
             }
         }
 
-        internal TypedIndex CreateShapeIndexFromCollider(IPhysxCollider3D c)
+        // ---------------------------------------------------------------------------------------------------------
+        // Body creation
+        // ---------------------------------------------------------------------------------------------------------
+
+        internal Body3DAdapterBase CreateBody(in PhysxBody3DDesc desc)
         {
-            var t = c.Transform;
-
-            switch (c.Shape)
+            lock (_sync)
             {
-                case PhysxColliderShape3D.Sphere3D:
-                    {
-                        var radius = t.Size.X;
-                        return _simulation.Shapes.Add(new Sphere(radius));
-                    }
+                ThrowIfDisposed();
 
-                case PhysxColliderShape3D.Box3D:
-                    {
-                        var fullX = t.Size.X * 2f;
-                        var fullY = t.Size.Y * 2f;
-                        var fullZ = t.Size.Z * 2f;
-                        return _simulation.Shapes.Add(new Box(fullX, fullY, fullZ));
-                    }
+                if (string.IsNullOrEmpty(desc.Id))
+                    throw new ArgumentException("A body descriptor needs an id.", nameof(desc));
 
-                case PhysxColliderShape3D.Capsule3D:
-                    {
-                        var radius = t.Size.X;
-                        var length = t.Size.Y * 2f;
-                        return _simulation.Shapes.Add(new Capsule(radius, length));
-                    }
+                if (_bodies.ContainsKey(desc.Id))
+                    throw new InvalidOperationException($"A body with id '{desc.Id}' already exists in this engine.");
 
-                case PhysxColliderShape3D.Heightfield3D:
-                    {
-                        if (c.Heightfield is { } hf)
-                        {
-                            var mesh = BepuHeightfieldMesh.Create(hf, _simulation.BufferPool);
-                            return _simulation.Shapes.Add(mesh);
-                        }
+                var pose = new RigidPose(desc.Transform.Position.ToVector3(), desc.Transform.Rotation.ToQuaternion());
+                var defaultHalfExtents = desc.Transform.Size.ToVector3();
 
-                        throw new InvalidOperationException("Heightmap collider has no HeightfieldData.");
-                    }
+                Body3DAdapterBase body = desc.Type == PhysxBodyType.Static
+                    ? CreateStatic(desc.Id, pose, defaultHalfExtents)
+                    : CreateDynamic(desc, pose, defaultHalfExtents);
 
-                default:
-                    throw new NotSupportedException($"Unsupported collider shape: {c.Shape}");
+                body.PhysxTag = desc.PhysxTag;
+                _bodies.Add(body.Id, body);
+                return body;
             }
         }
 
-        /// <summary>
-        /// Base class of the BEPU body adapters (<see cref="DynamicBody3DAdapter"/>, <see cref="StaticBody3DAdapter"/>).
-        /// Instances are created only by <see cref="BepuPhysxBodyApiProvider3D.CreateBody"/>.
-        /// </summary>
-        /// <remarks>
-        /// Holds a collider list; attaching an <see cref="IPhysxCollider3D"/> replaces the BEPU shape (one active shape per
-        /// body, last attached wins) and removing any 3D collider restores the original descriptor shape. The collider list
-        /// itself is not synchronised. Pose/velocity accessors throw once the body was removed or the engine disposed.
-        /// </remarks>
-        public abstract class Body3DAdapterBase : IPhysxBody3D
+        private StaticBody3DAdapter CreateStatic(string id, RigidPose pose, Vector3 defaultHalfExtents)
         {
-            /// <inheritdoc/>
-            public string Id { get; }
-            /// <inheritdoc/>
-            public abstract PhysxBodyType Type { get; set; }
-            /// <inheritdoc/>
-            public abstract float Mass { get; set; }
-            /// <inheritdoc/>
-            public PhysxTag? PhysxTag { get; set; }
-
-            /// <summary>Engine that owns this body; its lock guards all simulation access.</summary>
-            protected readonly BepuWorldEngine3D Engine;
-
-            private readonly List<IPhysxCollider> _colliders = new();
-
-            private volatile bool _removed;
-
-            /// <summary>Initialises the adapter.</summary>
-            /// <param name="id">Body id.</param>
-            /// <param name="engine">Owning engine.</param>
-            protected Body3DAdapterBase(string id, BepuWorldEngine3D engine)
-            {
-                Id = id;
-                Engine = engine;
-            }
-
-            internal void MarkRemoved() => _removed = true;
-
-            /// <summary>Throws when the engine is disposed or this body was removed from the simulation.</summary>
-            /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
-            /// <exception cref="InvalidOperationException">The body was removed.</exception>
-            protected void ThrowIfRemovedOrDisposed()
-            {
-                Engine.ThrowIfDisposed();
-                if (_removed)
-                    throw new InvalidOperationException($"Body '{Id}' has been removed from the simulation.");
-            }
-
-            /// <summary>
-            /// Adds <paramref name="collider"/> (ignored if already present); a 3D collider also replaces the body's BEPU shape.
-            /// </summary>
-            /// <param name="collider">Collider to attach.</param>
-            /// <exception cref="ArgumentNullException"><paramref name="collider"/> is <see langword="null"/>.</exception>
-            public virtual void AddCollider(IPhysxCollider collider)
-            {
-                if (collider is null)
-                    throw new ArgumentNullException(nameof(collider));
-
-                if (_colliders.Contains(collider))
-                    return;
-
-                _colliders.Add(collider);
-
-                if (collider is IPhysxCollider3D c3)
-                {
-                    AttachCollider3D(c3);
-                }
-            }
-
-            /// <summary>Removes <paramref name="collider"/>; a removed 3D collider restores the body's original shape.</summary>
-            /// <param name="collider">Collider to detach.</param>
-            /// <returns><see langword="true"/> if it was attached.</returns>
-            public virtual bool RemoveCollider(IPhysxCollider collider)
-            {
-                if (collider is null)
-                    return false;
-
-                var removed = _colliders.Remove(collider);
-
-                if (removed && collider is IPhysxCollider3D c3)
-                {
-                    DetachCollider3D(c3);
-                }
-
-                return removed;
-            }
-
-            /// <inheritdoc/>
-            public ReadOnlySpan<IPhysxCollider> GetColliders() => CollectionsMarshal.AsSpan(_colliders);
-
-            /// <inheritdoc/>
-            public bool TryGetColliderById(string colliderId, out IPhysxCollider collider)
-            {
-                if (string.IsNullOrEmpty(colliderId))
-                {
-                    collider = default!;
-                    return false;
-                }
-
-                foreach (var c in _colliders)
-                {
-                    if (!string.IsNullOrEmpty(c.Id) &&
-                        string.Equals(c.Id, colliderId, StringComparison.Ordinal))
-                    {
-                        collider = c;
-                        return true;
-                    }
-                }
-
-                collider = default!;
-                return false;
-            }
-
-            /// <inheritdoc/>
-            public IPhysxCollider? GetColliderAt(int index)
-            {
-                if ((uint)index < (uint)_colliders.Count)
-                    return _colliders[index];
-                return null;
-            }
-
-            /// <summary>Builds a BEPU shape from <paramref name="collider"/> and makes it the body's active shape.</summary>
-            /// <param name="collider">Collider being attached.</param>
-            protected abstract void AttachCollider3D(IPhysxCollider3D collider);
-            /// <summary>Restores the body's original shape after <paramref name="collider"/> was removed.</summary>
-            /// <param name="collider">Collider being detached.</param>
-            protected abstract void DetachCollider3D(IPhysxCollider3D collider);
-
-            /// <inheritdoc/>
-            public abstract Vector3 Position { get; set; }
-            /// <inheritdoc/>
-            public abstract Quaternion Rotation { get; set; }
-            /// <inheritdoc/>
-            public abstract Vector3 LinearVelocity { get; set; }
-            /// <inheritdoc/>
-            public abstract Vector3 AngularVelocity { get; set; }
-            /// <inheritdoc/>
-            public abstract void ApplyForce(in PhysxForce force);
+            var shape = BuildShape(ImmutableArray<BepuCollider3D>.Empty, PhysxBodyType.Static, 0f, defaultHalfExtents);
+            var handle = _simulation.Statics.Add(new StaticDescription(pose.Position, pose.Orientation, shape.Index));
+            var body = new StaticBody3DAdapter(id, this, handle, shape.Index, defaultHalfExtents);
+            _staticsByHandle.Add(handle, body);
+            return body;
         }
 
-        /// <summary>
-        /// Adapter for a BEPU body in the <c>Bodies</c> set; used for both dynamic and kinematic bodies.
-        /// Every setter and force command takes the engine lock and wakes the body.
-        /// </summary>
-        public sealed class DynamicBody3DAdapter : Body3DAdapterBase
+        private DynamicBody3DAdapter CreateDynamic(in PhysxBody3DDesc desc, RigidPose pose, Vector3 defaultHalfExtents)
         {
-            /// <summary>Underlying BEPU body handle.</summary>
-            public BodyHandle Handle => _handle;
+            bool isKinematic = desc.IsKinematic || desc.Type == PhysxBodyType.Kinematic;
+            var type = isKinematic ? PhysxBodyType.Kinematic : PhysxBodyType.Dynamic;
+            var mass = desc.Mass > 0f ? desc.Mass : 1f;
 
-            private BodyHandle _handle;
-            private PhysxBodyType _type;
-            private float _mass;
+            var shape = BuildShape(ImmutableArray<BepuCollider3D>.Empty, type, mass, defaultHalfExtents);
+            var collidable = new CollidableDescription(shape.Index, SpeculativeMargin);
+            var activity = new BodyActivityDescription(SleepThreshold);
 
-            private bool _hasOriginalShape;
-            private TypedIndex _originalShape;
+            var bodyDesc = isKinematic
+                ? BodyDescription.CreateKinematic(pose, collidable, activity)
+                : BodyDescription.CreateDynamic(pose, shape.Inertia, collidable, activity);
 
-            /// <summary>Dynamic or kinematic as created. Setting it only changes the reported value, not the BEPU body.</summary>
-            public override PhysxBodyType Type
-            {
-                get => _type;
-                set => _type = value;
-            }
-
-            /// <summary>Mass as created (0 for kinematic). Setting it only changes the reported value; BEPU inertia is unchanged.</summary>
-            public override float Mass
-            {
-                get => _mass;
-                set => _mass = value;
-            }
-
-            /// <summary>Wraps an existing BEPU body. Normally created by <see cref="BepuPhysxBodyApiProvider3D"/>.</summary>
-            /// <param name="id">Body id.</param>
-            /// <param name="engine">Owning engine.</param>
-            /// <param name="handle">BEPU body handle.</param>
-            /// <param name="type">Reported body type.</param>
-            /// <param name="mass">Reported mass.</param>
-            public DynamicBody3DAdapter(
-                string id,
-                BepuWorldEngine3D engine,
-                BodyHandle handle,
-                PhysxBodyType type,
-                float mass)
-                : base(id, engine)
-            {
-                _handle = handle;
-                _type = type;
-                _mass = mass;
-            }
-
-            /// <inheritdoc/>
-            protected override void AttachCollider3D(IPhysxCollider3D collider)
-            {
-                lock (Engine._sync)
-                {
-                    ThrowIfRemovedOrDisposed();
-
-                    var bodyRef = Engine._simulation.Bodies.GetBodyReference(_handle);
-
-                    if (!_hasOriginalShape)
-                    {
-                        _originalShape = bodyRef.Collidable.Shape;
-                        _hasOriginalShape = true;
-                    }
-
-                    var shape = Engine.CreateShapeIndexFromCollider(collider);
-                    bodyRef.Collidable.Shape = shape;
-
-                    Engine._simulation.Awakener.AwakenBody(_handle);
-                }
-            }
-
-            /// <inheritdoc/>
-            protected override void DetachCollider3D(IPhysxCollider3D collider)
-            {
-                lock (Engine._sync)
-                {
-                    ThrowIfRemovedOrDisposed();
-
-                    if (!_hasOriginalShape)
-                        return;
-
-                    var bodyRef = Engine._simulation.Bodies.GetBodyReference(_handle);
-                    bodyRef.Collidable.Shape = _originalShape;
-
-                    Engine._simulation.Awakener.AwakenBody(_handle);
-                }
-            }
-
-            /// <inheritdoc/>
-            public override Vector3 Position
-            {
-                get
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        return Engine._simulation.Bodies.GetBodyReference(_handle).Pose.Position;
-                    }
-                }
-                set
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var br = Engine._simulation.Bodies.GetBodyReference(_handle);
-                        br.Pose.Position = value;
-                        Engine._simulation.Awakener.AwakenBody(_handle);
-                    }
-                }
-            }
-
-            /// <inheritdoc/>
-            public override Quaternion Rotation
-            {
-                get
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        return Engine._simulation.Bodies.GetBodyReference(_handle).Pose.Orientation;
-                    }
-                }
-                set
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var br = Engine._simulation.Bodies.GetBodyReference(_handle);
-                        br.Pose.Orientation = value;
-                        Engine._simulation.Awakener.AwakenBody(_handle);
-                    }
-                }
-            }
-
-            /// <inheritdoc/>
-            public override Vector3 LinearVelocity
-            {
-                get
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        return Engine._simulation.Bodies.GetBodyReference(_handle).Velocity.Linear;
-                    }
-                }
-                set
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var br = Engine._simulation.Bodies.GetBodyReference(_handle);
-                        br.Velocity.Linear = value;
-                        Engine._simulation.Awakener.AwakenBody(_handle);
-                    }
-                }
-            }
-
-            /// <inheritdoc/>
-            public override Vector3 AngularVelocity
-            {
-                get
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        return Engine._simulation.Bodies.GetBodyReference(_handle).Velocity.Angular;
-                    }
-                }
-                set
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var br = Engine._simulation.Bodies.GetBodyReference(_handle);
-                        br.Velocity.Angular = value;
-                        Engine._simulation.Awakener.AwakenBody(_handle);
-                    }
-                }
-            }
-
-            /// <summary>
-            /// Executes a 3D force command: <c>AddForce3D</c> applies the linear impulse <c>force * FixedDeltaTime</c> once;
-            /// <c>AddImpulse3D</c> a linear impulse; <c>AddTorque3D</c> an angular impulse (unscaled); the set-velocity
-            /// kinds overwrite velocity. 2D kinds are ignored. Always wakes the body.
-            /// </summary>
-            /// <param name="force">Force command.</param>
-            public override void ApplyForce(in PhysxForce force)
-            {
-                lock (Engine._sync)
-                {
-                    ThrowIfRemovedOrDisposed();
-
-                    var br = Engine._simulation.Bodies.GetBodyReference(_handle);
-
-                    switch (force.Type)
-                    {
-                        case PhysxForce.Kind.AddForce3D:
-                            br.ApplyLinearImpulse(force.Vector * Engine.FixedDeltaTime);
-                            Engine._simulation.Awakener.AwakenBody(_handle);
-                            break;
-
-                        case PhysxForce.Kind.AddImpulse3D:
-                            br.ApplyLinearImpulse(force.Vector);
-                            Engine._simulation.Awakener.AwakenBody(_handle);
-                            break;
-
-                        case PhysxForce.Kind.AddTorque3D:
-                            br.ApplyAngularImpulse(force.Vector);
-                            Engine._simulation.Awakener.AwakenBody(_handle);
-                            break;
-
-                        case PhysxForce.Kind.SetLinearVelocity3D:
-                            br.Velocity.Linear = force.Vector;
-                            Engine._simulation.Awakener.AwakenBody(_handle);
-                            break;
-
-                        case PhysxForce.Kind.SetAngularVelocity3D:
-                            br.Velocity.Angular = force.Vector;
-                            Engine._simulation.Awakener.AwakenBody(_handle);
-                            break;
-                    }
-                }
-            }
+            var handle = _simulation.Bodies.Add(bodyDesc);
+            var body = new DynamicBody3DAdapter(desc.Id, this, handle, type, mass, shape.Index, defaultHalfExtents);
+            _bodiesByHandle.Add(handle, body);
+            return body;
         }
 
-        /// <summary>
-        /// Adapter for a BEPU static. Type is always <see cref="PhysxBodyType.Static"/>, mass 0, velocities zero; setters for
-        /// those and <see cref="ApplyForce"/> are no-ops. Attaching/detaching a collider re-creates the static, which changes
-        /// <see cref="Handle"/>.
-        /// </summary>
-        public sealed class StaticBody3DAdapter : Body3DAdapterBase
+        // ---------------------------------------------------------------------------------------------------------
+        // Continuous forces
+        // ---------------------------------------------------------------------------------------------------------
+
+        private readonly record struct ContinuousLoad(Vector3 Force, Vector3 Torque);
+
+        internal void AddContinuousLoad_NoLock(BodyHandle handle, Vector3 force, Vector3 torque)
         {
-            /// <summary>Current BEPU static handle (changes when a collider is attached or detached).</summary>
-            public StaticHandle Handle => _handle;
-
-            private StaticHandle _handle;
-
-            private bool _hasOriginalShape;
-            private TypedIndex _originalShape;
-
-            /// <inheritdoc/>
-            public override PhysxBodyType Type
-            {
-                get => PhysxBodyType.Static;
-                set { }
-            }
-
-            /// <inheritdoc/>
-            public override float Mass
-            {
-                get => 0f;
-                set { }
-            }
-
-            /// <summary>Wraps an existing BEPU static. Normally created by <see cref="BepuPhysxBodyApiProvider3D"/>.</summary>
-            /// <param name="id">Body id.</param>
-            /// <param name="engine">Owning engine.</param>
-            /// <param name="handle">BEPU static handle.</param>
-            public StaticBody3DAdapter(
-                string id,
-                BepuWorldEngine3D engine,
-                StaticHandle handle)
-                : base(id, engine)
-            {
-                _handle = handle;
-            }
-
-            /// <inheritdoc/>
-            protected override void AttachCollider3D(IPhysxCollider3D collider)
-            {
-                lock (Engine._sync)
-                {
-                    ThrowIfRemovedOrDisposed();
-
-                    var statics = Engine._simulation.Statics;
-                    var sr = statics.GetStaticReference(_handle);
-
-                    if (!_hasOriginalShape)
-                    {
-                        _originalShape = sr.Shape;
-                        _hasOriginalShape = true;
-                    }
-
-                    var newShape = Engine.CreateShapeIndexFromCollider(collider);
-                    var pose = sr.Pose;
-
-                    statics.Remove(_handle);
-
-                    var newDesc = new StaticDescription(pose.Position, pose.Orientation, newShape);
-                    _handle = statics.Add(newDesc);
-                }
-            }
-
-            /// <inheritdoc/>
-            protected override void DetachCollider3D(IPhysxCollider3D collider)
-            {
-                lock (Engine._sync)
-                {
-                    ThrowIfRemovedOrDisposed();
-
-                    if (!_hasOriginalShape)
-                        return;
-
-                    var statics = Engine._simulation.Statics;
-                    var sr = statics.GetStaticReference(_handle);
-                    var pose = sr.Pose;
-
-                    statics.Remove(_handle);
-
-                    var newDesc = new StaticDescription(pose.Position, pose.Orientation, _originalShape);
-                    _handle = statics.Add(newDesc);
-                }
-            }
-
-            /// <inheritdoc/>
-            public override Vector3 Position
-            {
-                get
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var sr = Engine._simulation.Statics.GetStaticReference(_handle);
-                        return sr.Pose.Position;
-                    }
-                }
-                set
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var sr = Engine._simulation.Statics.GetStaticReference(_handle);
-                        sr.Pose.Position = value;
-                    }
-                }
-            }
-
-            /// <inheritdoc/>
-            public override Quaternion Rotation
-            {
-                get
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var sr = Engine._simulation.Statics.GetStaticReference(_handle);
-                        return sr.Pose.Orientation;
-                    }
-                }
-                set
-                {
-                    lock (Engine._sync)
-                    {
-                        ThrowIfRemovedOrDisposed();
-                        var sr = Engine._simulation.Statics.GetStaticReference(_handle);
-                        sr.Pose.Orientation = value;
-                    }
-                }
-            }
-
-            /// <inheritdoc/>
-            public override Vector3 LinearVelocity
-            {
-                get => Vector3.Zero;
-                set { }
-            }
-
-            /// <inheritdoc/>
-            public override Vector3 AngularVelocity
-            {
-                get => Vector3.Zero;
-                set { }
-            }
-
-            /// <inheritdoc/>
-            public override void ApplyForce(in PhysxForce force) { }
+            var current = _continuousLoads.GetValueOrDefault(handle);
+            _continuousLoads[handle] = new ContinuousLoad(current.Force + force, current.Torque + torque);
         }
 
-        private readonly struct NarrowPhaseCallbacks : INarrowPhaseCallbacks
+        private void ApplyContinuousLoads_NoLock()
         {
-            public void Initialize(Simulation simulation) { }
-            public bool AllowContactGeneration(int workerIndex, CollidableReference a, CollidableReference b, ref float speculativeMargin) => true;
-            public bool AllowContactGeneration(int workerIndex, CollidablePair pair, int childIndexA, int childIndexB) => true;
-
-            public bool ConfigureContactManifold<TManifold>(
-                int workerIndex,
-                CollidablePair pair,
-                ref TManifold manifold,
-                out PairMaterialProperties material)
-                where TManifold : unmanaged, IContactManifold<TManifold>
+            foreach (var (handle, load) in _continuousLoads)
             {
-                material = new PairMaterialProperties
-                {
-                    FrictionCoefficient = 0.8f,
-                    MaximumRecoveryVelocity = 2.0f,
-                    SpringSettings = new SpringSettings(30f, 1f)
-                };
-                return true;
-            }
-
-            public bool ConfigureContactManifold(int workerIndex, CollidablePair pair, int childIndexA, int childIndexB, ref ConvexContactManifold manifold) => true;
-            public void Dispose() { }
-        }
-
-        private struct PoseIntegratorCallbacks : IPoseIntegratorCallbacks
-        {
-            public Vector3 Gravity;
-
-            public AngularIntegrationMode AngularIntegrationMode => AngularIntegrationMode.Nonconserving;
-            public bool AllowSubstepsForUnconstrainedBodies => false;
-            public bool IntegrateVelocityForKinematics => false;
-
-            public PoseIntegratorCallbacks(Vector3 gravity) { Gravity = gravity; }
-
-            public void Initialize(Simulation simulation) { }
-            public void PrepareForIntegration(float dt) { }
-
-            public void IntegrateVelocity(
-                Vector<int> bodyIndices,
-                Vector3Wide position,
-                QuaternionWide orientation,
-                BodyInertiaWide localInertia,
-                Vector<int> integrationMask,
-                int workerCount,
-                Vector<float> dt,
-                ref BodyVelocityWide velocity)
-            {
-                var g = Vector3Wide.Broadcast(Gravity);
-                Vector3Wide.Scale(g, dt, out var gdt);
-                velocity.Linear += gdt;
+                var body = _simulation.Bodies.GetBodyReference(handle);
+                body.ApplyLinearImpulse(load.Force * FixedDeltaTime);
+                body.ApplyAngularImpulse(load.Torque * FixedDeltaTime);
+                _simulation.Awakener.AwakenBody(handle);
             }
         }
     }

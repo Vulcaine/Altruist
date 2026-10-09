@@ -29,8 +29,9 @@ namespace Altruist.Physx.ThreeD
         void RemoveBody(IPhysxBody3D body);
 
         /// <summary>
-        /// Registers a body created by <see cref="IPhysxBodyApiProvider3D.CreateBody"/> with this engine so it appears in
-        /// <see cref="Bodies"/> and in query results.
+        /// Registers a body created by <see cref="IPhysxBodyApiProvider3D.CreateBody"/> for this engine. In the BEPU
+        /// backend bodies are part of the simulation, <see cref="Bodies"/> and queries from creation, so this only checks
+        /// that the body belongs to the engine.
         /// </summary>
         /// <param name="body">Body created for this engine.</param>
         void AddBody(IPhysxBody3D body);
@@ -47,7 +48,8 @@ namespace Altruist.Physx.ThreeD
 
         /// <summary>
         /// Sweeps an upright (local Y axis) capsule from <paramref name="center"/> along <paramref name="direction"/> and
-        /// returns the bodies it would hit, nearest first. Typical use: character-controller ground and wall probes.
+        /// returns the bodies it would hit, nearest first. Use <see cref="CapsuleCast(in PhysxCapsuleCast3D)"/> instead to
+        /// tilt the capsule or to exclude the caster's own body (which this overload can hit).
         /// </summary>
         /// <param name="center">Capsule centre at the start of the sweep.</param>
         /// <param name="radius">Capsule radius.</param>
@@ -68,6 +70,58 @@ namespace Altruist.Physx.ThreeD
             float maxDistance,
             int maxHits = 1,
             uint layerMask = 0xFFFFFFFFu);
+
+        /// <summary>
+        /// Sweeps the capsule described by <paramref name="cast"/> and returns the bodies it would hit, nearest first.
+        /// Typical use: character-controller ground and wall probes that pass the character's own body as
+        /// <see cref="PhysxCapsuleCast3D.IgnoredBody"/>.
+        /// </summary>
+        /// <param name="cast">Capsule, sweep and filters.</param>
+        /// <returns>
+        /// Hits ordered by distance. A shape already overlapped at the start is reported with <c>T = 0</c> and zero
+        /// point/normal, and stops the sweep.
+        /// </returns>
+        /// <exception cref="ArgumentException">The orientation is zero or not finite.</exception>
+        /// <exception cref="InvalidOperationException"><see cref="PhysxCapsuleCast3D.IgnoredBody"/> belongs to another engine.</exception>
+        IEnumerable<PhysxRaycastHit3D> CapsuleCast(in PhysxCapsuleCast3D cast);
+    }
+
+    /// <summary>
+    /// Capsule sweep query for <see cref="IPhysxWorldEngine3D.CapsuleCast(in PhysxCapsuleCast3D)"/>. The required values
+    /// are the constructor parameters; set the optional ones with an object initializer.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var hits = engine.CapsuleCast(new PhysxCapsuleCast3D(center, 0.4f, 0.6f, Vector3.UnitZ, 2f)
+    /// {
+    ///     MaxHits = 4,
+    ///     IgnoredBody = characterBody,
+    /// });
+    /// </code>
+    /// </example>
+    /// <param name="Center">Capsule centre at the start of the sweep.</param>
+    /// <param name="Radius">Capsule radius.</param>
+    /// <param name="HalfLength">Half the distance between the two hemisphere centres (along the capsule's local Y axis).</param>
+    /// <param name="Direction">Sweep direction; normalised internally. Zero returns no hits.</param>
+    /// <param name="MaxDistance">Sweep distance in world units; non-positive or infinite returns no hits.</param>
+    public readonly record struct PhysxCapsuleCast3D(
+        Vector3 Center,
+        float Radius,
+        float HalfLength,
+        Vector3 Direction,
+        float MaxDistance)
+    {
+        /// <summary>Capsule orientation; its local Y axis is the capsule axis (default: upright).</summary>
+        public Quaternion Orientation { get; init; } = Quaternion.Identity;
+
+        /// <summary>Maximum number of hits to return, nearest first (default 1).</summary>
+        public int MaxHits { get; init; } = 1;
+
+        /// <summary>Only bodies whose layer shares a bit with this mask are hit (default: all layers).</summary>
+        public uint LayerMask { get; init; } = 0xFFFFFFFFu;
+
+        /// <summary>Body the sweep passes through, typically the caster's own body; <see langword="null"/> ignores nothing.</summary>
+        public IPhysxBody3D? IgnoredBody { get; init; }
     }
 
     /// <summary>Creates 3D world engines. Registered in DI by the active backend (BEPU: <see cref="BepuWorldEngineFactory3D"/>).</summary>

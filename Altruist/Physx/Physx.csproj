@@ -17,6 +17,10 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tests" />
+  </ItemGroup>
   
   <ItemGroup>
     <PackageReference Include="BepuPhysics" Version="2.4.0" />

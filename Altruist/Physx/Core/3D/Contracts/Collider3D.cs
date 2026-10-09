@@ -33,19 +33,19 @@ namespace Altruist.Physx.ThreeD
         public IPhysxBody3D SelfBody { get; }
         /// <summary>Body owning <see cref="OtherCollider"/>.</summary>
         public IPhysxBody3D OtherBody { get; }
-        /// <summary>World-space contact point on the self collider.</summary>
-        public Vector3 Point { get; }    // contact point on self
-        /// <summary>Contact normal pointing out of the self collider (world space).</summary>
-        public Vector3 Normal { get; }   // normal pointing out of self
-        /// <summary>Optional aggregate/normal impulse of the contact; 0 when the backend does not provide it.</summary>
-        public float Impulse { get; }    // optional aggregate/normal impulse
+        /// <summary>World-space contact point (the deepest point of the contact; the same for both colliders).</summary>
+        public Vector3 Point { get; }
+        /// <summary>Contact normal pointing out of the self collider, towards the other one (world space).</summary>
+        public Vector3 Normal { get; }
+        /// <summary>Optional aggregate/normal impulse of the contact; 0 when the backend does not provide it (BEPU never does).</summary>
+        public float Impulse { get; }
 
         /// <summary>Creates a contact record.</summary>
         /// <param name="selfCol">Collider raising the event.</param>
         /// <param name="otherCol">Other collider.</param>
         /// <param name="selfBody">Body of <paramref name="selfCol"/>.</param>
         /// <param name="otherBody">Body of <paramref name="otherCol"/>.</param>
-        /// <param name="point">World-space contact point on self.</param>
+        /// <param name="point">World-space contact point.</param>
         /// <param name="normal">Normal pointing out of self.</param>
         /// <param name="impulse">Contact impulse, or 0.</param>
         public PhysxCollisionInfo3D(
@@ -69,9 +69,11 @@ namespace Altruist.Physx.ThreeD
     /// <see cref="IPhysxColliderApiProvider3D.CreateCollider"/> from a <see cref="PhysxCollider3D"/> descriptor.
     /// </summary>
     /// <remarks>
-    /// In the BEPU backend the collider is data-only: its shape and <c>Transform.Size</c> are read once when attached
-    /// (the transform's position/rotation offset is not applied), and the collision/trigger events declared here are
-    /// currently never raised. For overlap-driven gameplay use <see cref="CollisionHandlerAttribute"/> handlers instead.
+    /// In the BEPU backend the shape, <c>Transform.Size</c> and heightfield are read when the collider is attached (the
+    /// transform's position/rotation offset is not applied: the collider sits at the body origin), <c>IsTrigger</c> is read
+    /// every timestep, and the engine raises the collision and trigger events after each timestep (see
+    /// <see cref="BepuWorldEngine3D"/>). For overlap-driven gameplay without a physics engine use
+    /// <see cref="CollisionHandlerAttribute"/> handlers instead.
     /// </remarks>
     public interface IPhysxCollider3D : IPhysxCollider
     {
@@ -83,11 +85,11 @@ namespace Altruist.Physx.ThreeD
         /// <summary>Height samples for <see cref="PhysxColliderShape3D.Heightfield3D"/> colliders; <see langword="null"/> for other shapes.</summary>
         HeightfieldData? Heightfield { get; set; }
 
-        /// <summary>Raised when this collider starts touching another collider (backend permitting).</summary>
+        /// <summary>Raised when this collider starts touching another non-trigger collider.</summary>
         event Action<PhysxCollisionInfo3D>? OnCollisionEnter;
-        /// <summary>Raised every step while this collider keeps touching another collider (backend permitting).</summary>
+        /// <summary>Raised every timestep while this collider keeps touching another non-trigger collider.</summary>
         event Action<PhysxCollisionInfo3D>? OnCollisionStay;
-        /// <summary>Raised when this collider stops touching another collider (backend permitting).</summary>
+        /// <summary>Raised when this collider stops touching another non-trigger collider (or either body is removed).</summary>
         event Action<PhysxCollisionInfo3D>? OnCollisionExit;
     }
 

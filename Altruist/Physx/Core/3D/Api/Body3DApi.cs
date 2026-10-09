@@ -132,7 +132,8 @@ namespace Altruist.Physx.ThreeD
     {
         /// <summary>
         /// Creates an engine-specific body from <paramref name="desc"/> and inserts it into <paramref name="engine"/>'s
-        /// simulation. Call <see cref="IPhysxWorldEngine3D.AddBody"/> afterwards so the engine tracks it.
+        /// simulation. Call <see cref="IPhysxWorldEngine3D.AddBody"/> afterwards (backends that track bodies from creation,
+        /// like BEPU, only check ownership there).
         /// </summary>
         /// <param name="engine">Target engine; must belong to the same backend.</param>
         /// <param name="desc">Body descriptor.</param>
@@ -140,8 +141,8 @@ namespace Altruist.Physx.ThreeD
         IPhysxBody3D CreateBody(IPhysxWorldEngine3D engine, in PhysxBody3DDesc desc);
 
         /// <summary>
-        /// Attaches <paramref name="collider"/> to <paramref name="body"/>. In the BEPU backend this replaces the body's
-        /// current shape (one active shape per body; the last attached collider wins) and wakes the body.
+        /// Attaches <paramref name="collider"/> to <paramref name="body"/>. In the BEPU backend the body's colliders form
+        /// one compound shape, so this adds a collider next to the existing ones and wakes the body.
         /// </summary>
         /// <param name="engine">Engine owning the body.</param>
         /// <param name="body">Body created by this provider.</param>
@@ -150,8 +151,8 @@ namespace Altruist.Physx.ThreeD
         void AddCollider(IPhysxWorldEngine3D engine, IPhysxBody3D body, IPhysxCollider3D collider);
 
         /// <summary>
-        /// Finds the registered body that owns <paramref name="collider"/>, detaches it and restores the body's original
-        /// (descriptor) shape. No-op when no registered body owns it.
+        /// Finds the body of <paramref name="engine"/> that owns <paramref name="collider"/> and detaches it; the body keeps
+        /// its other colliders (its descriptor's default shape returns once none are left). No-op when no body owns it.
         /// </summary>
         /// <param name="engine">Engine owning the body.</param>
         /// <param name="collider">Collider to detach.</param>
