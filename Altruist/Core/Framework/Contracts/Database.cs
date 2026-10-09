@@ -339,18 +339,28 @@ public interface IVault<TVaultModel>
 
     // Fluent query ops
     /// <summary>Adds a filter; several calls are combined with <c>AND</c>. Returns a new vault.</summary>
+    /// <remarks>Filters must come before <see cref="Skip"/>/<see cref="Take"/> (SQL filters before it pages); calling it on a paged chain throws <see cref="InvalidOperationException"/>.</remarks>
     /// <param name="predicate">Filter over mapped properties, e.g. <c>x =&gt; x.Level &gt; 5</c>.</param>
     IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate);
-    /// <summary>Appends an ascending sort key. Returns a new vault.</summary>
+    /// <summary>Appends an ascending sort key (keys apply in call order, like <c>ThenBy</c>). Returns a new vault.</summary>
+    /// <remarks>Sort keys must come before <see cref="Skip"/>/<see cref="Take"/>; calling it on a paged chain throws <see cref="InvalidOperationException"/>.</remarks>
     /// <param name="keySelector">Mapped property to sort by.</param>
     IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
     /// <summary>Appends a descending sort key. Returns a new vault.</summary>
+    /// <remarks>Sort keys must come before <see cref="Skip"/>/<see cref="Take"/>; calling it on a paged chain throws <see cref="InvalidOperationException"/>.</remarks>
     /// <param name="keySelector">Mapped property to sort by.</param>
     IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector);
-    /// <summary>Limits the result to <paramref name="count"/> rows (<c>LIMIT</c>). Call at most once, and not before <see cref="FirstOrDefaultAsync"/>/<see cref="FirstAsync"/> (they add their own <c>LIMIT 1</c>).</summary>
+    /// <summary>
+    /// Keeps at most <paramref name="count"/> rows of the current window (<c>LIMIT</c>). Composes like LINQ:
+    /// <c>Take(10).Take(3)</c> keeps 3 rows, <c>Take(10).Skip(4)</c> keeps rows 4..9, and
+    /// <see cref="FirstOrDefaultAsync"/> after <c>Take(0)</c> finds nothing. Negative counts as 0.
+    /// </summary>
     /// <param name="count">Maximum number of rows.</param>
     IVault<TVaultModel> Take(int count);
-    /// <summary>Skips the first <paramref name="count"/> rows (<c>OFFSET</c>). Call at most once; combine with <see cref="OrderBy{TKey}"/> for stable paging.</summary>
+    /// <summary>
+    /// Skips <paramref name="count"/> rows of the current window (<c>OFFSET</c>); combine with
+    /// <see cref="OrderBy{TKey}"/> for stable paging. Composes like LINQ: <c>Skip(2).Skip(3)</c> skips 5. Negative counts as 0.
+    /// </summary>
     /// <param name="count">Number of rows to skip.</param>
     IVault<TVaultModel> Skip(int count);
 
@@ -369,13 +379,14 @@ public interface IVault<TVaultModel>
     /// <param name="predicate">Additional filter, ANDed with existing ones.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<List<TVaultModel>> ToListAsync(Expression<Func<TVaultModel, bool>> predicate, CancellationToken ct = default);
-    /// <summary>Returns the number of rows matching the filters (<c>SELECT COUNT(*)</c>; ordering, <c>Skip</c> and <c>Take</c> are ignored).</summary>
+    /// <summary>Returns the number of rows the query selects (<c>SELECT COUNT(*)</c>): the rows matching the filters, limited to the <c>Skip</c>/<c>Take</c> window when the chain is paged.</summary>
     /// <param name="ct">Cancellation token.</param>
     Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Runs the query selecting only the columns used by <paramref name="selector"/>, materialized as
-    /// <typeparamref name="TResult"/> (a vault model with the remaining properties left at their defaults).
+    /// Runs the query (filters, order and paging) selecting only the columns used by <paramref name="selector"/>,
+    /// materialized as <typeparamref name="TResult"/> (a vault model with the remaining properties left at their
+    /// defaults). Each assigned member reads the column of the source property it is assigned from.
     /// For cross-table projections use <c>IVaultJoinQuery.SelectAsync</c>.
     /// </summary>
     /// <param name="selector">Projection, e.g. <c>x =&gt; new PlayerProfile { StorageId = x.StorageId, Level = x.Level }</c>.</param>
@@ -385,7 +396,7 @@ public interface IVault<TVaultModel>
         CancellationToken ct = default)
         where TResult : class, IVaultModel;
 
-    /// <summary>Returns <c>true</c> if any row matches the current filters AND <paramref name="predicate"/>.</summary>
+    /// <summary>Returns <c>true</c> if any row matches the current filters AND <paramref name="predicate"/> (like <see cref="Where"/>, not allowed on a paged chain).</summary>
     /// <param name="predicate">Additional filter.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<bool> AnyAsync(Expression<Func<TVaultModel, bool>> predicate, CancellationToken ct = default);
@@ -404,15 +415,30 @@ public interface IVault<TVaultModel>
         CancellationToken ct = default);
 
     /// <summary>
-    /// Deletes every row matching the current filters and returns <c>true</c> if any row was deleted.
-    /// <b>Without a <see cref="Where"/> this deletes the whole table.</b>
+    /// Deletes the rows the query selects (the filters, plus the <see cref="Skip"/>/<see cref="Take"/> window in
+    /// <see cref="OrderBy{TKey}"/> order when the chain is paged) and returns <c>true</c> if any row was deleted.
+    /// A chain without any <see cref="Where"/> or paging throws instead of emptying the table; use
+    /// <see cref="DeleteAllAsync"/> for that.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
+    /// <exception cref="InvalidOperationException">The chain has neither a filter nor paging.</exception>
     Task<bool> DeleteAsync(CancellationToken ct = default);
 
-    // Cursor
-    /// <summary>Opens a streaming cursor over the query results. Not implemented by the SQL vaults (throws <see cref="NotImplementedException"/>); page with <see cref="Skip"/>/<see cref="Take"/> instead.</summary>
+    /// <summary>
+    /// Deletes every row of the table, ignoring the chain's filters and paging, and returns the number of deleted rows.
+    /// The explicit way to empty a table; <see cref="DeleteAsync"/> refuses to run without a filter.
+    /// </summary>
     /// <param name="ct">Cancellation token.</param>
+    Task<long> DeleteAllAsync(CancellationToken ct = default);
+
+    // Cursor
+    /// <summary>
+    /// Opens a cursor that reads the query's rows in batches (SQL vaults: 500 rows per <c>LIMIT</c>/<c>OFFSET</c>
+    /// query, nothing held open between batches; an unpaged chain is ordered by its sort keys plus the primary key so
+    /// batches don't overlap). Use it to stream a large result instead of <see cref="ToListAsync(CancellationToken)"/>; read
+    /// it with <c>while (cursor.HasNext) await cursor.NextBatch()</c>.
+    /// </summary>
+    /// <param name="ct">Cancellation token, observed by every batch.</param>
     Task<ICursor<TVaultModel>> ToCursorAsync(CancellationToken ct = default);
 
     // Save

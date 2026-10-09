@@ -35,22 +35,24 @@ namespace Altruist.Persistence.Postgres;
 /// inlined as escaped SQL literals, not bound as parameters):</para>
 /// <list type="bullet">
 /// <item><description><c>Where</c>: comparisons (<c>==</c>, <c>!=</c>, <c>&lt;</c>, <c>&lt;=</c>, <c>&gt;</c>,
-/// <c>&gt;=</c>) between a model property and a value (either side; captured variables and computed
-/// expressions are evaluated once at translation time), combined with <c>&amp;&amp;</c> / <c>||</c>.
-/// <c>x.Prop == null</c> becomes <c>IS NULL</c>, any other operator against null becomes <c>IS NOT NULL</c>.
+/// <c>&gt;=</c>) between a mapped property and a value (either side; captured variables and computed expressions are
+/// evaluated once at translation time) or between two mapped properties of the row, combined with <c>&amp;&amp;</c> /
+/// <c>||</c>. Null follows C# semantics: <c>x.Prop == null</c> is <c>IS NULL</c>, <c>!= null</c> is
+/// <c>IS NOT NULL</c>, an ordering comparison with null is never true, and <c>x.Prop != value</c> also matches rows
+/// whose column is NULL (<c>IS DISTINCT FROM</c>). <c>x.Prop.Value</c> on a nullable property reads the column.
 /// Anything else (a bare bool property, <c>!</c>, method calls such as <c>Contains</c>/<c>StartsWith</c>,
-/// arithmetic on the column) throws <see cref="NotSupportedException"/>. Comparing two properties of the
-/// same row is not supported either (the value side cannot be evaluated and throws).</description></item>
-/// <item><description><c>OrderBy</c>/<c>OrderByDescending</c>: a single property access <c>x =&gt; x.Prop</c>;
-/// anything else (including a boxing conversion) throws <see cref="NotSupportedException"/>. Multiple calls
-/// append further sort keys.</description></item>
-/// <item><description><c>SelectAsync</c>: a <c>new { ... }</c>-style <see cref="System.Linq.Expressions.NewExpression"/>
-/// with member mappings; each member name is mapped to its column. Member-init syntax
-/// (<c>new T { A = x.A }</c>) throws <see cref="NotSupportedException"/>.</description></item>
+/// arithmetic on the column, nested members such as <c>x.A.B</c>, unmapped properties) throws
+/// <see cref="NotSupportedException"/>.</description></item>
+/// <item><description><c>OrderBy</c>/<c>OrderByDescending</c>: a single mapped property <c>x =&gt; x.Prop</c>.
+/// Multiple calls append further sort keys in call order.</description></item>
+/// <item><description><c>Skip</c>/<c>Take</c> compose like LINQ into one <c>LIMIT</c>/<c>OFFSET</c> window; filters and
+/// sort keys must be added before them. <c>CountAsync</c> and <c>DeleteAsync</c> act on that window.</description></item>
+/// <item><description><c>SelectAsync</c>: <c>x =&gt; new T { A = x.A, B = x.C }</c>; each assigned member reads the
+/// column of the property it is assigned from.</description></item>
 /// </list>
 /// <para>
-/// Column names come from the model's <see cref="VaultDocument"/> (property → column map); unknown property
-/// names fall back to camelCase. Nested member access (<c>x.A.B</c>) resolves only the last member name.
+/// Column names come from the model's <see cref="VaultDocument"/> (property → column map); a property that is not a
+/// <c>[VaultColumn]</c> throws <see cref="NotSupportedException"/>.
 /// </para>
 /// <para>
 /// Each fluent call returns a new vault instance; the injected singleton is never mutated, so it is safe to
@@ -107,7 +109,7 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
         VaultDocument document)
-        : this(databaseProvider, schema, document, new QueryState())
+        : this(databaseProvider, schema, document, QueryState.Empty)
     {
     }
 

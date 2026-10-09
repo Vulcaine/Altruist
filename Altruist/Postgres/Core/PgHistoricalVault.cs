@@ -1,4 +1,3 @@
-// PgHistoricalVault.cs (UPDATED) — FULL FILE
 using System.Linq.Expressions;
 
 namespace Altruist.Persistence.Postgres;
@@ -43,6 +42,4 @@ internal sealed class PgHistoricalVault<TVaultModel> : SqlHistoricalVault<TVault
     /// <inheritdoc/>
     protected override string QuoteIdent(string ident)
         => $"\"{ident.Replace("\"", "\"\"")}\"";
-
-    // If you want, override ToSqlLiteral to include timezone/UTC formatting specifics for PG.
 }

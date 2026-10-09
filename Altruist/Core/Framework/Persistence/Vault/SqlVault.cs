@@ -157,7 +157,7 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         ISqlDatabaseProvider databaseProvider,
         IKeyspace schema,
         VaultDocument document)
-        : this(databaseProvider, schema, document, new QueryState())
+        : this(databaseProvider, schema, document, QueryState.Empty)
     {
     }
 
@@ -256,63 +256,50 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     /// <summary>Returns a new vault with an extra filter; several calls are combined with AND.</summary>
     /// <param name="predicate">Filter on model properties; supported shapes depend on the provider translator.</param>
     /// <returns>A new vault; this instance is unchanged.</returns>
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>: filter before paging.</exception>
     public IVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
     {
-        var whereClause = ConvertWherePredicateToString(predicate);
-        var next = _state.With(QueryPosition.WHERE, whereClause)
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
+        EnsureNotPaged(nameof(Where));
+        return New(_state.WithFilter(ConvertWherePredicateToString(predicate)));
     }
 
     /// <summary>Returns a new vault that additionally sorts ascending by the key (keys apply in call order).</summary>
     /// <typeparam name="TKey">Key type.</typeparam>
     /// <param name="keySelector">Property to sort by.</param>
     /// <returns>A new vault.</returns>
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>: sort before paging.</exception>
     public IVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        var orderByClause = ConvertOrderByToString(keySelector);
-        // Ensure the full projection: adding the bare sort column to SELECT made an OrderBy issued
-        // before Where/Take return only that one column.
-        var next = _state.With(QueryPosition.ORDER_BY, orderByClause)
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
+        EnsureNotPaged(nameof(OrderBy));
+        return New(_state.WithOrderKey(ConvertOrderByToString(keySelector)));
     }
 
     /// <summary>Returns a new vault that additionally sorts descending by the key.</summary>
     /// <typeparam name="TKey">Key type.</typeparam>
     /// <param name="keySelector">Property to sort by.</param>
     /// <returns>A new vault.</returns>
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>: sort before paging.</exception>
     public IVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        var orderByClause = ConvertOrderByDescendingToString(keySelector);
-        var next = _state.With(QueryPosition.ORDER_BY, orderByClause + " DESC")
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
+        EnsureNotPaged(nameof(OrderByDescending));
+        return New(_state.WithOrderKey(ConvertOrderByDescendingToString(keySelector) + " DESC"));
     }
 
-    /// <summary>Returns a new vault limited to <paramref name="count"/> rows (SQL LIMIT).</summary>
-    /// <remarks>
-    /// Call it at most once per chain, and do not combine it with <see cref="FirstOrDefaultAsync"/>/<see cref="FirstAsync"/>
-    /// (which add their own LIMIT 1): limit parts accumulate, so a second LIMIT produces invalid SQL.
-    /// </remarks>
-    /// <param name="count">Maximum number of rows.</param>
+    /// <summary>
+    /// Returns a new vault keeping at most <paramref name="count"/> rows of the current window (SQL <c>LIMIT</c>).
+    /// Composes like LINQ: <c>Take(10).Take(3)</c> keeps 3 rows, <c>Take(10).Skip(4)</c> keeps rows 4..9.
+    /// </summary>
+    /// <param name="count">Maximum number of rows; negative counts as 0.</param>
     /// <returns>A new vault.</returns>
-    public IVault<TVaultModel> Take(int count)
-    {
-        var next = _state.With(QueryPosition.LIMIT, $"LIMIT {count}")
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
-    }
+    public IVault<TVaultModel> Take(int count) => New(_state.Take(count));
 
-    /// <summary>Returns a new vault that skips <paramref name="count"/> rows (SQL OFFSET); combine with an OrderBy for stable paging. Call at most once per chain.</summary>
-    /// <param name="count">Rows to skip.</param>
+    /// <summary>
+    /// Returns a new vault that skips <paramref name="count"/> rows of the current window (SQL <c>OFFSET</c>); combine
+    /// with an OrderBy for stable paging. Composes like LINQ: <c>Skip(2).Skip(3)</c> skips 5 rows.
+    /// </summary>
+    /// <param name="count">Rows to skip; negative counts as 0.</param>
     /// <returns>A new vault.</returns>
-    public IVault<TVaultModel> Skip(int count)
-    {
-        var next = _state.With(QueryPosition.OFFSET, $"OFFSET {count}")
-                         .EnsureProjectionSelected(VaultDocument);
-        return New(next);
-    }
+    public IVault<TVaultModel> Skip(int count) => New(_state.Skip(count));
 
     // ------------------------ Terminal ops (use current state) ------------------------
 
@@ -322,152 +309,83 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     public virtual async Task<List<TVaultModel>> ToListAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-
-        var st = _state.EnsureProjectionSelected(VaultDocument);
-        var query = BuildSelectQuery(st);
-
         var rows = await _databaseProvider.QueryAsync<TVaultModel>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
+            BuildSelectQuery(_state, FullProjection()), parameters: null, ct).ConfigureAwait(false);
         return rows.ToList();
     }
 
-    /// <summary>Executes the query with LIMIT 1 and returns the first row, or null.</summary>
+    /// <summary>Returns the first row of the current window (respecting ordering and paging), or null.</summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The first row or null.</returns>
     public virtual async Task<TVaultModel?> FirstOrDefaultAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-
-        var st = _state.EnsureProjectionSelected(VaultDocument)
-                       .With(QueryPosition.LIMIT, "LIMIT 1");
-        var query = BuildSelectQuery(st);
-
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return result.FirstOrDefault();
+        var rows = await _databaseProvider.QueryAsync<TVaultModel>(
+            BuildSelectQuery(_state.Take(1), FullProjection()), parameters: null, ct).ConfigureAwait(false);
+        return rows.FirstOrDefault();
     }
 
-    /// <summary>Executes the query with LIMIT 1 and returns the first row. Prefer <see cref="FirstOrDefaultAsync"/> when no match is a normal outcome.</summary>
+    /// <summary>Returns the first row of the current window. Prefer <see cref="FirstOrDefaultAsync"/> when no match is a normal outcome.</summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The first row.</returns>
     /// <exception cref="InvalidOperationException">No row matches.</exception>
     public virtual async Task<TVaultModel?> FirstAsync(CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var st = _state.EnsureProjectionSelected(VaultDocument)
-                       .With(QueryPosition.LIMIT, "LIMIT 1");
-        var query = BuildSelectQuery(st);
-
-        var result = await _databaseProvider.QueryAsync<TVaultModel>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return result.First();
-    }
+        => await FirstOrDefaultAsync(ct).ConfigureAwait(false)
+           ?? throw new InvalidOperationException($"No {typeof(TVaultModel).Name} row matches the query.");
 
     /// <summary>Shortcut for <c>Where(predicate).ToListAsync(ct)</c>.</summary>
     /// <param name="predicate">Extra filter.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The matching rows.</returns>
-    public virtual async Task<List<TVaultModel>> ToListAsync(
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>.</exception>
+    public virtual Task<List<TVaultModel>> ToListAsync(
         Expression<Func<TVaultModel, bool>> predicate,
         CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
+        => Where(predicate).ToListAsync(ct);
 
-        var next = (SqlVault<TVaultModel>)Where(predicate);
-        return await next.ToListAsync(ct).ConfigureAwait(false);
-    }
-
-    /// <summary>Counts rows matching the Where filters (<c>SELECT COUNT(*)</c>). Take/Skip/OrderBy are ignored.</summary>
+    /// <summary>
+    /// Counts the rows the query would return: the rows matching the filters, limited to the
+    /// <see cref="Skip"/>/<see cref="Take"/> window when the chain is paged (<c>SELECT COUNT(*)</c>).
+    /// </summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Row count.</returns>
     public virtual async Task<long> CountAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-
-        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
-        var from = QualifiedTableName();
-
-        var sql = string.IsNullOrEmpty(whereClause)
-            ? $"SELECT COUNT(*) FROM {from}"
-            : $"SELECT COUNT(*) FROM {from} WHERE {whereClause}";
-
-        var count = await _databaseProvider.ExecuteCountAsync(
-            sql,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return count;
+        return await _databaseProvider.ExecuteCountAsync(CountQuery(_state), parameters: null, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Executes the query with a custom projection instead of the full column list.</summary>
+    /// <summary>
+    /// Executes the query selecting only the columns the projection reads (instead of the full column list).
+    /// </summary>
     /// <typeparam name="TResult">Projected vault model type.</typeparam>
-    /// <param name="selector">The projection; translated by the provider.</param>
+    /// <param name="selector">The projection, e.g. <c>x =&gt; new TResult { A = x.A }</c>; translated by the provider.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>The projected rows.</returns>
-    /// <exception cref="InvalidOperationException">The state already selects <c>*</c>.</exception>
+    /// <returns>The projected rows; members not assigned by the projection keep their defaults.</returns>
     public virtual async Task<IEnumerable<TResult>> SelectAsync<TResult>(
         Expression<Func<TVaultModel, TResult>> selector,
         CancellationToken ct = default)
         where TResult : class, IVaultModel
     {
         ct.ThrowIfCancellationRequested();
-
-        if (_state.Parts[QueryPosition.SELECT].Contains("*"))
-            throw new InvalidOperationException("Invalid query. SELECT * followed by other columns is not allowed.");
-
-        var st = _state;
-        foreach (var column in TranslateSelect(selector))
-            st = st.With(QueryPosition.SELECT, column);
-
-        var query = BuildSelectQuery(st);
-
-        var result = await _databaseProvider.QueryAsync<TResult>(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
-        return result;
+        var projection = string.Join(", ", TranslateSelect(selector));
+        return await _databaseProvider.QueryAsync<TResult>(
+            BuildSelectQuery(_state, projection), parameters: null, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Returns whether any row matches the current filters plus <paramref name="predicate"/> (via COUNT(*)).</summary>
+    /// <summary>Returns whether any row matches the current filters plus <paramref name="predicate"/>.</summary>
     /// <param name="predicate">Extra filter.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>True when at least one row matches.</returns>
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>.</exception>
     public virtual async Task<bool> AnyAsync(
         Expression<Func<TVaultModel, bool>> predicate,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-
         var next = (SqlVault<TVaultModel>)Where(predicate);
-        var where = string.Join(" AND ", next._state.Parts[QueryPosition.WHERE]);
-        var from = next.QualifiedTableName();
-
-        var query = string.IsNullOrEmpty(where)
-            ? $"SELECT COUNT(*) FROM {from}"
-            : $"SELECT COUNT(*) FROM {from} WHERE {where}";
-
         var count = await _databaseProvider.ExecuteCountAsync(
-            query,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
+            CountQuery(next._state.Take(1)), parameters: null, ct).ConfigureAwait(false);
         return count > 0;
     }
 
@@ -478,8 +396,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     /// assignments in memory, then saves them with one versioned batch upsert (no history).
     /// </summary>
     /// <remarks>
-    /// Not a single SQL UPDATE: every matching row is loaded, and a concurrent change to any of them makes the whole
-    /// batch fail with <see cref="OptimisticConcurrencyException"/>. For large sets prefer raw SQL through
+    /// Not a single SQL UPDATE: every matching row is loaded and re-saved through <see cref="SaveBatchAsync"/>, so
+    /// <see cref="IVaultModel.OnSave"/> runs and each row's version increases. A concurrent change to any of them makes
+    /// the whole batch fail with <see cref="OptimisticConcurrencyException"/>. For large sets prefer raw SQL through
     /// <see cref="DatabaseProvider"/>.
     /// </remarks>
     /// <example>
@@ -498,11 +417,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     {
         ct.ThrowIfCancellationRequested();
 
+        var assigns = ParseSetPropertyCalls(setPropertyCalls);
         var targets = await ToListAsync(ct).ConfigureAwait(false);
         if (targets.Count == 0)
             return 0;
-
-        var assigns = ParseSetPropertyCalls(setPropertyCalls);
 
         foreach (var e in targets)
             ApplyAssignments(e, assigns);
@@ -511,36 +429,75 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         return targets.Count;
     }
 
-    /// <summary>Deletes rows matching the Where filters (Take/Skip/OrderBy are ignored).</summary>
-    /// <remarks>Without any Where filter this deletes every row of the table.</remarks>
+    /// <summary>
+    /// Deletes the rows the query selects: the rows matching the filters, limited to the
+    /// <see cref="Skip"/>/<see cref="Take"/> window (in <see cref="OrderBy{TKey}"/> order) when the chain is paged.
+    /// </summary>
+    /// <remarks>
+    /// A chain with neither a filter nor paging would delete the whole table; that throws instead. Call
+    /// <see cref="DeleteAllAsync"/> to empty a table on purpose.
+    /// </remarks>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>True when at least one row was deleted.</returns>
+    /// <exception cref="InvalidOperationException">The chain has no <see cref="Where"/> and no <see cref="Skip"/>/<see cref="Take"/>.</exception>
     public virtual async Task<bool> DeleteAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
-        var from = QualifiedTableName();
-        var whereClause = string.Join(" AND ", _state.Parts[QueryPosition.WHERE]);
+        if (_state.Filters.Count == 0 && !_state.IsPaged)
+            throw new InvalidOperationException(
+                $"DeleteAsync without a Where filter would delete every {typeof(TVaultModel).Name} row. " +
+                "Add a Where (or Take) to the chain, or call DeleteAllAsync to empty the table on purpose.");
 
-        var sql = string.IsNullOrEmpty(whereClause)
-            ? $"DELETE FROM {from}"
-            : $"DELETE FROM {from} WHERE {whereClause}";
-
-        var affected = await _databaseProvider.ExecuteAsync(
-            sql,
-            parameters: null,
-            ct).ConfigureAwait(false);
-
-        ct.ThrowIfCancellationRequested();
+        var affected = await _databaseProvider.ExecuteAsync(DeleteQuery(_state), parameters: null, ct).ConfigureAwait(false);
         return affected > 0;
     }
 
-    /// <summary>Not implemented by the SQL base vault; use <see cref="Take"/>/<see cref="Skip"/> paging instead.</summary>
+    /// <summary>Deletes every row of the table, ignoring this chain's filters and paging (<c>DELETE FROM table</c>).</summary>
+    /// <remarks>Use it only to empty a table on purpose; <see cref="DeleteAsync"/> refuses to run without a filter.</remarks>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Never returns.</returns>
-    /// <exception cref="NotImplementedException">Always.</exception>
+    /// <returns>Number of deleted rows.</returns>
+    public virtual async Task<long> DeleteAllAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return await _databaseProvider.ExecuteAsync($"DELETE FROM {QualifiedTableName()}", parameters: null, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Opens a cursor that reads the query's rows in batches of <see cref="CursorBatchSize"/> (each batch is one
+    /// <c>LIMIT</c>/<c>OFFSET</c> query, so nothing stays open between batches).
+    /// </summary>
+    /// <remarks>
+    /// An unpaged chain gets the primary key appended as the final sort key, so batches neither repeat nor skip rows
+    /// as long as the table is not modified while reading. A paged chain is read within its window as written. Prefer
+    /// <see cref="ICursor{T}.NextBatch"/> in a <c>while (cursor.HasNext)</c> loop: <c>foreach</c> blocks on each batch.
+    /// </remarks>
+    /// <param name="ct">Cancellation token, observed by every batch.</param>
+    /// <returns>The cursor (no query runs until the first batch).</returns>
     public virtual Task<ICursor<TVaultModel>> ToCursorAsync(CancellationToken ct = default)
-        => throw new NotImplementedException();
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var state = _state;
+        if (!state.IsPaged)
+        {
+            foreach (var key in PrimaryKeyColumns().Select(QuoteIdent).Where(k => !state.OrderKeys.Contains(k)))
+                state = state.WithOrderKey(key);
+        }
+
+        var projection = FullProjection();
+        ICursor<TVaultModel> cursor = new SqlVaultCursor<TVaultModel>(
+            async (offset, count, token) => (await _databaseProvider.QueryAsync<TVaultModel>(
+                BuildSelectQuery(state.Skip(offset).Take(count), projection), parameters: null, token)
+                .ConfigureAwait(false)).ToList(),
+            CursorBatchSize,
+            ct);
+        return Task.FromResult(cursor);
+    }
+
+    /// <summary>Rows per batch of <see cref="ToCursorAsync"/>.</summary>
+    public const int CursorBatchSize = 500;
 
     // ------------------------ Save ------------------------
 
@@ -578,44 +535,64 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
     // ------------------------ Query building helpers ------------------------
 
-    /// <summary>Builds the SELECT statement (projection, FROM, WHERE, ORDER BY, LIMIT, OFFSET) for a query state.</summary>
+    /// <summary>Every mapped column as <c>"column" AS "Property"</c>, comma-separated.</summary>
+    /// <returns>The SELECT list.</returns>
+    protected string FullProjection()
+        => string.Join(", ", VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
+
+    /// <summary>Physical primary-key columns (the logical key names mapped through the document).</summary>
+    /// <returns>The columns, unquoted.</returns>
+    /// <exception cref="InvalidOperationException">The model declares no primary key.</exception>
+    protected IReadOnlyList<string> PrimaryKeyColumns()
+    {
+        var keys = VaultDocument.PrimaryKey?.Keys;
+        if (keys is null || keys.Length == 0)
+            throw new InvalidOperationException($"{typeof(TVaultModel).Name} declares no primary key.");
+        return keys.Select(k => VaultDocument.Columns.TryGetValue(k, out var col) ? col : k).ToArray();
+    }
+
+    /// <summary>Builds <c>SELECT projection FROM table [WHERE] [ORDER BY] [LIMIT] [OFFSET]</c> for a query state.</summary>
+    /// <param name="st">The query state.</param>
+    /// <param name="projection">The SELECT list.</param>
+    /// <returns>SQL text.</returns>
+    protected virtual string BuildSelectQuery(QueryState st, string projection)
+        => $"SELECT {projection} FROM {QualifiedTableName()}{st.WhereClause()}{st.OrderByClause()}{st.PagingClause()}";
+
+    /// <summary><c>SELECT COUNT(*)</c> over the rows <paramref name="st"/> selects (its paging window included).</summary>
     /// <param name="st">The query state.</param>
     /// <returns>SQL text.</returns>
-    protected virtual string BuildSelectQuery(QueryState st)
+    protected string CountQuery(QueryState st)
+        => st.IsPaged
+            ? $"SELECT COUNT(*) FROM ({BuildSelectQuery(st, "1")}) AS q"
+            : $"SELECT COUNT(*) FROM {QualifiedTableName()}{st.WhereClause()}";
+
+    /// <summary>
+    /// <c>DELETE</c> of the rows <paramref name="st"/> selects; a paged state deletes by primary key from the window
+    /// sub-query (SQL <c>DELETE</c> has no <c>LIMIT</c>).
+    /// </summary>
+    /// <param name="st">The query state.</param>
+    /// <returns>SQL text.</returns>
+    protected string DeleteQuery(QueryState st)
     {
-        var select =
-            st.Parts[QueryPosition.SELECT].Count == 0
-                ? string.Join(", ",
-                    VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
-                : string.Join(", ", st.Parts[QueryPosition.SELECT]);
+        if (!st.IsPaged)
+            return $"DELETE FROM {QualifiedTableName()}{st.WhereClause()}";
 
-        var sb = new System.Text.StringBuilder(256);
-        sb.Append("SELECT ").Append(select)
-          .Append(" FROM ").Append(QualifiedTableName());
-
-        var where = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
-        if (!string.IsNullOrEmpty(where))
-            sb.Append(" WHERE ").Append(where);
-
-        var orderBy = string.Join(", ", st.Parts[QueryPosition.ORDER_BY]);
-        if (!string.IsNullOrEmpty(orderBy))
-            sb.Append(" ORDER BY ").Append(orderBy);
-
-        var limit = string.Join(" ", st.Parts[QueryPosition.LIMIT]);
-        if (!string.IsNullOrEmpty(limit))
-            sb.Append(' ').Append(limit);
-
-        var offset = string.Join(" ", st.Parts[QueryPosition.OFFSET]);
-        if (!string.IsNullOrEmpty(offset))
-            sb.Append(' ').Append(offset);
-
-        return sb.ToString();
+        var keys = string.Join(", ", PrimaryKeyColumns().Select(QuoteIdent));
+        return $"DELETE FROM {QualifiedTableName()} WHERE ({keys}) IN ({BuildSelectQuery(st, keys)})";
     }
 
     /// <summary>Returns the quoted <c>"keyspace"."table"</c> name.</summary>
     /// <returns>Qualified table name.</returns>
     protected virtual string QualifiedTableName()
         => $"{QuoteIdent(Keyspace.Name)}.{QuoteIdent(VaultDocument.Name)}";
+
+    private void EnsureNotPaged(string operation)
+    {
+        if (_state.IsPaged)
+            throw new InvalidOperationException(
+                $"{operation} after Skip/Take is not supported: SQL filters and sorts before paging. " +
+                $"Call {operation} before Skip/Take.");
+    }
 
     // ------------------------ Save helpers ------------------------
 

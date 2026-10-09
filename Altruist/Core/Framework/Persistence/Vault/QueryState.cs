@@ -1,138 +1,105 @@
 namespace Altruist.Persistence;
 
-/// <summary>Clause buckets of a <see cref="QueryState"/>.</summary>
-public enum QueryPosition
-{
-    /// <summary>Projection list items.</summary>
-    SELECT,
-    /// <summary>Source table (currently unused by the SQL vaults, which use the document's table).</summary>
-    FROM,
-    /// <summary>Filter fragments, AND-combined.</summary>
-    WHERE,
-    /// <summary>Sort keys.</summary>
-    ORDER_BY,
-    /// <summary>LIMIT clause.</summary>
-    LIMIT,
-    /// <summary>OFFSET clause.</summary>
-    OFFSET,
-    /// <summary>Reserved for UPDATE statements.</summary>
-    UPDATE,
-    /// <summary>Reserved for UPDATE SET assignments.</summary>
-    SET
-}
-
 /// <summary>
-/// Immutable per-chain query state.
-/// Each fluent call creates a new state with one extra piece added.
+/// Immutable per-chain query state of the SQL vaults: filters, sort keys and the paging window, each kept in call
+/// order. Every fluent call returns a new state with one piece added; the state it was called on is unchanged.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Used by <see cref="SqlVault{TVaultModel}"/> and <see cref="SqlHistoricalVault{TVaultModel}"/> providers; application
-/// code does not build it. Each bucket is a set of SQL fragments: duplicates collapse, and a second fragment in the
-/// LIMIT or OFFSET bucket is appended (not replaced). Do not mutate the exposed collections; they are shared between
-/// derived states.
+/// code does not build it.
+/// </para>
+/// <para>
+/// Paging composes like LINQ's <c>Skip</c>/<c>Take</c> on the rows the earlier calls selected:
+/// <c>Take(10).Take(3)</c> keeps 3 rows, <c>Skip(2).Skip(3)</c> skips 5, and <c>Take(10).Skip(4)</c> keeps rows 4..9 of
+/// the first ten (6 rows). The window is therefore always one <see cref="Offset"/> plus an optional <see cref="Limit"/>,
+/// rendered as a single <c>LIMIT</c>/<c>OFFSET</c> pair. Negative counts are treated as 0, as in LINQ.
+/// </para>
 /// </remarks>
 public sealed class QueryState
 {
-    /// <summary>SQL fragments per clause.</summary>
-    public readonly Dictionary<QueryPosition, HashSet<string>> Parts;
-    /// <summary>Bind parameters per clause (populated only when a fragment is added with a parameter; the SQL vaults inline values instead).</summary>
-    public readonly Dictionary<QueryPosition, List<object?>> Parameters;
+    /// <summary>A state with no filter, no sort key and no paging.</summary>
+    public static QueryState Empty { get; } = new(Array.Empty<string>(), Array.Empty<string>(), 0, null);
 
-    /// <summary>Creates an empty state.</summary>
-    public QueryState()
+    /// <summary>SQL boolean fragments, AND-combined, in call order.</summary>
+    public IReadOnlyList<string> Filters { get; }
+
+    /// <summary>SQL sort keys (<c>"col"</c> or <c>"col" DESC</c>), in call order: the first one is the primary key.</summary>
+    public IReadOnlyList<string> OrderKeys { get; }
+
+    /// <summary>Rows to skip before the window starts (0 when unpaged).</summary>
+    public int Offset { get; }
+
+    /// <summary>Maximum number of rows in the window, or <c>null</c> for no limit.</summary>
+    public int? Limit { get; }
+
+    /// <summary>True when <see cref="Offset"/> or <see cref="Limit"/> restricts the rows.</summary>
+    public bool IsPaged => Offset > 0 || Limit is not null;
+
+    private QueryState(IReadOnlyList<string> filters, IReadOnlyList<string> orderKeys, int offset, int? limit)
     {
-        Parts = new Dictionary<QueryPosition, HashSet<string>>
-        {
-            { QueryPosition.SELECT,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.FROM,     new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.WHERE,    new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.ORDER_BY, new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.LIMIT,    new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.OFFSET,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.UPDATE,   new HashSet<string>(StringComparer.Ordinal) },
-            { QueryPosition.SET,      new HashSet<string>(StringComparer.Ordinal) }
-        };
-
-        Parameters = new Dictionary<QueryPosition, List<object?>>
-        {
-            { QueryPosition.SELECT,   new List<object?>() },
-            { QueryPosition.FROM,     new List<object?>() },
-            { QueryPosition.WHERE,    new List<object?>() },
-            { QueryPosition.ORDER_BY, new List<object?>() },
-            { QueryPosition.LIMIT,    new List<object?>() },
-            { QueryPosition.OFFSET,   new List<object?>() },
-            { QueryPosition.UPDATE,   new List<object?>() },
-            { QueryPosition.SET,      new List<object?>() }
-        };
+        Filters = filters;
+        OrderKeys = orderKeys;
+        Offset = offset;
+        Limit = limit;
     }
 
-    private QueryState(
-        Dictionary<QueryPosition, HashSet<string>> parts,
-        Dictionary<QueryPosition, List<object?>> parameters)
-    {
-        Parts = parts;
-        Parameters = parameters;
-    }
-
-    /// <summary>Returns a new state with <paramref name="part"/> added to the <paramref name="pos"/> bucket; this state is unchanged.</summary>
-    /// <param name="pos">Clause bucket.</param>
-    /// <param name="part">SQL fragment.</param>
-    /// <param name="parameter">Optional bind parameter recorded for the bucket (ignored when null).</param>
+    /// <summary>Returns a new state with <paramref name="filter"/> AND-combined with the existing filters.</summary>
+    /// <param name="filter">SQL boolean expression without the <c>WHERE</c> keyword.</param>
     /// <returns>The new state.</returns>
-    public QueryState With(QueryPosition pos, string part, object? parameter = null)
+    public QueryState WithFilter(string filter)
+        => new(Append(Filters, filter), OrderKeys, Offset, Limit);
+
+    /// <summary>Returns a new state with <paramref name="orderKey"/> appended as the least significant sort key.</summary>
+    /// <param name="orderKey">SQL sort key, e.g. <c>"rank" DESC</c>.</param>
+    /// <returns>The new state.</returns>
+    public QueryState WithOrderKey(string orderKey)
+        => new(Filters, Append(OrderKeys, orderKey), Offset, Limit);
+
+    /// <summary>Returns a new state that skips <paramref name="count"/> more rows of the current window (LINQ <c>Skip</c>).</summary>
+    /// <param name="count">Rows to skip; negative counts as 0.</param>
+    /// <returns>The new state.</returns>
+    public QueryState Skip(int count)
     {
-        // clone shallow; copy only the mutated bucket
-        var newParts = new Dictionary<QueryPosition, HashSet<string>>(Parts.Count);
-        foreach (var kv in Parts)
-        {
-            if (kv.Key == pos)
-            {
-                var copy = new HashSet<string>(kv.Value, StringComparer.Ordinal);
-                copy.Add(part);
-                newParts[kv.Key] = copy;
-            }
-            else
-            {
-                newParts[kv.Key] = kv.Value;
-            }
-        }
-
-        var newParams = new Dictionary<QueryPosition, List<object?>>(Parameters.Count);
-        foreach (var kv in Parameters)
-        {
-            if (kv.Key == pos && parameter is not null)
-            {
-                var copy = new List<object?>(kv.Value);
-                copy.Add(parameter);
-                newParams[kv.Key] = copy;
-            }
-            else
-            {
-                newParams[kv.Key] = kv.Value;
-            }
-        }
-
-        return new QueryState(newParts, newParams);
+        var n = Math.Max(0, count);
+        int? limit = Limit is { } l ? Math.Max(0, l - n) : null;
+        return new(Filters, OrderKeys, checked(Offset + n), limit);
     }
 
-    /// <summary>Whether the bucket has at least one fragment.</summary>
-    /// <param name="pos">Clause bucket.</param>
-    /// <returns>True when non-empty.</returns>
-    public bool HasAny(QueryPosition pos) => Parts[pos].Count > 0;
-
-    /// <summary>Returns this state if it already has a SELECT list, otherwise a new state selecting every mapped column as <c>"column" AS "Property"</c>.</summary>
-    /// <param name="doc">Table metadata supplying the column map.</param>
-    /// <returns>A state with a projection.</returns>
-    public QueryState EnsureProjectionSelected(VaultDocument doc)
+    /// <summary>Returns a new state keeping at most <paramref name="count"/> rows of the current window (LINQ <c>Take</c>).</summary>
+    /// <param name="count">Maximum rows; negative counts as 0.</param>
+    /// <returns>The new state.</returns>
+    public QueryState Take(int count)
     {
-        if (HasAny(QueryPosition.SELECT))
-            return this;
-
-        var projection = string.Join(", ",
-            doc.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
-
-        return With(QueryPosition.SELECT, projection);
+        var n = Math.Max(0, count);
+        return new(Filters, OrderKeys, Offset, Limit is { } l ? Math.Min(l, n) : n);
     }
 
-    private static string QuoteIdent(string ident) => $"\"{ident.Replace("\"", "\"\"")}\"";
+    /// <summary>The <c> WHERE ...</c> clause (with a leading space), or an empty string without filters.</summary>
+    /// <returns>SQL text.</returns>
+    public string WhereClause()
+        => Filters.Count == 0 ? "" : " WHERE " + string.Join(" AND ", Filters.Select(f => $"({f})"));
+
+    /// <summary>The <c> ORDER BY ...</c> clause (with a leading space), or an empty string without sort keys.</summary>
+    /// <returns>SQL text.</returns>
+    public string OrderByClause()
+        => OrderKeys.Count == 0 ? "" : " ORDER BY " + string.Join(", ", OrderKeys);
+
+    /// <summary>The <c> LIMIT n</c> / <c> OFFSET n</c> clauses (with leading spaces), or an empty string when unpaged.</summary>
+    /// <returns>SQL text.</returns>
+    public string PagingClause()
+    {
+        var sql = Limit is { } l ? $" LIMIT {l}" : "";
+        return Offset > 0 ? sql + $" OFFSET {Offset}" : sql;
+    }
+
+    private static IReadOnlyList<string> Append(IReadOnlyList<string> list, string item)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(item);
+        var copy = new string[list.Count + 1];
+        for (var i = 0; i < list.Count; i++)
+            copy[i] = list[i];
+        copy[^1] = item;
+        return copy;
+    }
 }

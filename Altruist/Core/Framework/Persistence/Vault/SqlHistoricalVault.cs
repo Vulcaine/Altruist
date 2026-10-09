@@ -1,4 +1,3 @@
-// SqlHistoricalVault.cs (NEW) — FULL FILE
 /*
 Copyright 2025 Aron Gere
 
@@ -10,7 +9,6 @@ You may obtain a copy of the License at
 */
 
 using System.Linq.Expressions;
-using System.Text;
 
 namespace Altruist.Persistence;
 
@@ -21,8 +19,9 @@ namespace Altruist.Persistence;
 /// <remarks>
 /// Reached through <see cref="IVault{TVaultModel}.History"/> on a model whose <see cref="Altruist.UORM.VaultAttribute"/> has
 /// <c>StoreHistory: true</c>; history rows are appended only by saves called with <c>saveHistory: true</c>. Like
-/// <see cref="SqlVault{TVaultModel}"/>, each fluent call returns a new immutable instance. Derive from it only when
-/// writing a SQL provider.
+/// <see cref="SqlVault{TVaultModel}"/>, each fluent call returns a new immutable instance, paging composes like LINQ,
+/// and filters and sort keys must come before <see cref="Skip"/>/<see cref="Take"/>. Derive from it only when writing a
+/// SQL provider.
 /// </remarks>
 /// <example>
 /// <code>
@@ -44,7 +43,7 @@ public abstract class SqlHistoricalVault<TVaultModel> : IHistoricalVault<TVaultM
     /// <summary>Creates a history vault with an empty query state.</summary>
     /// <param name="owner">The live vault.</param>
     protected SqlHistoricalVault(SqlVault<TVaultModel> owner)
-        : this(owner, new QueryState())
+        : this(owner, QueryState.Empty)
     {
     }
 
@@ -82,75 +81,52 @@ public abstract class SqlHistoricalVault<TVaultModel> : IHistoricalVault<TVaultM
     /// <summary>Returns a new history vault with an extra filter (AND-combined).</summary>
     /// <param name="predicate">Filter on model properties.</param>
     /// <returns>A new history vault.</returns>
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>.</exception>
     public IHistoricalVault<TVaultModel> Where(Expression<Func<TVaultModel, bool>> predicate)
     {
-        var where = ConvertWherePredicateToString(predicate);
-
-        var next = State
-            .With(QueryPosition.WHERE, where)
-            .EnsureProjectionSelected(Owner.VaultDocument);
-
-        return Create(next);
+        EnsureNotPaged(nameof(Where));
+        return Create(State.WithFilter(ConvertWherePredicateToString(predicate)));
     }
 
     /// <summary>Returns a new history vault that additionally sorts ascending by the key.</summary>
     /// <typeparam name="TKey">Key type.</typeparam>
     /// <param name="keySelector">Property to sort by.</param>
     /// <returns>A new history vault.</returns>
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>.</exception>
     public IHistoricalVault<TVaultModel> OrderBy<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        var orderBy = ConvertOrderByToString(keySelector);
-
-        var next = State
-            .With(QueryPosition.ORDER_BY, orderBy)
-            .EnsureProjectionSelected(Owner.VaultDocument);
-
-        return Create(next);
+        EnsureNotPaged(nameof(OrderBy));
+        return Create(State.WithOrderKey(ConvertOrderByToString(keySelector)));
     }
 
     /// <summary>Returns a new history vault that additionally sorts descending by the key.</summary>
     /// <typeparam name="TKey">Key type.</typeparam>
     /// <param name="keySelector">Property to sort by.</param>
     /// <returns>A new history vault.</returns>
+    /// <exception cref="InvalidOperationException">The chain already has <see cref="Skip"/>/<see cref="Take"/>.</exception>
     public IHistoricalVault<TVaultModel> OrderByDescending<TKey>(Expression<Func<TVaultModel, TKey>> keySelector)
     {
-        var orderBy = ConvertOrderByToString(keySelector) + " DESC";
-
-        var next = State
-            .With(QueryPosition.ORDER_BY, orderBy)
-            .EnsureProjectionSelected(Owner.VaultDocument);
-
-        return Create(next);
+        EnsureNotPaged(nameof(OrderByDescending));
+        return Create(State.WithOrderKey(ConvertOrderByToString(keySelector) + " DESC"));
     }
 
-    /// <summary>Returns a new history vault limited to <paramref name="count"/> rows. Call at most once per chain (LIMIT parts accumulate).</summary>
-    /// <param name="count">Maximum rows.</param>
+    /// <summary>Returns a new history vault keeping at most <paramref name="count"/> rows of the current window (LINQ semantics).</summary>
+    /// <param name="count">Maximum rows; negative counts as 0.</param>
     /// <returns>A new history vault.</returns>
-    public IHistoricalVault<TVaultModel> Take(int count)
-    {
-        var next = State
-            .With(QueryPosition.LIMIT, $"LIMIT {count}")
-            .EnsureProjectionSelected(Owner.VaultDocument);
+    public IHistoricalVault<TVaultModel> Take(int count) => Create(State.Take(count));
 
-        return Create(next);
-    }
-
-    /// <summary>Returns a new history vault that skips <paramref name="count"/> rows. Call at most once per chain.</summary>
-    /// <param name="count">Rows to skip.</param>
+    /// <summary>Returns a new history vault that skips <paramref name="count"/> rows of the current window (LINQ semantics).</summary>
+    /// <param name="count">Rows to skip; negative counts as 0.</param>
     /// <returns>A new history vault.</returns>
-    public IHistoricalVault<TVaultModel> Skip(int count)
-    {
-        var next = State
-            .With(QueryPosition.OFFSET, $"OFFSET {count}")
-            .EnsureProjectionSelected(Owner.VaultDocument);
-
-        return Create(next);
-    }
+    public IHistoricalVault<TVaultModel> Skip(int count) => Create(State.Skip(count));
 
     // ---------------- Execution ----------------
 
     /// <summary>Returns history rows whose <c>timestamp</c> lies within [<paramref name="startTime"/>, <paramref name="endTime"/>] (inclusive) and that match the filters.</summary>
-    /// <remarks>History timestamps are written as UTC; pass UTC bounds. Bounds are rendered with second precision.</remarks>
+    /// <remarks>
+    /// History timestamps are written as UTC. The bounds are bound as parameters with full precision; a
+    /// <see cref="DateTimeKind.Local"/> bound is converted to UTC first, other kinds are taken as UTC.
+    /// </remarks>
     /// <param name="startTime">Inclusive lower bound (UTC).</param>
     /// <param name="endTime">Inclusive upper bound (UTC).</param>
     /// <param name="ct">Cancellation token.</param>
@@ -162,58 +138,26 @@ public abstract class SqlHistoricalVault<TVaultModel> : IHistoricalVault<TVaultM
     {
         ct.ThrowIfCancellationRequested();
 
-        var st = State.EnsureProjectionSelected(Owner.VaultDocument);
+        var projection = string.Join(", ",
+            Owner.VaultDocument.Columns.Select(kvp => $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"));
+        var historyTable = $"{QuoteIdent(Owner.Keyspace.Name)}.{QuoteIdent(Owner.VaultDocument.Name + "_history")}";
+        var state = State.WithFilter($"{QuoteIdent("timestamp")} >= ? AND {QuoteIdent("timestamp")} <= ?");
 
-        var select =
-            st.Parts[QueryPosition.SELECT].Count == 0
-                ? string.Join(", ",
-                    Owner.VaultDocument.Columns.Select(kvp =>
-                        $"{QuoteIdent(kvp.Value)} AS {QuoteIdent(kvp.Key)}"))
-                : string.Join(", ", st.Parts[QueryPosition.SELECT]);
+        var sql = $"SELECT {projection} FROM {historyTable}{state.WhereClause()}{state.OrderByClause()}{state.PagingClause()}";
+        var parameters = new List<object?> { AsUtc(startTime), AsUtc(endTime) };
 
-        var historyTable =
-            $"{QuoteIdent(Owner.Keyspace.Name)}.{QuoteIdent(Owner.VaultDocument.Name + "_history")}";
-
-        var sql = new StringBuilder(256);
-        sql.Append("SELECT ").Append(select)
-           .Append(" FROM ").Append(historyTable);
-
-        var existingWhere = string.Join(" AND ", st.Parts[QueryPosition.WHERE]);
-
-        var timeFilter =
-            $"{QuoteIdent("timestamp")} >= {ToSqlLiteral(startTime)} " +
-            $"AND {QuoteIdent("timestamp")} <= {ToSqlLiteral(endTime)}";
-
-        var finalWhere = string.IsNullOrEmpty(existingWhere)
-            ? timeFilter
-            : $"({existingWhere}) AND {timeFilter}";
-
-        sql.Append(" WHERE ").Append(finalWhere);
-
-        if (st.Parts[QueryPosition.ORDER_BY].Count > 0)
-            sql.Append(" ORDER BY ")
-               .Append(string.Join(", ", st.Parts[QueryPosition.ORDER_BY]));
-
-        if (st.Parts[QueryPosition.LIMIT].Count > 0)
-            sql.Append(' ')
-               .Append(string.Join(" ", st.Parts[QueryPosition.LIMIT]));
-
-        if (st.Parts[QueryPosition.OFFSET].Count > 0)
-            sql.Append(' ')
-               .Append(string.Join(" ", st.Parts[QueryPosition.OFFSET]));
-
-        var rows = await Owner.DatabaseProvider
-            .QueryAsync<TVaultModel>(sql.ToString(), parameters: null, ct)
-            .ConfigureAwait(false);
-
+        var rows = await Owner.DatabaseProvider.QueryAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false);
         return rows.ToList();
     }
 
-    // ---------------- Helpers ----------------
+    private static DateTime AsUtc(DateTime value)
+        => value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
-    /// <summary>Renders a timestamp literal (<c>'yyyy-MM-dd HH:mm:ss'</c>, kind ignored); override for dialect-specific formats.</summary>
-    /// <param name="dt">The value.</param>
-    /// <returns>SQL literal.</returns>
-    protected virtual string ToSqlLiteral(DateTime dt)
-        => $"'{dt:yyyy-MM-dd HH:mm:ss}'";
+    private void EnsureNotPaged(string operation)
+    {
+        if (State.IsPaged)
+            throw new InvalidOperationException(
+                $"{operation} after Skip/Take is not supported: SQL filters and sorts before paging. " +
+                $"Call {operation} before Skip/Take.");
+    }
 }
