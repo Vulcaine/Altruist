@@ -46,13 +46,12 @@ namespace Altruist.Physx.TwoD
         /// <summary>The settings in effect (constructor or last <see cref="ApplySettings"/>).</summary>
         public PhysxWorldSettings2D Settings { get; private set; }
 
-        /// <summary>A new list of the added bodies on every call (allocates; order of a dictionary).</summary>
-        public IReadOnlyCollection<IPhysxBody> Bodies => _bodies.Values.Cast<IPhysxBody>().ToList();
+        /// <summary>A live, read-only view of the added bodies (no allocation per call). Adding or removing
+        /// bodies while enumerating it throws; copy it first (<c>Bodies.ToList()</c>) to remove bodies in a loop.</summary>
+        public IReadOnlyCollection<IPhysxBody> Bodies => _bodies.Values;
 
         internal World World => _world;
 
-        /// <summary>Unused index; always 0.</summary>
-        public int Index { get; }
         private readonly World _world;
         private readonly Dictionary<string, Body2DAdapter> _bodies = new();
         private readonly Dictionary<Body, Body2DAdapter> _byNative = new();
@@ -67,6 +66,9 @@ namespace Altruist.Physx.TwoD
         // Fixtures of this world with OnCollisionStay subscribers; the contact walk after a step
         // only runs while there are some.
         internal int StaySubscribers;
+
+        // Counts internal steps, so a compound collider raises at most one stay per other collider and step.
+        private int _stepIndex;
 
         /// <summary>A world with <paramref name="gravity"/> and <paramref name="fixedDeltaTime"/>; other settings default.</summary>
         /// <param name="gravity">World gravity in units/s² (+Y up).</param>
@@ -104,9 +106,6 @@ namespace Altruist.Physx.TwoD
         /// <inheritdoc/>
         public void Step(float deltaTime)
         {
-            if (_world.BodyCount == 0)
-                return;
-
             var fixedDt = Settings.FixedDeltaTime;
             var maxSubSteps = Settings.MaxSubSteps;
             if (maxSubSteps <= 0 || fixedDt <= 0f)
@@ -131,8 +130,9 @@ namespace Altruist.Physx.TwoD
         private void StepOnce(float dt)
         {
             ContactGeneration++;
+            _stepIndex++;
             _world.Step(dt, Settings.VelocityIterations, Settings.PositionIterations);
-            _contacts.AfterStep(_world, StaySubscribers > 0);
+            _contacts.AfterStep(_world, StaySubscribers > 0, _stepIndex);
         }
 
         /// <inheritdoc/>
@@ -176,6 +176,15 @@ namespace Altruist.Physx.TwoD
         {
             if (body is not Body2DAdapter owner)
                 throw new InvalidOperationException("Body must be created by this engine.");
+            var fixture = CreateNativeFixture(owner, def);
+            owner.AddCollider(fixture);
+            return fixture;
+        }
+
+        /// <summary>Creates the fixture without recording it in the body's collider list (a
+        /// <see cref="Collider2D"/> records itself instead of its fixtures).</summary>
+        internal Box2DFixture2D CreateNativeFixture(Body2DAdapter owner, in PhysxFixtureDef2D def)
+        {
             var fixture = new Box2DFixture2D(owner, def);
             fixture.Native = owner.Underlying.CreateFixture(new FixtureDef
             {
@@ -187,7 +196,6 @@ namespace Altruist.Physx.TwoD
                 Filter = new Filter { CategoryBits = def.Filter.Category, MaskBits = def.Filter.Mask, GroupIndex = def.Filter.Group },
                 UserData = fixture,
             });
-            owner.AddCollider(fixture);
             return fixture;
         }
 
@@ -206,24 +214,28 @@ namespace Altruist.Physx.TwoD
         public void SetContactListener(IPhysxContactListener2D? listener) => _contacts.Listener = listener;
 
         /// <summary>
-        /// The closest <paramref name="maxHits"/> (at least 1) bodies of this world along the ray,
-        /// sorted by fraction. Box2D reports hits in no particular order, so every hit is collected
-        /// (a single hit clips the ray instead), then sorted and trimmed.
+        /// The closest <paramref name="maxHits"/> (at least 1) distinct bodies of this world along the ray,
+        /// sorted by fraction, then by body id (ordinal) on equal fractions, so the result does not depend on
+        /// the order Box2D reports hits in. Sensors are skipped; a body with several fixtures appears once, at
+        /// its closest hit. For per-fixture hits or sensors use
+        /// <see cref="RayCast(Vector2,Vector2,IPhysxRayCastCallback2D)"/>.
         /// </summary>
         public IEnumerable<PhysxRaycastHit2D> RayCast(PhysxRay2D ray, int maxHits = 1)
         {
             maxHits = Math.Max(1, maxHits);
-            var hits = new List<PhysxRaycastHit2D>(maxHits);
-            var cb = new RayCastCollector(_byNative, hits, clip: maxHits == 1);
+            var cb = new RayCastCollector(_byNative, clip: maxHits == 1);
             _world.RayCast(cb, ray.From, ray.To);
-            if (hits.Count > 1)
-            {
-                // Stable (equal fractions keep Box2D's order), so identical worlds give identical results.
-                hits = hits.OrderBy(h => h.Fraction).ToList();
-                if (hits.Count > maxHits)
-                    hits.RemoveRange(maxHits, hits.Count - maxHits);
-            }
+            var hits = cb.ClosestPerBody.Values.ToList();
+            hits.Sort(CompareHits);
+            if (hits.Count > maxHits)
+                hits.RemoveRange(maxHits, hits.Count - maxHits);
             return hits;
+        }
+
+        private static int CompareHits(PhysxRaycastHit2D a, PhysxRaycastHit2D b)
+        {
+            var byFraction = a.Fraction.CompareTo(b.Fraction);
+            return byFraction != 0 ? byFraction : string.CompareOrdinal(a.Body.Id, b.Body.Id);
         }
 
         /// <inheritdoc/>
@@ -345,7 +357,7 @@ namespace Altruist.Physx.TwoD
             /// After each world step: the step's collision enters, then a stay for every other
             /// touching, enabled, non-sensor contact (when some fixture listens for stays).
             /// </summary>
-            public void AfterStep(World world, bool stay)
+            public void AfterStep(World world, bool stay, int step)
             {
                 if (_entered.Count == 0 && !stay) return;
                 for (var i = 0; i < _entered.Count; i++)
@@ -360,7 +372,7 @@ namespace Altruist.Physx.TwoD
                         if (!c.IsTouching || !c.IsEnabled || c.FixtureA.IsSensor || c.FixtureB.IsSensor) continue;
                         if (_entered.Contains(c)) continue;
                         _contact.Native = c;
-                        Box2DFixture2D.RaiseStay(_contact);
+                        Box2DFixture2D.RaiseStay(_contact, step);
                     }
                 }
                 _entered.Clear();
@@ -380,34 +392,34 @@ namespace Altruist.Physx.TwoD
         private sealed class RayCastCollector : IRayCastCallback
         {
             private readonly Dictionary<Body, Body2DAdapter> _map;
-            private readonly List<PhysxRaycastHit2D> _hits;
             private readonly bool _clip;
 
-            public RayCastCollector(
-                Dictionary<Body, Body2DAdapter> map,
-                List<PhysxRaycastHit2D> hits,
-                bool clip)
+            // Each body's closest hit (ties on fraction: the lower point, by X then Y, so the order of
+            // Box2D's callbacks does not matter).
+            public readonly Dictionary<Body2DAdapter, PhysxRaycastHit2D> ClosestPerBody = new();
+
+            public RayCastCollector(Dictionary<Body, Body2DAdapter> map, bool clip)
             {
                 _map = map;
-                _hits = hits;
                 _clip = clip;
             }
 
             public float RayCastCallback(Fixture fixture, in Vector2 point, in Vector2 normal, float fraction)
             {
-                // Fixtures of bodies not added to this world are ignored.
-                if (!_map.TryGetValue(fixture.Body, out var adapter))
+                // Sensors and fixtures of bodies not added to this world are ignored.
+                if (fixture.IsSensor || !_map.TryGetValue(fixture.Body, out var adapter))
                     return -1f;
-                if (_clip)
-                {
-                    // Closest hit only: keep the latest (each one is closer than the last) and clip.
-                    _hits.Clear();
-                    _hits.Add(new PhysxRaycastHit2D(adapter, point, normal, fraction));
-                    return fraction;
-                }
-                _hits.Add(new PhysxRaycastHit2D(adapter, point, normal, fraction));
-                return 1f;
+                var hit = new PhysxRaycastHit2D(adapter, point, normal, fraction);
+                if (!ClosestPerBody.TryGetValue(adapter, out var best) || IsBefore(hit, best))
+                    ClosestPerBody[adapter] = hit;
+                // Closest body only: clip the ray here. Box2D still reports hits at exactly this
+                // fraction, so ties are all seen and broken by body id afterwards.
+                return _clip ? fraction : 1f;
             }
+
+            private static bool IsBefore(in PhysxRaycastHit2D a, in PhysxRaycastHit2D b) =>
+                a.Fraction < b.Fraction
+                || (a.Fraction == b.Fraction && (a.Point.X < b.Point.X || (a.Point.X == b.Point.X && a.Point.Y < b.Point.Y)));
         }
     }
 }

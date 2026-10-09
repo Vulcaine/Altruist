@@ -23,9 +23,59 @@ namespace Altruist.Physx.TwoD
         /// <summary>Unique body id (from <see cref="PhysxBodyDef2D.Id"/> or a new GUID).</summary>
         public string Id { get; }
 
-        /// <summary>The type the body was created with. Setting it only changes this value, not the
-        /// native Box2D body type.</summary>
-        public PhysxBodyType Type { get; set; }
+        /// <summary>The native Box2D body type. Setting it changes the native body (Box2D resets the
+        /// velocity of a body made static and recomputes its mass), so a static body can be made dynamic and
+        /// back.</summary>
+        public PhysxBodyType Type
+        {
+            get => TypeOf(_body.BodyType);
+            set
+            {
+                // Changing the type destroys the body's contacts.
+                if (Engine is { } e) e.ContactGeneration++;
+                _body.BodyType = NativeTypeOf(value);
+                if (value == PhysxBodyType.Dynamic) RecomputeDynamicMass();
+            }
+        }
+
+        // Box2DSharp's BodyType setter keeps the old type's mass data (a static body made dynamic stays at mass 0
+        // and never moves). Recompute it from the fixtures like Box2D's SetType (ResetMassData) does, through the
+        // public API: fixture masses summed, centroid weighted, inertia about the body origin; SetMassData turns a
+        // massless dynamic body into mass 1.
+        private void RecomputeDynamicMass()
+        {
+            var total = new MassData();
+            var weightedCenter = Vector2.Zero;
+            foreach (var fixture in _body.FixtureList)
+            {
+                if (fixture.Density == 0f) continue;
+                fixture.GetMassData(out var md);
+                total.Mass += md.Mass;
+                weightedCenter += md.Mass * md.Center;
+                total.RotationInertia += md.RotationInertia;
+            }
+            if (total.Mass > 0f) total.Center = weightedCenter / total.Mass;
+            _body.SetMassData(total);
+            if (RequestedMass is { } mass) Mass = mass;
+        }
+
+        internal static PhysxBodyType TypeOf(BodyType native) => native switch
+        {
+            BodyType.DynamicBody => PhysxBodyType.Dynamic,
+            BodyType.KinematicBody => PhysxBodyType.Kinematic,
+            _ => PhysxBodyType.Static,
+        };
+
+        internal static BodyType NativeTypeOf(PhysxBodyType type) => type switch
+        {
+            PhysxBodyType.Dynamic => BodyType.DynamicBody,
+            PhysxBodyType.Kinematic => BodyType.KinematicBody,
+            _ => BodyType.StaticBody,
+        };
+
+        /// <summary>The mass requested through <see cref="Box2DPhysxBodyApiProvider2D.CreateBody"/>, re-applied
+        /// after each collider it attaches (null: the mass follows the fixtures).</summary>
+        internal float? RequestedMass { get; set; }
         /// <summary>
         /// Box2D derives mass from the fixtures; setting it scales mass and rotational inertia so
         /// the body weighs exactly this much whatever its shape (set it after adding fixtures).
@@ -128,12 +178,12 @@ namespace Altruist.Physx.TwoD
         /// the engine / provider; the body must still be added to an engine to take part in queries.</summary>
         /// <param name="id">Body id.</param>
         /// <param name="body">The native Box2DSharp body.</param>
-        /// <param name="type">The type to report (should match the native body).</param>
+        /// <param name="type">The body type; the native body is set to it when they differ.</param>
         public Body2DAdapter(string id, Body body, PhysxBodyType type)
         {
             Id = id;
             _body = body;
-            Type = type;
+            if (body.BodyType != NativeTypeOf(type)) body.BodyType = NativeTypeOf(type);
             body.UserData = this;
         }
 
@@ -142,25 +192,33 @@ namespace Altruist.Physx.TwoD
         /// <see cref="Box2DPhysxBodyApiProvider2D.AddCollider"/> for that).</summary>
         public void AddCollider(IPhysxCollider collider) => _colliders.Add(collider);
 
-        /// <summary>Removes <paramref name="collider"/> from the list and, when the collider exposes a
-        /// Box2D <c>Fixture</c> property (looked up by reflection), destroys that fixture. Returns
-        /// whether it was in the list.</summary>
+        /// <summary>Removes <paramref name="collider"/> from this body: an engine fixture of this body
+        /// (<see cref="IPhysxWorldEngine2D.CreateFixture"/>) is destroyed; a <see cref="Collider2D"/> attached to
+        /// this body has all its fixtures destroyed and becomes detached. End-contact events fire for the
+        /// destroyed fixtures' touching contacts. Returns whether it was in the list.</summary>
         public bool RemoveCollider(IPhysxCollider collider)
         {
-            // If the concrete collider exposes the underlying Fixture, destroy it.
-            var fixtureProp = collider.GetType().GetProperty(
-                "Fixture",
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.Public |
-                System.Reflection.BindingFlags.NonPublic);
+            if (!_colliders.Remove(collider))
+                return false;
 
-            if (fixtureProp?.GetValue(collider) is Fixture fx)
+            switch (collider)
             {
-                if (Engine is { } e) e.ContactGeneration++;
-                _body.DestroyFixture(fx);
+                case Box2DFixture2D fixture:
+                    DestroyNative(fixture);
+                    break;
+                case Collider2D attached:
+                    foreach (var fixture in attached.Fixtures)
+                        DestroyNative(fixture);
+                    attached.Detach();
+                    break;
             }
+            return true;
+        }
 
-            return _colliders.Remove(collider);
+        private void DestroyNative(Box2DFixture2D fixture)
+        {
+            if (Engine is { } e) e.ContactGeneration++;
+            _body.DestroyFixture(fixture.Native);
         }
 
         /// <summary>The colliders recorded with <see cref="AddCollider"/> (a view over the internal list;
@@ -193,7 +251,7 @@ namespace Altruist.Physx.TwoD
             }
         }
 
-        /// <summary>Finds a recorded collider by its <c>Id</c> (ordinal comparison; read by reflection).</summary>
+        /// <summary>Finds a recorded collider by its <see cref="IPhysxCollider.Id"/> (ordinal comparison).</summary>
         /// <param name="colliderId">The id; null or empty never matches.</param>
         /// <param name="collider">The match, or <c>default</c>.</param>
         public bool TryGetColliderById(string colliderId, out IPhysxCollider collider)
@@ -206,15 +264,7 @@ namespace Altruist.Physx.TwoD
 
             foreach (var c in _colliders)
             {
-                // If the collider exposes an Id property, use it (like the 3D pattern).
-                var idProp = c.GetType().GetProperty(
-                    "Id",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.Public |
-                    System.Reflection.BindingFlags.NonPublic);
-
-                if (idProp != null && idProp.GetValue(c) is string id &&
-                    string.Equals(id, colliderId, StringComparison.Ordinal))
+                if (string.Equals(c.Id, colliderId, StringComparison.Ordinal))
                 {
                     collider = c;
                     return true;
@@ -235,187 +285,100 @@ namespace Altruist.Physx.TwoD
     }
 
     /// <summary>
-    /// Creates Box2D bodies inside the Box2D engine world and returns a Body2DAdapter.
-    /// Caller must then register with the world via IPhysxWorld2D.AddBody(adapter).
-    /// Also provides collider attach/detach helpers for Box2D-backed bodies.
-    /// <para>DI: registered as <see cref="IPhysxBodyApiProvider2D"/> when
-    /// <c>altruist:environment:mode</c> = <c>2D</c>. <see cref="SetEngine"/> must be called before
-    /// <see cref="CreateBody"/>. Bound to one engine at a time; not thread-safe.</para>
-    /// <para>Fixtures attached here get density 1 on dynamic bodies (else 0), default friction /
-    /// restitution / filter, and no fixture user data, so <see cref="ContactRouter2D"/> sees the body's
-    /// <see cref="IPhysxBody2D.UserData"/> as their tag. For full control use
+    /// The Box2D <see cref="IPhysxBodyApiProvider2D"/>: creates bodies in the world it is given and attaches
+    /// <see cref="Collider2D"/>s to them as Box2D fixtures (a capsule as a box plus two circles). Stateless and
+    /// shared by every world. DI: registered when <c>altruist:environment:mode</c> = <c>2D</c>.
+    /// <para>The fixtures of an attached collider get its sensor flag and user data (the
+    /// <see cref="ContactRouter2D"/> tag), density 1 on dynamic bodies (else 0) and Box2D's default material
+    /// and filter; see <see cref="Collider2D"/> for its events. For a material or filter use
     /// <see cref="IPhysxWorldEngine2D.CreateBody"/> / <see cref="IPhysxWorldEngine2D.CreateFixture"/>.</para>
     /// </summary>
     [Service(typeof(IPhysxBodyApiProvider2D))]
     [ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
     public sealed class Box2DPhysxBodyApiProvider2D : IPhysxBodyApiProvider2D
     {
-        private Box2DWorldEngine2D? _engine;
-
-        // Track created fixtures per high-level collider
-        private readonly Dictionary<IPhysxCollider2D, Fixture> _fixtures = new();
-
-        /// <summary>Creates an unbound provider (call <see cref="SetEngine"/> before creating bodies).</summary>
-        /// <param name="factory">Unused; accepted for DI.</param>
-        public Box2DPhysxBodyApiProvider2D(IPhysxWorldEngineFactory2D? factory = null)
+        /// <inheritdoc/>
+        /// <exception cref="InvalidOperationException">The world's engine is not Box2D.</exception>
+        public IPhysxBody2D CreateBody(IPhysxWorld2D world, PhysxBodyType type, float mass, Transform2D transform)
         {
-            // Engine is set lazily when the first world is created
+            if (world.Engine is not Box2DWorldEngine2D engine)
+                throw new InvalidOperationException("The world's engine must be a Box2DWorldEngine2D.");
+
+            var body = (Body2DAdapter)engine.CreateBody(new PhysxBodyDef2D
+            {
+                Type = type,
+                Position = transform.Position.ToVector2(),
+                Angle = transform.Rotation.Radians,
+            });
+            if (type == PhysxBodyType.Dynamic && mass > 0f)
+                body.RequestedMass = mass;
+            return body;
         }
 
-        /// <summary>Bind to a specific engine instance (called by the organizer after world creation).</summary>
-        /// <param name="engine">A <see cref="Box2DWorldEngine2D"/>.</param>
-        /// <exception cref="InvalidOperationException"><paramref name="engine"/> is not Box2D-backed.</exception>
-        public void SetEngine(IPhysxWorldEngine2D engine)
-        {
-            _engine = engine as Box2DWorldEngine2D
-                      ?? throw new InvalidOperationException("Engine must be a Box2D-backed engine.");
-        }
-
-        /// <summary>
-        /// Attach a collider to a specific Box2D body by creating a Fixture on that body.
-        /// Stores the created fixture so it can be removed later via <see cref="RemoveCollider"/>.
-        /// Shapes: circle radius = <c>Size.X</c>; box half extents = <c>Size</c>; capsule approximated as a
-        /// box (half extents <c>Size.Y</c>, <c>Size.X</c>); polygon from <see cref="IPhysxCollider2D.Vertices"/>
-        /// transformed by the collider's rotation and offset.
-        /// </summary>
-        /// <exception cref="InvalidOperationException">The body is not a <see cref="Body2DAdapter"/>, the collider
-        /// is already attached, or a polygon has fewer than 3 vertices.</exception>
-        /// <exception cref="NotSupportedException">Unknown shape kind.</exception>
+        /// <inheritdoc/>
+        /// <exception cref="InvalidOperationException">The body is not a Box2D body of a world, the collider is not a
+        /// <see cref="Collider2D"/> (engine fixtures are created with <see cref="IPhysxWorldEngine2D.CreateFixture"/>),
+        /// or it is already attached.</exception>
         public void AddCollider(IPhysxBody2D body, IPhysxCollider2D collider)
         {
-            if (body is not Body2DAdapter owner)
-                throw new InvalidOperationException("Body must be a Box2D-backed Body2DAdapter.");
-
-            if (_fixtures.ContainsKey(collider))
+            if (body is not Body2DAdapter { Engine: { } engine } owner)
+                throw new InvalidOperationException("The body must be a Box2D body of a world (create it with CreateBody).");
+            if (collider is not Collider2D detached)
+                throw new InvalidOperationException("Attach colliders from PhysxCollider2D or IPhysxColliderApiProvider2D; create engine fixtures with IPhysxWorldEngine2D.CreateFixture.");
+            if (detached.IsAttached)
                 throw new InvalidOperationException("This collider is already attached.");
 
-            // Build a Box2D shape from collider data (no reflection)
-            Shape shape = CreateB2ShapeFromCollider(collider);
+            var density = owner.Type == PhysxBodyType.Dynamic ? 1f : 0f;
+            var fixtures = ShapesOf(detached)
+                .Select(shape => engine.CreateNativeFixture(owner, new PhysxFixtureDef2D
+                {
+                    Shape = shape,
+                    Density = density,
+                    IsTrigger = detached.IsTrigger,
+                    UserData = detached.UserData,
+                }))
+                .ToArray();
+            detached.Attach(fixtures);
+            owner.AddCollider(detached);
 
-            // Prepare fixture
-            var fd = new FixtureDef
-            {
-                Shape = shape,
-                IsSensor = collider.IsTrigger
-            };
-
-            // Density policy: dynamic -> 1.0, else 0.0
-            fd.Density = body.Type == PhysxBodyType.Dynamic ? 1.0f : 0.0f;
-
-            // Create fixture on body and cache it
-            var fixture = owner.Underlying.CreateFixture(fd);
-            _fixtures[collider] = fixture;
-
-            // (filter/material hooks can be added here later)
+            if (owner.RequestedMass is { } mass && owner.Type == PhysxBodyType.Dynamic)
+                owner.Mass = mass;
         }
 
-        /// <summary>
-        /// Detach (destroy) the collider’s Box2D Fixture from whatever body it’s attached to.
-        /// No-op if the collider is not currently attached.
-        /// </summary>
+        /// <inheritdoc/>
         public void RemoveCollider(IPhysxCollider2D collider)
         {
-            if (!_fixtures.TryGetValue(collider, out var fixture))
-                return;
-
-            var body = fixture.Body;
-            if (_engine is not null) _engine.ContactGeneration++;
-            body.DestroyFixture(fixture);
-            _fixtures.Remove(collider);
+            if (collider is Collider2D { AttachedBody: Body2DAdapter body })
+                body.RemoveCollider(collider);
         }
 
-        /// <summary>Creates a native body in the bound engine's world at <paramref name="transform"/>'s
-        /// position / rotation. The body is NOT added to the engine yet (call
-        /// <see cref="IPhysxWorldEngine2D.AddBody"/>). <paramref name="mass"/> is ignored: Box2D derives mass
-        /// from fixture densities (set <see cref="Body2DAdapter.Mass"/> after attaching colliders).</summary>
-        /// <param name="type">Static, dynamic or kinematic.</param>
-        /// <param name="mass">Ignored.</param>
-        /// <param name="transform">Initial position and rotation.</param>
-        /// <exception cref="InvalidOperationException"><see cref="SetEngine"/> was not called.</exception>
-        public IPhysxBody2D CreateBody(PhysxBodyType type, float mass, Transform2D transform)
-        {
-            if (_engine == null)
-                throw new InvalidOperationException("Box2D engine not set. Call SetEngine() first.");
-
-            var bd = new BodyDef
-            {
-                Position = transform.Position.ToFloatVector2(),
-                Angle = transform.Rotation.Radians,
-                BodyType = type switch
-                {
-                    PhysxBodyType.Dynamic => BodyType.DynamicBody,
-                    PhysxBodyType.Kinematic => BodyType.KinematicBody,
-                    _ => BodyType.StaticBody
-                }
-            };
-
-            var body = _engine.World.CreateBody(bd);
-            var id = Guid.NewGuid().ToString("N");
-            var adapter = new Body2DAdapter(id, body, type);
-
-            // Box2D mass derives from fixtures (densities/areas). You can override via SetMassData if needed.
-            return adapter;
-        }
-
-        // -------------------- helpers --------------------
-
-        private static Shape CreateB2ShapeFromCollider(IPhysxCollider2D c)
+        // The collider's Box2D shapes in body space (its transform is the offset and rotation in the body).
+        private static IEnumerable<PhysxShape2D> ShapesOf(Collider2D c)
         {
             var t = c.Transform;
-
+            var center = t.Position.ToVector2();
+            var angle = t.Rotation.Radians;
             switch (c.Shape)
             {
                 case PhysxColliderShape2D.Circle2D:
-                    {
-                        // Convention: Transform.Size.Width => radius
-                        var radius = t.Size.X;
-                        var center = t.Position.ToFloatVector2();
-                        return new CircleShape { Radius = radius, Position = center };
-                    }
-
+                    yield return PhysxShape2D.Circle(t.Size.X, center);
+                    break;
                 case PhysxColliderShape2D.Box2D:
-                    {
-                        // Convention: Transform.Size => half extents
-                        var hx = t.Size.X;
-                        var hy = t.Size.Y;
-                        var center = t.Position.ToFloatVector2();
-                        var angle = t.Rotation.Radians;
-                        var poly = new PolygonShape();
-                        poly.SetAsBox(hx, hy, center, angle);
-                        return poly;
-                    }
-
+                    yield return PhysxShape2D.Box(t.Size.X, t.Size.Y, center, angle);
+                    break;
                 case PhysxColliderShape2D.Capsule2D:
                     {
-                        // Minimal approximation as oriented box: halfLength (X) and radius (Y)
                         var radius = t.Size.X;
-                        var halfLen = t.Size.Y;
-                        var hx = halfLen;
-                        var hy = radius;
-                        var center = t.Position.ToFloatVector2();
-                        var angle = t.Rotation.Radians;
-                        var poly = new PolygonShape();
-                        poly.SetAsBox(hx, hy, center, angle);
-                        return poly;
+                        var halfLength = t.Size.Y;
+                        var axis = t.Rotation.Rotate(new Vector2(halfLength, 0f));
+                        yield return PhysxShape2D.Box(halfLength, radius, center, angle);
+                        yield return PhysxShape2D.Circle(radius, center - axis);
+                        yield return PhysxShape2D.Circle(radius, center + axis);
+                        break;
                     }
-
                 case PhysxColliderShape2D.Polygon2D:
-                    {
-                        var verts = c.Vertices;
-                        if (verts is null || verts.Length < 3)
-                            throw new InvalidOperationException("Polygon collider requires Vertices with at least 3 points.");
-
-                        // Apply local offset/rotation to vertices
-                        var offset = t.Position.ToVector2();
-                        var transformed = new Vector2[verts.Length];
-                        for (int i = 0; i < verts.Length; i++)
-                            transformed[i] = t.Rotation.Rotate(verts[i]) + new Vector2(offset.X, offset.Y);
-
-                        var poly = new PolygonShape();
-                        poly.Set(transformed);
-                        return poly;
-                    }
-
+                    yield return PhysxShape2D.Polygon(c.Vertices!.Select(v => t.Rotation.Rotate(v) + center));
+                    break;
                 default:
                     throw new NotSupportedException($"Unsupported collider shape: {c.Shape}");
             }

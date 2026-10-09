@@ -95,16 +95,35 @@ public class Box2DColliderProviderTests
     }
 
     [Fact]
-    public void CreateCollider_PolygonShape_HasNullVerticesByDefault()
+    public void CreateCollider_polygon_without_vertices_is_rejected()
     {
         var p = new PhysxCollider2DParams(
             PhysxColliderShape2D.Polygon2D,
             Transform2D.Zero,
             isTrigger: false);
 
+        Assert.Throws<ArgumentException>(() => _provider.CreateCollider(p));
+    }
+
+    [Fact]
+    public void CreateCollider_polygon_keeps_its_vertices()
+    {
+        var vertices = new[] { new System.Numerics.Vector2(0, 0), new(1, 0), new(0, 1) };
+        var p = new PhysxCollider2DParams(PhysxColliderShape2D.Polygon2D, Transform2D.Zero, isTrigger: false, vertices);
+
         var collider = _provider.CreateCollider(p);
 
         Assert.Equal(PhysxColliderShape2D.Polygon2D, collider.Shape);
-        Assert.Null(collider.Vertices);
+        Assert.Equal(vertices, collider.Vertices);
+    }
+
+    [Fact]
+    public void Static_shortcuts_work_without_any_provider_setup()
+    {
+        var circle = PhysxCollider2D.CreateCircle(0.5f);
+        var polygon = PhysxCollider2D.CreatePolygon(new System.Numerics.Vector2[] { new(0, 0), new(1, 0), new(0, 1) });
+
+        Assert.Equal(0.5f, circle.Transform.Size.X);
+        Assert.Equal(3, polygon.Vertices!.Length);
     }
 }

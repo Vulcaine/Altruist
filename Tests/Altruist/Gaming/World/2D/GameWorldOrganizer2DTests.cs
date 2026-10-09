@@ -89,6 +89,27 @@ public class GameWorldOrganizer2DTests
     }
 
     [Fact]
+    public void Spawned_object_gets_a_body_in_its_world_with_a_box_of_its_size()
+    {
+        using var engine = PhysxWorldEngine2D.Create(new PhysxWorldSettings2D { Gravity = Vector2.Zero });
+        var physx = new PhysxWorld2D(engine);
+        var manager = new GameWorldManager2D(CreateIndex(7), physx, _partitionerMock.Object, null,
+            new Box2DPhysxBodyApiProvider2D(), new Box2DPhysxColliderApiProvider2D());
+        manager.Initialize();
+        var obj = new AnonymousWorldObject2D(new Altruist.TwoD.Numerics.Transform2D(
+            Altruist.TwoD.Numerics.Position2D.Of(10.5f, 3f), Altruist.TwoD.Numerics.Size2D.Of(4f, 2f),
+            Altruist.TwoD.Numerics.Scale2D.One, Altruist.TwoD.Numerics.Rotation2D.Zero));
+
+        var body = manager.SpawnDynamicObject(obj).GetAwaiter().GetResult();
+
+        body.Should().NotBeNull();
+        engine.Bodies.Should().ContainSingle().Which.Should().BeSameAs(body);
+        body!.Position.Should().Be(new Vector2(10.5f, 3f));
+        var hit = engine.RayCast(new PhysxRay2D(new Vector2(0f, 3f), new Vector2(20f, 3f))).Single();
+        hit.Point.X.Should().BeApproximately(8.5f, 1e-3f);
+    }
+
+    [Fact]
     public void World_with_a_data_path_is_loaded_through_the_loader()
     {
         var index = new WorldIndex2D(3, "arena", null, 1f / 60f, new IntVector2(10, 10), data: "worlds/arena.json");

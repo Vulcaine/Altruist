@@ -112,9 +112,10 @@ namespace Altruist.Physx.TwoD
     }
 
     /// <summary>Forwards a Box2D contact factory's calls to the calling thread's own instance of it.
-    /// Infrastructure for <see cref="Box2DThreading"/> (public only because <see cref="DispatchProxy"/>
-    /// requires it); not meant to be used directly.</summary>
-    public class PerThreadContactFactory : DispatchProxy
+    /// Infrastructure for <see cref="Box2DThreading"/>. Each thread keeps one factory per shape pair, each
+    /// pooling the contacts it created: the memory is bounded by that thread's peak contact count and is
+    /// released when the thread ends.</summary>
+    internal class PerThreadContactFactory : DispatchProxy
     {
         [ThreadStatic]
         private static Dictionary<Type, object>? _factories;

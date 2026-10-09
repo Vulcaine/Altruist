@@ -12,11 +12,15 @@ namespace Altruist.Physx.TwoD
         Circle2D,
         /// <summary>Axis box in collider space (half extents = <c>Transform.Size</c>).</summary>
         Box2D,
-        /// <summary>Capsule (radius = <c>Size.X</c>, half length = <c>Size.Y</c>); approximated as a box by Box2D.</summary>
+        /// <summary>Capsule (radius = <c>Size.X</c>, half length of the straight segment along local X =
+        /// <c>Size.Y</c>); attached to a Box2D body as a box plus two circles.</summary>
         Capsule2D,
-        /// <summary>Convex polygon (<see cref="IPhysxCollider2D.Vertices"/>). Also reported for engine
-        /// polygons, chains and edges created through <see cref="Altruist.Physx.IPhysxWorldEngine2D.CreateFixture"/>.</summary>
+        /// <summary>Convex polygon (<see cref="IPhysxCollider2D.Vertices"/>), also non-box engine polygons.</summary>
         Polygon2D,
+        /// <summary>Chain of one-sided edges (engine fixtures from <see cref="PhysxShape2D.Chain"/>; <see cref="IPhysxCollider2D.Vertices"/> holds the points).</summary>
+        Chain2D,
+        /// <summary>Single two-sided edge (engine fixtures from <see cref="PhysxShape2D.Edge"/>; <see cref="IPhysxCollider2D.Vertices"/> holds both ends).</summary>
+        Edge2D,
     }
 
 

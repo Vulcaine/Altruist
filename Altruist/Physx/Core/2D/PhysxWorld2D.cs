@@ -35,7 +35,8 @@ namespace Altruist.Physx
         /// <see cref="PhysxWorldSettings2D.MaxSubSteps"/> above zero.</summary>
         float FixedDeltaTime { get; }
 
-        /// <summary>The bodies added to this world (a snapshot copy on Box2D: allocates per call).</summary>
+        /// <summary>The bodies added to this world (on Box2D a live read-only view: copy it before removing
+        /// bodies while iterating).</summary>
         IReadOnlyCollection<IPhysxBody> Bodies { get; }
 
         /// <summary>
@@ -44,8 +45,8 @@ namespace Altruist.Physx
         /// <see cref="FixedDeltaTime"/> (see there).
         /// </summary>
         /// <remarks>Contact listener callbacks and trigger events run inside this call; collision
-        /// enter / stay events run at the end of each internal step. Box2D: a world with no bodies does
-        /// not step (and does not advance its accumulator).</remarks>
+        /// enter / stay events run at the end of each internal step. An empty world steps (and advances its
+        /// accumulator) like any other.</remarks>
         void Step(float deltaTime);
 
         /// <summary>Registers a body created by this engine's provider (not needed after
@@ -57,9 +58,10 @@ namespace Altruist.Physx
         /// handed out earlier become invalid). No-op for bodies not in this world.</summary>
         void RemoveBody(IPhysxBody body);
 
-        /// <summary>The closest <paramref name="maxHits"/> bodies along the ray, closest first.
-        /// Body-level and unfiltered (sensors included); one entry per fixture hit, so a body with
-        /// several fixtures can appear more than once. For per-fixture filtering use
+        /// <summary>The closest <paramref name="maxHits"/> distinct bodies along the ray, closest first (equal
+        /// fractions ordered by body id, so the result is independent of the engine's report order).
+        /// Body-level: sensors are skipped and a body with several fixtures appears once, at its closest hit.
+        /// For per-fixture hits, sensors or a filter use
         /// <see cref="RayCast(Vector2,Vector2,IPhysxRayCastCallback2D)"/> with a
         /// <see cref="ClosestRayHit2D"/>. Allocates the result list.</summary>
         IEnumerable<PhysxRaycastHit2D> RayCast(PhysxRay2D ray, int maxHits = 1);
@@ -179,6 +181,9 @@ namespace Altruist.Physx
     {
         /// <summary>The engine's bodies (<see cref="IPhysxWorldEngine2D.Bodies"/>).</summary>
         public IReadOnlyCollection<IPhysxBody> Bodies => _engine.Bodies;
+
+        /// <inheritdoc/>
+        public IPhysxWorldEngine2D Engine => _engine;
 
         private readonly IPhysxWorldEngine2D _engine;
 

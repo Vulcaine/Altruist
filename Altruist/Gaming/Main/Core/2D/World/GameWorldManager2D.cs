@@ -5,6 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
+using Altruist.TwoD.Numerics;
 
 namespace Altruist.Gaming.TwoD
 {
@@ -56,8 +57,9 @@ namespace Altruist.Gaming.TwoD
         Task<IEnumerable<IWorldPartitionManager>> UpdateObjectPosition(IWorldObject2D obj);
 
         /// <summary>Adds a moving object: resolves its archetype from <see cref="WorldObjectAttribute"/>
-        /// (kept as-is for <see cref="AnonymousWorldObject2D"/>), creates a dynamic body (mass 1) with one box
-        /// collider from <c>obj.Transform</c> when body / collider API providers are available, assigns
+        /// (kept as-is for <see cref="AnonymousWorldObject2D"/>), creates a dynamic body (mass 1) in this world at
+        /// <c>obj.Transform</c>'s position and rotation, with one box collider of <c>obj.Transform.Size</c> (full
+        /// extents; none when the size is zero) when body / collider API providers are available, assigns
         /// <c>obj.Body</c>, adds it to every partition its bounds overlap and indexes it.</summary>
         /// <param name="obj">The object to add; null is ignored.</param>
         /// <param name="withId">Optional lookup key for <see cref="FindObject"/> (default <c>obj.InstanceId</c>).</param>
@@ -215,22 +217,7 @@ namespace Altruist.Gaming.TwoD
                 ? obj.ObjectArchetype
                 : WorldObjectArchetypeHelper2D.ResolveArchetype(obj.GetType());
 
-            IPhysxBody2D? body = null;
-
-            if (_bodyApi != null)
-            {
-                body = _bodyApi.CreateBody(PhysxBodyType.Dynamic, mass: 1f, obj.Transform);
-
-                if (_colliderApi != null)
-                {
-                    var collider = _colliderApi.CreateCollider(
-                        new PhysxCollider2DParams(PhysxColliderShape2D.Box2D, obj.Transform, isTrigger: false));
-                    _bodyApi.AddCollider(body, collider);
-                }
-
-                obj.Body = body;
-                _physx2D.AddBody(body);
-            }
+            var body = CreateBodyFor(obj, PhysxBodyType.Dynamic, mass: 1f);
 
             var partitions = FindPartitionsForObject(obj);
             foreach (var p in partitions)
@@ -252,22 +239,7 @@ namespace Altruist.Gaming.TwoD
                 ? obj.ObjectArchetype
                 : WorldObjectArchetypeHelper2D.ResolveArchetype(obj.GetType());
 
-            IPhysxBody2D? body = null;
-
-            if (_bodyApi != null)
-            {
-                body = _bodyApi.CreateBody(PhysxBodyType.Static, mass: 0f, obj.Transform);
-
-                if (_colliderApi != null)
-                {
-                    var collider = _colliderApi.CreateCollider(
-                        new PhysxCollider2DParams(PhysxColliderShape2D.Box2D, obj.Transform, isTrigger: false));
-                    _bodyApi.AddCollider(body, collider);
-                }
-
-                obj.Body = body;
-                _physx2D.AddBody(body);
-            }
+            CreateBodyFor(obj, PhysxBodyType.Static, mass: 0f);
 
             var partition = FindPartitionForPosition(
                 (int)MathF.Floor(obj.Transform.Position.X),
@@ -279,6 +251,27 @@ namespace Altruist.Gaming.TwoD
             _flatInstanceCache[withId ?? obj.InstanceId] = obj;
 
             return partition;
+        }
+
+        // A body in this world at the object's position and rotation, with one box collider of the object's
+        // size (Transform.Size is the full extent; the box sits at the body origin). No collider for an
+        // object without a positive size. Null without a body API.
+        private IPhysxBody2D? CreateBodyFor(IWorldObject2D obj, PhysxBodyType type, float mass)
+        {
+            if (_bodyApi is null)
+                return null;
+
+            var body = _bodyApi.CreateBody(_physx2D, type, mass, obj.Transform);
+            var size = obj.Transform.Size;
+            if (_colliderApi is not null && size.X > 0f && size.Y > 0f)
+            {
+                var local = new Transform2D(Position2D.Zero, Size2D.Of(size.X * 0.5f, size.Y * 0.5f), Scale2D.One, Rotation2D.Zero);
+                _bodyApi.AddCollider(body, _colliderApi.CreateCollider(
+                    new PhysxCollider2DParams(PhysxColliderShape2D.Box2D, local, isTrigger: false)));
+            }
+
+            obj.Body = body;
+            return body;
         }
 
         // ── Legacy aliases ──────────────────────────────────────────────────────

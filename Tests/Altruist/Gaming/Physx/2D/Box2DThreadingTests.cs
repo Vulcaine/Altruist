@@ -107,6 +107,15 @@ public class Box2DThreadingTests
     }
 
     [Fact]
+    public void The_dispatch_proxy_is_not_public_api()
+    {
+        var proxy = typeof(Box2DThreading).Assembly.GetType("Altruist.Physx.TwoD.PerThreadContactFactory");
+
+        Assert.NotNull(proxy);
+        Assert.False(proxy!.IsPublic);
+    }
+
+    [Fact]
     public void Worlds_stepped_in_parallel_match_worlds_stepped_one_by_one_bit_for_bit()
     {
         var serial = RunSerial();

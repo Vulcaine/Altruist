@@ -1,19 +1,20 @@
 using System.Numerics;
+using Altruist.Physx;
+using Altruist.Physx.Contracts;
 using Altruist.Physx.TwoD;
-using Altruist.TwoD.Numerics;
 
 namespace Tests.Gaming.Physx.TwoD;
 
 public class Box2DWorldEngineTests
 {
-    private Box2DWorldEngine2D CreateEngine(float gravity = -9.81f)
-        => new(new Vector2(0, gravity));
+    private static Box2DWorldEngine2D CreateEngine(float gravity = -9.81f) => new(new Vector2(0, gravity));
 
-    private Box2DPhysxBodyApiProvider2D CreateBodyProvider(Box2DWorldEngine2D engine)
+    private static IPhysxBody2D Body(IPhysxWorldEngine2D engine, Vector2 position, PhysxShape2D? shape = null,
+        PhysxBodyType type = PhysxBodyType.Static, bool sensor = false, string? id = null)
     {
-        var provider = new Box2DPhysxBodyApiProvider2D();
-        provider.SetEngine(engine);
-        return provider;
+        var body = engine.CreateBody(new PhysxBodyDef2D { Type = type, Position = position, Id = id });
+        engine.CreateFixture(body, new PhysxFixtureDef2D { Shape = shape ?? PhysxShape2D.Circle(1f), Density = 1f, IsTrigger = sensor });
+        return body;
     }
 
     [Fact]
@@ -24,125 +25,142 @@ public class Box2DWorldEngineTests
     }
 
     [Fact]
-    public void Bodies_EmptyByDefault()
+    public void Bodies_tracks_added_and_removed_bodies()
     {
         var engine = CreateEngine();
         Assert.Empty(engine.Bodies);
-    }
 
-    [Fact]
-    public void AddBody_RegistersBody()
-    {
-        var engine = CreateEngine();
-        var provider = CreateBodyProvider(engine);
-
-        var body = provider.CreateBody(
-            Altruist.Physx.Contracts.PhysxBodyType.Dynamic, 1f,
-            new Transform2D(Position2D.Of(100, 200), Size2D.Of(1, 1), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)));
-
-        engine.AddBody(body);
-
-        Assert.Single(engine.Bodies);
-    }
-
-    [Fact]
-    public void RemoveBody_UnregistersBody()
-    {
-        var engine = CreateEngine();
-        var provider = CreateBodyProvider(engine);
-
-        var body = provider.CreateBody(
-            Altruist.Physx.Contracts.PhysxBodyType.Dynamic, 1f,
-            new Transform2D(Position2D.Of(0, 0), Size2D.Of(1, 1), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)));
-
-        engine.AddBody(body);
-        Assert.Single(engine.Bodies);
+        var body = Body(engine, Vector2.Zero);
+        Assert.Same(body, Assert.Single(engine.Bodies));
 
         engine.RemoveBody(body);
         Assert.Empty(engine.Bodies);
     }
 
     [Fact]
-    public void Step_WithNoBodies_DoesNotThrow()
+    public void Bodies_is_a_view_not_a_new_list_per_call()
     {
         var engine = CreateEngine();
-        var ex = Record.Exception(() => engine.Step(1f / 60f));
-        Assert.Null(ex);
+        Body(engine, Vector2.Zero);
+
+        Assert.Same(engine.Bodies, engine.Bodies);
     }
 
     [Fact]
-    public void Step_WithBodies_DoesNotThrow()
+    public void Empty_world_advances_its_fixed_step_accumulator()
     {
-        var engine = CreateEngine();
-        var provider = CreateBodyProvider(engine);
+        var engine = new Box2DWorldEngine2D(new PhysxWorldSettings2D { Gravity = new Vector2(0, -10), FixedDeltaTime = 0.1f, MaxSubSteps = 4 });
 
-        var body = provider.CreateBody(
-            Altruist.Physx.Contracts.PhysxBodyType.Dynamic, 1f,
-            new Transform2D(Position2D.Of(0, 100), Size2D.Of(1, 1), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)));
-        engine.AddBody(body);
+        engine.Step(0.06f);
+        var body = Body(engine, new Vector2(0, 10), type: PhysxBodyType.Dynamic);
+        engine.Step(0.06f);
 
-        // Need a fixture for the body to participate in physics
-        var colliderProvider = new Box2DPhysxColliderApiProvider2D();
-        var collider = colliderProvider.CreateCollider(new PhysxCollider2DParams(
-            PhysxColliderShape2D.Circle2D,
-            new Transform2D(Position2D.Zero, Size2D.Of(10, 0), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)),
-            false));
-        provider.AddCollider(body, collider);
-
-        var ex = Record.Exception(() => engine.Step(1f / 60f));
-        Assert.Null(ex);
+        // 0.12 s accumulated: one fixed step has run since the body was added.
+        Assert.True(body.Position.Y < 10f);
     }
 
     [Fact]
     public void Step_DynamicBody_AffectedByGravity()
     {
-        var engine = CreateEngine(-100f); // strong gravity for visible effect
-        var provider = CreateBodyProvider(engine);
+        var engine = CreateEngine(-100f);
+        var body = Body(engine, new Vector2(0, 1000), type: PhysxBodyType.Dynamic);
 
-        var body = provider.CreateBody(
-            Altruist.Physx.Contracts.PhysxBodyType.Dynamic, 1f,
-            new Transform2D(Position2D.Of(0, 1000), Size2D.Of(1, 1), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)));
-        engine.AddBody(body);
-
-        // Add a fixture so Box2D processes it
-        var colliderProvider = new Box2DPhysxColliderApiProvider2D();
-        var collider = colliderProvider.CreateCollider(new PhysxCollider2DParams(
-            PhysxColliderShape2D.Circle2D,
-            new Transform2D(Position2D.Zero, Size2D.Of(5, 0), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)),
-            false));
-        provider.AddCollider(body, collider);
-
-        var initialY = body.Position.Y;
-
-        // Step multiple times
         for (int i = 0; i < 10; i++)
             engine.Step(1f / 60f);
 
-        Assert.True(body.Position.Y < initialY, "Body should fall due to gravity");
+        Assert.True(body.Position.Y < 1000f);
     }
 
     [Fact]
     public void RayCast_WithNoBodies_ReturnsEmpty()
     {
         var engine = CreateEngine();
-        var ray = new PhysxRay2D(new Vector2(0, 0), new Vector2(100, 0));
+        Assert.Empty(engine.RayCast(new PhysxRay2D(new Vector2(0, 0), new Vector2(100, 0))));
+    }
 
-        var hits = engine.RayCast(ray);
+    [Fact]
+    public void RayCast_skips_sensors()
+    {
+        var engine = CreateEngine(0f);
+        Body(engine, new Vector2(5, 0), sensor: true);
+        var solid = Body(engine, new Vector2(10, 0));
 
-        Assert.Empty(hits);
+        var hit = Assert.Single(engine.RayCast(new PhysxRay2D(Vector2.Zero, new Vector2(20, 0)), maxHits: 5));
+        Assert.Same(solid, hit.Body);
+        Assert.Same(solid, Assert.Single(engine.RayCast(new PhysxRay2D(Vector2.Zero, new Vector2(20, 0)))).Body);
+    }
+
+    [Fact]
+    public void RayCast_reports_each_body_once_at_its_closest_hit()
+    {
+        var engine = CreateEngine(0f);
+        var body = Body(engine, new Vector2(10, 0));
+        engine.CreateFixture(body, new PhysxFixtureDef2D { Shape = PhysxShape2D.Circle(1f, new Vector2(3, 0)) });
+
+        var hit = Assert.Single(engine.RayCast(new PhysxRay2D(Vector2.Zero, new Vector2(20, 0)), maxHits: 5));
+        Assert.Equal(9f, hit.Point.X, 3);
+    }
+
+    [Fact]
+    public void RayCast_breaks_ties_by_body_id_whatever_the_creation_order()
+    {
+        foreach (var order in new[] { new[] { "b", "a" }, new[] { "a", "b" } })
+        {
+            var engine = CreateEngine(0f);
+            foreach (var id in order)
+                Body(engine, new Vector2(10, id == "a" ? 0.5f : -0.5f), PhysxShape2D.Box(1f, 0.5f), id: id);
+
+            var hits = engine.RayCast(new PhysxRay2D(new Vector2(0, 0), new Vector2(20, 0)), maxHits: 2).ToList();
+            var closest = Assert.Single(engine.RayCast(new PhysxRay2D(new Vector2(0, 0), new Vector2(20, 0))));
+
+            Assert.Equal(new[] { "a", "b" }, hits.Select(h => h.Body.Id));
+            Assert.Equal("a", closest.Body.Id);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(FixtureShapes))]
+    public void Fixtures_report_their_shape_kind(PhysxShape2D shape, PhysxColliderShape2D expected)
+    {
+        var engine = CreateEngine(0f);
+        var body = engine.CreateBody(new PhysxBodyDef2D());
+
+        var fixture = engine.CreateFixture(body, new PhysxFixtureDef2D { Shape = shape });
+
+        Assert.Equal(expected, fixture.Shape);
+    }
+
+    public static TheoryData<PhysxShape2D, PhysxColliderShape2D> FixtureShapes() => new()
+    {
+        { PhysxShape2D.Circle(1f), PhysxColliderShape2D.Circle2D },
+        { PhysxShape2D.Box(1f, 2f), PhysxColliderShape2D.Box2D },
+        { PhysxShape2D.Polygon(new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(0, 1) }), PhysxColliderShape2D.Polygon2D },
+        { PhysxShape2D.Chain(new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(2, 1) }, loop: false), PhysxColliderShape2D.Chain2D },
+        { PhysxShape2D.Edge(new Vector2(0, 0), new Vector2(1, 0)), PhysxColliderShape2D.Edge2D },
+    };
+
+    [Fact]
+    public void Fixture_transform_describes_its_geometry()
+    {
+        var engine = CreateEngine(0f);
+        var body = engine.CreateBody(new PhysxBodyDef2D());
+
+        var circle = engine.CreateFixture(body, new PhysxFixtureDef2D { Shape = PhysxShape2D.Circle(0.5f, new Vector2(1.5f, -2f)) });
+        var box = engine.CreateFixture(body, new PhysxFixtureDef2D { Shape = PhysxShape2D.Box(1f, 2f, new Vector2(0.25f, 0f), 0.3f) });
+
+        Assert.Equal(new Vector2(1.5f, -2f), circle.Transform.Position.ToVector2());
+        Assert.Equal(0.5f, circle.Transform.Size.X);
+        Assert.Equal(new Vector2(0.25f, 0f), box.Transform.Position.ToVector2());
+        Assert.Equal(new Vector2(1f, 2f), box.Transform.Size.ToVector2());
+        Assert.Equal(0.3f, box.Transform.Rotation.Radians);
+        Assert.Throws<NotSupportedException>(() => circle.Transform = box.Transform);
     }
 
     [Fact]
     public void Dispose_ClearsAllBodies()
     {
         var engine = CreateEngine();
-        var provider = CreateBodyProvider(engine);
-
-        var body = provider.CreateBody(
-            Altruist.Physx.Contracts.PhysxBodyType.Static, 0f,
-            new Transform2D(Position2D.Of(0, 0), Size2D.Of(1, 1), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)));
-        engine.AddBody(body);
-        Assert.Single(engine.Bodies);
+        Body(engine, Vector2.Zero);
 
         engine.Dispose();
         Assert.Empty(engine.Bodies);
@@ -152,35 +170,10 @@ public class Box2DWorldEngineTests
     public void Body_Position_IsReadableAndWritable()
     {
         var engine = CreateEngine(0f);
-        var provider = CreateBodyProvider(engine);
-
-        var body = provider.CreateBody(
-            Altruist.Physx.Contracts.PhysxBodyType.Kinematic, 1f,
-            new Transform2D(Position2D.Of(50, 100), Size2D.Of(1, 1), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)));
-        engine.AddBody(body);
-
-        Assert.Equal(50, body.Position.X, 1f);
-        Assert.Equal(100, body.Position.Y, 1f);
+        var body = Body(engine, new Vector2(50, 100), type: PhysxBodyType.Kinematic);
 
         body.Position = new Vector2(200, 300);
-        Assert.Equal(200, body.Position.X, 1f);
-        Assert.Equal(300, body.Position.Y, 1f);
-    }
-
-    [Fact]
-    public void Body_LinearVelocity_IsSettable()
-    {
-        var engine = CreateEngine(0f);
-        var provider = CreateBodyProvider(engine);
-
-        var body = provider.CreateBody(
-            Altruist.Physx.Contracts.PhysxBodyType.Dynamic, 1f,
-            new Transform2D(Position2D.Of(0, 0), Size2D.Of(1, 1), Scale2D.Of(1, 1), Rotation2D.FromRadians(0)));
-        engine.AddBody(body);
-
-        body.LinearVelocity = new Vector2(10, 5);
-        Assert.Equal(10, body.LinearVelocity.X, 0.1f);
-        Assert.Equal(5, body.LinearVelocity.Y, 0.1f);
+        Assert.Equal(new Vector2(200, 300), body.Position);
     }
 }
 
@@ -192,7 +185,6 @@ public class WorldEngineFactory2DTests
         var factory = new WorldEngineFactory2D();
         var engine = factory.Create(new Vector2(0, -9.81f));
 
-        Assert.NotNull(engine);
         Assert.IsType<Box2DWorldEngine2D>(engine);
     }
 

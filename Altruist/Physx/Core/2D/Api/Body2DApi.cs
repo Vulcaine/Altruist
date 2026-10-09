@@ -91,6 +91,10 @@ namespace Altruist.Physx.TwoD
     /// </summary>
     public interface IPhysxWorld2D : IPhysxWorld
     {
+        /// <summary>The engine behind this world: create bodies and fixtures in it
+        /// (<see cref="IPhysxBodyApiProvider2D.CreateBody"/> does), install a contact listener, query contacts.</summary>
+        IPhysxWorldEngine2D Engine { get; }
+
         /// <summary>Registers a body created by the matching provider with this world.</summary>
         void AddBody(IPhysxBody2D body);
 
@@ -104,51 +108,30 @@ namespace Altruist.Physx.TwoD
 
 
     /// <summary>
-    /// Creates bodies and attaches <see cref="IPhysxCollider2D"/> colliders for the world-organizer
-    /// path (DI service; the Box2D implementation is registered when
-    /// <c>altruist:environment:mode</c> is <c>2D</c>). For standalone worlds prefer
-    /// <see cref="IPhysxWorldEngine2D.CreateBody"/> and
-    /// <see cref="IPhysxWorldEngine2D.CreateFixture"/>, which take full definitions (material,
-    /// filter, sleep, damping) and register the body at once.
+    /// Creates bodies in a world and attaches <see cref="Collider2D"/> colliders to them: the world-organizer
+    /// path (DI service; the Box2D implementation is registered when <c>altruist:environment:mode</c> is
+    /// <c>2D</c>). Stateless: every call names the world or body it works on. For standalone worlds prefer
+    /// <see cref="IPhysxWorldEngine2D.CreateBody"/> and <see cref="IPhysxWorldEngine2D.CreateFixture"/>, which
+    /// take full definitions (material, filter, sleep, damping).
     /// </summary>
     public interface IPhysxBodyApiProvider2D
     {
-        /// <summary>Creates a body. Depending on the implementation it may still need to be added to a
-        /// world (<see cref="IPhysxWorld2D.AddBody"/>).</summary>
+        /// <summary>Creates a body in <paramref name="world"/> (already added: no
+        /// <see cref="IPhysxWorld2D.AddBody"/> needed). A dynamic body with <paramref name="mass"/> &gt; 0 is
+        /// rescaled to exactly that mass whenever a collider is attached; otherwise the mass follows the
+        /// colliders' densities.</summary>
+        /// <param name="world">The world the body lives in.</param>
         /// <param name="type">Static, dynamic or kinematic.</param>
-        /// <param name="mass">Requested mass (implementations may derive mass from fixtures instead).</param>
+        /// <param name="mass">Requested mass of a dynamic body (0 or less: derived from the colliders).</param>
         /// <param name="transform">Initial position and rotation.</param>
-        IPhysxBody2D CreateBody(PhysxBodyType type, float mass, Transform2D transform);
+        IPhysxBody2D CreateBody(IPhysxWorld2D world, PhysxBodyType type, float mass, Transform2D transform);
 
-        /// <summary>Attach a collider to a body (creates a fixture under the hood).</summary>
+        /// <summary>Attaches a detached <see cref="Collider2D"/> (from <see cref="PhysxCollider2D"/> or
+        /// <see cref="IPhysxColliderApiProvider2D"/>) to a body of a world: creates its fixtures and records it in
+        /// the body's colliders.</summary>
         void AddCollider(IPhysxBody2D body, IPhysxCollider2D collider);
 
-        /// <summary>Detach and destroy the collider’s fixture if attached.</summary>
+        /// <summary>Detaches the collider from its body and destroys its fixtures; no-op when it is not attached.</summary>
         void RemoveCollider(IPhysxCollider2D collider);
-    }
-
-    /// <summary>
-    /// Static shortcut over an <see cref="IPhysxBodyApiProvider2D"/>. <see cref="Provider"/> must be
-    /// assigned first (nothing in the framework assigns it); otherwise calls throw
-    /// <see cref="NullReferenceException"/>. Prefer injecting <see cref="IPhysxBodyApiProvider2D"/>,
-    /// or <see cref="IPhysxWorldEngine2D.CreateBody"/> for standalone worlds.
-    /// </summary>
-    public static class PhysxBody2D
-    {
-        /// <summary>The provider all <c>Create</c> calls go to (process-wide, not thread-safe to change).</summary>
-        public static IPhysxBodyApiProvider2D Provider { get; set; } = default!;
-
-        /// <summary>Creates a dynamic body when <paramref name="mass"/> &gt; 0, else a static one.</summary>
-        /// <param name="mass">Mass; &gt; 0 selects <see cref="PhysxBodyType.Dynamic"/>.</param>
-        /// <param name="transform">Initial position and rotation.</param>
-        public static IPhysxBody2D Create(float mass, Transform2D transform) =>
-            Provider.CreateBody(mass > 0 ? PhysxBodyType.Dynamic : PhysxBodyType.Static, mass, transform);
-
-        /// <summary>Creates a body of an explicit <paramref name="type"/>.</summary>
-        /// <param name="type">Static, dynamic or kinematic.</param>
-        /// <param name="mass">Requested mass (see <see cref="IPhysxBodyApiProvider2D.CreateBody"/>).</param>
-        /// <param name="transform">Initial position and rotation.</param>
-        public static IPhysxBody2D Create(PhysxBodyType type, float mass, Transform2D transform) =>
-            Provider.CreateBody(type, mass, transform);
     }
 }
