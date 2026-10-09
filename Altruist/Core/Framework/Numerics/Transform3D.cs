@@ -35,6 +35,8 @@ namespace Altruist.ThreeD.Numerics
         public static Position3D From(Vector3 v) => new(v);
         /// <summary>The position as a <see cref="Vector3"/>.</summary>
         public Vector3 ToVector3() => _v;
+        /// <summary>Formats the coordinates, e.g. <c>&lt;1, 2, 3&gt;</c>.</summary>
+        public override string ToString() => _v.ToString();
     }
 
     /// <summary>An immutable 3D size in world units. Its meaning depends on the collider/body shape it
@@ -65,6 +67,8 @@ namespace Altruist.ThreeD.Numerics
         public static Size3D From(Vector3 v) => new(v);
         /// <summary>The size as a <see cref="Vector3"/>.</summary>
         public Vector3 ToVector3() => _v;
+        /// <summary>Formats the extents, e.g. <c>&lt;0.5, 0.5, 0.5&gt;</c>.</summary>
+        public override string ToString() => _v.ToString();
     }
 
     /// <summary>An immutable, unitless 3D scale factor (1 = unchanged). Use <see cref="One"/> as the
@@ -95,6 +99,8 @@ namespace Altruist.ThreeD.Numerics
         public static Scale3D From(Vector3 v) => new(v);
         /// <summary>The scale as a <see cref="Vector3"/>.</summary>
         public Vector3 ToVector3() => _v;
+        /// <summary>Formats the factors, e.g. <c>&lt;1, 1, 1&gt;</c>.</summary>
+        public override string ToString() => _v.ToString();
     }
 
     /// <summary>An immutable 3D rotation backed by a <see cref="Quaternion"/> (System.Numerics conventions:
@@ -132,6 +138,8 @@ namespace Altruist.ThreeD.Numerics
 
         /// <summary>The underlying quaternion (same as <see cref="Value"/>).</summary>
         public Quaternion ToQuaternion() => _q;
+        /// <summary>Formats the quaternion components, e.g. <c>{X:0 Y:0 Z:0 W:1}</c>.</summary>
+        public override string ToString() => _q.ToString();
     }
 
     /// <summary>A mutable 3D transform: <see cref="Position"/>, shape <see cref="Size"/>, unitless
@@ -152,8 +160,8 @@ namespace Altruist.ThreeD.Numerics
         /// <summary>Rotation.</summary>
         public Rotation3D Rotation { get; set; }
 
-        /// <summary>Formats the four parts. Note: the part structs do not override <c>ToString</c>, so they
-        /// print as their type names.</summary>
+        /// <summary>Formats the four parts with their values, e.g.
+        /// <c>(Position: &lt;0, 1, 5&gt;, Size: &lt;1, 1, 1&gt;, Scale: &lt;1, 1, 1&gt;, Rotation: {X:0 Y:0 Z:0 W:1})</c>.</summary>
         public override string ToString()
         {
             return $"(Position: {Position}, Size: {Size}, Scale: {Scale}, Rotation: {Rotation})";
@@ -211,10 +219,10 @@ namespace Altruist.ThreeD.Numerics
         /// <summary>Origin, zero size, unit scale, identity rotation. Use this as the "empty" transform.</summary>
         public static Transform3D Zero => new(Position3D.Zero, Size3D.Zero, Scale3D.One, Rotation3D.Identity);
 
-        /// <summary>Position (1, 1, 1), unit size, unit scale, identity rotation. Note: despite the name the
-        /// position is <see cref="Position3D.One"/>, not the origin; use <see cref="Zero"/> (or
-        /// <see cref="WithPosition"/>) when the transform must sit at the origin.</summary>
-        public static Transform3D Identity => new(Position3D.One, Size3D.One, Scale3D.One, Rotation3D.Identity);
+        /// <summary>The neutral transform of a unit shape: origin position, unit size, unit scale, identity
+        /// rotation. Use it as the starting point for a spawn transform (<c>Identity.WithPosition(p)</c>) or
+        /// as "no local offset" for a collider; use <see cref="Zero"/> when the size must be empty.</summary>
+        public static Transform3D Identity => new(Position3D.Zero, Size3D.One, Scale3D.One, Rotation3D.Identity);
 
         /// <summary>A copy with <paramref name="p"/> as position.</summary>
         public Transform3D WithPosition(Position3D p) => new(p, Size, Scale, Rotation);
