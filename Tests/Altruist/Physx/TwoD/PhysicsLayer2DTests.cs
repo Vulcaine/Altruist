@@ -322,7 +322,7 @@ public class PhysicsLayer2DTests
             var b = new FakeBody2D { RotationZ = rot, AngularVelocityZ = k * 4 };
 
             b.AlignUpToNormal(n, 12);
-            Same(b.AngularVelocityZ, InlineWrap(MathF.Atan2(-n.X, n.Y) - rot) * 12);
+            Same(b.AngularVelocityZ, InlineWrap(DeterministicMath.Atan2(-n.X, n.Y) - rot) * 12);
 
             b.ArriveAtAngle(v.Y, MathF.Abs(k) * 0.1f, 1f / 60f);
             Same(b.AngularVelocityZ, InlineWrap(v.Y - rot) / MathF.Max(MathF.Abs(k) * 0.1f, 1f / 60f));

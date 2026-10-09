@@ -56,7 +56,7 @@ public static class BodySteeringExtensions2D
         var dx = target.X - body.Position.X;
         var dy = target.Y - body.Position.Y;
         if (dx * dx + dy * dy < CoincidentEpsilonSq) return true;
-        var targetRot = MathF.Atan2(dx, dy);
+        var targetRot = DeterministicMath.Atan2(dx, dy);
         var diff = Angle.ShortestDifference(body.RotationZ, targetRot);
         return MathF.Abs(diff) <= Angle.ToRadians(halfAngleDegrees);
     }

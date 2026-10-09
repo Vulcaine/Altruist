@@ -38,7 +38,7 @@ public static class Direction2D
     /// as <see cref="Yaw2D.ToDirection(float)"/>, exposed on <c>Direction2D</c>
     /// for ergonomics at "step in this angle" sites.</summary>
     public static Vector2 TowardAngle(float rotationRadians)
-        => new(MathF.Sin(rotationRadians), MathF.Cos(rotationRadians));
+        => new(DeterministicMath.Sin(rotationRadians), DeterministicMath.Cos(rotationRadians));
 
     /// <summary>Both the unit direction and the distance from <paramref name="from"/> to
     /// <paramref name="to"/> in one square root; <c>(Vector2.Zero, 0)</c> when the points coincide. Use it
@@ -64,12 +64,12 @@ public static class Direction2D
 
     /// <summary>Unit vector at a polar angle in the standard math convention (0 = +X,
     /// counter-clockwise, the convention of <see cref="Rotation2D"/> and physics bodies):
-    /// <c>(MathF.Cos(radians), MathF.Sin(radians))</c>. Not the yaw convention of
+    /// <c>(DeterministicMath.Cos(radians), DeterministicMath.Sin(radians))</c>. Not the yaw convention of
     /// <see cref="TowardAngle"/> (0 = +Y, clockwise).</summary>
-    public static Vector2 FromPolar(float radians) => new(MathF.Cos(radians), MathF.Sin(radians));
+    public static Vector2 FromPolar(float radians) => new(DeterministicMath.Cos(radians), DeterministicMath.Sin(radians));
 
     /// <summary><see cref="FromPolar"/> in degrees:
-    /// <c>(MathF.Cos(degrees * (π / 180)), MathF.Sin(degrees * (π / 180)))</c>.</summary>
+    /// <c>(DeterministicMath.Cos(degrees * (π / 180)), DeterministicMath.Sin(degrees * (π / 180)))</c>.</summary>
     public static Vector2 FromPolarDegrees(float degrees) => FromPolar(Angle.ToRadians(degrees));
 
     /// <summary>Limits the Y component (elevation) of the unit vector <paramref name="unit"/> to

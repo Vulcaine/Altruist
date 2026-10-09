@@ -37,7 +37,7 @@ public class MathLayerTests
             Same(Scalar.Approach(a, b, MathF.Abs(c)), InlineApproach(a, b, MathF.Abs(c)));
             Same(Scalar.Lerp(a, b, c), a + (b - a) * c);
             Same(Scalar.InverseLerp(a, b, c), (c - a) / (b - a));
-            Same(Scalar.Pow01(a, 1.7f), MathF.Pow(Math.Clamp(a, 0, 1), 1.7f));
+            Same(Scalar.Pow01(a, 1.7f), DeterministicMath.Pow(Math.Clamp(a, 0, 1), 1.7f));
             Same(Scalar.RoundHalfUp(a), MathF.Floor(a + 0.5f));
             Same(Scalar.Quantize(a / 40f), MathF.Round(InlineClamp(a / 40f, -1, 1) * 127) / 127f);
         }

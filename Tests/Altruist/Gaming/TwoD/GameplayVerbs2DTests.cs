@@ -1,3 +1,4 @@
+using Altruist.Numerics;
 using System.Numerics;
 using Altruist.Gaming.TwoD;
 using Altruist.Physx;
@@ -58,7 +59,7 @@ public class GameplayVerbs2DTests
         foreach (var (v, _, k) in Cases())
         {
             var aim = k * 9f;
-            var up = new Vector2(-MathF.Sin(aim), MathF.Cos(aim));
+            var up = new Vector2(-DeterministicMath.Sin(aim), DeterministicMath.Cos(aim));
             Same(Rotation2D.UpAt(aim), up);
             var expected = new FakeBody2D { LinearVelocity = v };
             expected.JumpOff(up, 9.5f);
@@ -227,7 +228,7 @@ public class GameplayVerbs2DTests
             var b = new FakeBody2D { RotationZ = rot, AngularVelocityZ = k * 5, Position = v };
 
             b.AlignToSurface(n, 14);
-            Same(b.AngularVelocityZ, InlineWrap(MathF.Atan2(-n.X, n.Y) - rot) * 14);
+            Same(b.AngularVelocityZ, InlineWrap(DeterministicMath.Atan2(-n.X, n.Y) - rot) * 14);
 
             b.TurnToAngleIn(v.Y, 0.12f, Dt);
             Same(b.AngularVelocityZ, InlineWrap(v.Y - rot) / MathF.Max(0.12f, Dt));
@@ -247,12 +248,12 @@ public class GameplayVerbs2DTests
             float zero = 0;
             Same(b.AngularVelocityZ, InlineApproach(k * 5, zero, 70 * Dt));
 
-            Same(b.UprightAngleOn(n), rot + InlineWrap(MathF.Atan2(-n.X, n.Y) - rot));
+            Same(b.UprightAngleOn(n), rot + InlineWrap(DeterministicMath.Atan2(-n.X, n.Y) - rot));
             Same(b.LevelAngle(), rot - InlineWrap(rot));
 
             // Snap upright onto a surface, sunk by a small drop.
             var drop = MathF.Abs(k) * 0.1f;
-            var flat = rot + InlineWrap(MathF.Atan2(-n.X, n.Y) - rot);
+            var flat = rot + InlineWrap(DeterministicMath.Atan2(-n.X, n.Y) - rot);
             var p = b.Position - new Vector2(n.X, n.Y) * drop;
             b.SnapUprightOn(n, drop);
             Same(b.RotationZ, flat);

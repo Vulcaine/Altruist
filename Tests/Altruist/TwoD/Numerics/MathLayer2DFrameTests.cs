@@ -176,8 +176,8 @@ public class MathLayer2DFrameTests
         var vs = Vectors(200, 1f).ToArray();
         foreach (var rot in rots)
         {
-            var c = MathF.Cos(rot * MathF.PI / 180);
-            var s = MathF.Sin(rot * MathF.PI / 180);
+            var c = DeterministicMath.Cos(rot * MathF.PI / 180);
+            var s = DeterministicMath.Sin(rot * MathF.PI / 180);
             foreach (var v in vs)
             {
                 var x = v.X * c - v.Y * s;
@@ -216,14 +216,14 @@ public class MathLayer2DFrameTests
         for (var i = 0; i < 4000; i++) angles.Add((r.NextDouble() * 2 - 1) * 40);
         foreach (var a in angles)
         {
-            Angle.Sector(a, 8).Should().Be((int)Math.Floor((Math.Atan2(Math.Sin(a), Math.Cos(a)) + Math.PI) / (2 * Math.PI) * 8) % 8);
-            Angle.Sector(a, 12).Should().Be((int)Math.Floor((Math.Atan2(Math.Sin(a), Math.Cos(a)) + Math.PI) / (2 * Math.PI) * 12) % 12);
+            Angle.Sector(a, 8).Should().Be((int)Math.Floor((DeterministicMath.Atan2(DeterministicMath.Sin(a), DeterministicMath.Cos(a)) + Math.PI) / (2 * Math.PI) * 8) % 8);
+            Angle.Sector(a, 12).Should().Be((int)Math.Floor((DeterministicMath.Atan2(DeterministicMath.Sin(a), DeterministicMath.Cos(a)) + Math.PI) / (2 * Math.PI) * 12) % 12);
         }
         var ds = new List<(double, double)> { (0, 0), (-0.0, 0), (-1, 0), (-1, -0.0), (1, 0), (0, 1), (0, -1) };
         for (var i = 0; i < 4000; i++) ds.Add(((r.NextDouble() * 2 - 1) * 60, (r.NextDouble() * 2 - 1) * 30));
         foreach (var (dx, dy) in ds)
             foreach (var n in new[] { 8, 12, 16 })
-                Angle.SectorToward(dx, dy, n).Should().Be((int)Math.Floor((Math.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * n) % n);
+                Angle.SectorToward(dx, dy, n).Should().Be((int)Math.Floor((DeterministicMath.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * n) % n);
         Angle.SectorToward(-1, 0, 8).Should().Be(0); // +π wraps to slice 0
         Angle.SectorToward(-1, -1e-9, 8).Should().Be(0);
         Angle.SectorToward(1, -1e-9, 8).Should().Be(3);
@@ -237,7 +237,7 @@ public class MathLayer2DFrameTests
             foreach (var facing in new[] { 1, -1 })
             {
                 var noseLocal = facing > 0 ? 0 : MathF.PI;
-                Same(Rotation2D.AngleAligningForward(v, facing), MathF.Atan2(v.Y, v.X) - noseLocal);
+                Same(Rotation2D.AngleAligningForward(v, facing), DeterministicMath.Atan2(v.Y, v.X) - noseLocal);
                 // Pointing the facing's local axis along the direction.
                 if (v.Length() > 0.1f)
                 {

@@ -36,7 +36,7 @@ public static class SpatialQueries2D
         if (distSq > range * range) return false;
         if (distSq < 1e-6f) return true;
 
-        var targetYaw = MathF.Atan2(dx, dy);
+        var targetYaw = DeterministicMath.Atan2(dx, dy);
         var diff = Angle.ShortestDifference(rotationRadians, targetYaw);
         return MathF.Abs(diff) <= halfAngleRadians;
     }
@@ -50,8 +50,8 @@ public static class SpatialQueries2D
     {
         var dx = target.X - origin.X;
         var dy = target.Y - origin.Y;
-        var dirX = MathF.Sin(rotationRadians);
-        var dirY = MathF.Cos(rotationRadians);
+        var dirX = DeterministicMath.Sin(rotationRadians);
+        var dirY = DeterministicMath.Cos(rotationRadians);
 
         var along = dx * dirX + dy * dirY;
         if (along < 0f || along > length) return false;

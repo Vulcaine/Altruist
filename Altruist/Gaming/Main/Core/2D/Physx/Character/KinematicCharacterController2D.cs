@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Numerics;
 using System.Numerics;
 
 using Altruist.Physx.TwoD;
@@ -195,7 +196,7 @@ namespace Altruist.Gaming.TwoD
         public void LookIntent(float lookX, float lookY)
         {
             if (MathF.Abs(lookX) > 1e-6f || MathF.Abs(lookY) > 1e-6f)
-                _lookX = MathF.Atan2(lookX, lookY);
+                _lookX = DeterministicMath.Atan2(lookX, lookY);
         }
 
         /// <inheritdoc/>

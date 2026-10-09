@@ -102,13 +102,13 @@ public static class Angle
 
     /// <summary>Which of <paramref name="sectors"/> equal slices the direction
     /// (<paramref name="dx"/>, <paramref name="dy"/>) falls in, counting counter-clockwise from -X
-    /// (slice 0 starts at -π): <c>(int)Math.Floor((Math.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * sectors) % sectors</c>.
+    /// (slice 0 starts at -π): <c>(int)Math.Floor((DeterministicMath.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * sectors) % sectors</c>.
     /// Exactly +π (pointing along -X from above) wraps to slice 0.</summary>
     public static int SectorToward(double dx, double dy, int sectors) =>
-        (int)Math.Floor((Math.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * sectors) % sectors;
+        (int)Math.Floor((DeterministicMath.Atan2(dy, dx) + Math.PI) / (2 * Math.PI) * sectors) % sectors;
 
     /// <summary>The <see cref="SectorToward"/> slice of the direction at <paramref name="radians"/>
     /// (any angle, wrapped through its sine and cosine):
-    /// <c>(int)Math.Floor((Math.Atan2(Math.Sin(radians), Math.Cos(radians)) + Math.PI) / (2 * Math.PI) * sectors) % sectors</c>.</summary>
-    public static int Sector(double radians, int sectors) => SectorToward(Math.Cos(radians), Math.Sin(radians), sectors);
+    /// <c>(int)Math.Floor((DeterministicMath.Atan2(DeterministicMath.Sin(radians), DeterministicMath.Cos(radians)) + Math.PI) / (2 * Math.PI) * sectors) % sectors</c>.</summary>
+    public static int Sector(double radians, int sectors) => SectorToward(DeterministicMath.Cos(radians), DeterministicMath.Sin(radians), sectors);
 }

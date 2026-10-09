@@ -103,7 +103,7 @@ public class FacingFrame2DTests
         {
             var f = new FacingFrame2D(body, facing, HalfW, HalfH);
             var noseLocal = facing > 0 ? 0 : MathF.PI;
-            Same(f.AimRotationToward(p), MathF.Atan2(p.Y, p.X) - noseLocal);
+            Same(f.AimRotationToward(p), DeterministicMath.Atan2(p.Y, p.X) - noseLocal);
         }
     }
 
@@ -128,7 +128,7 @@ public class FacingFrame2DTests
             Same(b.LinearVelocity, new Vector2(flipDir * MathF.Max(0, v.X * flipDir), MathF.Min(MathF.Max(v.Y, 0), 6.5f)));
 
             // (vel.X * (1 - cut * MathF.Pow(MathF.Min(1, dir.Y), curve)), vel.Y)
-            var factor = 1 - 0.8f * MathF.Pow(MathF.Min(1, MathF.Abs(k)), 1.5f);
+            var factor = 1 - 0.8f * DeterministicMath.Pow(MathF.Min(1, MathF.Abs(k)), 1.5f);
             b = new FakeBody2D { LinearVelocity = v };
             b.ScaleVelocityX(factor);
             Same(b.LinearVelocity, new Vector2(v.X * factor, v.Y));

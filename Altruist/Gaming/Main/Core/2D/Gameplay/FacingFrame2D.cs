@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Numerics;
 using System.Numerics;
 
 using Altruist.Physx.TwoD;
@@ -102,6 +103,6 @@ public readonly struct FacingFrame2D
 
     /// <summary>The body rotation that points the nose along <paramref name="direction"/> (aim with a
     /// stick, align with the velocity): <c>Rotation2D.AngleAligningForward(direction, Facing)</c>, i.e.
-    /// <c>MathF.Atan2(d.Y, d.X) - (Facing &gt; 0 ? 0 : π)</c>.</summary>
+    /// <c>DeterministicMath.Atan2(d.Y, d.X) - (Facing &gt; 0 ? 0 : π)</c>.</summary>
     public float AimRotationToward(Vector2 direction) => Rotation2D.AngleAligningForward(direction, Facing);
 }

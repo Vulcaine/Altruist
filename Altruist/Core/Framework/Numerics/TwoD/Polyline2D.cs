@@ -22,7 +22,7 @@ public static class Polyline2D
     /// <code>
     /// steps = Math.Max(minSegments, (int)MathF.Ceiling(MathF.Abs(end - start) / maxSegmentDegrees))
     /// a_i   = Angle.ToRadians(start + (end - start) * i / steps)
-    /// p_i   = (centerX + radius * MathF.Cos(a_i), centerY + radius * MathF.Sin(a_i))
+    /// p_i   = (centerX + radius * DeterministicMath.Cos(a_i), centerY + radius * DeterministicMath.Sin(a_i))
     /// </code></summary>
     public static void AppendArc(List<Vector2> points, float centerX, float centerY, float radius,
                                  float startDegrees, float endDegrees, float maxSegmentDegrees, int minSegments = 2)
@@ -32,7 +32,7 @@ public static class Polyline2D
         for (var i = 0; i <= steps; i++)
         {
             var a = Angle.ToRadians(a0 + (a1 - a0) * i / steps);
-            points.Add(new Vector2(centerX + radius * MathF.Cos(a), centerY + radius * MathF.Sin(a)));
+            points.Add(new Vector2(centerX + radius * DeterministicMath.Cos(a), centerY + radius * DeterministicMath.Sin(a)));
         }
     }
 

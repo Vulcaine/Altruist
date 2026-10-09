@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Numerics;
 using System.Numerics;
 
 namespace Altruist.TwoD.Numerics;
@@ -19,18 +20,18 @@ public static class Yaw2D
 
     /// <summary>Yaw of the direction (<paramref name="dx"/>, <paramref name="dy"/>): <c>Atan2(dx, dy)</c>
     /// (0 = +Y, π/2 = +X).</summary>
-    public static float FromDirection(float dx, float dy) => MathF.Atan2(dx, dy);
+    public static float FromDirection(float dx, float dy) => DeterministicMath.Atan2(dx, dy);
 
     /// <summary>Yaw that points from <paramref name="from"/> at <paramref name="to"/>.</summary>
     public static float FromDirection(Position2D from, Position2D to)
-        => MathF.Atan2(to.X - from.X, to.Y - from.Y);
+        => DeterministicMath.Atan2(to.X - from.X, to.Y - from.Y);
 
     /// <summary>Yaw of a direction vector (need not be unit length).</summary>
-    public static float FromVector(Vector2 dir) => MathF.Atan2(dir.X, dir.Y);
+    public static float FromVector(Vector2 dir) => DeterministicMath.Atan2(dir.X, dir.Y);
 
     /// <summary>Unit facing vector for a yaw: <c>(sin yaw, cos yaw)</c> (inverse of
     /// <see cref="FromVector"/>). For the counter-clockwise polar convention use
     /// <see cref="Direction2D.FromPolar"/>.</summary>
     public static Vector2 ToDirection(float rotationRadians)
-        => new(MathF.Sin(rotationRadians), MathF.Cos(rotationRadians));
+        => new(DeterministicMath.Sin(rotationRadians), DeterministicMath.Cos(rotationRadians));
 }

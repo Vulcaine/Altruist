@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Numerics;
 using System.Numerics;
 
 namespace Altruist.TwoD.Numerics;
@@ -50,12 +51,12 @@ public static class Geometry2D
     /// <paramref name="angle"/> relative to the frame (how far it reaches up and down):
     /// <c>halfWidth * |sin(angle)| + halfHeight * |cos(angle)|</c>.</summary>
     public static float RotatedBoxHalfExtentY(float halfWidth, float halfHeight, float angle) =>
-        halfWidth * MathF.Abs(MathF.Sin(angle)) + halfHeight * MathF.Abs(MathF.Cos(angle));
+        halfWidth * MathF.Abs(DeterministicMath.Sin(angle)) + halfHeight * MathF.Abs(DeterministicMath.Cos(angle));
 
     /// <summary>Half extent along the frame's X axis of a box rotated by
     /// <paramref name="angle"/>: <c>halfWidth * |cos(angle)| + halfHeight * |sin(angle)|</c>.</summary>
     public static float RotatedBoxHalfExtentX(float halfWidth, float halfHeight, float angle) =>
-        halfWidth * MathF.Abs(MathF.Cos(angle)) + halfHeight * MathF.Abs(MathF.Sin(angle));
+        halfWidth * MathF.Abs(DeterministicMath.Cos(angle)) + halfHeight * MathF.Abs(DeterministicMath.Sin(angle));
 
     /// <summary>Which side of the centered box a local point (or local direction) is on. The
     /// coordinates are scaled by the half extents (the box becomes a unit square) and the dominant

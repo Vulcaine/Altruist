@@ -116,32 +116,32 @@ namespace Altruist.TwoD.Numerics
         /// <summary>Rotates <paramref name="v"/> by this angle (counter-clockwise): local to world.</summary>
         public Vector2 Rotate(Vector2 v)
         {
-            var c = MathF.Cos(Radians);
-            var s = MathF.Sin(Radians);
+            var c = DeterministicMath.Cos(Radians);
+            var s = DeterministicMath.Sin(Radians);
             return new Vector2(c * v.X - s * v.Y, s * v.X + c * v.Y);
         }
 
         /// <summary>The angle (radians, counter-clockwise as <see cref="Rotate"/>) at which a body's
-        /// local +Y axis points along <paramref name="normal"/>: <c>MathF.Atan2(-normal.X, normal.Y)</c>.
+        /// local +Y axis points along <paramref name="normal"/>: <c>DeterministicMath.Atan2(-normal.X, normal.Y)</c>.
         /// Aligning a body's "up" with a surface normal turns toward this angle.</summary>
-        public static float AngleAligningUp(Vector2 normal) => MathF.Atan2(-normal.X, normal.Y);
+        public static float AngleAligningUp(Vector2 normal) => DeterministicMath.Atan2(-normal.X, normal.Y);
 
         /// <summary>The angle at which a body facing <paramref name="facing"/> (+1: its front is local
         /// +X, otherwise local -X) points its front along <paramref name="direction"/> (aim the nose
         /// where the stick or the velocity points):
-        /// <c>MathF.Atan2(direction.Y, direction.X) - (facing &gt; 0 ? 0 : MathF.PI)</c>.</summary>
+        /// <c>DeterministicMath.Atan2(direction.Y, direction.X) - (facing &gt; 0 ? 0 : MathF.PI)</c>.</summary>
         public static float AngleAligningForward(Vector2 direction, int facing) =>
-            MathF.Atan2(direction.Y, direction.X) - (facing > 0 ? 0 : MathF.PI);
+            DeterministicMath.Atan2(direction.Y, direction.X) - (facing > 0 ? 0 : MathF.PI);
 
         /// <summary>The world direction of a body's local +Y at rotation <paramref name="radians"/>:
         /// <c>(-sin, cos)</c> (what <c>GetWorldVector((0, 1))</c> returns at that angle).</summary>
-        public static Vector2 UpAt(float radians) => new(-MathF.Sin(radians), MathF.Cos(radians));
+        public static Vector2 UpAt(float radians) => new(-DeterministicMath.Sin(radians), DeterministicMath.Cos(radians));
 
         /// <summary>The inverse of <see cref="Rotate"/>: world to local.</summary>
         public Vector2 Unrotate(Vector2 v)
         {
-            var c = MathF.Cos(Radians);
-            var s = MathF.Sin(Radians);
+            var c = DeterministicMath.Cos(Radians);
+            var s = DeterministicMath.Sin(Radians);
             return new Vector2(c * v.X + s * v.Y, -s * v.X + c * v.Y);
         }
     }

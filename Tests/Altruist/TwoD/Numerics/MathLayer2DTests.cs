@@ -105,8 +105,8 @@ public class MathLayer2DTests
         Direction2D.Perpendicular(Direction2D.PerpendicularClockwise(new Vector2(2, 5))).Should().Be(new Vector2(2, 5));
         foreach (var d in Floats(500, 720f))
         {
-            Same(Direction2D.FromPolarDegrees(d), new Vector2(MathF.Cos(d * Deg), MathF.Sin(d * Deg)));
-            Same(Direction2D.FromPolar(d * Deg), new Vector2(MathF.Cos(d * Deg), MathF.Sin(d * Deg)));
+            Same(Direction2D.FromPolarDegrees(d), new Vector2(DeterministicMath.Cos(d * Deg), DeterministicMath.Sin(d * Deg)));
+            Same(Direction2D.FromPolar(d * Deg), new Vector2(DeterministicMath.Cos(d * Deg), DeterministicMath.Sin(d * Deg)));
         }
         Direction2D.FromPolarDegrees(90).X.Should().BeApproximately(0, 1e-6f);
         Direction2D.FromPolarDegrees(90).Y.Should().BeApproximately(1, 1e-6f);
@@ -138,7 +138,7 @@ public class MathLayer2DTests
     {
         foreach (var n in Units(300))
         {
-            Same(Rotation2D.AngleAligningUp(n), MathF.Atan2(-n.X, n.Y));
+            Same(Rotation2D.AngleAligningUp(n), DeterministicMath.Atan2(-n.X, n.Y));
             var up = Rotation2D.FromRadians(Rotation2D.AngleAligningUp(n)).Rotate(Vector2.UnitY);
             up.X.Should().BeApproximately(n.X, 1e-5f);
             up.Y.Should().BeApproximately(n.Y, 1e-5f);
@@ -162,7 +162,7 @@ public class MathLayer2DTests
             Same(Geometry2D.BoxDistanceSquaredLocal(local, hw, hh), dx * dx + dy * dy);
 
             var rel = local.X;
-            Same(Geometry2D.RotatedBoxHalfExtentY(hw, hh, rel), hw * MathF.Abs(MathF.Sin(rel)) + hh * MathF.Abs(MathF.Cos(rel)));
+            Same(Geometry2D.RotatedBoxHalfExtentY(hw, hh, rel), hw * MathF.Abs(DeterministicMath.Sin(rel)) + hh * MathF.Abs(DeterministicMath.Cos(rel)));
 
             var p = local * 3;
             var d = us[i];
@@ -215,7 +215,7 @@ public class MathLayer2DTests
         for (var i = 0; i <= steps; i++)
         {
             var a = (a0 + (a1 - a0) * i / steps) * Deg;
-            pts.Add(new Vector2(cx + r * MathF.Cos(a), cy + r * MathF.Sin(a)));
+            pts.Add(new Vector2(cx + r * DeterministicMath.Cos(a), cy + r * DeterministicMath.Sin(a)));
         }
         return pts;
     }

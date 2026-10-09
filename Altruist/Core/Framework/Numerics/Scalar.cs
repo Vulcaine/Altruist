@@ -47,9 +47,9 @@ public static class Scalar
     public static float Remap(float v, float inMin, float inMax, float outMin, float outMax) =>
         Lerp(outMin, outMax, InverseLerp(inMin, inMax, v));
 
-    /// <summary>A power ease on [0, 1]: <c>MathF.Pow(Clamp01(t), exponent)</c>. Exponent 1 is
+    /// <summary>A power ease on [0, 1]: <c>DeterministicMath.Pow(Clamp01(t), exponent)</c>. Exponent 1 is
     /// linear, above 1 starts slow, below 1 starts fast.</summary>
-    public static float Pow01(float t, float exponent) => MathF.Pow(Clamp01(t), exponent);
+    public static float Pow01(float t, float exponent) => DeterministicMath.Pow(Clamp01(t), exponent);
 
     /// <summary><c>v &gt; 0 ? 1 : v &lt; 0 ? -1 : 0</c> as a float. Unlike
     /// <see cref="MathF.Sign(float)"/> it never throws: NaN gives 0.</summary>
