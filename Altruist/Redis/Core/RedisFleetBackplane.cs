@@ -36,8 +36,9 @@ namespace Altruist.Redis;
 /// calls then fault with StackExchange.Redis connection exceptions until it reconnects.
 /// </para>
 /// <para>
-/// Every member is a network round trip (or one batched round trip) and is thread-safe; the
-/// <c>cancellationToken</c> parameters are accepted for the interface but not passed to Redis.
+/// Every member is a network round trip (or one batched round trip) and is thread-safe. A cancelled
+/// <c>cancellationToken</c> makes the call throw <see cref="OperationCanceledException"/> without waiting for
+/// Redis; StackExchange.Redis cannot recall a command already sent, so a write cancelled in flight may still apply.
 /// Keys are stored as <c>altruist:</c> + key; values are plain Redis strings with a TTL.
 /// </para>
 /// </remarks>
@@ -112,9 +113,9 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
     /// <param name="key">Logical key (stored as <c>altruist:</c> + key).</param>
     /// <param name="value">String value.</param>
     /// <param name="ttl">Time to live.</param>
-    /// <param name="cancellationToken">Not observed.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
     public Task SetAsync(string key, string value, TimeSpan ttl, CancellationToken cancellationToken = default) =>
-        Db.StringSetAsync(K(key), value, ttl);
+        Run(() => Db.StringSetAsync(K(key), value, ttl), cancellationToken);
 
     /// <summary>
     /// Sets every pair with the same <paramref name="ttl"/> in one pipelined batch (one round trip).
@@ -122,39 +123,40 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
     /// </summary>
     /// <param name="values">Key/value pairs (keys are prefixed with <c>altruist:</c>).</param>
     /// <param name="ttl">Expiry applied to every key.</param>
-    /// <param name="cancellationToken">Not observed.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
     public async Task SetManyAsync(IReadOnlyCollection<KeyValuePair<string, string>> values, TimeSpan ttl, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (values.Count == 0) return;
         var batch = Db.CreateBatch();
         var writes = values.Select(kv => batch.StringSetAsync(K(kv.Key), kv.Value, ttl)).ToList();
         batch.Execute();
-        await Task.WhenAll(writes).ConfigureAwait(false);
+        await Task.WhenAll(writes).WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Atomic claim: <c>SET NX</c> with expiry. Returns <c>true</c> when this call created the key.</summary>
     /// <param name="key">Logical key.</param>
     /// <param name="value">Value to store (e.g. an owner id, for a later <see cref="DeleteIfValueAsync"/>).</param>
     /// <param name="ttl">Expiry of the claim.</param>
-    /// <param name="cancellationToken">Not observed.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
     public Task<bool> SetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken cancellationToken = default) =>
-        Db.StringSetAsync(K(key), value, ttl, When.NotExists);
+        Run(() => Db.StringSetAsync(K(key), value, ttl, When.NotExists), cancellationToken);
 
     /// <summary>Reads the value at <paramref name="key"/>; <c>null</c> when missing or expired.</summary>
     /// <param name="key">Logical key.</param>
-    /// <param name="cancellationToken">Not observed.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
     public async Task<string?> GetAsync(string key, CancellationToken cancellationToken = default)
     {
-        var v = await Db.StringGetAsync(K(key)).ConfigureAwait(false);
+        var v = await Run(() => Db.StringGetAsync(K(key)), cancellationToken).ConfigureAwait(false);
         return v.IsNull ? null : v.ToString();
     }
 
     /// <summary>Reads and deletes the key atomically (Redis 6.2+ <c>GETDEL</c>); <c>null</c> when missing. Use for one-shot values such as tickets.</summary>
     /// <param name="key">Logical key.</param>
-    /// <param name="cancellationToken">Not observed.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
     public async Task<string?> TakeAsync(string key, CancellationToken cancellationToken = default)
     {
-        var v = await Db.StringGetDeleteAsync(K(key)).ConfigureAwait(false);
+        var v = await Run(() => Db.StringGetDeleteAsync(K(key)), cancellationToken).ConfigureAwait(false);
         return v.IsNull ? null : v.ToString();
     }
 
@@ -169,22 +171,24 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
     /// between the scan and the read are skipped. Returns an empty dictionary when no endpoint is connected.
     /// </remarks>
     /// <param name="prefix">Logical key prefix (literal, not a pattern).</param>
-    /// <param name="cancellationToken">Not observed.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
     public async Task<IReadOnlyDictionary<string, string>> GetByPrefixAsync(string prefix, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var keys = new HashSet<RedisKey>();
         var pattern = Prefix + EscapeGlob(prefix) + "*";
         foreach (var endpoint in _mux.GetEndPoints())
         {
             var server = _mux.GetServer(endpoint);
             if (!server.IsConnected || server.IsReplica) continue;
-            await foreach (var key in server.KeysAsync(Db.Database, pattern, pageSize: 250).ConfigureAwait(false))
+            await foreach (var key in server.KeysAsync(Db.Database, pattern, pageSize: 250)
+                               .WithCancellation(cancellationToken).ConfigureAwait(false))
                 keys.Add(key);
         }
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
         if (keys.Count == 0) return result;
         var ordered = keys.ToArray();
-        var values = await Db.StringGetAsync(ordered).ConfigureAwait(false);
+        var values = await Run(() => Db.StringGetAsync(ordered), cancellationToken).ConfigureAwait(false);
         for (var i = 0; i < ordered.Length; i++)
             if (!values[i].IsNull) result[ordered[i].ToString()[Prefix.Length..]] = values[i].ToString();
         return result;
@@ -192,8 +196,9 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
 
     /// <summary>Deletes the key unconditionally (no-op when it does not exist).</summary>
     /// <param name="key">Logical key.</param>
-    /// <param name="cancellationToken">Not observed.</param>
-    public Task DeleteAsync(string key, CancellationToken cancellationToken = default) => Db.KeyDeleteAsync(K(key));
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
+    public Task DeleteAsync(string key, CancellationToken cancellationToken = default) =>
+        Run(() => Db.KeyDeleteAsync(K(key)), cancellationToken);
 
     /// <summary>
     /// Deletes the key only while it still holds <paramref name="value"/>, atomically via a Lua script
@@ -201,10 +206,11 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
     /// </summary>
     /// <param name="key">Logical key.</param>
     /// <param name="value">Expected current value.</param>
-    /// <param name="cancellationToken">Not observed.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply (see the type remarks).</param>
     public async Task<bool> DeleteIfValueAsync(string key, string value, CancellationToken cancellationToken = default)
     {
-        var deleted = await Db.ScriptEvaluateAsync(DeleteIfValueScript, new[] { K(key) }, new RedisValue[] { value }).ConfigureAwait(false);
+        var deleted = await Run(() => Db.ScriptEvaluateAsync(DeleteIfValueScript, new[] { K(key) }, new RedisValue[] { value }),
+            cancellationToken).ConfigureAwait(false);
         return (long)deleted == 1;
     }
 
@@ -217,8 +223,16 @@ public sealed class RedisFleetBackplane : IFleetBackplane, IDisposable
     public async Task<long> IncrementAsync(string key, TimeSpan ttl, long by = 1, CancellationToken cancellationToken = default)
     {
         var ms = Math.Max(1L, (long)Math.Ceiling(ttl.TotalMilliseconds));
-        var value = await Db.ScriptEvaluateAsync(IncrementScript, new[] { K(key) }, new RedisValue[] { by, ms }).ConfigureAwait(false);
+        var value = await Run(() => Db.ScriptEvaluateAsync(IncrementScript, new[] { K(key) }, new RedisValue[] { by, ms }),
+            cancellationToken).ConfigureAwait(false);
         return (long)value;
+    }
+
+    // A cancelled token never sends the command; one cancelled in flight stops the wait (Redis has no recall).
+    private static Task<T> Run<T>(Func<Task<T>> command, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return command().WaitAsync(cancellationToken);
     }
 
     private static string EscapeGlob(string s) =>

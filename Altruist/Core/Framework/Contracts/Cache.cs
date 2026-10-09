@@ -52,7 +52,7 @@ public interface ICursor<T> : ICursorToken where T : notnull
 {
     /// <summary>
     /// Whether more entries may be available. In-memory: <c>true</c> while the source is non-empty (it does not
-    /// advance). Remote: <c>false</c> once a batch came back shorter than the batch size.
+    /// advance). Remote: <c>false</c> once the underlying key scan is exhausted.
     /// </summary>
     bool HasNext { get; }
     /// <summary>Number of entries for in-memory cursors; <c>-1</c> (unknown) for remote cursors.</summary>
@@ -199,8 +199,8 @@ public interface ICacheProvider
 /// <summary>
 /// Represents a Redis-based cache provider that supports both in-memory and remote Redis operations.
 /// Registered (singleton, also as <see cref="ICacheProvider"/>) when <c>altruist:persistence:cache:provider</c> is
-/// <c>redis</c>. This is the type to inject for remote cache access; <see cref="IRemoteCacheProvider"/> itself is not
-/// registered in DI.
+/// <c>redis</c>. Inject it for the Redis-only members (<see cref="KeysAsync{T}"/>); for remote cache access that does
+/// not depend on Redis inject <see cref="IRemoteCacheProvider"/> (the same singleton).
 /// </summary>
 public interface IRedisCacheProvider : IRemoteCacheProvider
 {
@@ -220,11 +220,13 @@ public interface IRedisCacheProvider : IRemoteCacheProvider
 /// A two-layer cache: a process-local in-memory layer (the inherited <see cref="ICacheProvider"/> methods) plus a
 /// shared remote store (the <c>*Remote*</c> methods), e.g. Redis. Use the remote methods for state that other
 /// processes/nodes must see; use the inherited methods for fast local reads of data this process already holds.
-/// Not registered in DI under this interface: inject <see cref="IRedisCacheProvider"/>.
+/// Registered in DI (with <see cref="ICacheProvider"/> and <see cref="IRedisCacheProvider"/>, one singleton) when
+/// <c>altruist:persistence:cache:provider</c> is <c>redis</c>.
 /// </summary>
 /// <remarks>
-/// Remote entries are serialized as JSON and require a document mapping for <c>T</c> (unmapped types throw
-/// <see cref="InvalidOperationException"/>). Connection lifecycle comes from <see cref="IConnectable"/>.
+/// Remote entries are serialized as JSON and require a document mapping for <c>T</c> (a <c>[Vault]</c> stored model;
+/// unmapped types throw <see cref="KeyNotFoundException"/>, or <see cref="InvalidOperationException"/> for the
+/// runtime-typed cursor). Connection lifecycle comes from <see cref="IConnectable"/>.
 /// </remarks>
 public interface IRemoteCacheProvider : ICacheProvider, IConnectable
 {
@@ -276,8 +278,8 @@ public interface IRemoteCacheProvider : ICacheProvider, IConnectable
     Task ClearRemoteAsync<T>(string cacheGroupId = "") where T : notnull;
 
     /// <summary>
-    /// Deletes the remote entries of every mapped document type. Does not clear the in-memory layer
-    /// (call <see cref="ICacheProvider.ClearAllAsync"/> for that).
+    /// Deletes the remote entries of every mapped document type in every group, then clears the in-memory layer
+    /// (like <see cref="ClearRemoteAsync{T}(string)"/> does for one type and group).
     /// </summary>
     Task ClearAllRemoteAsync();
 

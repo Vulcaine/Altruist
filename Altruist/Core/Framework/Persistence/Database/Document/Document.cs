@@ -185,6 +185,19 @@ public sealed class VaultDocument
     }
 
     /// <summary>
+    /// The <see cref="Name"/> a <c>[Vault]</c> type's document has (the attribute's name, or the snake_case class
+    /// name), without building or validating the full mapping. Use it where only the name matters (cache key
+    /// prefixes); use <see cref="From(Type)"/> for the mapping itself.
+    /// </summary>
+    /// <param name="type">A type with a <c>[Vault]</c> attribute.</param>
+    /// <exception cref="InvalidOperationException"><paramref name="type"/> has no <c>[Vault]</c> attribute.</exception>
+    public static string NameOf(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return DocumentBuilder.TableNameOf(type);
+    }
+
+    /// <summary>
     /// The single entry point: builds a Document for any type that has a [Vault] (or derived) attribute.
     /// Cached per type.
     /// </summary>
