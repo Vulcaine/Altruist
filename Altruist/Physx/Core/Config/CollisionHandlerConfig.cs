@@ -30,7 +30,8 @@ namespace Altruist.Physx
     /// <see cref="CollisionHandlerDiscovery.RegisterCollisionHandlerTypes"/>.</item>
     /// </list>
     /// No dedicated appsettings keys are read; the loaded configuration is only used to evaluate conditional
-    /// attributes on the handler classes. Side effect: builds a throw-away service provider to obtain a logger.
+    /// attributes on the handler classes. The logger comes from the injected <see cref="ILoggerFactory"/>; no service
+    /// provider is built while configuring.
     /// </remarks>
     [ServiceConfiguration]
     public sealed class AltruistCollisionHandlerConfig : IAltruistConfiguration
@@ -38,13 +39,23 @@ namespace Altruist.Physx
         /// <inheritdoc/>
         public bool IsConfigured { get; set; }
 
+        private readonly ILogger _logger;
+
+        /// <summary>Created by the framework's configuration bootstrap.</summary>
+        /// <param name="loggerFactory">Logger factory for discovery diagnostics.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="loggerFactory"/> is <see langword="null"/>.</exception>
+        public AltruistCollisionHandlerConfig(ILoggerFactory loggerFactory)
+        {
+            ArgumentNullException.ThrowIfNull(loggerFactory);
+            _logger = loggerFactory.CreateLogger<AltruistCollisionHandlerConfig>();
+        }
+
         /// <summary>Discovers <see cref="CollisionHandlerAttribute"/> classes and registers them (and the registry bootstrap) in <paramref name="services"/>.</summary>
         /// <param name="services">Service collection being configured.</param>
         /// <returns>A completed task; the work is synchronous.</returns>
         public Task Configure(IServiceCollection services)
         {
             var cfg = GetConfig();
-            var logger = GetLogger(services);
 
             var assemblies = GetAssemblies();
 
@@ -55,12 +66,12 @@ namespace Altruist.Physx
 
             if (handlerTypes.Length == 0)
             {
-                logger.LogDebug("🧩 No [CollisionHandler] classes discovered. Skipping collision handler wiring.");
+                _logger.LogDebug("🧩 No [CollisionHandler] classes discovered. Skipping collision handler wiring.");
                 IsConfigured = true;
                 return Task.CompletedTask;
             }
 
-            logger.LogDebug("🧩 Discovered {Count} [CollisionHandler] types.", handlerTypes.Length);
+            _logger.LogDebug("🧩 Discovered {Count} [CollisionHandler] types.", handlerTypes.Length);
 
             // 2) Register handler types into DI so their constructors can be autowired
             //    We mirror the portal registration pattern:
@@ -71,22 +82,22 @@ namespace Altruist.Physx
 
             foreach (var handlerType in handlerTypes)
             {
-                if (!DependencyResolver.ShouldRegister(handlerType, cfg, logger))
+                if (!DependencyResolver.ShouldRegister(handlerType, cfg, _logger))
                     continue;
 
-                DependencyPlanner.EnsureDependenciesRegistered(services, cfg, logger, handlerType);
+                DependencyPlanner.EnsureDependenciesRegistered(services, cfg, _logger, handlerType);
 
                 services.AddSingleton(
                     handlerType,
-                    sp => DependencyResolver.CreateWithConfiguration(sp, cfg, handlerType, logger)!);
+                    sp => DependencyResolver.CreateWithConfiguration(sp, cfg, handlerType, _logger)!);
 
                 registered.Add(handlerType);
-                logger.LogDebug("🧩 Registered collision handler type {HandlerType} as Singleton.", handlerType.FullName);
+                _logger.LogDebug("🧩 Registered collision handler type {HandlerType} as Singleton.", handlerType.FullName);
             }
 
             if (registered.Count == 0)
             {
-                logger.LogDebug("🧩 No [CollisionHandler] types passed ConditionalOnConfig / ShouldRegister.");
+                _logger.LogDebug("🧩 No [CollisionHandler] types passed ConditionalOnConfig / ShouldRegister.");
                 IsConfigured = true;
                 return Task.CompletedTask;
             }
@@ -94,7 +105,7 @@ namespace Altruist.Physx
             services.AddSingleton(new CollisionHandlerBootstrapState(registered.ToArray()));
             services.AddSingleton<CollisionHandlerBootstrap>();
 
-            logger.LogDebug("✅ Collision handler discovery & registration complete. {Count} handler types wired.",
+            _logger.LogDebug("✅ Collision handler discovery & registration complete. {Count} handler types wired.",
                 registered.Count);
 
             IsConfigured = true;
@@ -104,11 +115,6 @@ namespace Altruist.Physx
         // ---------- Helpers (copying the style from AltruistServiceConfig) ----------
 
         private static IConfiguration GetConfig() => AppConfigLoader.Load();
-
-        private static ILogger GetLogger(IServiceCollection services) =>
-            services.BuildServiceProvider()
-                    .GetRequiredService<ILoggerFactory>()
-                    .CreateLogger<AltruistCollisionHandlerConfig>();
 
         private static Assembly[] GetAssemblies() =>
             AppDomain.CurrentDomain
