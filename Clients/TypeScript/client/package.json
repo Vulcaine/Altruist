@@ -1,14 +1,15 @@
 {
   "name": "@altruist/client",
   "version": "0.1.0",
-  "description": "Altruist game-client SDK above the wire: an HTTP API client with in-memory bearer tokens, single-flight refresh over the refresh cookie and CSRF header, and typed ApiError (twin of Altruist HttpErrors / RefreshCookie); a matchmaking / lobby / rejoin phase machine over AltruistSocket with Altruist's QueueState, LobbyRejectReason and RoomNoticeKind; and a status poller. Builds on @altruist/net; no other dependencies.",
+  "description": "Altruist game-client SDK above the wire: an HTTP API client with in-memory bearer tokens, single-flight refresh over the refresh cookie and CSRF header, and typed ApiError (twin of Altruist HttpErrors / RefreshCookie); a matchmaking / lobby / rejoin phase machine over AltruistSocket with Altruist's QueueState, LobbyRejectReason and RoomNoticeKind; a status poller; and device pairing (a phone as a controller of the game on a TV) over WebRTC with a server-relay path. Builds on @altruist/net; no other dependencies.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
     "./auth": "./src/auth/index.ts",
-    "./matchmaking": "./src/matchmaking/index.ts"
+    "./matchmaking": "./src/matchmaking/index.ts",
+    "./pairing": "./src/pairing/index.ts"
   },
   "scripts": {
     "test": "node --test \"tests/*.test.ts\"",

@@ -10,6 +10,8 @@
  *   InputPacer       input clock pacing toward the server's target depth
  *   ButtonField      multi-bit values packed into the button word
  *   quantize         wire-exact axis quantization (`@altruist/sim2d` `Scalar.quantize`)
+ *   MenuGestures     touch gestures as menu navigation (a phone used as a controller)
+ *   RemoteClock      a remote device's timestamps on the local clock, spacing kept
  *   pads             controller detection (Gamepad.id -> family, brand, model), raw layouts ->
  *                    the W3C standard mapping, PlayStation touchpads in raw HID reports (WebHID)
  */
@@ -19,6 +21,8 @@ export * from './inputSequencer.ts';
 export * from './inputSendQueue.ts';
 export * from './buttonField.ts';
 export * from './quantize.ts';
+export * from './menuGestures.ts';
+export * from './remoteClock.ts';
 export * from './pads/padIdentity.ts';
 export * from './pads/padRemap.ts';
 export * from './pads/touchpadHid.ts';
