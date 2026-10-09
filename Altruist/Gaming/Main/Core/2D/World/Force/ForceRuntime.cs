@@ -115,12 +115,13 @@ public interface IForceRuntime2D
 /// Advances the active force agents at a fixed 25 Hz (dt = 0.04 s), independent of the engine
 /// frame rate: a fixed-mode <see cref="IWorldStepper"/> driven by the <see cref="WorldCoordinator"/>
 /// (on the world step, after the frame's next-tick queue, cycles and effects in inline mode).
-/// Singleton, registered whenever <c>altruist:game</c> exists (also in 3D mode). Its 25 Hz step is
-/// independent of the 2D world organizer's variable-rate physics step.
+/// Singleton, registered when <c>altruist:game</c> exists and <c>altruist:environment:mode</c> is <c>2D</c>. Its 25 Hz
+/// step is independent of the 2D world organizer's variable-rate physics step.
 /// </summary>
 [Service(typeof(IForceRuntime2D))]
 [Service(typeof(IWorldStepper))]
 [ConditionalOnConfig("altruist:game")]
+[ConditionalOnConfig("altruist:environment:mode", havingValue: "2D")]
 public sealed class ForceRuntime2D : IForceRuntime2D, IWorldStepper
 {
     private const int TickHz = 25;

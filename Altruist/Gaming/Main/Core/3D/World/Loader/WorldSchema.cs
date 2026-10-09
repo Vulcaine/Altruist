@@ -107,7 +107,7 @@ public sealed class WorldObjectSchema
 public sealed class WorldColliderSchema
 {
     // "box", "sphere", "capsule", "mesh"
-    /// <summary><c>"box"</c>, <c>"mesh"</c> (approximated by its bounds box), <c>"sphere"</c> or <c>"capsule"</c>; use lowercase.</summary>
+    /// <summary><c>"box"</c>, <c>"mesh"</c> (approximated by its bounds box), <c>"sphere"</c> or <c>"capsule"</c> (case-insensitive).</summary>
     [JsonPropertyName("shape")]
     public string Shape { get; set; } = "";
 

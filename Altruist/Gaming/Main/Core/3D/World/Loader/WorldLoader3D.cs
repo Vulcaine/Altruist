@@ -311,7 +311,7 @@ namespace Altruist.Gaming.ThreeD
                 if (!TryMapShape(col.Shape, out var shape))
                     continue;
 
-                var transform = BuildColliderTransform(objectWorld, col);
+                var transform = BuildColliderTransform(objectWorld, col, shape);
                 var desc = PhysxCollider3D.Create(shape, transform, isTrigger: false);
                 result.Add(desc);
             }
@@ -445,7 +445,8 @@ namespace Altruist.Gaming.ThreeD
 
         private static Transform3D BuildColliderTransform(
             AccumulatedTransform objectWorld,
-            WorldColliderSchema collider)
+            WorldColliderSchema collider,
+            PhysxColliderShape3D shape)
         {
             var worldScale = objectWorld.Scale;
             var worldRot = objectWorld.Rotation;
@@ -462,10 +463,10 @@ namespace Altruist.Gaming.ThreeD
             var colliderPositionWorld = worldPos + centerOffsetWorld;
 
             Size3D size;
-            switch (collider.Shape)
+            // Sized by the shape TryMapShape resolved, so the shape name matches case-insensitively here too.
+            switch (shape)
             {
-                case "box":
-                case "mesh": // approximate mesh by a box using its bounds
+                case PhysxColliderShape3D.Box3D: // "box", and "mesh" approximated by its bounds
                     {
                         // Unity BoxCollider.size is FULL size in local space => convert to half extents
                         var sizeLocal = collider.Size?.ToNumerics() ?? Vector3.One;
@@ -479,7 +480,7 @@ namespace Altruist.Gaming.ThreeD
                         break;
                     }
 
-                case "sphere":
+                case PhysxColliderShape3D.Sphere3D:
                     {
                         var radiusLocal = collider.Radius ?? 0.5f;
                         var maxScale = Math.Max(worldScale.X, Math.Max(worldScale.Y, worldScale.Z));
@@ -488,7 +489,7 @@ namespace Altruist.Gaming.ThreeD
                         break;
                     }
 
-                case "capsule":
+                case PhysxColliderShape3D.Capsule3D:
                     {
                         var radiusLocal = collider.Radius ?? 0.5f;
                         var heightLocal = collider.Height ?? 1f;
@@ -519,9 +520,7 @@ namespace Altruist.Gaming.ThreeD
                     }
 
                 default:
-                    // Unknown -> default to 1x1x1 box
-                    size = new Size3D(0.5f, 0.5f, 0.5f);
-                    break;
+                    throw new ArgumentOutOfRangeException(nameof(shape), shape, "TryMapShape only yields box, sphere and capsule.");
             }
 
             var position3D = new Position3D(

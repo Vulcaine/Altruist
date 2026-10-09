@@ -171,10 +171,12 @@ public interface IForceRuntime3D
 /// frame rate: a fixed-mode <see cref="IWorldStepper"/> driven by the <see cref="WorldCoordinator"/>
 /// (on the world step, after the frame's next-tick queue, cycles and effects in inline mode).
 /// </summary>
-/// <remarks>Singleton when <c>altruist:game</c> is configured. Launching from other threads is safe (concurrent agent set).</remarks>
+/// <remarks>Singleton when <c>altruist:game</c> is configured and <c>altruist:environment:mode</c> is <c>3D</c>. Launching from
+/// other threads is safe (concurrent agent set).</remarks>
 [Service(typeof(IForceRuntime3D))]
 [Service(typeof(IWorldStepper))]
 [ConditionalOnConfig("altruist:game")]
+[ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
 public sealed class ForceRuntime3D : IForceRuntime3D, IWorldStepper
 {
     private const int TickHz = 25;
