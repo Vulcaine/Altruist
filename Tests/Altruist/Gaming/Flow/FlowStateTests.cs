@@ -99,6 +99,23 @@ public class FlowStateTests
     }
 
     [Fact]
+    public void Entries_added_without_a_name_are_named_by_their_code()
+    {
+        var log = new List<string>();
+        var tick = TickPipeline<World>.Create()
+            .Step(w => log.Add("clock"))
+            .ForEach(w => w.Units, (w, u) => log.Add("unit"))
+            .StopWhen(w => w.Frozen)
+            .Build();
+        Enumerable.Range(0, tick.Count).Select(tick.NameOf).Should().Equal("log.Add(\"clock\")", "log.Add(\"unit\")", "w.Frozen");
+        EntryName.Of("(s, v) =>" + Environment.NewLine + "    s.Move(v)").Should().Be("s.Move(v)");
+        EntryName.Of("s.Vehicles").Should().Be("s.Vehicles");
+        // The same text edits it: a step goes in before the one named by its code.
+        var edited = TickPipeline<World>.Create().Step(w => log.Add("a")).Before("log.Add(\"a\")").Step(w => log.Add("b")).Build();
+        edited.NameOf(0).Should().Be("log.Add(\"b\")");
+    }
+
+    [Fact]
     public void TickPipeline_steps_can_be_inserted_replaced_and_removed_by_name()
     {
         var log = new List<string>();

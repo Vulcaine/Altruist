@@ -3,6 +3,8 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using System.Runtime.CompilerServices;
+
 namespace Altruist.Gaming.Flow;
 
 /// <summary>
@@ -118,6 +120,24 @@ public sealed class TickPipeline<TCtx>
             return Put(name, new Entry(step, null, null));
         }
 
+        /// <summary>A step run every tick, named by its code (<see cref="EntryName"/>).</summary>
+        public Builder Step(Action<TCtx> step, [CallerArgumentExpression(nameof(step))] string code = "") => Step(EntryName.Of(code), step);
+
+        /// <summary>A stop point named by its code (<see cref="EntryName"/>).</summary>
+        public Builder StopWhen(Func<TCtx, bool> stop, [CallerArgumentExpression(nameof(stop))] string code = "") => StopWhen(EntryName.Of(code), stop);
+
+        /// <summary>A per-entity block named by its steps' code (<see cref="EntryName"/>).</summary>
+        public Builder ForEach<TEntity>(Func<TCtx, IReadOnlyList<TEntity>> entities, EntitySteps<TCtx, TEntity> steps, [CallerArgumentExpression(nameof(steps))] string code = "") =>
+            ForEach(EntryName.Of(code), entities, steps);
+
+        /// <summary>One action for every entity of <paramref name="entities"/> (list order), named by its code (<see cref="EntryName"/>).</summary>
+        public Builder ForEach<TEntity>(Func<TCtx, IReadOnlyList<TEntity>> entities, Action<TCtx, TEntity> step, [CallerArgumentExpression(nameof(step))] string code = "") =>
+            ForEach(EntryName.Of(code), entities, new EntitySteps<TCtx, TEntity>().Step(EntryName.Of(code), step));
+
+        /// <summary>A per-entity block named by its steps' code (<see cref="EntryName"/>).</summary>
+        public Builder ForEach<TEntity>(Func<TCtx, IReadOnlyList<TEntity>> entities, Action<EntitySteps<TCtx, TEntity>> configure, [CallerArgumentExpression(nameof(configure))] string code = "") =>
+            ForEach(EntryName.Of(code), entities, configure);
+
         /// <summary>A stop point: when <paramref name="stop"/> returns true the rest of the tick is
         /// skipped. The function may do work first (e.g. update the frozen phase, then return true).</summary>
         public Builder StopWhen(string name, Func<TCtx, bool> stop)
@@ -179,6 +199,12 @@ public sealed class EntitySteps<TCtx, TEntity> : OrderedBuilder<EntitySteps<TCtx
     }
 
     /// <summary>A sub-step run for each entity.</summary>
+    /// <summary>A sub-step named by its code (<see cref="EntryName"/>).</summary>
+    public EntitySteps<TCtx, TEntity> Step(Action<TCtx, TEntity> step, [CallerArgumentExpression(nameof(step))] string code = "") => Step(EntryName.Of(code), step);
+
+    /// <summary>A skip point named by its code (<see cref="EntryName"/>).</summary>
+    public EntitySteps<TCtx, TEntity> SkipWhen(Func<TCtx, TEntity, bool> skip, [CallerArgumentExpression(nameof(skip))] string code = "") => SkipWhen(EntryName.Of(code), skip);
+
     public EntitySteps<TCtx, TEntity> Step(string name, Action<TCtx, TEntity> step)
     {
         ArgumentNullException.ThrowIfNull(step);

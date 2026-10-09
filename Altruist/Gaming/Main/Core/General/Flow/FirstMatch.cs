@@ -3,6 +3,8 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using System.Runtime.CompilerServices;
+
 namespace Altruist.Gaming.Flow;
 
 /// <summary>A rule that may decline after looking closer: returns true (with a result) when it
@@ -152,6 +154,15 @@ public sealed class FirstMatch<TCtx, TResult>
 
         internal Builder() { }
 
+        /// <summary>A rule named by its condition's code (<see cref="EntryName"/>).</summary>
+        public Builder When(Func<TCtx, bool> when, Func<TCtx, TResult> then, [CallerArgumentExpression(nameof(when))] string code = "") => When(EntryName.Of(code), when, then);
+
+        /// <summary>A rule named by its condition's code (<see cref="EntryName"/>).</summary>
+        public Builder When(Func<TCtx, bool> when, TResult value, [CallerArgumentExpression(nameof(when))] string code = "") => When(EntryName.Of(code), when, value);
+
+        /// <summary>A rule named by its code (<see cref="EntryName"/>).</summary>
+        public Builder Try(TryRule<TCtx, TResult> rule, [CallerArgumentExpression(nameof(rule))] string code = "") => Try(EntryName.Of(code), rule);
+
         /// <summary>When <paramref name="when"/> is true, <paramref name="then"/> gives the result.</summary>
         public Builder When(string name, Func<TCtx, bool> when, Func<TCtx, TResult> then)
         {
@@ -300,6 +311,12 @@ public sealed class FirstMatch<TCtx>
         private Action<TCtx>? _otherwise;
 
         internal Builder() { }
+
+        /// <summary>A rule named by its condition's code (<see cref="EntryName"/>).</summary>
+        public Builder When(Func<TCtx, bool> when, Action<TCtx> then, [CallerArgumentExpression(nameof(when))] string code = "") => When(EntryName.Of(code), when, then);
+
+        /// <summary>A rule named by its code (<see cref="EntryName"/>).</summary>
+        public Builder Try(Func<TCtx, bool> rule, [CallerArgumentExpression(nameof(rule))] string code = "") => Try(EntryName.Of(code), rule);
 
         /// <summary>When <paramref name="when"/> is true, run <paramref name="then"/>.</summary>
         public Builder When(string name, Func<TCtx, bool> when, Action<TCtx> then)

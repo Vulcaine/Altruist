@@ -110,3 +110,27 @@ public abstract class OrderedBuilder<TSelf, TEntry> where TSelf : OrderedBuilder
         return i;
     }
 }
+
+/// <summary>
+/// The name of a flow entry added without one: its code (the <c>[CallerArgumentExpression]</c> of
+/// the delegate that identifies it), lambda parameters dropped and whitespace collapsed, so
+/// <c>.Step(s =&gt; s.AdvanceClock())</c> is named <c>s.AdvanceClock()</c>. Unique as long as the code
+/// is; editing by name (Before / After / Replacing / Remove) takes the same text.
+/// </summary>
+public static class EntryName
+{
+    public static string Of(string code)
+    {
+        var arrow = code.IndexOf("=>", StringComparison.Ordinal);
+        var body = arrow >= 0 && IsLambdaHeader(code.AsSpan(0, arrow)) ? code[(arrow + 2)..] : code;
+        return string.Join(' ', body.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static bool IsLambdaHeader(ReadOnlySpan<char> head)
+    {
+        foreach (var c in head)
+            if (!(char.IsLetterOrDigit(c) || char.IsWhiteSpace(c) || c is '_' or ',' or '(' or ')'))
+                return false;
+        return true;
+    }
+}

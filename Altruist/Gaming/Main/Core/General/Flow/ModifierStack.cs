@@ -3,6 +3,8 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using System.Runtime.CompilerServices;
+
 namespace Altruist.Gaming.Flow;
 
 /// <summary>The operation of one <see cref="ModifierStack{TCtx}"/> entry.</summary>
@@ -155,6 +157,19 @@ public sealed class ModifierStack<TCtx>
             _else = true;
             return this;
         }
+
+        /// <summary><see cref="Set(string, Func{TCtx, float}, Func{TCtx, bool})"/> named by the operand's code (<see cref="EntryName"/>).</summary>
+        public Builder Set(Func<TCtx, float> value, Func<TCtx, bool>? when = null, [CallerArgumentExpression(nameof(value))] string code = "") => Set(EntryName.Of(code), value, when);
+        /// <summary><see cref="Add(string, Func{TCtx, float}, Func{TCtx, bool})"/> named by the operand's code (<see cref="EntryName"/>).</summary>
+        public Builder Add(Func<TCtx, float> value, Func<TCtx, bool>? when = null, [CallerArgumentExpression(nameof(value))] string code = "") => Add(EntryName.Of(code), value, when);
+        /// <summary><see cref="Mul(string, Func{TCtx, float}, Func{TCtx, bool})"/> named by the operand's code (<see cref="EntryName"/>).</summary>
+        public Builder Mul(Func<TCtx, float> value, Func<TCtx, bool>? when = null, [CallerArgumentExpression(nameof(value))] string code = "") => Mul(EntryName.Of(code), value, when);
+        /// <summary><see cref="Min(string, Func{TCtx, float}, Func{TCtx, bool})"/> named by the operand's code (<see cref="EntryName"/>).</summary>
+        public Builder Min(Func<TCtx, float> value, Func<TCtx, bool>? when = null, [CallerArgumentExpression(nameof(value))] string code = "") => Min(EntryName.Of(code), value, when);
+        /// <summary><see cref="Max(string, Func{TCtx, float}, Func{TCtx, bool})"/> named by the operand's code (<see cref="EntryName"/>).</summary>
+        public Builder Max(Func<TCtx, float> value, Func<TCtx, bool>? when = null, [CallerArgumentExpression(nameof(value))] string code = "") => Max(EntryName.Of(code), value, when);
+        /// <summary><see cref="Map(string, Func{TCtx, float, float}, Func{TCtx, bool})"/> named by the map's code (<see cref="EntryName"/>).</summary>
+        public Builder Map(Func<TCtx, float, float> map, Func<TCtx, bool>? when = null, [CallerArgumentExpression(nameof(map))] string code = "") => Map(EntryName.Of(code), map, when);
 
         /// <summary><c>value = operand</c>, the operand a constant; <paramref name="when"/> gates it.</summary>
         public Builder Set(string name, float value, Func<TCtx, bool>? when = null) => Push(name, ModifierOp.Set, value, null, when);
