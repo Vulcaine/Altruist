@@ -45,10 +45,11 @@ public interface IKeyspace
 /// Implement on a vault model to derive its <see cref="IStoredModel.StorageId"/> yourself instead of getting a random GUID.
 /// </summary>
 /// <remarks>
-/// <see cref="VaultModel.OnSave"/> calls <see cref="GenerateId"/> on <b>every</b> save and overwrites
-/// <c>StorageId</c> with the result, so the id must be deterministic from the model's own data (e.g. a hash of a
-/// natural key). Returning a fresh random value would insert a new row on each save. Use this for natural-key
-/// upserts ("one row per principal"); otherwise leave it off and let the framework assign a GUID once.
+/// <see cref="VaultModel.OnSave"/> calls <see cref="GenerateId"/> when <c>StorageId</c> is still empty (a new instance)
+/// and keeps an existing id, so a loaded row is saved back to itself even when the fields the id derives from changed.
+/// Make the id deterministic from the model's own data (e.g. a natural key): a new instance built for an existing key
+/// then upserts that row. Use this for natural-key upserts ("one row per principal"); otherwise leave it off and let the
+/// framework assign a GUID.
 /// </remarks>
 /// <example>
 /// <code>
@@ -136,7 +137,7 @@ public interface IPrefabModel : IVaultModel
 /// </remarks>
 public interface IVaultModel : IStoredModel
 {
-    /// <summary>Last save time in UTC (set by <see cref="OnSave"/>).</summary>
+    /// <summary>Creation time in UTC: set by the first save (<see cref="OnSave"/> fills it when unset) and never overwritten by later saves.</summary>
     DateTime Timestamp { get; set; }
     /// <summary>
     /// Optimistic-concurrency version. Starts at 1 on insert and is incremented by every successful save; a save
@@ -145,7 +146,7 @@ public interface IVaultModel : IStoredModel
     /// </summary>
     long Version { get; set; }
 
-    /// <summary>Called by the vault right before each save to assign id, timestamp and type.</summary>
+    /// <summary>Called by the vault right before each save to assign the id and creation time when unset, and the type.</summary>
     void OnSave();
 }
 
@@ -171,7 +172,8 @@ public interface IVaultModel : IStoredModel
 public abstract class VaultModel : StoredModel, IVaultModel
 {
     /// <summary>
-    /// Time of the last save in UTC (column <c>created-at</c>; despite the name it is refreshed on every save by <see cref="OnSave"/>).
+    /// Creation time in UTC (column <c>created-at</c>): set by <see cref="OnSave"/> on the first save and kept by every
+    /// later save (vault upserts never overwrite it). Add your own column for a last-modified time.
     /// </summary>
     [VaultColumn("created-at")]
     public virtual DateTime Timestamp { get; set; } = default!;
@@ -180,7 +182,7 @@ public abstract class VaultModel : StoredModel, IVaultModel
     [VaultColumn("version")]
     public virtual long Version { get; set; } = default!;
 
-    /// <summary>Primary key (column <c>id</c>). Assigned by <see cref="OnSave"/> when empty, or by <see cref="IIdGenerator"/>.</summary>
+    /// <summary>Primary key (column <c>id</c>). Assigned by <see cref="OnSave"/> when empty (from <see cref="IIdGenerator.GenerateId"/> when implemented, otherwise a new GUID); never changed once set.</summary>
     [VaultColumn("id")]
     public override string StorageId { get; set; } = default!;
 
@@ -189,14 +191,17 @@ public abstract class VaultModel : StoredModel, IVaultModel
     public override string Type { get; set; } = default!;
 
     /// <summary>
-    /// Prepares the row for saving: sets <see cref="StorageId"/> (from <see cref="IIdGenerator.GenerateId"/> if
-    /// implemented, otherwise keeps the existing id or assigns a new GUID), <see cref="Timestamp"/> = UTC now and
-    /// <see cref="Type"/> = the CLR type name. Called by the vault; you rarely call it yourself.
+    /// Prepares the row for saving. An empty <see cref="StorageId"/> is assigned (from
+    /// <see cref="IIdGenerator.GenerateId"/> when implemented, otherwise a new GUID); an existing id is kept, so a loaded
+    /// row is always saved back to itself. An unset <see cref="Timestamp"/> becomes UTC now (the creation time).
+    /// <see cref="Type"/> becomes the CLR type name. Called by the vault; you rarely call it yourself.
     /// </summary>
     public void OnSave()
     {
-        StorageId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : (string.IsNullOrEmpty(StorageId) ? Guid.NewGuid().ToString() : StorageId);
-        Timestamp = DateTime.UtcNow;
+        if (string.IsNullOrEmpty(StorageId))
+            StorageId = this is IIdGenerator idGenerator ? idGenerator.GenerateId() : Guid.NewGuid().ToString();
+        if (Timestamp == default)
+            Timestamp = DateTime.UtcNow;
         Type = GetType().Name;
     }
 }
@@ -458,10 +463,9 @@ public interface IVault<TVaultModel>
     /// Upserts several entities in one atomic statement (all or nothing); same rules as <see cref="SaveAsync"/>.
     /// Prefer it over looping <see cref="SaveAsync"/> when saving many rows.
     /// </summary>
-    /// <param name="entities">Entities to save; must not be empty.</param>
+    /// <param name="entities">Entities to save; an empty sequence does nothing.</param>
     /// <param name="saveHistory">When <c>true</c>, also appends history snapshots (requires <c>StoreHistory</c>).</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <exception cref="ArgumentException"><paramref name="entities"/> is empty.</exception>
     /// <exception cref="Altruist.Persistence.OptimisticConcurrencyException">One or more rows had a version mismatch; nothing is written.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="saveHistory"/> is <c>true</c> but history is not enabled.</exception>
     Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false, CancellationToken ct = default);

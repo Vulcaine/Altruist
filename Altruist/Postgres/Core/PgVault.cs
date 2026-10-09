@@ -184,7 +184,7 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
             ? $"ON CONFLICT ON CONSTRAINT {QuoteIdent(conflictConstraintName)}"
             : $"ON CONFLICT ({string.Join(", ", conflictKeyColumns.Select(pk => $"\"{pk}\""))})";
 
-        var setSql = BuildSetClauses(columns, conflictKeyColumns, versionCol, storageIdCol, alias);
+        var setSql = BuildSetClauses(columns, conflictKeyColumns, versionCol, storageIdCol, CreatedAtColumn(), alias);
 
         return
             $"INSERT INTO {qualifiedTable} AS {alias} ({colSql}) VALUES ({valsSql}) " +
@@ -197,9 +197,10 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
     /// <remarks>
     /// Single statement: locks the existing rows matching the conflict key (<c>FOR UPDATE</c>), and if any of them
     /// has a different version inserts nothing, so fewer rows are returned than were sent and the caller throws
-    /// <see cref="OptimisticConcurrencyException"/>. Throws <see cref="ArgumentOutOfRangeException"/> for
-    /// <paramref name="rowCount"/> &lt;= 0 and <see cref="ArgumentException"/> for an empty
-    /// <paramref name="conflictKeyColumns"/>.
+    /// <see cref="OptimisticConcurrencyException"/>. Each input row carries its 0-based position, and every written row
+    /// is joined back to its input row on the conflict key to return that position as <c>Ordinal</c>. Throws
+    /// <see cref="ArgumentOutOfRangeException"/> for <paramref name="rowCount"/> &lt;= 0 and <see cref="ArgumentException"/>
+    /// for an empty <paramref name="conflictKeyColumns"/>.
     /// </remarks>
     protected override string BuildBatchUpsertSql_VersionedReturning(
         string qualifiedTable,
@@ -213,29 +214,32 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
         if (conflictKeyColumns.Count == 0)
             throw new ArgumentException("At least one conflict key column must be specified.", nameof(conflictKeyColumns));
 
-        var alias = "t";
-        var inputAlias = "v";
+        const string alias = "t";
+        const string inputAlias = "v";
+        const string ordinalCol = "__ordinal";
 
         var versionCol = VersionColumn();
         var storageIdCol = StorageIdColumn();
 
-        // (?,?,...) repeated rowCount times
-        var rowPlaceholders = "(" + string.Join(", ", columns.Select(_ => "?")) + ")";
-        var valuesSql = string.Join(", ", Enumerable.Repeat(rowPlaceholders, rowCount));
+        // (?, ?, ..., <ordinal>) per row: the ordinal is an inline literal, the values are parameters.
+        var placeholders = string.Join(", ", columns.Select(_ => "?"));
+        var valuesSql = string.Join(", ", Enumerable.Range(0, rowCount).Select(i => $"({placeholders}, {i})"));
 
-        // column list used for VALUES alias AND for INSERT/SELECT
-        var colListSql = string.Join(", ", columns.Select(c => $"\"{c}\""));
-
-        // join condition t.key = v.key (supports composite keys)
+        var colListSql = string.Join(", ", columns.Select(QuoteIdent));
         var keyJoin = string.Join(" AND ",
-            conflictKeyColumns.Select(k => $"{alias}.\"{k}\" = {inputAlias}.\"{k}\""));
+            conflictKeyColumns.Select(k => $"{alias}.{QuoteIdent(k)} = {inputAlias}.{QuoteIdent(k)}"));
 
-        // Conflict target SQL
         string conflictSql = !string.IsNullOrWhiteSpace(conflictConstraintName)
             ? $"ON CONFLICT ON CONSTRAINT {QuoteIdent(conflictConstraintName)}"
-            : $"ON CONFLICT ({string.Join(", ", conflictKeyColumns.Select(k => $"\"{k}\""))})";
+            : $"ON CONFLICT ({string.Join(", ", conflictKeyColumns.Select(QuoteIdent))})";
 
-        var setSql = BuildSetClauses(columns, conflictKeyColumns, versionCol, storageIdCol, alias);
+        var setSql = BuildSetClauses(columns, conflictKeyColumns, versionCol, storageIdCol, CreatedAtColumn(), alias);
+
+        // A written row is matched back to its input row (and so its ordinal) by id when it was inserted, or by the
+        // conflict key when an existing row was updated (its stored id may differ when the key is a unique key).
+        var returnedKeys = string.Join(", ", conflictKeyColumns.Select((k, i) => $"{alias}.{QuoteIdent(k)} AS \"__key{i}\""));
+        var keyMatch = $"u.\"{StorageIdLogical}\" = i.{QuoteIdent(storageIdCol)} OR (" + string.Join(" AND ",
+            conflictKeyColumns.Select((k, i) => $"u.\"__key{i}\" = i.{QuoteIdent(k)}")) + ")";
 
         // Atomic strategy:
         // - lock existing rows matched by the conflict key
@@ -244,10 +248,10 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
         return
 $@"
 WITH input AS (
-    SELECT * FROM (VALUES {valuesSql}) AS {inputAlias}({colListSql})
+    SELECT * FROM (VALUES {valuesSql}) AS {inputAlias}({colListSql}, ""{ordinalCol}"")
 ),
 locked AS (
-    SELECT {alias}.""{versionCol}""
+    SELECT {alias}.{QuoteIdent(versionCol)}
     FROM {qualifiedTable} AS {alias}
     JOIN input AS {inputAlias} ON {keyJoin}
     FOR UPDATE
@@ -256,7 +260,7 @@ mismatch AS (
     SELECT 1
     FROM {qualifiedTable} AS {alias}
     JOIN input AS {inputAlias} ON {keyJoin}
-    WHERE {alias}.""{versionCol}"" <> {inputAlias}.""{versionCol}""
+    WHERE {alias}.{QuoteIdent(versionCol)} <> {inputAlias}.{QuoteIdent(versionCol)}
     LIMIT 1
 ),
 upserted AS (
@@ -266,19 +270,23 @@ upserted AS (
     WHERE NOT EXISTS (SELECT 1 FROM mismatch)
     {conflictSql} DO UPDATE
         SET {setSql}
-        WHERE {alias}.""{versionCol}"" = EXCLUDED.""{versionCol}""
-    RETURNING {alias}.""{storageIdCol}"" AS ""{StorageIdLogical}"",
-              {alias}.""{versionCol}"" AS ""{VersionLogical}""
+        WHERE {alias}.{QuoteIdent(versionCol)} = EXCLUDED.{QuoteIdent(versionCol)}
+    RETURNING {alias}.{QuoteIdent(storageIdCol)} AS ""{StorageIdLogical}"",
+              {alias}.{QuoteIdent(versionCol)} AS ""{VersionLogical}"",
+              {returnedKeys}
 )
-SELECT ""{StorageIdLogical}"", ""{VersionLogical}"" FROM upserted
+SELECT u.""{StorageIdLogical}"", u.""{VersionLogical}"", i.""{ordinalCol}"" AS ""Ordinal""
+FROM upserted u
+JOIN input i ON {keyMatch}
 ;";
     }
 
-    private static string BuildSetClauses(
+    private string BuildSetClauses(
         IReadOnlyList<string> columns,
         IReadOnlyList<string> conflictKeyColumns,
         string versionCol,
         string storageIdCol,
+        string? createdAtCol,
         string tableAlias)
     {
         var conflictSet = new HashSet<string>(conflictKeyColumns, StringComparer.OrdinalIgnoreCase);
@@ -287,23 +295,18 @@ SELECT ""{StorageIdLogical}"", ""{VersionLogical}"" FROM upserted
 
         foreach (var c in columns)
         {
-            // never update conflict key columns
-            if (conflictSet.Contains(c))
+            // never update conflict key columns, the version (bumped below), the storage id (PK, even when the
+            // conflict key is a unique key) or the creation time
+            if (conflictSet.Contains(c) ||
+                string.Equals(c, versionCol, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(c, storageIdCol, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(c, createdAtCol, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // never update version column directly (we bump)
-            if (string.Equals(c, versionCol, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // never update storage id column (PK) even if conflict key is different
-            if (string.Equals(c, storageIdCol, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            sets.Add($"\"{c}\" = EXCLUDED.\"{c}\"");
+            sets.Add($"{QuoteIdent(c)} = EXCLUDED.{QuoteIdent(c)}");
         }
 
-        // bump version
-        sets.Add($"\"{versionCol}\" = {tableAlias}.\"{versionCol}\" + 1");
+        sets.Add($"{QuoteIdent(versionCol)} = {tableAlias}.{QuoteIdent(versionCol)} + 1");
 
         return string.Join(", ", sets);
     }

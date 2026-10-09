@@ -111,6 +111,13 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
             p.SetValue(entity, storageId);
     }
 
+    /// <summary>
+    /// Physical column of <see cref="IVaultModel.Timestamp"/> (the creation time), or <c>null</c> when unmapped. Upserts
+    /// never overwrite it on update.
+    /// </summary>
+    protected string? CreatedAtColumn()
+        => VaultDocument.Columns.TryGetValue(nameof(IVaultModel.Timestamp), out var col) ? col : null;
+
     /// <summary>Row shape returned by the versioned upsert SQL (<c>RETURNING</c> StorageId, Version).</summary>
     protected sealed class UpsertReturnRow
     {
@@ -118,6 +125,8 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         public string StorageId { get; set; } = string.Empty;
         /// <summary>Version of the written row after the upsert.</summary>
         public long Version { get; set; }
+        /// <summary>Batch upserts only: 0-based position of the entity this row was written for.</summary>
+        public int Ordinal { get; set; }
     }
     #endregion
 
@@ -221,6 +230,7 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     /// - set version = version+1 on update
     /// - only update if current version == excluded version
     /// - RETURN StorageId + Version
+    /// - not overwrite the storage id or <see cref="CreatedAtColumn"/> on update
     ///
     /// conflictKeyColumns:
     /// - either PK columns (default)
@@ -236,8 +246,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         string? conflictConstraintName);
 
     /// <summary>
-    /// Versioned batch upsert for N rows. MUST be atomic (no partial writes) and RETURN StorageId + Version
-    /// for each row (or fail).
+    /// Versioned batch upsert for N rows. MUST be atomic (no partial writes) and RETURN, for each row, StorageId +
+    /// Version + Ordinal (the 0-based position of the entity in the batch, so the result can be matched to its entity
+    /// even when the conflict target is a unique key and the stored StorageId differs), or return fewer rows when any
+    /// stored version differs. Must not overwrite <see cref="CreatedAtColumn"/> on update.
     /// </summary>
     protected abstract string BuildBatchUpsertSql_VersionedReturning(
         string qualifiedTable,
@@ -505,8 +517,9 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
     /// Inserts or updates one entity with a versioned upsert, then writes the stored StorageId and Version back onto it.
     /// </summary>
     /// <remarks>
-    /// Calls <see cref="IVaultModel.OnSave"/> first (assigns an id when empty, stamps timestamp/type on <see cref="VaultModel"/>).
-    /// The conflict target is the primary key, or the first <see cref="Altruist.UORM.VaultUniqueKeyAttribute"/> when one exists.
+    /// Calls <see cref="IVaultModel.OnSave"/> first (on <see cref="VaultModel"/>: assigns an id and the creation time when
+    /// they are unset, stamps the type). The conflict target is the primary key, or the first
+    /// <see cref="Altruist.UORM.VaultUniqueKeyAttribute"/> when one exists; an update keeps the stored id and creation time.
     /// Runs inside the ambient transaction when one is active. For many entities prefer <see cref="SaveBatchAsync"/>.
     /// </remarks>
     /// <param name="entity">The entity to save.</param>
@@ -518,18 +531,18 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         => SaveEntityAsync(entity, saveHistory, ct);
 
     /// <summary>
-    /// Upserts many entities in one atomic statement (all or nothing) and syncs versions back by StorageId.
+    /// Upserts many entities in one atomic statement (all or nothing) and writes each stored StorageId and Version back
+    /// onto its entity, like <see cref="SaveAsync"/> (also when the conflict target is a unique key and the stored row
+    /// has a different id). An empty sequence does nothing.
     /// </summary>
     /// <remarks>
-    /// Any failure of the batch statement (not only a version mismatch) is reported as
-    /// <see cref="OptimisticConcurrencyException"/> with the original error as inner exception.
-    /// When the conflict target is a unique key, versions are synced back only for entities whose StorageId matches the stored row.
+    /// Only a version mismatch is reported as <see cref="OptimisticConcurrencyException"/>; any other failure (connection,
+    /// constraint, SQL) propagates unchanged.
     /// </remarks>
-    /// <param name="entities">The entities; must not be empty.</param>
+    /// <param name="entities">The entities.</param>
     /// <param name="saveHistory">When true, also appends history rows (requires <c>StoreHistory</c>).</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <exception cref="ArgumentException"><paramref name="entities"/> is empty.</exception>
-    /// <exception cref="OptimisticConcurrencyException">The batch failed or returned fewer rows than entities.</exception>
+    /// <exception cref="OptimisticConcurrencyException">A stored version differs from its entity's; nothing was written.</exception>
     public virtual Task SaveBatchAsync(IEnumerable<TVaultModel> entities, bool? saveHistory = false, CancellationToken ct = default)
         => SaveEntitiesAsync(entities, saveHistory, ct);
 
@@ -673,7 +686,7 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
 
         var list = entities as IList<TVaultModel> ?? entities.ToList();
         if (list.Count == 0)
-            throw new ArgumentException("Entities cannot be empty.", nameof(entities));
+            return;
 
         foreach (var e in list)
         {
@@ -710,24 +723,10 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
         foreach (var e in list)
             batchParams.AddRange(GetParameterValues(e, fields, includeTimestamp: false));
 
-        List<UpsertReturnRow> returnedRows;
-        try
-        {
-            returnedRows = (await _databaseProvider.QueryAsync<UpsertReturnRow>(
-                batchSqlV,
-                batchParams,
-                ct).ConfigureAwait(false)).ToList();
-        }
-        catch (Exception ex)
-        {
-            throw new OptimisticConcurrencyException(
-                typeof(TVaultModel),
-                storageId: null,
-                message: $"Optimistic concurrency failure saving batch of {typeof(TVaultModel).Name}. One or more rows had a version mismatch.",
-                inner: ex,
-                expectedAffected: list.Count,
-                actualAffected: null);
-        }
+        var returnedRows = (await _databaseProvider.QueryAsync<UpsertReturnRow>(
+            batchSqlV,
+            batchParams,
+            ct).ConfigureAwait(false)).ToList();
 
         if (returnedRows.Count != list.Count)
         {
@@ -739,16 +738,12 @@ public abstract class SqlVault<TVaultModel> : IVault<TVaultModel>
                 actualAffected: returnedRows.Count);
         }
 
-        // Best-effort: sync versions back by StorageId (works for PK-based saves and for UNIQUE-based saves
-        // only if the entity StorageId matches the stored StorageId).
-        var byId = returnedRows
-            .Where(r => !string.IsNullOrWhiteSpace(r.StorageId))
-            .ToDictionary(r => r.StorageId, r => r.Version, StringComparer.Ordinal);
-
-        foreach (var e in list)
+        foreach (var row in returnedRows)
         {
-            if (!string.IsNullOrWhiteSpace(e.StorageId) && byId.TryGetValue(e.StorageId, out var v))
-                SetVersionValue(e, v);
+            var e = list[row.Ordinal];
+            if (!string.IsNullOrWhiteSpace(row.StorageId))
+                SetStorageIdValue(e, row.StorageId);
+            SetVersionValue(e, row.Version);
         }
 
         if (saveHistory == true)
