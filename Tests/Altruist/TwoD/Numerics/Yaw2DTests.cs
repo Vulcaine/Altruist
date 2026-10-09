@@ -37,12 +37,25 @@ public class Yaw2DTests
             .Should().BeApproximately(Yaw2D.FromDirection(to.X - from.X, to.Y - from.Y), Eps);
     }
 
-    [Fact]
-    public void Calculate_ExtractsFromRotation2D()
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(0.7f)]
+    [InlineData(-2.5f)]
+    [InlineData(4f)]
+    public void Calculate_returns_the_yaw_of_the_rotated_local_up_axis(float radians)
     {
-        var rot = Rotation2D.FromRadians(0.7f);
-        Yaw2D.Calculate(rot).Should().BeApproximately(0.7f, Eps);
+        var yaw = Yaw2D.Calculate(Rotation2D.FromRadians(radians));
+
+        var facing = Yaw2D.ToDirection(yaw);
+        var up = Rotation2D.UpAt(radians);
+        facing.X.Should().BeApproximately(up.X, Eps);
+        facing.Y.Should().BeApproximately(up.Y, Eps);
+        MathF.Abs(yaw).Should().BeLessThanOrEqualTo(MathF.PI);
     }
+
+    [Fact]
+    public void Calculate_quarter_turn_counter_clockwise_faces_minus_x() =>
+        Yaw2D.Calculate(Rotation2D.FromRadians(MathF.PI / 2f)).Should().BeApproximately(-MathF.PI / 2f, Eps);
 
     [Theory]
     [InlineData(0f)]

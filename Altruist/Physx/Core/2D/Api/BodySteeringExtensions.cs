@@ -15,16 +15,14 @@ namespace Altruist.Physx.TwoD;
 /// vertical axis, so <see cref="MoveToward(IPhysxBody2D,Vector2,float,float)"/>
 /// writes the full <see cref="IPhysxBody2D.LinearVelocity"/> (no Y-preservation
 /// gymnastics) and <see cref="Stop(IPhysxBody2D)"/> zeroes both components.
-/// <para><b>Angle convention warning.</b> The facing helpers here (<see cref="IsFacing(IPhysxBody2D,Vector2,float)"/>,
-/// <see cref="FaceToward(IPhysxBody2D,Vector2)"/>, <see cref="TurnToward(IPhysxBody2D,Vector2,float,float)"/>,
-/// <see cref="MoveTowardAngle"/>) use the <see cref="Yaw2D"/> / <see cref="Direction2D.TowardAngle"/>
-/// convention: angle 0 faces +Y and positive angles turn toward +X (clockwise, <c>Atan2(dx, dy)</c>,
-/// direction <c>(Sin a, Cos a)</c>). That is the mirror image of the counter-clockwise
-/// <see cref="IPhysxBody2D.RotationZ"/> used by Box2D, <see cref="Rotation2D"/> and
-/// <see cref="BodyMotionExtensions2D"/>: on a Box2D body, <c>FaceToward</c> points the body's local +Y
-/// at the target only when the target is straight up or down. For physics-accurate turning of
-/// Box2D bodies use <see cref="BodyMotionExtensions2D.RotateTowardAngle"/> /
-/// <see cref="BodyMotionExtensions2D.SteerAngularVelocity"/> with <see cref="Rotation2D"/> angles.</para>
+/// <para><b>Angle convention.</b> Every angle here is a body rotation: <see cref="IPhysxBody2D.RotationZ"/>
+/// (Box2D), counter-clockwise from +X like <see cref="Rotation2D"/>, and a body faces along its local +Y
+/// axis (rotation 0 faces +Y, π/2 faces -X). <see cref="FaceToward(IPhysxBody2D,Vector2)"/> therefore
+/// points the body's local +Y at the target (<see cref="Rotation2D.AngleAligningUp"/> of the direction),
+/// and <see cref="MoveTowardAngle"/> moves along <see cref="Rotation2D.UpAt"/>. To read the facing in
+/// the clockwise <see cref="Yaw2D"/> convention use <c>Yaw2D.Calculate(Rotation2D.FromRadians(body.RotationZ))</c>.
+/// These helpers write the angle directly (teleport-rotate); for physics-driven turning use
+/// <see cref="BodyMotionExtensions2D.RotateTowardAngle"/> / <see cref="BodyMotionExtensions2D.SteerAngularVelocity"/>.</para>
 /// <para>Side effects: writes go straight to <c>RotationZ</c> (teleport-rotate) or <c>LinearVelocity</c>;
 /// the impulse / velocity verbs go through <see cref="IPhysxBody.ApplyForce"/> (Box2D wakes the
 /// body). For mechanical velocity formulas use <see cref="BodyMotionExtensions2D"/>; for intent verbs
@@ -46,8 +44,8 @@ public static class BodySteeringExtensions2D
         => Distance2D.Between(body.Position, target.ToFloatVector2());
 
     /// <summary>Whether the target lies within ±<paramref name="halfAngleDegrees"/> (degrees) of the
-    /// body's facing, with the facing angle read in the <see cref="Yaw2D"/> convention (see the class
-    /// summary). True when the target coincides with the body origin (within 1e-4 units).</summary>
+    /// body's facing (its local +Y axis, see the class summary). True when the target coincides with the
+    /// body origin (within 1e-4 units).</summary>
     /// <param name="body">The body.</param>
     /// <param name="target">World point.</param>
     /// <param name="halfAngleDegrees">Half cone angle in degrees.</param>
@@ -56,7 +54,7 @@ public static class BodySteeringExtensions2D
         var dx = target.X - body.Position.X;
         var dy = target.Y - body.Position.Y;
         if (dx * dx + dy * dy < CoincidentEpsilonSq) return true;
-        var targetRot = DeterministicMath.Atan2(dx, dy);
+        var targetRot = FacingRotation(dx, dy);
         var diff = Angle.ShortestDifference(body.RotationZ, targetRot);
         return MathF.Abs(diff) <= Angle.ToRadians(halfAngleDegrees);
     }
@@ -66,15 +64,15 @@ public static class BodySteeringExtensions2D
 
     // ── Snap facing ───────────────────────────────────────────────────────
 
-    /// <summary>Snaps <see cref="IPhysxBody2D.RotationZ"/> to <c>Yaw2D.FromDirection(dx, dy)</c> toward
-    /// <paramref name="worldPoint"/> (<see cref="Yaw2D"/> convention, see the class summary); no-op when the
-    /// point coincides with the body origin. Teleport-rotates (no angular velocity).</summary>
+    /// <summary>Snaps <see cref="IPhysxBody2D.RotationZ"/> so the body's local +Y points at
+    /// <paramref name="worldPoint"/> (<c>Rotation2D.AngleAligningUp(direction)</c>); no-op when the point
+    /// coincides with the body origin. Teleport-rotates (no angular velocity).</summary>
     public static void FaceToward(this IPhysxBody2D body, Vector2 worldPoint)
     {
         var dx = worldPoint.X - body.Position.X;
         var dy = worldPoint.Y - body.Position.Y;
         if (dx * dx + dy * dy < CoincidentEpsilonSq) return;
-        body.RotationZ = Yaw2D.FromDirection(dx, dy);
+        body.RotationZ = FacingRotation(dx, dy);
     }
     /// <summary><see cref="FaceToward(IPhysxBody2D,Vector2)"/> for a <see cref="Position2D"/>.</summary>
     public static void FaceToward(this IPhysxBody2D body, Position2D worldPoint)
@@ -82,8 +80,9 @@ public static class BodySteeringExtensions2D
 
     // ── Turning (angular-speed-clamped) ───────────────────────────────────
 
-    /// <summary>Rotates <see cref="IPhysxBody2D.RotationZ"/> toward the <see cref="Yaw2D"/> angle of
-    /// <paramref name="worldPoint"/> by at most <c>maxAngularSpeedRadPerSec * dt</c>, the short way
+    /// <summary>Rotates <see cref="IPhysxBody2D.RotationZ"/> toward the rotation that faces
+    /// <paramref name="worldPoint"/> (as <see cref="FaceToward(IPhysxBody2D,Vector2)"/>) by at most
+    /// <c>maxAngularSpeedRadPerSec * dt</c>, the short way
     /// (<see cref="Angle.MoveToward"/>; the result is normalized to [-π, π]). No-op when the point
     /// coincides with the body origin. Writes the angle directly (no angular velocity).</summary>
     /// <param name="body">The body.</param>
@@ -96,7 +95,7 @@ public static class BodySteeringExtensions2D
         var dx = worldPoint.X - body.Position.X;
         var dy = worldPoint.Y - body.Position.Y;
         if (dx * dx + dy * dy < CoincidentEpsilonSq) return;
-        var targetRot = Yaw2D.FromDirection(dx, dy);
+        var targetRot = FacingRotation(dx, dy);
         body.RotationZ = Angle.MoveToward(body.RotationZ, targetRot, maxAngularSpeedRadPerSec * dt);
     }
     /// <summary><see cref="TurnToward(IPhysxBody2D,Vector2,float,float)"/> for a <see cref="Position2D"/>.</summary>
@@ -128,12 +127,13 @@ public static class BodySteeringExtensions2D
                                   float speed, float dt)
         => MoveToward(body, worldPoint.ToFloatVector2(), speed, dt);
 
-    /// <summary>Sets <see cref="IPhysxBody2D.LinearVelocity"/> to <paramref name="speed"/> along
-    /// <c>Direction2D.TowardAngle(rotationRadians)</c> = <c>(Sin a, Cos a)</c> (<see cref="Yaw2D"/>
-    /// convention, not <see cref="IPhysxBody2D.RotationZ"/>'s); stops the body when
-    /// <paramref name="speed"/> ≤ 0. <paramref name="dt"/> is unused.</summary>
+    /// <summary>Sets <see cref="IPhysxBody2D.LinearVelocity"/> to <paramref name="speed"/> along the
+    /// facing of a body at rotation <paramref name="rotationRadians"/>: <c>Rotation2D.UpAt(a)</c> =
+    /// <c>(-Sin a, Cos a)</c>, so <c>body.MoveTowardAngle(body.GetRotation(), …)</c> moves the body forward.
+    /// Stops the body when <paramref name="speed"/> ≤ 0. <paramref name="dt"/> is unused. For a heading
+    /// in the clockwise <see cref="Yaw2D"/> convention pass its negation.</summary>
     /// <param name="body">The body.</param>
-    /// <param name="rotationRadians">Heading in the <see cref="Yaw2D"/> convention.</param>
+    /// <param name="rotationRadians">Heading as a body rotation (<see cref="IPhysxBody2D.RotationZ"/> convention).</param>
     /// <param name="speed">Speed in units/s.</param>
     /// <param name="dt">Unused (API symmetry).</param>
     public static void MoveTowardAngle(this IPhysxBody2D body, float rotationRadians,
@@ -141,9 +141,11 @@ public static class BodySteeringExtensions2D
     {
         _ = dt;
         if (speed <= 0f) { body.Stop(); return; }
-        var dir = Direction2D.TowardAngle(rotationRadians);
+        var dir = Rotation2D.UpAt(rotationRadians);
         body.LinearVelocity = new Vector2(dir.X * speed, dir.Y * speed);
     }
+
+    private static float FacingRotation(float dx, float dy) => Rotation2D.AngleAligningUp(new Vector2(dx, dy));
 
     /// <summary>Zeroes <see cref="IPhysxBody2D.LinearVelocity"/> (angular velocity is kept).</summary>
     public static void Stop(this IPhysxBody2D body) => body.LinearVelocity = Vector2.Zero;

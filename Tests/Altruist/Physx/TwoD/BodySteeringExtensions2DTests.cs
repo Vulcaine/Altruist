@@ -15,8 +15,42 @@ public class BodySteeringExtensions2DTests
     public void FaceToward_SnapsRotationTowardTarget()
     {
         var body = new FakeBody2D { Position = Vector2.Zero };
-        body.FaceToward(new Vector2(5f, 0f)); // +X — rotation = π/2 (Atan2(dx, dy))
-        body.GetRotation().Should().BeApproximately(MathF.PI / 2f, Eps);
+        body.FaceToward(new Vector2(5f, 0f)); // +X: local +Y turned clockwise a quarter turn
+        body.GetRotation().Should().BeApproximately(-MathF.PI / 2f, Eps);
+    }
+
+    [Theory]
+    [InlineData(5f, 0f)]
+    [InlineData(3f, 4f)]
+    [InlineData(-2f, 1f)]
+    [InlineData(-1f, -3f)]
+    public void FaceToward_points_the_counter_clockwise_body_up_axis_at_the_target(float x, float y)
+    {
+        var body = new FakeBody2D { Position = Vector2.Zero };
+        body.FaceToward(new Vector2(x, y));
+
+        var up = Rotation2D.FromRadians(body.RotationZ).Rotate(Vector2.UnitY);
+        var expected = Vector2.Normalize(new Vector2(x, y));
+        up.X.Should().BeApproximately(expected.X, Eps);
+        up.Y.Should().BeApproximately(expected.Y, Eps);
+        body.IsFacing(new Vector2(x, y), halfAngleDegrees: 1f).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsFacing_reads_the_counter_clockwise_body_rotation()
+    {
+        var body = new FakeBody2D { RotationZ = MathF.PI / 2f }; // local +Y now points at -X
+        body.IsFacing(new Vector2(-5f, 0f), halfAngleDegrees: 10f).Should().BeTrue();
+        body.IsFacing(new Vector2(5f, 0f), halfAngleDegrees: 10f).Should().BeFalse();
+    }
+
+    [Fact]
+    public void MoveTowardAngle_with_the_body_rotation_moves_the_body_forward()
+    {
+        var body = new FakeBody2D { RotationZ = MathF.PI / 2f };
+        body.MoveTowardAngle(body.GetRotation(), speed: 2f, dt: 0.1f);
+        body.LinearVelocity.X.Should().BeApproximately(-2f, Eps);
+        body.LinearVelocity.Y.Should().BeApproximately(0f, Eps);
     }
 
     [Fact]
@@ -42,7 +76,7 @@ public class BodySteeringExtensions2DTests
     {
         var body = new FakeBody2D { Position = Vector2.Zero, RotationZ = 0f };
         body.TurnToward(new Vector2(1, 0), maxAngularSpeedRadPerSec: 1f, dt: 0.1f);
-        body.RotationZ.Should().BeApproximately(0.1f, Eps);
+        body.RotationZ.Should().BeApproximately(-0.1f, Eps);
     }
 
     [Fact]
@@ -50,7 +84,7 @@ public class BodySteeringExtensions2DTests
     {
         var body = new FakeBody2D { Position = Vector2.Zero, RotationZ = 0f };
         body.TurnToward(new Vector2(1, 0), maxAngularSpeedRadPerSec: 100f, dt: 1f);
-        body.RotationZ.Should().BeApproximately(MathF.PI / 2f, Eps);
+        body.RotationZ.Should().BeApproximately(-MathF.PI / 2f, Eps);
     }
 
     [Fact]

@@ -13,10 +13,13 @@ namespace Altruist.TwoD.Numerics;
 /// <c>Atan2(dx, dy)</c>, so yaw=0 means facing +Y (matches 3D's "forward = +Z").</summary>
 public static class Yaw2D
 {
-    /// <summary>Extract the angle from a <see cref="Rotation2D"/>. Returns
-    /// <see cref="Rotation2D.Radians"/> unchanged, i.e. in <see cref="Rotation2D"/>'s counter-clockwise,
-    /// 0 = +X convention, not converted to this class's 0 = +Y facing convention.</summary>
-    public static float Calculate(Rotation2D rotation) => rotation.Radians;
+    /// <summary>The facing yaw of a body rotated by <paramref name="rotation"/>, in this class's convention
+    /// (0 = +Y, π/2 = +X, range [-π, π]). A body faces along its local +Y axis (the 2D counterpart of 3D's
+    /// local +Z forward), which <see cref="Rotation2D"/> turns counter-clockwise, so the yaw is the negated,
+    /// normalized rotation angle: <c>ToDirection(Calculate(r))</c> equals <c>Rotation2D.UpAt(r.Radians)</c>.
+    /// Use it to read a physics body's facing (<c>Calculate(Rotation2D.FromRadians(body.RotationZ))</c>);
+    /// to turn a yaw back into a body rotation, negate it.</summary>
+    public static float Calculate(Rotation2D rotation) => Angle.Normalize(-rotation.Radians);
 
     /// <summary>Yaw of the direction (<paramref name="dx"/>, <paramref name="dy"/>): <c>Atan2(dx, dy)</c>
     /// (0 = +Y, π/2 = +X).</summary>

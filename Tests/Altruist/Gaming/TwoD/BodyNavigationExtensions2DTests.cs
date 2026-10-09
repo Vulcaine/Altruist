@@ -18,7 +18,7 @@ public class BodyNavigationExtensions2DTests
         var body = new FakeBody2D { Position = Vector2.Zero };
         var target = new FakeWorldObject2D(new Vector2(5f, 0f));
         body.FaceToward(target);
-        body.GetRotation().Should().BeApproximately(MathF.PI / 2f, Eps);
+        body.GetRotation().Should().BeApproximately(-MathF.PI / 2f, Eps);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class BodyNavigationExtensions2DTests
         var body = new FakeBody2D { Position = Vector2.Zero, RotationZ = 0f };
         var target = new FakeWorldObject2D(new Vector2(1, 0));
         body.TurnToward(target, maxAngularSpeedRadPerSec: 1f, dt: 0.1f);
-        body.RotationZ.Should().BeApproximately(0.1f, Eps);
+        body.RotationZ.Should().BeApproximately(-0.1f, Eps);
     }
 
     [Fact]

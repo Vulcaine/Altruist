@@ -13,16 +13,16 @@ namespace Altruist.Gaming.TwoD;
 /// <c>LaunchToward</c> / terrain-aware overloads are 3D-only extras for now;
 /// when 2D pathfinding lands, mirror at that time.
 /// <para>Each method forwards to the <see cref="BodySteeringExtensions2D"/> overload taking the
-/// target's <c>Transform.Position</c>, so it inherits that class's <b>Yaw2D angle convention</b>
-/// (angle 0 = +Y, clockwise), which differs from Box2D's counter-clockwise
-/// <see cref="IPhysxBody2D.RotationZ"/>. Use these for simple top-down steering of AI / kinematic
+/// target's <c>Transform.Position</c>, so it inherits that class's angle convention: the body's
+/// counter-clockwise <see cref="IPhysxBody2D.RotationZ"/>, facing along its local +Y axis. Use these for
+/// simple top-down steering of AI / kinematic
 /// bodies toward another world object; for side-view physics bodies use
 /// <see cref="GameplayVerbs2D"/> (<c>AimAt</c>, <c>HoldAngle</c>, <c>DriveAlong</c>) with
 /// <c>Rotation2D</c> angles instead.</para></summary>
 public static class BodyNavigationExtensions2D
 {
     /// <summary>Snaps the body's rotation to face <paramref name="target"/>'s position
-    /// (<see cref="BodySteeringExtensions2D.FaceToward(IPhysxBody2D,System.Numerics.Vector2)"/>, Yaw2D convention).</summary>
+    /// (<see cref="BodySteeringExtensions2D.FaceToward(IPhysxBody2D,System.Numerics.Vector2)"/>: local +Y at the target).</summary>
     public static void FaceToward(this IPhysxBody2D body, IWorldObject2D target)
         => body.FaceToward(target.Transform.Position);
 
@@ -31,13 +31,13 @@ public static class BodyNavigationExtensions2D
         => body.DistanceTo(target.Transform.Position);
 
     /// <summary>Whether <paramref name="target"/> lies within <paramref name="halfAngleDegrees"/>
-    /// (degrees) of the body's facing (Yaw2D convention); true when the positions coincide.</summary>
+    /// (degrees) of the body's facing (its local +Y axis); true when the positions coincide.</summary>
     public static bool IsFacing(this IPhysxBody2D body, IWorldObject2D target, float halfAngleDegrees)
         => body.IsFacing(target.Transform.Position, halfAngleDegrees);
 
     /// <summary>Rotates the body toward <paramref name="target"/> by at most
     /// <paramref name="maxAngularSpeedRadPerSec"/> * <paramref name="dt"/> radians (writes the angle
-    /// directly, Yaw2D convention).</summary>
+    /// directly, body rotation convention).</summary>
     /// <param name="body">The body to turn.</param>
     /// <param name="target">The object to turn toward.</param>
     /// <param name="maxAngularSpeedRadPerSec">Turn rate limit in rad/s.</param>
