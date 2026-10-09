@@ -24,7 +24,7 @@ public sealed class StateMotionKey
 /// </summary>
 public sealed class StateMotionCurve
 {
-    /// <summary>The keys (any order; sorted on evaluation). Defaults to a flat zero curve.</summary>
+    /// <summary>The keys, in any order (evaluated in time order). Defaults to a flat zero curve.</summary>
     public StateMotionKey[] Keys { get; set; } =
     [
         new StateMotionKey { TimeN = 0f, Value = 0f },
@@ -48,29 +48,50 @@ public sealed class StateMotionCurve
         };
 
     /// <summary>Piecewise-linear sample at normalized time <paramref name="timeN"/> (clamped to 0..1);
-    /// holds the first/last key's value outside the keyed range, 0 with no keys. Sorts the keys on
-    /// every call (allocates), so cache results in hot loops.</summary>
+    /// holds the first/last key's value outside the keyed range, 0 with no keys. The keys may be in any
+    /// order (keys with equal times keep their array order); evaluation does not allocate.</summary>
     public float Evaluate(float timeN)
     {
         if (Keys == null || Keys.Length == 0)
             return 0f;
 
         timeN = Math.Clamp(timeN, 0f, 1f);
-        var ordered = Keys.OrderBy(k => k.TimeN).ToArray();
-        if (timeN <= ordered[0].TimeN)
-            return ordered[0].Value;
+        int first = 0;
+        for (int i = 1; i < Keys.Length; i++)
+            if (Precedes(i, first)) first = i;
+        if (timeN <= Keys[first].TimeN)
+            return Keys[first].Value;
 
-        for (int i = 1; i < ordered.Length; i++)
+        // The first key (in time order, after `first`) not before timeN, and the key right before it.
+        int next = -1;
+        for (int i = 0; i < Keys.Length; i++)
         {
-            if (timeN > ordered[i].TimeN)
-                continue;
-
-            float span = MathF.Max(0.0001f, ordered[i].TimeN - ordered[i - 1].TimeN);
-            float t = (timeN - ordered[i - 1].TimeN) / span;
-            return ordered[i - 1].Value + ((ordered[i].Value - ordered[i - 1].Value) * t);
+            if (i == first || timeN > Keys[i].TimeN) continue;
+            if (next < 0 || Precedes(i, next)) next = i;
         }
 
-        return ordered[^1].Value;
+        if (next < 0)
+        {
+            int last = 0;
+            for (int i = 1; i < Keys.Length; i++)
+                if (Precedes(last, i)) last = i;
+            return Keys[last].Value;
+        }
+
+        int prev = first;
+        for (int i = 0; i < Keys.Length; i++)
+            if (Precedes(i, next) && Precedes(prev, i)) prev = i;
+
+        float span = MathF.Max(0.0001f, Keys[next].TimeN - Keys[prev].TimeN);
+        float t = (timeN - Keys[prev].TimeN) / span;
+        return Keys[prev].Value + ((Keys[next].Value - Keys[prev].Value) * t);
+    }
+
+    // Time order of the keys: by TimeN, ties by array index (the stable order of a sort).
+    private bool Precedes(int a, int b)
+    {
+        int c = Keys[a].TimeN.CompareTo(Keys[b].TimeN);
+        return c < 0 || (c == 0 && a < b);
     }
 
     /// <summary>True if any key's absolute value exceeds <paramref name="epsilon"/>.</summary>

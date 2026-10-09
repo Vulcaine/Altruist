@@ -103,12 +103,12 @@ public interface ISynchronizedEntity
 /// Altruist discovers all world objects with this attribute and broadcasts
 /// [Synced] property changes automatically — no manual code needed.
 ///
-/// Default: syncs at engine tick rate (e.g., 25Hz).
-/// Optional: specify a custom frequency.
+/// Default: syncs every world step. A frequency is read in <see cref="SyncUnit.Ticks"/> unless a unit is given.
 ///
 /// Usage:
-///   [Synchronized]                     // sync every engine tick
-///   [Synchronized(10)]                 // sync 10 times per second
+///   [Synchronized]                     // sync every step
+///   [Synchronized(10)]                 // sync every 10th step
+///   [Synchronized(10, SyncUnit.Hz)]    // sync 10 times per second
 ///   [Synchronized(1, SyncUnit.Seconds)] // sync once per second
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
@@ -126,7 +126,8 @@ public class SynchronizedAttribute : Attribute
         Unit = SyncUnit.Ticks;
     }
 
-    /// <summary>Sync at a custom frequency.</summary>
+    /// <summary>Sync at a custom frequency; without <paramref name="unit"/> it is a step count
+    /// (<c>[Synchronized(10)]</c> syncs every 10th step, not 10 times per second).</summary>
     public SynchronizedAttribute(int frequency, SyncUnit unit = SyncUnit.Ticks)
     {
         Frequency = frequency;
