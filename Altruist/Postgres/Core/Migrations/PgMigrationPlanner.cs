@@ -7,6 +7,8 @@ Licensed under the Apache License, Version 2.0 (the "License");
 using System.Globalization;
 using System.Text.Json;
 
+using Microsoft.Extensions.Logging;
+
 namespace Altruist.Migrations.Postgres;
 /*
 Copyright 2025 Aron Gere
@@ -27,10 +29,18 @@ Licensed under the Apache License, Version 2.0 (the "License");
 /// </para>
 /// <para>
 /// The plan is not purely additive. Besides creating tables, columns, unique constraints, indexes and foreign
-/// keys, it also plans <b>destructive</b> operations: columns present in the database but no longer on the model
-/// are dropped (data lost) unless matched by <c>[VaultRenamedFrom]</c>; column type changes are altered in place;
+/// keys, it also plans <b>destructive</b> operations: columns marked <c>[VaultColumnDelete]</c> / <c>[VaultDropColumn]</c>
+/// are dropped; column type changes are altered in place;
 /// unique constraints and <c>&lt;table&gt;_&lt;col&gt;_idx</c> indexes no longer declared are dropped; tables marked
 /// <c>[VaultTableDelete]</c> are dropped and <c>[VaultArchived]</c> tables are copied then dropped.
+/// Columns present in the database but no longer on the model are <b>kept</b> by default (warning; NOT NULL relaxed
+/// when they have no default); <c>altruist:persistence:migration:drop-unmapped-columns: true</c> drops them instead
+/// (see <see cref="AbstractMigrationPlanner.DropUnmappedColumns"/>).
+/// </para>
+/// <para>
+/// Catalog type names are folded onto the type map before comparing (<c>timestamp without time zone</c> =
+/// <c>timestamp</c>, <c>timestamp with time zone</c> = <c>timestamptz</c>, <c>int4</c> = <c>integer</c>,
+/// <c>_text</c> = <c>text[]</c>, ...), so an unchanged model plans no operations.
 /// </para>
 /// <para>
 /// Type map: <c>string</c>→<c>text</c>, <c>bool</c>→<c>boolean</c>, <c>byte</c>/<c>short</c>→<c>smallint</c>,
@@ -46,6 +56,34 @@ Licensed under the Apache License, Version 2.0 (the "License");
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PostgresMigrationPlanner : AbstractMigrationPlanner
 {
+    /// <summary>Creates the planner. Built by DI at startup; construct it directly only in tests or tools.</summary>
+    /// <param name="dropUnmappedColumns">
+    /// <c>altruist:persistence:migration:drop-unmapped-columns</c> (default <c>false</c>): drop every column the model no
+    /// longer maps instead of keeping it. See <see cref="AbstractMigrationPlanner.DropUnmappedColumns"/>.
+    /// </param>
+    /// <param name="loggerFactory">Receives the unmapped-column warnings; null discards them.</param>
+    public PostgresMigrationPlanner(
+        [AppConfigValue(DropUnmappedColumnsConfigKey, "false")] bool dropUnmappedColumns = false,
+        ILoggerFactory? loggerFactory = null)
+        : base(dropUnmappedColumns, loggerFactory?.CreateLogger<PostgresMigrationPlanner>())
+    {
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Uses <see cref="PostgresStoreTypes.Normalize"/>.</remarks>
+    protected override string NormalizeStoreType(string storeType) => PostgresStoreTypes.Normalize(storeType);
+
+    /// <inheritdoc/>
+    /// <remarks>A bare <c>array</c> (catalog <c>data_type</c> without the element type) matches any desired array type.</remarks>
+    protected override bool StoreTypesMatch(string existingStoreType, string desiredStoreType)
+    {
+        var existing = NormalizeStoreType(existingStoreType);
+        var desired = NormalizeStoreType(desiredStoreType);
+        if (existing == "array" && desired.EndsWith("[]", StringComparison.Ordinal))
+            return true;
+        return string.Equals(existing, desired, StringComparison.Ordinal);
+    }
+
     /// <inheritdoc/>
     /// <remarks>Postgres: <c>public</c>.</remarks>
     protected override string GetDefaultSchemaName() => "public";
@@ -124,7 +162,8 @@ public sealed class PostgresMigrationPlanner : AbstractMigrationPlanner
     /// <inheritdoc/>
     /// <remarks>
     /// Strings are single-quoted with <c>'</c> doubled; numbers use invariant culture; <c>DateTime</c>/<c>DateTimeOffset</c>
-    /// use the round-trip (<c>"O"</c>) format; enums become their integer value; anything else not listed is
+    /// use the round-trip (<c>"O"</c>) format; enums become their integer value; arrays mapped to native Postgres arrays
+    /// become <c>'{}'::type[]</c> / <c>ARRAY[...]::type[]</c>; anything else not listed is
     /// serialized to JSON and cast to <c>jsonb</c>. Returns null for a null value (no default).
     /// </remarks>
     protected override string? MapClrDefaultValueToStoreDefault(object? value, Type type)
@@ -153,6 +192,27 @@ public sealed class PostgresMigrationPlanner : AbstractMigrationPlanner
             return $"'{value}'";
         if (type.IsEnum)
             return Convert.ToString(Convert.ToInt32(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+
+        // Arrays mapped to native Postgres arrays need an array default (a jsonb literal fails CREATE TABLE).
+        if (type.IsArray && value is Array array)
+        {
+            var storeType = MapClrTypeToStoreType(type);
+            if (storeType.EndsWith("[]", StringComparison.Ordinal))
+            {
+                if (array.Length == 0)
+                    return $"'{{}}'::{storeType}";
+                var elemType = type.GetElementType()!;
+                var items = new List<string>(array.Length);
+                foreach (var item in array)
+                {
+                    var literal = MapClrDefaultValueToStoreDefault(item, elemType);
+                    if (literal is null)
+                        return null; // a null element: no default rather than a wrong one
+                    items.Add(literal);
+                }
+                return $"ARRAY[{string.Join(", ", items)}]::{storeType}";
+            }
+        }
 
         var json = JsonSerializer.Serialize(value);
         return $"'{EscapeSqlLiteral(json)}'::jsonb";

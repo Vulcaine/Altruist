@@ -22,10 +22,13 @@ using System.Text.Json;
 using Altruist.Security;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Dashboard;
 
@@ -34,10 +37,11 @@ namespace Altruist.Dashboard;
 /// registered socket gate with a sample JSON body, and lets the dashboard user invoke them.
 /// </summary>
 /// <remarks>
-/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c> and the <c>Altruist.Dashboard</c> assembly is loaded.
-/// No authentication is applied to this controller. Gate invocation runs the handler as any client id the caller
-/// names (bypassing the socket handshake), and HTTP invocation sends a server-side request to the host named in the
-/// incoming request; treat it as a development tool and never expose it publicly.
+/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c> and the <c>Altruist.Dashboard</c> assembly is loaded;
+/// every request must pass the dashboard protection (<see cref="DashboardAccessOptions"/>). Gate invocation runs the
+/// handler as any client id the caller names (bypassing the socket handshake), so dashboard access is equivalent to
+/// acting as any player. HTTP invocation only ever calls this server, at its own bound address (never the incoming
+/// <c>Host</c> header).
 /// </remarks>
 [ApiController]
 [Route("/dashboard/v1/lab")]
@@ -97,7 +101,8 @@ public sealed class ApiLabDashboardController : ControllerBase
     /// <see cref="ApiLabInvokeResultDto"/>, or 400 for an unknown <see cref="ApiLabInvokeRequestDto.Kind"/>.
     /// </summary>
     /// <remarks>
-    /// <c>http</c>: sends the request to <c>{scheme}://{host}{path}</c> of the current request with a shared
+    /// <c>http</c>: sends the request to this server's own bound address (from <see cref="IServerAddressesFeature"/>,
+    /// wildcard hosts replaced by loopback) plus the path base and <see cref="ApiLabInvokeRequestDto.Path"/>, with a shared
     /// <see cref="HttpClient"/> (JSON body except for GET/HEAD; no headers or credentials forwarded) and returns the status
     /// and body. <c>gate</c>: encodes <see cref="ApiLabInvokeRequestDto.BodyJson"/> with the active codec and processes it
     /// as a packet for the event from <see cref="ApiLabInvokeRequestDto.ClientId"/> (default <c>dashboard-lab</c>);
@@ -248,9 +253,21 @@ public sealed class ApiLabDashboardController : ControllerBase
     private async Task<ApiLabInvokeResultDto> InvokeHttp(ApiLabInvokeRequestDto request)
     {
         var method = new HttpMethod(string.IsNullOrWhiteSpace(request.Method) ? "GET" : request.Method);
-        var path = "/" + (request.Path ?? string.Empty).TrimStart('/');
-        var url = $"{Request.Scheme}://{Request.Host}{path}";
-        var message = new HttpRequestMessage(method, url);
+        var rawPath = request.Path ?? string.Empty;
+        if (rawPath.Contains('\\') || rawPath.Contains("://", StringComparison.Ordinal) || rawPath.Any(char.IsControl))
+            return new ApiLabInvokeResultDto { Success = false, Message = "Path must be a plain server-relative path." };
+
+        var baseUri = ResolveSelfBaseUri();
+        if (baseUri is null)
+            return new ApiLabInvokeResultDto { Success = false, Message = "The server's own address is unknown." };
+
+        var path = "/" + rawPath.TrimStart('/');
+        var target = new Uri(baseUri, Request.PathBase.Value + path);
+        // The target must stay on this server (scheme, host and port of the bound address).
+        if (Uri.Compare(target, baseUri, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) != 0)
+            return new ApiLabInvokeResultDto { Success = false, Message = "Path must stay on this server." };
+
+        var message = new HttpRequestMessage(method, target);
 
         if (!string.IsNullOrWhiteSpace(request.BodyJson) &&
             method != HttpMethod.Get &&
@@ -279,6 +296,36 @@ public sealed class ApiLabDashboardController : ControllerBase
                 Message = ex.Message
             };
         }
+    }
+
+    /// <summary>
+    /// This server's own base address from the bound listeners (never from the request's Host header, which the
+    /// client controls). Wildcard hosts become loopback; falls back to <c>http://127.0.0.1:{local port}</c>.
+    /// </summary>
+    private Uri? ResolveSelfBaseUri()
+    {
+        var addresses = HttpContext.RequestServices.GetService<IServer>()?.Features.Get<IServerAddressesFeature>()?.Addresses;
+        if (addresses is not null)
+        {
+            foreach (var raw in addresses.OrderBy(a => a.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ? 0 : 1))
+            {
+                var normalized = raw.Replace("://+", "://127.0.0.1").Replace("://*", "://127.0.0.1");
+                if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
+                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                    continue;
+
+                var host = uri.Host switch
+                {
+                    "0.0.0.0" => "127.0.0.1",
+                    "[::]" or "::" => "[::1]",
+                    _ => uri.Host,
+                };
+                return new UriBuilder(uri.Scheme, host, uri.Port).Uri;
+            }
+        }
+
+        var port = HttpContext.Connection.LocalPort;
+        return port > 0 ? new UriBuilder(Uri.UriSchemeHttp, "127.0.0.1", port).Uri : null;
     }
 
     private async Task<ApiLabInvokeResultDto> InvokeGate(ApiLabInvokeRequestDto request)

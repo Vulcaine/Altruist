@@ -20,9 +20,11 @@ namespace Altruist.Dashboard
     /// embedded at build time the filter adds nothing.
     /// </para>
     /// <para>
-    /// Security: neither the UI nor the <c>/dashboard/v1</c> APIs apply authentication or a development-only check;
-    /// the APIs expose configuration values, connection IPs, cache contents and raw SQL execution. Enable it only in
-    /// development or behind your own network/auth protection.
+    /// Security: the UI, the <c>/dashboard/v1</c> APIs and the <c>/ws/dashboard</c> socket are guarded by
+    /// <see cref="DashboardAccessMiddleware"/>: configure <c>altruist:dashboard:token</c> (header
+    /// <c>X-Altruist-Dashboard-Token</c>, or open <c>/altruist/dashboard?dashboard_token=...</c> once in a browser) or
+    /// <c>altruist:dashboard:policy</c>. Without either the dashboard answers only loopback requests in Development and
+    /// 503 elsewhere. The APIs run SQL, edit caches and act as any client, so treat dashboard access as admin access.
     /// </para>
     /// </remarks>
     /// <example>
@@ -31,7 +33,8 @@ namespace Altruist.Dashboard
     /// altruist:
     ///   dashboard:
     ///     enabled: true
-    /// # then open http://localhost:&lt;port&gt;/altruist/dashboard
+    ///     token: ${DASHBOARD_TOKEN}   # at least 16 characters
+    /// # then open http://localhost:&lt;port&gt;/altruist/dashboard?dashboard_token=&lt;token&gt;
     /// </code>
     /// </example>
     [Service(typeof(IStartupFilter), lifetime: ServiceLifetime.Transient)]
@@ -66,6 +69,9 @@ namespace Altruist.Dashboard
                     next(app);
                     return;
                 }
+
+                // The UI is served ahead of the app pipeline, so it gets the same protection first.
+                app.UseMiddleware<DashboardAccessMiddleware>();
 
                 app.UseStaticFiles(new StaticFileOptions
                 {

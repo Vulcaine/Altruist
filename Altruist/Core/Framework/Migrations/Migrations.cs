@@ -62,11 +62,38 @@ public sealed record AddColumnOperation(
     ColumnDefinition Column
 ) : MigrationOperation;
 
-/// <summary>Drops a column that exists in the database but is no longer mapped by the model (destructive).</summary>
+/// <summary>
+/// Drops a column that exists in the database but is no longer mapped by the model (destructive: the data is lost).
+/// </summary>
+/// <remarks>
+/// The built-in planner emits it only when dropping is opted into: globally with
+/// <c>altruist:persistence:migration:drop-unmapped-columns: true</c>, or per column with
+/// <see cref="Altruist.UORM.VaultDropColumnAttribute"/> / <see cref="Altruist.UORM.VaultColumnDeleteAttribute"/>
+/// (those plan a <see cref="DeleteMarkedColumnOperation"/>). By default unmapped columns are kept (see
+/// <see cref="RelaxNotNullOperation"/>).
+/// </remarks>
 /// <param name="Schema">Schema name.</param>
 /// <param name="Table">Table name.</param>
 /// <param name="ColumnName">Column to drop.</param>
 public sealed record DropColumnOperation(
+    string Schema,
+    string Table,
+    string ColumnName
+) : MigrationOperation;
+
+/// <summary>
+/// Drops the <c>NOT NULL</c> constraint of a column (non-destructive: no data changes).
+/// </summary>
+/// <remarks>
+/// Planned for a column the model no longer maps that is <c>NOT NULL</c> without a default: the planner keeps such
+/// columns (their data is preserved), but inserts from the model would no longer supply a value and would fail, so
+/// the column is relaxed to allow NULL instead of being dropped. Providers implement it in
+/// <see cref="AbstractMigrationExecutor.ApplyRelaxNotNullAsync"/>.
+/// </remarks>
+/// <param name="Schema">Schema name.</param>
+/// <param name="Table">Table name.</param>
+/// <param name="ColumnName">Column whose NOT NULL constraint is dropped.</param>
+public sealed record RelaxNotNullOperation(
     string Schema,
     string Table,
     string ColumnName
@@ -102,7 +129,9 @@ public sealed record CopyColumnDataOperation(
 ) : MigrationOperation;
 
 /// <summary>
-/// Drops a column marked with [VaultColumnDelete]. Runs after CopyColumnData operations.
+/// Drops a column marked with [VaultColumnDelete] (on a property) or [VaultDropColumn] (on the class), or a
+/// <see cref="Altruist.UORM.VaultColumnCopyAttribute"/> source column when unmapped columns are dropped globally.
+/// Runs after CopyColumnData operations.
 /// </summary>
 /// <param name="Schema">Schema name.</param>
 /// <param name="Table">Table name.</param>

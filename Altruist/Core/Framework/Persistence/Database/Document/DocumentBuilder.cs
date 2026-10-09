@@ -245,6 +245,16 @@ internal static class DocumentBuilder
             }
         }
 
+        // [VaultDropColumn] on the class — columns whose property is already gone.
+        foreach (var drop in type.GetCustomAttributes<VaultDropColumnAttribute>(inherit: true))
+        {
+            if (columns.Values.Any(c => string.Equals(c, drop.ColumnName, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException(
+                    $"[VaultDropColumn(\"{drop.ColumnName}\")] on '{type.Name}' names a column the model still maps. " +
+                    "Remove the property (or mark it [VaultColumnDelete]) before dropping its column.");
+            deleted[drop.ColumnName] = drop.Reason;
+        }
+
         doc.CopyFromColumns = copyFrom;
         doc.DeletedColumns = deleted;
     }

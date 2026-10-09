@@ -136,9 +136,9 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     /// provider-specific methods for actual SQL generation + execution.
     /// </summary>
     /// <remarks>
-    /// Override to support additional operation types. <see cref="CreateSchemaOperation"/> and
-    /// <see cref="DropTableOperation"/> have no case here and therefore throw <see cref="NotSupportedException"/>
-    /// unless a provider overrides this method.
+    /// Every built-in operation type is dispatched (including <see cref="CreateSchemaOperation"/>,
+    /// <see cref="DropTableOperation"/> and <see cref="RelaxNotNullOperation"/>). Override to support additional
+    /// operation types, falling back to <c>base.ApplyOperationAsync</c>.
     /// </remarks>
     /// <param name="defaultSchema">Schema used when the operation's schema is blank.</param>
     /// <param name="op">The operation to apply.</param>
@@ -158,7 +158,11 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
             case CreateTableOperation createTable:
                 return ApplyCreateTableAsync(defaultSchema, createTable);
 
-            // (DropTableOperation support could be added here later if needed)
+            case DropTableOperation dropTable:
+                return ApplyDropTableAsync(defaultSchema, dropTable);
+
+            case CreateSchemaOperation createSchema:
+                return ApplyCreateSchemaAsync(defaultSchema, createSchema);
 
             // --------------------------------
             // COLUMN OPERATIONS
@@ -181,6 +185,9 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
 
             case DeleteMarkedColumnOperation deleteMarked:
                 return ApplyDeleteMarkedColumnAsync(defaultSchema, deleteMarked);
+
+            case RelaxNotNullOperation relaxNotNull:
+                return ApplyRelaxNotNullAsync(defaultSchema, relaxNotNull);
 
             // --------------------------------
             // CONSTRAINT OPERATIONS
@@ -304,15 +311,28 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     /// <returns>A task.</returns>
     protected abstract Task ApplyArchiveTableAsync(string defaultSchema, ArchiveTableOperation op);
 
-    /// <summary>Executes a <see cref="CreateSchemaOperation"/>. Note: <see cref="ApplyOperationAsync"/> does not currently dispatch this operation type.</summary>
+    /// <summary>Executes a <see cref="CreateSchemaOperation"/>.</summary>
     /// <param name="defaultSchema">Schema used when the operation's schema is blank.</param>
     /// <param name="createSchema">The operation.</param>
     /// <returns>A task.</returns>
     protected abstract Task ApplyCreateSchemaAsync(string defaultSchema, CreateSchemaOperation createSchema);
 
-    /// <summary>Executes a <see cref="DropTableOperation"/>. Note: <see cref="ApplyOperationAsync"/> does not currently dispatch this operation type.</summary>
+    /// <summary>Executes a <see cref="DropTableOperation"/> (planned for <see cref="Altruist.UORM.VaultTableDeleteAttribute"/> and, after the copy, <see cref="Altruist.UORM.VaultArchivedAttribute"/>).</summary>
     /// <param name="defaultSchema">Schema used when the operation's schema is blank.</param>
     /// <param name="dropTable">The operation.</param>
     /// <returns>A task.</returns>
     protected abstract Task ApplyDropTableAsync(string defaultSchema, DropTableOperation dropTable);
+
+    /// <summary>
+    /// Executes a <see cref="RelaxNotNullOperation"/> (drop the column's NOT NULL constraint). Virtual so existing
+    /// providers keep compiling; the default throws <see cref="NotSupportedException"/>, which aborts the migration —
+    /// override it in every provider whose planner keeps unmapped columns.
+    /// </summary>
+    /// <param name="defaultSchema">Schema used when the operation's schema is blank.</param>
+    /// <param name="op">The operation.</param>
+    /// <returns>A task.</returns>
+    /// <exception cref="NotSupportedException">The provider does not implement it.</exception>
+    protected virtual Task ApplyRelaxNotNullAsync(string defaultSchema, RelaxNotNullOperation op) =>
+        throw new NotSupportedException(
+            $"Migration operation '{nameof(RelaxNotNullOperation)}' is not supported by {GetType().Name}.");
 }

@@ -67,10 +67,11 @@ namespace Altruist.Dashboard
     /// <c>/dashboard/v1/cache</c>. Works with both InMemory and Redis cache providers.
     /// </summary>
     /// <remarks>
-    /// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication is applied, and the
-    /// edit/delete endpoints resolve any type name sent by the client via <see cref="Type.GetType(string, bool)"/>
-    /// and write the in-memory tier; do not expose this to untrusted networks. Listing and edits cover the local
-    /// in-memory tier only (Redis-only entries are not listed and edits are not written to Redis).
+    /// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>; every request must pass the dashboard
+    /// protection (<see cref="DashboardAccessOptions"/>). The edit/delete endpoints accept only a type that is
+    /// currently cached or a registered vault model (<see cref="VaultRegistry"/>), matched by its exact
+    /// assembly-qualified or full name; any other type name is rejected with 400 and never loaded. Listing and edits
+    /// cover the local in-memory tier only (Redis-only entries are not listed and edits are not written to Redis).
     /// </remarks>
     [ApiController]
     [Route("/dashboard/v1/cache")]
@@ -94,6 +95,31 @@ namespace Altruist.Dashboard
             _cacheProvider = cacheProvider;
             _memoryCacheProvider = memoryCacheProvider;
             _jsonOptions = jsonOptions;
+        }
+
+        /// <summary>
+        /// Maps a client-sent type name to a type the dashboard may touch: one with entries in either cache tier or a
+        /// registered vault model, compared by exact assembly-qualified or full name. Never calls
+        /// <see cref="Type.GetType(string)"/>, so no arbitrary type is loaded or instantiated from client input.
+        /// </summary>
+        private Type? ResolveAllowedType(string? typeName)
+        {
+            if (string.IsNullOrWhiteSpace(typeName))
+                return null;
+
+            bool Matches(Type t) =>
+                string.Equals(t.AssemblyQualifiedName, typeName, StringComparison.Ordinal) ||
+                string.Equals(t.FullName, typeName, StringComparison.Ordinal);
+
+            foreach (var snapshot in _memoryCacheProvider.GetSnapshot().Concat(_cacheProvider.GetSnapshot()))
+                if (Matches(snapshot.Type))
+                    return snapshot.Type;
+
+            foreach (var vault in VaultRegistry.GetAll())
+                if (Matches(vault.ClrType))
+                    return vault.ClrType;
+
+            return null;
         }
 
         private static string GetShortTypeName(Type type)
@@ -212,8 +238,8 @@ namespace Altruist.Dashboard
 
         /// <summary>
         /// <c>PUT /dashboard/v1/cache/entry</c> with a <see cref="CacheEntryUpdateDto"/> body: deserializes the value as the
-        /// named type and calls <see cref="ICacheProvider.SaveAsync{T}"/> (local tier). 204 on success; an unknown type or
-        /// null value throws (500).
+        /// named type and calls <see cref="ICacheProvider.SaveAsync{T}"/> (local tier). 204 on success; 400 when the type is
+        /// not a cached or registered vault type; a null value throws (500).
         /// </summary>
         /// <param name="dto">Entry type, group, key and new JSON value.</param>
         /// <param name="ct">Not observed.</param>
@@ -222,8 +248,9 @@ namespace Altruist.Dashboard
             [FromBody] CacheEntryUpdateDto dto,
             CancellationToken ct)
         {
-            var type = Type.GetType(dto.Type, throwOnError: true)
-                       ?? throw new InvalidOperationException($"Unknown type: {dto.Type}");
+            var type = ResolveAllowedType(dto.Type);
+            if (type is null)
+                return BadRequest($"Type '{dto.Type}' is not a cached or registered vault type.");
 
             var valueObj = JsonSerializer.Deserialize(
                                dto.Value.GetRawText(),
@@ -245,7 +272,7 @@ namespace Altruist.Dashboard
 
         /// <summary>
         /// <c>DELETE /dashboard/v1/cache/entry?Type=&amp;GroupId=&amp;Key=</c>: calls <see cref="ICacheProvider.RemoveAsync{T}"/>
-        /// (local tier) for the named type. 204 on completion; an unknown type throws (500).
+        /// (local tier) for the named type. 204 on completion; 400 when the type is not a cached or registered vault type.
         /// </summary>
         /// <param name="dto">Entry type, group and key.</param>
         /// <param name="ct">Not observed.</param>
@@ -254,8 +281,9 @@ namespace Altruist.Dashboard
             [FromQuery] CacheEntryKeyDto dto,
             CancellationToken ct)
         {
-            var type = Type.GetType(dto.Type, throwOnError: true)
-                       ?? throw new InvalidOperationException($"Unknown type: {dto.Type}");
+            var type = ResolveAllowedType(dto.Type);
+            if (type is null)
+                return BadRequest($"Type '{dto.Type}' is not a cached or registered vault type.");
 
             var method = typeof(ICacheProvider)
                 .GetMethod(nameof(ICacheProvider.RemoveAsync))!

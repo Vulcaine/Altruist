@@ -14,13 +14,14 @@ namespace Altruist.Dashboard
     /// Can list connections (with remote IP addresses) and forcibly disconnect clients or delete rooms.
     /// </summary>
     /// <remarks>
-    /// Unlike the other dashboard controllers this one has no <c>[ConditionalOnConfig("altruist:dashboard:enabled")]</c>
-    /// gate, so it is mapped whenever the <c>Altruist.Dashboard</c> assembly is loaded and MVC discovers it, even with
-    /// the dashboard disabled. No authentication is applied. Requires <see cref="IConnectionManager"/> and
-    /// <see cref="ISocketManager"/> in DI.
+    /// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>; every request must pass the dashboard
+    /// protection (<see cref="DashboardAccessOptions"/>: token, policy, or Development loopback). Requires
+    /// <see cref="IConnectionManager"/> and <see cref="ISocketManager"/> in DI.
     /// </remarks>
     [ApiController]
     [Route("/dashboard/v1/sessions")]
+    [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
+    [ConditionalOnAssembly("Altruist.Dashboard")]
     public sealed class SessionDashboardController : ControllerBase
     {
         private readonly IConnectionManager _connectionManager;

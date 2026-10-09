@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Altruist.Dashboard</PackageId>
+    <!-- Matches [ConditionalOnAssembly("Altruist.Dashboard")] on the world viewer controller/portal. -->
+    <AssemblyName>Altruist.Dashboard</AssemblyName>
+    <RootNamespace>Altruist.Dashboard</RootNamespace>
     <Description>Dashboard module for Altruist framework.</Description>
     <Version>0.9.9-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
@@ -20,6 +23,14 @@
       <!-- e.g. "scene/index.html", "sessions/index.html", "index.csr.html" -->
       <LogicalName>%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- The Angular UI (incl. node_modules, which ships stray .cs files such as node-gyp's Find-VisualStudio.cs)
+       is never C# source. -->
+  <ItemGroup>
+    <Compile Remove="UI\**" />
+    <None Remove="UI\**" />
+    <Content Remove="UI\**" />
   </ItemGroup>
 
   <ItemGroup>

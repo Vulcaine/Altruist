@@ -77,13 +77,24 @@ namespace Altruist
     }
 
     /// <summary>
-    /// Declares that the annotated class should only be active when the named assembly is present.
+    /// Registers the annotated <see cref="ServiceAttribute"/> class, MVC controller or portal only when the named
+    /// assembly is loaded or loadable by the app (i.e. the package is referenced). Multiple attributes must all match.
     /// </summary>
     /// <remarks>
-    /// Note: the DI registration pipeline (<see cref="DependencyResolver.ShouldRegister"/>) does not currently evaluate
-    /// this attribute; it is informational unless a specific discovery path checks it. Use
-    /// <see cref="ConditionalOnConfigAttribute"/> for gating that is enforced.
+    /// Evaluated by <see cref="DependencyResolver.ShouldRegister"/>, so it gates services, controllers (no route) and
+    /// portals alike, together with any <see cref="ConditionalOnConfigAttribute"/> on the same class. Use it for
+    /// optional integrations that live in a framework assembly but only make sense when a companion package is
+    /// installed (e.g. the world viewer endpoints need <c>Altruist.Dashboard</c>); use
+    /// <see cref="ConditionalOnConfigAttribute"/> for switches the app turns on in config. The name is the assembly's
+    /// simple name (<c>AssemblyName</c>), not the NuGet package id when they differ.
     /// </remarks>
+    /// <example>
+    /// <code>
+    /// [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
+    /// [ConditionalOnAssembly("Altruist.Dashboard")]
+    /// public sealed class WorldDashboardController : ControllerBase { ... }
+    /// </code>
+    /// </example>
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class ConditionalOnAssemblyAttribute : Attribute
     {

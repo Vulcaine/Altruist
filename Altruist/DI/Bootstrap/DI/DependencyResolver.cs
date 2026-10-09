@@ -169,7 +169,8 @@ namespace Altruist
         }
 
         /// <summary>
-        /// Return true if the type should be registered given ConditionalOnConfig attributes (gate mode, all must match)
+        /// Return true if the type should be registered given <see cref="ConditionalOnAssemblyAttribute"/> (every named
+        /// assembly loadable), ConditionalOnConfig attributes (gate mode, all must match)
         /// and <see cref="ConditionalOnMissingServiceAttribute"/> (no other active <see cref="ServiceAttribute"/> class provides the service).
         /// </summary>
         /// <param name="t">Candidate type.</param>
@@ -177,6 +178,15 @@ namespace Altruist
         /// <param name="log">Logger for debug messages about failed conditions.</param>
         public static bool ShouldRegister(Type t, IConfiguration cfg, ILogger log)
         {
+            foreach (var asm in t.GetCustomAttributes<ConditionalOnAssemblyAttribute>(false))
+            {
+                if (!IsAssemblyAvailable(asm.AssemblyName))
+                {
+                    log.LogDebug("Skipping {Type}: assembly {Assembly} is not available.", GetCleanName(t), asm.AssemblyName);
+                    return false;
+                }
+            }
+
             var conds = t.GetCustomAttributes<ConditionalOnConfigAttribute>(false).ToArray();
 
             var gatingConds = conds.Where(c => string.IsNullOrEmpty(c.KeyField)).ToArray();
@@ -196,6 +206,42 @@ namespace Altruist
             }
 
             return true;
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> s_assemblyAvailable =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Whether an assembly with simple name <paramref name="assemblyName"/> is loaded or loadable (referenced by the
+        /// app, resolved through its deps). Used by <see cref="ConditionalOnAssemblyAttribute"/>; a positive answer is cached.
+        /// </summary>
+        /// <param name="assemblyName">Simple assembly name, e.g. <c>Altruist.Dashboard</c>.</param>
+        /// <returns>True when the assembly can be used.</returns>
+        public static bool IsAssemblyAvailable(string assemblyName)
+        {
+            if (string.IsNullOrWhiteSpace(assemblyName))
+                return false;
+            if (s_assemblyAvailable.TryGetValue(assemblyName, out var known) && known)
+                return true;
+
+            var found = AppDomain.CurrentDomain.GetAssemblies()
+                .Any(a => string.Equals(a.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
+            if (!found)
+            {
+                try
+                {
+                    found = Assembly.Load(new AssemblyName(assemblyName)) is not null;
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException)
+                {
+                    found = false;
+                }
+            }
+
+            // Only cache hits: an assembly may be loaded later (e.g. a plugin), a miss is re-checked.
+            if (found)
+                s_assemblyAvailable[assemblyName] = true;
+            return found;
         }
 
         private static readonly object s_serviceTypesLock = new();

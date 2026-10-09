@@ -31,9 +31,10 @@ namespace Altruist.Dashboard;
 /// live-editable.
 /// </summary>
 /// <remarks>
-/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication is applied. The summary returns
-/// configuration values verbatim (connection strings and secrets under <c>altruist:</c> included), and the update
-/// endpoints change running configuration; do not expose this publicly.
+/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>; every request must pass the dashboard protection
+/// (<see cref="DashboardAccessOptions"/>). Secret values (keys matching password, secret, token, key, credential or
+/// connection-string, and values that look like connection strings with a password) are returned as <c>***</c>
+/// (<see cref="DashboardAccess.RedactValue"/>). The update endpoints change running configuration (live-editable keys only).
 /// </remarks>
 [ApiController]
 [Route("/dashboard/v1/summary")]
@@ -186,7 +187,7 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         // Set new value -> triggers reload token
         mutableProvider.Set(dto.Key, dto.Value ?? "");
 
-        return Ok(new { Updated = dto.Key, Value = dto.Value });
+        return Ok(new { Updated = dto.Key, Value = DashboardAccess.RedactValue(dto.Key, dto.Value) });
     }
 
     /// <summary>
@@ -257,7 +258,7 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
             .Select(kv => new ConfigEntryDto
             {
                 Key = kv.Key,
-                Value = kv.Value
+                Value = DashboardAccess.RedactValue(kv.Key, kv.Value)
             })
             .ToList();
 

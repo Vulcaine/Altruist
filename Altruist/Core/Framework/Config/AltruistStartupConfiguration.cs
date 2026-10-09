@@ -31,7 +31,10 @@ namespace Altruist
     /// <c>altruist:server:transport:websocket:path</c> (default <c>/ws</c>).</para>
     /// <para>Singleton registrations are copied into the web host as the already-built instances of the bootstrap provider,
     /// so state initialized by <see cref="PostConstructAttribute"/> hooks is shared; controllers and portals gated by
-    /// <see cref="ConditionalOnConfigAttribute"/> get no route. Controllers from every loaded assembly are discovered.</para>
+    /// <see cref="ConditionalOnConfigAttribute"/> (or <see cref="ConditionalOnAssemblyAttribute"/>) get no route. Controllers
+    /// from every loaded assembly are discovered.</para>
+    /// <para>When <c>altruist:dashboard:enabled</c> is true, every dashboard path is guarded by
+    /// <see cref="Dashboard.DashboardAccessMiddleware"/> (see <see cref="Dashboard.DashboardAccessOptions"/>).</para>
     /// </remarks>
     [ServiceConfiguration(order: int.MaxValue)]
     public sealed class AltruistStartupConfiguration : IAltruistConfiguration
@@ -250,6 +253,12 @@ namespace Altruist
             var mvcBuilder = builder.Services.AddControllers();
             var conditionLog = _loggerFactory.CreateLogger<AltruistStartupConfiguration>();
 
+            // Gates ([ConditionalOnConfig] on controllers / portals, the dashboard) read the app's Altruist
+            // configuration (config.yml etc., registered in the bootstrap services). builder.Configuration
+            // only holds the web host's own sources, so gates evaluated against it never saw altruist:* keys.
+            var appConfiguration = sharingProvider.GetService<Microsoft.Extensions.Configuration.IConfiguration>()
+                                   ?? builder.Configuration;
+
             // Automatically register all loaded assemblies that contain MVC controllers
             mvcBuilder.ConfigureApplicationPartManager(apm =>
             {
@@ -293,7 +302,7 @@ namespace Altruist
                 var defaultProvider = apm.FeatureProviders.OfType<ControllerFeatureProvider>().FirstOrDefault();
                 if (defaultProvider is not null)
                     apm.FeatureProviders.Remove(defaultProvider);
-                apm.FeatureProviders.Add(new ConditionalControllerFeatureProvider(builder.Configuration, conditionLog));
+                apm.FeatureProviders.Add(new ConditionalControllerFeatureProvider(appConfiguration, conditionLog));
             });
 
             var app = builder.Build();
@@ -369,6 +378,16 @@ namespace Altruist
                 }
             });
             app.UseAuthentication();
+
+            // Dashboard protection (token / policy / Development loopback): every dashboard path,
+            // whichever assembly maps it, goes through it before any endpoint runs.
+            var dashboardAccess = Dashboard.DashboardAccessOptions.FromConfiguration(appConfiguration);
+            if (dashboardAccess.Enabled)
+            {
+                Dashboard.DashboardAccess.LogStartupStatus(dashboardAccess, app.Environment, logger);
+                app.UseMiddleware<Dashboard.DashboardAccessMiddleware>();
+            }
+
             app.UseAuthorization();
             app.MapControllers();
             app.UseMiddleware<ReadinessMiddleware>();
@@ -387,7 +406,7 @@ namespace Altruist
                     {
                         // Disabled portals get no route: otherwise their path would accept
                         // unauthenticated sockets that can reach every registered gate.
-                        if (!DependencyResolver.ShouldRegister(type, app.Configuration, logger))
+                        if (!DependencyResolver.ShouldRegister(type, appConfiguration, logger))
                             continue;
                         var wsMappedPath = NormalizePath(path);
                         transport.UseTransportEndpoints(app, type, wsMappedPath);

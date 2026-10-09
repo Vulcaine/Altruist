@@ -13,6 +13,9 @@ using System.Text;
 
 using Altruist.Persistence;
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Altruist.Migrations;
 
 /// <summary>Current physical state of one schema as read by <see cref="ISchemaInspector"/>: its tables keyed by name (case-insensitive).</summary>
@@ -108,15 +111,34 @@ public sealed class ColumnModel
     /// <summary>Whether the column allows NULL.</summary>
     public bool IsNullable { get; }
 
-    /// <summary>Creates the model.</summary>
+    /// <summary>
+    /// Whether the database fills the column when an insert omits it (a <c>DEFAULT</c>, an identity or a generated
+    /// column). The planner uses it to decide whether a column the model no longer maps would break inserts:
+    /// a <c>NOT NULL</c> column without a default is relaxed to allow NULL (<see cref="RelaxNotNullOperation"/>).
+    /// Inspectors that do not report it leave it <c>false</c>, which errs on the side of relaxing.
+    /// </summary>
+    public bool HasDefault { get; }
+
+    /// <summary>Creates the model (no default reported).</summary>
     /// <param name="name">Column name.</param>
     /// <param name="storeType">Store type.</param>
     /// <param name="isNullable">Whether NULL is allowed.</param>
     public ColumnModel(string name, string storeType, bool isNullable)
+        : this(name, storeType, isNullable, hasDefault: false)
+    {
+    }
+
+    /// <summary>Creates the model. Use this overload from an inspector that can read column defaults.</summary>
+    /// <param name="name">Column name.</param>
+    /// <param name="storeType">Store type.</param>
+    /// <param name="isNullable">Whether NULL is allowed.</param>
+    /// <param name="hasDefault">Whether the database supplies a value when an insert omits the column (see <see cref="HasDefault"/>).</param>
+    public ColumnModel(string name, string storeType, bool isNullable, bool hasDefault)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         StoreType = storeType ?? throw new ArgumentNullException(nameof(storeType));
         IsNullable = isNullable;
+        HasDefault = hasDefault;
     }
 }
 
@@ -217,17 +239,58 @@ public interface IMigrationPlanner
 /// <item>Tables: archive/drop tables marked <see cref="Altruist.UORM.VaultArchivedAttribute"/> /
 /// <see cref="Altruist.UORM.VaultTableDeleteAttribute"/>; create new tables (with history tables when
 /// <c>StoreHistory</c> is set); diff existing ones (renames from <see cref="Altruist.UORM.VaultRenamedFromAttribute"/>,
-/// type changes, added columns, dropped unmapped columns, unique constraints, indexes, history table).</item>
+/// type changes, added columns, unmapped columns, unique constraints, indexes, history table).</item>
 /// <item>Column copies from <see cref="Altruist.UORM.VaultColumnCopyAttribute"/> (only when the source column exists).</item>
-/// <item>Drops of columns marked <see cref="Altruist.UORM.VaultColumnDeleteAttribute"/> (only when they exist).</item>
+/// <item>Drops of columns marked <see cref="Altruist.UORM.VaultColumnDeleteAttribute"/> /
+/// <see cref="Altruist.UORM.VaultDropColumnAttribute"/> (only when they exist), and, when
+/// <see cref="DropUnmappedColumns"/> is on, of unmapped copy-source columns (after their copy ran).</item>
 /// <item>Foreign keys (add missing, drop stale), after all tables exist.</item>
 /// </list>
-/// Destructive by design: existing columns not mapped by the model are dropped.
+/// <para><b>Unmapped columns are kept by default.</b> A column that exists in the database but is no longer mapped by
+/// the model (removed or renamed without <see cref="Altruist.UORM.VaultRenamedFromAttribute"/>) is not dropped: a
+/// warning lists it, and if it is <c>NOT NULL</c> without a default it is relaxed to allow NULL
+/// (<see cref="RelaxNotNullOperation"/>) so inserts from the model keep working. Drop columns explicitly with
+/// <see cref="Altruist.UORM.VaultDropColumnAttribute"/> on the class (or <see cref="Altruist.UORM.VaultColumnDeleteAttribute"/>
+/// on a kept property), or for every unmapped column with <c>altruist:persistence:migration:drop-unmapped-columns: true</c>
+/// (<see cref="DropUnmappedColumns"/>).</para>
+/// <para>Existing column types are compared through <see cref="StoreTypesMatch"/>, so catalog spellings
+/// (e.g. <c>timestamp without time zone</c>) do not plan a type change for an unchanged model.</para>
 /// </remarks>
 public abstract class AbstractMigrationPlanner : IMigrationPlanner
 {
     /// <summary>Maximum generated constraint name length (kept in sync with <see cref="ConstraintUtil.MaxConstraintNameLength"/>).</summary>
     protected const int MaxConstraintNameLength = 60;
+
+    /// <summary>Config key that turns on dropping of every unmapped column (see <see cref="DropUnmappedColumns"/>).</summary>
+    public const string DropUnmappedColumnsConfigKey = "altruist:persistence:migration:drop-unmapped-columns";
+
+    /// <summary>Logger for planning warnings (unmapped columns kept or relaxed).</summary>
+    protected readonly ILogger Logger;
+
+    /// <summary>
+    /// When <c>true</c>, every database column the model no longer maps is dropped (<see cref="DropColumnOperation"/>,
+    /// data lost) — the behaviour up to 0.9.9-beta. Default <c>false</c>: unmapped columns are kept, listed in a warning and,
+    /// when they are <c>NOT NULL</c> without a default, relaxed to allow NULL. Bound from
+    /// <c>altruist:persistence:migration:drop-unmapped-columns</c> by provider planners. Prefer per-column opt-in with
+    /// <see cref="Altruist.UORM.VaultDropColumnAttribute"/>; turn this on only when the database is owned exclusively by
+    /// the models and every removal is intentional.
+    /// </summary>
+    public bool DropUnmappedColumns { get; }
+
+    /// <summary>Creates a planner that keeps unmapped columns and logs nowhere.</summary>
+    protected AbstractMigrationPlanner()
+        : this(dropUnmappedColumns: false, logger: null)
+    {
+    }
+
+    /// <summary>Creates the planner.</summary>
+    /// <param name="dropUnmappedColumns">See <see cref="DropUnmappedColumns"/>; <c>false</c> keeps unmapped columns.</param>
+    /// <param name="logger">Receives the unmapped-column warnings; null discards them.</param>
+    protected AbstractMigrationPlanner(bool dropUnmappedColumns, ILogger? logger)
+    {
+        DropUnmappedColumns = dropUnmappedColumns;
+        Logger = logger ?? NullLogger.Instance;
+    }
 
     /// <inheritdoc/>
     public IReadOnlyList<MigrationOperation> Plan(
@@ -327,7 +390,8 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
         // ─────────────────────────────────────────────
         foreach (var doc in desiredDocuments)
         {
-            if (doc.DeletedColumns.Count == 0) continue;
+            if (doc.IsTableArchived || doc.IsTableDeleted) continue;
+            if (doc.DeletedColumns.Count == 0 && (!DropUnmappedColumns || doc.CopyFromColumns.Count == 0)) continue;
             var schema = GetSchemaForDocument(doc);
 
             if (!currentBySchema.TryGetValue(schema, out var current))
@@ -341,6 +405,20 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 if (existingTable?.Columns.ContainsKey(colName) == true)
                 {
                     ops.Add(new DeleteMarkedColumnOperation(schema, doc.Name, colName, reason));
+                }
+            }
+
+            // Unmapped copy sources are skipped by the 1st pass (the copy needs them); with global
+            // dropping they go here, after the copy ran.
+            if (DropUnmappedColumns && existingTable is not null)
+            {
+                var mapped = new HashSet<string>(doc.Columns.Values, StringComparer.OrdinalIgnoreCase);
+                foreach (var source in doc.CopyFromColumns.Values.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (mapped.Contains(source) || doc.DeletedColumns.ContainsKey(source)) continue;
+                    if (!existingTable.Columns.ContainsKey(source)) continue;
+                    ops.Add(new DeleteMarkedColumnOperation(schema, doc.Name, source,
+                        $"unmapped copy source ({DropUnmappedColumnsConfigKey})"));
                 }
             }
         }
@@ -420,6 +498,29 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
     /// Store type for the history table's "timestamp" column.
     /// </summary>
     protected virtual string HistoryTimestampStoreType => "timestamp";
+
+    /// <summary>
+    /// Canonical spelling of a store type used for comparisons (default: trimmed, lower-case). Providers override it
+    /// to fold catalog aliases onto the names <see cref="MapClrTypeToStoreType"/> returns (Postgres:
+    /// <c>timestamp without time zone</c> → <c>timestamp</c>, <c>int4</c> → <c>integer</c>, <c>_text</c> → <c>text[]</c>).
+    /// Override when adding a provider whose inspector reports types differently from its type map; otherwise an
+    /// unchanged model plans an <see cref="AlterColumnTypeOperation"/> on every startup.
+    /// </summary>
+    /// <param name="storeType">Store type as reported by the inspector or produced by the type map.</param>
+    /// <returns>The canonical spelling.</returns>
+    protected virtual string NormalizeStoreType(string storeType) =>
+        (storeType ?? string.Empty).Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// Whether an existing column's store type already satisfies the desired one, i.e. no
+    /// <see cref="AlterColumnTypeOperation"/> is needed. Default: equal after <see cref="NormalizeStoreType"/>.
+    /// Override only for catalog types whose exact spelling is unknowable (e.g. a bare <c>ARRAY</c>).
+    /// </summary>
+    /// <param name="existingStoreType">Type reported by the inspector.</param>
+    /// <param name="desiredStoreType">Type from <see cref="MapClrTypeToStoreType"/>.</param>
+    /// <returns><c>true</c> when the types match.</returns>
+    protected virtual bool StoreTypesMatch(string existingStoreType, string desiredStoreType) =>
+        string.Equals(NormalizeStoreType(existingStoreType), NormalizeStoreType(desiredStoreType), StringComparison.Ordinal);
 
     /// <summary>
     /// Computes the schema name for a Document from its [Vault(Keyspace = ...)] header.
@@ -820,7 +921,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             if (!existing.Columns.TryGetValue(col, out var existingCol)) continue;
 
             var desiredStoreType = MapClrTypeToStoreType(clrType);
-            if (!string.Equals(existingCol.StoreType, desiredStoreType, StringComparison.OrdinalIgnoreCase))
+            if (!StoreTypesMatch(existingCol.StoreType, desiredStoreType))
             {
                 ops.Add(new AlterColumnTypeOperation(schemaName, tableName, col,
                     existingCol.StoreType, desiredStoreType));
@@ -841,7 +942,7 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             if (!doc.FieldTypes.TryGetValue(logical, out var clrType)) continue;
 
             var desiredStoreType = MapClrTypeToStoreType(clrType);
-            if (!string.Equals(existingCol.StoreType, desiredStoreType, StringComparison.OrdinalIgnoreCase))
+            if (!StoreTypesMatch(existingCol.StoreType, desiredStoreType))
             {
                 ops.Add(new AlterColumnTypeOperation(schemaName, tableName, newCol,
                     existingCol.StoreType, desiredStoreType));
@@ -894,12 +995,14 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 inlineUniqueCols.Add(col);
         }
 
-        // columns to drop (exclude renamed columns — they were handled above)
-        foreach (var col in existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase)
-                     .Where(c => !renamedOld.Contains(c)))
-        {
-            ops.Add(new DropColumnOperation(schemaName, tableName, col));
-        }
+        // Unmapped columns (exclude renamed columns — handled above — and columns the 3rd pass drops
+        // or copies from). Kept by default; dropped only with DropUnmappedColumns.
+        var copySources = new HashSet<string>(doc.CopyFromColumns.Values, StringComparer.OrdinalIgnoreCase);
+        var unmapped = existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase)
+            .Where(c => !renamedOld.Contains(c) && !doc.DeletedColumns.ContainsKey(c))
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        PlanUnmappedColumns(ops, schemaName, tableName, doc, existing, unmapped, copySources);
 
         // ---------- UNIQUE constraints diff (single + composite) ----------
 
@@ -1067,10 +1170,34 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             ops.Add(new AddColumnOperation(schema, historyTable, def));
         }
 
-        // drop columns
-        foreach (var col in existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase))
+        // Unmapped history columns follow the table's policy: explicitly deleted columns are dropped,
+        // the rest only with DropUnmappedColumns (history columns are created nullable, so keeping
+        // them never breaks inserts).
+        var unmappedHistory = existingCols.Except(desiredCols, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var keptHistory = new List<string>();
+        foreach (var col in unmappedHistory)
         {
-            ops.Add(new DropColumnOperation(schema, historyTable, col));
+            if (DropUnmappedColumns || doc.DeletedColumns.ContainsKey(col))
+                ops.Add(new DropColumnOperation(schema, historyTable, col));
+            else
+                keptHistory.Add(col);
+        }
+        if (keptHistory.Count > 0)
+        {
+            var hist = existingHist.Columns;
+            foreach (var col in keptHistory)
+            {
+                if (hist.TryGetValue(col, out var c) && !c.IsNullable && !c.HasDefault &&
+                    !existingHist.PrimaryKeyColumns.Contains(col, StringComparer.OrdinalIgnoreCase))
+                    ops.Add(new RelaxNotNullOperation(schema, historyTable, col));
+            }
+            Logger.LogWarning(
+                "Migration: history table {Schema}.{Table} has column(s) no longer mapped by {Model}: {Columns}. " +
+                "They are kept (data preserved). Drop them with [VaultDropColumn(\"<name>\")] on the model or " +
+                "set {ConfigKey}: true.",
+                schema, historyTable, doc.Type.Name, string.Join(", ", keptHistory), DropUnmappedColumnsConfigKey);
         }
 
         // ensure indexes on pk columns
@@ -1088,6 +1215,64 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
                 ops.Add(new CreateIndexOperation(schema, historyTable, expectedName, key));
             }
         }
+    }
+
+    /// <summary>
+    /// Plans what happens to columns of an existing table that the model no longer maps. With
+    /// <see cref="DropUnmappedColumns"/> each is dropped (copy sources are left for the 3rd pass so their copy runs
+    /// first). Otherwise each is kept and logged in one warning, and a <c>NOT NULL</c> column without a default that
+    /// is not part of the primary key gets a <see cref="RelaxNotNullOperation"/> so inserts that omit it keep working.
+    /// </summary>
+    /// <param name="ops">Operation list to append to.</param>
+    /// <param name="schema">Table schema.</param>
+    /// <param name="table">Table name.</param>
+    /// <param name="doc">The table's document.</param>
+    /// <param name="existing">Current table state.</param>
+    /// <param name="unmapped">Unmapped columns (already excluding renamed-from and explicitly deleted columns).</param>
+    /// <param name="copySources">Columns some <see cref="Altruist.UORM.VaultColumnCopyAttribute"/> copies from.</param>
+    protected virtual void PlanUnmappedColumns(
+        List<MigrationOperation> ops,
+        string schema,
+        string table,
+        VaultDocument doc,
+        TableModel existing,
+        IReadOnlyList<string> unmapped,
+        IReadOnlySet<string> copySources)
+    {
+        if (unmapped.Count == 0)
+            return;
+
+        if (DropUnmappedColumns)
+        {
+            foreach (var col in unmapped)
+            {
+                if (copySources.Contains(col))
+                    continue; // dropped in the 3rd pass, after the copy
+                ops.Add(new DropColumnOperation(schema, table, col));
+            }
+            return;
+        }
+
+        var relaxed = new List<string>();
+        foreach (var col in unmapped)
+        {
+            if (!existing.Columns.TryGetValue(col, out var c))
+                continue;
+            if (c.IsNullable || c.HasDefault)
+                continue;
+            if (existing.PrimaryKeyColumns.Contains(col, StringComparer.OrdinalIgnoreCase))
+                continue; // cannot be relaxed; the model's key no longer matches the table (warned below)
+            ops.Add(new RelaxNotNullOperation(schema, table, col));
+            relaxed.Add(col);
+        }
+
+        Logger.LogWarning(
+            "Migration: table {Schema}.{Table} has column(s) no longer mapped by {Model}: {Columns}. They are kept " +
+            "(data preserved){Relaxed}. To drop them add [VaultDropColumn(\"<name>\")] to the model (or set " +
+            "{ConfigKey}: true); to keep the data under a new property use [VaultRenamedFrom(\"<old name>\")].",
+            schema, table, doc.Type.Name, string.Join(", ", unmapped),
+            relaxed.Count == 0 ? "" : "; NOT NULL relaxed to allow NULL on: " + string.Join(", ", relaxed),
+            DropUnmappedColumnsConfigKey);
     }
 
     // ---------- helpers ----------

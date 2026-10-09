@@ -252,7 +252,8 @@ namespace Altruist.Migrations.Postgres
         /// <inheritdoc/>
         /// <remarks>
         /// Within one type family (integers, floats, text, timestamps, numeric): <c>ALTER COLUMN ... TYPE ... USING col::type</c>.
-        /// Across families: adds a temporary column, copies with a cast in batches of the configured size, drops the
+        /// Across families: adds a temporary column, copies with a cast in batches of the configured size
+        /// (<see cref="BuildBatchedCopySql"/>), drops the
         /// old column (<c>CASCADE</c>) and renames the temporary one; values that cannot be cast make the migration fail.
         /// </remarks>
         protected override async Task ApplyAlterColumnTypeAsync(string defaultSchema, AlterColumnTypeOperation op)
@@ -276,15 +277,8 @@ namespace Altruist.Migrations.Postgres
                 await _provider.ExecuteAsync(
                     $"ALTER TABLE {tableFqn} ADD COLUMN IF NOT EXISTS {tempCol} {op.NewStoreType};");
 
-                // 2. Batch copy with cast (50K per batch, each batch is a short lock)
-                while (true)
-                {
-                    var affected = await _provider.ExecuteAsync(
-                        $"UPDATE {tableFqn} SET {tempCol} = {colIdent}::{op.NewStoreType} " +
-                        $"WHERE {tempCol} IS NULL AND {colIdent} IS NOT NULL " +
-                        $"LIMIT {_batchSize};");
-                    if (affected <= 0) break;
-                }
+                // 2. Batched copy with cast (bounds the size of each statement)
+                await CopyInBatchesAsync(tableFqn, colIdent, tempCol, op.NewStoreType);
 
                 // 3. Drop old, rename temp
                 await _provider.ExecuteAsync(
@@ -322,7 +316,7 @@ namespace Altruist.Migrations.Postgres
         // --------------------------------
 
         /// <inheritdoc/>
-        /// <remarks>Batched <c>UPDATE target = source::type</c> for rows where the target is null and the source is not.</remarks>
+        /// <remarks>Batched <c>UPDATE target = source::type</c> for rows where the target is null and the source is not (see <see cref="BuildBatchedCopySql"/>).</remarks>
         protected override async Task ApplyCopyColumnDataAsync(string defaultSchema, CopyColumnDataOperation op)
         {
             var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
@@ -330,15 +324,53 @@ namespace Altruist.Migrations.Postgres
             var srcIdent = QuoteIdent(op.SourceColumn);
             var tgtIdent = QuoteIdent(op.TargetColumn);
 
-            // Batched copy with type cast — same pattern as type change migration
+            await CopyInBatchesAsync(tableFqn, srcIdent, tgtIdent, op.TargetStoreType);
+        }
+
+        private async Task CopyInBatchesAsync(string tableFqn, string srcIdent, string tgtIdent, string storeType)
+        {
+            var sql = BuildBatchedCopySql(tableFqn, srcIdent, tgtIdent, storeType, _batchSize);
             while (true)
             {
-                var affected = await _provider.ExecuteAsync(
-                    $"UPDATE {tableFqn} SET {tgtIdent} = {srcIdent}::{op.TargetStoreType} " +
-                    $"WHERE {tgtIdent} IS NULL AND {srcIdent} IS NOT NULL " +
-                    $"LIMIT {_batchSize};");
+                var affected = await _provider.ExecuteAsync(sql);
+                // Every batch only picks rows whose cast is non-null, so updated rows never qualify
+                // again and the loop always terminates (an empty batch means nothing is left).
                 if (affected <= 0) break;
             }
+        }
+
+        /// <summary>
+        /// The statement one batch of a column copy runs. Postgres has no <c>UPDATE ... LIMIT</c>, so a batch selects up
+        /// to <paramref name="batchSize"/> row locations (<c>ctid</c>) whose target is NULL and whose source casts to a
+        /// non-NULL value, and updates those rows. The outer statement re-checks the row conditions, so a row that a
+        /// concurrent writer moved or changed between the sub-select and the update is skipped (picked up by a later
+        /// batch) instead of being overwritten; inside the migration transaction the preceding DDL usually holds the
+        /// table lock anyway. Exposed for tests and for providers deriving the same SQL.
+        /// </summary>
+        /// <param name="tableFqn">Quoted, schema-qualified table.</param>
+        /// <param name="srcIdent">Quoted source column.</param>
+        /// <param name="tgtIdent">Quoted target column.</param>
+        /// <param name="storeType">Target store type used for the cast.</param>
+        /// <param name="batchSize">Maximum rows per statement.</param>
+        /// <returns>The SQL statement.</returns>
+        public static string BuildBatchedCopySql(string tableFqn, string srcIdent, string tgtIdent, string storeType, int batchSize) =>
+            $"UPDATE {tableFqn} SET {tgtIdent} = {srcIdent}::{storeType} " +
+            $"WHERE ctid = ANY(ARRAY(SELECT ctid FROM {tableFqn} " +
+            $"WHERE {tgtIdent} IS NULL AND {srcIdent} IS NOT NULL AND ({srcIdent}::{storeType}) IS NOT NULL " +
+            $"LIMIT {batchSize})) AND {tgtIdent} IS NULL AND {srcIdent} IS NOT NULL;";
+
+        // --------------------------------
+        // RELAX NOT NULL (kept unmapped columns)
+        // --------------------------------
+
+        /// <inheritdoc/>
+        /// <remarks><c>ALTER TABLE ... ALTER COLUMN ... DROP NOT NULL</c>; metadata only, no data changes.</remarks>
+        protected override async Task ApplyRelaxNotNullAsync(string defaultSchema, RelaxNotNullOperation op)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(op.Schema) ? defaultSchema : op.Schema;
+            var tableFqn = $"{QuoteIdent(schemaName)}.{QuoteIdent(op.Table)}";
+            await _provider.ExecuteAsync(
+                $"ALTER TABLE {tableFqn} ALTER COLUMN {QuoteIdent(op.ColumnName)} DROP NOT NULL;");
         }
 
         // --------------------------------

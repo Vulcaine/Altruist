@@ -30,9 +30,9 @@ namespace Altruist.Dashboard;
 /// columns, pages through rows, edits rows by primary key, and runs raw SQL against SQL-backed (PostgreSQL) vaults.
 /// </summary>
 /// <remarks>
-/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication is applied. The query endpoint
-/// executes any SQL text it receives (including DDL and DELETE) on the app's <c>NpgsqlDataSource</c>; never expose the
-/// dashboard to untrusted networks. Row reads and edits go through the registered <see cref="IVault{T}"/>; an unknown
+/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>; every request must pass the dashboard protection
+/// (<see cref="DashboardAccessOptions"/>). The query endpoint executes any SQL text it receives (including DDL and
+/// DELETE) on the app's <c>NpgsqlDataSource</c>, so dashboard access amounts to database admin access. Row reads and edits go through the registered <see cref="IVault{T}"/>; an unknown
 /// <c>typeKey</c> surfaces as the exception thrown by <see cref="VaultRegistry"/> (500).
 /// </remarks>
 [ApiController]

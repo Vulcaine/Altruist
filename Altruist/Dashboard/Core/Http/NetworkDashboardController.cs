@@ -495,7 +495,7 @@ public sealed class DashboardNetworkRecorder : IDashboardNetworkRecorder
 
 /// <summary>
 /// Dashboard API for recorded network traffic (route <c>/dashboard/v1/network</c>). Only mapped when
-/// <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication is applied.
+/// <c>altruist:dashboard:enabled</c> is <c>true</c>; requests must pass the dashboard protection (<see cref="DashboardAccessOptions"/>).
 /// </summary>
 [ApiController]
 [Route("/dashboard/v1/network")]
@@ -533,7 +533,7 @@ public sealed class NetworkDashboardController : ControllerBase
 
 /// <summary>
 /// Dashboard API for latency statistics (route <c>/dashboard/v1/performance</c>), computed from the events of
-/// <see cref="DashboardNetworkRecorder"/>. Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>. No authentication.
+/// <see cref="DashboardNetworkRecorder"/>. Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c>; requests must pass the dashboard protection.
 /// </summary>
 [ApiController]
 [Route("/dashboard/v1/performance")]

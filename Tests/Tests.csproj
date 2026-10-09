@@ -71,6 +71,7 @@
     <ProjectReference Include="..\Altruist\Postgres\Postgres.csproj" />
     <ProjectReference Include="..\Altruist\ScyllaDB\ScyllaDB.csproj" />
     <ProjectReference Include="..\Altruist\Web\Web.csproj" />
+    <ProjectReference Include="..\Altruist\Dashboard\Dashboard.csproj" />
   </ItemGroup>
 
 </Project>

@@ -251,6 +251,44 @@ public class VaultColumnDeleteAttribute : Attribute
 }
 
 /// <summary>
+/// Drops a database column that the model no longer has a property for. Put it on the vault class, once per column;
+/// the migration drops the column (data lost) if it exists, after any <see cref="VaultColumnCopyAttribute"/> copy.
+/// </summary>
+/// <remarks>
+/// <para>Since unmapped columns are kept by default (the planner only warns and, for a <c>NOT NULL</c> column without a
+/// default, relaxes it to allow NULL), this is the explicit opt-in to remove one. Use it when you deleted the property;
+/// use <see cref="VaultColumnDeleteAttribute"/> instead when you want to keep the property in code as history, and
+/// <see cref="VaultRenamedFromAttribute"/> when the data should survive under a new name. To drop every unmapped column
+/// of every model, set <c>altruist:persistence:migration:drop-unmapped-columns: true</c>.</para>
+/// <para>The name is the physical column name. Naming a column the model still maps fails when the model is read.</para>
+/// </remarks>
+/// <example>
+/// <code>
+/// [Vault("player")]
+/// [VaultDropColumn("legacy_score", "Replaced by rating in v2.4")]
+/// public sealed class Player : VaultModel { ... }
+/// </code>
+/// </example>
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+public class VaultDropColumnAttribute : Attribute
+{
+    /// <summary>Physical column name to drop.</summary>
+    public string ColumnName { get; }
+    /// <summary>Human-readable reason, kept for documentation and migration logs.</summary>
+    public string Reason { get; }
+    /// <summary>Marks <paramref name="columnName"/> for dropping.</summary>
+    /// <param name="columnName">Physical column name.</param>
+    /// <param name="reason">Why the column was removed (optional).</param>
+    public VaultDropColumnAttribute(string columnName, string reason = "")
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+            throw new ArgumentException("Column name is required.", nameof(columnName));
+        ColumnName = columnName;
+        Reason = reason ?? "";
+    }
+}
+
+/// <summary>
 /// Names the property used as the table's sorting column. SQL migrations create an index on it (unless it is
 /// already a primary or single-column unique key). It does not order query results; use
 /// <see cref="IVault{TVaultModel}.OrderBy{TKey}"/> for that.
