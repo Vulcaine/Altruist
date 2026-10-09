@@ -52,13 +52,10 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
 
     /// <summary>
     /// Builds a BEPU mesh from the given <see cref="HeightfieldData"/>: two triangles per grid cell, vertex
-    /// <c>(x, z)</c> at <c>(x * CellSizeX, Heights[x, z], z * CellSizeZ)</c>.
+    /// <c>(x, z)</c> at <c>(x * CellSizeX, Heights[x, z] * HeightScale, z * CellSizeZ)</c>, the same surface that
+    /// <see cref="HeightfieldDataExtensions.SampleHeight"/> samples.
     /// </summary>
-    /// <remarks>
-    /// Note: the current implementation uses the raw <c>Heights</c> values and does not multiply by
-    /// <see cref="HeightfieldData.HeightScale"/> (unlike <see cref="HeightfieldDataExtensions.SampleHeight"/>), so loaders
-    /// whose data relies on a scale other than 1 produce a flatter mesh. Allocates the triangle buffer from <paramref name="pool"/>.
-    /// </remarks>
+    /// <remarks>Allocates the triangle buffer from <paramref name="pool"/>.</remarks>
     /// <param name="hf">Height samples (at least 2×2).</param>
     /// <param name="pool">Buffer pool that will own the mesh's triangles.</param>
     public Mesh LoadHeightmapMesh(HeightfieldData hf, BufferPool pool)
@@ -70,8 +67,6 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
         float cellSizeZ = hf.CellSizeZ;
 
         int quadCount = (width - 1) * (length - 1);
-
-        // 2 triangles per quad, and we add both windings => 4 triangles per quad
         int triangleCount = quadCount * 2;
 
         pool.Take(triangleCount, out Buffer<Triangle> triangles);
@@ -82,39 +77,25 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
         {
             for (int x = 0; x < width - 1; x++)
             {
-                float h00 = hf.Heights[x, z];
-                float h10 = hf.Heights[x + 1, z];
-                float h01 = hf.Heights[x, z + 1];
-                float h11 = hf.Heights[x + 1, z + 1];
+                float h00 = hf.Heights[x, z] * hf.HeightScale;
+                float h10 = hf.Heights[x + 1, z] * hf.HeightScale;
+                float h01 = hf.Heights[x, z + 1] * hf.HeightScale;
+                float h11 = hf.Heights[x + 1, z + 1] * hf.HeightScale;
 
                 var v00 = new Vector3(x * cellSizeX, h00, z * cellSizeZ);
                 var v10 = new Vector3((x + 1) * cellSizeX, h10, z * cellSizeZ);
                 var v01 = new Vector3(x * cellSizeX, h01, (z + 1) * cellSizeZ);
                 var v11 = new Vector3((x + 1) * cellSizeX, h11, (z + 1) * cellSizeZ);
 
-                // Triangle 0 (one winding)
-                // ref var t0 = ref triangles[triIndex++];
-                // t0.A = v00;
-                // t0.B = v01;
-                // t0.C = v10;
+                ref var t0 = ref triangles[triIndex++];
+                t0.A = v00;
+                t0.B = v10;
+                t0.C = v01;
 
-                // Triangle 0 (reverse winding)
-                ref var t0r = ref triangles[triIndex++];
-                t0r.A = v00;
-                t0r.B = v10;
-                t0r.C = v01;
-
-                // Triangle 1 (one winding)
-                // ref var t1 = ref triangles[triIndex++];
-                // t1.A = v10;
-                // t1.B = v01;
-                // t1.C = v11;
-
-                // Triangle 1 (reverse winding)
-                ref var t1r = ref triangles[triIndex++];
-                t1r.A = v10;
-                t1r.B = v11;
-                t1r.C = v01;
+                ref var t1 = ref triangles[triIndex++];
+                t1.A = v10;
+                t1.B = v11;
+                t1.C = v01;
             }
         }
 
