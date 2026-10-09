@@ -42,8 +42,9 @@ namespace Altruist.Physx
     /// <list type="bullet">
     /// <item><c>TPayload</c> is a concrete (non-abstract) class assignable to or from <see cref="EventType"/>.</item>
     /// <item><c>TA</c> and <c>TB</c> are concrete (non-abstract) classes; they select which entity pair the handler
-    /// receives. The registry is keyed by the <b>exact</b> runtime types, and the pair is registered both ways
-    /// round, so a handler for <c>(TA, TB)</c> also fires for a <c>(TB, TA)</c> contact (the dispatcher reorders arguments).</item>
+    /// receives. A handler fires for any pair whose runtime types are assignable to <c>TA</c> and <c>TB</c> (so a handler
+    /// for a base class also receives derived types), in either order: a handler for <c>(TA, TB)</c> also fires for a
+    /// <c>(TB, TA)</c> contact (the dispatcher reorders arguments).</item>
     /// <item>The return type is <see langword="void"/>.</item>
     /// </list>
     /// Violations throw <see cref="InvalidOperationException"/> during startup. The attribute may be applied

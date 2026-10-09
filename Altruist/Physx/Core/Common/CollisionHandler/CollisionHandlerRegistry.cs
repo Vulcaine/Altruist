@@ -19,12 +19,15 @@ namespace Altruist.Physx
         /// </summary>
         /// <param name="assemblies">Assemblies to scan.</param>
         /// <param name="instanceFactory">
-        /// Resolver for handler instances, e.g. <c>type =&gt; serviceProvider.GetService(type)</c>. When it returns
-        /// <see langword="null"/> the method falls back to <see cref="Activator.CreateInstance(Type)"/> (requires a public parameterless constructor).
+        /// Resolver for handler instances, e.g. <c>type =&gt; serviceProvider.GetService(type)</c>, or
+        /// <c>Activator.CreateInstance</c> for handlers with a public parameterless constructor.
         /// </param>
         /// <param name="logger">Logger for diagnostics.</param>
         /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
-        /// <exception cref="InvalidOperationException">A handler method has an invalid signature (see <see cref="CollisionEventAttribute"/>).</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <paramref name="instanceFactory"/> returned <see langword="null"/> for a handler type, or a handler method has an
+        /// invalid signature (see <see cref="CollisionEventAttribute"/>).
+        /// </exception>
         /// <example>
         /// <code>
         /// CollisionHandlerDiscovery.RegisterCollisionHandlers(
@@ -45,32 +48,21 @@ namespace Altruist.Physx
 
             var handlerTypes = TypeDiscovery.FindTypesWithAttribute<CollisionHandlerAttribute>(assemblies);
 
-            foreach (var handlerType in handlerTypes)
-            {
-                object? instance = instanceFactory(handlerType)
-                                   ?? Activator.CreateInstance(handlerType);
-
-                if (instance is null)
-                {
-                    logger.LogWarning("⚠️ Could not create instance of collision handler type {Type}. Skipping.",
-                        handlerType.FullName);
-                    continue;
-                }
-
-                RegisterCollisionMethodsFromInstance(instance, logger);
-            }
+            RegisterCollisionHandlerTypes(handlerTypes, instanceFactory, logger);
         }
 
         /// <summary>
         /// Registers the <see cref="CollisionEventAttribute"/> methods of an explicit list of handler types (no assembly
-        /// scan). Unlike <see cref="RegisterCollisionHandlers"/> there is no <see cref="Activator"/> fallback: types the
-        /// factory cannot resolve are logged and skipped. Does not clear the registry first.
+        /// scan; <see cref="RegisterCollisionHandlers"/> scans and then calls this). Does not clear the registry first.
         /// </summary>
         /// <param name="handlerTypes">Handler classes to register.</param>
         /// <param name="instanceFactory">Resolver for handler instances, typically the DI root provider.</param>
         /// <param name="logger">Logger for diagnostics.</param>
         /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
-        /// <exception cref="InvalidOperationException">A handler method has an invalid signature (see <see cref="CollisionEventAttribute"/>).</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <paramref name="instanceFactory"/> returned <see langword="null"/> for a handler type, or a handler method has an
+        /// invalid signature (see <see cref="CollisionEventAttribute"/>).
+        /// </exception>
         public static void RegisterCollisionHandlerTypes(
             IEnumerable<Type> handlerTypes,
             Func<Type, object?> instanceFactory,
@@ -85,14 +77,9 @@ namespace Altruist.Physx
 
             foreach (var handlerType in handlerTypes)
             {
-                object? instance = instanceFactory(handlerType);
-
-                if (instance is null)
-                {
-                    logger.LogWarning("Could not resolve collision handler type {Type}. Skipping.",
-                        handlerType.FullName);
-                    continue;
-                }
+                var instance = instanceFactory(handlerType)
+                    ?? throw new InvalidOperationException(
+                        $"The instance factory returned null for collision handler type {handlerType.FullName}.");
 
                 RegisterCollisionMethodsFromInstance(instance, logger);
             }
