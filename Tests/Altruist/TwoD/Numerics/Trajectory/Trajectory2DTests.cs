@@ -61,4 +61,35 @@ public class Trajectory2DTests
             if (dest[i].Y > maxY) maxY = dest[i].Y;
         maxY.Should().BeApproximately(5f, Eps);
     }
+
+    [Theory]
+    [InlineData(0.1f, 0.28f, 0.55f)]
+    [InlineData(0.4f, 0.28f, 0.55f)]
+    [InlineData(0.8f, 0.28f, 0.55f)]
+    [InlineData(0.5f, 0f, 1f)]
+    [InlineData(0.3f, 0.6f, 0.2f)]
+    [InlineData(-0.5f, 0.28f, 0.55f)]
+    [InlineData(1.5f, 0.28f, 0.55f)]
+    public void ParabolicSample_mirrors_the_3D_arc(float t, float riseEndN, float hangEndN)
+    {
+        var s2 = new Vector2(1f, 2f);
+        var e2 = new Vector2(9f, -3f);
+        var s3 = new Vector3(s2.X, s2.Y, 0f);
+        var e3 = new Vector3(e2.X, e2.Y, 0f);
+
+        var sample = Trajectory2D.ParabolicSample(s2, e2, t, 4f, riseEndN, hangEndN);
+        var sample3 = global::Altruist.ThreeD.Numerics.Trajectory.Trajectory3D.ParabolicSample(s3, e3, t, 4f, riseEndN, hangEndN);
+
+        sample.X.Should().Be(sample3.X);
+        sample.Y.Should().Be(sample3.Y);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void ParabolicPolyline_rejects_too_small_dest_like_3D(int length)
+    {
+        var act = () => Trajectory2D.ParabolicPolyline(Vector2.Zero, Vector2.One, 1f, 0.3f, 0.6f, new Vector2[length]);
+        act.Should().Throw<ArgumentException>();
+    }
 }
