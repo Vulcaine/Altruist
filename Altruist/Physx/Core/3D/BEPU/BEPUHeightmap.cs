@@ -58,7 +58,16 @@ public sealed class BepuHeightmapLoader : IHeightmapLoader3D
     /// <remarks>Allocates the triangle buffer from <paramref name="pool"/>.</remarks>
     /// <param name="hf">Height samples (at least 2×2).</param>
     /// <param name="pool">Buffer pool that will own the mesh's triangles.</param>
-    public Mesh LoadHeightmapMesh(HeightfieldData hf, BufferPool pool)
+    public Mesh LoadHeightmapMesh(HeightfieldData hf, BufferPool pool) => BepuHeightfieldMesh.Create(hf, pool);
+}
+
+/// <summary>Pure heightfield-to-mesh conversion shared by <see cref="BepuHeightmapLoader"/> and <see cref="BepuWorldEngine3D"/>.</summary>
+internal static class BepuHeightfieldMesh
+{
+    /// <summary>See <see cref="BepuHeightmapLoader.LoadHeightmapMesh"/>.</summary>
+    /// <param name="hf">Height samples (at least 2×2).</param>
+    /// <param name="pool">Buffer pool that will own the mesh's triangles.</param>
+    public static Mesh Create(HeightfieldData hf, BufferPool pool)
     {
         int width = hf.Width;
         int length = hf.Height;

@@ -166,7 +166,7 @@ namespace Altruist.Gaming.ThreeD
                 PhysxWorld3D? physxWorld = null;
                 if (_physicsEnabled && _engineFactory != null)
                 {
-                    var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
+                    var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
                     physxWorld = new PhysxWorld3D(engine);
                 }
 
@@ -195,7 +195,7 @@ namespace Altruist.Gaming.ThreeD
             PhysxWorld3D? physxWorld = null;
             if (_physicsEnabled && _engineFactory != null)
             {
-                var engine = _engineFactory.GetExistingOrCreate(index.Gravity, index.FixedDeltaTime);
+                var engine = _engineFactory.Create(index.Gravity, index.FixedDeltaTime);
                 physxWorld = new PhysxWorld3D(engine);
             }
 

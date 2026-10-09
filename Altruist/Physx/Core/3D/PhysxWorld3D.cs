@@ -9,7 +9,7 @@ namespace Altruist.Physx.ThreeD;
 /// </summary>
 /// <example>
 /// <code>
-/// var world = new PhysxWorld3D(engineFactory.GetExistingOrCreate(new Vector3(0, -9.81f, 0)));
+/// var world = new PhysxWorld3D(engineFactory.Create(new Vector3(0, -9.81f, 0)));
 /// world.AddBody(body);
 /// world.Step(deltaSeconds);                 // fixed-step accumulator inside the engine
 /// var hit = world.RayCast(new PhysxRay3D(from, to)).FirstOrDefault();
@@ -48,6 +48,6 @@ public sealed class PhysxWorld3D : IPhysxWorld3D, IDisposable
     public IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1)
         => _engine.RayCast(ray, maxHits);
 
-    /// <summary>Disposes the wrapped engine (which may be shared through the factory cache).</summary>
+    /// <summary>Disposes the wrapped engine.</summary>
     public void Dispose() => _engine.Dispose();
 }

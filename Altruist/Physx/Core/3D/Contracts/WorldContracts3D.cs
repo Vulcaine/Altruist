@@ -6,7 +6,7 @@ namespace Altruist.Physx.ThreeD
 {
     /// <summary>
     /// Backend-specific 3D simulation (e.g. <see cref="BepuWorldEngine3D"/>). Obtain one from
-    /// <see cref="IPhysxWorldEngineFactory3D.GetExistingOrCreate"/>; wrap it in <see cref="PhysxWorld3D"/> for the
+    /// <see cref="IPhysxWorldEngineFactory3D.Create"/>; wrap it in <see cref="PhysxWorld3D"/> for the
     /// engine-agnostic <see cref="IPhysxWorld3D"/> surface.
     /// </summary>
     /// <remarks>Units are world units and seconds; gravity is a per-second acceleration vector (typically −Y).</remarks>
@@ -70,22 +70,22 @@ namespace Altruist.Physx.ThreeD
             uint layerMask = 0xFFFFFFFFu);
     }
 
-    /// <summary>Creates (and caches) 3D world engines. Registered in DI by the active backend (BEPU: <see cref="BepuWorldEngineFactory3D"/>).</summary>
+    /// <summary>Creates 3D world engines. Registered in DI by the active backend (BEPU: <see cref="BepuWorldEngineFactory3D"/>).</summary>
     public interface IPhysxWorldEngineFactory3D
     {
         /// <summary>
-        /// Returns the cached engine for this exact <paramref name="gravity"/>/<paramref name="fixedDeltaTime"/> pair,
-        /// or creates one. Note that two callers asking for the same parameters share the same engine instance.
+        /// Creates a new, independent engine. Each world needs its own engine: engines are never shared or reused, and the
+        /// caller (typically through <see cref="PhysxWorld3D"/>) owns and disposes it.
         /// </summary>
         /// <param name="gravity">Gravity acceleration in world units per second² (e.g. <c>new Vector3(0, -9.81f, 0)</c>).</param>
         /// <param name="fixedDeltaTime">Fixed sub-step in seconds; non-positive, NaN or infinite values fall back to 1/60.</param>
         /// <example>
         /// <code>
-        /// var engine = engineFactory.GetExistingOrCreate(new Vector3(0, -9.81f, 0));
+        /// var engine = engineFactory.Create(new Vector3(0, -9.81f, 0));
         /// var world  = new PhysxWorld3D(engine);
         /// </code>
         /// </example>
-        IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f);
+        IPhysxWorldEngine3D Create(Vector3 gravity, float fixedDeltaTime = 1f / 60f);
     }
 
     /// <summary>Engine-agnostic 3D world facade (implemented by <see cref="PhysxWorld3D"/>) over an <see cref="IPhysxWorldEngine3D"/>.</summary>

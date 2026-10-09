@@ -21,60 +21,16 @@ using BepuUtilities.Memory;
 
 namespace Altruist.Physx.ThreeD
 {
-    /// <summary>Cache key used by <see cref="BepuWorldEngineFactory3D"/>: engines are shared per exact (gravity, fixed step) pair.</summary>
-    public struct WorldEngineCacheKey
-    {
-        /// <summary>Gravity acceleration in units per second².</summary>
-        public Vector3 Gravity;
-        /// <summary>Fixed sub-step in seconds.</summary>
-        public float FixedDeltaTime;
-
-        /// <summary>Creates a key.</summary>
-        /// <param name="gravity">Gravity acceleration.</param>
-        /// <param name="fixedDeltaTime">Fixed sub-step in seconds.</param>
-        public WorldEngineCacheKey(Vector3 gravity, float fixedDeltaTime)
-        {
-            Gravity = gravity;
-            FixedDeltaTime = fixedDeltaTime;
-        }
-    }
-
     /// <summary>
-    /// BEPU implementation of <see cref="IPhysxWorldEngineFactory3D"/>, registered in DI as a singleton. Creates
-    /// <see cref="BepuWorldEngine3D"/> instances and caches them by (gravity, fixed step).
+    /// BEPU implementation of <see cref="IPhysxWorldEngineFactory3D"/>, registered in DI as a stateless singleton. Every
+    /// <see cref="Create"/> call returns a new, independent <see cref="BepuWorldEngine3D"/>.
     /// </summary>
-    /// <remarks>
-    /// The cache is a plain dictionary (not thread-safe) and never evicts: engines disposed by their owners stay cached
-    /// and would be returned again. Request engines from a single thread, typically during world loading.
-    /// </remarks>
     [Service(typeof(IPhysxWorldEngineFactory3D))]
     public sealed class BepuWorldEngineFactory3D : IPhysxWorldEngineFactory3D
     {
-        private readonly Dictionary<WorldEngineCacheKey, IPhysxWorldEngine3D> _cache = new();
-
-        private readonly BepuHeightmapLoader _heightmapLoader;
-
-        /// <summary>Creates the factory.</summary>
-        /// <param name="heightmapLoader">Loader used by created engines to build heightfield meshes.</param>
-        public BepuWorldEngineFactory3D(BepuHeightmapLoader heightmapLoader)
-        {
-            this._heightmapLoader = heightmapLoader;
-        }
-
         /// <inheritdoc/>
-        public IPhysxWorldEngine3D GetExistingOrCreate(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
-        {
-            if (fixedDeltaTime <= 0f || float.IsNaN(fixedDeltaTime) || float.IsInfinity(fixedDeltaTime))
-                fixedDeltaTime = 1f / 60f;
-
-            var key = new WorldEngineCacheKey(gravity, fixedDeltaTime);
-            if (_cache.TryGetValue(key, out var existing))
-                return existing;
-
-            var created = new BepuWorldEngine3D(_heightmapLoader, gravity, fixedDeltaTime);
-            _cache[key] = created;
-            return created;
-        }
+        public IPhysxWorldEngine3D Create(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
+            => new BepuWorldEngine3D(gravity, fixedDeltaTime);
     }
 
     /// <summary>
@@ -112,8 +68,6 @@ namespace Altruist.Physx.ThreeD
             }
         }
 
-        private readonly BepuHeightmapLoader _heightmapLoader;
-
         internal Simulation Simulation => _simulation;
 
         private readonly Simulation _simulation;
@@ -127,15 +81,11 @@ namespace Altruist.Physx.ThreeD
 
         private volatile bool _disposed;
 
-        /// <summary>Creates an engine with its own buffer pool and simulation. Prefer <see cref="IPhysxWorldEngineFactory3D.GetExistingOrCreate"/>.</summary>
-        /// <param name="heightmapLoader">Builds meshes for heightfield colliders.</param>
+        /// <summary>Creates an engine with its own buffer pool and simulation. In DI-built code prefer <see cref="IPhysxWorldEngineFactory3D.Create"/>.</summary>
         /// <param name="gravity">Gravity acceleration in units per second².</param>
         /// <param name="fixedDeltaTime">Fixed timestep in seconds; non-positive, NaN or infinite values fall back to 1/60.</param>
-        public BepuWorldEngine3D(
-            BepuHeightmapLoader heightmapLoader,
-            Vector3 gravity, float fixedDeltaTime = 1f / 60f)
+        public BepuWorldEngine3D(Vector3 gravity, float fixedDeltaTime = 1f / 60f)
         {
-            this._heightmapLoader = heightmapLoader;
             if (fixedDeltaTime <= 0f || float.IsNaN(fixedDeltaTime) || float.IsInfinity(fixedDeltaTime))
                 fixedDeltaTime = 1f / 60f;
 
@@ -580,7 +530,7 @@ namespace Altruist.Physx.ThreeD
                     {
                         if (c.Heightfield is { } hf)
                         {
-                            var mesh = _heightmapLoader.LoadHeightmapMesh(hf, _simulation.BufferPool);
+                            var mesh = BepuHeightfieldMesh.Create(hf, _simulation.BufferPool);
                             return _simulation.Shapes.Add(mesh);
                         }
 
