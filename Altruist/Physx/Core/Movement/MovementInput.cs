@@ -95,6 +95,6 @@ public abstract class MovementPhysxInput
     public float Acceleration { get; set; }
     /// <summary>Speed lost per second while decelerating (units/s²).</summary>
     public float Deceleration { get; set; }
-    /// <summary>Tick length in seconds. Defaults to 1, so set it explicitly for frame-rate-independent results.</summary>
-    public float DeltaTime { get; set; } = 1.0f;
+    /// <summary>Tick length in seconds. Required: there is no sensible default tick length.</summary>
+    public required float DeltaTime { get; set; }
 }

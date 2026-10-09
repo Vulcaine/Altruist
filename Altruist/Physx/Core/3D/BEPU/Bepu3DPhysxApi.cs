@@ -10,7 +10,7 @@ namespace Altruist.Physx.ThreeD;
 /// </summary>
 /// <remarks>
 /// Stateless: every call goes through the body's own properties or <see cref="IPhysxBody.ApplyForce"/>, so it also works
-/// with non-BEPU bodies such as <see cref="InMemoryPhysxBody3D"/> (which ignores forces and impulses).
+/// with non-BEPU bodies such as <see cref="InMemoryPhysxBody3D"/> (which honours impulses and velocities but rejects forces and torques).
 /// </remarks>
 [Service(typeof(IPhysxApiProvider3D))]
 [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]

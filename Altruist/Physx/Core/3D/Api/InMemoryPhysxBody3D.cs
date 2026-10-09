@@ -11,8 +11,9 @@ namespace Altruist.Physx.ThreeD;
 /// </summary>
 /// <remarks>
 /// Plain auto-properties: nothing integrates velocity or gravity, so the owner must move <see cref="Position"/> itself.
-/// <see cref="ApplyForce"/> only honours the set-velocity commands; forces, impulses and torques are ignored.
-/// Not thread-safe.
+/// <see cref="ApplyForce"/> honours the set-velocity commands and linear impulses (a dynamic body's velocity changes by
+/// <c>impulse / Mass</c>; static and kinematic bodies have infinite mass and are unaffected). Continuous forces and
+/// torques need a simulation step and inertia, which this body does not have, so they throw. Not thread-safe.
 /// </remarks>
 public sealed class InMemoryPhysxBody3D : IPhysxBody3D
 {
@@ -89,10 +90,16 @@ public sealed class InMemoryPhysxBody3D : IPhysxBody3D
         => (uint)index < (uint)_colliders.Count ? _colliders[index] : null;
 
     /// <summary>
-    /// Applies only <see cref="PhysxForce.Kind.SetLinearVelocity3D"/> and <see cref="PhysxForce.Kind.SetAngularVelocity3D"/>;
-    /// every other kind is silently ignored.
+    /// Executes a 3D command: set-velocity kinds overwrite the velocity; <see cref="PhysxForce.Kind.AddImpulse3D"/> adds
+    /// <c>impulse / Mass</c> to a dynamic body's linear velocity (no effect on static or kinematic bodies). 2D kinds are
+    /// ignored, as on every 3D body.
     /// </summary>
     /// <param name="force">Force command.</param>
+    /// <exception cref="NotSupportedException">
+    /// <see cref="PhysxForce.Kind.AddForce3D"/> or <see cref="PhysxForce.Kind.AddTorque3D"/>: without a physics simulation
+    /// there is no step to integrate a force over and no inertia for a torque. Use an impulse or set the velocity instead.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">An impulse is applied to a dynamic body whose <see cref="Mass"/> is not positive.</exception>
     public void ApplyForce(in PhysxForce force)
     {
         switch (force.Type)
@@ -103,6 +110,24 @@ public sealed class InMemoryPhysxBody3D : IPhysxBody3D
             case PhysxForce.Kind.SetAngularVelocity3D:
                 AngularVelocity = force.Vector;
                 break;
+            case PhysxForce.Kind.AddImpulse3D:
+                LinearVelocity += force.Vector * InverseMass();
+                break;
+            case PhysxForce.Kind.AddForce3D:
+            case PhysxForce.Kind.AddTorque3D:
+                throw new NotSupportedException(
+                    $"{nameof(InMemoryPhysxBody3D)} has no physics simulation, so it cannot apply {force.Type}; apply an impulse or set the velocity instead.");
         }
+    }
+
+    private float InverseMass()
+    {
+        if (Type != PhysxBodyType.Dynamic)
+            return 0f;
+
+        if (!(Mass > 0f))
+            throw new InvalidOperationException($"Dynamic body '{Id}' needs a positive mass to receive an impulse (Mass = {Mass}).");
+
+        return 1f / Mass;
     }
 }
