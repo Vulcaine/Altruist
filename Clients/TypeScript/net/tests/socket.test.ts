@@ -107,6 +107,7 @@ describe('AltruistSocket', () => {
   it('connects with a fresh URL, sends the hello, dispatches frames', async (t) => {
     const { socket, states } = await connected(t);
     assert.equal(last().url, 'wss://game.test/play?ticket=t1');
+    assert.equal(socket.url, 'wss://game.test/play?ticket=t1');
     assert.equal(last().binaryType, 'arraybuffer');
     assert.deepEqual(last().events, ['connect']);
     assert.equal(socket.state, 'open');
@@ -234,6 +235,7 @@ describe('AltruistSocket', () => {
     const second = last();
     assert.equal(second.url, 'wss://game.test/play?ticket=t2&node=n2');
     second.open();
+    assert.equal(socket.url, second.url);
     await flush();
     assert.equal(first.closedWith, 1000);
     assert.deepEqual(second.events, ['redirect']);

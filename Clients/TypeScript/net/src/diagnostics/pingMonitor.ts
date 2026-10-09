@@ -12,6 +12,12 @@
  * The reading is the median of the last `window` samples, so one slow request does not flash red,
  * bucketed into {@link PingQuality}. Timers are only armed while someone polls.
  *
+ * **Paths**: when the client can reach the server more than one way (a direct game host and the
+ * page's own origin through a CDN, see `EndpointFailover`), pick the HTTP target per measurement
+ * with the `target` option and label socket samples with the path their socket took: samples of
+ * different paths never share a window, the reading names its `path`, and `onTargetFailed` can
+ * mark a failed primary down and retry the measurement on the next target at once.
+ *
  * Use one instance per app. For server-time estimates use {@link ClockSync}; this class only measures delay.
  */
 import { Emitter } from '../util/emitter.ts';
@@ -20,6 +26,12 @@ import { Emitter } from '../util/emitter.ts';
 export type PingQuality = 'good' | 'ok' | 'bad' | 'offline' | 'unknown';
 /** Where the latest sample came from. */
 export type PingSource = 'http' | 'socket';
+
+/** Where one HTTP ping goes, and the network path it measures (null: a single, unnamed path). */
+export interface PingTarget {
+  url: string;
+  path: string | null;
+}
 
 /** The current reading. */
 export interface PingReading {
@@ -31,12 +43,22 @@ export interface PingReading {
   at: number;
   /** Median share of `ms` a {@link NetConditioner} simulated (0 when off): `ms - simMs` ≈ the real network. */
   simMs: number;
+  /** Network path of the samples (see {@link PingTarget}); null before the first or when unnamed. */
+  path: string | null;
 }
 
 /** Options of {@link PingMonitor}. All times in ms. */
 export interface PingMonitorOptions {
   /** HTTP ping URL (default `/api/ping`); a `?n=` counter is appended per request. */
   url?: string;
+  /** Picks the HTTP target per measurement (overrides `url`), e.g. the direct host while it is up. */
+  target?: () => PingTarget;
+  /**
+   * A measurement at `target` failed (no answer, or an error status other than 429). Return true
+   * when that changed the next target (e.g. `EndpointFailover.markDown()` for a failed primary):
+   * the measurement is then retried there once before the reading goes offline. Default: no retry.
+   */
+  onTargetFailed?: (target: PingTarget) => boolean;
   /** Up to this RTT counts as `good` (default 70). */
   goodMs?: number;
   /** Above this RTT counts as `bad` (default 140). */
@@ -85,6 +107,7 @@ export class PingMonitor {
   private samples: number[] = [];
   private sims: number[] = [];
   private source: PingSource | null = null;
+  private path: string | null = null;
   private offline = false;
   private at = 0;
   private lastSocket = -Infinity;
@@ -95,7 +118,7 @@ export class PingMonitor {
   private sent = 0;
   private coldSample = false;
   private seq = 0;
-  private readonly o: Required<Omit<PingMonitorOptions, 'fetch'>> & Pick<PingMonitorOptions, 'fetch'>;
+  private readonly o: Required<Omit<PingMonitorOptions, 'fetch' | 'target' | 'onTargetFailed'>> & Pick<PingMonitorOptions, 'fetch' | 'target' | 'onTargetFailed'>;
 
   /** Creates the meter (idle until someone subscribes with `poll` or reports a socket sample). */
   constructor(options: PingMonitorOptions = {}) {
@@ -112,6 +135,8 @@ export class PingMonitor {
       now: options.now ?? (() => performance.now()),
       simulatedRtt: options.simulatedRtt ?? (() => 0),
       fetch: options.fetch,
+      target: options.target,
+      onTargetFailed: options.onTargetFailed,
     };
   }
 
@@ -119,7 +144,7 @@ export class PingMonitor {
   get reading(): PingReading {
     const ms = this.offline || !this.samples.length ? null : Math.round(median(this.samples));
     const simMs = this.offline || !this.sims.length ? 0 : Math.round(median(this.sims));
-    return { ms, quality: this.offline ? 'offline' : pingQuality(ms, this.o.goodMs, this.o.badMs), source: this.source, at: this.at, simMs };
+    return { ms, quality: this.offline ? 'offline' : pingQuality(ms, this.o.goodMs, this.o.badMs), source: this.source, at: this.at, simMs, path: this.path };
   }
 
   /**
@@ -142,12 +167,13 @@ export class PingMonitor {
 
   /**
    * A round trip measured on the socket (ping → pong), ms. `simMs`: the part a conditioner
-   * simulated (the dispatcher's `ctx.simulatedMs`). Invalid values are ignored.
+   * simulated (the dispatcher's `ctx.simulatedMs`); `path`: the network path that socket took
+   * (see {@link PingTarget}). Invalid values are ignored.
    */
-  reportSocket(rttMs: number, simMs = 0): void {
+  reportSocket(rttMs: number, simMs = 0, path: string | null = null): void {
     if (!Number.isFinite(rttMs) || rttMs < 0) return;
     this.lastSocket = this.o.now();
-    this.push('socket', rttMs, Math.min(rttMs, Math.max(0, simMs)));
+    this.push('socket', rttMs, Math.min(rttMs, Math.max(0, simMs)), path);
   }
 
   /** Starts a fresh window (e.g. the conditioner changed): the reading follows within a sample or two. */
@@ -167,44 +193,69 @@ export class PingMonitor {
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
   }
 
-  /** Takes one HTTP sample now (also used by the poll loop). Resolves when done. */
+  /**
+   * Takes one HTTP sample now (also used by the poll loop), retrying once on the next target when
+   * `onTargetFailed` says it changed. Resolves when done.
+   */
   async measure(): Promise<void> {
     if (this.inFlight) return;
     this.inFlight = true;
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const target = this.currentTarget();
+        const sampled = await this.measureAt(target);
+        if (sampled !== false) return;
+        if (attempt > 0 || !(this.o.onTargetFailed?.(target) ?? false)) break;
+      }
+      this.goOffline();
+    } finally {
+      this.inFlight = false;
+    }
+  }
+
+  private currentTarget(): PingTarget {
+    return this.o.target ? this.o.target() : { url: this.o.url, path: null };
+  }
+
+  /** One timed request: true = sampled, null = rate-limited (no sample, not offline), false = failed. */
+  private async measureAt(target: PingTarget): Promise<boolean | null> {
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), this.o.timeoutMs);
-    const url = `${this.o.url}${this.o.url.includes('?') ? '&' : '?'}n=${++this.seq}`;
+    const url = `${target.url}${target.url.includes('?') ? '&' : '?'}n=${++this.seq}`;
     const timing = watchTiming(url);
     const t0 = this.o.now();
     try {
       const f = this.o.fetch ?? ((u: string, i: RequestInit) => fetch(u, i));
       const res = await f(url, { cache: 'no-store', credentials: 'omit', signal: ctrl.signal });
       const wall = this.o.now() - t0;
-      if (res.ok) {
-        const real = (await timing.result()) ?? wall;
-        const sim = Math.max(0, this.o.simulatedRtt());
-        if (this.coldSample && this.samples.length === 1 && this.source === 'http') {
-          this.samples = [];
-          this.sims = [];
-        }
-        this.coldSample = this.sent++ === 0;
-        this.push('http', real + sim, sim);
-      } else if (res.status !== 429) this.goOffline();
+      if (!res.ok) return res.status === 429 ? null : false;
+      const real = (await timing.result()) ?? wall;
+      const sim = Math.max(0, this.o.simulatedRtt());
+      // A new path pays for DNS / TLS / a cold connection again.
+      if (this.source === 'http' && this.path !== target.path) this.sent = 0;
+      if (this.coldSample && this.samples.length === 1 && this.source === 'http' && this.path === target.path) {
+        this.samples = [];
+        this.sims = [];
+      }
+      this.coldSample = this.sent++ === 0;
+      this.push('http', real + sim, sim, target.path);
+      return true;
     } catch {
-      this.goOffline();
+      return false;
     } finally {
       timing.stop();
       clearTimeout(timeout);
-      this.inFlight = false;
     }
   }
 
-  private push(source: PingSource, ms: number, simMs: number): void {
-    if (this.source !== source || this.offline) {
+  private push(source: PingSource, ms: number, simMs: number, path: string | null): void {
+    // Another source or another path measures something else: start a fresh window.
+    if (this.source !== source || this.path !== path || this.offline) {
       this.samples = [];
       this.sims = [];
     }
     this.source = source;
+    this.path = path;
     this.offline = false;
     this.samples.push(ms);
     this.sims.push(simMs);

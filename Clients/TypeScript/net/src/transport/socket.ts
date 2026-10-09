@@ -188,6 +188,7 @@ export class AltruistSocket {
   private rejoinTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private _node: RoomRedirect | null = null;
+  private _url: string | null = null;
   private redirecting = false;
   private connectP: Promise<void> | null = null;
   private readonly up: DelayLine<{ ws: WebSocketLike; data: Uint8Array<ArrayBuffer> }> | null;
@@ -229,6 +230,14 @@ export class AltruistSocket {
   /** The fleet server this connection belongs to (set by {@link redirect}), or null. */
   get node(): RoomRedirect | null {
     return this._node;
+  }
+
+  /**
+   * The URL the latest socket opened on (with its ticket and fleet node), or null before the first
+   * open. Use it to label the network path, e.g. `failover.isPrimary(socket.url)` for a ping badge.
+   */
+  get url(): string | null {
+    return this._url;
   }
 
   /** Subscribes to an event (see {@link SocketEvents}); returns the unsubscribe function. */
@@ -400,6 +409,7 @@ export class AltruistSocket {
         if (failed) return;
         clearTimeout(timer);
         opened = true;
+        this._url = url;
         this.lastSend = this.now();
         const ctx: HelloContext = { reason, node: this._node };
         const hello = this.o.hello?.(ctx);

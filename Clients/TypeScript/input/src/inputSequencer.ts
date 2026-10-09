@@ -22,6 +22,15 @@ export interface InputSequencerOptions {
   staleMs?: number;
   /** A backlog this long means nothing samples the sequencer: it resyncs. Default 256. */
   maxQueue?: number;
+  /**
+   * Held (non-action) bits that qualify a press rather than stand on their own, such as an aim
+   * direction that only a dash press reads ({@link ButtonField} bits). When such a bit rises after
+   * an earlier press of the same step, the change can still join that step, so a press arriving
+   * together with its qualifier is not pushed a step later just because another button was pressed
+   * first. Releasing a qualifier bit after a press still waits, like any release. Default 0: every
+   * held-bit change after a press waits for the next step.
+   */
+  pressQualifiers?: number;
 }
 
 /**
@@ -44,10 +53,9 @@ export interface InputSequencerOptions {
  *
  * Use it per local player between the device layer and the fixed step; feed device changes with
  * {@link push} (or several devices through a {@link StateMerger}), sample once per step with
- * {@link next}. Deterministic and clock-free apart from the times passed in. Generic port of the
- * DriftLink frontend's `InputSequencer` (the game supplies only its model); one deliberate
- * difference: a non-action bit that rises after a press in the same step waits for the next step too
- * (DriftLink applied rising held bits there).
+ * {@link next}. Deterministic and clock-free apart from the times passed in. A held bit that changes
+ * after a press waits for the next step, unless it is a rising `pressQualifiers` bit (an aim
+ * direction that arrives with a later press of the same step).
  * @example
  * ```ts
  * const seq = new InputSequencer(model, { x: 0, buttons: 0 });
@@ -63,6 +71,7 @@ export class InputSequencer<T> {
   private readonly model: RoomInputModel<T>;
   private readonly staleMs: number;
   private readonly maxQueue: number;
+  private readonly qualifiers: number;
 
   /**
    * @param model The room input model (must declare buttons: {@link RoomInputModel.hasButtons}).
@@ -75,6 +84,7 @@ export class InputSequencer<T> {
     this.latest = neutral;
     this.staleMs = options.staleMs ?? 2000;
     this.maxQueue = options.maxQueue ?? 256;
+    this.qualifiers = (options.pressQualifiers ?? 0) & ~model.actionMask;
   }
 
   /** A state change. Repeats of the newest state are ignored. Changes must be pushed in time order. */
@@ -127,7 +137,8 @@ export class InputSequencer<T> {
       if (s.t > until) break;
       const sB = m.buttonsOf(s.state);
       const releases = fB & ~sB;
-      const held = !m.equals(m.withButtons(s.state, 0), m.withButtons(f, 0)) || ((fB ^ sB) & ~action) !== 0;
+      const risingQualifiers = sB & ~fB & this.qualifiers;
+      const held = !m.equals(m.withButtons(s.state, 0), m.withButtons(f, 0)) || ((fB ^ sB) & ~action & ~risingQualifiers) !== 0;
       // After a press nothing else changes this step (the press keeps its context).
       if (pressed !== 0 && (held || releases !== 0)) break;
       f = s.state;
@@ -190,8 +201,7 @@ export function combineLargestAxes<T extends object>(axes: readonly (keyof T)[],
  * Merges the change streams of several devices of one player into one stream in time order, using
  * a game-supplied `combine` (e.g. {@link combineLargestAxes}). Feed its output to an
  * {@link InputSequencer}. Use it whenever one player may hold more than one device; with a single
- * device push its changes straight into the sequencer. Generic port of the DriftLink frontend's
- * `StateMerger`.
+ * device push its changes straight into the sequencer.
  */
 export class StateMerger<T> {
   private readonly states = new Map<string, T>();
@@ -266,7 +276,7 @@ export class FrameCounter {
  * True on the first sample after the game stopped sampling for more than `pauseFrames` rendered
  * frames (or the very first sample): the caller resyncs its {@link InputSequencer}, dropping taps
  * made in a menu. Counts rendered frames rather than time, so a hitch (no frames at all) never drops
- * a press. Generic port of DriftLink's `PauseDetector` (which used a module-global frame counter).
+ * a press.
  * @example
  * ```ts
  * if (pause.resumed()) sequencer.resync();

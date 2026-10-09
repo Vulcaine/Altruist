@@ -142,6 +142,56 @@ describe('PingMonitor', () => {
     m.dispose();
   });
 
+  it('paths: per-measurement targets, a fresh window per path, a failed primary retried on the next target', async () => {
+    let t = 0;
+    let primaryUp = true;
+    let down = false;
+    const urls: string[] = [];
+    const m = new PingMonitor({
+      now: () => t,
+      target: () => (down ? { url: '/api/ping', path: 'fallback' } : { url: 'https://direct.example/api/ping', path: 'direct' }),
+      onTargetFailed: (target) => {
+        if (target.path !== 'direct') return false;
+        down = true;
+        return true;
+      },
+      fetch: async (url) => {
+        urls.push(url);
+        t += url.startsWith('https://direct') ? 20 : 60;
+        if (url.startsWith('https://direct') && !primaryUp) throw new Error('blocked');
+        return new Response(null, { status: 204 });
+      },
+    });
+    await m.measure();
+    await m.measure();
+    assert.deepEqual([m.reading.ms, m.reading.path, m.reading.source], [20, 'direct', 'http']);
+    primaryUp = false;
+    await m.measure();
+    assert.deepEqual(urls.slice(2), ['https://direct.example/api/ping?n=3', '/api/ping?n=4']);
+    assert.deepEqual([m.reading.ms, m.reading.path, m.reading.quality], [60, 'fallback', 'good']);
+    m.reportSocket(30, 0, 'fallback');
+    assert.deepEqual([m.reading.ms, m.reading.path, m.reading.source], [30, 'fallback', 'socket']);
+    m.reportSocket(10, 0, 'direct');
+    assert.deepEqual([m.reading.ms, m.reading.path], [10, 'direct']);
+    m.dispose();
+  });
+
+  it('paths: a failed target with nothing to fall back to goes offline after one attempt', async () => {
+    let calls = 0;
+    const m = new PingMonitor({
+      target: () => ({ url: '/api/ping', path: 'origin' }),
+      onTargetFailed: () => false,
+      fetch: async () => {
+        calls++;
+        return new Response(null, { status: 503 });
+      },
+    });
+    await m.measure();
+    assert.equal(calls, 1);
+    assert.equal(m.reading.quality, 'offline');
+    m.dispose();
+  });
+
   it('polls while a polling subscriber exists and stops after', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     let calls = 0;

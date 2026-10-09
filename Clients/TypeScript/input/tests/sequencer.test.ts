@@ -122,6 +122,36 @@ describe('InputSequencer: packed value fields and wide masks', () => {
     const s = new Script().at(3, { buttons: DIR.write(0, 6) }).at(5, { buttons: DIR.write(D, 6) });
     assert.deepEqual(s.ticks(1, 1)[0]!.buttons, DIR.write(D, 6));
   });
+  it('an aimed press after another press waits a step by default', () => {
+    const s = new Script().at(3, { press: J }).at(5, { buttons: DIR.write(J | AIM | D, 2) });
+    assert.deepEqual(s.ticks(1, 2).map((x) => x.buttons), [J, DIR.write(J | AIM | D, 2)]);
+  });
+  it('pressQualifiers: an aimed press shares the step with an earlier press', () => {
+    const seq = new InputSequencer(model, NEUTRAL, { pressQualifiers: AIM | DIR.mask });
+    seq.push({ t: 3, state: { x: 0, y: 0, buttons: J } });
+    seq.push({ t: 5, state: { x: 0, y: 0, buttons: DIR.write(J | AIM | D, 2) } });
+    assert.equal(seq.next(TICK, TICK).buttons, DIR.write(J | AIM | D, 2));
+    assert.equal(seq.pending, 0);
+  });
+  it('pressQualifiers: releasing a qualifier after a press still waits, and so does an axis move', () => {
+    const seq = new InputSequencer(model, NEUTRAL, { pressQualifiers: AIM | DIR.mask });
+    seq.push({ t: 1, state: { x: 0, y: 0, buttons: DIR.write(AIM, 3) } });
+    seq.next(TICK, TICK);
+    seq.push({ t: 20, state: { x: 0, y: 0, buttons: DIR.write(AIM | J, 3) } });
+    seq.push({ t: 22, state: { x: 0, y: 0, buttons: J } });
+    seq.push({ t: 24, state: { x: 1, y: 0, buttons: J } });
+    assert.deepEqual([seq.next(2 * TICK, 2 * TICK), seq.next(3 * TICK, 3 * TICK)], [
+      { x: 0, y: 0, buttons: DIR.write(AIM | J, 3) },
+      { x: 1, y: 0, buttons: J },
+    ]);
+  });
+  it('pressQualifiers ignores action bits', () => {
+    const seq = new InputSequencer(model, NEUTRAL, { pressQualifiers: D });
+    seq.push({ t: 3, state: { x: 0, y: 0, buttons: J } });
+    seq.push({ t: 5, state: { x: 0, y: 0, buttons: J | D } });
+    seq.push({ t: 6, state: { x: 0, y: 0, buttons: J | D | AIM } });
+    assert.deepEqual([seq.next(TICK, TICK), seq.next(2 * TICK, 2 * TICK)].map((x) => x.buttons), [J | D, J | D | AIM]);
+  });
   it('actions on bit 31 and bit 8 sequence like any other', () => {
     const HI = 1 << 31, MID = 1 << 8;
     const m = RoomInputModel.describe<Pad>().buttons((p) => p.buttons, (p, b) => ({ ...p, buttons: b })).action(HI, 0).action(MID, 0).build();
