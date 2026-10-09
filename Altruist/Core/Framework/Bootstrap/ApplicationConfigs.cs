@@ -20,25 +20,36 @@ namespace Altruist
         /// <summary><c>altruist:server</c>.</summary>
         public ServerOptions Server { get; set; } = new();
 
-        /// <summary>Bound from <c>altruist:transport</c> (note: not <c>altruist:server:transport</c>; see <see cref="TransportConfigOptions"/> for that).</summary>
-        public TransportConfigOptions Transport { get; set; } = new();
-
         /// <summary><c>altruist:game</c>.</summary>
         public GameConfigOptions Game { get; set; } = new();
     }
 
-    /// <summary>
-    /// Snapshot of <c>altruist:server</c> (<c>host</c>, <c>port</c>). The HTTP listener itself is configured by
-    /// <c>altruist:server:http:host</c> / <c>altruist:server:http:port</c>, which this class does not cover.
-    /// </summary>
+    /// <summary>Snapshot of <c>altruist:server</c>: the HTTP listener and the transport section.</summary>
     [ConfigurationProperties("altruist:server")]
     public sealed class ServerOptions
     {
-        /// <summary><c>altruist:server:host</c>; default <c>0.0.0.0</c>.</summary>
-        public string Host { get; set; } = "0.0.0.0";
+        /// <summary><c>altruist:server:http</c>.</summary>
+        public HttpServerOptions Http { get; set; } = new();
 
-        /// <summary><c>altruist:server:port</c>; default 5000.</summary>
-        public int Port { get; set; } = 5000;
+        /// <summary><c>altruist:server:transport</c>.</summary>
+        public TransportConfigOptions Transport { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Snapshot of <c>altruist:server:http</c>, the keys the HTTP listener is started from. HTTP is hosted only when both
+    /// <see cref="Host"/> and <see cref="Port"/> are set.
+    /// </summary>
+    [ConfigurationProperties("altruist:server:http")]
+    public sealed class HttpServerOptions
+    {
+        /// <summary><c>altruist:server:http:host</c>; null when unset.</summary>
+        public string? Host { get; set; }
+
+        /// <summary><c>altruist:server:http:port</c>; null when unset.</summary>
+        public int? Port { get; set; }
+
+        /// <summary><c>altruist:server:http:path</c>: base path of the HTTP API; default <c>/</c>.</summary>
+        public string Path { get; set; } = "/";
     }
 
     /// <summary>
@@ -73,8 +84,14 @@ namespace Altruist
         /// <summary><c>diagnostics</c>: enables engine diagnostics.</summary>
         public bool Diagnostics { get; set; } = false;
 
-        /// <summary><c>framerateHz</c>: engine loop frequency in Hz. Default here 60; the engine itself defaults to 30 when the key is absent.</summary>
-        public int FramerateHz { get; set; } = 60;
+        /// <summary><c>framerateHz</c>: engine loop frequency in Hz; null when unset (see <see cref="EffectiveFramerateHz"/>).</summary>
+        public int? FramerateHz { get; set; }
+
+        /// <summary><c>frequency</c>: alias of <see cref="FramerateHz"/>, used when that is unset; null when unset.</summary>
+        public int? Frequency { get; set; }
+
+        /// <summary>The rate the engine runs at: <see cref="FramerateHz"/>, else <see cref="Frequency"/>, else 30 (at least 1).</summary>
+        public int EffectiveFramerateHz => Math.Max(1, FramerateHz ?? Frequency ?? 30);
 
         /// <summary><c>unit</c>: unit used for engine cycle scheduling (e.g. <c>Ticks</c>).</summary>
         public string Unit { get; set; } = "Ticks";
@@ -129,8 +146,9 @@ namespace Altruist
         /// <summary><c>name</c>: display name.</summary>
         public string? Name { get; set; }
 
-        /// <summary><c>data</c>: optional world data reference. Note: the world services read <c>data-path</c>, not this key.</summary>
-        public string? Data { get; set; } = null;
+        /// <summary><c>data-path</c>: optional world data file the world loader reads; null when unset.</summary>
+        [Microsoft.Extensions.Configuration.ConfigurationKeyName("data-path")]
+        public string? DataPath { get; set; }
 
         /// <summary><c>size</c>: world extent; a <c>z</c> component makes the world 3D.</summary>
         public VectorConfig Size { get; set; } = new();

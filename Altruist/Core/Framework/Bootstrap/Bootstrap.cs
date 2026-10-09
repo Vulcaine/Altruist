@@ -38,7 +38,6 @@ public static class AltruistBootstrap
 
         // Use Altruist-specific logger instead of DI's default console logger
         ConfigureLogging();
-        Dependencies.UseServices(Services);
 
         var cfg = AppConfigLoader.Load();
         Services.AddSingleton(cfg);

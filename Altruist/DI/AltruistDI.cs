@@ -60,7 +60,6 @@ public static class AltruistDI
         ConfigureLogging(Services, cfg);
 
         Services.AddSingleton(cfg);
-        Dependencies.UseServices(Services);
 
         using var tmpProvider = Services.BuildServiceProvider();
         var logger = tmpProvider

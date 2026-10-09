@@ -13,8 +13,8 @@ namespace Altruist
     /// <see cref="ConditionalOnConfigAttribute"/>).
     /// </summary>
     /// <remarks>
-    /// <para>Only parameters are honoured by <see cref="DependencyResolver"/>; the attribute is allowed on fields and
-    /// properties but those are not injected. If no service is registered under the key, startup / resolution fails.</para>
+    /// <para>Parameters only (constructor injection keeps services immutable); the compiler rejects it on fields and
+    /// properties. If no service is registered under the key, startup / resolution fails.</para>
     /// <para>Without this attribute a parameter gets the unkeyed registration; to receive every instance inject
     /// <c>IEnumerable&lt;T&gt;</c> instead.</para>
     /// </remarks>
@@ -23,8 +23,7 @@ namespace Altruist
     /// public MySystem([ServiceKey("world-1")] IWorld world) { ... }
     /// </code>
     /// </example>
-    [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Property | AttributeTargets.Field,
-        AllowMultiple = false, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false, Inherited = true)]
     public sealed class ServiceKeyAttribute : Attribute
     {
         /// <summary>The service key to resolve.</summary>

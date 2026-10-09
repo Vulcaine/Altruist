@@ -15,7 +15,6 @@ namespace Altruist;
 public static class Dependencies
 {
     private static IServiceProvider? _provider;
-    private static IServiceCollection? _services;
 
     /// <summary>
     /// Per-async-flow override for <see cref="Inject{T}"/> resolutions. Test
@@ -41,14 +40,6 @@ public static class Dependencies
     }
 
     /// <summary>
-    /// Set the service collection for fallback resolution before provider is built.
-    /// </summary>
-    public static void UseServices(IServiceCollection services)
-    {
-        _services = services ?? throw new ArgumentNullException(nameof(services));
-    }
-
-    /// <summary>
     /// Override the active provider for the current async flow only. Returns an
     /// <see cref="IDisposable"/> that restores the previous scope on dispose.
     /// Designed for test harnesses; production code should not call this.
@@ -66,45 +57,32 @@ public static class Dependencies
     /// back to the root provider, so test-time overrides take precedence.
     /// </summary>
     /// <remarks>
-    /// Before the root provider exists (during bootstrap) it builds a throw-away provider from the registered
-    /// collection on every call, so singletons obtained that way are NOT the instances the app later uses.
+    /// Fails while bootstrap is still registering services (before the root provider exists): a provider built from the
+    /// unfinished collection would hand out singletons that are not the instances the app uses.
     /// </remarks>
     /// <typeparam name="T">Service type.</typeparam>
-    /// <exception cref="InvalidOperationException">Nothing configured yet, or <typeparamref name="T"/> is not registered.</exception>
+    /// <exception cref="InvalidOperationException">The root provider is not built yet, or <typeparamref name="T"/> is not registered.</exception>
     public static T Inject<T>() where T : notnull
-    {
-        var sp = _scope.Value ?? _provider;
-        if (sp is not null)
-            return sp.GetRequiredService<T>();
-
-        if (_services is null)
-            throw new InvalidOperationException("No service provider or service collection configured. Call AltruistDI.Run() first.");
-
-        var tmpProvider = _services.BuildServiceProvider();
-        return tmpProvider.GetRequiredService<T>();
-    }
+        => ProviderOrFail().GetRequiredService<T>();
 
     /// <summary>
     /// Non-generic resolve if you ever need it. Same lookup rules as <see cref="Inject{T}"/>.
     /// </summary>
     /// <param name="serviceType">Service type to resolve.</param>
     /// <exception cref="ArgumentNullException"><paramref name="serviceType"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">Nothing configured yet, or the type is not registered.</exception>
+    /// <exception cref="InvalidOperationException">The root provider is not built yet, or the type is not registered.</exception>
     public static object Inject(Type serviceType)
     {
         if (serviceType is null)
             throw new ArgumentNullException(nameof(serviceType));
 
-        var sp = _scope.Value ?? _provider;
-        if (sp is not null)
-            return sp.GetRequiredService(serviceType);
-
-        if (_services is null)
-            throw new InvalidOperationException("No service provider or service collection configured. Call AltruistDI.Run() first.");
-
-        var tmpProvider = _services.BuildServiceProvider();
-        return tmpProvider.GetRequiredService(serviceType);
+        return ProviderOrFail().GetRequiredService(serviceType);
     }
+
+    private static IServiceProvider ProviderOrFail() =>
+        _scope.Value ?? _provider ?? throw new InvalidOperationException(
+            "Dependencies.Inject was called before the root service provider was built (during bootstrap). " +
+            "Take the dependency through the constructor, or resolve it in a [PostConstruct] hook.");
 
     private sealed class ScopePopper : IDisposable
     {

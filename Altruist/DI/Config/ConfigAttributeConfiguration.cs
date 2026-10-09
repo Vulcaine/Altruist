@@ -252,8 +252,7 @@ namespace Altruist
                         sp,
                         wrappedCfg,
                         type,
-                        logger,
-                        lifetime
+                        logger
                     );
                 },
                 lifetime));

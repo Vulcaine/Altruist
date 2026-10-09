@@ -105,24 +105,12 @@ namespace Altruist
         /// <param name="log">Logger for failures.</param>
         /// <returns>The new instance.</returns>
         /// <exception cref="InvalidOperationException">No public constructor, a construction cycle, or an unresolvable parameter.</exception>
+        /// <remarks>
+        /// Construction is stateless across calls: the owning <see cref="IServiceProvider"/> tracks the lifetime of what it
+        /// creates (it does natively for descriptors registered with <see cref="ServiceLifetime.Singleton"/>), so each
+        /// provider, including per-test child containers, gets its own singletons built against its own dependency graph.
+        /// </remarks>
         public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
-            => CreateWithConfiguration(sp, cfg, impl, log, ServiceLifetime.Singleton);
-
-        /// <summary>
-        /// Construct an instance of <paramref name="impl"/> using <paramref name="sp"/> for
-        /// transitive dependency resolution. Construction is stateless across calls — the
-        /// owning <see cref="IServiceProvider"/> is responsible for tracking singleton lifetime
-        /// (which it does natively for descriptors registered with
-        /// <see cref="ServiceLifetime.Singleton"/>). This means each provider, including
-        /// per-test child containers, gets its own singletons built against its own dependency
-        /// graph — required for substituting mocks without leaking the original instances.
-        /// </summary>
-        /// <param name="sp">Provider for dependencies.</param>
-        /// <param name="cfg">Configuration root or item section.</param>
-        /// <param name="impl">Concrete type to build.</param>
-        /// <param name="log">Logger for failures.</param>
-        /// <param name="lifetime">Informational only; currently unused.</param>
-        public static object CreateWithConfiguration(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log, ServiceLifetime lifetime)
             => CreateInstanceInternal(sp, cfg, impl, log);
 
         private static object CreateInstanceInternal(IServiceProvider sp, IConfiguration cfg, Type impl, ILogger log)
@@ -484,7 +472,7 @@ namespace Altruist
 
         /// <summary>
         /// Adds a registration of <paramref name="serviceType"/> built from <paramref name="implType"/> via
-        /// <see cref="CreateWithConfiguration(IServiceProvider, IConfiguration, Type, ILogger, ServiceLifetime)"/> and records it as
+        /// <see cref="CreateWithConfiguration(IServiceProvider, IConfiguration, Type, ILogger)"/> and records it as
         /// planner-made (see <see cref="IndexOfPlannedRegistration"/>). Non-serviceable types are ignored.
         /// </summary>
         /// <param name="services">Collection to register into.</param>
@@ -509,7 +497,7 @@ namespace Altruist
                 sp =>
                 {
                     // Construct instance (honoring singleton cache)
-                    var obj = CreateWithConfiguration(sp, cfg, implType, log, lifetime);
+                    var obj = CreateWithConfiguration(sp, cfg, implType, log);
                     return obj!;
                 },
                 lifetime);
@@ -926,7 +914,10 @@ namespace Altruist
                 var readKey = ExtractWildcardRelativeKey(a.Path ?? string.Empty);
                 var registryKey = ExpandWildcardPath(cfg, a.Path ?? string.Empty);
                 var wrapperType = typeof(LiveConfigValue<>).MakeGenericType(genArg);
-                return Activator.CreateInstance(wrapperType, cfg, readKey, registryKey);
+                var fallback = a.Default is not null
+                    ? DefaultTo(genArg, a.Default)
+                    : genArg.IsValueType ? Activator.CreateInstance(genArg) : null;
+                return Activator.CreateInstance(wrapperType, cfg, readKey, registryKey, fallback);
             }
             // -------------------------------------------------------------------
 
@@ -1023,6 +1014,14 @@ namespace Altruist
 
         private static object? BindOrConvert(IConfigurationSection s, Type target)
         {
+            // A scalar value of a complex type is converted by its registered converter (e.g. "red" -> Color);
+            // a section with children is bound property by property.
+            if (!IsSimple(target) && s.Value is { } scalar)
+            {
+                var converted = TryConverter(scalar, target);
+                if (converted.success)
+                    return converted.value;
+            }
             if (!IsSimple(target))
                 return BindSection(s, target);
             var raw = s.Value;

@@ -76,7 +76,6 @@ public static class AltruistTestRuntime
             AssemblyLoader.EnsureAllReferencedAssembliesLoaded();
             services.AddSingleton(cfg);
             services.AddLogging(b => b.ClearProviders().AddProvider(NullLoggerProvider.Instance));
-            Dependencies.UseServices(services);
 
             using (var tmp = services.BuildServiceProvider())
             {

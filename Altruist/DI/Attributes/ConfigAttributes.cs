@@ -85,8 +85,9 @@ public sealed class AppConfigurationAttribute : Attribute
 /// <para>Conversion: simple types (numbers, bool, string, enum (case-insensitive), <see cref="Guid"/>, <see cref="TimeSpan"/>,
 /// <see cref="DateTime"/>, <see cref="DateTimeOffset"/>) are parsed with the invariant culture (number suffixes like
 /// <c>f</c>/<c>d</c>/<c>u</c>/<c>l</c> and <c>_</c> separators are tolerated); a registered <see cref="IConfigConverter{T}"/>
-/// for the type takes precedence. Complex types are bound from the section with <c>ConfigurationBinder.Bind</c> (they need a
-/// parameterless constructor); their <see cref="Default"/> is parsed by a converter or as JSON.</para>
+/// for the type takes precedence. A complex type is converted by its converter when the key holds a single value, otherwise
+/// bound from the section with <c>ConfigurationBinder.Bind</c> (it needs a parameterless constructor); its
+/// <see cref="Default"/> is parsed by a converter or as JSON.</para>
 /// <para>Missing key: <see cref="Default"/> is used if given; otherwise null for reference/nullable types; a non-nullable value
 /// type with neither fails startup.</para>
 /// <para>Live values: declare the parameter as <see cref="ILiveConfigValue{T}"/> to receive a wrapper that re-reads the key on
@@ -111,7 +112,8 @@ public sealed class AppConfigValueAttribute : Attribute
     /// <summary>Colon-separated configuration path (e.g. <c>altruist:server:http:port</c>); may start with <c>*</c> for list items.</summary>
     public string Path { get; }
 
-    /// <summary>Optional default (as a string), converted to the target type when the key is missing. Not applied to <see cref="ILiveConfigValue{T}"/> targets.</summary>
+    /// <summary>Optional default (as a string), converted to the target type when the key is missing; for an
+    /// <see cref="ILiveConfigValue{T}"/> target it is the value while the key is missing.</summary>
     public string? Default { get; }
 
     /// <summary>Binds the member to the configuration key at <paramref name="path"/>.</summary>
@@ -132,9 +134,10 @@ public sealed class AppConfigValueAttribute : Attribute
 /// </summary>
 /// <remarks>
 /// Converters are discovered once at startup (before services are built); their constructor dependencies are resolved
-/// from the services registered so far. A converter is used for simple-typed keys whose raw value is a string, and for
-/// <see cref="AppConfigValueAttribute.Default"/> strings of complex types; sections of complex types are bound with the
-/// standard configuration binder instead. One converter per target type (the last discovered wins).
+/// from the services registered so far. A converter is used for every scalar value of its target type (a key holding a
+/// string, e.g. <c>color: red</c>, simple or complex type) and for <see cref="AppConfigValueAttribute.Default"/> strings;
+/// a section with child keys of a complex type is bound with the standard configuration binder instead. One converter
+/// per target type (the last discovered wins).
 /// </remarks>
 /// <example>
 /// <code>
@@ -214,6 +217,7 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
 {
     private readonly IConfiguration config;
     private readonly string key;
+    private readonly T fallback;
 
     /// <inheritdoc/>
     public T Current { get; private set; }
@@ -234,9 +238,23 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
     /// <param name="key">Key to read, relative to <paramref name="config"/>.</param>
     /// <param name="registryKey">Absolute path recorded in <see cref="LiveConfigRegistry"/>.</param>
     public LiveConfigValue(IConfiguration config, string key, string registryKey)
+        : this(config, key, registryKey, default!)
+    {
+    }
+
+    /// <summary>
+    /// Tracks <paramref name="key"/> and registers <paramref name="registryKey"/> as live; <see cref="Current"/> is
+    /// <paramref name="fallback"/> while the key is missing (initially or after a reload removed it).
+    /// </summary>
+    /// <param name="config">Configuration to read and watch (may be an item section).</param>
+    /// <param name="key">Key to read, relative to <paramref name="config"/>.</param>
+    /// <param name="registryKey">Absolute path recorded in <see cref="LiveConfigRegistry"/>.</param>
+    /// <param name="fallback">Value used while the key is missing (the <see cref="AppConfigValueAttribute.Default"/>).</param>
+    public LiveConfigValue(IConfiguration config, string key, string registryKey, T fallback)
     {
         this.config = config;
         this.key = key;
+        this.fallback = fallback;
 
         LiveConfigRegistry.Register(registryKey);
 
@@ -254,7 +272,7 @@ public sealed class LiveConfigValue<T> : ILiveConfigValue<T>
     {
         var section = config.GetSection(key);
         if (!section.Exists())
-            return default!;
+            return fallback;
 
         if (typeof(T) == typeof(Vector2))
         {
@@ -348,8 +366,8 @@ public sealed class MutableConfigProvider : ConfigurationProvider
 /// <c>AltruistStartupConfiguration</c>). Registered as a singleton service.
 /// </summary>
 /// <remarks>
-/// Note: <see cref="Build"/> returns a NEW <see cref="MutableConfigProvider"/>, not <see cref="Provider"/>, so values set on
-/// the injected <see cref="Provider"/> do not reach configurations built from this source.
+/// <see cref="Build"/> returns <see cref="Provider"/> itself, so values set on the DI-registered
+/// <see cref="MutableConfigProvider"/> reach every configuration built from this source.
 /// </remarks>
 [Service]
 public sealed class MutableConfigSource : IConfigurationSource
@@ -366,7 +384,7 @@ public sealed class MutableConfigSource : IConfigurationSource
 
     /// <inheritdoc/>
     public IConfigurationProvider Build(IConfigurationBuilder builder)
-        => new MutableConfigProvider();
+        => Provider;
 }
 
 /// <summary>

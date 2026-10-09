@@ -70,7 +70,6 @@ internal static class LiveServerHandle
             // Quiet logging by default — most tests treat the server as a black box and
             // don't want startup noise. Override via config-test.yml if you need it.
             services.AddLogging(b => b.ClearProviders().AddProvider(NullLoggerProvider.Instance));
-            Dependencies.UseServices(services);
 
             using (var tmp = services.BuildServiceProvider())
             {

@@ -21,7 +21,6 @@ using Altruist.Contracts;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Options;
 
 namespace Altruist.Dashboard;
 
@@ -49,17 +48,17 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
 
     /// <summary>Creates the controller.</summary>
     /// <param name="configuration">App configuration (read, and written through its mutable provider).</param>
-    /// <param name="engineOptions">Engine settings reported in <see cref="AltruistSummaryDto.Engine"/>.</param>
+    /// <param name="engineOptions">Engine settings reported in <see cref="AltruistSummaryDto.Engine"/>; registered when <c>altruist:game:engine</c> exists, otherwise null (no engine info).</param>
     /// <param name="jsonOptions">JSON options.</param>
     /// <param name="serviceProvider">Container whose services are listed.</param>
     public AltruistSummaryDashboardController(
         IConfiguration configuration,
-        IOptions<EngineConfigOptions> engineOptions,
         JsonSerializerOptions jsonOptions,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        EngineConfigOptions? engineOptions = null)
     {
         _configuration = configuration;
-        _engineOptions = engineOptions.Value;
+        _engineOptions = engineOptions;
         _jsonOptions = jsonOptions;
         _serviceProvider = serviceProvider;
     }
@@ -225,7 +224,7 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
     /// <c>GET /dashboard/v1/summary</c>: 200 with an <see cref="AltruistSummaryDto"/>: every leaf configuration key starting
     /// with <c>altruist</c> (live-editable keys first), the registered service types, and engine settings.
     /// </summary>
-    /// <remarks>Resolves every registered service from the container to list it, which may instantiate lazily created singletons.</remarks>
+    /// <remarks>The services are listed from the container's registrations; none is resolved or constructed.</remarks>
     [HttpGet]
     public ActionResult<AltruistSummaryDto> GetSummary()
     {
@@ -337,7 +336,7 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         return new EngineInfoDto
         {
             Diagnostics = options.Diagnostics,
-            FramerateHz = options.FramerateHz,
+            FramerateHz = options.EffectiveFramerateHz,
             Unit = options.Unit,
             Throttle = options.Throttle,
             Gravity = gravityDto

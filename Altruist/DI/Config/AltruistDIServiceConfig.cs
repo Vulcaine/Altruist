@@ -149,7 +149,7 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
         {
             var target = method.IsStatic
                 ? null
-                : DependencyResolver.CreateWithConfiguration(sp, cfg, method.DeclaringType!, log, attr.Lifetime);
+                : DependencyResolver.CreateWithConfiguration(sp, cfg, method.DeclaringType!, log);
             var args = method.GetParameters()
                 .Select(p => DependencyResolver.ResolveParameter(sp, cfg, p, log))
                 .ToArray();
@@ -295,14 +295,14 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
                 {
                     services.Add(new ServiceDescriptor(
                         implType,
-                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime)!,
+                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log)!,
                         lifetime));
                 }
                 else if (services[selfIndex].Lifetime != lifetime)
                 {
                     services[selfIndex] = new ServiceDescriptor(
                         implType,
-                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime)!,
+                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log)!,
                         lifetime);
                 }
 
@@ -373,21 +373,21 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
                         services.AddKeyedSingleton(
                             serviceType,
                             itemKey,
-                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log, lifetime));
+                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log));
                         break;
 
                     case ServiceLifetime.Scoped:
                         services.AddKeyedScoped(
                             serviceType,
                             itemKey,
-                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log, lifetime));
+                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log));
                         break;
 
                     default:
                         services.AddKeyedTransient(
                             serviceType,
                             itemKey,
-                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log, lifetime));
+                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log));
                         break;
                 }
 

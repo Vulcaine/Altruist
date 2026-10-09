@@ -38,20 +38,25 @@ namespace Altruist
 
         private static readonly object _lock = new();
         private static IConfiguration? _config;
+        private static string[] _loadedArgs = Array.Empty<string>();
 
         /// <summary>
         /// Returns the process-wide configuration, building it on first call (thread-safe).
         /// </summary>
-        /// <param name="args">Command-line arguments (<c>--altruist:server:http:port=8080</c> style); used only on the first call.</param>
+        /// <param name="args">Command-line arguments (<c>--altruist:server:http:port=8080</c> style), applied by the call that
+        /// builds the configuration. Later calls may pass no arguments or the same ones.</param>
         /// <returns>The cached configuration root (or the instance supplied to <see cref="Set"/>).</returns>
+        /// <exception cref="InvalidOperationException">The configuration was already built without these
+        /// <paramref name="args"/> (something called <see cref="Load"/> before the entry point passed the command line):
+        /// they would be silently ignored.</exception>
         public static IConfiguration Load(string[]? args = null)
         {
             if (_config is not null)
-                return _config;
+                return Cached(args);
             lock (_lock)
             {
                 if (_config is not null)
-                    return _config;
+                    return Cached(args);
 
                 var env = AltruistEnvironment.Name;
                 var basePath = AppContext.BaseDirectory;
@@ -88,10 +93,19 @@ namespace Altruist
                     .AddInMemoryCollection(MapEnvironment(yamlConfig, environment))
                     .AddCommandLine(args ?? Array.Empty<string>())
                     .Build();
-
+                _loadedArgs = args ?? Array.Empty<string>();
                 _config = cfg;
                 return _config;
             }
+        }
+
+        private static IConfiguration Cached(string[]? args)
+        {
+            if (args is { Length: > 0 } && !args.SequenceEqual(_loadedArgs))
+                throw new InvalidOperationException(
+                    "The configuration was already loaded without these command-line arguments, so they would be ignored. " +
+                    "Pass the arguments to the first AppConfigLoader.Load call (AltruistApplication.Run(args) at the very start of Main).");
+            return _config!;
         }
 
         /// <summary>
@@ -202,7 +216,10 @@ namespace Altruist
         public static void Set(IConfiguration configuration)
         {
             lock (_lock)
-            { _config = configuration; }
+            {
+                _config = configuration;
+                _loadedArgs = Array.Empty<string>();
+            }
         }
 
         /// <summary>Clears the cache so the next <see cref="Load"/> rebuilds from files, environment and the new args (tests).</summary>
