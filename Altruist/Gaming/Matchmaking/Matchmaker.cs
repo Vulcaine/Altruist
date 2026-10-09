@@ -196,14 +196,20 @@ public sealed class Matchmaker
         return true;
     }
 
+    /// <summary>The largest group <see cref="BalanceTeams"/> splits by rating. The exhaustive split grows
+    /// combinatorially: 20 players are about 92 thousand splits, 24 about 1.4 million, 30 about 78 million.</summary>
+    public const int MaxRatingBalancedPlayers = 30;
+
     /// <summary>
     /// Splits players into two teams. By rating: the split with the smallest rating-sum difference
-    /// (equal sizes). Otherwise players alternate, so team sizes differ by at most one.
-    /// The rating split tries every subset (2^n): meant for room-sized groups (cost doubles per player; keep it to about 20).
+    /// (equal sizes; team 0 holds the first player; among equally good splits the one whose member
+    /// set, read as a bit mask over queue order, is smallest). Otherwise players alternate, so team sizes differ by at most one.
+    /// The rating split tries every split of the group, C(n-1, n/2-1) of them: meant for room-sized groups (at most <see cref="MaxRatingBalancedPlayers"/>).
     /// </summary>
     /// <param name="players">The group, in queue order.</param>
     /// <param name="byRating">Balance by rating sum (rated playlists); false alternates.</param>
     /// <returns>Team 0 and team 1.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">A rating split of more than <see cref="MaxRatingBalancedPlayers"/> players.</exception>
     public static (List<QueueEntry> Team0, List<QueueEntry> Team1) BalanceTeams(IReadOnlyList<QueueEntry> players, bool byRating)
     {
         if (!byRating || players.Count < 2)
@@ -214,25 +220,38 @@ public sealed class Matchmaker
             return (a, b);
         }
         var n = players.Count;
+        if (n > MaxRatingBalancedPlayers)
+            throw new ArgumentOutOfRangeException(nameof(players), n, $"A rating split takes at most {MaxRatingBalancedPlayers} players.");
         var half = n / 2;
-        var best = 0;
+        var best = 0UL;
         var bestDiff = long.MaxValue;
-        // Subsets of size n/2 that contain player 0 (the mirrored split is the same match).
-        for (var mask = 0; mask < 1 << n; mask++)
+        // Team 0 always holds player 0 (the mirrored split is the same match); the other half - 1 members
+        // of team 0 are enumerated over players 1..n-1 in increasing mask order (Gosper's hack), so the
+        // first minimum found is the same split an ascending scan of every mask finds.
+        var last = n - 1;
+        var others = half - 1;
+        var combo = others == 0 ? 0UL : (1UL << others) - 1;
+        var end = 1UL << last;
+        while (true)
         {
-            if ((mask & 1) == 0 || System.Numerics.BitOperations.PopCount((uint)mask) != half) continue;
+            var mask = (combo << 1) | 1UL;
             long diff = 0;
-            for (var i = 0; i < n; i++) diff += (mask & (1 << i)) != 0 ? players[i].Rating : -players[i].Rating;
+            for (var i = 0; i < n; i++) diff += (mask & (1UL << i)) != 0 ? players[i].Rating : -players[i].Rating;
             diff = Math.Abs(diff);
             if (diff < bestDiff)
             {
                 bestDiff = diff;
                 best = mask;
             }
+            if (combo == 0) break;
+            var low = combo & (~combo + 1);
+            var ripple = combo + low;
+            combo = ripple | (((combo ^ ripple) >> 2) / low);
+            if (combo >= end) break;
         }
         var t0 = new List<QueueEntry>();
         var t1 = new List<QueueEntry>();
-        for (var i = 0; i < n; i++) ((best & (1 << i)) != 0 ? t0 : t1).Add(players[i]);
+        for (var i = 0; i < n; i++) ((best & (1UL << i)) != 0 ? t0 : t1).Add(players[i]);
         return (t0, t1);
     }
 }

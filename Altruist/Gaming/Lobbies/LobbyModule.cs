@@ -284,16 +284,18 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         }, _ => _host.Send(s.ClientId, _game.Rejected(LobbyRejectReason.NotFound, code)));
     }
 
-    private void Enter(RoomSession<TSim, TInput, TPlayer> s, Lobby<TSim, TInput, TPlayer> lobby)
+    // False when the lobby is full (the connection is told so).
+    private bool Enter(RoomSession<TSim, TInput, TPlayer> s, Lobby<TSim, TInput, TPlayer> lobby)
     {
         if (lobby.Members.Count >= Options.MaxMembers)
         {
             _host.Send(s.ClientId, _game.Rejected(LobbyRejectReason.Full, lobby.Code));
-            return;
+            return false;
         }
         lobby.Add(s.ClientId, s.PrincipalId, s.Player);
         SetLobby(s, lobby);
         SendLobby(lobby);
+        return true;
     }
 
     /// <summary>The connection leaves its lobby (an empty lobby closes and its room is disposed).</summary>
@@ -533,7 +535,8 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
 
     /// <summary>
     /// A player sent here for a lobby: joins it, or re-opens it under the same code when the lobby
-    /// is moving here from a draining server (the old host gets the host role back).
+    /// is moving here from a draining server (the old host gets the host role back). False (not taken)
+    /// when the lobby is full: the player is told, and the host handles the arrival as without a handoff.
     /// </summary>
     public bool OnHandoff(RoomSession<TSim, TInput, TPlayer> s, FleetHandoff handoff)
     {
@@ -541,7 +544,11 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         var code = handoff.Get("code") ?? "";
         // An empty code: a new lobby the player asked for on a draining server.
         var lobby = code.Length == 0 ? Open(NewCode()) : _lobbies.GetValueOrDefault(code) ?? Open(code);
-        Enter(s, lobby);
+        if (!Enter(s, lobby))
+        {
+            CloseIfEmpty(lobby);
+            return false;
+        }
         if (handoff.Get("host") == "1" && lobby.Get(s.PrincipalId) is not null && !lobby.IsHost(s.PrincipalId))
         {
             lobby.MakeHost(s.PrincipalId);
