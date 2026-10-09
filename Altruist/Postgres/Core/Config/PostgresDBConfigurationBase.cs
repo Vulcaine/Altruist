@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 
+using Altruist.Contracts;
 using Altruist.UORM;
 
 using Microsoft.Extensions.Configuration;
@@ -86,14 +88,24 @@ public abstract class PostgresConfigurationBase
     // ----------------- transactional wrapping -----------------
 
     /// <summary>
-    /// Wraps every service whose implementation has <see cref="TransactionalAttribute"/> methods in a
-    /// <see cref="TransactionalDecorator{T}"/> proxy, keeping the original lifetime.
+    /// Makes every service resolved through an interface whose implementation has <see cref="TransactionalAttribute"/>
+    /// methods come back wrapped in a <see cref="TransactionalDecorator{T}"/> proxy, keeping the original lifetime.
     /// </summary>
     /// <remarks>
-    /// Rebuilds the whole service collection (clear + re-add), so it only sees services registered before it runs.
-    /// Only descriptors with an <c>ImplementationType</c> are wrapped (factory or instance registrations are not).
-    /// The proxy is a <see cref="DispatchProxy"/>, so the service type must be an interface: a class registered as
-    /// itself cannot be proxied. The inner instance is created with <see cref="ActivatorUtilities"/>.
+    /// <para>
+    /// Every non-keyed registration whose service type is an interface implemented by a <c>[Transactional]</c> class is
+    /// replaced by a factory that builds the original service (type, instance or factory registration, including the
+    /// forwarding registrations <c>[Service(typeof(IMyService))]</c> creates) and, when the instance's class has
+    /// <c>[Transactional]</c> methods, returns the proxy around it. The decision is made on the actual instance, so it
+    /// works whichever way the service was registered.
+    /// </para>
+    /// <para>
+    /// A <see cref="DispatchProxy"/> can only implement an interface: resolving the class itself (or calling methods on
+    /// <c>this</c>) bypasses the transaction. Keyed registrations are not wrapped. Already wrapped registrations are
+    /// skipped, so running this again only wraps services registered since the previous run: it runs early (so
+    /// database initializers see proxies) and again after every other configuration step (see
+    /// <see cref="PostgresTransactionalConfiguration"/>).
+    /// </para>
     /// </remarks>
     /// <param name="services">Service collection being configured.</param>
     /// <param name="assemblies">Assemblies scanned for <c>[Transactional]</c> methods.</param>
@@ -101,127 +113,114 @@ public abstract class PostgresConfigurationBase
     {
         TransactionalRegistry.WarmUp(assemblies);
 
-        var descriptors = services.ToList();
-        services.Clear();
+        var interfaces = TransactionalRegistry.GetAll()
+            .Select(m => m.ServiceType ?? m.DeclaringType)
+            .SelectMany(t => t.GetInterfaces())
+            .ToHashSet();
 
-        foreach (var descriptor in descriptors)
+        for (var i = 0; i < services.Count; i++)
         {
-            if (descriptor.ImplementationType is { } implType &&
-                TransactionalRegistry.HasTransactionalMethods(implType))
-            {
-                services.Add(WrapServiceIfTransactional(descriptor, implType));
-            }
-            else
-            {
-                services.Add(descriptor);
-            }
+            var d = services[i];
+            if (d.IsKeyedService || !interfaces.Contains(d.ServiceType) || d.ImplementationFactory?.Target is TransactionalFactory)
+                continue;
+
+            var original = d.ImplementationFactory
+                ?? (d.ImplementationInstance is { } instance
+                    ? _ => instance
+                    : sp => ActivatorUtilities.CreateInstance(sp, d.ImplementationType!));
+            services[i] = new ServiceDescriptor(d.ServiceType, new TransactionalFactory(d.ServiceType, original).Create, d.Lifetime);
         }
     }
 
-    private static ServiceDescriptor WrapServiceIfTransactional(ServiceDescriptor descriptor, Type implType)
+    /// <summary>Builds the original service and wraps it in a transactional proxy when its class has <c>[Transactional]</c> methods.</summary>
+    private sealed class TransactionalFactory
     {
-        var serviceType = descriptor.ServiceType;
-        var lifetime = descriptor.Lifetime;
+        private static readonly ConcurrentDictionary<Type, bool> IsTransactional = new();
 
-        var decoratorFactory = BuildDecoratorFactory(serviceType, implType);
-        return new ServiceDescriptor(serviceType, decoratorFactory, lifetime);
-    }
+        private readonly Type _serviceType;
+        private readonly Func<IServiceProvider, object> _original;
+        private readonly MethodInfo _createProxy;
 
-    private static Func<IServiceProvider, object> BuildDecoratorFactory(Type serviceType, Type implType)
-    {
-        var useType = implType;
-
-        return sp =>
+        public TransactionalFactory(Type serviceType, Func<IServiceProvider, object> original)
         {
-            var inner = ActivatorUtilities.CreateInstance(sp, useType);
-            var proxyServiceType = serviceType.IsAssignableFrom(useType) ? serviceType : useType;
-
-            var createMethod = typeof(DispatchProxy)
+            _serviceType = serviceType;
+            _original = original;
+            _createProxy = typeof(DispatchProxy)
                 .GetMethods(BindingFlags.Public | BindingFlags.Static)
                 .Single(m => m.Name == nameof(DispatchProxy.Create) && m.GetGenericArguments().Length == 2)
-                .MakeGenericMethod(proxyServiceType, typeof(TransactionalDecorator<>).MakeGenericType(proxyServiceType));
+                .MakeGenericMethod(serviceType, typeof(TransactionalDecorator<>).MakeGenericType(serviceType));
+        }
 
-            var proxy = createMethod.Invoke(null, null)!;
+        public object Create(IServiceProvider sp)
+        {
+            var inner = _original(sp);
+            if (inner is null || !IsTransactional.GetOrAdd(inner.GetType(), RegisterTransactionalMethods))
+                return inner!;
 
+            var proxy = _createProxy.Invoke(null, null)!;
             var decorator = (dynamic)proxy;
-            decorator.Inner = inner;
+            decorator.Inner = (dynamic)inner;
             decorator.DataSource = sp.GetRequiredService<NpgsqlDataSource>();
-
             return proxy;
-        };
+        }
+
+        /// <summary>Registers the type's <c>[Transactional]</c> methods (idempotent); true when it has any.</summary>
+        private static bool RegisterTransactionalMethods(Type type)
+        {
+            var found = false;
+            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (method.GetCustomAttribute<TransactionalAttribute>(inherit: true) is not { } attr)
+                    continue;
+                TransactionalRegistry.Register(method, attr, type);
+                found = true;
+            }
+            return found;
+        }
     }
 
     // ----------------- Npgsql data source -----------------
 
     /// <summary>
-    /// Registers a singleton <see cref="NpgsqlDataSource"/> (used by <see cref="TransactionalDecorator{T}"/>), once.
+    /// Registers a singleton <see cref="NpgsqlDataSource"/> (used by <see cref="TransactionalDecorator{T}"/>, the E2E
+    /// reset endpoint and test schema isolation), once.
     /// </summary>
     /// <remarks>
-    /// Connection string: <c>ConnectionStrings:postgres</c> if present; otherwise built from
-    /// <c>altruist:persistence:database</c> <c>host</c> (default <c>localhost</c>), <c>port</c> (5432), <c>username</c>,
-    /// <c>password</c> and <c>database</c>. Unlike <see cref="PgSqlDbProvider"/>, this path does not apply
-    /// <c>pooling</c>, <c>max-pool-size</c>, <c>ssl-mode</c>, lower-casing or the UTC session time zone.
+    /// Built from the default provider's connection string (<see cref="PgSqlDbProvider.GetConnectionString"/>), so it
+    /// targets the same database with the same settings as the vaults: <c>altruist:persistence:database</c>
+    /// <c>host</c>, <c>port</c>, <c>username</c>, <c>password</c>, <c>database</c>, <c>pooling</c>,
+    /// <c>max-pool-size</c>, <c>ssl-mode</c> and the UTC session time zone. A transaction opened on it and the vault
+    /// calls joining that transaction therefore always run against one database.
     /// </remarks>
     /// <param name="services">Service collection being configured.</param>
-    /// <param name="cfg">Application configuration.</param>
-    /// <exception cref="InvalidOperationException">
-    /// No connection string and the provider is not <c>postgres</c>, or username/password/database is missing.
-    /// </exception>
-    protected static void RegisterNpgsqlDataSource(IServiceCollection services, IConfiguration cfg)
+    protected static void RegisterNpgsqlDataSource(IServiceCollection services)
     {
         if (services.Any(d => d.ServiceType == typeof(NpgsqlDataSource)))
             return;
 
-        var connString = cfg.GetConnectionString("postgres");
+        services.AddSingleton(sp => NpgsqlDataSource.Create(sp.GetRequiredService<PgSqlDbProvider>().GetConnectionString()));
+    }
+}
 
-        if (string.IsNullOrWhiteSpace(connString))
-        {
-            var dbSection = cfg.GetSection("altruist:persistence:database");
+/// <summary>
+/// Late startup step (runs after every other <c>[ServiceConfiguration]</c> except the final startup one) that wraps
+/// <c>[Transactional]</c> services registered after <see cref="PostgresDatabaseConfiguration"/> ran. Not meant to be
+/// used by application code.
+/// </summary>
+[ServiceConfiguration(order: int.MaxValue - 1)]
+[ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
+public sealed class PostgresTransactionalConfiguration : PostgresConfigurationBase, IAltruistConfiguration
+{
+    /// <inheritdoc/>
+    public bool IsConfigured { get; set; }
 
-            var provider = dbSection["provider"];
-            if (!string.Equals(provider, "postgres", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    $"Postgres configuration used but provider is '{provider ?? "<null>"}'.");
-            }
-
-            var host = dbSection["host"] ?? "localhost";
-            var portStr = dbSection["port"] ?? "5432";
-            var username = dbSection["username"];
-            var password = dbSection["password"];
-            var database = dbSection["database"];
-
-            if (string.IsNullOrWhiteSpace(username) ||
-                string.IsNullOrWhiteSpace(password) ||
-                string.IsNullOrWhiteSpace(database))
-            {
-                throw new InvalidOperationException(
-                    "PostgreSQL configuration is incomplete. " +
-                    "Expected altruist:persistence:database:username, :password, :database.");
-            }
-
-            if (!int.TryParse(portStr, out var port))
-                port = 5432;
-
-            var builder = new NpgsqlConnectionStringBuilder
-            {
-                Host = host,
-                Port = port,
-                Username = username,
-                Password = password,
-                Database = database,
-            };
-
-            connString = builder.ConnectionString;
-        }
-
-        if (string.IsNullOrWhiteSpace(connString))
-            throw new InvalidOperationException("PostgreSQL connection string not found in configuration.");
-
-        services.AddSingleton(_ =>
-        {
-            var builder = new NpgsqlDataSourceBuilder(connString);
-            return builder.Build();
-        });
+    /// <summary>Wraps the remaining <c>[Transactional]</c> services; see <see cref="PostgresConfigurationBase.RegisterTransactionalServices"/>.</summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>A completed task.</returns>
+    public Task Configure(IServiceCollection services)
+    {
+        RegisterTransactionalServices(services, DiscoverAssemblies());
+        IsConfigured = true;
+        return Task.CompletedTask;
     }
 }

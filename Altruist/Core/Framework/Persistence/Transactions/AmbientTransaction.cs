@@ -53,7 +53,13 @@ public static class SqlAmbientTransaction
         public DbTransaction Transaction { get; }
 
         /// <summary>Set once the transaction committed or rolled back; the scope is then ignored.</summary>
-        public bool IsCompleted { get; internal set; }
+        public bool IsCompleted { get; private set; }
+
+        /// <summary>
+        /// Marks the transaction as committed or rolled back, so work still holding this scope (e.g. a task left running)
+        /// stops using it. Called by transaction runners right after commit or rollback.
+        /// </summary>
+        public void MarkCompleted() => IsCompleted = true;
 
         /// <summary>
         /// Serializes commands on the shared connection (ADO.NET connections are not thread-safe;
@@ -133,6 +139,39 @@ public interface ISqlTransactionProvider
 /// </remarks>
 public static class SqlAmbientTransactionRunner
 {
+    /// <summary>
+    /// Synchronous form of <see cref="RunAsync{T}"/>: binds a transaction on <paramref name="openConnection"/> (which it
+    /// then owns) around <paramref name="work"/>, commits when it returns and rolls back when it throws.
+    /// </summary>
+    /// <param name="openConnection">An open connection; disposed when done.</param>
+    /// <param name="work">The work to run inside the transaction.</param>
+    /// <param name="isolation">Isolation level of the transaction.</param>
+    /// <returns>The work's result.</returns>
+    public static T Run<T>(DbConnection openConnection, Func<T> work, IsolationLevel isolation)
+    {
+        using var conn = openConnection;
+        using var tx = conn.BeginTransaction(isolation);
+        var binding = SqlAmbientTransaction.Enter(conn, tx);
+        var scope = SqlAmbientTransaction.Current!;
+        try
+        {
+            var result = work();
+            tx.Commit();
+            return result;
+        }
+        catch
+        {
+            try { tx.Rollback(); }
+            catch { /* broken connection: the server rolls back on close */ }
+            throw;
+        }
+        finally
+        {
+            scope.MarkCompleted();
+            binding.Dispose();
+        }
+    }
+
     /// <summary>Binds a transaction on <paramref name="openConnection"/> (which it then owns) around <paramref name="work"/>.</summary>
     public static async Task<T> RunAsync<T>(
         DbConnection openConnection,
@@ -158,7 +197,7 @@ public static class SqlAmbientTransactionRunner
         }
         finally
         {
-            scope.IsCompleted = true;
+            scope.MarkCompleted();
             binding.Dispose();
         }
     }

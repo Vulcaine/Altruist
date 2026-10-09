@@ -58,7 +58,7 @@ public sealed class PostgresDatabaseConfiguration : PostgresConfigurationBase, I
         var initializerTypes = FindInitializers(assemblies).ToArray();
 
         RegisterSchemasOnce(services, cfg, schemaTypes);
-        RegisterNpgsqlDataSource(services, cfg);
+        RegisterNpgsqlDataSource(services);
 
         // Vaults are persisted + migrated
         var vaultModelTypes = PostgresVaultSetup.Configure(services, assemblies);
