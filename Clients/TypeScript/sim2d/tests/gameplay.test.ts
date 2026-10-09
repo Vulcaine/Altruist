@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { GameplayVerbs2D as G } from '../src/gameplay/index.ts';
+import { GameplayVerbs2D as G, StrikeResponse2D, SurfaceRebound2D } from '../src/gameplay/index.ts';
+import { ContactImpact2D } from '../src/physics/contactImpact2D.ts';
 import type { Vec2Like } from '../src/math/vec2.ts';
 import { FakeBody, inlineApproach, inlineWrap, same, sameVec, units, vectors } from './helpers.ts';
 
@@ -207,5 +208,43 @@ describe('gameplay verbs match the hand-written client updates', () => {
     r.awake = false;
     G.resetMotion(r, { x: 3, y: 4 }, 0.2, { x: 1, y: 2 }, 0.5);
     assert.deepEqual([r.p, r.a, r.v, r.w, r.awake], [{ x: 3, y: 4 }, 0.2, { x: 1, y: 2 }, 0.5, true]);
+  });
+});
+
+describe('configured impact responses match the hand-written rebound and designed hit', () => {
+  const rebound = { minImpactSpeed: 3, restitution: 0.9, minOutSpeed: 16, tangentKeep: 0.9 };
+  const response = { restitution: 0.1, speedCarry: 0.45, surfaceCarry: 0.35, spinFactor: 0.5 };
+  const impacts = (): ContactImpact2D[] => {
+    const vs = vectors(400);
+    const us = units(400);
+    return us.map((n, i) => new ContactImpact2D(vs[(i * 7) % 400]!, n, vs[i]!, (i % 11) * 0.6 - 3, vs[(i * 3) % 400]!, vs[(i * 5) % 400]!));
+  };
+
+  it('SurfaceRebound2D rebounds like the inline dash rebound', () => {
+    for (const imp of impacts()) {
+      const v = imp.strikerVelocity;
+      const speed = v.x * imp.normal.x + v.y * imp.normal.y;
+      assert.equal(SurfaceRebound2D.isImpact(rebound, speed), !(speed < 3));
+      const out = SurfaceRebound2D.outSpeed(rebound, speed) * 0.85 * 1.4;
+      same(out, Math.max(speed * 0.9, 16) * 0.85 * 1.4);
+      const b = new FakeBody({ v: { x: 1, y: 1 } });
+      SurfaceRebound2D.apply(rebound, b, imp.normal, out, v);
+      const inline = new FakeBody({ v: { x: 1, y: 1 } });
+      G.bounceOff(inline, imp.normal, out, 0.9, v);
+      sameVec(b.getLinearVelocity(), inline.getLinearVelocity());
+    }
+  });
+
+  it('StrikeResponse2D strikes like the inline designed hit', () => {
+    for (const imp of impacts()) {
+      const bounce = imp.closingSpeed * (1 + 0.1);
+      same(StrikeResponse2D.rebound(response, imp), bounce);
+      const ball = new FakeBody({ v: imp.targetVelocity, w: -0.7 });
+      StrikeResponse2D.strike(response, ball, imp, bounce * 1.3 * 1.2, 1.25);
+      const outN = bounce * 1.3 * 1.2 + imp.targetSpeed * 0.45;
+      const outT = imp.targetTangential * (1 - 0.35) + imp.strikerTangential * 0.35;
+      sameVec(ball.getLinearVelocity(), imp.frame.compose(outN, outT));
+      same(ball.getAngularVelocity(), -0.7 + (imp.slip / 1.25) * 0.5);
+    }
   });
 });
