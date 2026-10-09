@@ -61,9 +61,9 @@ public interface ITokenValidator
 /// for raw TCP/UDP connections. Handlers inspect the concrete type to reach transport-specific data.</remarks>
 public interface IAuthContext
 {
-    /// <summary>Client identifier supplied by the caller (may be empty).</summary>
+    /// <summary>Client identifier supplied by the caller (may be empty). Self-declared by the client: never use it as an identity (the authenticated principal is in <see cref="AuthDetails"/>).</summary>
     public string ClientId { get; set; }
-    /// <summary>Raw credential as received (for HTTP the whole <c>Authorization</c> header, including any <c>Bearer </c> prefix).</summary>
+    /// <summary>The credential as presented: for HTTP the <c>Authorization</c> header without its <c>Bearer </c> scheme (the whole header for other schemes); empty when none.</summary>
     public string? Token { get; set; }
     /// <summary>Remote address; <see cref="IPAddress.None"/> when unknown.</summary>
     public IPAddress ClientIp { get; set; }
@@ -101,19 +101,26 @@ public class HttpAuthContext : IAuthContext
     /// <summary>The underlying request; handlers may set <c>HttpContext.User</c> on success.</summary>
     public HttpContext HttpContext { get; set; }
 
-    /// <summary>Reads <see cref="ClientId"/> from the <c>ClientId</c> header, <see cref="Token"/> from the raw <c>Authorization</c> header,
+    /// <summary>Reads <see cref="ClientId"/> from the <c>ClientId</c> header, <see cref="Token"/> from the <c>Authorization</c> header (without a <c>Bearer </c> scheme),
     /// <see cref="ClientIp"/> from the connection's remote address, and stamps <see cref="ConnectionTimestamp"/> with now (UTC).</summary>
     /// <param name="httpContext">The request.</param>
     public HttpAuthContext(HttpContext httpContext)
     {
         HttpContext = httpContext;
 
-        ClientId = httpContext.Request.Headers["ClientId"]!;
-        Token = httpContext.Request.Headers["Authorization"]!; // Assuming token is in Authorization header
+        ClientId = httpContext.Request.Headers["ClientId"].ToString();
+        Token = CredentialOf(httpContext.Request.Headers.Authorization.ToString());
 
         ClientIp = httpContext.Connection.RemoteIpAddress ?? IPAddress.None;
         ConnectionTimestamp = DateTime.UtcNow;
     }
+
+    private const string BearerScheme = "Bearer ";
+
+    private static string CredentialOf(string authorization) =>
+        authorization.StartsWith(BearerScheme, StringComparison.OrdinalIgnoreCase)
+            ? authorization[BearerScheme.Length..].Trim()
+            : authorization;
 }
 
 

@@ -54,12 +54,12 @@ public abstract class TokenIssue : IIssue
     [JsonPropertyName("principalId")]
     public string PrincipalId { get; set; } = "";
 
-    /// <summary>UTC expiry of <see cref="AccessToken"/>. Defaults to 30 minutes from construction; issuers overwrite it (note that <see cref="JwtTokenIssuer"/> does not, while its JWT itself expires after one hour).</summary>
+    /// <summary>UTC expiry of <see cref="AccessToken"/>. Defaults to 30 minutes from construction; the built-in issuers set it to the token's real expiry.</summary>
     [Key(4)]
     [JsonPropertyName("accessExpiration")]
     public DateTime AccessExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromMinutes(30);
 
-    /// <summary>UTC expiry of <see cref="RefreshToken"/>. Defaults to 7 days from construction; issuers may overwrite it.</summary>
+    /// <summary>UTC expiry of <see cref="RefreshToken"/>. Defaults to 7 days from construction; the built-in issuers set it to the token's real expiry.</summary>
     [Key(5)]
     [JsonPropertyName("refreshExpiration")]
     public DateTime RefreshExpiration { get; set; } = DateTime.UtcNow + TimeSpan.FromDays(7);

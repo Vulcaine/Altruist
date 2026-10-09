@@ -119,30 +119,59 @@ public interface IJwtTokenIssuer : IIssuer
 }
 
 /// <summary>
-/// Default <see cref="IJwtTokenIssuer"/> (singleton when <c>altruist:security</c> exists). The access JWT is valid for
-/// a fixed 1 hour; the refresh JWT for <see cref="SetRefreshTokenExpiry"/> (default 30 minutes). Both carry the same
-/// claims plus a random <c>jti</c> and get a <c>;jwt</c> suffix. Call <see cref="WithClaims"/> per request: it returns
-/// a copy, so the shared singleton is never mutated with a caller's claims.
+/// Default <see cref="IJwtTokenIssuer"/> (singleton when <c>altruist:security</c> exists). The access JWT lives
+/// <c>altruist:security:jwt:access-token-minutes</c> (default 60) and the refresh JWT
+/// <c>altruist:security:jwt:refresh-token-minutes</c> (default 10080, 7 days; <see cref="SetRefreshTokenExpiry"/> overrides
+/// it per copy). Both carry the same claims plus a random <c>jti</c> and get a <c>;jwt</c> suffix; the issued
+/// <see cref="TokenIssue.AccessExpiration"/> and <see cref="TokenIssue.RefreshExpiration"/> match their <c>exp</c>. Call
+/// <see cref="WithClaims"/> per request: it returns a copy, so the shared singleton is never mutated with a caller's claims.
 /// </summary>
 [Service(typeof(IJwtTokenIssuer), DependsOn = new[] { typeof(AuthConfiguration) })]
 [ConditionalOnConfig("altruist:security")]
 public class JwtTokenIssuer : IJwtTokenIssuer
 {
+    /// <summary>Config key of the access JWT lifetime in minutes (default 60).</summary>
+    public const string AccessLifetimeKey = "altruist:security:jwt:access-token-minutes";
+    /// <summary>Config key of the refresh JWT lifetime in minutes (default 10080 = 7 days).</summary>
+    public const string RefreshLifetimeKey = "altruist:security:jwt:refresh-token-minutes";
+
+    /// <summary>Default access JWT lifetime (1 hour).</summary>
+    public static readonly TimeSpan DefaultAccessLifetime = TimeSpan.FromHours(1);
+    /// <summary>Default refresh JWT lifetime (7 days).</summary>
+    public static readonly TimeSpan DefaultRefreshLifetime = TimeSpan.FromDays(7);
+
     /// <summary>The JWT bearer options of the default scheme; supplies the signing key, issuer and audience.</summary>
     public JwtBearerOptions JwtOptions { get; }
+    private readonly TimeSpan _accessTokenExpiry;
     private IEnumerable<Claim>? _customClaims;
-    private TimeSpan _refreshTokenExpiry = TimeSpan.FromMinutes(30);
+    private TimeSpan _refreshTokenExpiry;
 
-    /// <summary>Creates the issuer from the registered <see cref="JwtBearerDefaults.AuthenticationScheme"/> options.</summary>
+    /// <summary>Creates the issuer from the registered <see cref="JwtBearerDefaults.AuthenticationScheme"/> options with the default lifetimes.</summary>
     /// <param name="jwtOptions">The JWT bearer options monitor.</param>
     public JwtTokenIssuer(IOptionsMonitor<JwtBearerOptions> jwtOptions)
-    {
-        JwtOptions = jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme);
-    }
+        : this(jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme), DefaultAccessLifetime, DefaultRefreshLifetime) { }
 
-    private JwtTokenIssuer(JwtBearerOptions jwtOptions)
+    /// <summary>DI constructor: lifetimes from <see cref="AccessLifetimeKey"/> and <see cref="RefreshLifetimeKey"/>.</summary>
+    /// <param name="jwtOptions">The JWT bearer options monitor.</param>
+    /// <param name="accessTokenMinutes">Access JWT lifetime in minutes; must be positive.</param>
+    /// <param name="refreshTokenMinutes">Refresh JWT lifetime in minutes; must be longer than the access lifetime.</param>
+    /// <exception cref="ArgumentOutOfRangeException">When a lifetime is not positive or the refresh lifetime is not longer than the access lifetime.</exception>
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
+    public JwtTokenIssuer(
+        IOptionsMonitor<JwtBearerOptions> jwtOptions,
+        [AppConfigValue(AccessLifetimeKey, "60")] double accessTokenMinutes,
+        [AppConfigValue(RefreshLifetimeKey, "10080")] double refreshTokenMinutes)
+        : this(jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme), TimeSpan.FromMinutes(accessTokenMinutes), TimeSpan.FromMinutes(refreshTokenMinutes)) { }
+
+    private JwtTokenIssuer(JwtBearerOptions jwtOptions, TimeSpan accessTokenExpiry, TimeSpan refreshTokenExpiry)
     {
+        if (accessTokenExpiry <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(accessTokenExpiry), accessTokenExpiry, $"{AccessLifetimeKey} must be positive.");
+        if (refreshTokenExpiry <= accessTokenExpiry)
+            throw new ArgumentOutOfRangeException(nameof(refreshTokenExpiry), refreshTokenExpiry, $"{RefreshLifetimeKey} must be longer than {AccessLifetimeKey}.");
         JwtOptions = jwtOptions;
+        _accessTokenExpiry = accessTokenExpiry;
+        _refreshTokenExpiry = refreshTokenExpiry;
     }
 
     /// <summary>
@@ -151,19 +180,21 @@ public class JwtTokenIssuer : IJwtTokenIssuer
     /// </summary>
     public JwtTokenIssuer WithClaims(IEnumerable<Claim> claims)
     {
-        return new JwtTokenIssuer(JwtOptions)
+        return new JwtTokenIssuer(JwtOptions, _accessTokenExpiry, _refreshTokenExpiry)
         {
             _customClaims = claims?.ToList(),
-            _refreshTokenExpiry = _refreshTokenExpiry,
         };
     }
 
     /// <summary>
-    /// Sets the refresh JWT lifetime and returns this issuer. Mutates the instance: call it on a copy from
+    /// Sets the refresh JWT lifetime (longer than the access lifetime) and returns this issuer. Mutates the instance: call it on a copy from
     /// <see cref="WithClaims"/>, not on the shared singleton.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="expiration"/> is not longer than the access lifetime.</exception>
     public JwtTokenIssuer SetRefreshTokenExpiry(TimeSpan expiration)
     {
+        if (expiration <= _accessTokenExpiry)
+            throw new ArgumentOutOfRangeException(nameof(expiration), expiration, "The refresh lifetime must be longer than the access lifetime.");
         _refreshTokenExpiry = expiration;
         return this;
     }
@@ -187,7 +218,7 @@ public class JwtTokenIssuer : IJwtTokenIssuer
     }
 
     /// <summary>
-    /// Issues a <see cref="JwtToken"/>: access JWT valid 1 hour, refresh JWT valid for the refresh expiry, both with the
+    /// Issues a <see cref="JwtToken"/>: access JWT valid for the access lifetime, refresh JWT for the refresh lifetime, both with the
     /// claims from <see cref="WithClaims"/> and a new <c>jti</c>. <see cref="TokenIssue.PrincipalId"/> is the <c>sub</c> claim.
     /// </summary>
     /// <exception cref="InvalidOperationException">When no symmetric signing key is configured.</exception>
@@ -210,13 +241,20 @@ public class JwtTokenIssuer : IJwtTokenIssuer
         var subject =
             claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value;
 
-        var accessToken = GenerateJwtToken(claims, DateTime.UtcNow.AddHours(1));
-        var refreshToken = GenerateJwtToken(claims, DateTime.UtcNow + _refreshTokenExpiry) + ";jwt";
+        // JWT exp has whole-second resolution; the reported expirations must equal it.
+        var now = DateTime.UtcNow;
+        now = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
+        var accessExpiration = now + _accessTokenExpiry;
+        var refreshExpiration = now + _refreshTokenExpiry;
+        var accessToken = GenerateJwtToken(claims, accessExpiration);
+        var refreshToken = GenerateJwtToken(claims, refreshExpiration) + ";jwt";
 
         return new JwtToken
         {
             AccessToken = $"{accessToken};jwt",
             RefreshToken = refreshToken,
+            AccessExpiration = accessExpiration,
+            RefreshExpiration = refreshExpiration,
             Algorithm = creds.Algorithm,
             PrincipalId = subject ?? ""
         };

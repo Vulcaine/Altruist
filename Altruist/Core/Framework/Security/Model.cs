@@ -145,10 +145,10 @@ public class SignupRequest
     /// <param name="password">Raw password.</param>
     /// <param name="username">User name.</param>
     /// <param name="email">Email address.</param>
-    /// <exception cref="BadHttpRequestException">When <paramref name="username"/> or <paramref name="email"/> is null (both are required despite the optional parameters).</exception>
+    /// <exception cref="BadHttpRequestException">When neither <paramref name="username"/> nor <paramref name="email"/> is given. Endpoints may require both (<see cref="Altruist.Security.Http.JwtAuthController"/>'s <c>signup</c> does).</exception>
     public SignupRequest(string password, string? username = null, string? email = null)
     {
-        if (username == null || email == null)
+        if (username == null && email == null)
         {
             throw new BadHttpRequestException("Username or email must be provided.");
         }

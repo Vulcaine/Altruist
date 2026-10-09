@@ -9,10 +9,11 @@ namespace Altruist.Security;
 
 /// <summary>
 /// The <see cref="IShieldAuth"/> behind <see cref="SessionShieldAttribute"/> (registered with
-/// <c>altruist:security:mode: session</c>). Looks the token up in <see cref="TokenSessionSyncService"/> (default group),
-/// requires an unexpired access time and a matching client IP, and keeps a process-wide copy for
-/// <see cref="AuthTokenSessionModel.CacheValidationInterval"/>. Each re-validation sets the access expiry to now plus that
-/// interval, so a session idle for longer than the interval expires.
+/// <c>altruist:security:mode: session</c>). Looks the token up with <see cref="TokenSessionSyncService.FindByTokenAsync"/>
+/// (in whichever group it was saved under), requires an unexpired access time and a matching client IP, and keeps a
+/// process-wide copy for <see cref="AuthTokenSessionModel.CacheValidationInterval"/> before reading the store again.
+/// A session stays valid until its issued <see cref="AuthTokenSessionModel.AccessExpiration"/>; validation never
+/// changes it.
 /// </summary>
 [Service(typeof(IShieldAuth))]
 [ConditionalOnConfig("altruist:security")]
@@ -21,6 +22,7 @@ public class SessionTokenAuth : IShieldAuth
 {
     private readonly TokenSessionSyncService _syncService;
     private readonly ILogger<SessionTokenAuth> _logger;
+    // Static: the shield may build a new handler per request, and the copy must outlive it.
     private static readonly ConcurrentDictionary<string, CachedSession> _sessionCache = new();
 
     /// <summary>Creates the handler (resolved by DI).</summary>
@@ -30,8 +32,10 @@ public class SessionTokenAuth : IShieldAuth
         _logger = logger;
     }
 
-
-    /// <summary>Authenticates <see cref="IAuthContext.Token"/>; the returned details use the principal id as group key.</summary>
+    /// <summary>
+    /// Authenticates <see cref="IAuthContext.Token"/>; the returned details carry the session's principal, IP, the group
+    /// it is stored under and its remaining access time.
+    /// </summary>
     public async Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
         var token = context.Token;
@@ -40,100 +44,48 @@ public class SessionTokenAuth : IShieldAuth
 
         var now = DateTime.UtcNow;
 
-        if (_sessionCache.TryGetValue(token, out var cached))
+        if (_sessionCache.TryGetValue(token, out var cached) && now - cached.LastValidatedAt < cached.Session.CacheValidationInterval)
         {
-            if (IsSessionValid(cached, now))
-            {
-                return Success(token, cached.SessionData);
-            }
-
-            _sessionCache.TryRemove(token, out _);
-            return Fail("Session expired");
+            if (!ValidateSession(cached.Session, context.ClientIp, now))
+                return Fail("Session expired or IP mismatch");
+            return Success(token, cached.Session, cached.GroupKey);
         }
 
-        var session = await GetSessionFromCache(token);
-        if (session == null)
+        _sessionCache.TryRemove(token, out _);
+        var found = await _syncService.FindByTokenAsync(token);
+        if (found == null)
             return Fail("Session not found");
 
-        if (!ValidateSession(session, context.ClientIp, now))
-        {
-            _sessionCache.TryRemove(token, out _);
+        if (!ValidateSession(found.Session, context.ClientIp, now))
             return Fail("Session expired or IP mismatch");
-        }
 
-        await RefreshSessionTtl(session, now);
-        UpdateLocalCache(token, session, now);
-
-        return Success(token, session);
-    }
-
-    private bool IsSessionValid(CachedSession cached, DateTime now)
-    {
-        return now - cached.LastValidatedAt < cached.SessionData.CacheValidationInterval
-            && cached.SessionData.AccessExpiration > now;
-    }
-
-    private async Task<AuthTokenSessionModel?> GetSessionFromCache(string token)
-    {
-        var session = await _syncService.FindCachedByIdAsync(token);
-        if (session == null)
-        {
-            _logger.LogWarning("Invalid session token: {Token}", token);
-            _sessionCache.TryRemove(token, out _);
-        }
-
-        return session;
+        _sessionCache[token] = new CachedSession(found.Session, found.GroupKey, now);
+        return Success(token, found.Session, found.GroupKey);
     }
 
     private bool ValidateSession(AuthTokenSessionModel session, IPAddress clientIp, DateTime now)
     {
-        if (session.AccessExpiration < now)
-        {
-            // Cleanup expired session
-            _sessionCache.TryRemove(session.AccessToken, out _);
+        if (session.AccessExpiration <= now)
             return false;
-        }
 
         if (!Equals(session.Ip, clientIp.ToString()))
         {
-            _logger.LogWarning("IP mismatch for session {Token}", session.AccessToken);
+            _logger.LogWarning("IP mismatch for the session of principal {Principal}", session.PrincipalId);
             return false;
         }
 
         return true;
     }
 
-    private async Task RefreshSessionTtl(AuthTokenSessionModel session, DateTime now)
-    {
-        session.AccessExpiration = now.Add(session.CacheValidationInterval);
-        await _syncService.SaveAsync(session);
-    }
+    private static AuthResult Success(string token, AuthTokenSessionModel session, string groupKey) =>
+        new(AuthorizationResult.Success(), new AuthDetails(token, session.PrincipalId, session.Ip,
+            string.IsNullOrEmpty(groupKey) ? session.PrincipalId : groupKey, session.AccessExpiration - DateTime.UtcNow));
 
-    private void UpdateLocalCache(string token, AuthTokenSessionModel session, DateTime now)
-    {
-        _sessionCache[token] = new CachedSession
-        {
-            SessionData = session,
-            LastValidatedAt = now
-        };
-    }
-
-    private AuthResult Success(string token, AuthTokenSessionModel session)
-    {
-        // TODO: currently we are assigning PrincipalID as groupkey which might not be good always
-        return new(AuthorizationResult.Success(), new AuthDetails(token, session.PrincipalId, session.Ip, session.PrincipalId, session.AccessExpiration - DateTime.UtcNow));
-
-    }
     private AuthResult Fail(string reason)
     {
         _logger.LogDebug("Auth failed: {Reason}", reason);
         return new AuthResult(AuthorizationResult.Failed(), null!);
     }
 
-    private class CachedSession
-    {
-        public AuthTokenSessionModel SessionData { get; set; } = null!;
-        public DateTime LastValidatedAt { get; set; }
-    }
+    private sealed record CachedSession(AuthTokenSessionModel Session, string GroupKey, DateTime LastValidatedAt);
 }
-

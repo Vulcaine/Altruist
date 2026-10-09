@@ -48,7 +48,7 @@ public class AuthTokenSessionModel : VaultModel, IIdGenerator
     [VaultColumn("refresh-token")]
     public string RefreshToken { get; set; } = string.Empty;
 
-    /// <summary>UTC expiry of the access token. <see cref="SessionTokenAuth"/> slides it to now plus <see cref="CacheValidationInterval"/> on each re-validation.</summary>
+    /// <summary>UTC expiry of the access token, as issued; <see cref="SessionTokenAuth"/> rejects the session from then on.</summary>
     [VaultColumn("access-expiration")]
     public DateTime AccessExpiration { get; set; }
 

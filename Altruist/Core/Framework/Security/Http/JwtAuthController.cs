@@ -19,7 +19,7 @@ namespace Altruist.Security.Http;
 /// <remarks>
 /// Derive a controller with your own <c>[Route]</c> to get <c>POST signup</c>, <c>login/emailpwd</c>,
 /// <c>login/unamepwd</c>, <c>refresh</c> and <c>upgrade</c>. Credentials are checked by your
-/// <see cref="ILoginService"/>; tokens come from <see cref="IJwtTokenIssuer"/> (access JWT 1 hour) and the session is
+/// <see cref="ILoginService"/>; tokens come from <see cref="IJwtTokenIssuer"/> (lifetimes from <c>altruist:security:jwt:access-token-minutes</c> / <c>refresh-token-minutes</c>) and the session is
 /// stored in <see cref="TokenSessionSyncService"/> (one session per group key). Override <see cref="GetClaimsForLogin"/>
 /// to add claims and <see cref="AuthController.SessionGroupKeyStrategy"/> to group sessions differently.
 /// <para>
@@ -208,7 +208,7 @@ public abstract class JwtAuthController : AuthController
             var groupKey = SessionGroupKeyStrategy(account.StorageId);
 
             if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.StorageId, request.Fingerprint))
-                return Unauthorized($"[login-email][${request.Email}] Only clients with IP address are allowed to connect.");
+                return Unauthorized($"[login-email][{request.Email}] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-email][{groupKey}] ✅ Login succeeded (email: {request.Email})");
             return OkOrUnauthorized(issue);
@@ -220,8 +220,8 @@ public abstract class JwtAuthController : AuthController
     }
 
     /// <summary>
-    /// <c>POST login/unamepwd</c>: like <see cref="EmailPasswordLogin"/> for user name and password, but currently stores no
-    /// session, so <see cref="Refresh"/> cannot be used with these tokens.
+    /// <c>POST login/unamepwd</c>: like <see cref="EmailPasswordLogin"/> for user name and password: issues a JWT pair and
+    /// stores the session (replacing the group's other sessions), so <see cref="Refresh"/> works with these tokens.
     /// </summary>
     [HttpPost("login/unamepwd")]
     public async Task<IActionResult> UsernamePasswordLogin([FromBody] UsernamePasswordLoginRequest request)
@@ -241,8 +241,8 @@ public abstract class JwtAuthController : AuthController
             var issue = IssueToken(claims);
             var groupKey = SessionGroupKeyStrategy(account.StorageId);
 
-            // if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.StorageId, request.Fingerprint))
-            //     return Unauthorized($"[login-uname][${request.Username}] Only clients with IP address are allowed to connect.");
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.StorageId, request.Fingerprint))
+                return Unauthorized($"[login-uname][{request.Username}] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-uname][{groupKey}] ✅ Login succeeded (username: {request.Username})");
             return OkOrUnauthorized(issue);
@@ -255,9 +255,9 @@ public abstract class JwtAuthController : AuthController
 
     /// <summary>
     /// <c>POST refresh</c> with <c>Authorization: Bearer &lt;access&gt;;jwt;&lt;refresh&gt;;jwt</c>: checks the stored session
-    /// (refresh token, expiry, fingerprint) and issues a new pair carrying the old claims. The access token must still be
-    /// valid (it is validated with lifetime checks), so refresh before it expires. Returns an
-    /// <see cref="AltruistLoginResponse"/>, or 401.
+    /// (refresh token, expiry, fingerprint) and issues a new pair carrying the old claims. The access token only needs a
+    /// valid signature, issuer and audience: it may have expired (refreshing after expiry is the point), while the session's
+    /// refresh expiry decides whether the refresh is still allowed. Returns an <see cref="AltruistLoginResponse"/>, or 401.
     /// </summary>
     /// <exception cref="InvalidOperationException">When no <see cref="TokenSessionSyncService"/> is registered.</exception>
     [HttpPost("refresh")]
@@ -282,26 +282,22 @@ public abstract class JwtAuthController : AuthController
         if (accessProtocol != "jwt" || refreshProtocol != "jwt")
             return Unauthorized("This endpoint only supports JWT access and refresh tokens.");
 
+        if (_issuer is not JwtTokenIssuer jwtIssuer)
+            return Unauthorized("JWT issuer not configured.");
+
         try
         {
-            var claims = await _tokenValidator.ValidateToken(accessToken);
-            if (claims == null)
+            var principal = ValidateIgnoringLifetime(accessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
+            var groupKey = principal?.FindFirst("GroupKey")?.Value;
+            if (principal == null || groupKey == null)
             {
-                _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
+                _logger.LogWarning("[refresh] ❌ Invalid access token during refresh");
                 return Unauthorized("Invalid access token.");
             }
 
-            string? fingerprint = claims.FindFirst("Fingerprint")?.Value;
-            var groupKey = claims.FindFirst("GroupKey")?.Value;
-
-            if (groupKey == null)
-            {
-                _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
-                return Unauthorized("Invalid access token.");
-            }
-
+            string? fingerprint = principal.FindFirst("Fingerprint")?.Value;
             var accessKey = $"{accessToken};jwt";
-            var cached = await _syncService.FindCachedByIdAsync(accessKey, groupKey ?? "");
+            var cached = await _syncService.FindCachedByIdAsync(accessKey, groupKey);
 
             if (cached?.IsRefreshTokenValid() != true || cached.Fingerprint != fingerprint)
             {
@@ -319,19 +315,9 @@ public abstract class JwtAuthController : AuthController
                 return Unauthorized("Refresh token mismatch.");
             }
 
-            if (_issuer is not JwtTokenIssuer jwtIssuer)
-                return Unauthorized("JWT issuer not configured.");
+            var issue = IssueToken(principal.Claims.Where(c => !IssuerOwnedClaims.Contains(c.Type)));
 
-            var principal = GetPrincipalFromToken(accessToken, jwtIssuer.JwtOptions.TokenValidationParameters);
-            if (principal == null)
-            {
-                _logger.LogWarning($"[refresh] ❌ Invalid access token during refresh");
-                return Unauthorized("Invalid access token.");
-            }
-
-            var issue = IssueToken(principal.Claims);
-
-            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey!, cached.PrincipalId, cached.Fingerprint))
+            if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, cached.PrincipalId, cached.Fingerprint))
                 return Unauthorized("Couldn't identify client IP.");
 
             _logger.LogInformation($"[refresh][{groupKey}] 🔁 Token refreshed (principal: {cached.PrincipalId})");
@@ -347,6 +333,13 @@ public abstract class JwtAuthController : AuthController
     // --------------------------------------------------------------------
     // Helpers
     // --------------------------------------------------------------------
+
+    // Claims every issued token gets anew; carrying the old ones over would duplicate them.
+    private static readonly HashSet<string> IssuerOwnedClaims = new(StringComparer.Ordinal)
+    {
+        JwtRegisteredClaimNames.Jti, JwtRegisteredClaimNames.Exp, JwtRegisteredClaimNames.Nbf, JwtRegisteredClaimNames.Iat,
+        JwtRegisteredClaimNames.Iss, JwtRegisteredClaimNames.Aud,
+    };
 
     private IActionResult OkOrUnauthorized(TokenIssue? token) => token is null
         ? Unauthorized()
@@ -364,14 +357,17 @@ public abstract class JwtAuthController : AuthController
         return jwtIssuer.WithClaims(claims).Issue() as TokenIssue;
     }
 
-    private ClaimsPrincipal? GetPrincipalFromToken(string token, TokenValidationParameters validation)
+    // Signature, issuer and audience are checked; lifetime is not (an expired access token may be refreshed).
+    // Claims are read as issued (no inbound mapping) so that they round-trip into the new token unchanged.
+    private static ClaimsPrincipal? ValidateIgnoringLifetime(string token, TokenValidationParameters validation)
     {
+        var parameters = validation.Clone();
+        parameters.ValidateLifetime = false;
         try
         {
-            var handler = new JwtSecurityTokenHandler();
-            return handler.ValidateToken(token, validation, out _);
+            return new JwtSecurityTokenHandler { MapInboundClaims = false }.ValidateToken(token, parameters, out _);
         }
-        catch
+        catch (Exception ex) when (ex is SecurityTokenException or ArgumentException)
         {
             return null;
         }

@@ -25,14 +25,16 @@ namespace Altruist.Security;
 
 /// <summary>
 /// The <see cref="IShieldAuth"/> behind <see cref="JwtShieldAttribute"/> (registered with <c>altruist:security:mode: jwt</c>).
-/// Reads <c>Authorization: Bearer &lt;jwt&gt;</c> (an optional <c>;jwt</c> suffix is ignored), validates it with
-/// <see cref="IJwtTokenValidator"/>, sets <c>HttpContext.User</c> and returns <see cref="AuthDetails"/> whose principal is
-/// the <c>sub</c> claim and whose IP and group key come from the <c>Ip</c> / <c>GroupKey</c> claims.
+/// Reads the bearer JWT (an optional <c>;jwt</c> suffix is ignored), validates it with <see cref="IJwtTokenValidator"/>,
+/// sets <c>HttpContext.User</c> for HTTP and returns <see cref="AuthDetails"/> whose principal is the <c>sub</c> claim and
+/// whose lifetime is the token's.
 /// </summary>
 /// <remarks>
-/// HTTP only (including WebSocket upgrades): other <see cref="IAuthContext"/> kinds throw <see cref="NotSupportedException"/>.
-/// Tokens without <c>Ip</c> / <c>GroupKey</c> claims (e.g. from <see cref="IAccessTokenIssuer"/>) still authenticate,
-/// but their details hold <c>"Unknown"</c> there, so <see cref="AuthDetails.IsAlive"/> is false.
+/// The token comes from <c>Authorization: Bearer</c> for an <see cref="HttpAuthContext"/> (requests and WebSocket upgrades)
+/// and from <see cref="IAuthContext.Token"/> for other contexts (a socket transport that received a credential). The
+/// details' IP is the token's <c>Ip</c> claim, or the connection's address when the token has none; the group key is the
+/// <c>GroupKey</c> claim, or the principal id when the token has none. So tokens of <see cref="IAccessTokenIssuer"/>
+/// (which carry neither) yield live details.
 /// </remarks>
 [Service(typeof(IShieldAuth))]
 [ConditionalOnConfig("altruist:security")]
@@ -53,7 +55,7 @@ public class JwtAuth : IShieldAuth
 
     private readonly JwtSecurityTokenHandler _tokenHandler = new();
 
-    /// <summary>Authenticates the bearer token of an <see cref="HttpAuthContext"/>; fails (no exception) when it is missing, malformed or invalid.</summary>
+    /// <summary>Authenticates the bearer token of <paramref name="context"/>; fails (no exception) when it is missing, malformed or invalid.</summary>
     public async Task<AuthResult> HandleAuthAsync(IAuthContext context)
     {
         var token = GetTokenFromRequest(context);
@@ -84,30 +86,22 @@ public class JwtAuth : IShieldAuth
             httpAuthContext.HttpContext.User = principal;
         }
 
-        var authDetails = ExtractAuthDetails(token);
+        var authDetails = ExtractAuthDetails(token, context);
         return new AuthResult(AuthorizationResult.Success(), authDetails);
     }
 
-    private string GetTokenFromRequest(IAuthContext context)
+    private static string GetTokenFromRequest(IAuthContext context)
     {
-        if (context is HttpAuthContext httpAuthContext)
-        {
-            var request = httpAuthContext.HttpContext.Request;
-            return request.Headers["Authorization"].ToString().Replace("Bearer ", "").Split(";")[0];
-        }
-        else
-        {
-            throw new NotSupportedException($"Unsupported authentication context type {context.GetType().Name}.");
-        }
+        var credential = context is HttpAuthContext httpAuthContext
+            ? httpAuthContext.HttpContext.Request.Headers["Authorization"].ToString()
+            : context.Token ?? "";
+        if (credential.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            credential = credential["Bearer ".Length..];
+        return credential.Trim().Split(";")[0];
     }
 
-    private AuthDetails ExtractAuthDetails(string token)
+    private AuthDetails ExtractAuthDetails(string token, IAuthContext context)
     {
-        if (token == null || token.Length == 0)
-        {
-            throw new UnauthorizedAccessException("Invalid JWT: Token is null or empty.");
-        }
-
         var jwt = _tokenHandler.ReadJwtToken(token);
         var expClaim = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Exp);
 
@@ -119,8 +113,8 @@ public class JwtAuth : IShieldAuth
         var expirationTime = DateTimeOffset.FromUnixTimeSeconds(expUnix);
         var remainingTime = expirationTime - DateTimeOffset.UtcNow;
         var principalId = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value ?? "Unknown";
-        var ip = jwt.Claims.FirstOrDefault(c => c.Type == "Ip")?.Value ?? "Unknown";
-        var groupKey = jwt.Claims.FirstOrDefault(c => c.Type == "GroupKey")?.Value ?? "Unknown";
+        var ip = jwt.Claims.FirstOrDefault(c => c.Type == "Ip")?.Value ?? context.ClientIp.ToString();
+        var groupKey = jwt.Claims.FirstOrDefault(c => c.Type == "GroupKey")?.Value ?? principalId;
 
         return new AuthDetails(token, principalId, ip, groupKey, remainingTime);
     }

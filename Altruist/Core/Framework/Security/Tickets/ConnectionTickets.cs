@@ -104,7 +104,9 @@ public interface IConnectionTicketService
 
 /// <summary>
 /// Default <see cref="IConnectionTicketService"/> (singleton) over the <see cref="IFleetBackplane"/>: keys
-/// <c>altruist:ticket:{hash}</c> hold the identity and <c>altruist:tickets-of:{principal}</c> the outstanding list.
+/// <c>altruist:ticket:{hash}</c> hold the identity and <c>altruist:tickets-of:{principal}</c> the outstanding list;
+/// <c>altruist:tickets-lock:{principal}</c> serializes issues for one principal across the fleet, so
+/// <see cref="ConnectionTicketOptions.MaxPerPrincipal"/> holds under concurrency.
 /// </summary>
 [Service(typeof(IConnectionTicketService))]
 public sealed class ConnectionTicketService : IConnectionTicketService
@@ -131,6 +133,11 @@ public sealed class ConnectionTicketService : IConnectionTicketService
 
     private static string TicketKey(string hash) => "altruist:ticket:" + hash;
     private static string PrincipalKey(string principalId) => "altruist:tickets-of:" + principalId;
+    private static string LockKey(string principalId) => "altruist:tickets-lock:" + principalId;
+
+    // Held only for a few backplane round trips; expires on its own if the holder dies mid-issue.
+    private static readonly TimeSpan IssueLockTtl = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan IssueLockRetry = TimeSpan.FromMilliseconds(5);
 
     /// <inheritdoc/>
     /// <exception cref="ArgumentException">When <paramref name="principalId"/> is empty.</exception>
@@ -141,11 +148,22 @@ public sealed class ConnectionTicketService : IConnectionTicketService
         var ticket = OpaqueToken.New();
         var hash = OpaqueToken.Hash(ticket);
         var identity = new ConnectionTicketIdentity(principalId, string.IsNullOrEmpty(groupKey) ? principalId : groupKey);
-        await _store.SetAsync(TicketKey(hash), JsonSerializer.Serialize(identity, Json), Options.Lifetime, ct).ConfigureAwait(false);
 
-        // Keep the newest MaxPerPrincipal outstanding; drop the older ones.
-        if (Options.MaxPerPrincipal > 0)
+        if (Options.MaxPerPrincipal <= 0)
         {
+            await _store.SetAsync(TicketKey(hash), JsonSerializer.Serialize(identity, Json), Options.Lifetime, ct).ConfigureAwait(false);
+            return new ConnectionTicket(ticket, (int)Options.Lifetime.TotalSeconds);
+        }
+
+        // The outstanding list is read, changed and written back: concurrent issues for one principal (on any
+        // server) must not interleave, or each keeps its own copy and more than MaxPerPrincipal tickets survive.
+        var lockKey = LockKey(principalId);
+        var lockOwner = OpaqueToken.New();
+        while (!await _store.SetIfAbsentAsync(lockKey, lockOwner, IssueLockTtl, ct).ConfigureAwait(false))
+            await Task.Delay(IssueLockRetry, ct).ConfigureAwait(false);
+        try
+        {
+            await _store.SetAsync(TicketKey(hash), JsonSerializer.Serialize(identity, Json), Options.Lifetime, ct).ConfigureAwait(false);
             var raw = await _store.GetAsync(PrincipalKey(principalId), ct).ConfigureAwait(false);
             var outstanding = raw is null ? new List<string>() : JsonSerializer.Deserialize<List<string>>(raw, Json) ?? new List<string>();
             outstanding.Add(hash);
@@ -155,6 +173,10 @@ public sealed class ConnectionTicketService : IConnectionTicketService
                 outstanding.RemoveAt(0);
             }
             await _store.SetAsync(PrincipalKey(principalId), JsonSerializer.Serialize(outstanding, Json), Options.Lifetime, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            await _store.DeleteIfValueAsync(lockKey, lockOwner, CancellationToken.None).ConfigureAwait(false);
         }
         return new ConnectionTicket(ticket, (int)Options.Lifetime.TotalSeconds);
     }
