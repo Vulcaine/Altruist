@@ -66,8 +66,10 @@ public interface IPrefabQuery<TPrefab>
 
     /// <summary>
     /// Adds a filter, combined with earlier filters by AND. Supports <c>&amp;&amp;</c>, <c>||</c>, <c>!</c>,
-    /// <c>==</c>/<c>!=</c> between a component member and a value (e.g. <c>p =&gt; p.Root.Name == name</c>), and
-    /// <c>Any</c> on collection components (e.g. <c>p =&gt; p.Items.Any(i =&gt; i.Kind == "x")</c>).
+    /// <c>==</c>/<c>!=</c> between a component member and a value (e.g. <c>p =&gt; p.Root.Name == name</c>),
+    /// <c>Contains</c> of a component member in a client-side collection (e.g. <c>p =&gt; ids.Contains(p.Root.StorageId)</c>,
+    /// one array parameter), and <c>Any</c> on collection components (e.g. <c>p =&gt; p.Items.Any(i =&gt; i.Kind == "x")</c>).
+    /// Members of single refs and owned components filter through an EXISTS on their table.
     /// </summary>
     /// <param name="predicate">The filter; other expression shapes throw <see cref="NotSupportedException"/>.</param>
     /// <returns>This query.</returns>

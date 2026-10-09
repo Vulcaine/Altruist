@@ -8,7 +8,8 @@ namespace Altruist.Persistence;
 /// <remarks>
 /// The prefab's structure is defined by the property attributes, not by this attribute:
 /// exactly one <see cref="PrefabComponentRootAttribute"/> property and any number of
-/// <see cref="PrefabComponentRefAttribute"/> properties (validated by <see cref="PrefabDocument"/> on first use).
+/// <see cref="PrefabComponentRefAttribute"/> and <see cref="PrefabComponentOwnedAttribute"/> properties (validated by
+/// <see cref="PrefabDocument"/> on first use).
 /// The framework does not currently read <see cref="Id"/> (prefab discovery is by deriving from
 /// <see cref="PrefabModel"/>), so the attribute is descriptive. Use a plain vault model
 /// (<see cref="Altruist.UORM.VaultAttribute"/>) when you only need one table; use a prefab when several tables
@@ -29,6 +30,10 @@ namespace Altruist.Persistence;
 ///     // Single ref: FK lives on the root and points at the dependent's key (StorageId by default).
 ///     [PrefabComponentRef(nameof(Account), nameof(AccountVault.SettingsId))]
 ///     public SettingsVault? Settings { get; set; }
+///
+///     // Owned one-to-one: FK lives on the dependent row and points at the root's StorageId.
+///     [PrefabComponentOwned(nameof(Account), nameof(ProfileVault.AccountId))]
+///     public ProfileVault? Profile { get; set; }
 /// }
 ///
 /// var prefab = await prefabs.Query&lt;AccountPrefab&gt;()
@@ -103,6 +108,44 @@ public sealed class PrefabComponentRefAttribute : Attribute
     /// <param name="foreignKey">FK property name; see <see cref="ForeignKey"/> for which side it lives on.</param>
     /// <exception cref="ArgumentNullException"><paramref name="principal"/> or <paramref name="foreignKey"/> is null.</exception>
     public PrefabComponentRefAttribute(string principal, string foreignKey)
+    {
+        Principal = principal ?? throw new ArgumentNullException(nameof(principal));
+        ForeignKey = foreignKey ?? throw new ArgumentNullException(nameof(foreignKey));
+    }
+}
+
+/// <summary>
+/// Marks a one-to-one component owned by the root: a single <see cref="IVaultModel"/> whose foreign key points at
+/// the root's <c>StorageId</c>, so the key lives on the dependent row (e.g. a profile keyed by its account id).
+/// No nesting: Principal must be the root property name.
+/// </summary>
+/// <remarks>
+/// The counterpart of a single <see cref="PrefabComponentRefAttribute"/>, whose key lives on the root. Loaded only
+/// when included, like the other refs; stays null when the root has no row. A root may own at most one row: loading
+/// a second one throws <see cref="InvalidOperationException"/>, so give the foreign key a unique key
+/// (<see cref="Altruist.UORM.VaultUniqueKeyAttribute"/>). Invalid declarations throw
+/// <see cref="InvalidOperationException"/> when <see cref="PrefabDocument"/> first builds the metadata.
+/// </remarks>
+/// <example>
+/// <code>
+/// [PrefabComponentOwned(nameof(Account), nameof(ProfileVault.AccountId))]
+/// public ProfileVault? Profile { get; set; }
+/// </code>
+/// </example>
+[AttributeUsage(AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
+public sealed class PrefabComponentOwnedAttribute : Attribute
+{
+    /// <summary>Name of the root component property (use <c>nameof</c>); any other value fails validation.</summary>
+    public string Principal { get; }
+
+    /// <summary>FK property name on the owned model pointing at the root's <c>StorageId</c>, e.g. <c>nameof(ProfileVault.AccountId)</c>.</summary>
+    public string ForeignKey { get; }
+
+    /// <summary>Declares a one-to-one component owned by the root.</summary>
+    /// <param name="principal">Name of the root property (use <c>nameof</c>).</param>
+    /// <param name="foreignKey">FK property name on the owned model.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="principal"/> or <paramref name="foreignKey"/> is null.</exception>
+    public PrefabComponentOwnedAttribute(string principal, string foreignKey)
     {
         Principal = principal ?? throw new ArgumentNullException(nameof(principal));
         ForeignKey = foreignKey ?? throw new ArgumentNullException(nameof(foreignKey));

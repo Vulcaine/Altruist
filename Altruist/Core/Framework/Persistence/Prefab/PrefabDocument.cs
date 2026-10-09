@@ -11,7 +11,9 @@ public enum PrefabComponentKind
     /// <summary>One related model; the foreign key lives on the root.</summary>
     Single,
     /// <summary>Many related models; the foreign key on each dependent points at the root's StorageId.</summary>
-    Collection
+    Collection,
+    /// <summary>One related model owned by the root; its foreign key points at the root's StorageId (one row per root).</summary>
+    Owned
 }
 
 /// <summary>Resolved metadata of one prefab component property, produced by <see cref="PrefabDocument"/>.</summary>
@@ -33,7 +35,7 @@ public sealed record PrefabComponentMeta
 
     /// <summary>
     /// FK property name:
-    /// - Collection: FK on dependent model referencing root StorageId
+    /// - Collection, Owned: FK on dependent model referencing root StorageId
     /// - Single: FK on root model referencing dependent PK
     /// </summary>
     public string ForeignKeyPropertyName { get; init; } = default!;
@@ -82,7 +84,8 @@ public static class PrefabDocument
     /// <exception cref="InvalidOperationException">
     /// The type does not derive from <see cref="PrefabModel"/>; it has zero or several <see cref="PrefabComponentRootAttribute"/>
     /// properties; the root is not a settable <see cref="IVaultModel"/>; a ref's principal is not the root; a ref has no
-    /// foreign key; or a component property is not settable or not an <see cref="IVaultModel"/> / list of them.
+    /// foreign key; a component property is not settable or not an <see cref="IVaultModel"/> / list of them; an owned
+    /// component is a list; or a property is marked both ref and owned.
     /// </exception>
     public static PrefabMeta Get(Type prefabType)
         => _cache.GetOrAdd(prefabType, Build);
@@ -132,6 +135,16 @@ public static class PrefabDocument
         foreach (var p in props)
         {
             var refAttr = p.GetCustomAttribute<PrefabComponentRefAttribute>();
+            var ownedAttr = p.GetCustomAttribute<PrefabComponentOwnedAttribute>();
+            if (refAttr is not null && ownedAttr is not null)
+                throw new InvalidOperationException($"{prefabType.Name}.{p.Name} cannot be both [PrefabComponentRef] and [PrefabComponentOwned].");
+
+            if (ownedAttr is not null)
+            {
+                components[p.Name] = BuildOwned(prefabType, p, ownedAttr, rootName);
+                continue;
+            }
+
             if (refAttr is null)
                 continue;
 
@@ -192,6 +205,39 @@ public static class PrefabDocument
             RootPropertyName = rootName,
             RootComponentType = rootType,
             ComponentsByName = components
+        };
+    }
+
+    private static PrefabComponentMeta BuildOwned(Type prefabType, PropertyInfo p, PrefabComponentOwnedAttribute attr, string rootName)
+    {
+        if (string.Equals(p.Name, rootName, StringComparison.Ordinal))
+            throw new InvalidOperationException($"{prefabType.Name}.{p.Name} cannot be both root and owned.");
+
+        if (!string.Equals(attr.Principal, rootName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"{prefabType.Name}.{p.Name} has Principal='{attr.Principal}'. " +
+                $"Principal must be the root property '{rootName}'.");
+        }
+
+        if (!p.CanWrite)
+            throw new InvalidOperationException($"{prefabType.Name}.{p.Name} component property must be settable.");
+
+        if (!typeof(IVaultModel).IsAssignableFrom(p.PropertyType))
+            throw new InvalidOperationException($"{prefabType.Name}.{p.Name} owned component must be a single IVaultModel; use [PrefabComponentRef] for a list.");
+
+        if (string.IsNullOrWhiteSpace(attr.ForeignKey))
+            throw new InvalidOperationException($"{prefabType.Name}.{p.Name} owned component requires ForeignKey (FK on the owned model).");
+
+        return new PrefabComponentMeta
+        {
+            Name = p.Name,
+            Kind = PrefabComponentKind.Owned,
+            ComponentType = p.PropertyType,
+            Property = p,
+            PrincipalPropertyName = rootName,
+            ForeignKeyPropertyName = attr.ForeignKey.Trim(),
+            PrincipalKeyPropertyName = nameof(IVaultModel.StorageId)
         };
     }
 

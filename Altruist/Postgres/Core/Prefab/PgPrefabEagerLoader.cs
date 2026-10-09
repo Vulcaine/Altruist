@@ -18,12 +18,13 @@ namespace Altruist.Persistence;
 
 /// <summary>
 /// Hydrates prefab components after the roots are loaded, one query per included component:
-/// collections by <c>dependent.FK IN (root StorageIds)</c>, single references by
+/// collections and owned components by <c>dependent.FK IN (root StorageIds)</c>, single references by
 /// <c>dependent.PK IN (root FK values)</c>. Key values are compared as strings; non-string keys are skipped.
 /// </summary>
 /// <remarks>
 /// Collections are always assigned (empty list when no rows match), except when no root has a StorageId. Single
-/// references stay null when the FK is empty or the row is missing. Unknown include names are ignored. Large root
+/// references and owned components stay null when the key is empty or the row is missing; a second owned row for one
+/// root throws <see cref="InvalidOperationException"/>. Unknown include names are ignored. Large root
 /// sets produce one <c>IN</c> list with one parameter per key.
 /// </remarks>
 internal sealed class PgPrefabEagerLoader
@@ -64,6 +65,8 @@ internal sealed class PgPrefabEagerLoader
 
             if (comp.Kind == PrefabComponentKind.Collection)
                 await HydrateCollectionAsync(prefabs, comp, ct).ConfigureAwait(false);
+            else if (comp.Kind == PrefabComponentKind.Owned)
+                await HydrateOwnedAsync(prefabs, comp, ct).ConfigureAwait(false);
             else if (comp.Kind == PrefabComponentKind.Single)
                 await HydrateSingleAsync(prefabs, comp, ct).ConfigureAwait(false);
         }
@@ -72,7 +75,68 @@ internal sealed class PgPrefabEagerLoader
     private async Task HydrateCollectionAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
     where TPrefab : PrefabModel, new()
     {
-        // Root ids (StorageId)
+        var grouped = await LoadByRootIdAsync(prefabs, comp, ct).ConfigureAwait(false);
+        if (grouped is null)
+            return;
+
+        var rootGetter = GetGetter(typeof(TPrefab), _prefab.RootPropertyName);
+        var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
+        var listFactory = GetListFactory(comp.ComponentType);
+
+        foreach (var p in prefabs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var root = rootGetter(p!) as IVaultModel;
+            var id = root?.StorageId ?? "";
+
+            var typedList = listFactory();
+            if (grouped.TryGetValue(id, out var items))
+            {
+                foreach (var it in items)
+                    typedList.Add(it);
+            }
+
+            prefabSetter(p!, typedList);
+        }
+    }
+
+    private async Task HydrateOwnedAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
+    where TPrefab : PrefabModel, new()
+    {
+        var grouped = await LoadByRootIdAsync(prefabs, comp, ct).ConfigureAwait(false);
+        if (grouped is null)
+            return;
+
+        var rootGetter = GetGetter(typeof(TPrefab), _prefab.RootPropertyName);
+        var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
+
+        foreach (var p in prefabs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var id = (rootGetter(p!) as IVaultModel)?.StorageId ?? "";
+            if (!grouped.TryGetValue(id, out var rows))
+                continue;
+
+            if (rows.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"{typeof(TPrefab).Name}.{comp.Name} is owned (one row per root) but {comp.ComponentType.Name} has {rows.Count} rows " +
+                    $"with {comp.ForeignKeyPropertyName} = '{id}'. Give {comp.ForeignKeyPropertyName} a unique key.");
+            }
+
+            prefabSetter(p!, rows[0]);
+        }
+    }
+
+    /// <summary>
+    /// Rows of a dependent component whose FK is one of the roots' StorageIds, grouped by that FK; null when no root
+    /// has a StorageId (nothing is queried).
+    /// </summary>
+    private async Task<Dictionary<string, List<object>>?> LoadByRootIdAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)
+    where TPrefab : PrefabModel, new()
+    {
         var rootGetter = GetGetter(typeof(TPrefab), _prefab.RootPropertyName);
 
         var rootIds = new List<string>();
@@ -94,7 +158,7 @@ internal sealed class PgPrefabEagerLoader
         }
 
         if (rootIds.Count == 0)
-            return;
+            return null;
 
         var depType = comp.ComponentType;
         var depDoc = VaultDocument.From(depType);
@@ -121,11 +185,6 @@ internal sealed class PgPrefabEagerLoader
         }
 
         var depRows = await _db.QueryAsync(depType, sql, parameters, ct).ConfigureAwait(false);
-        if (depRows.Count == 0)
-        {
-            SetEmptyCollections(prefabs, comp, depType);
-            return;
-        }
 
         // group by FK (dependent FK == root StorageId)
         var depFkGetter = GetGetter(depType, comp.ForeignKeyPropertyName);
@@ -148,27 +207,7 @@ internal sealed class PgPrefabEagerLoader
             list.Add(row);
         }
 
-        var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
-        var listFactory = GetListFactory(depType);
-
-        foreach (var p in prefabs)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            var root = rootGetter(p!) as IVaultModel;
-            var id = root?.StorageId ?? "";
-
-            var items = grouped.TryGetValue(id, out var list) ? list : null;
-
-            var typedList = listFactory();
-            if (items is not null)
-            {
-                foreach (var it in items)
-                    typedList.Add(it);
-            }
-
-            prefabSetter(p!, typedList);
-        }
+        return grouped;
     }
 
     private static string BuildSelectAllAliased(VaultDocument doc, string alias)
@@ -185,19 +224,6 @@ internal sealed class PgPrefabEagerLoader
         }
 
         return string.Join(", ", cols);
-    }
-
-    private void SetEmptyCollections<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, Type elementType)
-        where TPrefab : PrefabModel, new()
-    {
-        var prefabSetter = GetSetter(typeof(TPrefab), comp.Property.Name);
-        var listFactory = GetListFactory(elementType);
-
-        foreach (var p in prefabs)
-        {
-            var typedList = listFactory();
-            prefabSetter(p!, typedList);
-        }
     }
 
     private async Task HydrateSingleAsync<TPrefab>(List<TPrefab> prefabs, PrefabComponentMeta comp, CancellationToken ct)

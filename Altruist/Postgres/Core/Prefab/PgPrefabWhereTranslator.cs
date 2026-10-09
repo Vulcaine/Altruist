@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -90,6 +91,9 @@ internal sealed class PgPrefabWhereTranslator
             return new SqlFragment(sql, args);
         }
 
+        if (TryVisitContains(m, out var contains))
+            return contains;
+
         throw new NotSupportedException($"Unsupported method call in prefab WHERE: {m.Method.Name}");
     }
 
@@ -125,46 +129,94 @@ internal sealed class PgPrefabWhereTranslator
         if (!isEq && !isNe)
             throw new NotSupportedException("Only == and != are supported.");
 
-        // Root member: r."<col>" = ?
+        if (value is null)
+            return OnComponentMember(comp, memberLogical, alias, col => isEq ? $"{col} IS NULL" : $"{col} IS NOT NULL", new List<object?>());
+
+        return OnComponentMember(comp, memberLogical, alias, col => $"{col} {(isEq ? "=" : "!=")} ?", new List<object?> { value });
+    }
+
+    /// <summary>
+    /// <paramref name="condition"/> on a component member: on the root row directly, on a single ref or an owned
+    /// component through an EXISTS on its table. Collections only filter through <c>Any()</c>.
+    /// </summary>
+    private SqlFragment OnComponentMember(
+        PrefabComponentMeta comp,
+        string memberLogical,
+        string alias,
+        Func<string, string> condition,
+        List<object?> args)
+    {
+        var rootDoc = VaultDocument.From(_prefab.RootComponentType);
+
         if (comp.Kind == PrefabComponentKind.Root)
+            return new SqlFragment(condition($"{alias}.{Q(Col(rootDoc, memberLogical))}"), args);
+
+        if (comp.Kind is PrefabComponentKind.Single or PrefabComponentKind.Owned)
         {
-            var rootDoc = VaultDocument.From(_prefab.RootComponentType);
-            var col = Col(rootDoc, memberLogical);
-
-            if (value is null)
-                return new SqlFragment(isEq ? $"{alias}.{Q(col)} IS NULL" : $"{alias}.{Q(col)} IS NOT NULL");
-
-            return new SqlFragment($"{alias}.{Q(col)} {(isEq ? "=" : "!=")} ?", new List<object?> { value });
-        }
-
-        // Single ref member: EXISTS join
-        if (comp.Kind == PrefabComponentKind.Single)
-        {
-            // root FK (on root) -> dependent PK
-            var rootDoc = VaultDocument.From(_prefab.RootComponentType);
-            var rootFkCol = Col(rootDoc, comp.ForeignKeyPropertyName);
-
             var depDoc = VaultDocument.From(comp.ComponentType);
             var depTable = QualifiedTable(comp.ComponentType, depDoc);
+            var depMember = $"c.{Q(Col(depDoc, memberLogical))}";
 
-            var depPkCol = Col(depDoc, comp.PrincipalKeyPropertyName);
-            var depMemberCol = Col(depDoc, memberLogical);
+            // Single: root FK (on root) -> dependent PK. Owned: dependent FK -> root StorageId.
+            var join = comp.Kind == PrefabComponentKind.Single
+                ? $"c.{Q(Col(depDoc, comp.PrincipalKeyPropertyName))} = r.{Q(Col(rootDoc, comp.ForeignKeyPropertyName))}"
+                : $"c.{Q(Col(depDoc, comp.ForeignKeyPropertyName))} = r.{Q(Col(rootDoc, nameof(IVaultModel.StorageId)))}";
 
-            var cmp = value is null
-                ? (isEq ? $"c.{Q(depMemberCol)} IS NULL" : $"c.{Q(depMemberCol)} IS NOT NULL")
-                : $"c.{Q(depMemberCol)} {(isEq ? "=" : "!=")} ?";
-
-            var sql = $"EXISTS (SELECT 1 FROM {depTable} c WHERE c.{Q(depPkCol)} = r.{Q(rootFkCol)} AND {cmp})";
-
-            var args = new List<object?>();
-            if (value is not null)
-                args.Add(value);
-
-            return new SqlFragment(sql, args);
+            return new SqlFragment($"EXISTS (SELECT 1 FROM {depTable} c WHERE {join} AND {condition(depMember)})", args);
         }
 
         // Collection direct member compare is not supported outside Any()
         throw new NotSupportedException($"Direct comparison against collection component '{comp.Name}' is not supported. Use Any(...).");
+    }
+
+    /// <summary>
+    /// <c>values.Contains(p.Component.Member)</c> (an array, list or set evaluated on the client): the member equals
+    /// any of the values, as <c>col = ANY(?)</c> with one array parameter. Null values never match.
+    /// </summary>
+    private bool TryVisitContains(MethodCallExpression m, out SqlFragment fragment)
+    {
+        fragment = default;
+        if (m.Method.Name != "Contains")
+            return false;
+
+        Expression source;
+        Expression item;
+        if (m.Object is null && m.Method.DeclaringType == typeof(Enumerable) && m.Arguments.Count == 2)
+        {
+            source = m.Arguments[0];
+            item = m.Arguments[1];
+        }
+        else if (m.Object is not null && m.Object.Type != typeof(string) && m.Arguments.Count == 1)
+        {
+            source = m.Object;
+            item = m.Arguments[0];
+        }
+        else
+        {
+            return false;
+        }
+
+        if (!TryResolveComponentMember(item, out var comp, out var memberLogical, out var alias))
+            throw new NotSupportedException("Contains() must test a component member, e.g. p => ids.Contains(p.Account.StorageId).");
+
+        if (!TryEvaluate(source, out var values) || values is not IEnumerable enumerable || values is string)
+            throw new NotSupportedException("Contains() source must be a collection of values computed on the client.");
+
+        var elementType = StripConvert(item).Type;
+        var list = enumerable.Cast<object?>().ToList();
+        var array = Array.CreateInstance(elementType, list.Count);
+        for (var i = 0; i < list.Count; i++)
+            array.SetValue(list[i], i);
+
+        fragment = OnComponentMember(comp, memberLogical, alias, col => $"{col} = ANY(?)", new List<object?> { array });
+        return true;
+    }
+
+    private static Expression StripConvert(Expression e)
+    {
+        while (e is UnaryExpression u && (u.NodeType == ExpressionType.Convert || u.NodeType == ExpressionType.ConvertChecked))
+            e = u.Operand;
+        return e;
     }
 
     private SqlFragment VisitDependentPredicate(VaultDocument depDoc, LambdaExpression predicate)
