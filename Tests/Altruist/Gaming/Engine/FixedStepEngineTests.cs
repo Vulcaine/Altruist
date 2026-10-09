@@ -364,6 +364,7 @@ public sealed class WorldCoordinatorTests
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["altruist:game:engine:framerateHz"] = "120",
+            ["altruist:environment:mode"] = "2D",
         }).Build();
         var services = new ServiceCollection();
         services.AddLogging(b => b.ClearProviders());
