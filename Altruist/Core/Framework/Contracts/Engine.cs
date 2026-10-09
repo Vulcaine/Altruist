@@ -131,10 +131,12 @@ public interface IEngineCore
     /// <summary>Pauses frame execution without stopping the engine thread. Use <see cref="Stop"/> to shut it down.</summary>
     void Disable();
     /// <summary>
-    /// Runs a parameterless delegate on a wall-clock cron schedule (5-field, evaluated in UTC). Cron jobs run on a
-    /// thread-pool timer, independent of the frame loop and NOT on the engine thread; a returned <see cref="Task"/> is not
-    /// awaited. Use <see cref="WaitForNextTick(Action)"/> inside the job to touch game state. <c>[Cycle("cron")]</c>
-    /// methods are registered through this.
+    /// Runs a parameterless delegate on a wall-clock cron schedule (5-field, evaluated in UTC). Cron jobs run on the
+    /// thread pool, independent of the frame loop and NOT on the engine thread. A returned <see cref="Task"/> is awaited,
+    /// so runs of one job never overlap (an occurrence missed while the previous run is busy is skipped); a throwing job
+    /// is logged and runs again at its next occurrence. Use <see cref="WaitForNextTick(Action)"/> inside the job to touch
+    /// game state. <c>[Cycle("cron")]</c> methods are registered through this. For a rate in frames or Hz use
+    /// <see cref="ScheduleTask"/> instead.
     /// </summary>
     /// <param name="jobDelegate">The parameterless job.</param>
     /// <param name="cronExpression">A 5-field cron expression, e.g. <see cref="CronPresets.Daily"/>.</param>

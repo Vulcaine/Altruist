@@ -88,7 +88,8 @@ public static class FrameTime
 /// on the engine: cron expressions via <see cref="IEngineCore.RegisterCronJob"/>, rates (fixed or read
 /// from config) and plain <c>[Cycle]</c> (every frame) via <see cref="IEngineCore.ScheduleTask"/>.
 /// Registered automatically as a service and runs in its <c>[PostConstruct]</c>; game code does not
-/// call it. Supported methods are parameterless and return <c>void</c> or <see cref="Task"/>. When a
+/// call it. Supported methods are parameterless and return <c>void</c> or <see cref="Task"/>; instance and
+/// static methods both work (a static method is registered once per service type that declares it). When a
 /// subclass and its base both expose the same method, the subclass' registration wins.
 /// </summary>
 [Service]
@@ -283,15 +284,18 @@ public class MethodScheduler
         if (serviceInstance == null)
             throw new InvalidOperationException($"Service instance for {method.DeclaringType!.FullName} could not be resolved.");
 
+        // A static method has no target: binding it to the service instance would fail.
+        var target = method.IsStatic ? null : serviceInstance;
+
         if (method.ReturnType == typeof(Task) && method.GetParameters().Length == 0)
         {
-            var del = (Func<Task>)Delegate.CreateDelegate(typeof(Func<Task>), serviceInstance, method);
+            var del = (Func<Task>)Delegate.CreateDelegate(typeof(Func<Task>), target, method);
             return del;
         }
 
         if (method.ReturnType == typeof(void) && method.GetParameters().Length == 0)
         {
-            var del = (Action)Delegate.CreateDelegate(typeof(Action), serviceInstance, method);
+            var del = (Action)Delegate.CreateDelegate(typeof(Action), target, method);
             return () =>
             {
                 del();

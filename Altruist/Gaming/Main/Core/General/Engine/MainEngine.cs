@@ -47,7 +47,7 @@ namespace Altruist.Engine;
 /// </code></example>
 [Service(typeof(IEngineCore))]
 [ConditionalOnConfig("altruist:game:engine")]
-public class AltruistEngine : IAltruistEngine
+public class AltruistEngine : IAltruistEngine, IDisposable
 {
     /// <summary>Frame counter of the most recently started engine frame (any engine instance).</summary>
     public static long CurrentTick { get; private set; } = 0;
@@ -59,6 +59,9 @@ public class AltruistEngine : IAltruistEngine
     private long _frame;
 
     private readonly IEngineClock _clock;
+    private readonly TimeProvider _timeProvider;
+    private readonly CancellationTokenSource _cronCts = new();
+    private bool _disposed;
 
     /// <summary>
     /// <c>altruist:game:engine:world-step</c>: <c>inline</c> steps the world on the engine loop after
@@ -159,6 +162,7 @@ public class AltruistEngine : IAltruistEngine
     /// <param name="frequency">Alias of <paramref name="framerateHz"/> (used when that is not set).</param>
     /// <param name="worldStep"><c>worker</c> (default) or <c>inline</c>; see <see cref="WorldStepMode"/>.</param>
     /// <param name="clock">Time source; default the real stopwatch.</param>
+    /// <param name="timeProvider">Wall clock and timers for cron jobs; default <see cref="TimeProvider.System"/>.</param>
     public AltruistEngine(
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
@@ -169,13 +173,15 @@ public class AltruistEngine : IAltruistEngine
         // Examples and docs use `frequency`; accept it as an alias for framerateHz.
         [AppConfigValue("altruist:game:engine:frequency")] int? frequency = null,
         [AppConfigValue("altruist:game:engine:world-step", "worker")] string? worldStep = null,
-        IEngineClock? clock = null)
+        IEngineClock? clock = null,
+        TimeProvider? timeProvider = null)
     {
         var engineFrequencyHz = framerateHz ?? frequency ?? 30;
         _serviceProvider = serviceProvider;
         _appStatus = serverStatus;
         _worldCoordinator = worldCoordinator;
         _clock = clock ?? StopwatchEngineClock.Instance;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         WorldStep = ParseWorldStep(worldStep);
 
         _engineHz = Math.Max(1, engineFrequencyHz);
@@ -379,30 +385,80 @@ public class AltruistEngine : IAltruistEngine
             });
     }
 
-    // ---------------- Cron (unchanged, fire-and-forget) ----------------
+    // ---------------- Cron ----------------
 
-    /// <summary>Runs <paramref name="jobDelegate"/> at each occurrence of <paramref name="cronExpression"/>
-    /// (Cronos format, UTC). Runs on the thread pool, NOT on the engine loop: marshal state changes with
-    /// <see cref="WaitForNextTick(Action)"/>. <paramref name="serviceInstance"/> is unused.</summary>
+    // Task.Delay accepts at most ~49.7 days; longer waits (monthly/yearly crons) are taken in slices.
+    private static readonly TimeSpan MaxCronWait = TimeSpan.FromDays(1);
+
+    /// <summary>
+    /// Runs <paramref name="jobDelegate"/> at each occurrence of <paramref name="cronExpression"/> (5-field Cronos
+    /// format, UTC) until the engine is disposed. Runs on the thread pool, NOT on the engine loop and independent of
+    /// <see cref="Start"/>/<see cref="Stop"/>: marshal state changes with <see cref="WaitForNextTick(Action)"/>.
+    /// A returned <see cref="Task"/> is awaited, so runs of one job never overlap; an occurrence that passes while the
+    /// previous run is still busy is skipped. A throwing job is logged (rate-limited) and runs again at its next
+    /// occurrence. <paramref name="serviceInstance"/> is unused.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="jobDelegate"/> is null.</exception>
+    /// <exception cref="Cronos.CronFormatException"><paramref name="cronExpression"/> is not a valid 5-field expression.</exception>
+    /// <exception cref="ObjectDisposedException">The engine was disposed.</exception>
     public void RegisterCronJob(Delegate jobDelegate, string cronExpression, object? serviceInstance = null)
     {
+        ArgumentNullException.ThrowIfNull(jobDelegate);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var cron = CronExpression.Parse(cronExpression);
+        _ = RunCronJobAsync(jobDelegate, cron, "cron job " + DescribeDelegate(jobDelegate) + " (" + cronExpression + ")", _cronCts.Token);
+    }
 
-        async void ScheduleNextRun()
+    private async Task RunCronJobAsync(Delegate job, CronExpression cron, string source, CancellationToken token)
+    {
+        try
         {
-            var now = DateTime.UtcNow;
-            var nextRunTime = cron.GetNextOccurrence(now, TimeZoneInfo.Utc);
-            if (!nextRunTime.HasValue)
-                return;
+            while (true)
+            {
+                var next = cron.GetNextOccurrence(_timeProvider.GetUtcNow().UtcDateTime, TimeZoneInfo.Utc);
+                if (!next.HasValue)
+                    return;
 
-            var delay = nextRunTime.Value - now;
-            await Task.Delay(delay).ConfigureAwait(false);
+                await WaitUntilAsync(next.Value, token).ConfigureAwait(false);
 
-            jobDelegate.DynamicInvoke();
-            ScheduleNextRun();
+                try
+                {
+                    await ExecuteDelegateAsync(job).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    ReportFault(source, ex);
+                }
+            }
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // Engine disposed.
+        }
+    }
 
-        ScheduleNextRun();
+    private async Task WaitUntilAsync(DateTime dueUtc, CancellationToken token)
+    {
+        while (true)
+        {
+            var remaining = dueUtc - _timeProvider.GetUtcNow().UtcDateTime;
+            if (remaining <= TimeSpan.Zero)
+                return;
+            await Task.Delay(remaining < MaxCronWait ? remaining : MaxCronWait, _timeProvider, token).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Stops the engine and cancels every cron job registered with <see cref="RegisterCronJob"/>.
+    /// Called by the DI container when the application shuts down.</summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        Stop();
+        _cronCts.Cancel();
+        _cronCts.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     // ---------------- Start/Stop ----------------
