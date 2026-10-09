@@ -91,15 +91,16 @@ namespace Altruist.Physx.ThreeD
     /// <summary>Engine-agnostic 3D world facade (implemented by <see cref="PhysxWorld3D"/>) over an <see cref="IPhysxWorldEngine3D"/>.</summary>
     public interface IPhysxWorld3D : IPhysxWorld
     {
-        /// <summary>The underlying backend engine; use it for queries the facade does not expose (e.g. <see cref="IPhysxWorldEngine3D.CapsuleCast"/>, layer-masked ray casts).</summary>
+        /// <summary>The underlying backend engine; use it for queries the facade does not expose (e.g. <see cref="IPhysxWorldEngine3D.CapsuleCast"/>).</summary>
         IPhysxWorldEngine3D Engine { get; }
         /// <summary>Registers a body with the engine (see <see cref="IPhysxWorldEngine3D.AddBody"/>).</summary>
         /// <param name="body">Body created for this world's engine.</param>
         void AddBody(IPhysxBody3D body);
-        /// <summary>Casts a ray against all layers (no layer mask; use <see cref="Engine"/> to filter by layer).</summary>
+        /// <summary>Casts a ray segment and returns hits sorted by distance (see <see cref="IPhysxWorldEngine3D.RayCast"/>).</summary>
         /// <param name="ray">Ray segment in world space.</param>
         /// <param name="maxHits">Maximum hits to return, nearest first.</param>
-        IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1);
+        /// <param name="layerMask">Only bodies whose layer shares a bit with this mask are returned (default: all layers).</param>
+        IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1, uint layerMask = 0xFFFFFFFFu);
     }
 }
 

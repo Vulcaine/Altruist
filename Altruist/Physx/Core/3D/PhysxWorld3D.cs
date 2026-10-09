@@ -45,8 +45,8 @@ public sealed class PhysxWorld3D : IPhysxWorld3D, IDisposable
     public void RemoveBody(IPhysxBody3D body) => _engine.RemoveBody(body);
 
     /// <inheritdoc/>
-    public IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1)
-        => _engine.RayCast(ray, maxHits);
+    public IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1, uint layerMask = 0xFFFFFFFFu)
+        => _engine.RayCast(ray, maxHits, layerMask);
 
     /// <summary>Disposes the wrapped engine.</summary>
     public void Dispose() => _engine.Dispose();

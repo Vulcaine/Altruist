@@ -62,7 +62,8 @@ namespace Altruist.Physx.ThreeD
                         desc.Id,
                         engine3D,
                         staticHandle
-                    );
+                    )
+                    { PhysxTag = desc.PhysxTag };
                 }
 
                 // Everything else is a body in the Bodies set.
@@ -105,7 +106,8 @@ namespace Altruist.Physx.ThreeD
                     handle,
                     isKinematic ? PhysxBodyType.Kinematic : PhysxBodyType.Dynamic,
                     isKinematic ? 0f : (desc.Mass > 0f ? desc.Mass : 1f)
-                );
+                )
+                { PhysxTag = desc.PhysxTag };
             }
         }
 
