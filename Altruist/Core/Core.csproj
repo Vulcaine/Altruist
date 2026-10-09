@@ -32,6 +32,9 @@
     <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
     <PackageReference Include="CassandraCSharpDriver" Version="3.22.0" />
     <PackageReference Include="Cronos" Version="0.10.0" />
+    <!-- SMTP email provider. The "Lite" builds (MIT) leave out S/MIME / PGP, so they pull no BouncyCastle.Cryptography
+         (which would clash with BouncyCastle.NetCore's Org.BouncyCastle types). -->
+    <PackageReference Include="MailKitLite" Version="4.18.1" />
     <PackageReference Include="MessagePack" Version="3.1.10" />
     
 
