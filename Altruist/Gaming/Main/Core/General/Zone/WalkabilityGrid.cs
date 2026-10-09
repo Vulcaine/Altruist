@@ -19,7 +19,10 @@ public enum CellAttribute : byte
     /// <summary>Water cell (informational).</summary>
     Water = 0x02,
     /// <summary>No-combat / safe area cell (informational).</summary>
-    Banpk = 0x04,
+    SafeArea = 0x04,
+    /// <summary>Former name of <see cref="SafeArea"/>.</summary>
+    [Obsolete("Use CellAttribute.SafeArea.")]
+    Banpk = SafeArea,
 }
 
 /// <summary>
