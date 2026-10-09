@@ -14,7 +14,7 @@ namespace Altruist.Persistence.Postgres;
 /// </summary>
 /// <remarks>
 /// Predicates follow the rules of <see cref="PgPredicateTranslator"/>; every other shape throws
-/// <see cref="NotSupportedException"/>. Joined queries use <see cref="Querying.PgJoinExpressionTranslator"/> and prefab
+/// <see cref="NotSupportedException"/>. Joined queries use <see cref="Querying.PgJoinChain"/> and prefab
 /// filters use <see cref="PgPrefabWhereTranslator"/> instead.
 /// </remarks>
 internal static class PgQueryTranslator

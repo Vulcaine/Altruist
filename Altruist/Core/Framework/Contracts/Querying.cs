@@ -32,7 +32,7 @@ public enum JoinType
 /// <para>
 /// When to use: reach for <see cref="IVaultQuery"/> when you need <b>joins</b> across vault tables or
 /// projections over several tables. For single-table work, injecting <see cref="IVault{TVaultModel}"/> directly
-/// is simpler and exposes more (update, delete, <c>AnyAsync</c>, history, cancellation tokens).
+/// is simpler and exposes more (update, delete, <c>AnyAsync</c>, history, cursors).
 /// </para>
 /// </remarks>
 /// <example>
@@ -82,25 +82,24 @@ public interface IVaultQuery<T> where T : class, IVaultModel
     /// <param name="keySelector">Mapped property to sort by.</param>
     /// <returns>A new query with the sort key appended.</returns>
     IVaultQuery<T> OrderByDescending<TKey>(Expression<Func<T, TKey>> keySelector);
-    /// <summary>Skips the first <paramref name="count"/> rows (SQL <c>OFFSET</c>). Call at most once per query.</summary>
+    /// <summary>Skips <paramref name="count"/> rows of the current window (SQL <c>OFFSET</c>); composes like LINQ (see <see cref="IVault{TVaultModel}.Skip"/>).</summary>
     /// <param name="count">Number of rows to skip.</param>
     /// <returns>A new query with the offset applied.</returns>
     IVaultQuery<T> Skip(int count);
-    /// <summary>Limits the result to <paramref name="count"/> rows (SQL <c>LIMIT</c>). Call at most once per query.</summary>
+    /// <summary>Keeps at most <paramref name="count"/> rows of the current window (SQL <c>LIMIT</c>); composes like LINQ (see <see cref="IVault{TVaultModel}.Take"/>).</summary>
     /// <param name="count">Maximum number of rows.</param>
     /// <returns>A new query with the limit applied.</returns>
-    /// <remarks>Don't combine with <see cref="FirstOrDefaultAsync"/>, which adds its own <c>LIMIT 1</c>.</remarks>
     IVaultQuery<T> Take(int count);
 
     /// <summary>
     /// Joins another vault table on <c>leftKey = rightKey</c> and switches to a two-table join query.
     /// </summary>
     /// <remarks>
-    /// The join query starts from the plain root table: <see cref="Where"/>, ordering, <see cref="Skip"/> and
-    /// <see cref="Take"/> called on this query <b>before</b> <c>Join</c> are not carried over. Apply them on the
-    /// returned <see cref="IVaultJoinQuery{T1, T2}"/> instead.
+    /// <see cref="Where"/>, ordering, <see cref="Skip"/> and <see cref="Take"/> called on this query <b>before</b>
+    /// <c>Join</c> select the root rows that are joined, as in LINQ: <c>From&lt;A&gt;().Where(f).Take(5).Join&lt;B&gt;(...)</c>
+    /// joins the first five matching A rows, and the join result keeps their sort keys as its leading sort keys.
     /// </remarks>
-    /// <typeparam name="T2">The vault model to join; must differ from <typeparamref name="T"/> (tables are not aliased).</typeparam>
+    /// <typeparam name="T2">The vault model to join; may be <typeparamref name="T"/> itself (every table gets its own alias).</typeparam>
     /// <param name="leftKey">Property of <typeparamref name="T"/> to join on (a plain property access).</param>
     /// <param name="rightKey">Property of <typeparamref name="T2"/> to join on (a plain property access).</param>
     /// <param name="joinType">SQL join kind; defaults to <see cref="JoinType.Inner"/>.</param>
@@ -112,11 +111,14 @@ public interface IVaultQuery<T> where T : class, IVaultModel
         where T2 : class, IVaultModel;
 
     /// <summary>Runs the query and returns all matching rows.</summary>
-    Task<List<T>> ToListAsync();
-    /// <summary>Runs the query with <c>LIMIT 1</c> and returns the first row, or <c>null</c> when none match.</summary>
-    Task<T?> FirstOrDefaultAsync();
-    /// <summary>Returns the number of rows matching the filters (ordering and paging are ignored).</summary>
-    Task<long> CountAsync();
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<T>> ToListAsync(CancellationToken ct = default);
+    /// <summary>Returns the first row of the current window, or <c>null</c> when none match.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<T?> FirstOrDefaultAsync(CancellationToken ct = default);
+    /// <summary>Returns the number of rows the query selects (the paged window when <see cref="Skip"/>/<see cref="Take"/> were called).</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Upserts <paramref name="entity"/> into this query's table; same behaviour as
@@ -127,15 +129,16 @@ public interface IVaultQuery<T> where T : class, IVaultModel
     /// <param name="saveHistory">When <c>true</c>, also appends a row to the history table (requires <c>StoreHistory</c> on the <c>[Vault]</c> attribute).</param>
     /// <exception cref="Altruist.Persistence.OptimisticConcurrencyException">The stored version did not match the entity's version.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="saveHistory"/> is <c>true</c> but history is not enabled for the table.</exception>
-    Task SaveAsync(T entity, bool? saveHistory = false);
+    /// <param name="ct">Cancellation token.</param>
+    Task SaveAsync(T entity, bool? saveHistory = false, CancellationToken ct = default);
     /// <summary>
     /// Upserts several entities atomically; same behaviour as <see cref="IVault{TVaultModel}.SaveBatchAsync"/>.
     /// </summary>
-    /// <param name="entities">Entities to insert or update (must not be empty).</param>
+    /// <param name="entities">Entities to insert or update (an empty sequence does nothing).</param>
     /// <param name="saveHistory">When <c>true</c>, also appends history rows (requires <c>StoreHistory</c>).</param>
-    /// <exception cref="ArgumentException"><paramref name="entities"/> is empty.</exception>
     /// <exception cref="Altruist.Persistence.OptimisticConcurrencyException">One or more rows had a version mismatch; nothing is written.</exception>
-    Task SaveBatchAsync(IEnumerable<T> entities, bool? saveHistory = false);
+    /// <param name="ct">Cancellation token.</param>
+    Task SaveBatchAsync(IEnumerable<T> entities, bool? saveHistory = false, CancellationToken ct = default);
 }
 
 // ---------------- 1 join (2 tables) ----------------
@@ -151,9 +154,15 @@ public interface IVaultQuery<T> where T : class, IVaultModel
 /// </para>
 /// <para>
 /// Translation rules (Postgres): join keys must be plain property accesses; <c>Where</c> supports
-/// <c>== != &lt; &lt;= &gt; &gt;=</c>, <c>&amp;&amp;</c>, <c>||</c> on mapped properties of any table, with captured
-/// values inlined as SQL literals (no method calls such as <c>Contains</c>). A model type can appear only
-/// once per chain (tables are referenced by name, not aliased).
+/// <c>== != &lt; &lt;= &gt; &gt;=</c>, <c>&amp;&amp;</c>, <c>||</c> on mapped properties of any table (column to
+/// value or column to column), with captured values inlined as SQL literals (no method calls such as
+/// <c>Contains</c>); null comparisons follow C# semantics as in <see cref="IVault{TVaultModel}.Where"/>. Every table
+/// gets its own alias, so a model can be joined to itself; only <c>JoinFrom</c> needs its <c>TFrom</c> to appear
+/// once in the chain.
+/// </para>
+/// <para>
+/// Paging composes like LINQ (see <see cref="IVault{TVaultModel}.Take"/>); <c>Where</c> and <c>OrderBy</c> must
+/// come before <c>Skip</c>/<c>Take</c>.
 /// </para>
 /// <para>
 /// <see cref="ToListAsync"/>/<see cref="FirstOrDefaultAsync"/> return the root table's rows only; with
@@ -175,19 +184,22 @@ public interface IVaultJoinQuery<T1, T2>
     /// <param name="keySelector">A property access on one of the joined tables.</param>
     IVaultJoinQuery<T1, T2> OrderByDescending<TKey>(Expression<Func<T1, T2, TKey>> keySelector);
 
-    /// <summary>Skips the first <paramref name="count"/> rows (<c>OFFSET</c>; negative values clamp to 0). Later calls replace earlier ones.</summary>
+    /// <summary>Skips <paramref name="count"/> rows of the current window (<c>OFFSET</c>; negative values clamp to 0); composes like LINQ.</summary>
     /// <param name="count">Number of rows to skip.</param>
     IVaultJoinQuery<T1, T2> Skip(int count);
-    /// <summary>Limits the result to <paramref name="count"/> rows (<c>LIMIT</c>; negative values clamp to 0). Later calls replace earlier ones.</summary>
+    /// <summary>Keeps at most <paramref name="count"/> rows of the current window (<c>LIMIT</c>; negative values clamp to 0); composes like LINQ.</summary>
     /// <param name="count">Maximum number of rows.</param>
     IVaultJoinQuery<T1, T2> Take(int count);
 
     /// <summary>Runs the join and returns the matching root (<typeparamref name="T1"/>) rows.</summary>
-    Task<List<T1>> ToListAsync();
-    /// <summary>Runs the join with <c>LIMIT 1</c> and returns the first root row, or <c>null</c>.</summary>
-    Task<T1?> FirstOrDefaultAsync();
-    /// <summary>Counts the joined rows matching the filters (<c>SELECT COUNT(*)</c> over the join; paging is ignored).</summary>
-    Task<long> CountAsync();
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<T1>> ToListAsync(CancellationToken ct = default);
+    /// <summary>Returns the first root row of the current window, or <c>null</c>.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<T1?> FirstOrDefaultAsync(CancellationToken ct = default);
+    /// <summary>Counts the joined rows the query selects (<c>SELECT COUNT(*)</c> over the join, limited to the paged window).</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Joins a third table to the <b>most recently joined</b> table (<typeparamref name="T2"/>) on <c>leftKey = rightKey</c>.
@@ -219,7 +231,7 @@ public interface IVaultJoinQuery<T1, T2>
     /// <param name="leftKey">Property of <typeparamref name="TFrom"/> to join on.</param>
     /// <param name="rightKey">Property of <typeparamref name="T3"/> to join on.</param>
     /// <param name="joinType">SQL join kind; defaults to <see cref="JoinType.Inner"/>.</param>
-    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain.</exception>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain, or appears more than once.</exception>
     IVaultJoinQuery<T1, T2, T3> JoinFrom<TFrom, T3>(
         Expression<Func<TFrom, object>> leftKey,
         Expression<Func<T3, object>> rightKey,
@@ -235,11 +247,13 @@ public interface IVaultJoinQuery<T1, T2>
     /// <remarks>
     /// The selector may be a table parameter (<c>(a, b) =&gt; b</c>, all mapped columns of that table) or an object
     /// initializer <c>new TResult { X = a.Prop, Y = b.Prop ?? 0 }</c> whose values are property accesses, constants or
-    /// <c>??</c> coalesces. Results are materialized by property name, so <typeparamref name="TResult"/> needs a
-    /// parameterless constructor and settable properties (anonymous types won't materialize).
+    /// <c>??</c> coalesces, or an anonymous type <c>new { X = a.Prop }</c>. Results are materialized by name: settable
+    /// properties of a type with a parameterless constructor, or the constructor parameters of a type without one
+    /// (anonymous types, positional records).
     /// </remarks>
     /// <param name="selector">Projection from the joined row.</param>
-    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, TResult>> selector)
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, TResult>> selector, CancellationToken ct = default)
         where TResult : class;
 }
 
@@ -264,19 +278,22 @@ public interface IVaultJoinQuery<T1, T2, T3>
     /// <param name="keySelector">A property access on one of the joined tables.</param>
     IVaultJoinQuery<T1, T2, T3> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, TKey>> keySelector);
 
-    /// <summary>Skips the first <paramref name="count"/> rows (<c>OFFSET</c>; negative clamps to 0).</summary>
+    /// <summary>Skips <paramref name="count"/> rows of the current window (<c>OFFSET</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Number of rows to skip.</param>
     IVaultJoinQuery<T1, T2, T3> Skip(int count);
-    /// <summary>Limits the result to <paramref name="count"/> rows (<c>LIMIT</c>; negative clamps to 0).</summary>
+    /// <summary>Keeps at most <paramref name="count"/> rows of the current window (<c>LIMIT</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Maximum number of rows.</param>
     IVaultJoinQuery<T1, T2, T3> Take(int count);
 
     /// <summary>Runs the join and returns the matching root (<typeparamref name="T1"/>) rows.</summary>
-    Task<List<T1>> ToListAsync();
-    /// <summary>Runs the join with <c>LIMIT 1</c> and returns the first root row, or <c>null</c>.</summary>
-    Task<T1?> FirstOrDefaultAsync();
-    /// <summary>Counts the joined rows matching the filters (paging is ignored).</summary>
-    Task<long> CountAsync();
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<T1>> ToListAsync(CancellationToken ct = default);
+    /// <summary>Returns the first root row of the current window, or <c>null</c>.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<T1?> FirstOrDefaultAsync(CancellationToken ct = default);
+    /// <summary>Counts the joined rows the query selects (limited to the paged window).</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>Joins a fourth table to the most recently joined table (<typeparamref name="T3"/>).</summary>
     /// <param name="leftKey">Property of <typeparamref name="T3"/> to join on.</param>
@@ -304,7 +321,7 @@ public interface IVaultJoinQuery<T1, T2, T3>
     /// <param name="leftKey">Property of <typeparamref name="TFrom"/> to join on.</param>
     /// <param name="rightKey">Property of <typeparamref name="T4"/> to join on.</param>
     /// <param name="joinType">SQL join kind; defaults to <see cref="JoinType.Inner"/>.</param>
-    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain.</exception>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain, or appears more than once.</exception>
     IVaultJoinQuery<T1, T2, T3, T4> JoinFrom<TFrom, T4>(
         Expression<Func<TFrom, object>> leftKey,
         Expression<Func<T4, object>> rightKey,
@@ -318,7 +335,8 @@ public interface IVaultJoinQuery<T1, T2, T3>
 
     /// <summary>Runs the join and projects each row into <typeparamref name="TResult"/> (see <see cref="IVaultJoinQuery{T1, T2}.SelectAsync{TResult}"/> for the supported selector shapes).</summary>
     /// <param name="selector">Projection from the joined row.</param>
-    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, TResult>> selector)
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, TResult>> selector, CancellationToken ct = default)
         where TResult : class;
 }
 
@@ -345,19 +363,22 @@ public interface IVaultJoinQuery<T1, T2, T3, T4>
     /// <param name="keySelector">A property access on one of the joined tables.</param>
     IVaultJoinQuery<T1, T2, T3, T4> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, T4, TKey>> keySelector);
 
-    /// <summary>Skips the first <paramref name="count"/> rows (<c>OFFSET</c>; negative clamps to 0).</summary>
+    /// <summary>Skips <paramref name="count"/> rows of the current window (<c>OFFSET</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Number of rows to skip.</param>
     IVaultJoinQuery<T1, T2, T3, T4> Skip(int count);
-    /// <summary>Limits the result to <paramref name="count"/> rows (<c>LIMIT</c>; negative clamps to 0).</summary>
+    /// <summary>Keeps at most <paramref name="count"/> rows of the current window (<c>LIMIT</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Maximum number of rows.</param>
     IVaultJoinQuery<T1, T2, T3, T4> Take(int count);
 
     /// <summary>Runs the join and returns the matching root (<typeparamref name="T1"/>) rows.</summary>
-    Task<List<T1>> ToListAsync();
-    /// <summary>Runs the join with <c>LIMIT 1</c> and returns the first root row, or <c>null</c>.</summary>
-    Task<T1?> FirstOrDefaultAsync();
-    /// <summary>Counts the joined rows matching the filters (paging is ignored).</summary>
-    Task<long> CountAsync();
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<T1>> ToListAsync(CancellationToken ct = default);
+    /// <summary>Returns the first root row of the current window, or <c>null</c>.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<T1?> FirstOrDefaultAsync(CancellationToken ct = default);
+    /// <summary>Counts the joined rows the query selects (limited to the paged window).</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>Joins a fifth table to the most recently joined table (<typeparamref name="T4"/>).</summary>
     /// <param name="leftKey">Property of <typeparamref name="T4"/> to join on.</param>
@@ -385,7 +406,7 @@ public interface IVaultJoinQuery<T1, T2, T3, T4>
     /// <param name="leftKey">Property of <typeparamref name="TFrom"/> to join on.</param>
     /// <param name="rightKey">Property of <typeparamref name="T5"/> to join on.</param>
     /// <param name="joinType">SQL join kind; defaults to <see cref="JoinType.Inner"/>.</param>
-    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain.</exception>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain, or appears more than once.</exception>
     IVaultJoinQuery<T1, T2, T3, T4, T5> JoinFrom<TFrom, T5>(
         Expression<Func<TFrom, object>> leftKey,
         Expression<Func<T5, object>> rightKey,
@@ -399,7 +420,8 @@ public interface IVaultJoinQuery<T1, T2, T3, T4>
 
     /// <summary>Runs the join and projects each row into <typeparamref name="TResult"/> (see <see cref="IVaultJoinQuery{T1, T2}.SelectAsync{TResult}"/> for the supported selector shapes).</summary>
     /// <param name="selector">Projection from the joined row.</param>
-    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, TResult>> selector)
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, TResult>> selector, CancellationToken ct = default)
         where TResult : class;
 }
 
@@ -428,19 +450,22 @@ public interface IVaultJoinQuery<T1, T2, T3, T4, T5>
     /// <param name="keySelector">A property access on one of the joined tables.</param>
     IVaultJoinQuery<T1, T2, T3, T4, T5> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, T4, T5, TKey>> keySelector);
 
-    /// <summary>Skips the first <paramref name="count"/> rows (<c>OFFSET</c>; negative clamps to 0).</summary>
+    /// <summary>Skips <paramref name="count"/> rows of the current window (<c>OFFSET</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Number of rows to skip.</param>
     IVaultJoinQuery<T1, T2, T3, T4, T5> Skip(int count);
-    /// <summary>Limits the result to <paramref name="count"/> rows (<c>LIMIT</c>; negative clamps to 0).</summary>
+    /// <summary>Keeps at most <paramref name="count"/> rows of the current window (<c>LIMIT</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Maximum number of rows.</param>
     IVaultJoinQuery<T1, T2, T3, T4, T5> Take(int count);
 
     /// <summary>Runs the join and returns the matching root (<typeparamref name="T1"/>) rows.</summary>
-    Task<List<T1>> ToListAsync();
-    /// <summary>Runs the join with <c>LIMIT 1</c> and returns the first root row, or <c>null</c>.</summary>
-    Task<T1?> FirstOrDefaultAsync();
-    /// <summary>Counts the joined rows matching the filters (paging is ignored).</summary>
-    Task<long> CountAsync();
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<T1>> ToListAsync(CancellationToken ct = default);
+    /// <summary>Returns the first root row of the current window, or <c>null</c>.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<T1?> FirstOrDefaultAsync(CancellationToken ct = default);
+    /// <summary>Counts the joined rows the query selects (limited to the paged window).</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>Joins a sixth (final) table to the most recently joined table (<typeparamref name="T5"/>).</summary>
     /// <param name="leftKey">Property of <typeparamref name="T5"/> to join on.</param>
@@ -468,7 +493,7 @@ public interface IVaultJoinQuery<T1, T2, T3, T4, T5>
     /// <param name="leftKey">Property of <typeparamref name="TFrom"/> to join on.</param>
     /// <param name="rightKey">Property of <typeparamref name="T6"/> to join on.</param>
     /// <param name="joinType">SQL join kind; defaults to <see cref="JoinType.Inner"/>.</param>
-    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain.</exception>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TFrom"/> is not part of the current join chain, or appears more than once.</exception>
     IVaultJoinQuery<T1, T2, T3, T4, T5, T6> JoinFrom<TFrom, T6>(
         Expression<Func<TFrom, object>> leftKey,
         Expression<Func<T6, object>> rightKey,
@@ -482,7 +507,8 @@ public interface IVaultJoinQuery<T1, T2, T3, T4, T5>
 
     /// <summary>Runs the join and projects each row into <typeparamref name="TResult"/> (see <see cref="IVaultJoinQuery{T1, T2}.SelectAsync{TResult}"/> for the supported selector shapes).</summary>
     /// <param name="selector">Projection from the joined row.</param>
-    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, T5, TResult>> selector)
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, T5, TResult>> selector, CancellationToken ct = default)
         where TResult : class;
 }
 
@@ -513,19 +539,22 @@ public interface IVaultJoinQuery<T1, T2, T3, T4, T5, T6>
     /// <param name="keySelector">A property access on one of the joined tables.</param>
     IVaultJoinQuery<T1, T2, T3, T4, T5, T6> OrderByDescending<TKey>(Expression<Func<T1, T2, T3, T4, T5, T6, TKey>> keySelector);
 
-    /// <summary>Skips the first <paramref name="count"/> rows (<c>OFFSET</c>; negative clamps to 0).</summary>
+    /// <summary>Skips <paramref name="count"/> rows of the current window (<c>OFFSET</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Number of rows to skip.</param>
     IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Skip(int count);
-    /// <summary>Limits the result to <paramref name="count"/> rows (<c>LIMIT</c>; negative clamps to 0).</summary>
+    /// <summary>Keeps at most <paramref name="count"/> rows of the current window (<c>LIMIT</c>; negative clamps to 0); composes like LINQ.</summary>
     /// <param name="count">Maximum number of rows.</param>
     IVaultJoinQuery<T1, T2, T3, T4, T5, T6> Take(int count);
 
     /// <summary>Runs the join and returns the matching root (<typeparamref name="T1"/>) rows.</summary>
-    Task<List<T1>> ToListAsync();
-    /// <summary>Runs the join with <c>LIMIT 1</c> and returns the first root row, or <c>null</c>.</summary>
-    Task<T1?> FirstOrDefaultAsync();
-    /// <summary>Counts the joined rows matching the filters (paging is ignored).</summary>
-    Task<long> CountAsync();
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<T1>> ToListAsync(CancellationToken ct = default);
+    /// <summary>Returns the first root row of the current window, or <c>null</c>.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<T1?> FirstOrDefaultAsync(CancellationToken ct = default);
+    /// <summary>Counts the joined rows the query selects (limited to the paged window).</summary>
+    /// <param name="ct">Cancellation token.</param>
+    Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>Adds a filter over any of the joined tables; several calls are combined with <c>AND</c>.</summary>
     /// <param name="predicate">Predicate over the joined row.</param>
@@ -533,6 +562,7 @@ public interface IVaultJoinQuery<T1, T2, T3, T4, T5, T6>
 
     /// <summary>Runs the join and projects each row into <typeparamref name="TResult"/> (see <see cref="IVaultJoinQuery{T1, T2}.SelectAsync{TResult}"/> for the supported selector shapes).</summary>
     /// <param name="selector">Projection from the joined row.</param>
-    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, T5, T6, TResult>> selector)
+    /// <param name="ct">Cancellation token.</param>
+    Task<List<TResult>> SelectAsync<TResult>(Expression<Func<T1, T2, T3, T4, T5, T6, TResult>> selector, CancellationToken ct = default)
         where TResult : class;
 }

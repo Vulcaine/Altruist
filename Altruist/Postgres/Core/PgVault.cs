@@ -127,6 +127,16 @@ public class PgVault<TVaultModel> : SqlVault<TVaultModel>
     {
     }
 
+    /// <summary>The query state of this instance (filters, sort keys, paging), for the join layer.</summary>
+    internal QueryState State => _state;
+
+    /// <summary>The quoted <c>"schema"."table"</c> name, for the join layer.</summary>
+    internal string TableSql => QualifiedTableName();
+
+    /// <summary><c>SELECT * FROM table</c> with this instance's filters, sort keys and paging, for the join layer.</summary>
+    internal string FilteredRowsSql()
+        => BuildSelectQuery(_state, "*");
+
     /// <inheritdoc/>
     protected override SqlVault<TVaultModel> Create(QueryState state)
         => new PgVault<TVaultModel>(_databaseProvider, Keyspace, VaultDocument, state);

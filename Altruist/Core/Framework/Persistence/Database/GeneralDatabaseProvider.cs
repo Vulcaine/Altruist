@@ -701,44 +701,17 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
                 .ConfigureAwait(false);
 
-            var list = new List<TVaultModel>();
-            var type = typeof(TVaultModel);
-
-            var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanWrite)
-                .ToArray();
-
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < reader.FieldCount; i++)
                 ordinals[reader.GetName(i)] = i;
 
-            // SequentialAccess => read in ordinal order
-            var bindings = props
-                .Select(p => (Prop: p, HasOrd: ordinals.TryGetValue(p.Name, out var o), Ord: o))
-                .Where(x => x.HasOrd)
-                .OrderBy(x => x.Ord)
-                .ToArray();
+            var create = BuildRowFactory<TVaultModel>(ordinals);
+            var list = new List<TVaultModel>();
 
             while (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
                 ct.ThrowIfCancellationRequested();
-
-                var inst = Activator.CreateInstance<TVaultModel>();
-
-                foreach (var b in bindings)
-                {
-                    if (await reader.IsDBNullAsync(b.Ord, ct).ConfigureAwait(false))
-                        continue;
-
-                    var val = reader.GetValue(b.Ord);
-                    if (val is null)
-                        continue;
-
-                    var targetType = Nullable.GetUnderlyingType(b.Prop.PropertyType) ?? b.Prop.PropertyType;
-                    b.Prop.SetValue(inst, ConvertValue(val, targetType));
-                }
-
-                list.Add(inst);
+                list.Add(await create(reader, ct).ConfigureAwait(false));
             }
 
             return list;
@@ -748,6 +721,70 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             if (IsConnected)
                 OnConnected?.Invoke();
         }
+    }
+
+    private delegate Task<T> RowFactory<T>(DbDataReader reader, CancellationToken ct);
+
+    /// <summary>
+    /// Builds a row materializer for <typeparamref name="T"/>: a type with a parameterless constructor gets its settable
+    /// properties set by column name; a type without one (anonymous types, positional records) is created through its
+    /// widest public constructor, each parameter taken from the column of the same name (default when absent). Matching
+    /// is case-insensitive; columns are read in ordinal order (sequential access).
+    /// </summary>
+    private RowFactory<T> BuildRowFactory<T>(IReadOnlyDictionary<string, int> ordinals)
+    {
+        var type = typeof(T);
+
+        async Task<object?> Read(DbDataReader reader, int ordinal, Type target, CancellationToken ct)
+        {
+            if (await reader.IsDBNullAsync(ordinal, ct).ConfigureAwait(false))
+                return null;
+            var raw = reader.GetValue(ordinal);
+            return ConvertValue(raw, Nullable.GetUnderlyingType(target) ?? target);
+        }
+
+        if (type.IsValueType || type.GetConstructor(Type.EmptyTypes) is not null)
+        {
+            var bindings = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanWrite && ordinals.ContainsKey(p.Name))
+                .Select(p => (Prop: p, Ord: ordinals[p.Name]))
+                .OrderBy(x => x.Ord)
+                .ToArray();
+
+            return async (reader, ct) =>
+            {
+                var inst = Activator.CreateInstance<T>();
+                foreach (var (prop, ord) in bindings)
+                {
+                    var value = await Read(reader, ord, prop.PropertyType, ct).ConfigureAwait(false);
+                    if (value is not null)
+                        prop.SetValue(inst, value);
+                }
+                return inst;
+            };
+        }
+
+        var ctor = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .OrderByDescending(c => c.GetParameters().Length)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"Type '{type.FullName}' has no public constructor to materialize rows with.");
+        var parameters = ctor.GetParameters();
+        var defaults = parameters
+            .Select(p => p.ParameterType.IsValueType ? Activator.CreateInstance(p.ParameterType) : null)
+            .ToArray();
+        var bound = parameters
+            .Select((p, i) => (Index: i, Param: p, Found: ordinals.TryGetValue(p.Name ?? "", out var ord), Ord: ord))
+            .Where(x => x.Found)
+            .OrderBy(x => x.Ord)
+            .ToArray();
+
+        return async (reader, ct) =>
+        {
+            var args = (object?[])defaults.Clone();
+            foreach (var b in bound)
+                args[b.Index] = await Read(reader, b.Ord, b.Param.ParameterType, ct).ConfigureAwait(false) ?? defaults[b.Index];
+            return (T)ctor.Invoke(args);
+        };
     }
 
     /// <summary>

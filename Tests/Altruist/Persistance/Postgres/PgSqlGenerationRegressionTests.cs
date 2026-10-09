@@ -15,6 +15,8 @@ using Altruist.Persistence;
 using Altruist.Persistence.Postgres;
 using Altruist.UORM;
 
+using Microsoft.Extensions.DependencyInjection;
+
 using Moq;
 
 using Npgsql;
@@ -42,7 +44,7 @@ public sealed class LiteralProbe : VaultModel
 }
 
 /// <summary>
-/// SQL text produced by PgVault / PgQueryTranslator / PgJoinExpressionTranslator (inlined
+/// SQL text produced by PgVault / PgQueryTranslator / the join layer (inlined
 /// literals: no server needed). Regressions: OrderBy replaced the projection with the sort
 /// column; literals were culture-dependent, truncated timestamps to seconds, could be terminated
 /// by a backslash (standard_conforming_strings=off) and emitted ToString() output raw.
@@ -143,19 +145,14 @@ public sealed class PgQueryTranslatorRegressionTests
 
     // ------------------------------------------------------------------ join translator
 
-    private static string TranslateJoinPredicate<T>(Expression<Func<T, bool>> predicate, object vault)
+    private string JoinWhereSql(Expression<Func<LiteralProbe, LiteralProbe, bool>> predicate)
     {
-        var translator = typeof(PgSqlDbProvider).Assembly.GetType("Altruist.Persistence.Postgres.Querying.PgJoinExpressionTranslator", throwOnError: true)!;
-        var translate = translator.GetMethod("Translate", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
-        var map = new Dictionary<ParameterExpression, object> { [predicate.Parameters[0]] = vault };
-        try
-        {
-            return (string)translate.Invoke(null, new object[] { predicate, map })!;
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null)
-        {
-            throw ex.InnerException;
-        }
+        using var services = new ServiceCollection().AddSingleton<IVault<LiteralProbe>>(_vault).BuildServiceProvider();
+        using var scope = Dependencies.PushScope(services);
+        _sql.Clear();
+        new PgVaultQuery().From<LiteralProbe>().Join<LiteralProbe>(a => a.Name, b => b.Name)
+            .Where(predicate).ToListAsync().GetAwaiter().GetResult();
+        return Assert.Single(_sql);
     }
 
     [Fact]
@@ -163,7 +160,7 @@ public sealed class PgQueryTranslatorRegressionTests
     {
         var id = Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e");
         var name = "o'brien\\";
-        var sql = TranslateJoinPredicate<LiteralProbe>(p => p.Ref == id && p.Name == name, _vault);
+        var sql = JoinWhereSql((a, b) => a.Ref == id && b.Name == name);
         Assert.Contains("'0f8fad5b-d9cb-469f-a165-70867728950e'", sql);
         Assert.Contains("E'o''brien\\\\'", sql);
     }
@@ -173,7 +170,7 @@ public sealed class PgQueryTranslatorRegressionTests
     {
         var ratio = 2.25;
         var at = new DateTime(2024, 5, 6, 7, 8, 9).AddTicks(1234560);
-        var sql = WithCulture("fr-FR", () => TranslateJoinPredicate<LiteralProbe>(p => p.Ratio == ratio && p.At == at, _vault));
+        var sql = WithCulture("fr-FR", () => JoinWhereSql((a, b) => a.Ratio == ratio && b.At == at));
         Assert.Contains("2.25", sql);
         Assert.Contains("'2024-05-06 07:08:09.123456'", sql);
     }
@@ -182,7 +179,7 @@ public sealed class PgQueryTranslatorRegressionTests
     public void Join_predicates_reject_NUL()
     {
         var name = "a\0b";
-        Assert.ThrowsAny<ArgumentException>(() => TranslateJoinPredicate<LiteralProbe>(p => p.Name == name, _vault));
+        Assert.ThrowsAny<ArgumentException>(() => JoinWhereSql((a, b) => a.Name == name));
     }
 }
 
