@@ -58,8 +58,7 @@ export interface PredictionHooks<TSim, TInput, TSnap, TFrame, TEvent> {
 export interface PredictedSessionOptions {
   /** Fixed step rate (must match the server room). */
   hz: number;
-  /** Clock tuning; default `{ maxFrameDelta: 0.25, maxStepsPerFrame: 8, overrun: 'drop' }`. DriftLink
-   * uses `maxStepsPerFrame: 6`. */
+  /** Clock tuning; default `{ maxFrameDelta: 0.25, maxStepsPerFrame: 8, overrun: 'drop' }`. */
   clock?: FixedStepClockOptions;
   /** Pending / redundancy tuning (default 120 pending, no redundancy). */
   inputs?: InputSendQueueOptions;
@@ -86,7 +85,6 @@ export interface PredictedSessionOptions {
  * server). Offline or host-side play needs only a {@link FixedStepClock} and {@link runFixedSteps};
  * objects you do not predict can be drawn from an {@link InterpolationBuffer}. Deterministic given
  * the hooks, frame times and `now`. Units: frame times in seconds, `now` in ms, depths in steps.
- * Generic port of DriftLink's `NetSession` (with `LocalSession`'s step loop and `session.ts` lerp).
  * @example
  * ```ts
  * const session = new PredictedSession(sim, hooks, { hz: 60 });

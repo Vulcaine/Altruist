@@ -50,7 +50,7 @@ export interface BodyPose {
    * before and after pose. */
   snap?: boolean;
   /** Decay rate (1/s) of this object's offset; default {@link CorrectionOptions.rate}. Remote
-   * objects predicted from stale inputs usually look better slower (DriftLink: 7 vs 14). */
+   * objects predicted from stale inputs usually look better slower (e.g. 7 against a local 14). */
   rate?: number;
 }
 
@@ -67,15 +67,15 @@ export interface CorrectionOffset {
 /** Tuning of a {@link CorrectionSmoother}. Rates are generic; the distance limits depend on world
  * scale, so they default to off. */
 export interface CorrectionOptions {
-  /** Default decay rate (1/s): ~1/rate seconds to fade. Default 14 (DriftLink's local player). */
+  /** Default decay rate (1/s): ~1/rate seconds to fade. Default 14. */
   rate?: number;
   /** Fastest an offset moves the drawn object (units/s), unless `minRate` is faster. Default
-   * Infinity (plain exponential decay). DriftLink: 12 m/s. */
+   * Infinity (plain exponential decay). */
   maxSpeed?: number;
   /** Slowest decay rate (1/s) when `maxSpeed` limits. Default 4. */
   minRate?: number;
   /** Offsets longer than this are cut back (a desync that large is better shown than chased).
-   * Default Infinity. DriftLink: 10 m. */
+   * Default Infinity. */
   maxOffset?: number;
 }
 
@@ -84,7 +84,6 @@ export interface CorrectionOptions {
  * before and after it; {@link decay} once per rendered frame; add {@link get}'s offset to what you
  * draw. Use it whenever predicted objects are corrected by authoritative snapshots; for remote
  * objects you only interpolate ({@link InterpolationBuffer}) no smoothing is needed.
- * Generic port of DriftLink's `NetSession` offsets (same arithmetic with its options).
  * @example
  * ```ts
  * const before = poses(capture(sim)); reconcile(); const after = poses(capture(sim));

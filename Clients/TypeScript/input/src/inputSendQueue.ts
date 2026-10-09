@@ -106,7 +106,7 @@ export class InputSendQueue<T> {
   }
 }
 
-/** Tuning of an {@link InputPacer}; defaults are DriftLink's (a 60 Hz action game), all in steps or
+/** Tuning of an {@link InputPacer}; defaults suit a 60 Hz action game, all in steps or
  * fractions, so they suit most 30-120 Hz rooms. */
 export interface InputPacerOptions {
   /** Smallest depth (inputs) kept queued on the server on a steady link. Default 2. */
@@ -131,7 +131,7 @@ export interface InputPacerOptions {
  *
  * Multiply the client's fixed-step frame time by {@link pace} (e.g. `FixedStepClock.advance(dt,
  * pacer.pace)`). Feed {@link observe} once per received snapshot. {@link PredictedSession} does
- * both. Generic port of DriftLink's `NetSession` pacing (identical arithmetic).
+ * both.
  * @example
  * ```ts
  * pacer.observe(snap.inputDepth, snap.inputTarget);

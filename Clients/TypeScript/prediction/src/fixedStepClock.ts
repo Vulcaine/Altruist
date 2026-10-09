@@ -40,6 +40,13 @@ export interface FixedStepClockOptions {
   maxStepsPerFrame?: number;
   /** Policy for time beyond `maxStepsPerFrame`. Default {@link OverrunPolicy.Drop}. */
   overrun?: OverrunPolicy;
+  /**
+   * TypeScript only: precision of the step length {@link FixedStepClock.dt}. `float` (default) is
+   * C#'s `1f / hz`, so the clock steps exactly like a C# room. `double` is `1 / hz`: use it when the
+   * client's simulation steps by a double-precision `1 / hz` (a simulation written in JavaScript),
+   * so the clock counts the same step length the simulation advances by.
+   */
+  stepPrecision?: 'float' | 'double';
 }
 
 /**
@@ -63,7 +70,8 @@ export interface FixedStepClockOptions {
 export class FixedStepClock {
   /** Steps per second. C# `Hz`. */
   readonly hz: number;
-  /** Step length in seconds every step gets: `Math.fround(1 / hz)` (C# `Dt`, a float). */
+  /** Step length in seconds every step gets: `Math.fround(1 / hz)` (C# `Dt`, a float), or `1 / hz`
+   * with `stepPrecision: 'double'`. */
   readonly dt: number;
   /** Longest frame time (seconds) one advance counts. C# `MaxFrameDelta`. */
   readonly maxFrameDelta: number;
@@ -88,7 +96,7 @@ export class FixedStepClock {
     if (!(maxFrameDelta > 0)) throw new RangeError('max-frame-delta must be positive.');
     if (!(maxSteps > 0) || !Number.isInteger(maxSteps)) throw new RangeError('max-steps-per-frame must be positive.');
     this.hz = hz;
-    this.dt = Math.fround(1 / hz);
+    this.dt = options.stepPrecision === 'double' ? 1 / hz : Math.fround(1 / hz);
     this.maxFrameDelta = maxFrameDelta;
     this.maxStepsPerFrame = maxSteps;
     this.overrun = options.overrun ?? OverrunPolicy.Drop;

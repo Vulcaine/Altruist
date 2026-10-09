@@ -54,6 +54,15 @@ describe('FixedStepClock', () => {
     assert.ok(sa > sb + 25 && sa < sb + 35);
     assert.ok(a.alpha >= 0 && a.alpha < 1);
   });
+  it('double step precision counts exactly 1 / hz: one step per 1 / hz frame', () => {
+    const float = new FixedStepClock(60);
+    const double = new FixedStepClock(60, { stepPrecision: 'double' });
+    assert.equal(double.dt, 1 / 60);
+    assert.equal(float.dt, Math.fround(1 / 60));
+    const steps = (c: FixedStepClock) => Array.from({ length: 5 }, () => c.advance(1 / 60));
+    assert.deepEqual(steps(double), [1, 1, 1, 1, 1]);
+    assert.deepEqual(steps(float), [0, 1, 1, 1, 1]);
+  });
   it('runFixedSteps hands catch-up steps their own cutoffs and the newest step none', () => {
     const clock = new FixedStepClock(60, { maxStepsPerFrame: 6 });
     const cutoffs: (number | undefined)[] = [];
