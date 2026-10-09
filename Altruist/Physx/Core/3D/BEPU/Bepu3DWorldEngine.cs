@@ -1110,46 +1110,6 @@ namespace Altruist.Physx.ThreeD
             public override void ApplyForce(in PhysxForce force) { }
         }
 
-        private struct ClosestHitCollector : IRayHitHandler
-        {
-            public bool Hit;
-            public float T;
-            public Vector3 Point;
-            public Vector3 Normal;
-
-            public bool IsStatic;
-            public BodyHandle Body;
-            public StaticHandle Static;
-
-            public bool AllowTest(CollidableReference collidable) => true;
-            public bool AllowTest(CollidableReference collidable, int childIndex) => true;
-
-            public void OnRayHit(in RayData ray, ref float maximumT, float t, in Vector3 normal, CollidableReference collidable, int childIndex)
-            {
-                if (t >= maximumT)
-                    return;
-
-                maximumT = t;
-                Hit = true;
-                T = t;
-                Normal = normal;
-                Point = ray.Origin + ray.Direction * t;
-
-                if (collidable.Mobility == CollidableMobility.Static)
-                {
-                    IsStatic = true;
-                    Static = collidable.StaticHandle;
-                    Body = default;
-                }
-                else
-                {
-                    IsStatic = false;
-                    Body = collidable.BodyHandle;
-                    Static = default;
-                }
-            }
-        }
-
         private readonly struct NarrowPhaseCallbacks : INarrowPhaseCallbacks
         {
             public void Initialize(Simulation simulation) { }

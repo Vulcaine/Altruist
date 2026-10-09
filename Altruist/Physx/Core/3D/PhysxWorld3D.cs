@@ -1,6 +1,4 @@
 
-using System.Numerics;
-
 using Altruist.Physx.Contracts;
 
 namespace Altruist.Physx.ThreeD;
@@ -52,43 +50,4 @@ public sealed class PhysxWorld3D : IPhysxWorld3D, IDisposable
 
     /// <summary>Disposes the wrapped engine (which may be shared through the factory cache).</summary>
     public void Dispose() => _engine.Dispose();
-
-    /// <summary>
-    /// Legacy nested copies of the engine contracts. Not used by <see cref="PhysxWorld3D"/> or the BEPU backend; use the
-    /// top-level <see cref="Altruist.Physx.ThreeD.IPhysxWorldEngine3D"/> and
-    /// <see cref="Altruist.Physx.ThreeD.IPhysxWorldEngineFactory3D"/> instead.
-    /// </summary>
-    public static class Contracts
-    {
-        /// <summary>Legacy engine contract; prefer the top-level <see cref="Altruist.Physx.ThreeD.IPhysxWorldEngine3D"/>.</summary>
-        public interface IPhysxWorldEngine3D : IDisposable
-        {
-            /// <summary>Fixed simulation sub-step in seconds.</summary>
-            float FixedDeltaTime { get; }
-            /// <summary>Registered bodies.</summary>
-            IReadOnlyCollection<IPhysxBody> Bodies { get; }
-            /// <summary>Advances the simulation.</summary>
-            /// <param name="deltaTime">Elapsed time in seconds.</param>
-            void Step(float deltaTime);
-            /// <summary>Registers a body and returns it.</summary>
-            /// <param name="body">Body to add.</param>
-            IPhysxBody3D AddBody(IPhysxBody3D body);
-            /// <summary>Removes a body.</summary>
-            /// <param name="body">Body to remove.</param>
-            void RemoveBody(IPhysxBody body);
-            /// <summary>Casts a ray segment.</summary>
-            /// <param name="ray">Ray segment.</param>
-            /// <param name="maxHits">Maximum hits.</param>
-            IEnumerable<PhysxRaycastHit3D> RayCast(PhysxRay3D ray, int maxHits = 1);
-        }
-
-        /// <summary>Legacy factory contract; prefer the top-level <see cref="Altruist.Physx.ThreeD.IPhysxWorldEngineFactory3D"/>.</summary>
-        public interface IPhysxWorldEngineFactory3D
-        {
-            /// <summary>Creates an engine.</summary>
-            /// <param name="gravity">Gravity acceleration (units/s²).</param>
-            /// <param name="fixedDeltaTime">Fixed sub-step in seconds.</param>
-            IPhysxWorldEngine3D Create(Vector3 gravity, float fixedDeltaTime = 1f / 60f);
-        }
-    }
 }
