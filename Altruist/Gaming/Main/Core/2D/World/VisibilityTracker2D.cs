@@ -68,32 +68,42 @@ namespace Altruist.Gaming.TwoD
         public void Tick()
         {
             if (_organizer is null) return;
-            foreach (var world in _organizer.GetAllWorlds())
-            {
-                var allObjects = world.FindAllObjects<IWorldObject2D>().ToList();
-                var lookup = allObjects.ToDictionary(o => o.InstanceId, o => o);
-                var worldIndex = world.Index.Index;
-
-                foreach (var (clientId, registeredObserver) in _observers.ToArray())
+            var worlds = _organizer.GetAllWorlds()
+                .Select(world =>
                 {
-                    if (!lookup.TryGetValue(registeredObserver.InstanceId, out var observer) ||
-                        string.IsNullOrEmpty(observer.ClientId))
-                    {
-                        RemoveObserver(clientId);
-                        continue;
-                    }
+                    var objects = world.FindAllObjects<IWorldObject2D>().ToList();
+                    return (Index: world.Index.Index, Objects: objects, Lookup: objects.ToDictionary(o => o.InstanceId, o => o));
+                })
+                .ToList();
 
-                    if (!string.Equals(observer.ClientId, clientId, StringComparison.Ordinal))
-                    {
-                        RemoveObserver(clientId);
-                        Observe(observer);
-                        continue;
-                    }
-
-                    _observers[clientId] = observer;
-                    _observerInstanceIds[observer.InstanceId] = clientId;
-                    UpdateVisibilityFor(observer, worldIndex, allObjects);
+            // An observer is in exactly one world; it is dropped only when no world holds it.
+            foreach (var (clientId, registeredObserver) in _observers.ToArray())
+            {
+                var home = worlds.FindIndex(w => w.Lookup.ContainsKey(registeredObserver.InstanceId));
+                if (home < 0)
+                {
+                    RemoveObserver(clientId);
+                    continue;
                 }
+
+                var (worldIndex, allObjects, lookup) = worlds[home];
+                var observer = lookup[registeredObserver.InstanceId];
+                if (string.IsNullOrEmpty(observer.ClientId))
+                {
+                    RemoveObserver(clientId);
+                    continue;
+                }
+
+                if (!string.Equals(observer.ClientId, clientId, StringComparison.Ordinal))
+                {
+                    RemoveObserver(clientId);
+                    Observe(observer);
+                    continue;
+                }
+
+                _observers[clientId] = observer;
+                _observerInstanceIds[observer.InstanceId] = clientId;
+                UpdateVisibilityFor(observer, worldIndex, allObjects);
             }
         }
 

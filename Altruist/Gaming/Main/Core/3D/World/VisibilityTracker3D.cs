@@ -20,7 +20,8 @@ namespace Altruist.Gaming.ThreeD
     /// For 2D use <see cref="Altruist.Gaming.TwoD.VisibilityTracker2D"/>.</para>
     /// <para>Observers must be registered explicitly with <see cref="Observe"/> and need a non-empty <c>ClientId</c>.
     /// With 4+ observers the work runs in <see cref="Parallel"/> and events fire on thread-pool threads, so subscribers
-    /// must be thread-safe; with 8+ observers only half of them (alternating groups) are refreshed per tick.
+    /// must be thread-safe; with 8+ observers only half of them (alternating groups) are refreshed per tick (an observer
+    /// not refreshed keeps its previous visible set, and those entities count as observed for hibernation).
     /// Above 200 objects a spatial hash grid (cell size max(ViewRange/2, 500)) is used as broadphase.</para>
     /// <para>When an <see cref="IEntityHibernationService"/> is registered, hibernated entities near observers are woken
     /// (re-spawned as dynamic objects) and <see cref="IHibernatable"/> objects seen by no observer are destroyed and hibernated.
@@ -215,9 +216,13 @@ namespace Altruist.Gaming.ThreeD
                     {
                         var (obs, staggerGroup) = observerList[i];
 
-                        // Stagger: only process half the observers per tick (8+ observers)
+                        // Stagger: only process half the observers per tick (8+ observers). A skipped
+                        // observer still sees what it saw last tick, which keeps those entities awake.
                         if (shouldStagger && staggerGroup != (_tickCounter & 1))
+                        {
+                            CountStillVisible(obs.ClientId);
                             return;
+                        }
 
                         UpdateVisibilityForParallel(obs, world, worldIndex, allObjects, lookup);
                     });
@@ -236,6 +241,13 @@ namespace Altruist.Gaming.ThreeD
                 if (_hibernation != null)
                     HibernateUnobserved(world, allObjects);
             }
+        }
+
+        private void CountStillVisible(string clientId)
+        {
+            if (!_visibleSets.TryGetValue(clientId, out var visible)) return;
+            foreach (var id in visible)
+                _observerCounts.AddOrUpdate(id, 1, (_, c) => c + 1);
         }
 
         // Reusable observer list — avoids allocation
