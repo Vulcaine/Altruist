@@ -53,7 +53,7 @@ public interface ISpatialCollisionDispatcher
     /// <summary>Run full overlap detection tick (enter/stay/exit) for a world.</summary>
     /// <remarks>
     /// Two objects overlap when their layers (<c>CollisionLayer</c>) share a bit, a handler exists for their types and their
-    /// center distance is at most the larger of their radii (radius = largest size component of the first collider descriptor
+    /// center distance is at most the sum of their radii (radius = largest size component of the first collider descriptor
     /// with a positive size, else <paramref name="collisionRadius"/>). Also raises enter/exit between objects and the
     /// zone containing their position (only for <see cref="GameWorldManager3D"/> worlds). Not thread-safe: call from one thread.
     /// </remarks>
@@ -144,6 +144,11 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
         // Build spatial broadphase grid (O(n)) — avoids O(n²) pair checking
         _grid.Build(allObjects);
 
+        // A pair overlaps up to rA + rB apart, so each query must reach the largest radius in the world.
+        float maxRadius = collisionRadius;
+        for (int i = 0; i < allObjects.Count; i++)
+            maxRadius = MathF.Max(maxRadius, GetColliderRadius(allObjects[i], collisionRadius));
+
         // -- Entity <-> Entity overlap detection via broadphase --
         for (int i = 0; i < allObjects.Count; i++)
         {
@@ -152,7 +157,7 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
             var radiusA = GetColliderRadius(objA, collisionRadius);
 
             // Query only nearby entities from the spatial grid
-            _grid.QueryRadius(posA.X, posA.Y, posA.Z, MathF.Max(radiusA, collisionRadius), _nearbyBuffer);
+            _grid.QueryRadius(posA.X, posA.Y, posA.Z, radiusA + maxRadius, _nearbyBuffer);
 
             for (int n = 0; n < _nearbyBuffer.Count; n++)
             {
@@ -169,7 +174,7 @@ public sealed class SpatialCollisionDispatcher : ISpatialCollisionDispatcher
                     continue;
 
                 var radiusB = GetColliderRadius(objB, collisionRadius);
-                var totalRadius = MathF.Max(radiusA, radiusB);
+                var totalRadius = radiusA + radiusB;
 
                 var posB = objB.Transform.Position;
                 var dx = posA.X - posB.X;

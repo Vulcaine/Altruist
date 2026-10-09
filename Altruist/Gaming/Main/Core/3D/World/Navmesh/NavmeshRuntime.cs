@@ -29,7 +29,7 @@ namespace Altruist.Gaming.ThreeD;
 /// <remarks>
 /// Not thread-safe; use one agent per entity. Convenience: <see cref="BodyNavigationExtensions3D.LaunchAlong(IPhysxBody3D, INavMeshRuntime, string, Vector3, float)"/>
 /// creates, registers and starts a body-bound agent in one call. A body-bound agent whose path is finished stays registered and keeps
-/// writing zero velocity each tick until removed with <see cref="INavMeshRuntime.RemoveAgent"/>.
+/// zeroing its horizontal velocity each tick (vertical velocity untouched) until removed with <see cref="INavMeshRuntime.RemoveAgent"/>.
 /// </remarks>
 /// <example>
 /// <code>
@@ -176,21 +176,22 @@ public sealed class NavMeshAgent
     /// waypoint at <see cref="Speed"/>, set body velocity, advance cursor
     /// on arrival. Called by <see cref="INavMeshRuntime.Update"/> for every
     /// registered agent. No-op on manual-mode agents (no body).</summary>
-    /// <remarks>Without a path or with <see cref="Speed"/> ≤ 0 the whole velocity (including Y) is set to zero.</remarks>
+    /// <remarks>Without a path, at its end or with <see cref="Speed"/> ≤ 0 the horizontal velocity is set to zero; the
+    /// vertical (Y) velocity is kept so gravity and falls continue.</remarks>
     /// <param name="dt">Step length in seconds (passed through; velocity is set in units per second).</param>
     public void Tick(float dt)
     {
         if (Body == null) return;
         if (!HasPath || Speed <= 0f)
         {
-            Body.LinearVelocity = Vector3.Zero;
+            StopHorizontal(Body);
             return;
         }
 
         var next = StepToward(Body.Position, ArrivalRadius);
         if (next == null)
         {
-            Body.LinearVelocity = Vector3.Zero;
+            StopHorizontal(Body);
             return;
         }
 
@@ -198,6 +199,9 @@ public sealed class NavMeshAgent
         // kinematic falls aren't clobbered.
         Body.MoveToward(next.Value, Speed, dt);
     }
+
+    private static void StopHorizontal(IPhysxBody3D body)
+        => body.LinearVelocity = new Vector3(0f, body.LinearVelocity.Y, 0f);
 }
 
 /// <summary>Central registry + ticker for body-bound nav-mesh agents.
