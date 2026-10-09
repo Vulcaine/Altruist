@@ -1,12 +1,16 @@
 {
   "name": "@altruist/net",
   "version": "0.1.0",
-  "description": "Altruist networking helpers for game clients: schema-driven decoders for the server's positional snapshot rows and packets (TypeScript twin of Altruist.Networking SnapshotRowSchema / SnapshotSchemaSet).",
+  "description": "Altruist networking for game clients: MessagePack wire format and envelopes (twin of Altruist.Client MessageEnvelopeShape / ClientPacketDispatcher), the AltruistSocket WebSocket transport (tickets, reconnect, heartbeat, fleet redirects), connection diagnostics (ping, clock sync, network conditioner), rate-limit twins, and schema-driven snapshot decoders (twin of SnapshotSchemaSet). No dependencies.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./wire": "./src/wire/index.ts",
+    "./transport": "./src/transport/index.ts",
+    "./diagnostics": "./src/diagnostics/index.ts",
+    "./util": "./src/util/index.ts"
   },
   "scripts": {
     "test": "node --test \"tests/*.test.ts\"",

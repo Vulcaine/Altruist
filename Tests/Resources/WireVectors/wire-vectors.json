@@ -1,0 +1,396 @@
+{
+  "format": "altruist.wire-vectors/1",
+  "note": "Shared golden vectors: Tests/Altruist/Client/WireVectorTests.cs (MessagePack-CSharp, TokenBucketRateLimiter, SlidingWindowCounter) and Clients/TypeScript/net/tests (wire.test.ts, util.test.ts) must both reproduce these bytes and verdicts.",
+  "values": [
+    {
+      "name": "zero",
+      "type": "int",
+      "value": 0,
+      "hex": "00"
+    },
+    {
+      "name": "fixint max",
+      "type": "int",
+      "value": 127,
+      "hex": "7f"
+    },
+    {
+      "name": "uint8 min",
+      "type": "int",
+      "value": 128,
+      "hex": "cc80"
+    },
+    {
+      "name": "uint8 max",
+      "type": "int",
+      "value": 255,
+      "hex": "ccff"
+    },
+    {
+      "name": "uint16 min",
+      "type": "int",
+      "value": 256,
+      "hex": "cd0100"
+    },
+    {
+      "name": "uint16 max",
+      "type": "int",
+      "value": 65535,
+      "hex": "cdffff"
+    },
+    {
+      "name": "uint32 min",
+      "type": "int",
+      "value": 65536,
+      "hex": "ce00010000"
+    },
+    {
+      "name": "int max",
+      "type": "int",
+      "value": 2147483647,
+      "hex": "ce7fffffff"
+    },
+    {
+      "name": "neg fixint -1",
+      "type": "int",
+      "value": -1,
+      "hex": "ff"
+    },
+    {
+      "name": "neg fixint min",
+      "type": "int",
+      "value": -32,
+      "hex": "e0"
+    },
+    {
+      "name": "int8 min side",
+      "type": "int",
+      "value": -33,
+      "hex": "d0df"
+    },
+    {
+      "name": "int8 min",
+      "type": "int",
+      "value": -128,
+      "hex": "d080"
+    },
+    {
+      "name": "int16 min side",
+      "type": "int",
+      "value": -129,
+      "hex": "d1ff7f"
+    },
+    {
+      "name": "int16 min",
+      "type": "int",
+      "value": -32768,
+      "hex": "d18000"
+    },
+    {
+      "name": "int32 side",
+      "type": "int",
+      "value": -32769,
+      "hex": "d2ffff7fff"
+    },
+    {
+      "name": "int min",
+      "type": "int",
+      "value": -2147483648,
+      "hex": "d280000000"
+    },
+    {
+      "name": "uint max",
+      "type": "uint",
+      "value": 4294967295,
+      "hex": "ceffffffff"
+    },
+    {
+      "name": "uint64",
+      "type": "long",
+      "value": 4294967296,
+      "hex": "cf0000000100000000"
+    },
+    {
+      "name": "int64",
+      "type": "long",
+      "value": -2147483649,
+      "hex": "d3ffffffff7fffffff"
+    },
+    {
+      "name": "float32 1.5",
+      "type": "float",
+      "value": 1.5,
+      "hex": "ca3fc00000"
+    },
+    {
+      "name": "float32 -0.25",
+      "type": "float",
+      "value": -0.25,
+      "hex": "cabe800000"
+    },
+    {
+      "name": "float64 0.1",
+      "type": "double",
+      "value": 0.1,
+      "hex": "cb3fb999999999999a"
+    },
+    {
+      "name": "float64 -1e300",
+      "type": "double",
+      "value": -1e+300,
+      "hex": "cbfe37e43c8800759c"
+    },
+    {
+      "name": "true",
+      "type": "bool",
+      "value": true,
+      "hex": "c3"
+    },
+    {
+      "name": "false",
+      "type": "bool",
+      "value": false,
+      "hex": "c2"
+    },
+    {
+      "name": "nil",
+      "type": "nil",
+      "value": null,
+      "hex": "c0"
+    },
+    {
+      "name": "empty",
+      "type": "string",
+      "value": "",
+      "hex": "a0"
+    },
+    {
+      "name": "fixstr 31",
+      "type": "string",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hex": "bf61616161616161616161616161616161616161616161616161616161616161"
+    },
+    {
+      "name": "str8 32",
+      "type": "string",
+      "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "hex": "d9206262626262626262626262626262626262626262626262626262626262626262"
+    },
+    {
+      "name": "str16 256",
+      "type": "string",
+      "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "hex": "da010063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363"
+    },
+    {
+      "name": "utf8",
+      "type": "string",
+      "value": "h\u00e9llo \u2713",
+      "hex": "aa68c3a96c6c6f20e29c93"
+    },
+    {
+      "name": "int array",
+      "type": "int[]",
+      "value": [
+        1,
+        200,
+        -5
+      ],
+      "hex": "9301ccc8fb"
+    },
+    {
+      "name": "array16 (16 items)",
+      "type": "int[]",
+      "value": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "hex": "dc0010000102030405060708090a0b0c0d0e0f"
+    }
+  ],
+  "envelopes": [
+    {
+      "name": "FooPacket in a stamped envelope",
+      "code": 4242,
+      "header": {
+        "timestamp": "638000000000000000",
+        "receiver": "rcv",
+        "sender": "server"
+      },
+      "packet": {
+        "messageCode": 4242,
+        "name": "hello",
+        "score": 9
+      },
+      "hex": "93cd109293cf08daa19ea6b30000a3726376a673657276657293cd1092a568656c6c6f09"
+    },
+    {
+      "name": "FooPacket broadcast (nil receiver, unstamped)",
+      "code": 4242,
+      "header": {
+        "timestamp": "0",
+        "receiver": null,
+        "sender": "server"
+      },
+      "packet": {
+        "messageCode": 4242,
+        "name": "world",
+        "score": 300
+      },
+      "hex": "93cd10929300c0a673657276657293cd1092a5776f726c64cd012c"
+    }
+  ],
+  "clientFrames": [
+    {
+      "name": "chat gate with FooPacket",
+      "event": "chat",
+      "packet": {
+        "messageCode": 4242,
+        "name": "gg",
+        "score": -3
+      },
+      "hex": "046368617493cd1092a26767fd"
+    }
+  ],
+  "tokenBuckets": [
+    {
+      "name": "capacity 2, 1 per second",
+      "capacity": 2,
+      "perSecond": 1,
+      "hits": [
+        {
+          "at": 0,
+          "allow": true
+        },
+        {
+          "at": 0,
+          "allow": true
+        },
+        {
+          "at": 0,
+          "allow": false
+        },
+        {
+          "at": 0.999,
+          "allow": false
+        },
+        {
+          "at": 1.0,
+          "allow": true
+        },
+        {
+          "at": 1.5,
+          "allow": false
+        },
+        {
+          "at": 2.0,
+          "allow": true
+        }
+      ]
+    },
+    {
+      "name": "capacity 3, 0.6 per second (fractional refill)",
+      "capacity": 3,
+      "perSecond": 0.6,
+      "hits": [
+        {
+          "at": 0,
+          "allow": true
+        },
+        {
+          "at": 0,
+          "allow": true
+        },
+        {
+          "at": 0,
+          "allow": true
+        },
+        {
+          "at": 0,
+          "allow": false
+        },
+        {
+          "at": 1.0,
+          "allow": false
+        },
+        {
+          "at": 1.7,
+          "allow": true
+        },
+        {
+          "at": 2.0,
+          "allow": false
+        },
+        {
+          "at": 10,
+          "allow": true
+        },
+        {
+          "at": 10,
+          "allow": true
+        },
+        {
+          "at": 10,
+          "allow": true
+        },
+        {
+          "at": 10,
+          "allow": false
+        }
+      ]
+    }
+  ],
+  "slidingWindows": [
+    {
+      "name": "2 per 60 s",
+      "permit": 2,
+      "windowSeconds": 60,
+      "hits": [
+        {
+          "at": 0,
+          "allowed": true,
+          "retryAfterSeconds": 0
+        },
+        {
+          "at": 10,
+          "allowed": true,
+          "retryAfterSeconds": 0
+        },
+        {
+          "at": 20,
+          "allowed": false,
+          "retryAfterSeconds": 40
+        },
+        {
+          "at": 59.5,
+          "allowed": false,
+          "retryAfterSeconds": 1
+        },
+        {
+          "at": 60,
+          "allowed": true,
+          "retryAfterSeconds": 0
+        },
+        {
+          "at": 61,
+          "allowed": false,
+          "retryAfterSeconds": 9
+        }
+      ]
+    }
+  ]
+}
