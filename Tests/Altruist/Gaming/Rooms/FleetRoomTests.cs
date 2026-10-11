@@ -26,6 +26,15 @@ public sealed class Cluster
         Rules = new RoomRules { BotRefill = true, OnVoluntaryLeave = VoluntaryLeaveAction.OpenForBot, OnDisconnect = DisconnectAction.Hold },
     };
 
+    /// <summary>Like <see cref="Duel"/>, but newcomers take bot seats of running rooms.</summary>
+    public static readonly PlaylistOptions Backfill = new()
+    {
+        Id = "backfill",
+        Mode = "duel",
+        TeamSize = 1,
+        Rules = new RoomRules { BotRefill = true, JoinInProgress = true, OnVoluntaryLeave = VoluntaryLeaveAction.OpenForBot, OnDisconnect = DisconnectAction.Hold },
+    };
+
     public readonly InMemoryFleetBackplane Backplane = new(shared: true);
     public readonly List<Server> Servers = new();
     /// <summary>Where each player's client is connected now.</summary>
@@ -59,7 +68,7 @@ public sealed class Cluster
         }, nodeId: id);
         var fleet = new Fleet(Backplane, node, new FleetOptions { Cluster = "rooms", InternalAddress = $"{id}:8080" });
         var host = new RoomHost<LineSim, Walk, Player>(game, game, new RoomHostOptions { ReturnAfterEndSeconds = 1, ReconnectGraceSeconds = 30 }, 60);
-        var mm = new MatchmakingModule<LineSim, Walk, Player>(game, new MatchmakingOptions(), new[] { Duel });
+        var mm = new MatchmakingModule<LineSim, Walk, Player>(game, new MatchmakingOptions(), new[] { Duel, Backfill });
         var lobbies = new LobbyModule<LineSim, Walk, Player>(game, new LobbyOptions());
         host.Use(mm).Use(lobbies).UseServer(node).UseFleet(fleet);
         var server = new Server { Id = id, Game = game, Node = node, Fleet = fleet, Host = host, Mm = mm, Lobbies = lobbies, World = new WorldCoordinator(new IWorldStepper[] { host }) };
@@ -86,7 +95,7 @@ public sealed class Cluster
 
     public List<string> To(string player) => Clients[player].Server.To(Clients[player].Client);
 
-    public void Queue(string player) => Clients[player].Server.Mm.Enqueue(SessionOf(player), Duel);
+    public void Queue(string player, PlaylistOptions? playlist = null) => Clients[player].Server.Mm.Enqueue(SessionOf(player), playlist ?? Duel);
 
     public void Disconnect(string player) => Clients[player].Server.Host.Disconnect(Clients[player].Client);
 
@@ -214,6 +223,26 @@ public class FleetRoomTests
         Assert.Equal(new[] { "p1", "p2" }, room.Participants.Keys.OrderBy(k => k));
         Assert.Empty(c["b"].Host.Rooms);
         Assert.Contains("queue:Found:duel:2/2", c.To("p2"));
+    }
+
+    [Fact]
+    public async Task A_newcomer_queued_on_another_server_takes_the_bot_seat_of_a_running_room()
+    {
+        var c = await TwoServers();
+        c.Connect("b1", c["b"]);
+        c.Queue("b1", Cluster.Backfill);
+        await c.Run(7); // alone: b starts a room with a bot
+        var room = Assert.Single(c["b"].Host.Rooms);
+        await c.Beat();
+
+        c.Connect("a1", c["a"]);
+        c.Queue("a1", Cluster.Backfill);
+        await c.Run(4);
+
+        Assert.Contains(c.Moves, m => m.Player == "a1" && m.From == "a" && m.To == "b" && m.Reason == "queue");
+        Assert.Empty(c["a"].Host.Rooms);
+        Assert.Single(c["b"].Host.Rooms);
+        Assert.Contains(room.Seats, s => s.Owner?.PrincipalId == "a1");
     }
 
     [Fact]

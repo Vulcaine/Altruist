@@ -105,6 +105,9 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     /// <summary>The fleet stat with a playlist's queue length.</summary>
     public static string StatKey(string playlist) => "queue:" + playlist;
 
+    /// <summary>The fleet stat with the seats a newcomer could take in a playlist's running rooms (unrated playlists).</summary>
+    public static string JoinableStatKey(string playlist) => "joinable:" + playlist;
+
     private sealed record Arrival(double At);
 
     /// <summary>Creates the module; add it to a host with <see cref="RoomHost{TSim,TInput,TPlayer}.Use"/>.</summary>
@@ -284,7 +287,11 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     private void RunFleet()
     {
         if (_host.Fleet is not { } fleet) return;
-        foreach (var p in Queue.Playlists) fleet.SetStat(StatKey(p.Id), Queue.Waiting(p.Id).Count);
+        foreach (var p in Queue.Playlists)
+        {
+            fleet.SetStat(StatKey(p.Id), Queue.Waiting(p.Id).Count);
+            fleet.SetStat(JoinableStatKey(p.Id), JoinableSeats(p));
+        }
         if (!_host.FleetShared || _host.IsDraining || !fleet.IsMultiNode)
         {
             _dirty.Clear();
@@ -310,11 +317,13 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     }
 
     /// <summary>
-    /// Where a playlist's players should wait: the server with room for one more of its rooms and
-    /// the most of them waiting (ties: the lowest server id); null when no server has room.
+    /// Where a playlist's players should wait: a server with a running room they can join (unrated
+    /// playlists), else the server with room for one more of its rooms and the most of them waiting
+    /// (ties: the lowest server id); null when no server has room.
     /// </summary>
     private string? QueueTarget(PlaylistOptions p, int localCount, bool selfFits)
     {
+        if (JoinTarget(p) is { } join) return join;
         var fleet = _host.Fleet!;
         var cost = _host.Game.LoadOf(p.Mode, p.Id);
         FleetNodeInfo? best = null;
@@ -332,6 +341,34 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         }
         return best?.NodeId;
     }
+
+    /// <summary>
+    /// The ready server with the most seats a newcomer could take in an unrated playlist's running
+    /// rooms (ties: the lowest server id; this server while it is not draining); null when none has any.
+    /// </summary>
+    private string? JoinTarget(PlaylistOptions p)
+    {
+        if (p.Rated) return null;
+        var fleet = _host.Fleet!;
+        string? best = null;
+        double bestSeats = 0;
+        foreach (var n in fleet.Nodes)
+        {
+            var self = n.NodeId == fleet.NodeId;
+            if (self ? _host.IsDraining : !n.Accepting) continue;
+            var seats = self ? JoinableSeats(p) : n.Stat(JoinableStatKey(p.Id));
+            if (seats > bestSeats || (seats == bestSeats && best is not null && string.CompareOrdinal(n.NodeId, best) < 0))
+            {
+                best = n.NodeId;
+                bestSeats = seats;
+            }
+        }
+        return bestSeats > 0 ? best : null;
+    }
+
+    /// <summary>Seats nobody drives or is about to take (bot or open) in the playlist's joinable rooms; 0 for rated playlists.</summary>
+    private int JoinableSeats(PlaylistOptions p) =>
+        p.Rated ? 0 : Joinable(p).Sum(m => m.Seats.Count(sl => sl.Owner is null && sl.Pending is null));
 
     private bool Move(RoomSession<TSim, TInput, TPlayer> s, QueueEntry e, string nodeId, string reason, Action? undo = null)
     {
