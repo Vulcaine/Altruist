@@ -161,6 +161,8 @@ function ActionRow({
   const [body, setBody] = useState(action.sampleJson);
   const [client, setClient] = useState('');
   const [running, setRunning] = useState(false);
+  // A gate always takes a payload; an HTTP call only when it has a body type.
+  const hasBody = action.kind === 'gate' || !!action.payloadType || action.sampleJson.trim().length > 0;
   const send = async () => {
     setRunning(true);
     await onRun(body, client);
@@ -183,9 +185,9 @@ function ActionRow({
       </div>
       {open && (
         <div class="lab-body">
-          {action.payloadType && <div class="muted mono">Body: {action.payloadType}</div>}
+          {action.payloadType ? <div class="muted mono">Body: {action.payloadType}</div> : !hasBody && <div class="muted">No request body.</div>}
           {action.kind === 'gate' && <input value={client} placeholder="Client id (default: dashboard-lab)" onInput={(e) => setClient(e.currentTarget.value)} />}
-          <textarea class="json-edit" rows={Math.min(14, Math.max(4, body.split('\n').length + 1))} value={body} spellcheck={false} onInput={(e) => setBody(e.currentTarget.value)} />
+          {hasBody && <textarea class="json-edit" rows={Math.min(14, Math.max(4, body.split('\n').length + 1))} value={body} spellcheck={false} onInput={(e) => setBody(e.currentTarget.value)} />}
           <div class="row">
             <select
               value=""
@@ -201,9 +203,11 @@ function ActionRow({
               ))}
               <option value="__new">New collection</option>
             </select>
-            <Button small onClick={() => setBody(action.sampleJson)}>
-              Reset body
-            </Button>
+            {hasBody && (
+              <Button small onClick={() => setBody(action.sampleJson)}>
+                Reset body
+              </Button>
+            )}
           </div>
           {result && <ResultView result={result} />}
         </div>
