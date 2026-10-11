@@ -514,7 +514,8 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         p.Player = s.Player;
         p.DisconnectedAt = null;
         p.LeftEarly = false;
-        m.GiveToHuman(seat, p);
+        if (wasBot) m.HandOverToHuman(seat, p, m.Rules.JoinHandoverSeconds, m.Rules.JoinHandoverMaxWaitSeconds);
+        else m.GiveToHuman(seat, p);
         s.Room = m;
         _host.Bind(s.PrincipalId, m);
         if (wasBot) _host.Notify(m, RoomNoticeKind.BotOut, seat.Id, _host.Game.BotNameOf(m, seat), except: p);

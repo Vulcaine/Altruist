@@ -284,6 +284,14 @@ public class RoomFleetTests
         Rules = new RoomRules { BotRefill = true, JoinInProgress = true, OnVoluntaryLeave = VoluntaryLeaveAction.OpenForBot },
     };
 
+    private static readonly PlaylistOptions Handover = new()
+    {
+        Id = "handover",
+        Mode = "duel",
+        TeamSize = 1,
+        Rules = new RoomRules { BotRefill = true, JoinInProgress = true, JoinHandoverSeconds = 3, OnVoluntaryLeave = VoluntaryLeaveAction.OpenForBot },
+    };
+
     private static readonly PlaylistOptions Ranked = new()
     {
         Id = "ranked",
@@ -308,7 +316,7 @@ public class RoomFleetTests
             Game.EndAfter = endAfter;
             Node = new ServerNode((options ?? FastDrain) with { MaxLoad = maxLoad }, readiness: () => Status, nodeId: "test-node");
             Host = new RoomHost<LineSim, Walk, Player>(Game, Game, new RoomHostOptions { ReturnAfterEndSeconds = 1 }, 60);
-            Mm = new MatchmakingModule<LineSim, Walk, Player>(Game, new MatchmakingOptions(), new[] { Duel, Backfill, Ranked });
+            Mm = new MatchmakingModule<LineSim, Walk, Player>(Game, new MatchmakingOptions(), new[] { Duel, Backfill, Handover, Ranked });
             Lobbies = new LobbyModule<LineSim, Walk, Player>(Game, new LobbyOptions());
             Host.Use(Mm).Use(Lobbies).UseServer(Node);
             World = new WorldCoordinator(new IWorldStepper[] { Host });
@@ -424,6 +432,68 @@ public class RoomFleetTests
         f.Run(3);
         Assert.Single(f.Host.Rooms);
         Assert.Contains(room.Seats, s => s.Owner?.PrincipalId == "b");
+    }
+
+    [Fact]
+    public void A_newcomer_owns_the_bot_seat_at_once_but_the_bot_drives_until_the_handover_ends()
+    {
+        var f = new Fleet(maxLoad: 0);
+        f.Connect("a");
+        f.Queue("a", Handover);
+        f.Run(6.5); // alone: a bot fills the other seat
+        var room = Assert.Single(f.Host.Rooms);
+        var botSeat = room.Seats.Single(s => s.IsBot);
+        f.Connect("b");
+        f.Queue("b", Handover);
+        f.Run(2.5); // past the swap notice
+
+        Assert.Equal("b", botSeat.Owner?.PrincipalId);
+        Assert.NotNull(botSeat.HandoverBot);
+        Assert.Equal(3, room.HandoverSecondsLeft(botSeat), 1);
+        // The client still loads (no input yet): the bot keeps the car and the countdown has not started.
+        f.Run(2);
+        Assert.NotNull(botSeat.HandoverBot);
+        Assert.Equal(3, room.HandoverSecondsLeft(botSeat), 1);
+
+        botSeat.Owner!.Input.Offer(1, default);
+        f.Run(2);
+        Assert.NotNull(botSeat.HandoverBot);
+        Assert.InRange(room.HandoverSecondsLeft(botSeat), 0.5, 1.5);
+        f.Run(1.5);
+        Assert.Null(botSeat.HandoverBot);
+        Assert.Equal(0, room.HandoverSecondsLeft(botSeat));
+        Assert.Equal("b", botSeat.Owner?.PrincipalId);
+    }
+
+    [Fact]
+    public void A_client_that_never_sends_input_gets_the_car_after_the_longest_wait()
+    {
+        var f = new Fleet(maxLoad: 0);
+        f.Connect("a");
+        f.Queue("a", Handover);
+        f.Run(6.5);
+        var room = Assert.Single(f.Host.Rooms);
+        var botSeat = room.Seats.Single(s => s.IsBot);
+        f.Connect("b");
+        f.Queue("b", Handover);
+        f.Run(2.5 + Handover.Rules.JoinHandoverMaxWaitSeconds + Handover.Rules.JoinHandoverSeconds + 0.5);
+        Assert.Null(botSeat.HandoverBot);
+        Assert.Equal("b", botSeat.Owner?.PrincipalId);
+    }
+
+    [Fact]
+    public void Without_a_handover_the_newcomer_drives_at_once()
+    {
+        var f = new Fleet(maxLoad: 0);
+        f.Connect("a");
+        f.Queue("a", Backfill);
+        f.Run(6.5);
+        var botSeat = Assert.Single(f.Host.Rooms).Seats.Single(s => s.IsBot);
+        f.Connect("b");
+        f.Queue("b", Backfill);
+        f.Run(2.5);
+        Assert.Equal("b", botSeat.Owner?.PrincipalId);
+        Assert.Null(botSeat.HandoverBot);
     }
 
     [Fact]

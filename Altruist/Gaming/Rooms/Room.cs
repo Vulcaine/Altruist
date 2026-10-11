@@ -135,6 +135,9 @@ public sealed class Room<TSim, TInput, TPlayer>
         if (seat.Owner is not null && seat.Owner != p) Release(seat);
         var newDriver = seat.Owner != p;
         seat.Bot = null;
+        seat.HandoverBot = null;
+        seat.HandoverSteps = 0;
+        seat.HandoverWaitSteps = 0;
         seat.Owner = p;
         seat.OpenSince = null;
         seat.BotAt = null;
@@ -146,10 +149,34 @@ public sealed class Room<TSim, TInput, TPlayer>
         Sim.SetBotControlled(seat.Id, false);
     }
 
+    /// <summary>
+    /// Hands a bot's seat to a player who joined the running room; the bot keeps driving it until
+    /// the player's first input arrives (at most <paramref name="maxWaitSeconds"/>), then
+    /// <paramref name="seconds"/> longer. The player's inputs are dropped meanwhile.
+    /// </summary>
+    public void HandOverToHuman(Seat<TSim, TInput, TPlayer> seat, Participant<TSim, TInput, TPlayer> p, double seconds, double maxWaitSeconds)
+    {
+        var bot = seat.Bot;
+        GiveToHuman(seat, p);
+        if (bot is null || seconds <= 0) return;
+        seat.HandoverBot = bot;
+        seat.HandoverSteps = (int)Math.Ceiling(seconds / Sim.Dt);
+        seat.HandoverWaitSteps = Math.Max(1, (int)Math.Ceiling(maxWaitSeconds / Sim.Dt));
+    }
+
+    /// <summary>
+    /// Seconds the seat's new owner still waits for the car once their client runs (<see cref="HandOverToHuman"/>);
+    /// 0 when they already drive it.
+    /// </summary>
+    public double HandoverSecondsLeft(Seat<TSim, TInput, TPlayer> seat) => seat.HandoverBot is null ? 0 : seat.HandoverSteps * (double)Sim.Dt;
+
     /// <summary>Hands the seat to a fresh bot.</summary>
     public void GiveToBot(Seat<TSim, TInput, TPlayer> seat)
     {
         if (seat.Owner is not null) Release(seat);
+        seat.HandoverBot = null;
+        seat.HandoverSteps = 0;
+        seat.HandoverWaitSteps = 0;
         seat.Bot = _game.CreateBot(this, seat);
         seat.OpenSince = null;
         seat.BotAt = null;
@@ -193,7 +220,19 @@ public sealed class Room<TSim, TInput, TPlayer>
         inputs.Clear();
         foreach (var s in Seats)
         {
-            if (s.Owner is { Connected: true } p) inputs[s.Id] = p.Input.Consume();
+            if (s.HandoverBot is { } handover)
+            {
+                // Handing over: the bot drives until the new owner's client runs (its first input), then
+                // for the handover's seconds; the owner's inputs are dropped meanwhile.
+                var joining = s.Owner is { Connected: true } o ? o : null;
+                if (s.HandoverWaitSteps > 0)
+                    s.HandoverWaitSteps = joining?.Input.LastQueuedSeq > 0 ? 0 : s.HandoverWaitSteps - 1;
+                else if (--s.HandoverSteps <= 0)
+                    s.HandoverBot = null;
+                joining?.Input.Consume();
+                inputs[s.Id] = handover.Think();
+            }
+            else if (s.Owner is { Connected: true } p) inputs[s.Id] = p.Input.Consume();
             else if (s.Bot is not null) inputs[s.Id] = s.Bot.Think();
             else inputs[s.Id] = _game.NeutralInput;
         }

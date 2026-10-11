@@ -149,6 +149,16 @@ public sealed record RoomRules
     /// (default). False: they stay open for queued players only (<see cref="JoinInProgress"/>).
     /// </summary>
     public bool BotRefill { get; init; } = true;
+    /// <summary>
+    /// A queued player who joins the running room in a bot's seat gets it at once (name, team,
+    /// stats), but the bot keeps driving it until the player's client runs (its first input) and
+    /// then this many seconds longer, so the player can get ready (their inputs are dropped
+    /// meanwhile; the game tells the client the seconds, e.g. in its welcome). 0 (default): control
+    /// passes at once.
+    /// </summary>
+    public double JoinHandoverSeconds { get; init; }
+    /// <summary>Longest wait for the joining player's first input before the <see cref="JoinHandoverSeconds"/> start anyway.</summary>
+    public double JoinHandoverMaxWaitSeconds { get; init; } = 10;
 }
 
 /// <summary>Timings of the host (passed by the game; not read from configuration).</summary>
@@ -250,6 +260,12 @@ public sealed class Seat<TSim, TInput, TPlayer>
     public double? BotAt { get; set; }
     /// <summary>A queued player about to take this seat (join in progress), or null.</summary>
     public PendingSeatClaim? Pending { get; set; }
+    /// <summary>The bot still driving the seat for its new owner (<see cref="RoomRules.JoinHandoverSeconds"/>), or null.</summary>
+    public ISeatController<TInput>? HandoverBot { get; set; }
+    /// <summary>Steps the <see cref="HandoverBot"/> drives once the owner's client runs.</summary>
+    public int HandoverSteps { get; set; }
+    /// <summary>Steps left to wait for the owner's first input; 0 once the handover counts down.</summary>
+    public int HandoverWaitSteps { get; set; }
     /// <summary>The game's per-seat state (a bot name, ...).</summary>
     public object? GameData { get; set; }
 
