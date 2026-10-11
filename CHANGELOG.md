@@ -117,6 +117,7 @@ A complete standalone 2D physics world API (enough to run an authoritative match
 - The cache editor no longer resolves client-sent type names with `Type.GetType`. Only types that are currently cached or are registered vault models are accepted; any other type gets `400`.
 
 ### Fixed
+- **Dashboard base path** — `/altruist/dashboard` (no trailing slash, the address the docs and the token exchange use) served the app page with its files resolving outside the app (a blank page); it redirects to `/altruist/dashboard/`, keeping the query.
 - **Dashboard app files** — the browser dashboard loaded `index.html` but none of its scripts and styles (`404`): the app was embedded under resource names `EmbeddedFileProvider` cannot map folders to; it is embedded with a files manifest and served by `ManifestEmbeddedFileProvider` (`Microsoft.Extensions.FileProviders.Embedded` 9.0.4).
 - **Disconnect hooks of an unowned client** — `ConnectionManager.DisconnectAsync` for a client whose read loop runs elsewhere called `OnDisconnectedAsync` of every portal of every route; it now calls the portals of the stored connection's route (none for an unknown client).
 - **Post-construct resolution under load** — `RunPostConstructsAsync` resolved each service on a pool thread with a 10 s timeout and, on a busy machine, reported a false dependency cycle and skipped the service's `[PostConstruct]`; it resolves inline (the container reports real cycles).

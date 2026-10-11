@@ -49,6 +49,17 @@ namespace Altruist.Dashboard
             _basePath = "/altruist/dashboard";
         }
 
+        /// <summary>
+        /// Where a request for the app's base path without its trailing slash is sent (the same path with the slash, the
+        /// query kept), or null for any other path. The app loads its files relative to the page (<c>./assets/…</c>),
+        /// which resolve outside the app from <c>/altruist/dashboard</c>.
+        /// </summary>
+        /// <param name="basePath">The app's base path, without a trailing slash.</param>
+        /// <param name="path">Request path.</param>
+        /// <param name="query">Request query.</param>
+        public static string? CanonicalLocation(string basePath, PathString path, QueryString query) =>
+            string.Equals(path.Value, basePath, StringComparison.OrdinalIgnoreCase) ? $"{basePath}/{query.Value}" : null;
+
         /// <summary>The dashboard app's files (<c>index.html</c>, <c>assets/…</c>), embedded in this assembly.</summary>
         public static IFileProvider AppFiles() => new ManifestEmbeddedFileProvider(typeof(DashboardStartupFilter).Assembly, "App/dist");
 
@@ -71,6 +82,14 @@ namespace Altruist.Dashboard
                     next(app);
                     return;
                 }
+
+                app.Use(async (context, nextMiddleware) =>
+                {
+                    if (CanonicalLocation(_basePath, context.Request.Path, context.Request.QueryString) is { } location)
+                        context.Response.Redirect(location);
+                    else
+                        await nextMiddleware(context);
+                });
 
                 // The UI is served ahead of the app pipeline, so it gets the same protection first.
                 app.UseMiddleware<DashboardAccessMiddleware>();

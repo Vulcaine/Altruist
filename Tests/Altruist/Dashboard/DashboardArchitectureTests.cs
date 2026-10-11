@@ -224,6 +224,24 @@ public sealed class DashboardAppFilesTests
     }
 
     [Fact]
+    public void The_base_path_without_its_slash_is_sent_to_the_app_with_the_query()
+    {
+        var location = DashboardStartupFilter.CanonicalLocation("/altruist/dashboard",
+            new Microsoft.AspNetCore.Http.PathString("/Altruist/Dashboard"), new Microsoft.AspNetCore.Http.QueryString("?dashboard_token=t"));
+
+        Assert.Equal("/altruist/dashboard/?dashboard_token=t", location);
+    }
+
+    [Theory]
+    [InlineData("/altruist/dashboard/")]
+    [InlineData("/altruist/dashboard/assets/index.js")]
+    [InlineData("/altruist/dashboardx")]
+    public void Other_paths_are_not_redirected(string path)
+    {
+        Assert.Null(DashboardStartupFilter.CanonicalLocation("/altruist/dashboard", new Microsoft.AspNetCore.Http.PathString(path), default));
+    }
+
+    [Fact]
     public void The_lazily_loaded_world_viewer_is_embedded()
     {
         Assert.True(DashboardStartupFilter.AppFiles().GetFileInfo("assets/WorldsView.js").Exists);
