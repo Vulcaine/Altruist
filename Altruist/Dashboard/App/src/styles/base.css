@@ -1,8 +1,11 @@
 *, *::before, *::after { box-sizing: border-box; }
-html, body, #app { height: 100%; margin: 0; }
+/* padding: VS Code gives a webview's body its own padding. */
+html, body, #app { height: 100%; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--fg); font: var(--text-size)/1.45 var(--font); }
 button, input, select, textarea { font: inherit; color: inherit; }
 code, pre, .mono { font-family: var(--mono); font-size: 0.95em; }
+/* VS Code colours and pads a webview's code elements. */
+code { color: inherit; background: none; padding: 0; border-radius: 0; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3 { margin: 0; font-weight: 600; }

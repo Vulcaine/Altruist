@@ -1,27 +1,27 @@
-/* Design tokens. In VS Code the editor's theme variables drive them; in a browser the fallbacks (dark, or light when
-   the system asks) apply. Components use only these tokens. */
+/* Design tokens: one look in the browser and in VS Code (dark, or light when the system asks). Components use only
+   these tokens. */
 :root {
-  --font: var(--vscode-font-family, 'Inter', 'Segoe UI', system-ui, sans-serif);
-  --mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'Cascadia Code', Consolas, monospace);
-  --text-size: var(--vscode-font-size, 13px);
+  --font: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --text-size: 13px;
 
-  --bg: var(--vscode-editor-background, #0f1216);
-  --bg-raised: var(--vscode-sideBar-background, #151a20);
-  --bg-sunken: var(--vscode-input-background, #0b0e11);
-  --bg-hover: var(--vscode-list-hoverBackground, #1c232b);
-  --bg-selected: var(--vscode-list-activeSelectionBackground, #1f3a5c);
-  --fg: var(--vscode-foreground, #d9e0e7);
-  --fg-muted: var(--vscode-descriptionForeground, #8a96a3);
-  --fg-selected: var(--vscode-list-activeSelectionForeground, #ffffff);
-  --border: var(--vscode-panel-border, #242c35);
-  --border-strong: var(--vscode-focusBorder, #3b82f6);
-  --accent: var(--vscode-button-background, #3b82f6);
-  --accent-fg: var(--vscode-button-foreground, #ffffff);
+  --bg: #0f1216;
+  --bg-raised: #151a20;
+  --bg-sunken: #0b0e11;
+  --bg-hover: #1c232b;
+  --bg-selected: #1f3a5c;
+  --fg: #d9e0e7;
+  --fg-muted: #8a96a3;
+  --fg-selected: #ffffff;
+  --border: #242c35;
+  --border-strong: #3b82f6;
+  --accent: #3b82f6;
+  --accent-fg: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  --ok: var(--vscode-testing-iconPassed, #3fb950);
-  --warn: var(--vscode-editorWarning-foreground, #d29922);
-  --danger: var(--vscode-errorForeground, #f85149);
-  --link: var(--vscode-textLink-foreground, #58a6ff);
+  --ok: #3fb950;
+  --warn: #d29922;
+  --danger: #f85149;
+  --link: #58a6ff;
 
   --radius: 6px;
   --gap: 12px;
@@ -30,7 +30,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-host='vscode']) {
+  :root {
     --bg: #f7f8fa;
     --bg-raised: #ffffff;
     --bg-sunken: #eef1f4;

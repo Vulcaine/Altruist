@@ -80,7 +80,7 @@ A complete standalone 2D physics world API (enough to run an authoritative match
 
 ### Changed
 - **Dashboard (breaking for custom dashboard clients)** — the Angular UI is gone (replaced by the app above); the `/ws/dashboard` portal and `DashboardWorldObjectStatePacket` are gone (worlds are followed with `GET /dashboard/v1/worlds/{i}/live`; packet code 13 stays reserved); `ColliderDto.Shape` is a name (`sphere`, `box`, `capsule`, `heightfield`, `circle`, `box2d`, `capsule2d`, `polygon`, `chain`, `edge`) instead of the 3D enum; the API Lab no longer lists the dashboard's own routes.
-- **VS Code extension 0.9.48** — loads the dashboard app; the dashboard token is kept in VS Code's secret storage per server (`Altruist: Set Dashboard Token`); the sidebar lists the views the server serves; `altruist.dashboard.websocketUrl` and `defaultWorldIndex` are gone.
+- **VS Code extension 0.9.48** — loads the dashboard app, which looks the same as in the browser (its own colours and fonts, not the editor theme's); the dashboard token is kept in VS Code's secret storage per server (`Altruist: Set Dashboard Token`); the sidebar lists the views the server serves; `altruist.dashboard.websocketUrl` and `defaultWorldIndex` are gone.
 - **Task names** — engine logs and the dashboard name a `[Cycle]` task after the game's method, also through the diagnostics decorator and the sync-to-async adapter (`IWrappedDelegate`).
 - `Body2DAdapter.Mass` setter scales mass and rotational inertia to the given mass (it was ignored).
 - `Box2DWorldEngine2D.Step` uses the world's configured iterations (default 8 / 3, as before).
