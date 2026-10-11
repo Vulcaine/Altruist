@@ -5,6 +5,9 @@ A dashboard for a running Altruist server, in the browser and in VS Code (the sa
 - **Overview and configuration**: engine settings, every registered type, every `altruist` key; live keys can be changed.
 - **Server and fleet**: capacity and drain (and the drain action), the fleet's servers and the units they hold, the
   process's CPU, memory, GC and threads, ticket and rate-limit settings.
+- **Architecture**: every server of the fleet with its addresses, transports and portals, and the databases (each
+  instance with its role and vaults), caches and backplane they share, drawn as one diagram; independent fleets
+  (channels) on the same backplane appear as their own groups.
 - **Engine**: frame time against the target rate, the world steppers, every `[Cycle]` task and cron job with its runs
   and failures.
 - **Worlds**: 2D and 3D worlds followed live, with colliders, terrain and the game's gizmos, and an object inspector.
@@ -42,7 +45,7 @@ mapped.
 ## APIs
 
 Everything the app shows comes from JSON APIs under `/dashboard/v1` (the same token protects them), for example
-`/server`, `/engine`, `/worlds`, `/worlds/{index}/live` (NDJSON: the whole world, then its changes), `/rooms`,
+`/server`, `/architecture`, `/engine`, `/worlds`, `/worlds/{index}/live` (NDJSON: the whole world, then its changes), `/rooms`,
 `/gameplay`, `/pairing`, `/autosave`, `/sessions`, `/cache`, `/vaults`, `/network/events`, `/performance` and `/lab`.
 `GET /dashboard/v1/summary` lists the areas the server serves in `features`.
 

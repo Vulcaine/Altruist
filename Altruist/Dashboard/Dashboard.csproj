@@ -18,12 +18,13 @@
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
-  <!-- The dashboard app (App/, built with `npm run build`; dist/ is committed so packing needs no Node). Embedded under
-       its relative path, e.g. "index.html", "assets/index.js". -->
+  <!-- The dashboard app (App/, built with `npm run build`; dist/ is committed so packing needs no Node). The embedded
+       files manifest keeps their folders ("assets/index.js"), which plain resource names cannot (ManifestEmbeddedFileProvider). -->
+  <PropertyGroup>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="App\dist\**">
-      <LogicalName>%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
+    <EmbeddedResource Include="App\dist\**" />
   </ItemGroup>
 
   <!-- The app's sources (and node_modules, which ships stray .cs files such as node-gyp's Find-VisualStudio.cs) are
@@ -41,9 +42,10 @@
     <Content Remove="TestApp\**\*" />
   </ItemGroup>
 
-  <!-- <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.0-preview.5.24306.11" />
-  </ItemGroup> -->
+  <!-- Generates the embedded files manifest (GenerateEmbeddedFilesManifest above). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.4" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath=""/>

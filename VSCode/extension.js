@@ -10,6 +10,7 @@ const VIEWS = [
   { id: "overview", label: "Overview", icon: "dashboard", feature: "summary" },
   { id: "config", label: "Configuration", icon: "settings-gear", feature: "summary" },
   { id: "server", label: "Server & fleet", icon: "server", feature: "server" },
+  { id: "architecture", label: "Architecture", icon: "type-hierarchy", feature: "architecture" },
   { id: "engine", label: "Engine", icon: "pulse", feature: "engine" },
   { id: "connections", label: "Connections", icon: "plug", feature: "sessions" },
   { id: "worlds", label: "Worlds", icon: "globe", feature: "worlds" },

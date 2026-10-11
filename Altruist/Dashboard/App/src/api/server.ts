@@ -97,6 +97,9 @@ export function stateName(state: string | number): string {
   return typeof state === 'number' ? (STATES[state] ?? String(state)) : state;
 }
 
+/** Badge tone of a server state. */
+export const STATE_TONE: Readonly<Record<string, 'ok' | 'warn' | 'danger' | 'muted'>> = { Ready: 'ok', Full: 'warn', Starting: 'muted', Draining: 'warn', Drained: 'danger' };
+
 export const serverApi = (t: Transport) => ({
   report: () => t.json<ServerReport>({ method: 'GET', path: '/dashboard/v1/server' }),
   drain: (timeoutSeconds?: number) =>

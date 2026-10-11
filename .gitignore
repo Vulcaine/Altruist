@@ -48,6 +48,8 @@ project.assets.json
 .DS_Store
 node_modules/
 dist/
+# The dashboard app's build is committed: it is embedded into Altruist.Dashboard, and packing needs no Node.
+!Altruist/Dashboard/App/dist/
 test-results/
 coverage/
 

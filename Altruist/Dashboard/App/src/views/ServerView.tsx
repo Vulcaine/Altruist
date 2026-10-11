@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import { type FleetClaim, type FleetNode, serverApi, type ServerReport, stateName } from '@/api/server';
+import { type FleetClaim, type FleetNode, serverApi, type ServerReport, STATE_TONE, stateName } from '@/api/server';
 import { useTransport } from '@/app/context';
 import { useResource } from '@/app/resource';
 import { Badge, Button, Card, Empty, KeyValues, Stat, Stats } from '@/ui/basics';
@@ -9,7 +9,6 @@ import { useConfirm, useNotify } from '@/ui/overlays';
 import { Page } from '@/ui/Page';
 import { ResourceView, Sparkline } from '@/ui/ResourceView';
 
-const STATE_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'muted'> = { Ready: 'ok', Full: 'warn', Starting: 'muted', Draining: 'warn', Drained: 'danger' };
 const HISTORY = 60;
 
 const NODE_COLUMNS: readonly Column<FleetNode>[] = [

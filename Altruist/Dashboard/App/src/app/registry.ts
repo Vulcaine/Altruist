@@ -1,3 +1,4 @@
+import { ArchitectureView } from '@/views/ArchitectureView';
 import { CacheView } from '@/views/CacheView';
 import { ConfigView } from '@/views/ConfigView';
 import { ConnectionsView } from '@/views/ConnectionsView';
@@ -20,6 +21,7 @@ export const VIEWS: readonly ViewDef[] = [
   { id: 'overview', label: 'Overview', icon: 'dashboard', group: 'Overview', component: SummaryView, feature: 'summary' },
   { id: 'config', label: 'Configuration', icon: 'settings-gear', group: 'Overview', component: ConfigView, feature: 'summary' },
   { id: 'server', label: 'Server & fleet', icon: 'server', group: 'Live', component: ServerView, feature: 'server' },
+  { id: 'architecture', label: 'Architecture', icon: 'type-hierarchy', group: 'Live', component: ArchitectureView, feature: 'architecture' },
   { id: 'engine', label: 'Engine', icon: 'pulse', group: 'Live', component: EngineView, feature: 'engine' },
   { id: 'rooms', label: 'Rooms', icon: 'organization', group: 'Gameplay', component: RoomsView, feature: 'rooms' },
   { id: 'gameplay', label: 'AI & zones', icon: 'hubot', group: 'Gameplay', component: GameplayView, feature: 'gameplay' },

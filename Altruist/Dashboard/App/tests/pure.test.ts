@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { type ArchitectureCard, architectureGraph, type ArchitectureStore, connectionsOf, statusOf } from '@/api/architecture';
 import { durationOf, mergeEvents, type NetworkEvent, targetOf } from '@/api/network';
 import { type LabAction, labSections } from '@/api/lab';
 import { stateCounts } from '@/api/services';
@@ -159,5 +160,86 @@ describe('small helpers', () => {
   it('counts agents per behavior and state', () => {
     const agent = (behavior: string, state: string) => ({ instanceId: state, behavior, state, timeInState: 0, hibernated: false });
     expect(stateCounts([agent('wolf', 'chase'), agent('wolf', 'idle'), agent('wolf', 'chase')])[0]).toEqual(['wolf · chase', 2]);
+  });
+});
+
+describe('architecture', () => {
+  const store = (name: string, use: string, target: string, extra: Partial<ArchitectureStore> = {}): ArchitectureStore => ({
+    id: `${target}#${name}`,
+    target,
+    provider: target.split(':')[0],
+    name,
+    use,
+    endpoints: ['db:5432'],
+    database: 'game',
+    role: use === 'database' ? 'readwrite' : null,
+    local: false,
+    vaults: [],
+    ...extra,
+  });
+  const card = (nodeId: string, stores: ArchitectureStore[], cluster = 'c'): ArchitectureCard => ({
+    nodeId,
+    cluster,
+    region: '',
+    state: 'Ready',
+    load: 2,
+    maxLoad: 10,
+    environment: 'Development',
+    machine: 'm',
+    processId: 1,
+    internalAddress: null,
+    publicAddress: null,
+    startedUtc: '2026-01-01T00:00:00Z',
+    publishedUtc: '2026-01-01T00:00:00Z',
+    listeners: [
+      { transport: 'websocket', address: 'ws://a:1', codec: 'json', connections: 3 },
+      { transport: 'websocket', address: 'ws://b:1', codec: 'json', connections: 3 },
+    ],
+    portals: [],
+    stores,
+  });
+  const node = (nodeId: string) => ({ nodeId, region: '', state: 'Ready', load: 0, maxLoad: 0, stats: {}, seenUtc: '', accepting: true });
+  const pg = 'postgres://db:5432/game';
+  const report = {
+    self: 'b',
+    cluster: 'c',
+    backplaneKind: 'redis',
+    shared: true,
+    nodes: [node('a'), node('b'), node('c')],
+    cards: [
+      card('b', [store('default', 'database', pg, { vaults: ['game.players'] }), store('replica', 'database', pg, { role: 'readonly' }), store('cache', 'cache', 'memory@b', { local: true })]),
+      card('a', [store('default', 'database', pg, { vaults: ['game.items'] })]),
+    ],
+  };
+
+  it('draws one box per shared store with every use and the servers using it', () => {
+    const graph = architectureGraph(report);
+    expect(graph.stores).toHaveLength(1);
+    const [main, replica] = graph.stores[0].uses;
+    expect(main.servers).toEqual(['a', 'b']);
+    expect(main.vaults).toEqual(['game.items', 'game.players']);
+    expect(replica.servers).toEqual(['b']);
+    expect(graph.edges).toHaveLength(3);
+  });
+
+  it('lists this server first, and servers known only from their heartbeat', () => {
+    const graph = architectureGraph(report);
+    expect(graph.servers.map((s) => s.id)).toEqual(['b', 'a', 'c']);
+    expect(graph.servers[2].card).toBeNull();
+    expect(graph.servers[0].localStores.map((s) => s.use)).toEqual(['cache']);
+  });
+
+  it('groups another cluster on the backplane as a separate fleet sharing the database', () => {
+    const graph = architectureGraph({ ...report, cards: [...report.cards, card('ch2-1', [store('default', 'database', pg)], 'ch2')] });
+    expect(graph.clusters.map((c) => [c.cluster, c.own, c.servers.map((s) => s.id)])).toEqual([
+      ['c', true, ['b', 'a', 'c']],
+      ['ch2', false, ['ch2-1']],
+    ]);
+    expect(graph.stores[0].uses[0].servers).toEqual(['a', 'b', 'ch2-1']);
+    expect(statusOf(graph.clusters[1].servers[0])).toEqual({ state: 'Ready', load: 2, maxLoad: 10 });
+  });
+
+  it('counts a transport listening on two addresses once', () => {
+    expect(connectionsOf(card('x', []))).toBe(3);
   });
 });

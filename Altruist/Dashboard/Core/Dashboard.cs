@@ -49,6 +49,9 @@ namespace Altruist.Dashboard
             _basePath = "/altruist/dashboard";
         }
 
+        /// <summary>The dashboard app's files (<c>index.html</c>, <c>assets/…</c>), embedded in this assembly.</summary>
+        public static IFileProvider AppFiles() => new ManifestEmbeddedFileProvider(typeof(DashboardStartupFilter).Assembly, "App/dist");
+
         /// <summary>
         /// Adds the static-file and SPA-fallback middleware ahead of the rest of the pipeline, then calls <paramref name="next"/>.
         /// </summary>
@@ -57,8 +60,7 @@ namespace Altruist.Dashboard
         {
             return app =>
             {
-                var assembly = typeof(DashboardStartupFilter).Assembly;
-                var fileProvider = new EmbeddedFileProvider(assembly, baseNamespace: string.Empty);
+                var fileProvider = AppFiles();
 
                 const string indexPath = "index.html";
 

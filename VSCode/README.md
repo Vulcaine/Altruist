@@ -2,7 +2,7 @@
 
 The Altruist dashboard inside VS Code: the same app the server serves at `/altruist/dashboard`, in an editor tab.
 
-- Server and fleet, engine, worlds (2D and 3D, live), rooms, AI and zones, pairing, connections.
+- Server and fleet, the fleet's architecture, engine, worlds (2D and 3D, live), rooms, AI and zones, pairing, connections.
 - Configuration, cache, autosave, vaults (rows, schema, SQL).
 - Network traffic, latency percentiles, and an API lab with saved collections.
 
