@@ -35,10 +35,48 @@ public interface IAIBehaviorService
 /// only when the <c>altruist:game</c> config section exists. Exceptions thrown by a behavior are logged
 /// and swallowed per entity; machines of objects no longer in any snapshot are dropped every 100 ticks.
 /// </summary>
+/// <summary>
+/// What an operator sees of the AI agents (the dashboard reads it). <see cref="AIBehaviorService"/> implements it; it
+/// is safe from any thread: the agents are copied at the end of a tick, after someone asked.
+/// </summary>
+public interface IAIInspection
+{
+    /// <summary>The agents as of the last tick after a request (empty before the first); asks for a fresh copy.</summary>
+    AIAgentsReport Agents();
+}
+
+/// <summary>The AI agents at one tick.</summary>
+/// <param name="Tick">The AI tick the copy was taken at.</param>
+/// <param name="TakenUtc">When.</param>
+/// <param name="Agents">Every agent with a state machine.</param>
+public sealed record AIAgentsReport(uint Tick, DateTime TakenUtc, IReadOnlyList<AIAgentReport> Agents)
+{
+    /// <summary>No copy taken yet.</summary>
+    public static readonly AIAgentsReport None = new(0, DateTime.MinValue, Array.Empty<AIAgentReport>());
+}
+
+/// <summary>One AI agent.</summary>
+/// <param name="InstanceId">The world object.</param>
+/// <param name="Behavior">Its behavior.</param>
+/// <param name="State">The state it is in.</param>
+/// <param name="TimeInState">Seconds in that state.</param>
+/// <param name="Hibernated">Whether it sleeps (not ticked).</param>
+public sealed record AIAgentReport(string InstanceId, string Behavior, string State, float TimeInState, bool Hibernated);
+
 [Service(typeof(IAIBehaviorService))]
 [ConditionalOnConfig("altruist:game")]
-public sealed class AIBehaviorService : IAIBehaviorService
+public sealed class AIBehaviorService : IAIBehaviorService, IAIInspection
 {
+    private volatile bool _reportRequested;
+    private volatile AIAgentsReport _report = AIAgentsReport.None;
+
+    /// <inheritdoc/>
+    public AIAgentsReport Agents()
+    {
+        _reportRequested = true;
+        return _report;
+    }
+
     private readonly Dictionary<string, AIStateMachine> _machines = new();
     private readonly ILogger _logger;
     private uint _tickCounter;
@@ -126,6 +164,27 @@ public sealed class AIBehaviorService : IAIBehaviorService
         // Periodic cleanup of destroyed entities (every ~4 seconds at 25Hz)
         if (_tickCounter % 100 == 0)
             CleanupDestroyedEntities(snapshots);
+
+        if (_reportRequested)
+        {
+            _reportRequested = false;
+            _report = TakeReport(snapshots);
+        }
+    }
+
+    private AIAgentsReport TakeReport(WorldSnapshot[] snapshots)
+    {
+        var agents = new List<AIAgentReport>();
+        foreach (var snapshot in snapshots)
+        {
+            foreach (var obj in snapshot.AllObjects)
+            {
+                if (obj is not IAIBehaviorEntity ai || !_machines.TryGetValue(obj.InstanceId, out var fsm))
+                    continue;
+                agents.Add(new AIAgentReport(obj.InstanceId, ai.AIBehaviorName, fsm.CurrentStateName, fsm.TimeInState, obj is IHibernatable { IsHibernated: true }));
+            }
+        }
+        return new AIAgentsReport(_tickCounter, DateTime.UtcNow, agents);
     }
 
     /// <inheritdoc/>

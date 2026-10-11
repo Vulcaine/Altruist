@@ -1,8 +1,8 @@
 {
   "name": "altruist-dashboard-vscode",
   "displayName": "Altruist Dashboard",
-  "description": "Native VS Code dashboard client for Altruist servers.",
-  "version": "0.9.47-beta",
+  "description": "The Altruist dashboard in VS Code: server, fleet, engine, worlds (2D and 3D), rooms, AI, pairing, data, traffic and an API lab.",
+  "version": "0.9.48-beta",
   "publisher": "vulcaine",
   "license": "Apache-2.0",
   "engines": {
@@ -14,22 +14,7 @@
   "icon": "media/icon.png",
   "main": "./extension.js",
   "activationEvents": [
-    "onStartupFinished",
-    "onView:altruistConnection",
-    "onView:altruistExplorer",
-    "onCommand:altruist.connectDashboard",
-    "onCommand:altruist.disconnectDashboard",
-    "onCommand:altruist.refreshConnection",
-    "onCommand:altruist.openSummary",
-    "onCommand:altruist.openWorlds",
-    "onCommand:altruist.openConfig",
-    "onCommand:altruist.openSessions",
-    "onCommand:altruist.openCache",
-    "onCommand:altruist.openVault",
-    "onCommand:altruist.openNetwork",
-    "onCommand:altruist.openPerformance",
-    "onCommand:altruist.openLab",
-    "onCommand:altruist.refreshCurrentPanel"
+    "onStartupFinished"
   ],
   "contributes": {
     "viewsContainers": {
@@ -59,52 +44,32 @@
         "title": "Altruist: Connect to Dashboard"
       },
       {
+        "command": "altruist.refreshConnection",
+        "title": "Altruist: Reconnect"
+      },
+      {
         "command": "altruist.disconnectDashboard",
         "title": "Altruist: Disconnect Dashboard"
       },
       {
-        "command": "altruist.refreshConnection",
-        "title": "Altruist: Refresh Connection"
+        "command": "altruist.setToken",
+        "title": "Altruist: Set Dashboard Token"
       },
       {
-        "command": "altruist.openSummary",
-        "title": "Altruist: Open Summary"
+        "command": "altruist.clearToken",
+        "title": "Altruist: Clear Dashboard Token"
+      },
+      {
+        "command": "altruist.open",
+        "title": "Altruist: Open Dashboard"
       },
       {
         "command": "altruist.openWorlds",
         "title": "Altruist: Open Worlds"
       },
       {
-        "command": "altruist.openConfig",
-        "title": "Altruist: Open Config"
-      },
-      {
-        "command": "altruist.openSessions",
-        "title": "Altruist: Open Sessions"
-      },
-      {
-        "command": "altruist.openCache",
-        "title": "Altruist: Open Cache"
-      },
-      {
-        "command": "altruist.openVault",
-        "title": "Altruist: Open Vault"
-      },
-      {
-        "command": "altruist.openNetwork",
-        "title": "Altruist: Open Network"
-      },
-      {
-        "command": "altruist.openPerformance",
-        "title": "Altruist: Open Performance"
-      },
-      {
         "command": "altruist.openLab",
         "title": "Altruist: Open API Lab"
-      },
-      {
-        "command": "altruist.refreshCurrentPanel",
-        "title": "Altruist: Refresh Current Panel"
       },
       {
         "command": "altruist.openSettings",
@@ -117,22 +82,12 @@
         "altruist.dashboard.baseUrl": {
           "type": "string",
           "default": "",
-          "description": "Optional override for the Altruist server base URL, for example http://localhost:8000."
-        },
-        "altruist.dashboard.websocketUrl": {
-          "type": "string",
-          "default": "",
-          "description": "Optional override for the Altruist dashboard websocket URL, for example ws://localhost:8000/ws/dashboard."
+          "description": "The Altruist server, for example http://localhost:8000. Empty: read from the workspace config.yml."
         },
         "altruist.dashboard.autoConnect": {
           "type": "boolean",
           "default": true,
           "description": "Automatically probe and connect to the dashboard when a workspace with Altruist config is opened."
-        },
-        "altruist.dashboard.defaultWorldIndex": {
-          "type": "number",
-          "default": 0,
-          "description": "Preferred default world index when opening the world viewer."
         }
       }
     },
@@ -144,11 +99,15 @@
           "group": "navigation"
         },
         {
-          "command": "altruist.refreshCurrentPanel",
+          "command": "altruist.open",
           "when": "view == altruistExplorer",
           "group": "navigation"
         }
       ]
     }
+  },
+  "scripts": {
+    "vscode:prepublish": "node scripts/copy-app.js",
+    "copy-app": "node scripts/copy-app.js"
   }
 }

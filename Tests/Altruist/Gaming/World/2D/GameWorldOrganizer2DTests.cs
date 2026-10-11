@@ -220,4 +220,39 @@ public class GameWorldOrganizer2DTests
         var act = () => organizer.Step(0.016f);
         act.Should().NotThrow();
     }
+
+    [Fact]
+    public void The_dashboard_sees_a_2d_world_with_body_poses_and_colliders_in_body_space()
+    {
+        using var engine = PhysxWorldEngine2D.Create(new PhysxWorldSettings2D { Gravity = Vector2.Zero });
+        var world = new GameWorldManager2D(CreateIndex(5, "arena"), new PhysxWorld2D(engine), _partitionerMock.Object, null,
+            new Box2DPhysxBodyApiProvider2D(), new Box2DPhysxColliderApiProvider2D());
+        world.Initialize();
+        var organizer = new Mock<IGameWorldOrganizer2D>();
+        organizer.Setup(o => o.GetAllWorlds()).Returns(new[] { world });
+        organizer.Setup(o => o.GetWorld(5)).Returns(world);
+        var obj = new AnonymousWorldObject2D(new Altruist.TwoD.Numerics.Transform2D(
+            Altruist.TwoD.Numerics.Position2D.Of(3f, -2f), Altruist.TwoD.Numerics.Size2D.Of(4f, 2f),
+            Altruist.TwoD.Numerics.Scale2D.One, Altruist.TwoD.Numerics.Rotation2D.Zero));
+        world.SpawnDynamicObject(obj).GetAwaiter().GetResult();
+        obj.Body!.RotationZ = 0.5f;
+
+        var source = new Altruist.Dashboard.DashboardWorldSource2D(organizer.Object);
+
+        var summary = source.Worlds().Single();
+        summary.Dimensions.Should().Be(2);
+        summary.Name.Should().Be("arena");
+        summary.ObjectCount.Should().Be(1);
+        var dto = source.Objects(5).Single();
+        dto.Transform.Position.X.Should().Be(3f);
+        dto.Transform.Position.Y.Should().Be(-2f);
+        dto.Transform.Position.Z.Should().Be(0f);
+        (2 * MathF.Atan2(dto.Transform.Rotation.Z, dto.Transform.Rotation.W)).Should().BeApproximately(0.5f, 1e-5f);
+        var collider = dto.Colliders.Should().ContainSingle().Subject;
+        collider.Shape.Should().Be("box2d");
+        collider.TransformSpace.Should().Be("local");
+        var pose = source.LiveObjects(5).Single();
+        pose.InstanceId.Should().Be(obj.InstanceId);
+        pose.Position.X.Should().Be(3f);
+    }
 }

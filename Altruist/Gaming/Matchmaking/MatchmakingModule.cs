@@ -90,7 +90,7 @@ internal sealed record RoomRating(double Mean);
 /// </code>
 /// </example>
 /// </summary>
-public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>
+public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>, IRoomModuleInspection
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
     private readonly IMatchmakingGame<TSim, TInput, TPlayer> _game;
@@ -533,4 +533,19 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         _host.SendSnapshots(m);
         return true;
     }
+
+    /// <inheritdoc/>
+    public RoomModuleReport Report(double now) => new(
+        "Matchmaking",
+        Queue.Playlists.Select(p => new KeyValuePair<string, string>(
+            p.Id, $"{Queue.Waiting(p.Id).Count} waiting · {p.Mode}, {p.PlayersNeeded} players{(p.Rated ? ", rated" : "")}")).ToList(),
+        Queue.Playlists
+            .Where(p => Queue.Waiting(p.Id).Count > 0)
+            .Select(p => new ReportTable(
+                $"Queue {p.Id}",
+                ["Player", "Rating", "Waiting"],
+                Queue.Waiting(p.Id)
+                    .Select(e => (IReadOnlyList<string>)[e.PrincipalId, e.Rating.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{Math.Max(0, now - e.QueuedAt):F0} s"])
+                    .ToList()))
+            .ToList());
 }

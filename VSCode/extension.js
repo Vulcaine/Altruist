@@ -1,187 +1,99 @@
 const vscode = require("vscode");
 const { ConnectionManager, toErrorMessage } = require("./lib/connectionManager");
-const { PanelRegistry } = require("./lib/panels");
+const { DashboardPanel } = require("./lib/panel");
+
+/**
+ * The dashboard's views (the app's src/app/registry.ts): id, label, icon, and the server area it needs. The sidebar
+ * lists the ones the connected server serves.
+ */
+const VIEWS = [
+  { id: "overview", label: "Overview", icon: "dashboard", feature: "summary" },
+  { id: "config", label: "Configuration", icon: "settings-gear", feature: "summary" },
+  { id: "server", label: "Server & fleet", icon: "server", feature: "server" },
+  { id: "engine", label: "Engine", icon: "pulse", feature: "engine" },
+  { id: "connections", label: "Connections", icon: "plug", feature: "sessions" },
+  { id: "worlds", label: "Worlds", icon: "globe", feature: "worlds" },
+  { id: "rooms", label: "Rooms", icon: "organization", feature: "rooms" },
+  { id: "gameplay", label: "AI & zones", icon: "hubot", feature: "gameplay" },
+  { id: "pairing", label: "Pairing", icon: "device-mobile", feature: "pairing" },
+  { id: "cache", label: "Cache", icon: "layers", feature: "cache" },
+  { id: "autosave", label: "Autosave", icon: "save-all", feature: "autosave" },
+  { id: "vaults", label: "Vaults", icon: "database", feature: "vaults" },
+  { id: "network", label: "Network", icon: "arrow-swap", feature: "network" },
+  { id: "performance", label: "Performance", icon: "graph", feature: "performance" },
+  { id: "lab", label: "API Lab", icon: "beaker", feature: "lab" },
+];
+
+// Commands of earlier versions, kept so keybindings and habits still work.
+const LEGACY_COMMANDS = {
+  "altruist.openSummary": "overview",
+  "altruist.openWorlds": "worlds",
+  "altruist.openConfig": "config",
+  "altruist.openSessions": "connections",
+  "altruist.openCache": "cache",
+  "altruist.openVault": "vaults",
+  "altruist.openNetwork": "network",
+  "altruist.openPerformance": "performance",
+  "altruist.openLab": "lab",
+};
 
 function activate(context) {
   const output = vscode.window.createOutputChannel("Altruist Dashboard");
-  const connectionManager = new ConnectionManager(output);
-  const panelRegistry = new PanelRegistry(context, connectionManager, output);
+  const connection = new ConnectionManager(context, output);
+  const panel = new DashboardPanel(context, connection, output);
+  const connectionTree = new ConnectionTree(connection);
+  const viewsTree = new ViewsTree(connection);
 
-  const connectionProvider = new ConnectionTreeProvider(connectionManager);
-  const explorerProvider = new ExplorerTreeProvider();
+  const run = (action) => async () => {
+    try {
+      await action();
+    } catch (error) {
+      connection.setLastError(error);
+      vscode.window.showErrorMessage(toErrorMessage(error));
+    }
+  };
 
   context.subscriptions.push(
     output,
-    vscode.window.registerTreeDataProvider("altruistConnection", connectionProvider),
-    vscode.window.registerTreeDataProvider("altruistExplorer", explorerProvider),
-    vscode.commands.registerCommand("altruist.connectDashboard", async () => {
-      try {
-        await connectionManager.connect(true);
-      } catch (error) {
-        connectionManager.setLastError(error);
-        vscode.window.showErrorMessage(toErrorMessage(error));
-      }
-    }),
-    vscode.commands.registerCommand("altruist.disconnectDashboard", () => {
-      connectionManager.disconnect(true);
-    }),
-    vscode.commands.registerCommand("altruist.refreshConnection", async () => {
-      try {
-        await connectionManager.refresh();
-      } catch (error) {
-        connectionManager.setLastError(error);
-        vscode.window.showErrorMessage(toErrorMessage(error));
-      }
-    }),
-    vscode.commands.registerCommand("altruist.openSummary", () => openPanel(panelRegistry, "summary")),
-    vscode.commands.registerCommand("altruist.openWorlds", () => panelRegistry.openWorld()),
-    vscode.commands.registerCommand("altruist.openConfig", () => openPanel(panelRegistry, "config")),
-    vscode.commands.registerCommand("altruist.openSessions", () => openPanel(panelRegistry, "sessions")),
-    vscode.commands.registerCommand("altruist.openCache", () => openPanel(panelRegistry, "cache")),
-    vscode.commands.registerCommand("altruist.openVault", () => openPanel(panelRegistry, "vault")),
-    vscode.commands.registerCommand("altruist.openNetwork", () => openPanel(panelRegistry, "network")),
-    vscode.commands.registerCommand("altruist.openPerformance", () => openPanel(panelRegistry, "performance")),
-    vscode.commands.registerCommand("altruist.openLab", () => openPanel(panelRegistry, "lab")),
-    vscode.commands.registerCommand("altruist.refreshCurrentPanel", () => panelRegistry.refreshCurrentPanel()),
-    vscode.commands.registerCommand("altruist.openSettings", () => {
-      vscode.commands.executeCommand(
-        "workbench.action.openSettings",
-        "@ext:vulcaine.altruist-dashboard-vscode altruist.dashboard"
-      );
-    }),
-    connectionManager.onDidChange(() => {
-      connectionProvider.refresh();
-      explorerProvider.refresh();
+    vscode.window.registerTreeDataProvider("altruistConnection", connectionTree),
+    vscode.window.registerTreeDataProvider("altruistExplorer", viewsTree),
+    vscode.commands.registerCommand("altruist.connectDashboard", run(() => connection.connect(true))),
+    vscode.commands.registerCommand("altruist.refreshConnection", run(() => connection.connect(false))),
+    vscode.commands.registerCommand("altruist.disconnectDashboard", () => connection.disconnect(true)),
+    vscode.commands.registerCommand("altruist.setToken", run(async () => {
+      const token = await vscode.window.showInputBox({
+        title: "Altruist dashboard token",
+        prompt: `The value of altruist:dashboard:token on ${connection.getState().baseUrl || "the server"} (kept in VS Code's secret storage).`,
+        password: true,
+        ignoreFocusOut: true,
+      });
+      if (token === undefined) return;
+      await connection.setToken(token.trim());
+      await connection.connect(true);
+    })),
+    vscode.commands.registerCommand("altruist.clearToken", run(async () => {
+      await connection.setToken("");
+      vscode.window.showInformationMessage("The dashboard token was removed.");
+    })),
+    vscode.commands.registerCommand("altruist.open", (view) => panel.open(typeof view === "string" ? view : "overview")),
+    vscode.commands.registerCommand("altruist.openSettings", () =>
+      vscode.commands.executeCommand("workbench.action.openSettings", "@ext:vulcaine.altruist-dashboard-vscode altruist.dashboard")
+    ),
+    ...Object.entries(LEGACY_COMMANDS).map(([command, view]) => vscode.commands.registerCommand(command, () => panel.open(view))),
+    connection.onDidChange(() => {
+      connectionTree.refresh();
+      viewsTree.refresh();
     })
   );
 
-  connectionManager.autoConnectIfEnabled().catch((error) => {
-    output.appendLine(`[activate] ${toErrorMessage(error)}`);
-  });
+  connection.autoConnectIfEnabled().catch((error) => output.appendLine(`[activate] ${toErrorMessage(error)}`));
 }
 
 function deactivate() {}
 
-class ConnectionTreeProvider {
-  constructor(connectionManager) {
-    this.connectionManager = connectionManager;
-    this._emitter = new vscode.EventEmitter();
-    this.statusSection = new ConnectionSectionItem("Connection Status", "status");
-    this.actionsSection = new ConnectionSectionItem("Actions", "actions");
-  }
-
-  get onDidChangeTreeData() {
-    return this._emitter.event;
-  }
-
-  refresh() {
-    this._emitter.fire();
-  }
-
-  getTreeItem(item) {
-    return item;
-  }
-
-  getChildren(element) {
-    const state = this.connectionManager.getState();
-    if (!element) {
-      return [this.statusSection, this.actionsSection];
-    }
-
-    if (element.sectionKind === "status") {
-      const items = [];
-      const statusText = state.connected
-        ? "Connected"
-        : state.lastError
-          ? "Error"
-          : "Disconnected";
-      const statusIcon = state.connected
-        ? "pass-filled"
-        : state.lastError
-          ? "warning"
-          : "circle-large-outline";
-
-      items.push(
-        makeInfoItem("Status", statusText, {
-          icon: statusIcon,
-          tooltip: state.connected
-            ? "The extension is connected to the Altruist dashboard."
-            : state.lastError
-              ? state.lastError
-              : "The extension is not currently connected to the Altruist dashboard.",
-        })
-      );
-
-      if (state.baseUrl) {
-        items.push(
-          makeInfoItem("Server", state.baseUrl, {
-            icon: "link",
-            tooltip: state.baseUrl,
-          })
-        );
-      }
-
-      if (state.websocketUrl) {
-        items.push(
-          makeInfoItem("World Stream", state.websocketUrl, {
-            icon: "radio-tower",
-            tooltip: state.websocketUrl,
-          })
-        );
-      }
-
-      if (state.configPath) {
-        items.push(
-          makeInfoItem("Config Source", state.configPath, {
-            icon: "file-code",
-            tooltip: state.configPath,
-          })
-        );
-      }
-
-      if (state.lastError) {
-        items.push(
-          makeInfoItem("Last Error", state.lastError, {
-            icon: "error",
-            tooltip: state.lastError,
-          })
-        );
-      }
-
-      return items;
-    }
-
-    if (element.sectionKind === "actions") {
-      return [
-        makeCommandItem(
-          state.connected ? "Reconnect Dashboard" : "Connect to Dashboard",
-          "altruist.connectDashboard",
-          {
-            description: state.connected ? "Probe again" : "Start connection",
-            icon: "plug",
-          }
-        ),
-        makeCommandItem("Disconnect Dashboard", "altruist.disconnectDashboard", {
-          description: "Stop connection",
-          icon: "debug-disconnect",
-        }),
-        makeCommandItem("Refresh Connection", "altruist.refreshConnection", {
-          description: "Reload status",
-          icon: "refresh",
-        }),
-        makeCommandItem("Open Extension Settings", "altruist.openSettings", {
-          description: "Base URL and defaults",
-          icon: "gear",
-        }),
-      ];
-    }
-
-    return [];
-  }
-}
-
-class ExplorerTreeProvider {
-  constructor() {
+class ConnectionTree {
+  constructor(connection) {
+    this.connection = connection;
     this._emitter = new vscode.EventEmitter();
   }
 
@@ -198,95 +110,62 @@ class ExplorerTreeProvider {
   }
 
   getChildren() {
-    return [
-      makeCommandItem("Summary", "altruist.openSummary", {
-        description: "Engine and services",
-        icon: "dashboard",
-      }),
-      makeCommandItem("Worlds", "altruist.openWorlds", {
-        description: "3D world inspector",
-        icon: "globe",
-      }),
-      makeCommandItem("Config", "altruist.openConfig", {
-        description: "Live config values",
-        icon: "settings-gear",
-      }),
-      makeCommandItem("Sessions", "altruist.openSessions", {
-        description: "Rooms and connections",
-        icon: "vm-connect",
-      }),
-      makeCommandItem("Cache", "altruist.openCache", {
-        description: "Runtime cache entries",
-        icon: "database",
-      }),
-      makeCommandItem("Vault", "altruist.openVault", {
-        description: "Persistent storage",
-        icon: "archive",
-      }),
-      makeCommandItem("Network", "altruist.openNetwork", {
-        description: "Requests and packets",
-        icon: "pulse",
-      }),
-      makeCommandItem("Performance", "altruist.openPerformance", {
-        description: "Timings and slow paths",
-        icon: "graph-line",
-      }),
-      makeCommandItem("API Lab", "altruist.openLab", {
-        description: "Invoke endpoints and gates",
-        icon: "beaker",
-      }),
+    const s = this.connection.getState();
+    const items = [
+      info(s.connected ? "Connected" : s.lastError ? "Not connected" : "Disconnected", s.baseUrl || "no server found", s.connected ? "pass-filled" : s.lastError ? "warning" : "circle-large-outline", s.lastError),
     ];
+    if (s.configPath) items.push(info("Config", vscode.workspace.asRelativePath(s.configPath), "file-code", s.configPath));
+    if (s.lastError) items.push(info("Error", s.lastError, "error", s.lastError));
+    items.push(command(s.connected ? "Reconnect" : "Connect", "altruist.connectDashboard", "plug"));
+    items.push(command("Set token", "altruist.setToken", "key"));
+    if (s.connected) items.push(command("Disconnect", "altruist.disconnectDashboard", "debug-disconnect"));
+    items.push(command("Settings", "altruist.openSettings", "gear"));
+    return items;
   }
 }
 
-function makeInfoItem(label) {
-  const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-  item.contextValue = "info";
-  return item;
-}
+class ViewsTree {
+  constructor(connection) {
+    this.connection = connection;
+    this._emitter = new vscode.EventEmitter();
+  }
 
-class ConnectionSectionItem extends vscode.TreeItem {
-  constructor(label, sectionKind) {
-    super(label, vscode.TreeItemCollapsibleState.Expanded);
-    this.sectionKind = sectionKind;
-    this.contextValue = "sectionHeader";
-    this.iconPath = new vscode.ThemeIcon(sectionKind === "actions" ? "play" : "pulse");
+  get onDidChangeTreeData() {
+    return this._emitter.event;
+  }
+
+  refresh() {
+    this._emitter.fire();
+  }
+
+  getTreeItem(item) {
+    return item;
+  }
+
+  getChildren() {
+    const features = new Set(this.connection.getState().features);
+    return VIEWS.filter((v) => features.size === 0 || features.has(v.feature)).map((v) => {
+      const item = new vscode.TreeItem(v.label, vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon(v.icon);
+      item.command = { command: "altruist.open", title: `Open ${v.label}`, arguments: [v.id] };
+      return item;
+    });
   }
 }
 
-function makeInfoItem(label, description, options = {}) {
+function info(label, description, icon, tooltip) {
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
   item.description = description;
-  item.contextValue = "info";
-  item.tooltip = options.tooltip || `${label}: ${description}`;
-  if (options.icon) {
-    item.iconPath = new vscode.ThemeIcon(options.icon);
-  }
+  item.tooltip = tooltip || description;
+  item.iconPath = new vscode.ThemeIcon(icon);
   return item;
 }
 
-function makeCommandItem(label, command, options = {}) {
+function command(label, id, icon) {
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-  item.command = { command, title: label };
-  item.contextValue = "section";
-  if (options.description) {
-    item.description = options.description;
-  }
-  if (options.icon) {
-    item.iconPath = new vscode.ThemeIcon(options.icon);
-  }
+  item.iconPath = new vscode.ThemeIcon(icon);
+  item.command = { command: id, title: label };
   return item;
 }
 
-async function openPanel(panelRegistry, kind) {
-  try {
-    await panelRegistry.openGeneric(kind);
-  } catch (error) {
-    vscode.window.showErrorMessage(toErrorMessage(error));
-  }
-}
-
-module.exports = {
-  activate,
-  deactivate,
-};
+module.exports = { activate, deactivate };

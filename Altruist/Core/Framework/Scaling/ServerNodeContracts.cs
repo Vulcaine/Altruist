@@ -66,6 +66,30 @@ public interface IDrainParticipant
     void ForceStop();
 }
 
+/// <summary>
+/// What an operator sees of a server's drain (the dashboard reads it). <see cref="ServerNode"/> implements it next to
+/// <see cref="IServerNode"/>; every member may be read from any thread.
+/// </summary>
+public interface IServerNodeInspection
+{
+    /// <summary>Every drain participant (registered and from DI) and whether it has drained.</summary>
+    IReadOnlyList<DrainParticipantStatus> Participants();
+
+    /// <summary>When the drain began (UTC); null before.</summary>
+    DateTime? DrainStartedUtc { get; }
+
+    /// <summary>Whether the drain has finished (on its own or forced).</summary>
+    bool IsDrained { get; }
+
+    /// <summary>Whether the drain timed out and the remaining work was stopped.</summary>
+    bool WasForced { get; }
+}
+
+/// <summary>One drain participant in an <see cref="IServerNodeInspection"/> report.</summary>
+/// <param name="Kind">Kind of work.</param>
+/// <param name="IsDrained">Whether nothing of it runs any more (true when it could not tell).</param>
+public sealed record DrainParticipantStatus(string Kind, bool IsDrained);
+
 /// <summary>One kind of work in a <see cref="ServerCapacity"/> report.</summary>
 /// <param name="Kind">Kind of work.</param>
 /// <param name="Units">Live units of that kind.</param>

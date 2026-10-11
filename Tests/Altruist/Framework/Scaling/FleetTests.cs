@@ -583,4 +583,22 @@ public class FleetTests
         public async Task<bool> DeleteIfValueAsync(string key, string value, CancellationToken ct = default) { await Check(); return await inner.DeleteIfValueAsync(key, value, ct); }
         public async Task<long> IncrementAsync(string key, TimeSpan ttl, long by = 1, CancellationToken ct = default) { await Check(); return await inner.IncrementAsync(key, ttl, by, ct); }
     }
+
+    [Fact]
+    public async Task Inspection_lists_the_claimed_units_with_their_holder()
+    {
+        var (_, a) = Member("a");
+        var (_, b) = Member("bb");
+        await a.HeartbeatAsync();
+        await b.HeartbeatAsync();
+        await a.HeartbeatAsync(); // a learns of b at its own heartbeat
+        Assert.True(await a.TryClaimAsync("lobby", "ABC:1"));
+        Assert.True(await b.TryClaimAsync("queue", "p-7"));
+
+        var claims = await ((IFleetInspection)a).ClaimsAsync();
+
+        Assert.Equal(new[] { ("lobby", "ABC:1", a.NodeId), ("queue", "p-7", b.NodeId) }, claims.Select(c => (c.Kind, c.Id, c.NodeId)));
+        Assert.All(claims, c => Assert.True(c.NodeLive));
+        Assert.Equal("memory", ((IFleetInspection)a).BackplaneKind);
+    }
 }

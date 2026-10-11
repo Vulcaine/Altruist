@@ -1,0 +1,46 @@
+/* Design tokens. In VS Code the editor's theme variables drive them; in a browser the fallbacks (dark, or light when
+   the system asks) apply. Components use only these tokens. */
+:root {
+  --font: var(--vscode-font-family, 'Inter', 'Segoe UI', system-ui, sans-serif);
+  --mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'Cascadia Code', Consolas, monospace);
+  --text-size: var(--vscode-font-size, 13px);
+
+  --bg: var(--vscode-editor-background, #0f1216);
+  --bg-raised: var(--vscode-sideBar-background, #151a20);
+  --bg-sunken: var(--vscode-input-background, #0b0e11);
+  --bg-hover: var(--vscode-list-hoverBackground, #1c232b);
+  --bg-selected: var(--vscode-list-activeSelectionBackground, #1f3a5c);
+  --fg: var(--vscode-foreground, #d9e0e7);
+  --fg-muted: var(--vscode-descriptionForeground, #8a96a3);
+  --fg-selected: var(--vscode-list-activeSelectionForeground, #ffffff);
+  --border: var(--vscode-panel-border, #242c35);
+  --border-strong: var(--vscode-focusBorder, #3b82f6);
+  --accent: var(--vscode-button-background, #3b82f6);
+  --accent-fg: var(--vscode-button-foreground, #ffffff);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --ok: var(--vscode-testing-iconPassed, #3fb950);
+  --warn: var(--vscode-editorWarning-foreground, #d29922);
+  --danger: var(--vscode-errorForeground, #f85149);
+  --link: var(--vscode-textLink-foreground, #58a6ff);
+
+  --radius: 6px;
+  --gap: 12px;
+  --shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-host='vscode']) {
+    --bg: #f7f8fa;
+    --bg-raised: #ffffff;
+    --bg-sunken: #eef1f4;
+    --bg-hover: #eef2f7;
+    --bg-selected: #dbe8fb;
+    --fg: #1d242c;
+    --fg-muted: #5f6b78;
+    --fg-selected: #0d1b2a;
+    --border: #dfe3e8;
+    --shadow: 0 8px 24px rgb(16 24 40 / 0.12);
+    color-scheme: light;
+  }
+}

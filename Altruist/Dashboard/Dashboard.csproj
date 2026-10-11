@@ -18,19 +18,20 @@
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
+  <!-- The dashboard app (App/, built with `npm run build`; dist/ is committed so packing needs no Node). Embedded under
+       its relative path, e.g. "index.html", "assets/index.js". -->
   <ItemGroup>
-    <EmbeddedResource Include="UI\dist\ui\browser\**">
-      <!-- e.g. "scene/index.html", "sessions/index.html", "index.csr.html" -->
+    <EmbeddedResource Include="App\dist\**">
       <LogicalName>%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 
-  <!-- The Angular UI (incl. node_modules, which ships stray .cs files such as node-gyp's Find-VisualStudio.cs)
-       is never C# source. -->
+  <!-- The app's sources (and node_modules, which ships stray .cs files such as node-gyp's Find-VisualStudio.cs) are
+       never C# source. -->
   <ItemGroup>
-    <Compile Remove="UI\**" />
-    <None Remove="UI\**" />
-    <Content Remove="UI\**" />
+    <Compile Remove="App\**" />
+    <None Remove="App\**" />
+    <Content Remove="App\**" />
   </ItemGroup>
 
   <ItemGroup>

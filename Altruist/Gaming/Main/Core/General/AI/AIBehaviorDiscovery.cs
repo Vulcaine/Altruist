@@ -119,6 +119,13 @@ public static class AIBehaviorDiscovery
         }
     }
 
+    /// <summary>Every registered behavior: its name and the type that defines it.</summary>
+    public static IReadOnlyList<(string Name, Type Type)> Behaviors()
+    {
+        lock (_lock)
+            return _templateTypes.Select(kv => (Name: kv.Key, Type: kv.Value)).OrderBy(b => b.Name, StringComparer.Ordinal).ToList();
+    }
+
     /// <summary>Create a new FSM instance from a registered behavior template, or null when no
     /// behavior is registered under <paramref name="behaviorName"/>. The caller must
     /// <see cref="StateMachine{TContext}.Initialize"/> it before the first update.</summary>

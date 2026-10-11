@@ -662,4 +662,52 @@ public class RoomFleetTests
         Assert.Equal(0, node.Capacity().UnitsOf("rooms"));
         Assert.Equal(ServerNodeState.Drained, node.State);
     }
+
+    [Fact]
+    public async Task The_host_reports_rooms_players_and_queues_and_closes_a_room_as_a_forced_close()
+    {
+        var f = new Fleet(maxLoad: 0);
+        foreach (var who in new[] { "a", "b", "c" })
+            f.Connect(who);
+        f.Queue("a", Duel);
+        f.Queue("b", Duel);
+        f.Queue("c", Ranked);
+        f.Run(0.2);
+
+        var reporting = f.Host.ReportAsync();
+        f.Run(1.0 / 60);
+        var report = await reporting;
+
+        var room = Assert.Single(report.Rooms);
+        Assert.Equal("duel", room.Mode);
+        Assert.Equal(new[] { "a", "b" }, room.Participants.Select(p => p.PrincipalId).Order());
+        Assert.All(room.Participants, p => Assert.True(p.Connected));
+        Assert.Equal(3, report.Sessions);
+        var queue = Assert.Single(report.Modules, m => m.Name == "Matchmaking");
+        Assert.Contains(queue.Tables, t => t.Title == "Queue ranked" && t.Rows.Single()[0] == "c");
+        Assert.Contains(report.Modules, m => m.Name == "Lobbies");
+
+        var closing = f.Host.CloseRoomAsync(room.Id);
+        f.Run(1.0 / 60);
+        Assert.True(await closing);
+        Assert.Contains(room.Id, f.Game.ForcedClosed);
+        Assert.Empty(f.Host.Rooms);
+
+        var again = f.Host.CloseRoomAsync(room.Id);
+        f.Run(1.0 / 60);
+        Assert.False(await again);
+    }
+
+    [Fact]
+    public async Task Reports_asked_for_while_the_engine_stands_still_share_one_request()
+    {
+        var f = new Fleet(maxLoad: 0);
+        var first = f.Host.ReportAsync();
+        var second = f.Host.ReportAsync();
+        Assert.False(first.IsCompleted);
+
+        f.Run(1.0 / 60);
+
+        Assert.Same(await first, await second);
+    }
 }

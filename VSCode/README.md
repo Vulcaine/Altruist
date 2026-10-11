@@ -1,55 +1,34 @@
-# Altruist VS Code Dashboard Extension
+# Altruist Dashboard for VS Code
 
-Native VS Code client for the existing Altruist dashboard backend.
+The Altruist dashboard inside VS Code: the same app the server serves at `/altruist/dashboard`, in an editor tab.
 
-## What it does
+- Server and fleet, engine, worlds (2D and 3D, live), rooms, AI and zones, pairing, connections.
+- Configuration, cache, autosave, vaults (rows, schema, SQL).
+- Network traffic, latency percentiles, and an API lab with saved collections.
 
-- Adds an **Altruist** activity bar entry.
-- Shows **Connection** and **Dashboard** navigation views in the left sidebar.
-- Opens dashboard experiences in editor webviews:
-  - Summary
-  - Worlds
-  - Config
-  - Sessions
-  - Cache
-  - Vault
-- Reuses the existing runtime dashboard endpoints and websocket stream.
+The sidebar (**Altruist** in the activity bar) shows the connection and the views the server serves.
 
-## Important behavior
+## Connecting
 
-- This extension is **dashboard-backed only**.
-- It does **not** attach directly to the process.
-- It expects `altruist:dashboard:enabled = true` on the running server.
-- The world viewer currently supports **3D environments only**.
+The extension needs a running server with `altruist:dashboard:enabled: true`. It finds the server from:
 
-## Connection model
+1. the `altruist.dashboard.baseUrl` setting (for example `http://localhost:8000`), else
+2. the workspace's `config.yml` (the one that enables the dashboard; its `altruist:server:http` host, port and path).
 
-The extension tries to discover the dashboard endpoint from workspace config files such as:
+A server with `altruist:dashboard:token` needs that token: run **Altruist: Set Dashboard Token** (it is kept in VS
+Code's secret storage, per server). Without a token a server answers only on loopback in Development.
 
-- `config.yml`
-- `config.yaml`
-- `config.*.yml`
-- `config.*.yaml`
+`altruist.dashboard.autoConnect` (on by default) connects when a workspace with such a config opens.
 
-If auto-discovery is not enough, you can override these values in VS Code settings:
+## Commands
 
-- `altruist.dashboard.baseUrl`
-- `altruist.dashboard.websocketUrl`
-- `altruist.dashboard.autoConnect`
-- `altruist.dashboard.defaultWorldIndex`
+- `Altruist: Open Dashboard`, `Altruist: Open Worlds`, `Altruist: Open API Lab`
+- `Altruist: Connect to Dashboard`, `Altruist: Reconnect`, `Altruist: Disconnect Dashboard`
+- `Altruist: Set Dashboard Token`, `Altruist: Clear Dashboard Token`
 
-## World view
+## Development
 
-The world panel is a native VS Code webview renderer that:
-
-- loads worlds from `/dashboard/v1/worlds`
-- loads snapshots from `/dashboard/v1/worlds/{worldIndex}/objects`
-- connects to the dashboard websocket stream
-- renders terrain wireframes, objects, colliders, and partition overlays
-- lets you orbit, pan, zoom, click-select, and inspect objects
-
-## Development notes
-
-- The extension host is plain CommonJS (`extension.js`, `lib/*.js`).
-- The world webview uses ES modules under `media/`.
-- Three.js is vendored under `media/vendor/three.module.js`.
+The extension host is plain CommonJS (`extension.js`, `lib/`). The webview is the dashboard app from
+`../Altruist/Dashboard/App`: build it there (`npm run build`), then `npm run copy-app` here copies it into
+`media/app` (packaging does this by itself through `vscode:prepublish`). Every request from the webview goes through
+`lib/panel.js`, which adds the server address and the token.

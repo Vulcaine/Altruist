@@ -41,6 +41,6 @@ public static class PacketCodes
     public const uint Room = 11;
     /// <summary>Session authentication packet (server security module).</summary>
     public const uint SessionAuth = 12;
-    /// <summary>World-object state snapshot for the server dashboard (server <c>DashboardWorldObjectStatePacket</c>).</summary>
+    /// <summary>Reserved: the dashboard world socket's packet, before the dashboard followed worlds over HTTP. Not reused.</summary>
     public const uint DashboardWorldObjectState = 13;
 }

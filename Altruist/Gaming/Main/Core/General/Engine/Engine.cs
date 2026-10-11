@@ -296,15 +296,32 @@ public class MethodScheduler
         if (method.ReturnType == typeof(void) && method.GetParameters().Length == 0)
         {
             var del = (Action)Delegate.CreateDelegate(typeof(Action), target, method);
-            return () =>
-            {
-                del();
-                return Task.CompletedTask;
-            };
+            return new SyncTask(del).RunAsync;
         }
 
         throw new InvalidOperationException("Only parameterless methods returning Task or void are supported.");
     }
+
+    private sealed class SyncTask(Action inner) : IWrappedDelegate
+    {
+        public Delegate Inner => inner;
+
+        public Task RunAsync()
+        {
+            inner();
+            return Task.CompletedTask;
+        }
+    }
+}
+
+/// <summary>
+/// A delegate's target that only adapts or decorates another delegate (sync-to-async, diagnostics): logs and the
+/// dashboard name the task after <see cref="Inner"/>, the game's own method, not after the wrapper.
+/// </summary>
+internal interface IWrappedDelegate
+{
+    /// <summary>The delegate wrapped.</summary>
+    Delegate Inner { get; }
 }
 
 
@@ -573,21 +590,21 @@ public class EngineWithDiagnostics : IAltruistEngine
         var actualHz = cycleRate;
 
         if (taskDelegate is Func<Task> asyncDelegate)
-        {
-            var wrappedDelegate = async () =>
-            {
-                await ExecuteWithDiagnostics(asyncDelegate);
-            };
-            _wrappedEngine.ScheduleTask(wrappedDelegate, actualHz);
-        }
+            _wrappedEngine.ScheduleTask(new DiagnosedAsync(this, asyncDelegate).RunAsync, actualHz);
         else if (taskDelegate is Action syncDelegate)
-        {
-            var wrappedDelegate = () =>
-            {
-                ExecuteWithDiagnostics(syncDelegate);
-            };
-            _wrappedEngine.ScheduleTask(wrappedDelegate, actualHz);
-        }
+            _wrappedEngine.ScheduleTask(new DiagnosedSync(this, syncDelegate).Run, actualHz);
+    }
+
+    private sealed class DiagnosedAsync(EngineWithDiagnostics engine, Func<Task> inner) : IWrappedDelegate
+    {
+        public Delegate Inner => inner;
+        public async Task RunAsync() => await engine.ExecuteWithDiagnostics(inner);
+    }
+
+    private sealed class DiagnosedSync(EngineWithDiagnostics engine, Action inner) : IWrappedDelegate
+    {
+        public Delegate Inner => inner;
+        public void Run() => engine.ExecuteWithDiagnostics(inner);
     }
 
     /// <inheritdoc/>

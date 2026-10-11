@@ -14,7 +14,7 @@ namespace Altruist.Gaming.Autosave;
 /// <remarks>Default <see cref="IAutosaveCoordinator"/>; inject the interface. Flushes run sequentially over a snapshot of
 /// the registered services and are thread-safe with respect to concurrent registration.</remarks>
 [Service(typeof(IAutosaveCoordinator))]
-public class AutosaveCoordinator : IAutosaveCoordinator
+public class AutosaveCoordinator : IAutosaveCoordinator, IAutosaveCoordinatorInspection
 {
     private readonly List<IAutosaveServiceBase> _services = new();
     private readonly object _lock = new();
@@ -38,6 +38,13 @@ public class AutosaveCoordinator : IAutosaveCoordinator
     }
 
     /// <inheritdoc/>
+    /// <inheritdoc/>
+    public IReadOnlyList<AutosaveServiceReport> Services()
+    {
+        lock (_lock)
+            return _services.OfType<IAutosaveInspection>().Select(s => s.Report()).ToList();
+    }
+
     public void Register(IAutosaveServiceBase service)
     {
         lock (_lock)

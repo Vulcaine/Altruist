@@ -37,7 +37,7 @@ public sealed record ServerNodeOptions
 /// </summary>
 [Service(typeof(IServerNode))]
 [ConditionalOnMissingService(typeof(IServerNode))]
-public sealed class ServerNode : IServerNode, IDisposable
+public sealed class ServerNode : IServerNode, IServerNodeInspection, IDisposable
 {
     /// <summary>Name of the <see cref="System.Diagnostics.Metrics.Meter"/> the node publishes: <c>Altruist.Server</c>.</summary>
     public const string MeterName = "Altruist.Server";
@@ -55,6 +55,7 @@ public sealed class ServerNode : IServerNode, IDisposable
     private volatile bool _draining;
     private volatile bool _drained;
     private volatile bool _forced;
+    private DateTime? _drainStartedUtc;
     private long _lastFaultLog;
 
     /// <summary>DI constructor reading <c>altruist:server:capacity:max-load</c>, <c>altruist:server:drain:timeout</c> and <c>altruist:server:drain:force-grace</c>.</summary>
@@ -266,6 +267,7 @@ public sealed class ServerNode : IServerNode, IDisposable
             if (_drain is null)
             {
                 _draining = true;
+                _drainStartedUtc = DateTime.UtcNow;
                 result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 _drain = result.Task;
                 participants = Participants();
@@ -297,6 +299,28 @@ public sealed class ServerNode : IServerNode, IDisposable
             result.TrySetException(ex);
         }
     }
+
+    /// <inheritdoc/>
+    IReadOnlyList<DrainParticipantStatus> IServerNodeInspection.Participants()
+    {
+        IDrainParticipant[] all;
+        lock (_gate)
+            all = Participants();
+        return all.Select(p => new DrainParticipantStatus(p.Kind, HasDrained(p))).ToList();
+    }
+
+    /// <inheritdoc/>
+    public DateTime? DrainStartedUtc
+    {
+        get
+        {
+            lock (_gate)
+                return _drainStartedUtc;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool IsDrained => _drained;
 
     private IDrainParticipant[] Participants()
     {
@@ -330,7 +354,7 @@ public sealed class ServerNode : IServerNode, IDisposable
             _forced = true;
             left = Participants();
         }
-        var stopped = left.Where(p => !IsDrained(p)).ToList();
+        var stopped = left.Where(p => !HasDrained(p)).ToList();
         _logger.LogWarning("Server {Node} drain timed out after {Timeout}; stopping {Kinds}.", NodeId, timeout,
             string.Join(", ", stopped.Select(p => p.Kind)));
         foreach (var p in stopped) SafeCall(p, "ForceStop", static x => x.ForceStop());
@@ -347,10 +371,10 @@ public sealed class ServerNode : IServerNode, IDisposable
         IDrainParticipant[] all;
         lock (_gate)
             all = Participants();
-        return all.All(IsDrained);
+        return all.All(HasDrained);
     }
 
-    private bool IsDrained(IDrainParticipant p)
+    private bool HasDrained(IDrainParticipant p)
     {
         try
         {

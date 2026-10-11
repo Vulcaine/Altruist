@@ -512,4 +512,25 @@ public class ServerNodeTests
         Assert.Equal((int)ServerNodeState.Full, seen["altruist.server.state"]);
         Assert.Equal(0, seen["altruist.server.accepting"]);
     }
+
+    [Fact]
+    public async Task Inspection_lists_each_drain_participant_and_when_the_drain_began()
+    {
+        var done = new FakeParticipant("lobbies") { Drained = true };
+        var busy = new FakeParticipant("rooms");
+        using var node = Node(participants: new IDrainParticipant[] { done, busy });
+        IServerNodeInspection inspection = node;
+        Assert.Null(inspection.DrainStartedUtc);
+
+        var drain = node.DrainAsync(TimeSpan.FromSeconds(5));
+
+        Assert.NotNull(inspection.DrainStartedUtc);
+        Assert.Equal(new[] { ("lobbies", true), ("rooms", false) },
+            inspection.Participants().Select(p => (p.Kind, p.IsDrained)).OrderBy(p => p.Kind));
+        Assert.False(inspection.IsDrained);
+        busy.Drained = true;
+        Assert.True(await drain);
+        Assert.True(inspection.IsDrained);
+        Assert.False(inspection.WasForced);
+    }
 }

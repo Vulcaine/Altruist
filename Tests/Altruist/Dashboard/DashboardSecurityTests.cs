@@ -409,4 +409,25 @@ public sealed class DashboardHostTests
         var badResult = JsonDocument.Parse(await badRes.Content.ReadAsStringAsync()).RootElement;
         Assert.False(badResult.GetProperty("success").GetBoolean());
     }
+
+    [Fact]
+    public async Task The_summary_lists_the_served_areas_and_the_lab_leaves_out_the_dashboard_api()
+    {
+        await using var host = await Start(new() { ["altruist:dashboard:enabled"] = "true", ["altruist:dashboard:token"] = Token });
+
+        using var summary = await host.Http.SendAsync(Req(HttpMethod.Get, "/dashboard/v1/summary"));
+        var features = JsonDocument.Parse(await summary.Content.ReadAsStringAsync()).RootElement.GetProperty("features")
+            .EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("summary", features);
+        Assert.Contains("lab", features);
+        Assert.Contains("server", features);
+        Assert.Contains("pairing", features);
+        Assert.Equal(features.Order(StringComparer.Ordinal), features);
+
+        using var lab = await host.Http.SendAsync(Req(HttpMethod.Get, "/dashboard/v1/lab/actions"));
+        var paths = JsonDocument.Parse(await lab.Content.ReadAsStringAsync()).RootElement.GetProperty("actions")
+            .EnumerateArray().Select(a => a.GetProperty("path").GetString() ?? "").ToList();
+        Assert.NotEmpty(paths);
+        Assert.DoesNotContain(paths, p => p.StartsWith("/dashboard", StringComparison.OrdinalIgnoreCase));
+    }
 }

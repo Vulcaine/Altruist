@@ -20,7 +20,7 @@ namespace Altruist.Gaming.Autosave;
 /// at startup (it is not on the interface; resolve the concrete type or cast) to replay unflushed WAL entries.
 /// </remarks>
 /// <typeparam name="T">Vault model type.</typeparam>
-public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : class, IVaultModel
+public class AutosaveService<T> : IAutosaveService<T>, IAutosaveInspection, IDisposable where T : class, IVaultModel
 {
     private readonly ConcurrentDictionary<string, string> _dirtyMap = new(); // storageId → ownerId
     private readonly ICacheProvider _cache;
@@ -28,6 +28,15 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
     private readonly WriteAheadLog<T>? _wal;
     private readonly ILogger _logger;
     private readonly int _batchSize;
+
+    // History for IAutosaveInspection (under _historyGate).
+    private readonly object _historyGate = new();
+    private long _flushes;
+    private long _saved;
+    private long _failures;
+    private DateTime? _lastFlushUtc;
+    private string? _lastError;
+    private DateTime? _lastErrorUtc;
 
     /// <inheritdoc/>
     public int DirtyCount => _dirtyMap.Count;
@@ -137,6 +146,11 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
         var ids = _dirtyMap.Keys.ToList();
         if (ids.Count > 0)
             await FlushIdsAsync(ids);
+        lock (_historyGate)
+        {
+            _flushes++;
+            _lastFlushUtc = DateTime.UtcNow;
+        }
 
         // Only once every entity is in the DB: a failed save must stay recoverable from the WAL.
         if (_wal != null && _dirtyMap.IsEmpty)
@@ -221,6 +235,8 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
             {
                 await _vault.SaveBatchAsync(entities);
                 foreach (var id in batch) _dirtyMap.TryRemove(id, out _);
+                lock (_historyGate)
+                    _saved += entities.Count;
                 _logger.LogDebug("Flushed {Count} {Type} entities", entities.Count, typeof(T).Name);
             }
             catch (Exception ex)
@@ -233,15 +249,31 @@ public class AutosaveService<T> : IAutosaveService<T>, IDisposable where T : cla
                     {
                         await _vault.SaveAsync(entity);
                         _dirtyMap.TryRemove(entity.StorageId, out _);
+                        lock (_historyGate)
+                            _saved++;
                     }
                     catch (Exception innerEx)
                     {
+                        lock (_historyGate)
+                        {
+                            _failures++;
+                            _lastError = innerEx.GetBaseException().Message;
+                            _lastErrorUtc = DateTime.UtcNow;
+                        }
                         _logger.LogError(innerEx, "Failed to save {Type} {Id}, will retry next flush",
                             typeof(T).Name, entity.StorageId);
                     }
                 }
             }
         }
+    }
+
+    /// <inheritdoc/>
+    public AutosaveServiceReport Report()
+    {
+        lock (_historyGate)
+            return new AutosaveServiceReport(typeof(T).Name, DirtyCount, _vault is not null, _batchSize, _wal?.FilePath, _wal?.BufferCount ?? 0,
+                _flushes, _saved, _lastFlushUtc, _failures, _lastError, _lastErrorUtc);
     }
 
     /// <summary>Writes the buffered WAL entries to disk and stops the WAL timer. Does not save to the vault: call

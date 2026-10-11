@@ -70,7 +70,7 @@ namespace Altruist.Gaming.Rooms;
 /// </code>
 /// </example>
 /// </summary>
-public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContributor, IDrainParticipant
+public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContributor, IDrainParticipant, IRoomHostInspection
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
     private readonly IRoomGame<TSim, TInput, TPlayer> _game;
@@ -941,4 +941,91 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
     /// <param name="p">A connected participant of the room.</param>
     public void SendSnapshotTo(Room<TSim, TInput, TPlayer> m, Participant<TSim, TInput, TPlayer> p) =>
         Send(p.ClientId!, _game.PersonalizeSnapshot(_game.CaptureSnapshot(m), p));
+
+    // ------------------------------------------------------------------ inspection
+
+    /// <inheritdoc/>
+    public string GameName => _game.GetType().Name;
+
+    private readonly object _reportGate = new();
+    private Task<RoomHostReport>? _pendingReport;
+
+    /// <inheritdoc/>
+    /// <remarks>Callers waiting at the same time share one report, so a stopped engine never piles up requests.</remarks>
+    public Task<RoomHostReport> ReportAsync(CancellationToken cancellationToken = default)
+    {
+        Task<RoomHostReport> report;
+        lock (_reportGate)
+        {
+            if (_pendingReport is null || _pendingReport.IsCompleted)
+                _pendingReport = OnEngineThread(() => new RoomHostReport(
+                    GameName,
+                    FixedHz,
+                    CurrentStep,
+                    SessionCount,
+                    IsDraining,
+                    _rooms.Select(ReportOf).ToList(),
+                    _modules.OfType<IRoomModuleInspection>().Select(m => m.Report(Now)).ToList()), CancellationToken.None);
+            report = _pendingReport;
+        }
+        return report.WaitAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<bool> CloseRoomAsync(string roomId, CancellationToken cancellationToken = default) => OnEngineThread(() =>
+    {
+        var room = _rooms.FirstOrDefault(r => r.Id == roomId);
+        if (room is null)
+            return false;
+        if (!room.Finished)
+            _game.OnForcedClose(room);
+        Dispose(room);
+        return true;
+    }, cancellationToken);
+
+    // Runs on the engine thread at the next frame; a caller that stopped waiting gets nothing done.
+    private Task<T> OnEngineThread<T>(Func<T> work, CancellationToken cancellationToken)
+    {
+        var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Post(() =>
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                result.TrySetCanceled(cancellationToken);
+                return;
+            }
+            try
+            {
+                result.TrySetResult(work());
+            }
+            catch (Exception ex)
+            {
+                result.TrySetException(ex);
+            }
+        });
+        return result.Task.WaitAsync(cancellationToken);
+    }
+
+    private RoomReport ReportOf(Room<TSim, TInput, TPlayer> m) => new(
+        m.Id,
+        m.Mode,
+        m.Playlist,
+        m.LobbyCode,
+        m.StartedAtUtc,
+        m.Load,
+        m.Ended,
+        m.Finished,
+        m.EndedSeconds,
+        m.Seats.Select(s => new SeatReport(s.Id, s.Team, s.Owner?.PrincipalId, s.Bot?.GetType().Name, s.OpenSince is { } open ? _now - open : null, s.Pending is not null)).ToList(),
+        m.Participants.Values.Select(p => new ParticipantReport(
+            p.PrincipalId,
+            p.ClientId,
+            p.Team,
+            p.Seat?.Id,
+            p.Connected,
+            p.DisconnectedAt is { } at ? _now - at : null,
+            p.LeftEarly,
+            p.Abandoned,
+            new InputReport(p.Input.Depth, p.Input.TargetDepth, p.Input.Jitter, p.Input.Speculating,
+                p.Input.Stats.Applied, p.Input.Stats.Starved, p.Input.Stats.Stale, p.Input.Stats.Dropped))).ToList());
 }

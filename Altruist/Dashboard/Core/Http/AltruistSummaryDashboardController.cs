@@ -151,6 +151,8 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
         public List<ServiceInfoDto> Services { get; set; } = new();
         /// <summary>Engine settings, or null.</summary>
         public EngineInfoDto? Engine { get; set; }
+        /// <summary>The dashboard areas this server serves (<c>worlds</c>, <c>rooms</c>, <c>engine</c> …).</summary>
+        public List<string> Features { get; set; } = new();
     }
 
     /// <summary>Response of <c>POST /dashboard/v1/summary/config/update-batch</c>.</summary>
@@ -240,8 +242,29 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
             .Count();
 
         dto.Engine = BuildEngineInfo(_engineOptions);
+        dto.Features = GetFeatures();
 
         return Ok(dto);
+    }
+
+    // ------------------ Features ------------------
+
+    // The dashboard areas this server serves: the first segment after /dashboard/v1/ of every mapped route. A view of
+    // an area whose module is not loaded (or not configured) is then hidden instead of failing.
+    private List<string> GetFeatures()
+    {
+        var actions = _serviceProvider.GetService(typeof(Microsoft.AspNetCore.Mvc.Infrastructure.IActionDescriptorCollectionProvider)) as Microsoft.AspNetCore.Mvc.Infrastructure.IActionDescriptorCollectionProvider;
+        if (actions is null)
+            return new List<string>();
+        const string prefix = "dashboard/v1/";
+        return actions.ActionDescriptors.Items
+            .Select(a => a.AttributeRouteInfo?.Template?.TrimStart('/') ?? "")
+            .Where(t => t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(t => t[prefix.Length..].Split('/')[0].ToLowerInvariant())
+            .Where(area => area.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
     }
 
     // ------------------ Config ------------------

@@ -119,6 +119,47 @@ public class AutosaveAttribute : Attribute
     }
 }
 
+/// <summary>What an operator sees of one autosave service (the dashboard reads it); safe from any thread.</summary>
+public interface IAutosaveInspection
+{
+    /// <summary>The service's state and history.</summary>
+    AutosaveServiceReport Report();
+}
+
+/// <summary>What an operator sees of every autosave service; <see cref="AutosaveCoordinator"/> implements it.</summary>
+public interface IAutosaveCoordinatorInspection
+{
+    /// <summary>Every registered service (services are registered when first resolved).</summary>
+    IReadOnlyList<AutosaveServiceReport> Services();
+}
+
+/// <summary>One autosave service.</summary>
+/// <param name="Type">The model type it saves.</param>
+/// <param name="Dirty">Entities marked dirty and not yet saved.</param>
+/// <param name="HasVault">Whether it saves to a vault (without one a flush only clears the dirty set).</param>
+/// <param name="BatchSize">Entities per batch save.</param>
+/// <param name="WalPath">The write-ahead log's file, when on.</param>
+/// <param name="WalBuffered">Log entries not yet written to the file.</param>
+/// <param name="Flushes">Flushes run.</param>
+/// <param name="Saved">Entities saved in total.</param>
+/// <param name="LastFlushUtc">When the last flush ended.</param>
+/// <param name="Failures">Entity saves that failed (they stay dirty and are retried).</param>
+/// <param name="LastError">The last failure's message.</param>
+/// <param name="LastErrorUtc">When.</param>
+public sealed record AutosaveServiceReport(
+    string Type,
+    int Dirty,
+    bool HasVault,
+    int BatchSize,
+    string? WalPath,
+    int WalBuffered,
+    long Flushes,
+    long Saved,
+    DateTime? LastFlushUtc,
+    long Failures,
+    string? LastError,
+    DateTime? LastErrorUtc);
+
 /// <summary>
 /// Non-generic base interface tracked by the coordinator.
 /// </summary>

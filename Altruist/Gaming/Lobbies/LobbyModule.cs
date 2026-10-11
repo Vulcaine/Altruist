@@ -176,7 +176,7 @@ internal sealed class LobbySeat<TSim, TInput, TPlayer>(Lobby<TSim, TInput, TPlay
 /// </code>
 /// </example>
 /// </summary>
-public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>
+public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>, IRoomModuleInspection
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
     private readonly ILobbyGame<TSim, TInput, TPlayer> _game;
@@ -556,4 +556,22 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         }
         return true;
     }
+
+    /// <inheritdoc/>
+    public RoomModuleReport Report(double now) => new(
+        "Lobbies",
+        [new("Open lobbies", _lobbies.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+         new("Members", _lobbies.Values.Sum(l => l.Members.Count).ToString(System.Globalization.CultureInfo.InvariantCulture))],
+        _lobbies.Values.Count == 0
+            ? []
+            : [new ReportTable(
+                "Lobbies",
+                ["Code", "Host", "Members", "Room"],
+                _lobbies.Values
+                    .Select(l => (IReadOnlyList<string>)[
+                        l.Code,
+                        l.HostPrincipalId,
+                        string.Join(", ", l.Members.Select(m => m.Connected ? m.PrincipalId : m.PrincipalId + " (away)")),
+                        l.Room?.Id ?? ""])
+                    .ToList())]);
 }
