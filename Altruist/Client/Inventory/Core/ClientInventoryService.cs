@@ -20,15 +20,21 @@ namespace Altruist.Client.Inventory;
 /// could call <see cref="RegisterContainer"/> safely, but the mutation
 /// methods (handler dispatch + clear) assume single-threaded access — the
 /// dispatcher drains inbound on one thread.</para>
+///
+/// <para>Depend on <see cref="IClientInventoryService"/>; use this concrete type only
+/// when constructing the mirror manually (tests, non-DI clients).</para>
 /// </summary>
 [PacketHandler]
 public sealed class ClientInventoryService : IClientInventoryService
 {
     private readonly ConcurrentDictionary<byte, ContainerSnapshot> _containers = new();
 
+    /// <inheritdoc/>
     public event Action<SlotChangedEvent>? SlotChanged;
+    /// <inheritdoc/>
     public event Action<SlotClearedEvent>? SlotCleared;
 
+    /// <inheritdoc/>
     public void RegisterContainer(ContainerLayout layout)
     {
         if (layout is null) throw new ArgumentNullException(nameof(layout));
@@ -39,26 +45,32 @@ public sealed class ClientInventoryService : IClientInventoryService
         _containers[layout.Window] = new ContainerSnapshot(layout);
     }
 
+    /// <inheritdoc/>
     public ItemSnapshot? GetSnapshot(byte window, ushort cell)
         => _containers.TryGetValue(window, out var c) ? c.GetAnchor(cell) : null;
 
+    /// <inheritdoc/>
     public ItemSnapshot? GetItemCoveringCell(byte window, ushort cell)
         => _containers.TryGetValue(window, out var c) ? c.GetItemCoveringCell(cell) : null;
 
+    /// <inheritdoc/>
     public bool CanAnchorItemAt(byte window, ushort anchorCell, int width, int height, params ushort[] ignoreAnchors)
     {
         if (!_containers.TryGetValue(window, out var c)) return false;
         return c.CanAnchorItemAt(anchorCell, width, height, ignoreAnchors);
     }
 
+    /// <inheritdoc/>
     public int FindFirstFreeCell(byte window)
         => _containers.TryGetValue(window, out var c) ? c.FindFirstFreeCell() : -1;
 
+    /// <inheritdoc/>
     public IReadOnlyCollection<ItemSnapshot> GetAllItems(byte window)
         => _containers.TryGetValue(window, out var c)
             ? c.Anchors
             : Array.Empty<ItemSnapshot>();
 
+    /// <inheritdoc/>
     [Packet(typeof(ItemSnapshotPacket))]
     public void OnItemSnapshot(ItemSnapshotPacket pkt)
     {
@@ -86,6 +98,7 @@ public sealed class ClientInventoryService : IClientInventoryService
         SlotChanged?.Invoke(new SlotChangedEvent(snap));
     }
 
+    /// <inheritdoc/>
     [Packet(typeof(ItemSlotClearedPacket))]
     public void OnSlotCleared(ItemSlotClearedPacket pkt)
     {

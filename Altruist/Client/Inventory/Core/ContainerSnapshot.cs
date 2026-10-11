@@ -16,6 +16,7 @@ namespace Altruist.Client.Inventory;
 /// </summary>
 internal sealed class ContainerSnapshot
 {
+    /// <summary>Geometry this snapshot validates against.</summary>
     public ContainerLayout Layout { get; }
 
     // anchor cell → snapshot. Linked cells are NOT keys here.
@@ -25,16 +26,23 @@ internal sealed class ContainerSnapshot
     // Lookup direction: "what's covering cell N?" → anchor → snapshot.
     private readonly Dictionary<ushort, ushort> _coverage = new();
 
+    /// <summary>Creates an empty mirror for <paramref name="layout"/>.</summary>
+    /// <param name="layout">Container geometry.</param>
     public ContainerSnapshot(ContainerLayout layout)
     {
         Layout = layout ?? throw new ArgumentNullException(nameof(layout));
     }
 
+    /// <summary>Live view of all anchored items.</summary>
     public IReadOnlyCollection<ItemSnapshot> Anchors => _anchors.Values;
 
+    /// <summary>Item anchored exactly at <paramref name="cell"/>, or <c>null</c>.</summary>
+    /// <param name="cell">Cell index.</param>
     public ItemSnapshot? GetAnchor(ushort cell)
         => _anchors.TryGetValue(cell, out var snap) ? snap : null;
 
+    /// <summary>Item whose footprint covers <paramref name="cell"/>, or <c>null</c>.</summary>
+    /// <param name="cell">Cell index.</param>
     public ItemSnapshot? GetItemCoveringCell(ushort cell)
     {
         if (_coverage.TryGetValue(cell, out var anchor) && _anchors.TryGetValue(anchor, out var snap))
@@ -89,9 +97,9 @@ internal sealed class ContainerSnapshot
     public bool CanAnchorItemAt(ushort anchorCell, int width, int height, ReadOnlySpan<ushort> ignoreAnchors)
     {
         if (width <= 0 || height <= 0) return false;
-        if (!IsAnchorValid(anchorCell, (byte)width, (byte)height)) return false;
+        if (!IsAnchorValid(anchorCell, width, height)) return false;
 
-        foreach (var (cell, _) in EnumerateFootprint(anchorCell, (byte)width, (byte)height))
+        foreach (var (cell, _) in EnumerateFootprint(anchorCell, width, height))
         {
             if (!_coverage.TryGetValue(cell, out var occupantAnchor)) continue;
             if (ContainsAnchor(ignoreAnchors, occupantAnchor)) continue;
@@ -100,6 +108,7 @@ internal sealed class ContainerSnapshot
         return true;
     }
 
+    /// <summary>Lowest uncovered cell index, or -1 when full.</summary>
     public int FindFirstFreeCell()
     {
         int capacity = Layout switch
@@ -139,20 +148,20 @@ internal sealed class ContainerSnapshot
     /// For grids, footprint extends right + down; equipment containers always
     /// produce just the single anchor cell.
     /// </summary>
-    private IEnumerable<(ushort cell, byte dx)> EnumerateFootprint(ushort anchorCell, byte w, byte h)
+    private IEnumerable<(ushort cell, int dx)> EnumerateFootprint(ushort anchorCell, int w, int h)
     {
         switch (Layout)
         {
             case GridLayout grid:
                 if (!grid.TryToCoords(anchorCell, out short ax, out short ay)) yield break;
-                for (byte dy = 0; dy < h; dy++)
+                for (int dy = 0; dy < h; dy++)
                 {
-                    for (byte dx = 0; dx < w; dx++)
+                    for (int dx = 0; dx < w; dx++)
                     {
-                        short cx = (short)(ax + dx);
-                        short cy = (short)(ay + dy);
+                        int cx = ax + dx;
+                        int cy = ay + dy;
                         if (cx >= grid.Columns || cy >= grid.Rows) continue;
-                        yield return (grid.ToCell(cx, cy), dx);
+                        yield return (grid.ToCell((short)cx, (short)cy), dx);
                     }
                 }
                 break;
@@ -164,7 +173,7 @@ internal sealed class ContainerSnapshot
         }
     }
 
-    private bool IsAnchorValid(ushort anchorCell, byte width, byte height)
+    private bool IsAnchorValid(ushort anchorCell, int width, int height)
     {
         switch (Layout)
         {

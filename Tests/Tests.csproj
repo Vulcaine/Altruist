@@ -49,7 +49,6 @@
     <Compile Remove="Altruist/Gaming/World/SpatialIndexingTests.cs" />
     <Compile Remove="Altruist/Persistance/Cache/Redis/RouterTests.cs" />
     <Compile Remove="Altruist/Gaming/Combat/CombatServiceTests.cs" />
-    <Compile Remove="Altruist/Gaming/Physx/2D/Box2DWorldEngineTests.cs" />
     <Compile Remove="Altruist/Gaming/World/2D/WorldLoader2DTests.cs" />
   </ItemGroup>
 
@@ -61,6 +60,9 @@
     <ProjectReference Include="..\Altruist\Gaming\Main\Gaming.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Questing\Questing.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Combat\Combat.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Rooms\Rooms.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Matchmaking\Matchmaking.csproj" />
+    <ProjectReference Include="..\Altruist\Gaming\Lobbies\Lobbies.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Movement\Movement.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Inventory\Inventory.csproj" />
     <ProjectReference Include="..\Altruist\Gaming\Autosave\Autosave.csproj" />
@@ -68,6 +70,7 @@
     <ProjectReference Include="..\Altruist\Postgres\Postgres.csproj" />
     <ProjectReference Include="..\Altruist\ScyllaDB\ScyllaDB.csproj" />
     <ProjectReference Include="..\Altruist\Web\Web.csproj" />
+    <ProjectReference Include="..\Altruist\Dashboard\Dashboard.csproj" />
   </ItemGroup>
 
 </Project>

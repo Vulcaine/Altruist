@@ -17,7 +17,10 @@ limitations under the License.
 using Altruist;
 using Altruist.Security;
 
+/// <summary>A vault of accounts that can also check a login token. Altruist ships no implementation.</summary>
 public interface ILoginVault : IVault<AccountModel>
 {
+    /// <summary>True when <paramref name="token"/> matches a stored account.</summary>
+    /// <typeparam name="TLoginToken">The credential shape (e.g. <see cref="UsernamePasswordLoginRequest"/>).</typeparam>
     bool Login<TLoginToken>(TLoginToken token) where TLoginToken : ILoginToken;
 }

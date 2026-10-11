@@ -25,6 +25,10 @@ namespace Altruist.Testing.Internal;
 /// <para><c>[AltruistTest]</c> classes are unaffected: they use per-method DI
 /// rebuild + per-class schema isolation, so parallel execution is safe (and
 /// faster) for them.</para>
+///
+/// <para><b>Wiring.</b> Not active by default; opt in per test assembly with
+/// <c>[assembly: Xunit.CollectionBehavior("Altruist.Testing.Internal.AltruistTestCollectionFactory", "Altruist.Testing")]</c>
+/// next to the <see cref="AltruistTestFramework"/> registration.</para>
 /// </summary>
 public sealed class AltruistTestCollectionFactory : IXunitTestCollectionFactory
 {
@@ -32,6 +36,9 @@ public sealed class AltruistTestCollectionFactory : IXunitTestCollectionFactory
     private readonly CollectionPerClassTestCollectionFactory _default;
     private readonly Lazy<ITestCollection> _liveServerCollection;
 
+    /// <summary>Created by xUnit.</summary>
+    /// <param name="testAssembly">The test assembly.</param>
+    /// <param name="diagnosticMessageSink">xUnit's diagnostic sink.</param>
     public AltruistTestCollectionFactory(ITestAssembly testAssembly, IMessageSink diagnosticMessageSink)
     {
         _testAssembly = testAssembly;
@@ -40,8 +47,12 @@ public sealed class AltruistTestCollectionFactory : IXunitTestCollectionFactory
             () => new TestCollection(testAssembly, null, "Altruist Live Server"));
     }
 
+    /// <summary>Name xUnit shows for this collection behaviour.</summary>
     public string DisplayName => "Altruist (live-server collection + per-class default)";
 
+    /// <summary>The shared live-server collection for <c>[AltruistIntegrationTest]</c> classes, else a collection of the class's own.</summary>
+    /// <param name="testClass">The test class.</param>
+    /// <returns>Its collection.</returns>
     public ITestCollection Get(ITypeInfo testClass)
     {
         if (HasAltruistIntegrationTestAttribute(testClass))

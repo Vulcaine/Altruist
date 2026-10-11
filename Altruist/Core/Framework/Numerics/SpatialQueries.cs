@@ -11,7 +11,7 @@ namespace Altruist.ThreeD.Numerics;
 
 /// <summary>Stateless spatial predicates that any system needs:
 /// "is the target in range / in my front cone / on this line?"
-/// Yaw uses the Altruist convention (<see cref="Yaw"/>).</summary>
+/// Yaw uses the Altruist convention (<see cref="Yaw3D"/>: <c>Atan2(dx, dz)</c>, 0 = +Z, π/2 = +X).</summary>
 public static class SpatialQueries3D
 {
     /// <summary>Is <paramref name="to"/> within <paramref name="range"/> of <paramref name="from"/>?
@@ -24,6 +24,7 @@ public static class SpatialQueries3D
         var dy = to.Y - from.Y;
         return dx * dx + dy * dy + dz * dz <= range * range;
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="IsInRange(Vector3,Vector3,float,bool)"/>.</summary>
     public static bool IsInRange(Position3D from, Position3D to, float range, bool xzOnly = true)
         => IsInRange(from.ToVector3(), to.ToVector3(), range, xzOnly);
 
@@ -42,6 +43,7 @@ public static class SpatialQueries3D
         var diff = Angle.ShortestDifference(yaw, targetYaw);
         return MathF.Abs(diff) <= halfAngleRadians;
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="IsInCone(Vector3,float,float,float,Vector3)"/>.</summary>
     public static bool IsInCone(Position3D origin, float yaw, float halfAngleRadians, float range, Position3D target)
         => IsInCone(origin.ToVector3(), yaw, halfAngleRadians, range, target.ToVector3());
 
@@ -62,6 +64,7 @@ public static class SpatialQueries3D
         var perp = MathF.Abs(-dx * dirZ + dz * dirX);
         return perp <= halfWidth;
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="IsInLine(Vector3,float,float,float,Vector3)"/>.</summary>
     public static bool IsInLine(Position3D origin, float yaw, float length, float halfWidth, Position3D target)
         => IsInLine(origin.ToVector3(), yaw, length, halfWidth, target.ToVector3());
 }

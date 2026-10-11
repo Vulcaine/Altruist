@@ -13,11 +13,35 @@ namespace Altruist.Gaming.ThreeD;
 /// <see cref="NavMeshGraph"/> when a zone activates (typically by calling
 /// <see cref="NavMeshBuilder.Build"/> with the zone's walkability grid +
 /// terrain provider) and query paths through this service.</summary>
+/// <remarks>
+/// All queries work on the XZ plane (Y comes from the polygons), are safe to call concurrently, and return <c>false</c>/empty
+/// for unknown zones instead of throwing. For moving bodies along a path use <see cref="NavMeshAgent"/> /
+/// <see cref="INavMeshRuntime"/>; for terse call sites see <see cref="Altruist.Gaming.ThreeD.Navigation.Path"/>.
+/// </remarks>
+/// <example>
+/// <code>
+/// var mesh = NavMeshBuilder.Build(walkabilityGrid, terrain);
+/// if (mesh != null) navMesh.RegisterMesh("zone-1", mesh);
+/// var path = navMesh.FindPath("zone-1", from, to);
+/// foreach (var wp in path.Waypoints) { /* ... */ }
+/// </code>
+/// </example>
 public interface INavMeshService
 {
+    /// <summary>Registers (or replaces) the mesh for a zone.</summary>
+    /// <param name="zoneName">Zone key (case-sensitive).</param>
+    /// <param name="mesh">Compiled mesh, e.g. from <see cref="NavMeshBuilder.Build"/>.</param>
+    /// <exception cref="ArgumentException"><paramref name="zoneName"/> is null or empty.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="mesh"/> is <c>null</c>.</exception>
     void RegisterMesh(string zoneName, NavMeshGraph mesh);
+    /// <summary>Removes the zone's mesh (no-op if absent). Existing agents in that zone simply stop finding paths.</summary>
+    /// <param name="zoneName">Zone key.</param>
     void UnregisterMesh(string zoneName);
+    /// <summary>Returns the zone's mesh, or <c>null</c>.</summary>
+    /// <param name="zoneName">Zone key.</param>
     NavMeshGraph? GetMesh(string zoneName);
+    /// <summary>Whether a mesh is registered for the zone.</summary>
+    /// <param name="zoneName">Zone key.</param>
     bool HasMesh(string zoneName);
 
     /// <summary>Find a path from <paramref name="start"/> to <paramref name="end"/>
@@ -26,11 +50,20 @@ public interface INavMeshService
     /// snap, the path is empty. Returns <see cref="NavPath.Empty"/> on
     /// failure rather than throwing — pathfinding sits inside hot loops
     /// (combat, AI) and exception flow there is too expensive.</summary>
+    /// <remarks>A* over polygons followed by funnel smoothing; the first waypoint is the snapped start, the last the snapped end.</remarks>
+    /// <param name="zoneName">Zone key.</param>
+    /// <param name="start">Start position.</param>
+    /// <param name="end">Goal position.</param>
+    /// <param name="snapDistance">Max XZ distance for snapping the endpoints onto the mesh, in world units.</param>
     NavPath FindPath(string zoneName, Vector3 start, Vector3 end, float snapDistance = 4f);
 
     /// <summary>Snap a world point to the nearest position on the zone's
     /// nav-mesh. Returns the input point and false when no polygon is
     /// within <paramref name="maxDistance"/>.</summary>
+    /// <param name="zoneName">Zone key.</param>
+    /// <param name="point">World point.</param>
+    /// <param name="maxDistance">Max XZ snap distance in world units.</param>
+    /// <param name="onMesh">The snapped point (Y from the polygon), or <paramref name="point"/> on failure.</param>
     bool TrySamplePosition(string zoneName, Vector3 point, float maxDistance, out Vector3 onMesh);
 
     /// <summary>Straight-line walkability check on the nav-mesh: returns
@@ -38,6 +71,10 @@ public interface INavMeshService
     /// stays inside connected nav-mesh polygons the entire way. Useful for
     /// "do I need to actually pathfind, or can I just go straight?" — much
     /// cheaper than a full A* + funnel.</summary>
+    /// <remarks>Probes the segment every ~1 world unit; very thin obstacles between probes can be missed.</remarks>
+    /// <param name="zoneName">Zone key.</param>
+    /// <param name="start">Segment start (must be on the mesh).</param>
+    /// <param name="end">Segment end.</param>
     bool IsLineWalkable(string zoneName, Vector3 start, Vector3 end);
 
     /// <summary>Cast a ray on the nav surface; returns true if the segment
@@ -45,6 +82,10 @@ public interface INavMeshService
     /// the last point still on-mesh (so callers can clamp movement to the
     /// edge of a cliff/wall). For LoS-style yes/no checks where the hit
     /// point doesn't matter, <see cref="IsLineWalkable"/> is cheaper.</summary>
+    /// <param name="zoneName">Zone key.</param>
+    /// <param name="start">Segment start (must be on the mesh).</param>
+    /// <param name="end">Segment end.</param>
+    /// <param name="hit">On success <paramref name="end"/> (unchanged Y); on failure the last on-mesh probe.</param>
     bool TryRaycast(string zoneName, Vector3 start, Vector3 end, out Vector3 hit);
 
     /// <summary>Picks a uniformly random point on the nav-mesh. Sampling is
@@ -52,6 +93,10 @@ public interface INavMeshService
     /// more often, which is what you want for "spawn a mob somewhere on the
     /// walkable surface." Returns false when no mesh is registered for the
     /// zone.</summary>
+    /// <remarks>Draws three or four values from <paramref name="rng"/>; pass a seeded <see cref="Random"/> for reproducible spawns. O(polygons) per call.</remarks>
+    /// <param name="zoneName">Zone key.</param>
+    /// <param name="rng">Random source.</param>
+    /// <param name="point">The sampled point.</param>
     bool TryRandomPoint(string zoneName, Random rng, out Vector3 point);
 
     /// <summary>Picks a random point within <paramref name="radius"/> of
@@ -59,15 +104,30 @@ public interface INavMeshService
     /// the mesh. Useful for "wander near my spawn anchor" / "patrol within
     /// my leash." Returns false when no walkable polygon overlaps the
     /// search circle.</summary>
+    /// <remarks>
+    /// Rejection sampling (up to 16 tries) inside the disc, then falls back to snapping <paramref name="center"/> itself within
+    /// <paramref name="radius"/>. Connectivity to <paramref name="center"/> is not actually verified; check with
+    /// <see cref="IsReachable"/> if it matters.
+    /// </remarks>
+    /// <param name="zoneName">Zone key.</param>
+    /// <param name="center">Disc center.</param>
+    /// <param name="radius">Disc radius in world units (must be &gt; 0).</param>
+    /// <param name="rng">Random source.</param>
+    /// <param name="point">The sampled point.</param>
     bool TryRandomPointNear(string zoneName, Vector3 center, float radius, Random rng, out Vector3 point);
 
     /// <summary>True when there's ANY connected sequence of polygons
     /// between the two points, without bothering to reconstruct or smooth
     /// the path. Significantly cheaper than <see cref="FindPath"/> — uses a
     /// BFS that bails on first reach.</summary>
+    /// <param name="zoneName">Zone key.</param>
+    /// <param name="start">Start position.</param>
+    /// <param name="end">Goal position.</param>
+    /// <param name="snapDistance">Max XZ snap distance for both endpoints.</param>
     bool IsReachable(string zoneName, Vector3 start, Vector3 end, float snapDistance = 4f);
 }
 
+/// <summary>Default singleton <see cref="INavMeshService"/> (registered when <c>altruist:game</c> is configured); one pathfinder per thread.</summary>
 [Service(typeof(INavMeshService))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class NavMeshService : INavMeshService
@@ -80,11 +140,14 @@ public sealed class NavMeshService : INavMeshService
     private readonly ThreadLocal<NavMeshPathfinder> _pathfinder =
         new(() => new NavMeshPathfinder());
 
+    /// <summary>Creates the service.</summary>
+    /// <param name="loggerFactory">Logger factory.</param>
     public NavMeshService(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<NavMeshService>();
     }
 
+    /// <inheritdoc/>
     public void RegisterMesh(string zoneName, NavMeshGraph mesh)
     {
         if (string.IsNullOrEmpty(zoneName)) throw new ArgumentException(nameof(zoneName));
@@ -96,10 +159,14 @@ public sealed class NavMeshService : INavMeshService
             mesh.BoundsMin.X, mesh.BoundsMin.Z, mesh.BoundsMax.X, mesh.BoundsMax.Z);
     }
 
+    /// <inheritdoc/>
     public void UnregisterMesh(string zoneName) => _meshes.TryRemove(zoneName, out _);
+    /// <inheritdoc/>
     public NavMeshGraph? GetMesh(string zoneName) => _meshes.GetValueOrDefault(zoneName);
+    /// <inheritdoc/>
     public bool HasMesh(string zoneName) => _meshes.ContainsKey(zoneName);
 
+    /// <inheritdoc/>
     public NavPath FindPath(string zoneName, Vector3 start, Vector3 end, float snapDistance = 4f)
     {
         var mesh = GetMesh(zoneName);
@@ -117,6 +184,7 @@ public sealed class NavMeshService : INavMeshService
         return new NavPath(waypoints, polyPath, isComplete: true);
     }
 
+    /// <inheritdoc/>
     public bool TrySamplePosition(string zoneName, Vector3 point, float maxDistance, out Vector3 onMesh)
     {
         var mesh = GetMesh(zoneName);
@@ -126,9 +194,11 @@ public sealed class NavMeshService : INavMeshService
         return false;
     }
 
+    /// <inheritdoc/>
     public bool IsLineWalkable(string zoneName, Vector3 start, Vector3 end)
         => RaycastInternal(GetMesh(zoneName), start, end, out _);
 
+    /// <inheritdoc/>
     public bool TryRaycast(string zoneName, Vector3 start, Vector3 end, out Vector3 hit)
     {
         bool ok = RaycastInternal(GetMesh(zoneName), start, end, out hit);
@@ -180,6 +250,7 @@ public sealed class NavMeshService : INavMeshService
         return true;
     }
 
+    /// <inheritdoc/>
     public bool TryRandomPoint(string zoneName, Random rng, out Vector3 point)
     {
         point = default;
@@ -207,6 +278,7 @@ public sealed class NavMeshService : INavMeshService
         return true;
     }
 
+    /// <inheritdoc/>
     public bool TryRandomPointNear(string zoneName, Vector3 center, float radius, Random rng, out Vector3 point)
     {
         point = default;
@@ -237,6 +309,7 @@ public sealed class NavMeshService : INavMeshService
         return false;
     }
 
+    /// <inheritdoc/>
     public bool IsReachable(string zoneName, Vector3 start, Vector3 end, float snapDistance = 4f)
     {
         var mesh = GetMesh(zoneName);

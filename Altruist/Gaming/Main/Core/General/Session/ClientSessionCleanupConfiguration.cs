@@ -22,8 +22,12 @@ namespace Altruist.Gaming;
 [ServiceConfiguration]
 public sealed class ClientSessionCleanupConfiguration : IAltruistConfiguration
 {
+    /// <summary>Set once <see cref="Configure"/> ran.</summary>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Scans every loaded (non-dynamic) assembly for <see cref="IClientSessionCleanup"/> implementations and registers them (see <see cref="RegisterImplementations"/>).</summary>
+    /// <param name="services">The service collection being built.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
     public Task Configure(IServiceCollection services)
     {
         if (services is null) throw new ArgumentNullException(nameof(services));

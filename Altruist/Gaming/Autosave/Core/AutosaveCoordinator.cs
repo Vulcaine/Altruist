@@ -11,6 +11,8 @@ namespace Altruist.Gaming.Autosave;
 /// Singleton coordinator that tracks all IAutosaveServiceBase instances.
 /// Provides owner-level and global flush operations.
 /// </summary>
+/// <remarks>Default <see cref="IAutosaveCoordinator"/>; inject the interface. Flushes run sequentially over a snapshot of
+/// the registered services and are thread-safe with respect to concurrent registration.</remarks>
 [Service(typeof(IAutosaveCoordinator))]
 public class AutosaveCoordinator : IAutosaveCoordinator
 {
@@ -18,11 +20,14 @@ public class AutosaveCoordinator : IAutosaveCoordinator
     private readonly object _lock = new();
     private readonly ILogger _logger;
 
+    /// <summary>Created by DI.</summary>
+    /// <param name="loggerFactory">Logger factory.</param>
     public AutosaveCoordinator(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<AutosaveCoordinator>();
     }
 
+    /// <inheritdoc/>
     public int TotalDirtyCount
     {
         get
@@ -32,6 +37,7 @@ public class AutosaveCoordinator : IAutosaveCoordinator
         }
     }
 
+    /// <inheritdoc/>
     public void Register(IAutosaveServiceBase service)
     {
         lock (_lock)
@@ -41,6 +47,7 @@ public class AutosaveCoordinator : IAutosaveCoordinator
         }
     }
 
+    /// <inheritdoc/>
     public async Task FlushByOwnerAsync(string ownerId)
     {
         List<IAutosaveServiceBase> snapshot;
@@ -61,6 +68,7 @@ public class AutosaveCoordinator : IAutosaveCoordinator
         }
     }
 
+    /// <inheritdoc/>
     public async Task FlushAllAsync()
     {
         List<IAutosaveServiceBase> snapshot;

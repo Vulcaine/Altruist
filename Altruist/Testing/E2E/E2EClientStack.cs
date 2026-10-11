@@ -25,7 +25,7 @@ namespace Altruist.Testing.E2E;
 ///   — same path the existing <c>[AltruistIntegrationTest]</c> uses.</item>
 ///   <item>Call <see cref="PumpAsync"/> to drain TCP frames and feed them to the
 ///   dispatcher; the inventory mirror updates as packets arrive.</item>
-///   <item>Assert against <see cref="Inventory"/>, <see cref="Session.Tcp"/>'s
+///   <item>Assert against <see cref="Inventory"/>, <see cref="TestPlayerSession.Tcp"/>'s
 ///   <c>DrainAsync</c>, etc.</item>
 /// </list>
 /// </para>
@@ -51,6 +51,8 @@ public sealed class E2EClientStack : IAsyncDisposable
     /// MessagePack — matches the Unity client default.</summary>
     public IClientCodec Codec { get; }
 
+    /// <summary>Builds the stack; nothing connects until the test drives <see cref="Session"/>. Usually created with <see cref="AltruistE2EFixture.NewClientStack"/>.</summary>
+    /// <param name="cfg">Configuration with the server's addresses.</param>
     public E2EClientStack(IConfiguration cfg)
     {
         Session = new TestPlayerSession(cfg);
@@ -76,6 +78,7 @@ public sealed class E2EClientStack : IAsyncDisposable
         }
     }
 
+    /// <summary>Disposes the session (closes its HTTP and TCP clients).</summary>
     public async ValueTask DisposeAsync()
     {
         await Session.DisposeAsync().ConfigureAwait(false);

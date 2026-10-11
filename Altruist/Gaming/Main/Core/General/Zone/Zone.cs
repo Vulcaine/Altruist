@@ -4,6 +4,8 @@ Licensed under the Apache License, Version 2.0
 */
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Altruist.Gaming;
 
@@ -12,18 +14,31 @@ namespace Altruist.Gaming;
 /// to spawn an entity. The actual entity creation is done by the game via
 /// IZoneSpawnHandler.
 /// </summary>
+/// <remarks>The framework only stores these values and hands them to the <see cref="IZoneSpawnHandler"/>;
+/// their interpretation (units, what a type or template id means) is up to the game.</remarks>
 public class ZoneSpawnDefinition
 {
+    /// <summary>Consumer-defined spawn kind (e.g. a single entity or a group).</summary>
     public string Type { get; set; } = "";
+    /// <summary>Spawn X in world units.</summary>
     public int X { get; set; }
+    /// <summary>Spawn Y in world units.</summary>
     public int Y { get; set; }
+    /// <summary>Spawn Z in world units.</summary>
     public int Z { get; set; }
+    /// <summary>Random spread around <see cref="X"/>.</summary>
     public int RangeX { get; set; }
+    /// <summary>Random spread around <see cref="Y"/>.</summary>
     public int RangeY { get; set; }
+    /// <summary>Initial facing (consumer-defined encoding).</summary>
     public int Direction { get; set; }
+    /// <summary>How many entities to spawn (default 1).</summary>
     public int Count { get; set; } = 1;
+    /// <summary>Template / prototype id of the entity to spawn.</summary>
     public int Vnum { get; set; }
+    /// <summary>Respawn delay in seconds (default 60).</summary>
     public double RegenSeconds { get; set; } = 60;
+    /// <summary>Respawn percentage (default 100).</summary>
     public int RegenPercent { get; set; } = 100;
 }
 
@@ -34,8 +49,11 @@ public class ZoneSpawnDefinition
 /// </summary>
 public interface IManagedZone : IZone
 {
+    /// <summary>Players currently inside.</summary>
     int PlayerCount { get; }
+    /// <summary>Spawns materialised when the zone activates.</summary>
     IReadOnlyList<ZoneSpawnDefinition> SpawnDefinitions { get; }
+    /// <summary>Instance ids returned by the last <see cref="IZoneSpawnHandler.SpawnZone"/> (a copy).</summary>
     IReadOnlyCollection<string> SpawnedInstanceIds { get; }
 }
 
@@ -55,6 +73,12 @@ public interface IZoneSpawnHandler
 /// <summary>
 /// Manages zone lifecycle. Zones activate when the first player enters
 /// and deactivate when the last player leaves.
+///
+/// <para>Choosing: use this for presence-driven spawning in persistent worlds (content exists only
+/// while someone is there). For static spatial regions with bounds checks use
+/// <see cref="IZoneManager2D"/> / <see cref="IZoneManager3D"/>; to park individual idle entities use
+/// <see cref="IEntityHibernationService"/>. The game reports enters/leaves; nothing calls these
+/// automatically.</para>
 /// </summary>
 public interface IZoneManager
 {
@@ -80,36 +104,58 @@ public interface IZoneManager
     int TotalSpawnedEntities { get; }
 }
 
+/// <summary>
+/// Default <see cref="IZoneManager"/> (registered when <c>altruist:game</c> exists). Thread-safe. Spawning on
+/// activation is fire-and-forget (the enter call returns before the entities exist; a failed spawn is
+/// logged and resets the zone to inactive so the next enter retries); despawning on deactivation is
+/// awaited. A spawn that completes after its zone was deactivated (or deactivated and activated again)
+/// despawns what it created instead of attaching it. Without an <see cref="IZoneSpawnHandler"/>
+/// registered it only tracks presence.
+/// </summary>
 [Service(typeof(IZoneManager))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class ZoneManager : IZoneManager
 {
     private readonly ConcurrentDictionary<string, Zone> _zones = new();
     private readonly IZoneSpawnHandler? _spawnHandler;
+    private readonly ILogger _logger;
     private readonly object _lock = new();
 
+    /// <inheritdoc/>
     public int TotalSpawnedEntities => _zones.Values.Where(z => z.IsActive).Sum(z => z.SpawnedIds.Count);
 
-    public ZoneManager(IZoneSpawnHandler? spawnHandler = null)
+    /// <summary>Created by DI; <paramref name="spawnHandler"/> is the game's optional spawn callback.</summary>
+    /// <param name="spawnHandler">Spawns and despawns a zone's entities; null tracks presence only.</param>
+    /// <param name="loggerFactory">Receives failed background spawns; null discards them.</param>
+    public ZoneManager(IZoneSpawnHandler? spawnHandler = null, ILoggerFactory? loggerFactory = null)
     {
         _spawnHandler = spawnHandler;
+        _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<ZoneManager>();
     }
 
+    /// <summary>Registers (or replaces, resetting presence) a zone.</summary>
     public void RegisterZone(string name, List<ZoneSpawnDefinition> spawns)
     {
         _zones[name] = new Zone(name, spawns);
     }
 
+    /// <inheritdoc/>
     public Task PlayerEnteredZone(string zoneName, string playerId)
     {
         if (!_zones.TryGetValue(zoneName, out var zone)) return Task.CompletedTask;
 
         bool shouldActivate;
+        long generation;
         lock (_lock)
         {
             zone.Players.Add(playerId);
-            shouldActivate = !zone.IsActive && zone.Players.Count == 1;
-            if (shouldActivate) zone.IsActive = true;
+            shouldActivate = !zone.IsActive;
+            if (shouldActivate)
+            {
+                zone.IsActive = true;
+                zone.Generation++;
+            }
+            generation = zone.Generation;
         }
 
         // Fire-and-forget spawn. PlayerEnteredZone returns immediately so the
@@ -124,52 +170,83 @@ public sealed class ZoneManager : IZoneManager
         // and does not double-spawn.
         if (shouldActivate && _spawnHandler != null)
         {
-            _ = SpawnZoneInBackgroundAsync(zone);
+            _ = SpawnZoneInBackgroundAsync(zone, generation);
         }
 
         return Task.CompletedTask;
     }
 
-    private async Task SpawnZoneInBackgroundAsync(Zone zone)
+    // Runs detached from the caller, so it must not throw: a failure is logged and the zone is
+    // reset to inactive. `generation` identifies the activation this spawn belongs to.
+    private async Task SpawnZoneInBackgroundAsync(Zone zone, long generation)
     {
+        List<string> ids;
         try
         {
-            var ids = await _spawnHandler!.SpawnZone(zone);
-            zone.SpawnedIds = new ConcurrentBag<string>(ids);
+            ids = await _spawnHandler!.SpawnZone(zone);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Reset IsActive so a future PlayerEnteredZone for the same zone
-            // can retry the spawn instead of getting stuck "active with zero mobs".
-            zone.IsActive = false;
-            throw;
+            _logger.LogError(ex, "Spawning zone {Zone} failed; the zone stays inactive until the next enter.", zone.Name);
+            lock (_lock)
+            {
+                if (zone.Generation == generation)
+                    zone.IsActive = false;
+            }
+            return;
+        }
+
+        bool stale;
+        lock (_lock)
+        {
+            stale = zone.Generation != generation || !zone.IsActive;
+            if (!stale)
+                zone.SpawnedIds = new ConcurrentBag<string>(ids);
+        }
+
+        if (!stale) return;
+        // The zone was deactivated while spawning: its despawn ran without these ids.
+        try
+        {
+            await _spawnHandler!.DespawnZone(zone, ids);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Despawning the late spawn of zone {Zone} failed.", zone.Name);
         }
     }
 
+    /// <inheritdoc/>
     public async Task PlayerLeftZone(string zoneName, string playerId)
     {
         if (!_zones.TryGetValue(zoneName, out var zone)) return;
 
         bool shouldDeactivate;
+        List<string> ids = [];
         lock (_lock)
         {
             zone.Players.Remove(playerId);
             shouldDeactivate = zone.IsActive && zone.Players.Count == 0;
-            if (shouldDeactivate) zone.IsActive = false;
+            if (shouldDeactivate)
+            {
+                zone.IsActive = false;
+                zone.Generation++;
+                ids = zone.SpawnedIds.ToList();
+                zone.SpawnedIds = new ConcurrentBag<string>();
+            }
         }
 
         if (shouldDeactivate && _spawnHandler != null)
-        {
-            var ids = zone.SpawnedIds.ToList();
-            zone.SpawnedIds = new ConcurrentBag<string>();
             await _spawnHandler.DespawnZone(zone, ids);
-        }
     }
 
+    /// <inheritdoc/>
     public IManagedZone? GetZone(string name) => _zones.GetValueOrDefault(name);
 
+    /// <inheritdoc/>
     public IEnumerable<string> GetAllZoneNames() => _zones.Keys;
 
+    /// <inheritdoc/>
     public IEnumerable<IManagedZone> GetActiveZones() => _zones.Values.Where(z => z.IsActive);
 
     private sealed class Zone : IManagedZone
@@ -182,6 +259,8 @@ public sealed class ZoneManager : IZoneManager
 
         public HashSet<string> Players { get; } = new();
         public ConcurrentBag<string> SpawnedIds { get; set; } = new();
+        // Bumped on every activation and deactivation (under the manager's lock).
+        public long Generation { get; set; }
 
         public Zone(string name, List<ZoneSpawnDefinition> spawns)
         {

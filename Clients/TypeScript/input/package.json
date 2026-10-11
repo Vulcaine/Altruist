@@ -1,0 +1,15 @@
+{
+  "name": "@altruist/input",
+  "version": "0.1.0",
+  "description": "Altruist input helpers for game clients: the room input model (presses, canonical stage order, merges), the server input buffer twin, a press-preserving input sequencer, device-state merging, input send queue and pacing (TypeScript twin of Altruist.Gaming.Rooms RoomInputModel / InputBuffer).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

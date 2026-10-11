@@ -14,59 +14,77 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/// <summary>
+/// Ready-made 5-field cron expressions (minute hour day-of-month month day-of-week) for
+/// <c>[Cycle("...")]</c> and <c>IEngineCore.RegisterCronJob</c>. Times are evaluated in UTC.
+/// Any other valid 5-field cron string works too; these are just named shortcuts.
+/// </summary>
+/// <example>
+/// <code>
+/// [Cycle(CronPresets.Every5Minutes)]
+/// public Task PruneAsync() { ... }
+/// </code>
+/// </example>
 public static class CronPresets
 {
-    // Runs once every minute
+    /// <summary>Runs once every minute.</summary>
     public const string EveryMinute = "* * * * *";
 
-    // Runs at the start of every hour
+    /// <summary>Runs at the start of every hour.</summary>
     public const string Hourly = "0 * * * *";
 
-    // Runs once a day at midnight
+    /// <summary>Runs once a day at midnight.</summary>
     public const string Daily = "0 0 * * *";
 
-    // Runs once a week on Sunday at midnight
+    /// <summary>Runs once a week on Sunday at midnight.</summary>
     public const string Weekly = "0 0 * * SUN";
 
-    // Runs once a month on the first day at midnight
+    /// <summary>Runs once a month on the first day at midnight.</summary>
     public const string Monthly = "0 0 1 * *";
 
-    // Runs once a year on January 1st at midnight
+    /// <summary>Runs once a year on January 1st at midnight.</summary>
     public const string Yearly = "0 0 1 1 *";
 
-    // Runs every 5 minutes
+    /// <summary>Runs every 5 minutes.</summary>
     public const string Every5Minutes = "*/5 * * * *";
 
-    // Runs every 10 minutes
+    /// <summary>Runs every 10 minutes.</summary>
     public const string Every10Minutes = "*/10 * * * *";
 
-    // Runs every 30 minutes
+    /// <summary>Runs every 30 minutes.</summary>
     public const string Every30Minutes = "*/30 * * * *";
 
-    // Runs at 9 AM every weekday (Monday through Friday)
+    /// <summary>Runs at 9 AM every weekday (Monday through Friday).</summary>
     public const string WeekdayMorning = "0 9 * * MON-FRI";
 
-    // Runs at 6 PM every day
+    /// <summary>Runs at 6 PM every day.</summary>
     public const string DailyEvening = "0 18 * * *";
 
-    // Runs at 12 PM every Sunday
+    /// <summary>Runs at 12 PM every Sunday.</summary>
     public const string SundayNoon = "0 12 * * SUN";
 
-    // Runs every hour on the hour between 8 AM and 6 PM, Monday through Friday
+    /// <summary>Runs every hour on the hour between 8 AM and 6 PM, Monday through Friday.</summary>
     public const string WorkdayHours = "0 8-18 * * MON-FRI";
 
-    // Runs at midnight every 15th day of the month
+    /// <summary>Runs at midnight every 15th day of the month.</summary>
     public const string Monthly15th = "0 0 15 * *";
 
-    // Runs at 10:30 AM every Monday
+    /// <summary>Runs at 10:30 AM every Monday.</summary>
     public const string Monday1030AM = "30 10 * * MON";
 
-    // Runs every 15 minutes, on the hour, 15, 30, and 45
+    /// <summary>Runs every 15 minutes, on the hour, 15, 30, and 45.</summary>
     public const string Every15Minutes = "0,15,30,45 * * * *";
 }
 
+/// <summary>Turns the <see cref="CronPresets"/> expressions into human-readable text (for logs and dashboards).</summary>
 public static class CronMapper
 {
+    /// <summary>
+    /// Returns an English description for an expression that exactly matches one of the <see cref="CronPresets"/>
+    /// constants; any other expression yields <c>"Unknown cron expression"</c> (it is not parsed).
+    /// </summary>
+    /// <param name="cronExpression">The cron expression.</param>
+    /// <returns>The description, or <c>"Unknown cron expression"</c>.</returns>
     public static string MapCronToReadableFormat(string cronExpression)
     {
         return cronExpression switch

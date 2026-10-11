@@ -10,12 +10,19 @@ using Microsoft.Extensions.Logging;
 namespace Altruist.Gaming.ThreeD;
 
 /// <summary>
-/// Heightmap + collider-based spatial queries. No physics engine required.
-/// Registered when altruist:game:physics:enabled = false.
-///
-/// CapsuleCast: checks entity ColliderDescriptors (sphere intersection) + heightmap terrain.
-/// RayCast: checks heightmap elevation at ray endpoint.
+/// Physics-free <see cref="ISpatialQueryProvider"/>: approximate queries against an optional <see cref="ITerrainProvider"/> and
+/// the collider descriptors of world-0 objects. Registered as the DI singleton when config
+/// <c>altruist:game:physics:enabled</c> is <c>false</c>; otherwise <see cref="PhysicsSpatialQueryProvider"/> is used.
 /// </summary>
+/// <remarks>
+/// <para>Fidelity is deliberately coarse, suited to MMO-style servers without a physics engine:</para>
+/// <list type="bullet">
+/// <item><description>Every collider is treated as a sphere at its object's position with radius = the largest component of the collider size; the capsule's <c>halfLength</c> and <c>layerMask</c> are ignored.</description></item>
+/// <item><description><see cref="CapsuleCast"/> samples <see cref="ITerrainProvider.IsWalkable"/> roughly every 50 units along the path and reports a terrain hit (null <see cref="SpatialHit.HitObject"/>, normal opposite the direction) at the last walkable sample.</description></item>
+/// <item><description><see cref="RayCast"/> intersects downward rays with a flat plane at <see cref="ITerrainProvider.GetHeight"/> of the ray origin's XZ (or Y = 0 without a terrain provider), normal +Y.</description></item>
+/// </list>
+/// <para>Scans all world objects per query (O(n)); directions are assumed unit length.</para>
+/// </remarks>
 [Service(typeof(ISpatialQueryProvider))]
 [ConditionalOnConfig("altruist:game:physics:enabled", "false")]
 public sealed class HeightmapSpatialQueryProvider : ISpatialQueryProvider
@@ -24,6 +31,10 @@ public sealed class HeightmapSpatialQueryProvider : ISpatialQueryProvider
     private readonly ITerrainProvider? _terrain;
     private readonly ILogger _logger;
 
+    /// <summary>Created by DI.</summary>
+    /// <param name="worlds">World organizer; world index 0 is queried.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="terrain">Optional game terrain; without it only colliders (and a Y = 0 ground plane for rays) are tested.</param>
     public HeightmapSpatialQueryProvider(
         IGameWorldOrganizer3D worlds,
         ILoggerFactory loggerFactory,
@@ -34,6 +45,8 @@ public sealed class HeightmapSpatialQueryProvider : ISpatialQueryProvider
         _logger = loggerFactory.CreateLogger<HeightmapSpatialQueryProvider>();
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Results are sorted by <see cref="SpatialHit.T"/>, but collection stops after <paramref name="maxHits"/> hits in world-object order, so the nearest hit is not guaranteed when more than <paramref name="maxHits"/> objects intersect.</remarks>
     public IEnumerable<SpatialHit> CapsuleCast(
         Vector3 center, float radius, float halfLength,
         Vector3 direction, float maxDistance,
@@ -125,6 +138,7 @@ public sealed class HeightmapSpatialQueryProvider : ISpatialQueryProvider
             yield return hit;
     }
 
+    /// <inheritdoc/>
     public IEnumerable<SpatialHit> RayCast(
         Vector3 origin, Vector3 direction,
         float maxDistance, int maxHits = 4, uint layerMask = uint.MaxValue)

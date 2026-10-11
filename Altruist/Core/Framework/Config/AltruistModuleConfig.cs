@@ -9,14 +9,19 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist
 {
+    /// <summary>
+    /// Runs <see cref="AltruistModuleAttribute"/> modules for the server bootstrap. See <see cref="RunModulesAsync"/>.
+    /// </summary>
     public class AltruistModuleConfig : IAltruistConfiguration
     {
+        /// <inheritdoc/>
         public bool IsConfigured { get; set; }
 
         /// <summary>
-        /// Only binds [ConfigurationProperties] classes to the IServiceCollection.
-        /// Module loaders are executed later via RunModulesAsync, after the container is built.
+        /// No-op (only sets <see cref="IsConfigured"/>); <see cref="ConfigurationPropertiesAttribute"/> binding is done by
+        /// <see cref="AltruistDI.BindConfigurationClasses"/>. Module loaders are executed later via RunModulesAsync, after the container is built.
         /// </summary>
+        /// <param name="services">Unused.</param>
         public Task Configure(IServiceCollection services)
         {
             IsConfigured = true;
@@ -31,7 +36,9 @@ namespace Altruist
         /// - must be public static
         /// - must return void or Task
         /// - may take any number of parameters, all resolved from DI
+        /// Failures are logged, never thrown. Called by the server bootstrap; call it yourself only from a custom host.
         /// </summary>
+        /// <param name="provider">Built root provider used to resolve loader parameters.</param>
         public static async Task RunModulesAsync(IServiceProvider provider)
         {
             var loggerFactory = provider.GetRequiredService<ILoggerFactory>();

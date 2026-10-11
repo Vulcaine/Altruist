@@ -8,13 +8,44 @@ using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
 using Altruist.Numerics;
 
+/// <summary>
+/// 3D broadcasting helpers: visibility-aware sends to an entity's observers (<see cref="ISpatialBroadcastService.SendToObserversAsync"/>)
+/// and partition-based sends around a world position.
+/// </summary>
+/// <remarks>
+/// Prefer <see cref="ISpatialBroadcastService.SendToObserversAsync"/> for anything tied to an entity; it is consistent with the
+/// spawn/despawn events of the visibility tracker. Use the partition-based methods only for ephemeral effects.
+/// For 2D use <see cref="Altruist.Gaming.TwoD.ISpatialBroadcastService2D"/>. Note: this type is declared in the global namespace.
+/// </remarks>
 public interface ISpatialBroadcastService3D : ISpatialBroadcastService
 {
+    /// <summary>
+    /// Sends <paramref name="packet"/> to the <c>ClientId</c> of every <typeparamref name="T"/> object filed in the
+    /// partition(s) containing <paramref name="position"/>. Best effort, for ephemeral events only.
+    /// </summary>
+    /// <typeparam name="T">World object type that represents a connected client (e.g. the player type).</typeparam>
+    /// <param name="worldIndex">World index; unknown worlds are ignored.</param>
+    /// <param name="position">World position (integer world units).</param>
+    /// <param name="packet">Packet to send.</param>
     Task SpatialBroadcast<T>(int worldIndex, IntVector3 position, IPacketBase packet) where T : IWorldObject3D;
 
+    /// <summary>
+    /// Sends to the sender's whole socket room when it has fewer than <paramref name="threshold"/> players, otherwise
+    /// falls back to <see cref="SpatialBroadcast{T}"/> around <paramref name="position"/>.
+    /// </summary>
+    /// <typeparam name="T">World object type that represents a connected client.</typeparam>
+    /// <param name="senderClientId">Client whose socket room is checked.</param>
+    /// <param name="worldIndex">World index for the spatial fallback.</param>
+    /// <param name="position">World position for the spatial fallback.</param>
+    /// <param name="packet">Packet to send.</param>
+    /// <param name="threshold">Room size at or above which the spatial fallback is used.</param>
     Task SmartSpatialBroadcast<T>(string senderClientId, int worldIndex, IntVector3 position, IPacketBase packet, int threshold) where T : IWorldObject3D;
 }
 
+/// <summary>
+/// Default <see cref="ISpatialBroadcastService3D"/> (also registered as <see cref="ISpatialBroadcastService"/>) when
+/// <c>altruist:game</c> is configured and <c>altruist:environment:mode</c> is <c>3D</c>.
+/// </summary>
 [Service(typeof(ISpatialBroadcastService3D))]
 [Service(typeof(ISpatialBroadcastService))]
 [ConditionalOnConfig("altruist:game")]
@@ -26,6 +57,11 @@ public class SpatialBroadcastService3D : ISpatialBroadcastService3D
     private readonly ISocketManager _socketManager;
     private readonly IVisibilityTracker? _visibilityTracker;
 
+    /// <summary>Creates the service.</summary>
+    /// <param name="gameWorldService">World organizer used to resolve worlds by index.</param>
+    /// <param name="router">Router used to send packets to clients and rooms.</param>
+    /// <param name="socketManager">Socket manager used to find a client's room.</param>
+    /// <param name="visibilityTracker">Optional tracker; without it <see cref="SendToObserversAsync"/> is a no-op.</param>
     public SpatialBroadcastService3D(
         IGameWorldOrganizer3D gameWorldService,
         IAltruistRouter router,
@@ -38,6 +74,7 @@ public class SpatialBroadcastService3D : ISpatialBroadcastService3D
         _visibilityTracker = visibilityTracker;
     }
 
+    /// <inheritdoc/>
     public async Task SendToObserversAsync(string entityInstanceId, IPacketBase packet)
     {
         if (_visibilityTracker == null) return;
@@ -59,9 +96,9 @@ public class SpatialBroadcastService3D : ISpatialBroadcastService3D
     /// event but moves out of the partition before the removal is sent, leading to **state desync**.
     ///
     /// </summary>
-    /// <param name="initiatorClientId">The client initiating the event.</param>
-    /// <param name="x">The X coordinate in the world.</param>
-    /// <param name="y">The Y coordinate in the world.</param>
+    /// <typeparam name="T">World object type that represents a connected client (e.g. the player type).</typeparam>
+    /// <param name="worldIndex">World index; unknown worlds are ignored.</param>
+    /// <param name="position">World position (integer world units); the partition(s) containing it are used (radius 0).</param>
     /// <param name="packet">The packet to be broadcasted.</param>
     public async Task SpatialBroadcast<T>(int worldIndex, IntVector3 position, IPacketBase packet) where T : IWorldObject3D
     {
@@ -98,9 +135,10 @@ public class SpatialBroadcastService3D : ISpatialBroadcastService3D
     /// inconsistencies (e.g., a player sees a dropped item but never receives the removal).
     ///
     /// </summary>
+    /// <typeparam name="T">World object type that represents a connected client.</typeparam>
     /// <param name="senderClientId">The ID of the client sending the packet.</param>
-    /// <param name="x">The X coordinate for spatial partition lookup.</param>
-    /// <param name="y">The Y coordinate for spatial partition lookup.</param>
+    /// <param name="worldIndex">World index for the spatial fallback.</param>
+    /// <param name="position">World position for spatial partition lookup.</param>
     /// <param name="packet">The packet to be sent to clients.</param>
     /// <param name="threshold">
     /// The maximum number of players in a room before switching to spatial broadcast.

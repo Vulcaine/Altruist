@@ -76,7 +76,6 @@ public static class AltruistTestRuntime
             AssemblyLoader.EnsureAllReferencedAssembliesLoaded();
             services.AddSingleton(cfg);
             services.AddLogging(b => b.ClearProviders().AddProvider(NullLoggerProvider.Instance));
-            Dependencies.UseServices(services);
 
             using (var tmp = services.BuildServiceProvider())
             {
@@ -120,13 +119,13 @@ public static class AltruistTestRuntime
             .Build();
     }
 
+    private static int _modulesRun;
     /// <summary>
     /// Optionally invokes <c>[AltruistModuleLoader]</c> static methods after the root
     /// is built. Called from the class runner when an
     /// <c>[AltruistTest(RunModuleLoaders = true)]</c> class is first encountered.
     /// Idempotent.
     /// </summary>
-    private static int _modulesRun;
     public static void EnsureModulesRun()
     {
         EnsureBuilt();

@@ -22,13 +22,27 @@ using System.Text.Json;
 using Altruist.Security;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Altruist.Dashboard;
 
+/// <summary>
+/// The dashboard's API lab (route <c>/dashboard/v1/lab</c>): lists every attribute-routed HTTP action and every
+/// registered socket gate with a sample JSON body, and lets the dashboard user invoke them.
+/// </summary>
+/// <remarks>
+/// Only mapped when <c>altruist:dashboard:enabled</c> is <c>true</c> and the <c>Altruist.Dashboard</c> assembly is loaded;
+/// every request must pass the dashboard protection (<see cref="DashboardAccessOptions"/>). Gate invocation runs the
+/// handler as any client id the caller names (bypassing the socket handshake), so dashboard access is equivalent to
+/// acting as any player. HTTP invocation only ever calls this server, at its own bound address (never the incoming
+/// <c>Host</c> header).
+/// </remarks>
 [ApiController]
 [Route("/dashboard/v1/lab")]
 [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
@@ -41,6 +55,11 @@ public sealed class ApiLabDashboardController : ControllerBase
     private readonly IConnectionManager? _connectionManager;
     private readonly JsonSerializerOptions _jsonOptions;
 
+    /// <summary>Creates the controller.</summary>
+    /// <param name="actions">MVC action descriptors (source of HTTP actions).</param>
+    /// <param name="jsonOptions">Options for sample generation and payload deserialization.</param>
+    /// <param name="codecResolver">Optional packet codec; gate invocation is unavailable without it.</param>
+    /// <param name="connectionManager">Optional connection manager; gate invocation is unavailable without it.</param>
     public ApiLabDashboardController(
         IActionDescriptorCollectionProvider actions,
         JsonSerializerOptions jsonOptions,
@@ -53,6 +72,12 @@ public sealed class ApiLabDashboardController : ControllerBase
         _connectionManager = connectionManager;
     }
 
+    /// <summary>
+    /// <c>GET /dashboard/v1/lab/actions</c>: 200 with an <see cref="ApiLabActionsDto"/>: one entry per HTTP route and
+    /// verb (auth-like routes first, then by verb and path), followed by one entry per socket gate. Each entry carries a
+    /// generated sample body (nested to depth 3) and whether it requires auth (<c>[Shield]</c> / <c>[Authorize]</c>,
+    /// overridden by <c>[AllowAnonymous]</c>).
+    /// </summary>
     [HttpGet("actions")]
     public ActionResult<ApiLabActionsDto> GetActions()
     {
@@ -71,6 +96,19 @@ public sealed class ApiLabDashboardController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// <c>POST /dashboard/v1/lab/invoke</c> with an <see cref="ApiLabInvokeRequestDto"/>: 200 with an
+    /// <see cref="ApiLabInvokeResultDto"/>, or 400 for an unknown <see cref="ApiLabInvokeRequestDto.Kind"/>.
+    /// </summary>
+    /// <remarks>
+    /// <c>http</c>: sends the request to this server's own bound address (from <see cref="IServerAddressesFeature"/>,
+    /// wildcard hosts replaced by loopback) plus the path base and <see cref="ApiLabInvokeRequestDto.Path"/>, with a shared
+    /// <see cref="HttpClient"/> (JSON body except for GET/HEAD; no headers or credentials forwarded) and returns the status
+    /// and body. <c>gate</c>: encodes <see cref="ApiLabInvokeRequestDto.BodyJson"/> with the active codec and processes it
+    /// as a packet for the event from <see cref="ApiLabInvokeRequestDto.ClientId"/> (default <c>dashboard-lab</c>);
+    /// failures are reported in the result, not as HTTP errors.
+    /// </remarks>
+    /// <param name="request">What to invoke.</param>
     [HttpPost("invoke")]
     public async Task<ActionResult<ApiLabInvokeResultDto>> Invoke([FromBody] ApiLabInvokeRequestDto request)
     {
@@ -215,9 +253,21 @@ public sealed class ApiLabDashboardController : ControllerBase
     private async Task<ApiLabInvokeResultDto> InvokeHttp(ApiLabInvokeRequestDto request)
     {
         var method = new HttpMethod(string.IsNullOrWhiteSpace(request.Method) ? "GET" : request.Method);
-        var path = "/" + (request.Path ?? string.Empty).TrimStart('/');
-        var url = $"{Request.Scheme}://{Request.Host}{path}";
-        var message = new HttpRequestMessage(method, url);
+        var rawPath = request.Path ?? string.Empty;
+        if (rawPath.Contains('\\') || rawPath.Contains("://", StringComparison.Ordinal) || rawPath.Any(char.IsControl))
+            return new ApiLabInvokeResultDto { Success = false, Message = "Path must be a plain server-relative path." };
+
+        var baseUri = ResolveSelfBaseUri();
+        if (baseUri is null)
+            return new ApiLabInvokeResultDto { Success = false, Message = "The server's own address is unknown." };
+
+        var path = "/" + rawPath.TrimStart('/');
+        var target = new Uri(baseUri, Request.PathBase.Value + path);
+        // The target must stay on this server (scheme, host and port of the bound address).
+        if (Uri.Compare(target, baseUri, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) != 0)
+            return new ApiLabInvokeResultDto { Success = false, Message = "Path must stay on this server." };
+
+        var message = new HttpRequestMessage(method, target);
 
         if (!string.IsNullOrWhiteSpace(request.BodyJson) &&
             method != HttpMethod.Get &&
@@ -246,6 +296,36 @@ public sealed class ApiLabDashboardController : ControllerBase
                 Message = ex.Message
             };
         }
+    }
+
+    /// <summary>
+    /// This server's own base address from the bound listeners (never from the request's Host header, which the
+    /// client controls). Wildcard hosts become loopback; falls back to <c>http://127.0.0.1:{local port}</c>.
+    /// </summary>
+    private Uri? ResolveSelfBaseUri()
+    {
+        var addresses = HttpContext.RequestServices.GetService<IServer>()?.Features.Get<IServerAddressesFeature>()?.Addresses;
+        if (addresses is not null)
+        {
+            foreach (var raw in addresses.OrderBy(a => a.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ? 0 : 1))
+            {
+                var normalized = raw.Replace("://+", "://127.0.0.1").Replace("://*", "://127.0.0.1");
+                if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
+                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                    continue;
+
+                var host = uri.Host switch
+                {
+                    "0.0.0.0" => "127.0.0.1",
+                    "[::]" or "::" => "[::1]",
+                    _ => uri.Host,
+                };
+                return new UriBuilder(uri.Scheme, host, uri.Port).Uri;
+            }
+        }
+
+        var port = HttpContext.Connection.LocalPort;
+        return port > 0 ? new UriBuilder(Uri.UriSchemeHttp, "127.0.0.1", port).Uri : null;
     }
 
     private async Task<ApiLabInvokeResultDto> InvokeGate(ApiLabInvokeRequestDto request)
@@ -398,41 +478,67 @@ public sealed class ApiLabDashboardController : ControllerBase
     }
 }
 
+/// <summary>Response of <c>GET /dashboard/v1/lab/actions</c>.</summary>
 public sealed class ApiLabActionsDto
 {
+    /// <summary>HTTP actions first, then gates.</summary>
     public List<ApiLabActionDto> Actions { get; set; } = new();
 }
 
+/// <summary>One invokable HTTP action or socket gate listed by the API lab.</summary>
 public sealed class ApiLabActionDto
 {
+    /// <summary>Stable id: <c>http:{verb}:{path}</c> or <c>gate:{event}:{type}:{method}</c>.</summary>
     public string Id { get; set; } = string.Empty;
+    /// <summary><c>http</c> or <c>gate</c>.</summary>
     public string Kind { get; set; } = string.Empty;
+    /// <summary>HTTP verb, or <c>GATE</c>.</summary>
     public string Method { get; set; } = string.Empty;
+    /// <summary>HTTP route template, or the portal route of a gate.</summary>
     public string? Path { get; set; }
+    /// <summary>Gate event name (gates only).</summary>
     public string? Event { get; set; }
+    /// <summary>Display name.</summary>
     public string Name { get; set; } = string.Empty;
+    /// <summary><c>Type.Method</c> that handles it.</summary>
     public string Handler { get; set; } = string.Empty;
+    /// <summary>Full name of the body/packet type, if any.</summary>
     public string? PayloadType { get; set; }
+    /// <summary>Indented sample JSON body (empty when there is no body).</summary>
     public string SampleJson { get; set; } = string.Empty;
+    /// <summary>Whether a <c>[Shield]</c> or <c>[Authorize]</c> attribute applies (and no <c>[AllowAnonymous]</c>).</summary>
     public bool RequiresAuth { get; set; }
+    /// <summary>Name of the auth attribute without the <c>Attribute</c> suffix, if any.</summary>
     public string? Shield { get; set; }
 }
 
+/// <summary>Body of <c>POST /dashboard/v1/lab/invoke</c>.</summary>
 public sealed class ApiLabInvokeRequestDto
 {
+    /// <summary><c>http</c> or <c>gate</c>.</summary>
     public string Kind { get; set; } = string.Empty;
+    /// <summary>HTTP verb (default GET); ignored for gates.</summary>
     public string? Method { get; set; }
+    /// <summary>HTTP path, or the portal route passed to the gate.</summary>
     public string? Path { get; set; }
+    /// <summary>Gate event name (required for gates).</summary>
     public string? Event { get; set; }
+    /// <summary>Client id the gate runs as (default <c>dashboard-lab</c>).</summary>
     public string? ClientId { get; set; }
+    /// <summary>JSON request body or packet payload (default <c>{}</c> for gates).</summary>
     public string? BodyJson { get; set; }
 }
 
+/// <summary>Result of <c>POST /dashboard/v1/lab/invoke</c>.</summary>
 public sealed class ApiLabInvokeResultDto
 {
+    /// <summary>HTTP 2xx, or the gate returned true.</summary>
     public bool Success { get; set; }
+    /// <summary>HTTP status (HTTP invocations that reached the server).</summary>
     public int? StatusCode { get; set; }
+    /// <summary>Reason phrase, gate outcome or error message.</summary>
     public string? Message { get; set; }
+    /// <summary>HTTP response body text.</summary>
     public string? ResponseBody { get; set; }
 }
 

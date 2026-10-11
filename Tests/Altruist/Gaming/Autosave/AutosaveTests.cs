@@ -1181,24 +1181,25 @@ public class AutosaveConcurrencyTests
         var service = new AutosaveService<TestPlayerVault>(
             cache, coordinator, NullLoggerFactory.Instance, vault: null, walEnabled: false);
 
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        // A fixed amount of work, not a 2 s busy loop: that kept both cores of a CI machine busy.
+        var writing = 1;
         var tasks = new List<Task>();
 
         // Writer task
         tasks.Add(Task.Run(async () =>
         {
-            int i = 0;
-            while (!cts.IsCancellationRequested)
+            for (var i = 0; i < 5_000; i++)
             {
-                service.MarkDirty(new TestPlayerVault { StorageId = $"p{i++}" }, "o1");
+                service.MarkDirty(new TestPlayerVault { StorageId = $"p{i}" }, "o1");
                 await Task.Yield();
             }
+            Volatile.Write(ref writing, 0);
         }));
 
         // Flusher task
         tasks.Add(Task.Run(async () =>
         {
-            while (!cts.IsCancellationRequested)
+            while (Volatile.Read(ref writing) == 1)
             {
                 await service.FlushAsync();
                 await Task.Yield();

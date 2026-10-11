@@ -8,13 +8,25 @@ using System.Numerics;
 namespace Altruist.TwoD.Numerics;
 
 /// <summary>"How far apart are two points?" — 2D mirror of
-/// <see cref="Altruist.ThreeD.Numerics.Distance"/>. No <c>Horizontal</c>
+/// <see cref="Altruist.ThreeD.Numerics.Distance3D"/>. No <c>Horizontal</c>
 /// variant: 2D has no vertical axis to exclude.</summary>
 public static class Distance2D
 {
+    /// <summary>Euclidean distance between two points.</summary>
     public static float Between(Vector2 a, Vector2 b) => Vector2.Distance(a, b);
+    /// <summary><see cref="Position2D"/> overload of <see cref="Between(Vector2,Vector2)"/>.</summary>
     public static float Between(Position2D a, Position2D b) => Between(a.ToFloatVector2(), b.ToFloatVector2());
 
+    /// <summary>Distance squared: use for thresholded comparisons to skip the square root.</summary>
     public static float Squared(Vector2 a, Vector2 b) => Vector2.DistanceSquared(a, b);
+    /// <summary><see cref="Position2D"/> overload of <see cref="Squared(Vector2,Vector2)"/>.</summary>
     public static float Squared(Position2D a, Position2D b) => Squared(a.ToFloatVector2(), b.ToFloatVector2());
+
+    /// <summary>A Manhattan distance with the vertical part weighted (e.g. 0.5: "who is closer,
+    /// height counting half"): <c>MathF.Abs(dx) + MathF.Abs(dy) * weightY</c>.</summary>
+    public static float Weighted(float dx, float dy, float weightY) => MathF.Abs(dx) + MathF.Abs(dy) * weightY;
+
+    /// <summary><see cref="Weighted(float,float,float)"/> between two points:
+    /// <c>MathF.Abs(a.X - b.X) + MathF.Abs(a.Y - b.Y) * weightY</c>.</summary>
+    public static float WeightedBetween(Vector2 a, Vector2 b, float weightY) => MathF.Abs(a.X - b.X) + MathF.Abs(a.Y - b.Y) * weightY;
 }

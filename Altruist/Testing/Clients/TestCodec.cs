@@ -21,20 +21,29 @@ namespace Altruist.Testing;
 /// </summary>
 public interface ITestCodec
 {
+    /// <summary>The codec name: <c>json</c> or <c>messagepack</c>.</summary>
     string Provider { get; }
+    /// <summary>Encodes a payload; null encodes to an empty array.</summary>
     byte[] Serialize(object? payload);
+    /// <summary>Decodes a payload; an empty array decodes to <c>default</c>.</summary>
     T? Deserialize<T>(byte[] data);
+    /// <summary>Decodes a payload as an untyped array (positional packets), or null when it is not one.</summary>
     object[]? DeserializeArray(byte[] data);
 }
 
+/// <summary>Picks the <see cref="ITestCodec"/> matching the server's codec configuration (the test clients call it; use it directly to encode payloads by hand).</summary>
 public static class TestCodecResolver
 {
     /// <summary>
     /// Resolve the codec for a given transport. Looks up
     /// <c>altruist:server:transport:&lt;transport&gt;:codec:provider</c> first,
     /// then falls back to the global <c>altruist:server:transport:codec:provider</c>,
-    /// matching how Altruist's own transports resolve codec config.
+    /// matching how Altruist's own transports resolve codec config. Default: MessagePack.
     /// </summary>
+    /// <param name="cfg">The test configuration.</param>
+    /// <param name="transportName">The transport key (<c>tcp</c>, <c>udp</c>, <c>websocket</c>).</param>
+    /// <returns>The JSON or MessagePack codec.</returns>
+    /// <exception cref="InvalidOperationException">The configured provider is neither json nor messagepack.</exception>
     public static ITestCodec Resolve(IConfiguration cfg, string transportName)
     {
         var perTransport = cfg[$"altruist:server:transport:{transportName}:codec:provider"];

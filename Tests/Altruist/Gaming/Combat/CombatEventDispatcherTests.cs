@@ -107,6 +107,7 @@ public sealed class RecordingCombatEventDispatcher : ICombatEventDispatcher
     }
 }
 
+[Collection("CombatRegistry")]
 public class CombatEventDispatcherTests
 {
     [Fact]

@@ -52,6 +52,7 @@ public sealed class PayloadOrderCollisionHandler
     }
 }
 
+[Collection("CollisionHandlerRegistry")]
 public class SpatialCollisionDispatcherTests
 {
     private SpatialCollisionDispatcher CreateDispatcher()
@@ -85,7 +86,7 @@ public class SpatialCollisionDispatcherTests
         var handler = new PayloadOrderCollisionHandler();
         CollisionHandlerDiscovery.RegisterCollisionHandlers(
             [typeof(PayloadOrderCollisionHandler).Assembly],
-            type => type == typeof(PayloadOrderCollisionHandler) ? handler : null,
+            type => type == typeof(PayloadOrderCollisionHandler) ? handler : Activator.CreateInstance(type),
             NullLogger.Instance);
 
         var dispatcher = CreateDispatcher();

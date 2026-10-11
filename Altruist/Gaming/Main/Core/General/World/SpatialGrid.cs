@@ -26,6 +26,8 @@ public sealed class SpatialHashGrid
     private readonly List<List<int>> _listPool = new();
     private int _poolIndex;
 
+    /// <summary>Creates an empty grid.</summary>
+    /// <param name="cellSize">Cell edge length in world units; pick about the typical query radius.</param>
     public SpatialHashGrid(float cellSize = 500f)
     {
         _cellSize = cellSize;

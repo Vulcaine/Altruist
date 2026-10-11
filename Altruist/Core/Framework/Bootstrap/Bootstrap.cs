@@ -9,6 +9,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist;
 
+/// <summary>
+/// The server bootstrap sequence behind <see cref="AltruistApplication.Run"/>. Call <see cref="AltruistApplication.Run"/>
+/// rather than this class directly; its members are public for custom hosts and tests.
+/// </summary>
 public static class AltruistBootstrap
 {
     /// <summary>
@@ -18,6 +22,12 @@ public static class AltruistBootstrap
 
     private static readonly HashSet<string> _constructionCache = new();
 
+    /// <summary>
+    /// Loads all referenced assemblies, configures the Altruist logger, binds <see cref="ConfigurationPropertiesAttribute"/>
+    /// classes, registers services (<see cref="BootstrapServices"/>), builds the root provider (published to
+    /// <see cref="Dependencies"/>), runs <see cref="PostConstructAttribute"/> hooks and modules, then starts
+    /// <see cref="AltruistStartupConfiguration"/> (HTTP + transports) and waits for shutdown.
+    /// </summary>
     public static async Task Bootstrap()
     {
         AssemblyLoader.EnsureAllReferencedAssembliesLoaded();
@@ -28,7 +38,6 @@ public static class AltruistBootstrap
 
         // Use Altruist-specific logger instead of DI's default console logger
         ConfigureLogging();
-        Dependencies.UseServices(Services);
 
         var cfg = AppConfigLoader.Load();
         Services.AddSingleton(cfg);
@@ -53,6 +62,10 @@ public static class AltruistBootstrap
             await startup.StartAsync(Services, provider);
     }
 
+    /// <summary>
+    /// Registers beans, <see cref="ServiceAttribute"/> classes and portals (<see cref="AltruistServiceConfig"/>), then runs
+    /// <see cref="ServiceConfigurationAttribute"/> steps (<see cref="ConfigAttributeConfiguration"/>) on <see cref="Services"/>.
+    /// </summary>
     public static async Task BootstrapServices()
     {
         using var tmpProvider = Services.BuildServiceProvider();
@@ -65,6 +78,7 @@ public static class AltruistBootstrap
         await new ConfigAttributeConfiguration().Configure(Services);
     }
 
+    /// <summary>Replaces logging providers on <see cref="Services"/> with the Altruist console logger provider.</summary>
     public static void ConfigureLogging()
     {
         Services.AddLogging(loggingBuilder =>
@@ -92,23 +106,11 @@ public static class AltruistBootstrap
                 continue;
 
             object? instance;
+            // Resolved inline: the container reports a dependency cycle itself. A timeout on a pool thread here
+            // only misread a busy machine as a cycle and skipped the service's [PostConstruct].
             try
             {
-                // Detect circular dependency / deadlock with timeout
-                var resolveTask = Task.Run(() => provider.GetService(serviceType));
-                if (!resolveTask.Wait(TimeSpan.FromSeconds(10)))
-                {
-                    Console.Error.WriteLine(
-                        $"[ALTRUIST] Circular dependency detected: resolving '{serviceType.Name}' " +
-                        $"timed out after 10s. Check constructor dependencies for cycles. Skipping.");
-                    continue;
-                }
-                instance = resolveTask.Result;
-            }
-            catch (AggregateException ae) when (ae.InnerException is not null)
-            {
-                Console.Error.WriteLine($"[ALTRUIST] Failed to resolve '{serviceType.Name}': {ae.InnerException.Message}");
-                continue;
+                instance = provider.GetService(serviceType);
             }
             catch (Exception ex)
             {

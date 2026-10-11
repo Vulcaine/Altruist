@@ -19,16 +19,24 @@ namespace Altruist.Testing.E2E;
 /// </summary>
 public sealed class TestCase
 {
+    /// <summary>The test class (marked <see cref="AltruistE2ETestAttribute"/>).</summary>
     public Type Class { get; }
+    /// <summary>The parameterless public <c>[Fact]</c> method.</summary>
     public MethodInfo Method { get; }
+    /// <summary><c>Namespace.ClassName.MethodName</c>.</summary>
     public string FullName => $"{Class.FullName}.{Method.Name}";
 
+    /// <summary>A test case for one method of one class.</summary>
+    /// <param name="cls">The test class.</param>
+    /// <param name="method">The test method.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public TestCase(Type cls, MethodInfo method)
     {
         Class = cls ?? throw new ArgumentNullException(nameof(cls));
         Method = method ?? throw new ArgumentNullException(nameof(method));
     }
 
+    /// <summary>The <see cref="FullName"/>.</summary>
     public override string ToString() => FullName;
 }
 

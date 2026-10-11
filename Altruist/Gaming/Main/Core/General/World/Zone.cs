@@ -12,9 +12,13 @@ namespace Altruist.Gaming
     /// Zones must fit entirely inside a single partition.
     /// Multiple zones can exist within the same partition.
     /// </summary>
+    /// <remarks>These are static spatial regions. For regions whose spawns materialise and despawn with player
+    /// presence, see <see cref="IManagedZone"/> / <see cref="IZoneManager"/>.</remarks>
     public interface IZone
     {
+        /// <summary>Unique zone name within its world.</summary>
         string Name { get; }
+        /// <summary>Inactive zones are skipped by the zone managers' spatial lookups (FindZoneAt / FindZonesInBounds); managed zones toggle it with player presence.</summary>
         bool IsActive { get; set; }
     }
 
@@ -23,7 +27,9 @@ namespace Altruist.Gaming
     /// </summary>
     public interface IZone2D : IZone
     {
+        /// <summary>Minimum corner in world units.</summary>
         IntVector2 Position { get; }
+        /// <summary>Extent in world units.</summary>
         IntVector2 Size { get; }
     }
 
@@ -32,17 +38,25 @@ namespace Altruist.Gaming
     /// </summary>
     public interface IZone3D : IZone
     {
+        /// <summary>Minimum corner in world units.</summary>
         IntVector3 Position { get; }
+        /// <summary>Extent in world units.</summary>
         IntVector3 Size { get; }
     }
 
+    /// <summary>Default <see cref="IZone2D"/>; register with <see cref="IZoneManager2D"/>.</summary>
     public class Zone2D : IZone2D
     {
+        /// <inheritdoc/>
         public string Name { get; }
+        /// <inheritdoc/>
         public bool IsActive { get; set; } = true;
+        /// <inheritdoc/>
         public IntVector2 Position { get; }
+        /// <inheritdoc/>
         public IntVector2 Size { get; }
 
+        /// <summary>Creates an active zone.</summary>
         public Zone2D(string name, IntVector2 position, IntVector2 size)
         {
             Name = name;
@@ -50,17 +64,24 @@ namespace Altruist.Gaming
             Size = size;
         }
 
+        /// <inheritdoc/>
         public override string ToString()
             => $"Zone2D '{Name}' at {Position} size {Size} active={IsActive}";
     }
 
+    /// <summary>Default <see cref="IZone3D"/>; register with <see cref="IZoneManager3D"/>.</summary>
     public class Zone3D : IZone3D
     {
+        /// <inheritdoc/>
         public string Name { get; }
+        /// <inheritdoc/>
         public bool IsActive { get; set; } = true;
+        /// <inheritdoc/>
         public IntVector3 Position { get; }
+        /// <inheritdoc/>
         public IntVector3 Size { get; }
 
+        /// <summary>Creates an active zone.</summary>
         public Zone3D(string name, IntVector3 position, IntVector3 size)
         {
             Name = name;
@@ -68,6 +89,7 @@ namespace Altruist.Gaming
             Size = size;
         }
 
+        /// <inheritdoc/>
         public override string ToString()
             => $"Zone3D '{Name}' at {Position} size {Size} active={IsActive}";
     }
@@ -121,8 +143,11 @@ namespace Altruist.Gaming
             int maxX, int maxY, int maxZ);
     }
 
+    /// <summary>Thrown by <see cref="IZoneManager{TZone}.RegisterZone"/> when a zone is larger than a partition
+    /// or does not fit inside one.</summary>
     public class ZoneValidationException : Exception
     {
+        /// <summary>Creates the exception.</summary>
         public ZoneValidationException(string message) : base(message) { }
     }
 }

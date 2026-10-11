@@ -27,7 +27,7 @@ namespace Altruist.Gaming;
 /// StateMachineDef&lt;IComboContext&gt; def = b.Build();
 /// </code>
 /// </summary>
-public sealed class StateMachineBuilder<TContext> where TContext : class, IStateContext
+public sealed class StateMachineBuilder<TContext> where TContext : class, IStateContextCore
 {
     private readonly Dictionary<string, Func<TContext, float, string?>> _updates = new();
     private readonly Dictionary<string, Action<TContext>> _enters = new();
@@ -69,6 +69,7 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
         // states, one state can have many windows). Iterate via GetCustomAttributes<T> (plural) so
         // repeats don't throw and we register each occurrence.
         const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        string? initialOfType = null;
         foreach (var method in type.GetMethods(Flags))
         {
             // [State] — update handlers. Subclass attributes (AIState, ComboState) match.
@@ -90,7 +91,15 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
                         _delays[attr.Name] = attr.DelayUnit == TimeUnit.Milliseconds ? attr.Delay / 1000f : attr.Delay;
 
                     if (attr.Initial)
+                    {
+                        // Reflection returns methods in no defined order, so two initial states
+                        // of one class would make the winner arbitrary.
+                        if (initialOfType != null && initialOfType != attr.Name)
+                            throw new InvalidOperationException(
+                                $"{type.Name} marks both '{initialOfType}' and '{attr.Name}' as the initial state; mark exactly one.");
+                        initialOfType = attr.Name;
                         _initial = attr.Name;
+                    }
                 }
             }
 
@@ -126,7 +135,8 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
     /// <summary>Begin configuring a specific state (fluent overrides). Overrides attribute defaults.</summary>
     public StateConfig ConfigureState(string name) => new StateConfig(this, name);
 
-    /// <summary>Explicitly declare the initial state (otherwise the last <c>[State(Initial = true)]</c> or first registered state wins).</summary>
+    /// <summary>Explicitly declare the initial state. Otherwise the <c>[State(Initial = true)]</c> of the last
+    /// registered handler class wins; a machine with several states and no declared initial state does not build.</summary>
     public StateMachineBuilder<TContext> SetInitial(string name)
     {
         _initial = name;
@@ -145,12 +155,15 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
 
     /// <summary>Build an immutable <see cref="StateMachineDef{TContext}"/>. The builder may be reused
     /// after Build but each Build produces an independent snapshot.</summary>
+    /// <exception cref="InvalidOperationException">No states, no initial state declared while there are several
+    /// (<c>[State(Initial = true)]</c>, <see cref="SetInitial"/> or <see cref="StateConfig.AsInitial"/>), or the initial
+    /// state has no update handler.</exception>
     public StateMachineDef<TContext> Build()
     {
         if (_updates.Count == 0)
             throw new InvalidOperationException("StateMachineBuilder has no states registered.");
 
-        var initial = _initial ?? _updates.Keys.First();
+        var initial = _initial ?? SoleState();
         if (!_updates.ContainsKey(initial))
             throw new InvalidOperationException($"Initial state '{initial}' has no registered update handler.");
 
@@ -173,8 +186,18 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
             _onStateEnter);
     }
 
+    private string SoleState()
+    {
+        if (_updates.Count > 1)
+            throw new InvalidOperationException(
+                $"No initial state declared among [{string.Join(", ", _updates.Keys)}]; mark one with Initial = true, SetInitial or AsInitial.");
+        return _updates.Keys.Single();
+    }
+
     // ── Fluent per-state configurator ──────────────────────────────────────────
 
+    /// <summary>Fluent per-state overrides returned by <see cref="ConfigureState"/>; every call
+    /// writes into the owning builder (taking effect at the next <see cref="Build"/>).</summary>
     public sealed class StateConfig
     {
         private readonly StateMachineBuilder<TContext> _owner;
@@ -186,7 +209,7 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
             _name = name;
         }
 
-        /// <summary>Base duration in seconds. 0 = open-ended (no <see cref="IStateContext.Progress"/>).</summary>
+        /// <summary>Base duration in seconds. 0 = open-ended (no <see cref="IStateContextCore.Progress"/>).</summary>
         public StateConfig Duration(float seconds)
         {
             _owner._durations[_name] = seconds;
@@ -200,7 +223,7 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
             return this;
         }
 
-        /// <summary>Overwrite the state's tag string, readable via <see cref="IStateContext.CurrentStateTag"/>.</summary>
+        /// <summary>Overwrite the state's tag string, readable via <see cref="IStateContextCore.CurrentStateTag"/>.</summary>
         public StateConfig Tag(string tag)
         {
             _owner._tags[_name] = tag;
@@ -279,11 +302,11 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
     {
         var pars = method.GetParameters();
         if (pars.Length != 2
-            || !typeof(IStateContext).IsAssignableFrom(pars[0].ParameterType)
+            || !typeof(IStateContextCore).IsAssignableFrom(pars[0].ParameterType)
             || pars[1].ParameterType != typeof(float))
         {
             throw new InvalidOperationException(
-                $"[State] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContext, float).");
+                $"[State] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContextCore, float).");
         }
         if (method.ReturnType != typeof(string))
         {
@@ -295,10 +318,10 @@ public sealed class StateMachineBuilder<TContext> where TContext : class, IState
     private static void ValidateLifecycleSignature(MethodInfo method, Type declaringType, string attrName)
     {
         var pars = method.GetParameters();
-        if (pars.Length != 1 || !typeof(IStateContext).IsAssignableFrom(pars[0].ParameterType))
+        if (pars.Length != 1 || !typeof(IStateContextCore).IsAssignableFrom(pars[0].ParameterType))
         {
             throw new InvalidOperationException(
-                $"[{attrName}] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContext).");
+                $"[{attrName}] method '{declaringType.Name}.{method.Name}' must have signature (TContext : IStateContextCore).");
         }
         if (method.ReturnType != typeof(void))
         {

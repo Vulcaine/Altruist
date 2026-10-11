@@ -5,12 +5,17 @@ Licensed under the Apache License, Version 2.0
 
 using System.Numerics;
 
+using Altruist.Numerics;
+
 namespace Altruist.ThreeD.Numerics.Trajectory;
 
 /// <summary>Pure parametric trajectory math. The flagship shape is the
 /// 3-phase parabolic arc (rise → hang → fall) used everywhere from
 /// knockback flights to projectile arcs to summon dives. Constants are
-/// always passed in; nothing about a specific game lives here.</summary>
+/// always passed in; nothing about a specific game lives here.
+/// <see cref="Altruist.TwoD.Numerics.Trajectory.Trajectory2D"/> is the exact 2D mirror (same shape, phase
+/// clamping and errors; its X/Y equal this class's X/Y). Uses <see cref="DeterministicMath"/>, so samples
+/// are the same on every platform.</summary>
 public static class Trajectory3D
 {
     /// <summary>Y offset above the linear XZ baseline at parameter <paramref name="t"/>
@@ -20,7 +25,9 @@ public static class Trajectory3D
     /// <item>t ∈ [riseEndN, hangEndN] → flat hang at <paramref name="peakHeight"/>.</item>
     /// <item>t ∈ [hangEndN, 1]     → ease-in fall back to 0.</item>
     /// </list>
-    /// Returns 0 when <paramref name="peakHeight"/> ≤ 0 (collapses to a flat lerp).</summary>
+    /// Returns 0 when <paramref name="peakHeight"/> ≤ 0 (collapses to a flat lerp). The rise is a quarter
+    /// sine (<c>sin(u·π/2)</c>) and the fall <c>1 - sin²(v·π/2)</c>; phase bounds are clamped to
+    /// [1e-4, 1 - 1e-4] with <c>hangEndN ≥ riseEndN</c>.</summary>
     public static float ParabolicY(float t, float peakHeight, float riseEndN, float hangEndN)
     {
         if (peakHeight <= 0f) return 0f;
@@ -32,17 +39,18 @@ public static class Trajectory3D
         if (t < riseEndN)
         {
             var u = t / riseEndN;
-            return peakHeight * MathF.Sin(u * (MathF.PI * 0.5f));
+            return peakHeight * DeterministicMath.Sin(u * (MathF.PI * 0.5f));
         }
         if (t < hangEndN) return peakHeight;
 
         var fall = (t - hangEndN) / (1f - hangEndN);
-        var s = MathF.Sin(fall * (MathF.PI * 0.5f));
+        var s = DeterministicMath.Sin(fall * (MathF.PI * 0.5f));
         return peakHeight * (1f - s * s);
     }
 
     /// <summary>Sample a 3D arc at <paramref name="t"/>: lerp XZ from
-    /// <paramref name="start"/> to <paramref name="end"/> and add the parabolic Y on top.</summary>
+    /// <paramref name="start"/> to <paramref name="end"/> and add the parabolic Y on top. Returns exactly
+    /// <paramref name="start"/> for t ≤ 0 and <paramref name="end"/> for t ≥ 1.</summary>
     public static Vector3 ParabolicSample(Vector3 start, Vector3 end, float t,
                                           float peakHeight, float riseEndN, float hangEndN)
     {
@@ -61,7 +69,8 @@ public static class Trajectory3D
 
     /// <summary>Allocation-free polyline emission. Writes <paramref name="dest"/>.Length
     /// samples evenly spaced over t ∈ [0, 1] inclusive (so dest[0] = start,
-    /// dest[^1] = end). Length must be ≥ 2.</summary>
+    /// dest[^1] = end).</summary>
+    /// <exception cref="ArgumentException"><paramref name="dest"/> has fewer than 2 slots.</exception>
     public static void ParabolicPolyline(Vector3 start, Vector3 end, float peakHeight,
                                          float riseEndN, float hangEndN, Span<Vector3> dest)
     {

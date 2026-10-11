@@ -16,13 +16,21 @@ limitations under the License.
 
 namespace Altruist.Redis;
 
+/// <summary>
+/// Redis names used on the receiving side of cross-process packet delivery
+/// (see <see cref="RedisSocketClientSender"/> and <see cref="RedisEngineClientSender"/>).
+/// </summary>
 public static class IngressRedis
 {
+    /// <summary>Pub/sub channel on which an empty message signals that <see cref="MessageQueue"/> has new entries.</summary>
     public const string MessageDistributeChannel = "distribute-message";
+    /// <summary>Redis list (un-prefixed key) that senders <c>LPUSH</c> encoded packets onto for clients not connected to this process.</summary>
     public const string MessageQueue = "message-queue";
 }
 
+/// <summary>Redis names used on the sending side of cross-process packet delivery.</summary>
 public static class OutgressRedis
 {
+    /// <summary>Pub/sub channel senders publish to after queueing a packet; same value as <see cref="IngressRedis.MessageDistributeChannel"/>.</summary>
     public const string MessageDistributeChannel = "distribute-message";
 }

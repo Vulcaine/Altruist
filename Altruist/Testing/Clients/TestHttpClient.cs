@@ -25,12 +25,15 @@ namespace Altruist.Testing;
 /// <c>localhost</c> for client-side use.</para>
 ///
 /// <para>Subclasses <see cref="HttpClient"/>, so all standard methods —
-/// <see cref="HttpClient.PostAsJsonAsync{TValue}(string?, TValue, System.Threading.CancellationToken)"/>,
-/// <see cref="HttpClient.GetAsync(string?)"/>, etc. — are available with no
+/// <c>PostAsJsonAsync</c> (System.Net.Http.Json),
+/// <see cref="HttpClient.GetAsync(string)"/>, etc. — are available with no
 /// adapter layer.</para>
 /// </summary>
 public sealed class TestHttpClient : HttpClient
 {
+    /// <summary>A client whose <see cref="HttpClient.BaseAddress"/> is <c>http://{host}:{port}</c> from
+    /// <c>altruist:server:http:host</c> (default <c>localhost</c>) and <c>altruist:server:http:port</c> (default 8080).</summary>
+    /// <param name="cfg">The test configuration.</param>
     public TestHttpClient(IConfiguration cfg)
     {
         var host = NormalizeHost(cfg["altruist:server:http:host"] ?? "localhost");

@@ -7,6 +7,16 @@ using System.Collections.Concurrent;
 
 namespace Altruist.Gaming.Inventory;
 
+/// <summary>
+/// Default in-memory <see cref="IInventoryService"/>. Holds every container (keyed <c>"{ownerId}:{containerId}"</c>) and
+/// every tracked <see cref="GameItem"/> (keyed by instance id) in concurrent dictionaries; nothing is persisted.
+/// </summary>
+/// <remarks>
+/// Registered as a singleton via <c>[Service(typeof(IInventoryService))]</c>; inject <see cref="IInventoryService"/>.
+/// The dictionaries are thread-safe but container mutations are not, so serialize operations per owner.
+/// All async methods complete synchronously. Containers are created through <see cref="CreateContainer"/>, except the
+/// shared <c>"world"</c> ground container that <see cref="DropItemAsync"/> creates on demand.
+/// </remarks>
 [Service(typeof(IInventoryService))]
 public class InventoryService : IInventoryService
 {
@@ -14,6 +24,8 @@ public class InventoryService : IInventoryService
     private readonly ConcurrentDictionary<string, GameItem> _items = new();
     private readonly IItemTemplateProvider _templates;
 
+    /// <summary>Creates the service (normally resolved from DI).</summary>
+    /// <param name="templates">Template source used by <see cref="CreateItem"/>.</param>
     public InventoryService(IItemTemplateProvider templates)
     {
         _templates = templates;
@@ -24,6 +36,7 @@ public class InventoryService : IInventoryService
 
     // ── Container Management ────────────────────────────────────────
 
+    /// <inheritdoc/>
     public IInventoryContainer CreateContainer(string ownerId, ContainerConfig config)
     {
         IInventoryContainer container = config.ContainerType switch
@@ -41,9 +54,11 @@ public class InventoryService : IInventoryService
         return container;
     }
 
+    /// <inheritdoc/>
     public IInventoryContainer? GetContainer(string ownerId, string containerId)
         => _containers.TryGetValue(ContainerKey(ownerId, containerId), out var c) ? c : null;
 
+    /// <inheritdoc/>
     public void RemoveContainers(string ownerId)
     {
         var keysToRemove = _containers.Keys.Where(k => k.StartsWith(ownerId + ":")).ToList();
@@ -53,6 +68,7 @@ public class InventoryService : IInventoryService
 
     // ── Item CRUD ───────────────────────────────────────────────────
 
+    /// <inheritdoc/>
     public GameItem CreateItem(long templateId, short count = 1)
     {
         var template = _templates.GetTemplate(templateId)
@@ -65,9 +81,11 @@ public class InventoryService : IInventoryService
         return item;
     }
 
+    /// <inheritdoc/>
     public GameItem? GetItem(string itemInstanceId)
         => _items.TryGetValue(itemInstanceId, out var item) ? item : null;
 
+    /// <inheritdoc/>
     public ItemStatus AddItem(string ownerId, string containerId, GameItem item, SlotKey? at = null)
     {
         var container = GetContainer(ownerId, containerId);
@@ -90,6 +108,7 @@ public class InventoryService : IInventoryService
         return result;
     }
 
+    /// <inheritdoc/>
     public MoveItemResult RemoveItem(SlotKey slot, short count = 1)
     {
         var container = GetContainer(slot.OwnerId, slot.ContainerId);
@@ -119,6 +138,7 @@ public class InventoryService : IInventoryService
 
     // ── Universal Transfer ──────────────────────────────────────────
 
+    /// <inheritdoc/>
     public Task<MoveItemResult> MoveItemAsync(SlotKey from, SlotKey to, short count = 1)
     {
         var srcContainer = GetContainer(from.OwnerId, from.ContainerId);
@@ -169,6 +189,7 @@ public class InventoryService : IInventoryService
         return Task.FromResult(new MoveItemResult(ItemStatus.Success, item));
     }
 
+    /// <inheritdoc/>
     public Task<MoveItemResult> SwapItemsAsync(SlotKey slotA, SlotKey slotB)
     {
         var containerA = GetContainer(slotA.OwnerId, slotA.ContainerId);
@@ -224,6 +245,7 @@ public class InventoryService : IInventoryService
 
     // ── Convenience Operations ──────────────────────────────────────
 
+    /// <inheritdoc/>
     public Task<MoveItemResult> PickupItemAsync(string playerId, string itemInstanceId)
     {
         // Find item in any world container
@@ -244,6 +266,7 @@ public class InventoryService : IInventoryService
         return Task.FromResult(new MoveItemResult(ItemStatus.ItemNotFound));
     }
 
+    /// <inheritdoc/>
     public Task<MoveItemResult> DropItemAsync(string playerId, SlotKey fromSlot)
     {
         // Find or create world container
@@ -257,6 +280,7 @@ public class InventoryService : IInventoryService
         return MoveItemAsync(fromSlot, to, 1);
     }
 
+    /// <inheritdoc/>
     public Task<MoveItemResult> EquipItemAsync(string playerId, SlotKey fromSlot, string? equipSlotName = null)
     {
         var item = GetItemAtSlot(fromSlot);
@@ -284,6 +308,7 @@ public class InventoryService : IInventoryService
         return MoveItemAsync(fromSlot, to, 1);
     }
 
+    /// <inheritdoc/>
     public Task<MoveItemResult> UnequipItemAsync(string playerId, string equipSlotName)
     {
         var equipment = GetContainer(playerId, "equipment") as EquipmentStorage;
@@ -296,6 +321,7 @@ public class InventoryService : IInventoryService
         return MoveItemAsync(fromKey, to, 1);
     }
 
+    /// <inheritdoc/>
     public Task<UseItemResult> UseItemAsync(string playerId, SlotKey slot)
     {
         var item = GetItemAtSlot(slot);
@@ -309,6 +335,7 @@ public class InventoryService : IInventoryService
 
     // ── Query ───────────────────────────────────────────────────────
 
+    /// <inheritdoc/>
     public IEnumerable<StorageSlot> GetContainerSlots(string ownerId, string containerId)
     {
         var container = GetContainer(ownerId, containerId);

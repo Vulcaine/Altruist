@@ -50,6 +50,88 @@ public class GameWorldOrganizer2DTests
         _engineMock.Setup(e => e.Bodies).Returns(new List<IPhysxBody>());
         _engineFactoryMock.Setup(f => f.Create(It.IsAny<Vector2>(), It.IsAny<float>()))
             .Returns(_engineMock.Object);
+        _engineFactoryMock.Setup(f => f.Create(It.IsAny<PhysxWorldSettings2D>()))
+            .Returns(_engineMock.Object);
+    }
+
+    [Fact]
+    public void Worlds_step_physics_in_fixed_steps_of_the_index()
+    {
+        var settings = new List<PhysxWorldSettings2D>();
+        _engineFactoryMock.Setup(f => f.Create(It.IsAny<PhysxWorldSettings2D>()))
+            .Callback<PhysxWorldSettings2D>(settings.Add)
+            .Returns(_engineMock.Object);
+
+        CreateOrganizer(CreateIndex(1));
+
+        var s = settings.Should().ContainSingle().Subject;
+        s.FixedDeltaTime.Should().Be(1f / 60f);
+        s.Gravity.Should().Be(new Vector2(0, -9.81f));
+        s.MaxSubSteps.Should().BePositive();
+    }
+
+    [Fact]
+    public void Body_positions_sync_back_without_truncation()
+    {
+        var organizer = CreateOrganizer();
+        using var engine = PhysxWorldEngine2D.Create(new PhysxWorldSettings2D { Gravity = Vector2.Zero });
+        var world = organizer.AddWorld(CreateIndex(5), new PhysxWorld2D(engine));
+        var obj = new AnonymousWorldObject2D(Altruist.TwoD.Numerics.Transform2D.Zero)
+        {
+            Body = engine.CreateBody(new PhysxBodyDef2D { Type = PhysxBodyType.Dynamic, Position = new Vector2(1.75f, -2.5f) }),
+        };
+        world.SpawnDynamicObject(obj).GetAwaiter().GetResult();
+
+        organizer.Step(0f);
+
+        obj.Transform.Position.X.Should().Be(1.75f);
+        obj.Transform.Position.Y.Should().Be(-2.5f);
+    }
+
+    [Fact]
+    public void Spawned_object_gets_a_body_in_its_world_with_a_box_of_its_size()
+    {
+        using var engine = PhysxWorldEngine2D.Create(new PhysxWorldSettings2D { Gravity = Vector2.Zero });
+        var physx = new PhysxWorld2D(engine);
+        var manager = new GameWorldManager2D(CreateIndex(7), physx, _partitionerMock.Object, null,
+            new Box2DPhysxBodyApiProvider2D(), new Box2DPhysxColliderApiProvider2D());
+        manager.Initialize();
+        var obj = new AnonymousWorldObject2D(new Altruist.TwoD.Numerics.Transform2D(
+            Altruist.TwoD.Numerics.Position2D.Of(10.5f, 3f), Altruist.TwoD.Numerics.Size2D.Of(4f, 2f),
+            Altruist.TwoD.Numerics.Scale2D.One, Altruist.TwoD.Numerics.Rotation2D.Zero));
+
+        var body = manager.SpawnDynamicObject(obj).GetAwaiter().GetResult();
+
+        body.Should().NotBeNull();
+        engine.Bodies.Should().ContainSingle().Which.Should().BeSameAs(body);
+        body!.Position.Should().Be(new Vector2(10.5f, 3f));
+        var hit = engine.RayCast(new PhysxRay2D(new Vector2(0f, 3f), new Vector2(20f, 3f))).Single();
+        hit.Point.X.Should().BeApproximately(8.5f, 1e-3f);
+    }
+
+    [Fact]
+    public void World_with_a_data_path_is_loaded_through_the_loader()
+    {
+        var index = new WorldIndex2D(3, "arena", null, 1f / 60f, new IntVector2(10, 10), data: "worlds/arena.json");
+        var loaded = new Mock<IGameWorldManager2D>();
+        loaded.Setup(m => m.Index).Returns(index);
+        var loader = new Mock<IWorldLoader2D>();
+        loader.Setup(l => l.LoadFromIndex(index)).ReturnsAsync(loaded.Object);
+
+        var organizer = new GameWorldOrganizer2D(_partitionerMock.Object, _cacheMock.Object, _engineFactoryMock.Object,
+            new[] { index }, worldLoader: loader.Object);
+
+        organizer.GetWorld(3).Should().BeSameAs(loaded.Object);
+    }
+
+    [Fact]
+    public void World_with_a_data_path_and_no_loader_fails_fast()
+    {
+        var index = new WorldIndex2D(3, "arena", null, 1f / 60f, new IntVector2(10, 10), data: "worlds/arena.json");
+
+        var act = () => CreateOrganizer(index);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*data-path*");
     }
 
     private GameWorldOrganizer2D CreateOrganizer(params IWorldIndex2D[] worlds)

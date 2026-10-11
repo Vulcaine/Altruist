@@ -33,12 +33,19 @@ public interface IHibernatable
 /// </summary>
 public sealed class HibernatedEntity
 {
+    /// <summary>Instance id of the entity.</summary>
     public string InstanceId { get; init; } = "";
+    /// <summary>Zone it belongs to (for <see cref="IEntityHibernationService.RemoveZone"/>).</summary>
     public string ZoneName { get; init; } = "";
+    /// <summary>Last known X (world units).</summary>
     public float X { get; init; }
+    /// <summary>Last known Y (world units).</summary>
     public float Y { get; init; }
+    /// <summary>Last known Z (world units).</summary>
     public float Z { get; init; }
+    /// <summary>Template / prototype id (consumer-defined).</summary>
     public int Vnum { get; init; }
+    /// <summary>Optional consumer state; not set by the service.</summary>
     public object? EntitySnapshot { get; set; }
 
     /// <summary>
@@ -53,6 +60,10 @@ public sealed class HibernatedEntity
 /// When a player moves, nearby hibernated entities wake up.
 ///
 /// This is a core Altruist service that games can use for efficient entity management.
+///
+/// <para>The service is only a registry: removing the entity from the world on hibernate and re-inserting
+/// it after <see cref="Wake"/> is the caller's job, as is deciding when (e.g. from visibility). While
+/// hibernated, <see cref="IHibernatable.IsHibernated"/> makes the AI service skip the entity. Thread-safe.</para>
 /// </summary>
 public interface IEntityHibernationService
 {
@@ -75,14 +86,18 @@ public interface IEntityHibernationService
     int Count { get; }
 }
 
+/// <summary>Default <see cref="IEntityHibernationService"/> (registered when <c>altruist:game</c> exists).
+/// <see cref="FindNearby"/> is a linear scan over all hibernated entities.</summary>
 [Service(typeof(IEntityHibernationService))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class EntityHibernationService : IEntityHibernationService
 {
     private readonly ConcurrentDictionary<string, HibernatedEntity> _hibernated = new();
 
+    /// <inheritdoc/>
     public int Count => _hibernated.Count;
 
+    /// <summary>Marks the entity hibernated, calls <see cref="IHibernatable.OnHibernate"/> and stores it.</summary>
     public void Hibernate(string instanceId, string zoneName, float x, float y, float z, int vnum, IHibernatable entity)
     {
         entity.IsHibernated = true;
@@ -98,6 +113,7 @@ public sealed class EntityHibernationService : IEntityHibernationService
         };
     }
 
+    /// <inheritdoc/>
     public List<HibernatedEntity> FindNearby(float x, float y, float z, float radius)
     {
         var radiusSq = radius * radius;
@@ -115,6 +131,8 @@ public sealed class EntityHibernationService : IEntityHibernationService
         return result;
     }
 
+    /// <summary>Removes the entry, clears <see cref="IHibernatable.IsHibernated"/> and calls
+    /// <see cref="IHibernatable.OnWake"/>; null if not hibernated.</summary>
     public HibernatedEntity? Wake(string instanceId)
     {
         if (!_hibernated.TryRemove(instanceId, out var entry))
@@ -129,11 +147,13 @@ public sealed class EntityHibernationService : IEntityHibernationService
         return entry;
     }
 
+    /// <inheritdoc/>
     public void Remove(string instanceId)
     {
         _hibernated.TryRemove(instanceId, out _);
     }
 
+    /// <inheritdoc/>
     public void RemoveZone(string zoneName)
     {
         var toRemove = _hibernated.Where(kv => kv.Value.ZoneName == zoneName).Select(kv => kv.Key).ToList();

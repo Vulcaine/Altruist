@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Altruist.Gaming.Lobbies</RootNamespace>
+    <AssemblyName>Lobbies</AssemblyName>
+    <PackageId>Altruist.Gaming.Lobbies</PackageId>
+    <Version>0.9.9-beta</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Main\Gaming.csproj" />
+    <ProjectReference Include="..\Rooms\Rooms.csproj" />
+  </ItemGroup>
+</Project>

@@ -22,6 +22,16 @@ namespace Altruist.Gaming;
 /// Configure:
 ///   altruist:game:lag-compensation:history-ticks (default 64)
 ///   altruist:game:lag-compensation:snapshot-strategy = nearest | interpolate (default nearest)
+///
+/// <para>Ticks are engine frames (<c>AltruistEngine.CurrentTick</c>); history is recorded by the 3D world
+/// organizer after each world step, keyed by the 3D world object's <c>VirtualId</c>. Not thread-safe:
+/// rewind and record on the engine/world thread. The service is optional (registered only when the
+/// config key exists): inject it nullable and use <see cref="LagCompensationExtensions.RewindOrRun(ILagCompensationService, long, Action)"/>,
+/// which simply runs the action when compensation is off.</para>
+///
+/// <para>Choosing: use this for server-authoritative hit validation in persistent 3D worlds (melee sweeps,
+/// hitscan) against what the client saw. Deterministic room simulations with client prediction usually
+/// don't need it (inputs are applied at their own step instead).</para>
 /// </summary>
 public interface ILagCompensationService : IPositionHistoryRecorder
 {

@@ -23,11 +23,13 @@ public static class Direction3D
         if (lenSq < 1e-12f) return Vector3.Zero;
         return delta / MathF.Sqrt(lenSq);
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="Between(Vector3,Vector3)"/>.</summary>
     public static Vector3 Between(Position3D from, Position3D to) => Between(from.ToVector3(), to.ToVector3());
 
     /// <summary>Intent-named alias of <see cref="Between(Vector3,Vector3)"/>.
     /// Reads naturally at body-steering sites: <c>Direction3D.Toward(player, mob)</c>.</summary>
     public static Vector3 Toward(Vector3 from, Vector3 to) => Between(from, to);
+    /// <summary><see cref="Position3D"/> overload of <see cref="Toward(Vector3,Vector3)"/>.</summary>
     public static Vector3 Toward(Position3D from, Position3D to) => Between(from, to);
 
     /// <summary>XZ unit vector at <paramref name="yawRadians"/> (Y = 0).
@@ -48,6 +50,7 @@ public static class Direction3D
         var inv = 1f / len;
         return new Vector3(dx * inv, 0f, dz * inv);
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="Horizontal(Vector3,Vector3)"/>.</summary>
     public static Vector3 Horizontal(Position3D from, Position3D to) => Horizontal(from.ToVector3(), to.ToVector3());
 
     /// <summary>Both 3D direction and 3D distance at once. Common when the
@@ -60,6 +63,7 @@ public static class Direction3D
         var len = MathF.Sqrt(lenSq);
         return (delta / len, len);
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="WithDistance(Vector3,Vector3)"/>.</summary>
     public static (Vector3 direction, float distance) WithDistance(Position3D from, Position3D to)
         => WithDistance(from.ToVector3(), to.ToVector3());
 

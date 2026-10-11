@@ -23,5 +23,16 @@ public interface ITransportSender
     /// types (which don't formally implement <c>IPacketBase</c>) can be sent
     /// without modification.
     /// </summary>
+    /// <remarks>
+    /// Wire framing per transport: TCP <c>[4-byte LE length][1-byte gate length][gate UTF-8][payload]</c>
+    /// (thread-safe, serialized by a lock); UDP one datagram <c>[1-byte gate length][gate UTF-8][payload]</c>;
+    /// WebSocket one message carrying the codec-encoded map <c>{ "event": gate, "payload": packet }</c>.
+    /// </remarks>
+    /// <typeparam name="T">Static packet type used for serialization.</typeparam>
+    /// <param name="gate">Server gate name (UTF-8, at most 255 bytes on TCP/UDP).</param>
+    /// <param name="packet">Packet to send.</param>
+    /// <param name="ct">Cancellation token for the write.</param>
+    /// <returns>A task that completes when the bytes are handed to the socket.</returns>
+    /// <exception cref="InvalidOperationException">The transport is not connected (TCP / WS) or the gate name is longer than 255 bytes.</exception>
     Task SendAsync<T>(string gate, T packet, CancellationToken ct = default);
 }

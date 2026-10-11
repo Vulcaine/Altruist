@@ -13,12 +13,12 @@ namespace Altruist.Gaming;
 public static class StateMachineDataExtensions
 {
     /// <summary>Returns the active state's data blob cast to <typeparamref name="TData"/>, or null.</summary>
-    public static TData? GetCurrentStateData<TData>(this IStateContext context)
+    public static TData? GetCurrentStateData<TData>(this IStateContextCore context)
         where TData : class
         => context.CurrentStateData as TData;
 
-    /// <summary>Try-get wrapper around <see cref="GetCurrentStateData{TData}(IStateContext)"/>.</summary>
-    public static bool TryGetCurrentStateData<TData>(this IStateContext context, out TData? data)
+    /// <summary>Try-get wrapper around <see cref="GetCurrentStateData{TData}(IStateContextCore)"/>.</summary>
+    public static bool TryGetCurrentStateData<TData>(this IStateContextCore context, out TData? data)
         where TData : class
     {
         data = context.CurrentStateData as TData;
@@ -27,13 +27,13 @@ public static class StateMachineDataExtensions
 
     /// <summary>Returns the configured data blob for a named state cast to <typeparamref name="TData"/>, or null.</summary>
     public static TData? GetStateData<TContext, TData>(this StateMachineDef<TContext> def, string stateName)
-        where TContext : class, IStateContext
+        where TContext : class, IStateContextCore
         where TData : class
         => def.GetData(stateName) as TData;
 
     /// <summary>Try-get wrapper around <see cref="GetStateData{TContext, TData}(StateMachineDef{TContext}, string)"/>.</summary>
     public static bool TryGetStateData<TContext, TData>(this StateMachineDef<TContext> def, string stateName, out TData? data)
-        where TContext : class, IStateContext
+        where TContext : class, IStateContextCore
         where TData : class
     {
         data = def.GetData(stateName) as TData;
@@ -41,10 +41,10 @@ public static class StateMachineDataExtensions
     }
 
     /// <summary>Returns the active state's locomotion throttle, or <paramref name="fallback"/> if none is attached.</summary>
-    public static float GetCurrentMovementThrottle(this IStateContext context, float fallback = 1f)
+    public static float GetCurrentMovementThrottle(this IStateContextCore context, float fallback = 1f)
         => Math.Clamp(context.CurrentStateMotion?.MovementThrottle ?? fallback, 0f, 1f);
 
     /// <summary>Samples the active state's motion profile at the context's normalized progress.</summary>
-    public static System.Numerics.Vector3 EvaluateCurrentMotion(this IStateContext context)
+    public static System.Numerics.Vector3 EvaluateCurrentMotion(this IStateContextCore context)
         => context.CurrentStateMotion?.Evaluate(context.Progress) ?? System.Numerics.Vector3.Zero;
 }

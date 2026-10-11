@@ -23,6 +23,16 @@ namespace Altruist.Physx.ThreeD;
 /// the pure math primitives in <see cref="Altruist.ThreeD.Numerics"/>; no
 /// new physics path — <see cref="LaunchImpulse(IPhysxBody3D, Vector3, float)"/>
 /// and friends route through the existing <see cref="PhysxForce"/> API.</summary>
+/// <remarks>Conventions: +Y up; yaw is in radians about +Y, 0 faces +Z and positive yaw turns toward +X
+/// (<c>yaw = atan2(dx, dz)</c>); speeds are world units per second, angular speeds radians per second,
+/// <c>dt</c> in seconds. All writes go through the body's properties or <see cref="IPhysxBody.ApplyForce"/>, so BEPU
+/// bodies are woken. For raw force/velocity access without intent semantics use <see cref="IPhysxApiProvider3D"/>.</remarks>
+/// <example>
+/// <code>
+/// body.TurnToward(target, maxAngularSpeedRadPerSec: MathF.PI, dt);
+/// if (body.IsFacing(target, halfAngleDegrees: 30f)) body.MoveToward(target, speed: 4f, dt);
+/// </code>
+/// </example>
 public static class BodySteeringExtensions3D
 {
     private const float CoincidentEpsilonSq = 1e-8f;
@@ -36,6 +46,7 @@ public static class BodySteeringExtensions3D
     /// <summary>Full 3D distance from the body's position to <paramref name="target"/>.</summary>
     public static float DistanceTo(this IPhysxBody3D body, Vector3 target)
         => Distance3D.Between(body.Position, target);
+    /// <summary><see cref="Position3D"/> overload of <see cref="DistanceTo(IPhysxBody3D, Vector3)"/>.</summary>
     public static float DistanceTo(this IPhysxBody3D body, Position3D target)
         => Distance3D.Between(body.Position, target.ToVector3());
 
@@ -43,6 +54,7 @@ public static class BodySteeringExtensions3D
     /// "range-check" variant used by combat / aggro tests where Y shouldn't matter.</summary>
     public static float HorizontalDistanceTo(this IPhysxBody3D body, Vector3 target)
         => Distance3D.Horizontal(body.Position, target);
+    /// <summary><see cref="Position3D"/> overload of <see cref="HorizontalDistanceTo(IPhysxBody3D, Vector3)"/>.</summary>
     public static float HorizontalDistanceTo(this IPhysxBody3D body, Position3D target)
         => Distance3D.Horizontal(body.Position, target.ToVector3());
 
@@ -59,6 +71,7 @@ public static class BodySteeringExtensions3D
         var diff = Angle.ShortestDifference(body.GetYaw(), targetYaw);
         return MathF.Abs(diff) <= Angle.ToRadians(halfAngleDegrees);
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="IsFacing(IPhysxBody3D, Vector3, float)"/>.</summary>
     public static bool IsFacing(this IPhysxBody3D body, Position3D target, float halfAngleDegrees)
         => IsFacing(body, target.ToVector3(), halfAngleDegrees);
 
@@ -74,6 +87,7 @@ public static class BodySteeringExtensions3D
         if (dx * dx + dz * dz < CoincidentEpsilonSq) return;
         body.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY,Yaw3D.FromDirection(dx, dz));
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="FaceToward(IPhysxBody3D, Vector3)"/>.</summary>
     public static void FaceToward(this IPhysxBody3D body, Position3D worldPoint)
         => FaceToward(body, worldPoint.ToVector3());
 
@@ -94,6 +108,7 @@ public static class BodySteeringExtensions3D
                                                  maxAngularSpeedRadPerSec * dt);
         body.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY,newYaw);
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="TurnToward(IPhysxBody3D, Vector3, float, float)"/>.</summary>
     public static void TurnToward(this IPhysxBody3D body, Position3D worldPoint,
                                   float maxAngularSpeedRadPerSec, float dt)
         => TurnToward(body, worldPoint.ToVector3(), maxAngularSpeedRadPerSec, dt);
@@ -108,8 +123,9 @@ public static class BodySteeringExtensions3D
     /// snap, depenetration). For non-KCC kinematic bodies that need explicit
     /// terrain Y-snap, use the <c>ITerrainProvider</c> overload in
     /// <c>BodyNavigationExtensions</c>. The <paramref name="dt"/> parameter
-    /// is accepted for API symmetry with <see cref="TurnToward"/>; velocity
-    /// is set in world-units-per-second so dt isn't multiplied in here.</summary>
+    /// is accepted for API symmetry with <see cref="TurnToward(IPhysxBody3D, Vector3, float, float)"/>; velocity
+    /// is set in world-units-per-second so dt isn't multiplied in here.
+    /// When the target is horizontally coincident or <paramref name="speed"/> ≤ 0 it calls <see cref="Stop"/> instead.</summary>
     public static void MoveToward(this IPhysxBody3D body, Vector3 worldPoint,
                                   float speed, float dt)
     {
@@ -123,6 +139,7 @@ public static class BodySteeringExtensions3D
         var v = body.LinearVelocity;
         body.LinearVelocity = new Vector3(dir.X * speed, v.Y, dir.Z * speed);
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="MoveToward(IPhysxBody3D, Vector3, float, float)"/>.</summary>
     public static void MoveToward(this IPhysxBody3D body, Position3D worldPoint,
                                   float speed, float dt)
         => MoveToward(body, worldPoint.ToVector3(), speed, dt);
@@ -130,7 +147,9 @@ public static class BodySteeringExtensions3D
     /// <summary>Set <see cref="IPhysxBody3D.LinearVelocity"/> to a horizontal
     /// vector at <paramref name="yawRadians"/> with magnitude <paramref name="speed"/>.
     /// Y component is preserved. Use when AI wants to step in a direction
-    /// without a concrete target (wander, knockback recoil, scripted patrol).</summary>
+    /// without a concrete target (wander, knockback recoil, scripted patrol).
+    /// Yaw 0 moves along +Z, positive yaw toward +X. <paramref name="speed"/> ≤ 0 calls <see cref="Stop"/>;
+    /// <paramref name="dt"/> is unused (API symmetry).</summary>
     public static void MoveTowardAngle(this IPhysxBody3D body, float yawRadians,
                                        float speed, float dt)
     {

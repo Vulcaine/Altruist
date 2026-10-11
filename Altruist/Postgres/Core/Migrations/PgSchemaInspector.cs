@@ -14,15 +14,30 @@ using Npgsql;
 
 namespace Altruist.Migrations.Postgres;
 
+/// <summary>
+/// Postgres <see cref="ISchemaInspector"/>: reads the live structure of one schema (columns with their type in the
+/// canonical spelling of <see cref="PostgresStoreTypes"/>, nullability and whether they have a default, primary keys, unique constraints, indexes from
+/// <c>pg_indexes</c>, foreign keys) into a snapshot that the migration planner diffs against the vault models.
+/// Read-only; it never changes the database.
+/// </summary>
+/// <remarks>
+/// Registered as a singleton <see cref="ISchemaInspector"/> when <c>altruist:persistence:database:provider</c> is
+/// <c>postgres</c>. Opens its own <c>NpgsqlConnection</c> from the provider's connection string (outside any ambient
+/// transaction). Indexes are recorded by their first column only, and <c>pg_indexes</c> also lists the indexes
+/// backing primary-key and unique constraints.
+/// </remarks>
 [Service(typeof(ISchemaInspector))]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PostgresSchemaInspector : AbstractSchemaInspector
 {
+    /// <summary>Creates the inspector.</summary>
+    /// <param name="provider">Provider whose connection string is used to read the catalog.</param>
     public PostgresSchemaInspector(ISqlDatabaseProvider provider)
         : base(provider)
     {
     }
 
+    /// <inheritdoc/>
     protected override async Task<SchemaSnapshot> LoadSchemaAsync(string schemaName, CancellationToken ct)
     {
         var connString = _provider.GetConnectionString();
@@ -44,6 +59,8 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
             foreignKeysByTable);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Postgres: <c>public</c>.</remarks>
     protected override string GetDefaultSchemaName() => "public";
 
     // ---------- Postgres-specific loaders ----------
@@ -115,7 +132,8 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT table_name, column_name, is_nullable, data_type
+            SELECT table_name, column_name, is_nullable, data_type, udt_name,
+                   (column_default IS NOT NULL OR is_identity = 'YES' OR is_generated = 'ALWAYS') AS has_default
             FROM information_schema.columns
             WHERE table_schema = @schema;";
         cmd.Parameters.AddWithValue("schema", schemaName);
@@ -126,7 +144,10 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
             var tableName = reader.GetString(0);
             var columnName = reader.GetString(1);
             var isNullable = string.Equals(reader.GetString(2), "YES", StringComparison.OrdinalIgnoreCase);
-            var dataType = reader.GetString(3);
+            // Canonical spelling (timestamp, timestamptz, integer[], ...) so the planner's type map matches.
+            var dataType = PostgresStoreTypes.FromInformationSchema(
+                reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4));
+            var hasDefault = !reader.IsDBNull(5) && reader.GetBoolean(5);
 
             if (!result.TryGetValue(tableName, out var colDict))
             {
@@ -134,7 +155,7 @@ public sealed class PostgresSchemaInspector : AbstractSchemaInspector
                 result[tableName] = colDict;
             }
 
-            colDict[columnName] = new ColumnModel(columnName, dataType, isNullable);
+            colDict[columnName] = new ColumnModel(columnName, dataType, isNullable, hasDefault);
         }
 
         return result;

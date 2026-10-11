@@ -8,6 +8,12 @@ using System.Text.Json;
 
 namespace Altruist.Gaming.Inventory;
 
+/// <summary>
+/// Default in-memory <see cref="IItemTemplateProvider"/>: templates indexed by id and by case-insensitive key in
+/// concurrent dictionaries. Registered as a singleton via <c>[Service(typeof(IItemTemplateProvider))]</c>; inject the
+/// interface. Replace it with your own <c>[Service(typeof(IItemTemplateProvider))]</c> implementation to load templates
+/// from elsewhere (e.g. a database).
+/// </summary>
 [Service(typeof(IItemTemplateProvider))]
 public class ItemTemplateProvider : IItemTemplateProvider
 {
@@ -21,14 +27,19 @@ public class ItemTemplateProvider : IItemTemplateProvider
         AllowTrailingCommas = true
     };
 
+    /// <inheritdoc/>
     public ItemTemplate? GetTemplate(long templateId)
         => _byId.TryGetValue(templateId, out var t) ? t : null;
 
+    /// <inheritdoc/>
     public ItemTemplate? GetTemplateByKey(string key)
         => _byKey.TryGetValue(key, out var t) ? t : null;
 
+    /// <inheritdoc/>
     public IEnumerable<ItemTemplate> GetAllTemplates() => _byId.Values;
 
+    /// <inheritdoc/>
+    /// <remarks>Re-registering an id with a different key leaves the old key mapped to the old template.</remarks>
     public void Register(ItemTemplate template)
     {
         _byId[template.ItemId] = template;
@@ -36,12 +47,14 @@ public class ItemTemplateProvider : IItemTemplateProvider
             _byKey[template.Key] = template;
     }
 
+    /// <inheritdoc/>
     public void LoadFromJson<TTemplate>(string filePath) where TTemplate : ItemTemplate
     {
         var json = File.ReadAllText(filePath);
         LoadFromJsonString<TTemplate>(json);
     }
 
+    /// <inheritdoc/>
     public void LoadFromJsonString<TTemplate>(string json) where TTemplate : ItemTemplate
     {
         var templates = JsonSerializer.Deserialize<List<TTemplate>>(json, _jsonOptions)

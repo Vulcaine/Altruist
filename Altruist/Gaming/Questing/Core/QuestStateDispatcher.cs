@@ -2,6 +2,14 @@ using System.Reflection;
 
 namespace Altruist.Gaming.Questing;
 
+/// <summary>
+/// Compiled state machine of a quest behavior, built from its <see cref="QuestStateAttribute"/>,
+/// <see cref="QuestStateEnterAttribute"/> and <see cref="QuestStateExitAttribute"/> methods.
+/// Created by the runtime / <see cref="QuestDefinition{T}.Create"/>; game code rarely uses it
+/// directly. The current state lives in the subject's <see cref="IQuestState"/>, so one
+/// dispatcher serves every subject.
+/// </summary>
+/// <typeparam name="TContext">The game's quest context type.</typeparam>
 public sealed class QuestStateDispatcher<TContext> where TContext : QuestContext
 {
     private const string CurrentStateKey = "__state";
@@ -24,9 +32,14 @@ public sealed class QuestStateDispatcher<TContext> where TContext : QuestContext
         _initialState = initialState;
     }
 
+    /// <summary>True when the behavior declares at least one <see cref="QuestStateAttribute"/> state.</summary>
     public bool HasStateHandlers => _states.Count > 0;
+    /// <summary>True when any state has a wildcard handler (a state method whose name does not start with <c>On</c>).</summary>
     public bool HasGenericStateHandlers => _states.Values.Any(handlers => handlers.ContainsKey(WildcardHookKey));
 
+    /// <summary>True when any state (not necessarily the current one) has a specific handler for <paramref name="hookKey"/>.</summary>
+    /// <param name="hookKey">Hook key.</param>
+    /// <returns>Whether some state handles the hook.</returns>
     public bool HasHook(string hookKey)
     {
         if (string.IsNullOrWhiteSpace(hookKey))
@@ -35,6 +48,15 @@ public sealed class QuestStateDispatcher<TContext> where TContext : QuestContext
         return _states.Values.Any(handlers => handlers.ContainsKey(hookKey));
     }
 
+    /// <summary>
+    /// Reflects over the instance methods (public and non-public; inherited private methods are not seen)
+    /// of <paramref name="type"/> and builds the state table. See <see cref="QuestStateAttribute"/>
+    /// for naming and signature rules.
+    /// </summary>
+    /// <param name="type">The behavior type to scan.</param>
+    /// <param name="instance">The behavior instance the handlers are invoked on.</param>
+    /// <returns>The dispatcher (empty when no states are declared).</returns>
+    /// <exception cref="InvalidOperationException">A state or lifecycle method does not take exactly one parameter assignable from <typeparamref name="TContext"/>.</exception>
     public static QuestStateDispatcher<TContext> Compile(Type type, object instance)
     {
         const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -69,6 +91,17 @@ public sealed class QuestStateDispatcher<TContext> where TContext : QuestContext
         return new QuestStateDispatcher<TContext>(states, enters, exits, initial);
     }
 
+    /// <summary>
+    /// Dispatches <paramref name="hookKey"/> to the current state. If no state is stored yet, the
+    /// initial state is set and its enter handler runs first. The current state's specific handler
+    /// (else its wildcard handler) runs, and its returned next state is applied: exit handler of the
+    /// old state, store the new state, then its enter handler, or set <c>_done</c> when the new state
+    /// is unknown.
+    /// </summary>
+    /// <param name="context">Dispatch context whose <see cref="QuestContext.State"/> holds the current state.</param>
+    /// <param name="hookKey">Hook key.</param>
+    /// <returns>True when a state handler ran; false when there are no states, the current state is unknown, or it has no matching handler (callers then fall back to hook-interface handlers).</returns>
+    /// <exception cref="InvalidOperationException">A handler returned something other than <c>string?</c>, <c>Task&lt;string?&gt;</c> or <c>ValueTask&lt;string?&gt;</c>.</exception>
     public async Task<bool> DispatchAsync(TContext context, string hookKey)
     {
         if (_states.Count == 0)

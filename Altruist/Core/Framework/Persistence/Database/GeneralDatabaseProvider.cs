@@ -14,6 +14,7 @@ using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 
@@ -26,10 +27,22 @@ namespace Altruist.Persistence;
 /// - Connection creation + connection string building
 /// - Parameter binding (esp provider-specific JSON / special types)
 /// </summary>
+/// <remarks>
+/// <para>
+/// Derive from this to add a new ADO.NET database; application code should inject <see cref="ISqlDatabaseProvider"/>
+/// (or better, <see cref="IVault{TVaultModel}"/>) rather than this class. Postgres ships as <c>PgSqlDbProvider</c>.
+/// </para>
+/// <para>
+/// Every query/command leases its own pooled connection (or the ambient transaction's, see
+/// <see cref="InTransactionAsync{T}"/>), so instances are safe to share as singletons. A separate control connection
+/// opened by <c>ConnectAsync</c> drives connection state, plus a background health check every 5 seconds.
+/// </para>
+/// </remarks>
 public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGeneralDatabaseProvider, ISqlTransactionProvider
 {
     private DbConnection? _conn;
 
+    /// <summary>Serializer options used to write JSON parameters and read JSON columns.</summary>
     protected readonly JsonSerializerOptions JsonOptions;
 
     private static readonly ConcurrentDictionary<Type, UntypedMaterializer> _untypedMaterializers = new();
@@ -51,6 +64,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         public required UntypedProp[] Props { get; init; }
     }
 
+    /// <summary>Initializes the provider.</summary>
+    /// <param name="jsonOptions">Options for (de)serializing JSON-mapped values.</param>
     protected GeneralSqlDatabaseProvider(JsonSerializerOptions jsonOptions)
     {
         JsonOptions = jsonOptions;
@@ -58,7 +73,9 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     // ---------- Provider specifics to implement ----------
 
+    /// <summary>Human-readable service name (used in logs and health reporting).</summary>
     public abstract string ServiceName { get; }
+    /// <inheritdoc/>
     public abstract IDatabaseServiceToken Token { get; }
 
     /// <summary>Default parameter prefix used for named parameters.</summary>
@@ -102,12 +119,21 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     /// <summary>Ping query used for health checks.</summary>
     protected virtual string HealthCheckSql => "SELECT 1";
 
+    /// <inheritdoc/>
     public string GetConnectionString() => BuildConnectionString();
 
-    public bool IsConnected { get; private set; }
+    private int _connected;
 
+    /// <summary>
+    /// <c>true</c> while the database is reachable, as last observed by connect, a query or the 5-second health check.
+    /// </summary>
+    public bool IsConnected => Volatile.Read(ref _connected) == 1;
+
+    /// <summary>Raised when the provider goes from unreachable to reachable: on (re)connect, or when a query or health check succeeds after a failure.</summary>
     public event Action? OnConnected;
+    /// <summary>Raised on the first failed connect attempt and when a health check finds a previously healthy database unreachable.</summary>
     public event Action<Exception>? OnFailed;
+    /// <summary>Raised when <see cref="ConnectAsync(int, int, CancellationToken)"/> has used up all its retries without connecting.</summary>
     public event Action<Exception>? OnRetryExhausted;
 
     /// <summary>
@@ -128,6 +154,10 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         private readonly SemaphoreSlim? _gate;
 
+        /// <summary>Wraps a leased connection.</summary>
+        /// <param name="connection">The open connection.</param>
+        /// <param name="transaction">The ambient transaction, or <c>null</c> for a private pooled connection.</param>
+        /// <param name="gate">The ambient transaction's gate to release on dispose, or <c>null</c>.</param>
         public ConnectionLease(DbConnection connection, DbTransaction? transaction, SemaphoreSlim? gate)
         {
             Connection = connection;
@@ -135,9 +165,12 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             _gate = gate;
         }
 
+        /// <summary>The open connection to run the command on.</summary>
         public DbConnection Connection { get; }
+        /// <summary>The ambient transaction to attach to the command, or <c>null</c>.</summary>
         public DbTransaction? Transaction { get; }
 
+        /// <summary>Disposes a private pooled connection, or releases the ambient transaction's gate (the connection stays open for the transaction).</summary>
         public ValueTask DisposeAsync()
         {
             if (Transaction is null)
@@ -147,6 +180,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         }
     }
 
+    /// <summary>
+    /// Leases a connection for one operation: the ambient transaction's connection (serialized through its gate) when
+    /// one is active on this async flow, otherwise a fresh pooled connection. Always dispose the lease.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
     protected async Task<ConnectionLease> LeaseConnectionAsync(CancellationToken ct = default)
     {
         var ambient = SqlAmbientTransaction.Current;
@@ -175,15 +213,19 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
     // ---------- Connection lifecycle ----------
 
+    /// <summary>Reconnects the control connection (30 attempts, 2000 ms apart) if it is not open.</summary>
+    /// <param name="ct">Cancellation token.</param>
     protected async Task EnsureConnectedAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        IsConnected = _conn?.State == ConnectionState.Open;
-        if (!IsConnected)
+        if (_conn?.State != ConnectionState.Open)
             await ConnectAsync(30, 2000, ct).ConfigureAwait(false);
     }
 
     // Backward compatible signature
+    /// <summary>Same as <see cref="ConnectAsync(int, int, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="maxRetries">Maximum connection attempts.</param>
+    /// <param name="delayMilliseconds">Delay between attempts, in milliseconds.</param>
     public Task ConnectAsync(int maxRetries, int delayMilliseconds)
         => ConnectAsync(maxRetries, delayMilliseconds, CancellationToken.None);
 
@@ -231,6 +273,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             ct: ct).ConfigureAwait(false);
     }
 
+    /// <inheritdoc/>
     public async Task<List<object>> QueryAsync(
      Type modelType,
      string sql,
@@ -244,7 +287,6 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         var mat = _untypedMaterializers.GetOrAdd(modelType, static t => BuildUntypedMaterializer(t));
 
-        try
         {
             await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
         var conn = lease.Connection;
@@ -308,12 +350,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                 list.Add(inst);
             }
 
+            MarkReachable();
             return list;
-        }
-        finally
-        {
-            if (IsConnected)
-                OnConnected?.Invoke();
         }
     }
 
@@ -406,95 +444,102 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         {
             ct.ThrowIfCancellationRequested();
 
+            var conn = CreateConnection(connectionStringFactory());
             try
             {
-                _conn = CreateConnection(connectionStringFactory());
-                await _conn.OpenAsync(ct).ConfigureAwait(false);
-
-                RaiseConnectedEvent();
-                StartHealthChecks();
-                return;
+                await conn.OpenAsync(ct).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                throw;
-            }
-            catch (Exception ex)
-            {
+                await conn.DisposeAsync().ConfigureAwait(false);
                 if (attempt == 1)
                     RaiseFailedEvent(ex);
 
                 last = ex;
-                IsConnected = false;
-
                 if (attempt < maxRetries)
                     await Task.Delay(delayMilliseconds, ct).ConfigureAwait(false);
+                continue;
             }
+
+            await ReplaceControlConnectionAsync(conn).ConfigureAwait(false);
+            RaiseConnectedEvent();
+            StartHealthChecks();
+            return;
         }
 
-        RaiseOnRetryExhaustedEvent(last!);
+        var failure = last ?? new InvalidOperationException($"{ServiceName}: no connection attempt was made (maxRetries = {maxRetries}).");
+        RaiseOnRetryExhaustedEvent(failure);
+        ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
+    private async Task ReplaceControlConnectionAsync(DbConnection? next)
+    {
+        var previous = Interlocked.Exchange(ref _conn, next);
+        if (previous is not null)
+            await previous.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>Connects with the default policy: 30 attempts, 2000 ms apart.</summary>
     public Task ConnectAsync() => ConnectAsync(30, 2000, CancellationToken.None);
+    /// <summary>Connects with the default policy (30 attempts, 2000 ms apart), honouring <paramref name="ct"/>.</summary>
+    /// <param name="ct">Cancellation token.</param>
     public Task ConnectAsync(CancellationToken ct) => ConnectAsync(30, 2000, ct);
 
     // Backward compatible signature
+    /// <summary>Same as <see cref="ShutdownAsync(Exception, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="ex">Optional reason for the shutdown (informational).</param>
     public Task ShutdownAsync(Exception? ex = null) => ShutdownAsync(ex, CancellationToken.None);
 
+    /// <inheritdoc/>
+    /// <remarks>Idempotent; the provider can be connected again afterwards.</remarks>
     public async Task ShutdownAsync(Exception? ex = null, CancellationToken ct = default)
     {
         StopHealthChecks();
-
-        if (_conn is null)
-            return;
-
-        try
-        {
-            // keep compatibility
-            await _conn.CloseAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            await _conn.DisposeAsync().ConfigureAwait(false);
-            _conn = null;
-            IsConnected = false;
-        }
+        await ReplaceControlConnectionAsync(null).ConfigureAwait(false);
+        Volatile.Write(ref _connected, 0);
     }
 
-    // Backward compatible signature
-    public Task ChangeKeyspaceAsync(string schema) => ChangeKeyspaceAsync(schema, CancellationToken.None);
-
-    public virtual async Task ChangeKeyspaceAsync(string schema, CancellationToken ct = default)
-    {
-        // Default no-op unless overridden (Postgres uses SET search_path)
-        await Task.CompletedTask.ConfigureAwait(false);
-    }
-
+    /// <summary>Marks the provider connected and raises <see cref="OnConnected"/>.</summary>
     public void RaiseConnectedEvent()
     {
-        IsConnected = true;
+        Volatile.Write(ref _connected, 1);
         OnConnected?.Invoke();
     }
 
+    /// <summary>Marks the provider disconnected and raises <see cref="OnFailed"/>.</summary>
+    /// <param name="ex">The failure.</param>
     public void RaiseFailedEvent(Exception ex)
     {
-        IsConnected = false;
+        Volatile.Write(ref _connected, 0);
         OnFailed?.Invoke(ex);
     }
 
+    /// <summary>Marks the provider disconnected and raises <see cref="OnRetryExhausted"/>.</summary>
+    /// <param name="ex">The last connection failure.</param>
     public void RaiseOnRetryExhaustedEvent(Exception ex)
     {
-        IsConnected = false;
+        Volatile.Write(ref _connected, 0);
         OnRetryExhausted?.Invoke(ex);
+    }
+
+    /// <summary>A statement just succeeded: if the provider was marked unreachable, it is reachable again.</summary>
+    private void MarkReachable()
+    {
+        if (Interlocked.Exchange(ref _connected, 1) == 0)
+            OnConnected?.Invoke();
     }
 
     // ---------- Provider API ----------
 
     // Backward compatible signature
+    /// <summary>Vault-model-only overload of <see cref="QueryAsync{TVaultModel}(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(string sql, List<object>? parameters = null)
         where TVaultModel : class, IVaultModel
         => QueryAsync<TVaultModel>(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<IEnumerable<TVaultModel>> QueryAsync<TVaultModel>(
         string sql,
         List<object?>? parameters = null,
@@ -502,10 +547,14 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         => (await ExecuteFetchAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false)).ToList();
 
     // Backward compatible signature
+    /// <summary>Overload of <see cref="QuerySingleAsync{TVaultModel}(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<TVaultModel?> QuerySingleAsync<TVaultModel>(string sql, List<object>? parameters = null)
         where TVaultModel : class
         => QuerySingleAsync<TVaultModel>(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<TVaultModel?> QuerySingleAsync<TVaultModel>(
         string sql,
         List<object?>? parameters = null,
@@ -514,9 +563,13 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         => (await ExecuteFetchAsync<TVaultModel>(sql, parameters, ct).ConfigureAwait(false)).FirstOrDefault();
 
     // Backward compatible signature
+    /// <summary>Overload of <see cref="ExecuteCountAsync(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<long> ExecuteCountAsync(string sql, List<object>? parameters = null)
         => ExecuteCountAsync(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<long> ExecuteCountAsync(string sql, List<object?>? parameters = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -537,9 +590,13 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 
     // Backward compatible signature
+    /// <summary>Overload of <see cref="ExecuteAsync(string, List{object}, CancellationToken)"/> without cancellation.</summary>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values for the placeholders, or <c>null</c>.</param>
     public Task<long> ExecuteAsync(string sql, List<object>? parameters = null)
         => ExecuteAsync(sql, parameters?.Cast<object?>().ToList(), CancellationToken.None);
 
+    /// <inheritdoc/>
     public async Task<long> ExecuteAsync(string sql, List<object?>? parameters = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -550,37 +607,20 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         cmd.Transaction = lease.Transaction;
 
         var affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        if (!IsConnected)
-            RaiseConnectedEvent();
-
+        MarkReachable();
         return affected;
     }
 
-    // Default stubs (you can keep parity with your other provider surface)
-    public Task<long> UpdateAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
-        => UpdateAsync(entity, CancellationToken.None);
-
-    public virtual async Task<long> UpdateAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
-        where TVaultModel : class, IVaultModel
-    {
-        await Task.CompletedTask.ConfigureAwait(false);
-        return 1;
-    }
-
-    public Task<long> DeleteAsync<TVaultModel>(TVaultModel entity) where TVaultModel : class, IVaultModel
-        => DeleteAsync(entity, CancellationToken.None);
-
-    public virtual async Task<long> DeleteAsync<TVaultModel>(TVaultModel entity, CancellationToken ct = default)
-        where TVaultModel : class, IVaultModel
-    {
-        await Task.CompletedTask.ConfigureAwait(false);
-        return 1;
-    }
-
     // Schema
+    /// <summary>Same as <see cref="CreateSchemaAsync"/> without cancellation.</summary>
+    /// <param name="keyspace">Schema name.</param>
     public Task CreateKeySpaceAsync(string keyspace) => CreateSchemaAsync(keyspace, CancellationToken.None);
+    /// <summary>Alias of <see cref="CreateSchemaAsync"/>.</summary>
+    /// <param name="keyspace">Schema name.</param>
+    /// <param name="ct">Cancellation token.</param>
     public Task CreateKeySpaceAsync(string keyspace, CancellationToken ct = default) => CreateSchemaAsync(keyspace, ct);
 
+    /// <inheritdoc/>
     public virtual async Task CreateSchemaAsync(string schema, CancellationToken ct = default)
     {
         await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
@@ -590,7 +630,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         cmd.Transaction = lease.Transaction;
         // Schema name is framework-controlled (from config), not user input
 #pragma warning disable CA2100
-        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{NormLower(schema)}\";";
+        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS {VaultDocument.Quote(schema.Trim())};";
 #pragma warning restore CA2100
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -604,67 +644,107 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     {
         ct.ThrowIfCancellationRequested();
 
-        try
         {
             await using var lease = await LeaseConnectionAsync(ct).ConfigureAwait(false);
-        var conn = lease.Connection;
+            var conn = lease.Connection;
 
             await using var cmd = PrepareCommand(conn, sql, parameters);
-        cmd.Transaction = lease.Transaction;
+            cmd.Transaction = lease.Transaction;
 
             await using var reader = await cmd
                 .ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct)
                 .ConfigureAwait(false);
 
-            var list = new List<TVaultModel>();
-            var type = typeof(TVaultModel);
-
-            var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanWrite)
-                .ToArray();
-
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < reader.FieldCount; i++)
                 ordinals[reader.GetName(i)] = i;
 
-            // SequentialAccess => read in ordinal order
-            var bindings = props
-                .Select(p => (Prop: p, HasOrd: ordinals.TryGetValue(p.Name, out var o), Ord: o))
-                .Where(x => x.HasOrd)
-                .OrderBy(x => x.Ord)
-                .ToArray();
+            var create = BuildRowFactory<TVaultModel>(ordinals);
+            var list = new List<TVaultModel>();
 
             while (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
                 ct.ThrowIfCancellationRequested();
-
-                var inst = Activator.CreateInstance<TVaultModel>();
-
-                foreach (var b in bindings)
-                {
-                    if (await reader.IsDBNullAsync(b.Ord, ct).ConfigureAwait(false))
-                        continue;
-
-                    var val = reader.GetValue(b.Ord);
-                    if (val is null)
-                        continue;
-
-                    var targetType = Nullable.GetUnderlyingType(b.Prop.PropertyType) ?? b.Prop.PropertyType;
-                    b.Prop.SetValue(inst, ConvertValue(val, targetType));
-                }
-
-                list.Add(inst);
+                list.Add(await create(reader, ct).ConfigureAwait(false));
             }
 
+            MarkReachable();
             return list;
-        }
-        finally
-        {
-            if (IsConnected)
-                OnConnected?.Invoke();
         }
     }
 
+    private delegate Task<T> RowFactory<T>(DbDataReader reader, CancellationToken ct);
+
+    /// <summary>
+    /// Builds a row materializer for <typeparamref name="T"/>: a type with a parameterless constructor gets its settable
+    /// properties set by column name; a type without one (anonymous types, positional records) is created through its
+    /// widest public constructor, each parameter taken from the column of the same name (default when absent). Matching
+    /// is case-insensitive; columns are read in ordinal order (sequential access).
+    /// </summary>
+    private RowFactory<T> BuildRowFactory<T>(IReadOnlyDictionary<string, int> ordinals)
+    {
+        var type = typeof(T);
+
+        async Task<object?> Read(DbDataReader reader, int ordinal, Type target, CancellationToken ct)
+        {
+            if (await reader.IsDBNullAsync(ordinal, ct).ConfigureAwait(false))
+                return null;
+            var raw = reader.GetValue(ordinal);
+            return ConvertValue(raw, Nullable.GetUnderlyingType(target) ?? target);
+        }
+
+        if (type.IsValueType || type.GetConstructor(Type.EmptyTypes) is not null)
+        {
+            var bindings = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanWrite && ordinals.ContainsKey(p.Name))
+                .Select(p => (Prop: p, Ord: ordinals[p.Name]))
+                .OrderBy(x => x.Ord)
+                .ToArray();
+
+            return async (reader, ct) =>
+            {
+                var inst = Activator.CreateInstance<T>();
+                foreach (var (prop, ord) in bindings)
+                {
+                    var value = await Read(reader, ord, prop.PropertyType, ct).ConfigureAwait(false);
+                    if (value is not null)
+                        prop.SetValue(inst, value);
+                }
+                return inst;
+            };
+        }
+
+        var ctor = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .OrderByDescending(c => c.GetParameters().Length)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"Type '{type.FullName}' has no public constructor to materialize rows with.");
+        var parameters = ctor.GetParameters();
+        var defaults = parameters
+            .Select(p => p.ParameterType.IsValueType ? Activator.CreateInstance(p.ParameterType) : null)
+            .ToArray();
+        var bound = parameters
+            .Select((p, i) => (Index: i, Param: p, Found: ordinals.TryGetValue(p.Name ?? "", out var ord), Ord: ord))
+            .Where(x => x.Found)
+            .OrderBy(x => x.Ord)
+            .ToArray();
+
+        return async (reader, ct) =>
+        {
+            var args = (object?[])defaults.Clone();
+            foreach (var b in bound)
+                args[b.Index] = await Read(reader, b.Ord, b.Param.ParameterType, ct).ConfigureAwait(false) ?? defaults[b.Index];
+            return (T)ctor.Invoke(args);
+        };
+    }
+
+    /// <summary>
+    /// Converts a raw column value to a property type when materializing rows: strings via <c>ToString</c>, enums from
+    /// name or number, JSON text/documents into complex types, GUIDs and dates, otherwise <see cref="Convert.ChangeType(object, Type)"/>.
+    /// Override to support provider-specific types.
+    /// </summary>
+    /// <param name="val">The non-null value read from the reader.</param>
+    /// <param name="targetType">The property type (nullable already unwrapped).</param>
+    /// <returns>The converted value.</returns>
     protected virtual object? ConvertValue(object val, Type targetType)
     {
         if (val is null)
@@ -720,6 +800,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         return result is not null;
     }
 
+    /// <summary>Whether a property of type <paramref name="t"/> is read from a JSON column (collections, dictionaries and non-primitive objects).</summary>
+    /// <param name="t">The property type.</param>
     protected static bool IsJsonTargetType(Type t)
     {
         if (typeof(System.Collections.IDictionary).IsAssignableFrom(t))
@@ -736,6 +818,8 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
                && t != typeof(TimeSpan);
     }
 
+    /// <summary>Whether a parameter value of type <paramref name="type"/> is bound as serialized JSON (anything that isn't a scalar, enum, <c>byte[]</c> or array).</summary>
+    /// <param name="type">The value's runtime type.</param>
     protected static bool ShouldWriteAsJson(Type type)
     {
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
@@ -775,6 +859,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     // SQL is built by the Vault ORM query pipeline — not from user input.
     // Parameters are always bound via DbParameter (parameterized queries).
 #pragma warning disable CA2100
+    /// <summary>Creates a command on <paramref name="conn"/>, rewriting <c>?</c> placeholders to named parameters and binding <paramref name="parameters"/> through <see cref="BindParameter"/>.</summary>
+    /// <param name="conn">Open connection.</param>
+    /// <param name="sql">SQL text with <c>?</c> placeholders.</param>
+    /// <param name="parameters">Positional values, or <c>null</c>.</param>
+    /// <returns>The prepared command (caller disposes it and sets its transaction).</returns>
     protected DbCommand PrepareCommand(DbConnection conn, string sql, List<object?>? parameters)
     {
         var cmd = conn.CreateCommand();
@@ -800,6 +889,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
     }
 #pragma warning restore CA2100
 
+    /// <summary>Replaces each <c>?</c> outside single- or double-quoted text with <c>{prefix}p1</c>, <c>{prefix}p2</c>, ... in order.</summary>
+    /// <param name="sql">SQL text.</param>
+    /// <param name="expectedCount">Expected number of placeholders (capacity hint only; not validated).</param>
+    /// <param name="prefix">Parameter prefix, e.g. <c>@</c>.</param>
+    /// <returns>The rewritten SQL.</returns>
     protected static string ReplaceQuestionMarks(string sql, int expectedCount, string prefix)
     {
         var sb = new StringBuilder(sql.Length + expectedCount * 3);
@@ -846,38 +940,64 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         return sb.ToString();
     }
 
+    /// <summary>Trims and lower-cases an identifier (<c>null</c> becomes empty).</summary>
+    /// <param name="s">The identifier.</param>
     protected static string NormLower(string? s) => (s ?? string.Empty).Trim().ToLowerInvariant();
 
     // ---------- Health checks ----------
 
-    private CancellationTokenSource _healthCts = new();
+    private readonly object _healthLock = new();
+    private CancellationTokenSource? _healthCts;
     private readonly SemaphoreSlim _pingLock = new(1, 1);
 
+    /// <summary>
+    /// Starts a background loop that runs <see cref="HealthCheckAsync"/> every <paramref name="seconds"/> seconds until
+    /// <see cref="StopHealthChecks"/>; a loop already running is stopped first, so at most one runs.
+    /// </summary>
+    /// <param name="seconds">Interval between checks, in seconds.</param>
     protected void StartHealthChecks(int seconds = 5)
     {
+        var cts = new CancellationTokenSource();
+        CancellationTokenSource? previous;
+        lock (_healthLock)
+        {
+            previous = _healthCts;
+            _healthCts = cts;
+        }
+        Cancel(previous);
+
+        var token = cts.Token;
         _ = Task.Run(async () =>
         {
-            while (!_healthCts.Token.IsCancellationRequested)
+            while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    await HealthCheckAsync().ConfigureAwait(false);
-                    await Task.Delay(TimeSpan.FromSeconds(seconds), _healthCts.Token).ConfigureAwait(false);
+                    await HealthCheckAsync(token).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromSeconds(seconds), token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    return;
+                }
             }
-        });
+        }, CancellationToken.None);
     }
 
-    protected virtual async Task HealthCheckAsync()
+    /// <summary>
+    /// Opens a separate connection and runs <see cref="HealthCheckSql"/> (3 s timeout); flips <see cref="IsConnected"/> and raises
+    /// <see cref="OnConnected"/>/<see cref="OnFailed"/> on state changes. Overlapping checks are skipped.
+    /// </summary>
+    /// <param name="ct">Cancelled when the health loop stops.</param>
+    protected virtual async Task HealthCheckAsync(CancellationToken ct)
     {
-        if (!await _pingLock.WaitAsync(0).ConfigureAwait(false))
+        if (!await _pingLock.WaitAsync(0, ct).ConfigureAwait(false))
             return;
 
         try
         {
             await using var pingConn = CreateConnection(BuildConnectionString());
-            await pingConn.OpenAsync(_healthCts.Token).ConfigureAwait(false);
+            await pingConn.OpenAsync(ct).ConfigureAwait(false);
 
             await using var cmd = pingConn.CreateCommand();
             // HealthCheckSql is a constant ("SELECT 1"), not user input
@@ -886,25 +1006,13 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 #pragma warning restore CA2100
             cmd.CommandTimeout = 3;
 
-            await cmd.ExecuteScalarAsync(_healthCts.Token).ConfigureAwait(false);
-
-            if (!IsConnected)
-            {
-                IsConnected = true;
-                OnConnected?.Invoke();
-            }
+            await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+            MarkReachable();
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // ignore
-        }
-        catch (Exception ex)
-        {
-            if (IsConnected)
-            {
-                IsConnected = false;
+            if (Interlocked.Exchange(ref _connected, 0) == 1)
                 OnFailed?.Invoke(ex);
-            }
         }
         finally
         {
@@ -912,9 +1020,23 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         }
     }
 
+    /// <summary>Stops the health-check loop (idempotent).</summary>
     protected void StopHealthChecks()
     {
-        _healthCts.Cancel();
-        _healthCts.Dispose();
+        CancellationTokenSource? cts;
+        lock (_healthLock)
+        {
+            cts = _healthCts;
+            _healthCts = null;
+        }
+        Cancel(cts);
+    }
+
+    private static void Cancel(CancellationTokenSource? cts)
+    {
+        if (cts is null)
+            return;
+        cts.Cancel();
+        cts.Dispose();
     }
 }

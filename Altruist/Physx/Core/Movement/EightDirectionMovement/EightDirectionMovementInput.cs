@@ -16,11 +16,20 @@ limitations under the License.
 
 namespace Altruist.Physx;
 
+/// <summary>
+/// Input for an eight-direction (top-down, screen-axis) movement model: up/down/left/right flags, diagonals by combining
+/// two. Facing does not affect the direction. Use <see cref="ForwardMovementPhysxInput"/> for thrust-along-facing controls.
+/// </summary>
 public class EightDirectionMovementPhysxInput : MovementPhysxInput
 {
+    /// <summary>Move toward screen up this tick.</summary>
     public bool MoveUp { get; set; }
+    /// <summary>Move toward screen down this tick.</summary>
     public bool MoveDown { get; set; }
+    /// <summary>Move toward screen left this tick.</summary>
     public bool MoveLeft { get; set; }
+    /// <summary>Move toward screen right this tick.</summary>
     public bool MoveRight { get; set; }
+    /// <summary>Boost request; its effect is defined by the movement implementation.</summary>
     public bool Turbo { get; set; }
 }

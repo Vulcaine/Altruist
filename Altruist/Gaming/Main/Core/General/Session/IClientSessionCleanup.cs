@@ -3,7 +3,7 @@ namespace Altruist.Gaming;
 /// <summary>
 /// Marker for <c>[Service]</c>s that hold per-client state and want automatic
 /// teardown when a client disconnects. Discovered at boot by
-/// <see cref="SessionServiceConfiguration"/> and invoked from
+/// <see cref="ClientSessionCleanupConfiguration"/> and invoked from
 /// <see cref="AltruistGameSessionPortal.OnDisconnectedAsync"/> after the
 /// portal's own session-clear runs. One handler throwing does NOT stop the
 /// rest — exceptions are logged and the next handler still runs.
@@ -13,11 +13,20 @@ namespace Altruist.Gaming;
 /// client and need to forget it now." Implementing this interface plus the
 /// usual <c>[Service]</c> registration is enough; no double-tagging needed.</para>
 ///
-/// <para><b>Note on naming:</b> this is intentionally NOT called
-/// <c>ISessionService</c> because <c>Valeria.Core.Session.ISessionService</c>
-/// already exists as a per-player session-state manager (works with
-/// <c>PeerSession</c>). Both could be imported into the same file, so the
-/// framework concept gets the more specific name.</para>
+/// <para>Only connections handled by an <see cref="AltruistGameSessionPortal"/> trigger it; a
+/// game with its own portal (for example one driving a <c>RoomHost</c>) cleans up in its own
+/// disconnect hook instead. Named <c>IClientSessionCleanup</c> (not <c>ISessionService</c>) so it does
+/// not clash with application session types.</para>
+/// <example>
+/// <code>
+/// [Service]
+/// public sealed class PingTracker : IClientSessionCleanup
+/// {
+///     private readonly ConcurrentDictionary&lt;string, long&gt; _lastPing = new();
+///     public Task Cleanup(string clientId) { _lastPing.TryRemove(clientId, out _); return Task.CompletedTask; }
+/// }
+/// </code>
+/// </example>
 /// </summary>
 public interface IClientSessionCleanup
 {

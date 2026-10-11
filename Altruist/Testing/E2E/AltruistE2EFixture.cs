@@ -11,7 +11,7 @@ namespace Altruist.Testing.E2E;
 
 /// <summary>
 /// Per-class fixture for <see cref="AltruistE2ETestAttribute"/> tests. Loads
-/// <c>config.yml</c> + an optional <c>config-test.yml</c> overlay once per test
+/// <c>config.yml</c> + an optional <c>config.E2E.yml</c> overlay once per test
 /// class, provides a single <see cref="ResetAsync"/> hook against the running
 /// server's <c>/e2e/v1/reset</c> endpoint, and factory-builds per-test
 /// <see cref="E2EClientStack"/> instances on demand.
@@ -54,16 +54,19 @@ namespace Altruist.Testing.E2E;
 public sealed class AltruistE2EFixture : IAsyncLifetime
 {
     /// <summary>Resolved configuration: <c>config.yml</c> with
-    /// <c>config-test.yml</c> overlaid on top (the overlay is optional).</summary>
+    /// <c>config.E2E.yml</c> overlaid on top (both optional, read from the test output directory).</summary>
     public IConfiguration Config { get; }
 
+    /// <summary>Created by xUnit once per test class; loads the configuration.</summary>
     public AltruistE2EFixture()
     {
         Config = LoadConfigWithOverlay();
     }
 
+    /// <summary>Does nothing (the fixture holds no connections).</summary>
     public Task InitializeAsync() => Task.CompletedTask;
 
+    /// <summary>Does nothing (each <see cref="E2EClientStack"/> is disposed by its test).</summary>
     public Task DisposeAsync() => Task.CompletedTask;
 
     /// <summary>
@@ -72,6 +75,8 @@ public sealed class AltruistE2EFixture : IAsyncLifetime
     /// with <c>altruist:e2e:enabled=true</c>. Otherwise returns 404, which
     /// surfaces as <see cref="HttpRequestException"/>.
     /// </summary>
+    /// <param name="ct">Cancels the request.</param>
+    /// <exception cref="HttpRequestException">The server refused the reset (E2E mode off) or is unreachable.</exception>
     public async Task ResetAsync(CancellationToken ct = default)
     {
         using var http = new TestHttpClient(Config);

@@ -12,6 +12,28 @@ namespace Altruist.Testing;
 ///
 /// Requires the assembly to register the framework:
 /// <c>[assembly: Xunit.TestFramework("Altruist.Testing.AltruistTestFramework", "Altruist.Testing")]</c>
+///
+/// <para>Each <c>[Fact]</c> gets a freshly built container (cloned from <see cref="AltruistTestRuntime.RootDescriptors"/>,
+/// fresh singletons and mocks) and every vault targets the class's own Postgres schema
+/// (<c>test_&lt;classname&gt;</c>). Use it for service-level tests (vault writes, business logic);
+/// use <see cref="AltruistIntegrationTestAttribute"/> when the test needs the network surface.</para>
+/// <example>
+/// <code>
+/// [AltruistTest(RunModuleLoaders = false)]
+/// public sealed class ScoreServiceTests
+/// {
+///     private readonly IScoreService _scores;
+///     private readonly Mock&lt;IClock&gt; _clock;
+///
+///     // IScoreService is built with the mocked IClock as its dependency.
+///     public ScoreServiceTests(IScoreService scores, [Mock] IClock clock)
+///     { _scores = scores; _clock = Mock.Get(clock); }
+///
+///     [Fact]
+///     public async Task Adds_points() =&gt; Assert.Equal(10, await _scores.AddAsync("p1", 10));
+/// }
+/// </code>
+/// </example>
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = true, AllowMultiple = false)]
 public sealed class AltruistTestAttribute : Attribute

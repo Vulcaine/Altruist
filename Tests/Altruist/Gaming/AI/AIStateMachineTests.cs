@@ -406,14 +406,39 @@ public class AIBehaviorDiscoveryTests
     }
 
     [Fact]
-    public void NoInitialMarked_ShouldUseFirstState()
+    public void NoInitialMarked_with_several_states_is_not_registered()
     {
-        var fsm = AIBehaviorDiscovery.CreateStateMachine("test_no_initial");
-        Assert.NotNull(fsm);
-        // Should use first discovered state (Alpha or Beta)
-        var ctx = new TestAIContext();
-        // FSM starts in initial state from constructor; use Update to drive it
-        Assert.True(fsm.CurrentStateName == "Alpha" || fsm.CurrentStateName == "Beta");
+        Assert.False(AIBehaviorDiscovery.HasBehavior("test_no_initial"));
+        Assert.Null(AIBehaviorDiscovery.CreateStateMachine("test_no_initial"));
+    }
+
+    [Fact]
+    public void Concurrent_discovery_returns_only_after_the_templates_are_registered()
+    {
+        typeof(AIBehaviorDiscovery)
+            .GetField("_discovered", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, false);
+        using var inFactory = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var logger = NullLoggerFactory.Instance.CreateLogger("test");
+        var first = Task.Run(() => AIBehaviorDiscovery.DiscoverBehaviors(
+            [typeof(TestBasicBehavior).Assembly],
+            t =>
+            {
+                inFactory.Set();
+                release.Wait();
+                return Activator.CreateInstance(t)!;
+            },
+            logger));
+        Assert.True(inFactory.Wait(TimeSpan.FromSeconds(10)));
+
+        var second = Task.Run(() => AIBehaviorDiscovery.DiscoverBehaviors(
+            [typeof(TestBasicBehavior).Assembly], t => Activator.CreateInstance(t)!, logger));
+
+        Assert.False(second.Wait(TimeSpan.FromMilliseconds(300)), "the second caller returned while the first was still scanning");
+        release.Set();
+        Assert.True(Task.WaitAll([first, second], TimeSpan.FromSeconds(10)));
+        Assert.True(AIBehaviorDiscovery.HasBehavior("test_basic"));
     }
 }
 

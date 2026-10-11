@@ -7,6 +7,9 @@ using System.Data;
 using System.Reflection;
 
 using Altruist.Persistence;
+using Altruist.Persistence.Postgres;
+
+using Microsoft.Extensions.DependencyInjection;
 
 using Npgsql;
 
@@ -211,6 +214,10 @@ public sealed class PostgresTransactionIntegrationTests
         Task InsertTwoThenFailAsync(string table);
         Task<int> InsertTwoAsync(string table);
         void InsertSync(string table, string id, bool fail);
+        ValueTask InsertAcrossAnAwaitAsync(string table, bool fail);
+        ValueTask<int> InsertAcrossAnAwaitWithResultAsync(string table);
+        IAsyncEnumerable<int> InsertWhileStreamingAsync(string table, int count, int failAt);
+        Task ThrowBeforeAwaitingAsync();
     }
 
     private sealed class TxService : ITxService
@@ -241,6 +248,40 @@ public sealed class PostgresTransactionIntegrationTests
             if (fail)
                 throw new InvalidOperationException("sync fail");
         }
+
+        [Transactional]
+        public async ValueTask InsertAcrossAnAwaitAsync(string table, bool fail)
+        {
+            await _db.Exec($"INSERT INTO {table} (id, v) VALUES ('v1', 1)");
+            await Task.Delay(20);
+            await _db.Exec($"INSERT INTO {table} (id, v) VALUES ('v2', 2)");
+            if (fail)
+                throw new InvalidOperationException("fail after the await");
+        }
+
+        [Transactional]
+        public async ValueTask<int> InsertAcrossAnAwaitWithResultAsync(string table)
+        {
+            await _db.Exec($"INSERT INTO {table} (id, v) VALUES ('w1', 1)");
+            await Task.Delay(20);
+            await _db.Exec($"INSERT INTO {table} (id, v) VALUES ('w2', 2)");
+            return 2;
+        }
+
+        [Transactional]
+        public async IAsyncEnumerable<int> InsertWhileStreamingAsync(string table, int count, int failAt)
+        {
+            for (var i = 1; i <= count; i++)
+            {
+                if (i == failAt)
+                    throw new InvalidOperationException("fail while streaming");
+                await _db.Exec($"INSERT INTO {table} (id, v) VALUES ('s{i}', {i})");
+                yield return i;
+            }
+        }
+
+        [Transactional]
+        public Task ThrowBeforeAwaitingAsync() => throw new InvalidOperationException("thrown before any task exists");
     }
 
     private ITxService CreateDecorated()
@@ -286,7 +327,8 @@ public sealed class PostgresTransactionIntegrationTests
         var table = await NewTableAsync();
         var service = CreateDecorated();
 
-        Assert.Throws<TargetInvocationException>(() => service.InsertSync(table, "s1", fail: true));
+        // The method's own exception, not a TargetInvocationException from the reflection call.
+        Assert.Throws<InvalidOperationException>(() => service.InsertSync(table, "s1", fail: true));
         Assert.Equal(0, await CommittedCountAsync(table));
 
         service.InsertSync(table, "s2", fail: false);
@@ -306,5 +348,112 @@ public sealed class PostgresTransactionIntegrationTests
         }));
 
         Assert.Equal(0, await CommittedCountAsync(table));
+    }
+
+    [PostgresFact]
+    public async Task Transactional_ValueTask_method_commits_only_after_its_work_completes()
+    {
+        var table = await NewTableAsync();
+        var service = CreateDecorated();
+
+        // Before the fix a ValueTask counted as synchronous: the transaction committed at the first await.
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await service.InsertAcrossAnAwaitAsync(table, fail: true));
+        Assert.Equal(0, await CommittedCountAsync(table));
+
+        await service.InsertAcrossAnAwaitAsync(table, fail: false);
+        Assert.Equal(2, await CommittedCountAsync(table));
+        Assert.Equal(2, await service.InsertAcrossAnAwaitWithResultAsync(table));
+        Assert.Equal(4, await CommittedCountAsync(table));
+    }
+
+    [PostgresFact]
+    public async Task Transactional_async_stream_commits_when_the_enumeration_completes()
+    {
+        var table = await NewTableAsync();
+        var service = CreateDecorated();
+
+        var seen = new List<int>();
+        await foreach (var i in service.InsertWhileStreamingAsync(table, count: 3, failAt: 0))
+        {
+            seen.Add(i);
+            Assert.Equal(0, await CommittedCountAsync(table));
+        }
+
+        Assert.Equal(new[] { 1, 2, 3 }, seen);
+        Assert.Equal(3, await CommittedCountAsync(table));
+    }
+
+    [PostgresFact]
+    public async Task Transactional_async_stream_rolls_back_when_it_throws_or_is_abandoned()
+    {
+        var table = await NewTableAsync();
+        var service = CreateDecorated();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in service.InsertWhileStreamingAsync(table, count: 3, failAt: 3)) { }
+        });
+        Assert.Equal(0, await CommittedCountAsync(table));
+
+        await foreach (var i in service.InsertWhileStreamingAsync(table, count: 3, failAt: 0))
+        {
+            if (i == 2)
+                break;
+        }
+        Assert.Equal(0, await CommittedCountAsync(table));
+    }
+
+    [PostgresFact]
+    public async Task Transactional_async_method_throwing_synchronously_surfaces_its_own_exception()
+    {
+        var service = CreateDecorated();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ThrowBeforeAwaitingAsync());
+    }
+
+    /// <summary>Exposes the configuration helpers the Postgres startup uses.</summary>
+    private sealed class ConfigurationProbe : PostgresConfigurationBase
+    {
+        public static void Wrap(IServiceCollection services)
+            => RegisterTransactionalServices(services, new[] { typeof(TxService).Assembly });
+
+        public static void AddDataSource(IServiceCollection services)
+            => RegisterNpgsqlDataSource(services);
+    }
+
+    [PostgresFact]
+    public async Task Services_registered_through_factories_and_forwards_are_wrapped()
+    {
+        var table = await NewTableAsync();
+        var services = new ServiceCollection();
+        // The shape [Service(typeof(ITxService))] registers: the class through a factory, the interface as a forward to it.
+        services.AddSingleton(_ => new TxService(_db));
+        services.AddSingleton<ITxService>(sp => sp.GetRequiredService<TxService>());
+        services.AddSingleton(_db.DataSource);
+
+        ConfigurationProbe.Wrap(services);
+        using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<ITxService>();
+
+        Assert.IsAssignableFrom<TransactionalDecorator<ITxService>>(service);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.InsertTwoThenFailAsync(table));
+        Assert.Equal(0, await CommittedCountAsync(table));
+    }
+
+    [Fact]
+    public void Data_source_uses_the_default_providers_connection_settings()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(new PgSqlDbProvider(new System.Text.Json.JsonSerializerOptions(),
+            "db.example", 6543, "app", "pw", "game", pooling: true, maxPoolSize: 17, sslMode: "require"));
+
+        ConfigurationProbe.AddDataSource(services);
+        using var sp = services.BuildServiceProvider();
+        var csb = new NpgsqlConnectionStringBuilder(sp.GetRequiredService<NpgsqlDataSource>().ConnectionString);
+
+        Assert.Equal("db.example", csb.Host);
+        Assert.Equal(6543, csb.Port);
+        Assert.Equal("UTC", csb.Timezone);
+        Assert.Equal(SslMode.Require, csb.SslMode);
+        Assert.Equal(17, csb.MaxPoolSize);
     }
 }

@@ -18,6 +18,18 @@ using Altruist.ThreeD.Numerics;
 
 namespace Altruist.Dashboard
 {
+    /// <summary>
+    /// Read-only HTTP API under <c>/dashboard/v1/worlds</c> used by the world dashboard viewer to list 3D worlds and load full
+    /// snapshots (objects with transforms, colliders, terrain heightfields, gizmos); live deltas then come from
+    /// <see cref="DashboardPortal"/>.
+    /// </summary>
+    /// <remarks>
+    /// Enabled when an <c>altruist:game</c> config section exists, <c>altruist:dashboard:enabled = true</c> and the
+    /// <c>Altruist.Dashboard</c> assembly is loaded. When an <see cref="IVisibilityTracker"/> is registered, non-terrain objects
+    /// are included only if they are player-owned or observed. Heightfields are down-sampled by
+    /// <see cref="DashboardWorldViewOptions.TerrainSampleStride"/>; heightfield objects that span several partitions are emitted once.
+    /// Framework-internal: games publish debug visuals through <see cref="IDashboardGizmoRegistry"/> instead of calling this.
+    /// </remarks>
     [ApiController]
     [Route("/dashboard/v1/worlds")]
     [ConditionalOnConfig("altruist:game")]
@@ -31,6 +43,12 @@ namespace Altruist.Dashboard
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly DashboardWorldViewOptions _viewOptions;
 
+        /// <summary>Created by ASP.NET Core through DI.</summary>
+        /// <param name="worldOrganizer">Source of the 3D worlds.</param>
+        /// <param name="gizmos">Gizmo registry included in snapshots.</param>
+        /// <param name="jsonOptions">Serializer options used by the NDJSON stream.</param>
+        /// <param name="viewOptions">Render options (scale, terrain stride).</param>
+        /// <param name="visibilityTracker">Optional; filters objects and adds visibility-radius gizmos.</param>
         public WorldDashboardController(
             IGameWorldOrganizer3D worldOrganizer,
             IDashboardGizmoRegistry gizmos,
@@ -45,6 +63,8 @@ namespace Altruist.Dashboard
             _viewOptions = viewOptions;
         }
 
+        /// <summary><c>GET /dashboard/v1/worlds</c>: summary of every world (index, name, partition and object counts), ordered by index.</summary>
+        /// <returns>200 with the world summaries.</returns>
         [HttpGet]
         public ActionResult<IEnumerable<WorldSummaryDto>> GetWorlds()
         {
@@ -63,6 +83,9 @@ namespace Altruist.Dashboard
             return Ok(worlds);
         }
 
+        /// <summary><c>GET /dashboard/v1/worlds/{worldIndex}/objects</c>: full snapshot of a world grouped by partition, with render options and gizmos.</summary>
+        /// <param name="worldIndex">World index.</param>
+        /// <returns>200 with a <see cref="WorldObjectsSnapshotDto"/>, or 404 if the world does not exist.</returns>
         [HttpGet("{worldIndex:int}/objects")]
         public ActionResult<WorldObjectsSnapshotDto> GetWorldObjectsSnapshot(int worldIndex)
         {
@@ -112,6 +135,9 @@ namespace Altruist.Dashboard
             return Ok(snapshot);
         }
 
+        /// <summary><c>GET /dashboard/v1/worlds/{worldIndex}/gizmos</c>: current registry gizmos of a world plus visibility-radius gizmos.</summary>
+        /// <param name="worldIndex">World index.</param>
+        /// <returns>200 with the gizmos, or 404 if the world does not exist.</returns>
         [HttpGet("{worldIndex:int}/gizmos")]
         public ActionResult<IEnumerable<DashboardGizmo>> GetWorldGizmos(int worldIndex)
         {
@@ -122,6 +148,14 @@ namespace Altruist.Dashboard
             return Ok(BuildWorldGizmos(world));
         }
 
+        /// <summary>
+        /// <c>GET /dashboard/v1/worlds/{worldIndex}/objects/stream</c>: same objects as the snapshot endpoint, streamed as
+        /// <c>application/x-ndjson</c> with one <see cref="WorldPartitionObjectsDto"/> per line (flushed per partition). Prefer it
+        /// for very large worlds; it carries no gizmos or render options.
+        /// </summary>
+        /// <param name="worldIndex">World index.</param>
+        /// <param name="ct">Request cancellation.</param>
+        /// <returns>A task that completes when the stream ends; writes a 404 JSON body if the world does not exist.</returns>
         [HttpGet("{worldIndex:int}/objects/stream")]
         public async Task StreamWorldObjects(int worldIndex, CancellationToken ct)
         {
@@ -308,31 +342,46 @@ namespace Altruist.Dashboard
         }
     }
 
+    /// <summary>Full world snapshot returned by <see cref="WorldDashboardController.GetWorldObjectsSnapshot"/>.</summary>
     public sealed class WorldObjectsSnapshotDto
     {
+        /// <summary>World index.</summary>
         public int WorldIndex { get; set; }
+        /// <summary>World name (empty if unnamed).</summary>
         public string WorldName { get; set; } = string.Empty;
+        /// <summary>Server time the snapshot was built (UTC).</summary>
         public DateTime GeneratedAtUtc { get; set; }
 
+        /// <summary>Viewer render hints from <see cref="DashboardWorldViewOptions"/>.</summary>
         public DashboardWorldRenderOptionsDto RenderOptions { get; set; } = new();
 
+        /// <summary>Non-empty partitions with their objects.</summary>
         public List<WorldPartitionObjectsDto> Partitions { get; set; } = new();
 
+        /// <summary>Registry gizmos plus visibility-radius gizmos for this world.</summary>
         public List<DashboardGizmo> Gizmos { get; set; } = new();
     }
 
+    /// <summary>Render hints sent with a snapshot; mirrors <see cref="DashboardWorldViewOptions"/>.</summary>
     public sealed class DashboardWorldRenderOptionsDto
     {
+        /// <summary>See <see cref="DashboardWorldViewOptions.RenderScale"/>.</summary>
         public float RenderScale { get; set; } = 1f;
+        /// <summary>See <see cref="DashboardWorldViewOptions.TerrainSampleStride"/>.</summary>
         public int TerrainSampleStride { get; set; } = 1;
     }
 
+    /// <summary>One world partition and its objects, as returned in snapshots and NDJSON stream lines.</summary>
     public sealed class WorldPartitionObjectsDto
     {
+        /// <summary>Partition grid index X.</summary>
         public int IndexX { get; set; }
+        /// <summary>Partition grid index Y.</summary>
         public int IndexY { get; set; }
+        /// <summary>Partition grid index Z.</summary>
         public int IndexZ { get; set; }
 
+        /// <summary>Objects in the partition.</summary>
         public List<WorldObjectDto> Objects { get; set; } = new();
     }
 }

@@ -11,7 +11,7 @@ namespace Altruist.Gaming;
 /// services today, so this interface is here for future consumers (e.g.
 /// quest state machines) and is not required for AI/combo to function.
 /// </summary>
-public interface IStateMachineEntity<TContext> where TContext : class, IStateContext
+public interface IStateMachineEntity<TContext> where TContext : class, IStateContextCore
 {
     /// <summary>Name of the behavior (matches <c>[StateBehavior("name")]</c>).</summary>
     string BehaviorName { get; }

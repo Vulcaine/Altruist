@@ -12,13 +12,21 @@ namespace Altruist.Testing.E2E;
 /// Marks a test class as a client-side end-to-end test. Tests so marked drive
 /// the same Altruist client transport stack the Unity client uses (codec,
 /// dispatcher, mirror) against a real running server, instead of building a
-/// per-class DI scope like <see cref="AltruistTestAttribute"/>.
+/// per-class DI scope like <c>[AltruistTest]</c> (Altruist.Testing).
+///
+/// <para><b>When to use.</b> <c>[AltruistTest]</c> for service-level tests against the DI
+/// container (fast, per-class schema isolation); <c>[AltruistIntegrationTest]</c> to exercise the
+/// network surface against a server the test process boots itself; <c>[AltruistE2ETest]</c> to
+/// drive the client stack against an externally running server (docker stack, staging), from
+/// <c>dotnet test</c> or, through <see cref="AltruistTestRunner"/>, from hosts without xUnit
+/// (a game-engine editor, a console app).</para>
 ///
 /// <para><b>Setup contract.</b> Tests are expected to take an
-/// <see cref="AltruistE2EFixture"/> via xUnit's
-/// <c>IClassFixture&lt;AltruistE2EFixture&gt;</c>; the fixture loads
-/// <c>config.yml</c> + <c>config-test.yml</c>, boots the client DI container,
-/// and exposes <c>TestHttpClient</c>/<c>TestTcpClient</c> for the test to drive.</para>
+/// <c>AltruistE2EFixture</c> via xUnit's
+/// <c>IClassFixture&lt;AltruistE2EFixture&gt;</c> (Altruist.Testing); the fixture loads
+/// <c>config.yml</c> + an optional <c>config.E2E.yml</c> overlay and builds per-test client stacks
+/// (<c>TestPlayerSession</c> with its <c>TestHttpClient</c>/<c>TestTcpClient</c>, a packet
+/// dispatcher, an inventory mirror) for the test to drive.</para>
 ///
 /// <para><b>Server requirement.</b> A real server must be running and configured
 /// with <c>altruist:e2e:enabled=true</c>. The standard pattern is a dedicated
@@ -42,6 +50,9 @@ public sealed class AltruistE2ETestAttribute : Attribute, ITraitAttribute
 /// </summary>
 public sealed class E2ETraitDiscoverer : ITraitDiscoverer
 {
+    /// <summary>Returns the single trait <c>Category=E2E</c>.</summary>
+    /// <param name="traitAttribute">The attribute instance (unused).</param>
+    /// <returns>The traits.</returns>
     public IEnumerable<KeyValuePair<string, string>> GetTraits(IAttributeInfo traitAttribute)
     {
         yield return new KeyValuePair<string, string>("Category", "E2E");

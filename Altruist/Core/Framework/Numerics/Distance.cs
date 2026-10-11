@@ -13,11 +13,13 @@ public static class Distance3D
 {
     /// <summary>Full 3D distance between two world points.</summary>
     public static float Between(Vector3 a, Vector3 b) => Vector3.Distance(a, b);
+    /// <summary><see cref="Position3D"/> overload of <see cref="Between(Vector3,Vector3)"/>.</summary>
     public static float Between(Position3D a, Position3D b) => Between(a.ToVector3(), b.ToVector3());
 
     /// <summary>3D distance squared — use for thresholded comparisons to skip
     /// the square root.</summary>
     public static float Squared(Vector3 a, Vector3 b) => Vector3.DistanceSquared(a, b);
+    /// <summary><see cref="Position3D"/> overload of <see cref="Squared(Vector3,Vector3)"/>.</summary>
     public static float Squared(Position3D a, Position3D b) => Squared(a.ToVector3(), b.ToVector3());
 
     /// <summary>XZ-plane distance — Y is ignored. The right answer for
@@ -28,13 +30,18 @@ public static class Distance3D
         var dz = a.Z - b.Z;
         return MathF.Sqrt(dx * dx + dz * dz);
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="Horizontal(Vector3,Vector3)"/>.</summary>
     public static float Horizontal(Position3D a, Position3D b) => Horizontal(a.ToVector3(), b.ToVector3());
 
+    /// <summary>XZ-plane distance squared (Y ignored): <c>dx * dx + dz * dz</c>. Use it for range
+    /// thresholds on the ground plane to skip the square root (compare with <c>range * range</c>); for full
+    /// 3D use <see cref="Squared(Vector3,Vector3)"/>.</summary>
     public static float HorizontalSquared(Vector3 a, Vector3 b)
     {
         var dx = a.X - b.X;
         var dz = a.Z - b.Z;
         return dx * dx + dz * dz;
     }
+    /// <summary><see cref="Position3D"/> overload of <see cref="HorizontalSquared(Vector3,Vector3)"/>.</summary>
     public static float HorizontalSquared(Position3D a, Position3D b) => HorizontalSquared(a.ToVector3(), b.ToVector3());
 }
