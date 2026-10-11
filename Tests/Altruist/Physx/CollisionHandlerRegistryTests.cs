@@ -4,6 +4,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Tests.Altruist.Physx;
 
+/// <summary>
+/// Tests that clear the process-wide <see cref="CollisionHandlerRegistry"/>. They run alone: a test booting an app in
+/// parallel registers the test assembly's handlers into it between a clear and an assertion.
+/// </summary>
+[CollectionDefinition("CollisionHandlerRegistry", DisableParallelization = true)]
+public sealed class CollisionHandlerRegistryCollection;
+
 [Collection("CollisionHandlerRegistry")]
 public class CollisionHandlerRegistryTests
 {

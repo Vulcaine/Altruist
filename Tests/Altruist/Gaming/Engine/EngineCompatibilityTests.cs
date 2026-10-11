@@ -79,12 +79,15 @@ public sealed class EngineCompatibilityTests
     {
         var (commands, cycles) = RunLive(worldStep: null);
 
-        // 0.9.7: the frame resumed after the timer wait on a pool thread (ConfigureAwait(false)).
-        // Only a frame whose timer had already fired before the first wait may stay on EngineThread.
-        Assert.True(commands.Count(c => c.Pool) >= commands.Count - 1,
-            $"next-tick ran on the pool in {commands.Count(c => c.Pool)} of {commands.Count} frames");
-        Assert.True(cycles.Count(c => c.Pool) >= cycles.Count - 1,
-            $"cycles ran on the pool in {cycles.Count(c => c.Pool)} of {cycles.Count} frames");
+        // 0.9.7: the frame resumed after the timer wait on a pool thread (ConfigureAwait(false)). A frame whose timer
+        // had already fired (the engine running late, as on a loaded machine) resumes synchronously on EngineThread,
+        // then as now; so most frames are on the pool, and none anywhere else.
+        foreach (var (what, frames) in new[] { ("next-tick", commands), ("cycles", cycles) })
+        {
+            Assert.True(frames.Count(c => c.Pool) * 2 >= frames.Count,
+                $"{what} ran on the pool in {frames.Count(c => c.Pool)} of {frames.Count} frames");
+            Assert.All(frames, c => Assert.True(c.Pool || c.Name == "EngineThread", $"{what} ran on {c.Name}"));
+        }
     }
 
     [Fact]

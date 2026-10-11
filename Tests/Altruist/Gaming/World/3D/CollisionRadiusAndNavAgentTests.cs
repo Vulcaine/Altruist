@@ -18,6 +18,8 @@ public sealed class RadiusSumObjB : CollisionTestObj
     public RadiusSumObjB(float x) : base(x, 0, colliderRadius: 3) { }
 }
 
+// Registers handlers in the global CollisionHandlerRegistry, which CollisionHandlerRegistryTests clears.
+[Collection("CollisionHandlerRegistry")]
 public class CollisionRadiusAndNavAgentTests
 {
     [Fact]

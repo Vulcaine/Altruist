@@ -195,7 +195,7 @@ public static class AltruistDI
     /// <summary>
     /// Resolves every distinct service type in <paramref name="services"/> from <paramref name="provider"/> (which eagerly
     /// creates singletons) and invokes its <see cref="PostConstructAttribute"/> method, once per implementation type per
-    /// process. Resolution failures and resolutions taking over 10 s are written to stderr and skipped, not thrown; an
+    /// process. Resolution failures (a dependency cycle among them) are written to stderr and skipped, not thrown; an
     /// exception thrown by a hook propagates.
     /// </summary>
     /// <param name="provider">The built root provider.</param>
@@ -217,22 +217,11 @@ public static class AltruistDI
                 continue;
 
             object? instance;
+            // Resolved inline: the container reports a dependency cycle itself. A timeout on a pool thread here
+            // only misread a busy machine as a cycle and skipped the service's [PostConstruct].
             try
             {
-                var resolveTask = Task.Run(() => provider.GetService(serviceType));
-                if (!resolveTask.Wait(TimeSpan.FromSeconds(10)))
-                {
-                    Console.Error.WriteLine(
-                        $"[ALTRUIST] Circular dependency detected: resolving '{serviceType.Name}' " +
-                        $"timed out after 10s. Check constructor dependencies for cycles. Skipping.");
-                    continue;
-                }
-                instance = resolveTask.Result;
-            }
-            catch (AggregateException ae) when (ae.InnerException is not null)
-            {
-                Console.Error.WriteLine($"[ALTRUIST] Failed to resolve '{serviceType.Name}': {ae.InnerException.Message}");
-                continue;
+                instance = provider.GetService(serviceType);
             }
             catch (Exception ex)
             {

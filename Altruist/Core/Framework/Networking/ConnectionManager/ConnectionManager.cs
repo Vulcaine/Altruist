@@ -392,9 +392,7 @@ namespace Altruist
         /// <param name="clientId">Proposed client id; replaced by <c>connection.ConnectionId</c> when that is set (e.g. by <c>OnConnectingAsync</c>).</param>
         public async Task HandleConnection(AltruistConnection connection, string @event, string clientId)
         {
-            var portals = PortalGateRegistry<IPortal>.GetAllHandlers()
-                .Where(portal => portal.Route.TrimEnd('/') == connection.Route.TrimEnd('/'))
-                .ToArray();
+            var portals = PortalsOf(connection.Route);
 
             foreach (var portal in portals)
             {
@@ -667,14 +665,28 @@ namespace Altruist
         /// Closes the client's connection immediately and runs the disconnect path (<c>OnDisconnectedAsync</c> of the portals
         /// on the connection's route, per-connection state cleanup, store removal) exactly once: the read loop ending
         /// because of this close does not run it again. Returns when the path has completed. A client this manager does not
-        /// own a read loop for gets the path with every portal. To close gracefully after pending sends, use the outbound
+        /// own a read loop for gets the path with the portals on its stored connection's route (none when the store does not
+        /// know the client either). To close gracefully after pending sends, use the outbound
         /// sender's <c>CloseAfterFlush</c>; from engine/tick code prefer <see cref="DisconnectEngineAwareAsync"/>.
         /// </summary>
         /// <param name="clientId">Connection id.</param>
-        public Task DisconnectAsync(string clientId) =>
-            _sessions.TryGetValue(clientId, out var session)
-                ? DisconnectSessionAsync(clientId, session, null)
-                : RunDisconnectPathAsync(clientId, PortalGateRegistry<IPortal>.GetAllHandlers(), null);
+        public async Task DisconnectAsync(string clientId)
+        {
+            if (_sessions.TryGetValue(clientId, out var session))
+            {
+                await DisconnectSessionAsync(clientId, session, null);
+                return;
+            }
+            // Every portal of every route used to hear about it: a /chat portal got the disconnect of a /game client.
+            var connection = await GetConnectionAsync(clientId);
+            var portals = connection is null ? Array.Empty<IPortal>() : PortalsOf(connection.Route);
+            await RunDisconnectPathAsync(clientId, portals, null);
+        }
+
+        private static IPortal[] PortalsOf(string route) =>
+            PortalGateRegistry<IPortal>.GetAllHandlers()
+                .Where(portal => portal.Route.TrimEnd('/') == route.TrimEnd('/'))
+                .ToArray();
 
         private async Task DisconnectSessionAsync(string clientId, ConnectionSession session, Exception? failureException)
         {

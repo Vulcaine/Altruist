@@ -237,11 +237,14 @@ public class ServerNodeTests
     public async Task Capacity_reads_are_safe_while_contributors_come_and_go()
     {
         using var node = Node(maxLoad: 1000);
-        var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(400));
         var errors = new ConcurrentQueue<Exception>();
-        var writers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+        var writersLeft = 4;
+        // Own threads and a fixed amount of work: busy loops on the thread pool, stopped by a timer that itself
+        // needs a pool thread, starved the whole test run on a 2-core CI machine.
+        Task Spin(Action body) => Task.Factory.StartNew(body, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        var writers = Enumerable.Range(0, 4).Select(_ => Spin(() =>
         {
-            while (!stop.IsCancellationRequested)
+            for (var i = 0; i < 20_000; i++)
             {
                 try
                 {
@@ -249,10 +252,11 @@ public class ServerNodeTests
                 }
                 catch (Exception ex) { errors.Enqueue(ex); }
             }
-        }));
-        var readers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+            Interlocked.Decrement(ref writersLeft);
+        })).ToList();
+        var readers = Enumerable.Range(0, 4).Select(_ => Spin(() =>
         {
-            while (!stop.IsCancellationRequested)
+            while (Volatile.Read(ref writersLeft) > 0)
             {
                 try
                 {
@@ -262,7 +266,7 @@ public class ServerNodeTests
                 }
                 catch (Exception ex) { errors.Enqueue(ex); }
             }
-        }));
+        })).ToList();
         await Task.WhenAll(writers.Concat(readers));
         Assert.Empty(errors);
         Assert.Equal(0, node.Capacity().UnitsOf("rooms"));

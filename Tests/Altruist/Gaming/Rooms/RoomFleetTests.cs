@@ -574,14 +574,14 @@ public class RoomFleetTests
 
         // The engine runs on its own thread from here on; the test only talks to the node.
         using var stop = new CancellationTokenSource();
-        var engine = Task.Run(() =>
+        var engine = Task.Factory.StartNew(() =>
         {
             while (!stop.IsCancellationRequested)
             {
                 f.World.Step(1f / 60f);
                 Thread.Sleep(1);
             }
-        });
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
             Assert.False(await f.Node.DrainAsync().WaitAsync(TimeSpan.FromSeconds(10)));
@@ -640,14 +640,14 @@ public class RoomFleetTests
 
         var world = new WorldCoordinator(new IWorldStepper[] { host });
         using var stop = new CancellationTokenSource();
-        var engine = Task.Run(() =>
+        var engine = Task.Factory.StartNew(() =>
         {
             while (!stop.IsCancellationRequested)
             {
                 world.Step(1f / 60f);
                 Thread.Sleep(1);
             }
-        });
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
             Assert.True(await node.DrainAsync().WaitAsync(TimeSpan.FromSeconds(20)));

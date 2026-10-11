@@ -558,7 +558,10 @@ public class FleetTests
         var fleet = new Fleet(backplane, node, new FleetOptions { Cluster = "svc", Heartbeat = TimeSpan.FromMilliseconds(20) });
         var service = new FleetHeartbeatService(fleet);
         await service.StartAsync(CancellationToken.None);
-        await Task.Delay(100);
+        // The first beat comes on the service's own schedule: wait for it (a fixed sleep raced it on loaded CI runners).
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (await backplane.GetAsync("fleet:svc:node:svc") is null && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
         Assert.NotNull(await backplane.GetAsync("fleet:svc:node:svc"));
         await service.StopAsync(CancellationToken.None);
         Assert.Null(await backplane.GetAsync("fleet:svc:node:svc"));

@@ -13,6 +13,13 @@ public sealed class CombatSubclassActor : CombatEventTestEntity
 
 public sealed class SubclassProbeEvent : ICombatEventPayload { }
 
+/// <summary>
+/// Tests that clear the process-wide <see cref="CombatEventHandlerRegistry"/>. They run alone: a test booting an app in
+/// parallel registers the test assembly's combat handlers into it between a clear and an assertion.
+/// </summary>
+[CollectionDefinition("CombatRegistry", DisableParallelization = true)]
+public sealed class CombatRegistryCollection;
+
 [Collection("CombatRegistry")]
 public class CombatRegressionTests
 {
