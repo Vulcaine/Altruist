@@ -57,22 +57,21 @@ async function findWorkspaceConfigCandidate() {
     20
   );
 
-  const candidates = [];
+  const parsedByPath = new Map();
   for (const match of matches) {
-    const fsPath = match.fsPath;
     try {
       const bytes = await vscode.workspace.fs.readFile(match);
-      const text = Buffer.from(bytes).toString("utf8");
-      const parsed = parseSimpleYaml(text);
-      candidates.push({
-        configPath: fsPath,
-        parsed,
-        score: scoreParsedConfig(fsPath, parsed),
-      });
+      parsedByPath.set(match.fsPath, parseSimpleYaml(Buffer.from(bytes).toString("utf8")));
     } catch {
       // ignore unreadable candidates
     }
   }
+
+  const candidates = [...parsedByPath].map(([fsPath, own]) => {
+    // config.<environment>.yml is loaded on top of the config.yml next to it, like the server does.
+    const parsed = mergeYaml(parsedByPath.get(baseConfigPathOf(fsPath)) || {}, own);
+    return { configPath: fsPath, parsed, score: scoreParsedConfig(fsPath, parsed) };
+  });
 
   if (!candidates.length) {
     const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(configPath));
@@ -88,6 +87,24 @@ async function findWorkspaceConfigCandidate() {
     configPath: candidates[0].configPath,
     parsed: candidates[0].parsed,
   };
+}
+
+function baseConfigPathOf(filePath) {
+  const match = filePath.match(/^(.*[\\/])config\.[^\\/]+\.(ya?ml)$/i);
+  return match ? `${match[1]}config.${match[2]}` : undefined;
+}
+
+function mergeYaml(base, overlay) {
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    const both = isPlainObject(merged[key]) && isPlainObject(value);
+    merged[key] = both ? mergeYaml(merged[key], value) : value;
+  }
+  return merged;
+}
+
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function scoreConfigPath(filePath) {
