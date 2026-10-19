@@ -95,7 +95,8 @@ public sealed class LineGame :
     public readonly List<string> Formed = new();
     public void OnFormed(Room<LineSim, Walk, Player> room) => Formed.Add(room.Id);
 
-    public int? TeamSizeOf(string mode) => mode switch { "duo" => 1, "free" => 0, _ => null };
+    public int? TeamSizeOf(string mode) => mode switch { "duo" => 1, "free" => 0, "trio" => 3, _ => null };
+    public int TeamsOf(string mode) => mode == "trio" ? 1 : 2;
     public IPacketBase LobbyState(Lobby<LineSim, Walk, Player> lobby, LobbyMember<Player> to) =>
         new Sent("lobby", $"{lobby.Code.Length}:{lobby.Members.Count}:{(lobby.IsHost(to.PrincipalId) ? "host" : "guest")}:{lobby.Room is not null}");
     public IPacketBase Rejected(LobbyRejectReason reason, string code) => new Sent("reject", reason.ToString());
@@ -311,6 +312,19 @@ public class RoomHostTests
         Assert.Empty(h.Host.Rooms);
         Assert.Equal("lobby:5:2:host:False", h.Game.To("c-a").Last());
         Assert.DoesNotContain(h.Game.To("c-a"), p => p.StartsWith("menu"));
+    }
+
+    [Fact]
+    public void A_one_team_lobby_mode_seats_everyone_on_team_0_and_bots_fill_it()
+    {
+        var h = new Harness();
+        var a = h.Connect("a");
+        h.Lobbies.Join(a, "");
+        h.Lobbies.Join(h.Connect("b"), h.Lobbies.LobbyOf(a)!.Code);
+        h.Lobbies.Start(a, "trio");
+        var room = Assert.Single(h.Host.Rooms);
+        Assert.Equal(new[] { 0, 0, 0 }, room.Seats.Select(s => s.Team));
+        Assert.Equal(1, room.Seats.Count(s => s.IsBot));
     }
 
     [Fact]

@@ -122,11 +122,14 @@ public interface ILobbyGame<TSim, TInput, TPlayer>
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
     /// <summary>
-    /// Seats per team of the mode (bots fill up to it; more members than both teams' seats cannot
+    /// Seats per team of the mode (bots fill up to it; more members than the teams' seats cannot
     /// start it), 0 for a mode without fixed teams (every member plays, no bots), or null when the
     /// mode is not allowed.
     /// </summary>
     int? TeamSizeOf(string mode);
+
+    /// <summary>Teams of the mode: 2 (members alternate between team 0 and 1), or 1 (everyone on team 0: free for all).</summary>
+    int TeamsOf(string mode) => 2;
 
     /// <summary>The lobby's state for one member.</summary>
     IPacketBase LobbyState(Lobby<TSim, TInput, TPlayer> lobby, LobbyMember<TPlayer> to);
@@ -334,15 +337,16 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
     }
 
     /// <summary>
-    /// The host starts a room in a mode: members alternate teams, bots fill each team to the mode's
-    /// size. Refused (<see cref="LobbyRejectReason.TooManyPlayers"/>) when the members do not fit the
+    /// The host starts a room in a mode: members alternate between the mode's teams
+    /// (<see cref="ILobbyGame{TSim,TInput,TPlayer}.TeamsOf"/>), bots fill each team to the mode's size. Refused (<see cref="LobbyRejectReason.TooManyPlayers"/>) when the members do not fit the
     /// mode's seats, and (<see cref="LobbyRejectReason.Unavailable"/>) when the server cannot take the room.
     /// </summary>
     public void Start(RoomSession<TSim, TInput, TPlayer> s, string mode)
     {
         var lobby = LobbyOf(s);
         if (lobby is null || !lobby.IsHost(s.PrincipalId) || _game.TeamSizeOf(mode) is not { } teamSize || lobby.Room is not null) return;
-        if (teamSize > 0 && lobby.Members.Count > teamSize * 2)
+        var teams = _game.TeamsOf(mode);
+        if (teamSize > 0 && lobby.Members.Count > teamSize * teams)
         {
             _host.Send(s.ClientId, _game.Rejected(LobbyRejectReason.TooManyPlayers, lobby.Code));
             return;
@@ -354,28 +358,19 @@ public sealed class LobbyModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, T
         }
         var m = _host.CreateRoom(_host.Game.CreateSimulation(mode, Options.Playlist), mode, Options.Playlist, lobby.Code, Options.Rules);
         m.Set(lobby);
-        var team0 = 0;
-        var team1 = 0;
+        var seated = new int[teams];
         foreach (var member in lobby.Members)
         {
-            var team = team0 <= team1 ? 0 : 1;
-            if (team == 0) team0++;
-            else team1++;
+            var team = Array.IndexOf(seated, seated.Min());
+            seated[team]++;
             var seat = m.AddSeat(member.MemberId, team);
             var p = m.Join(member.PrincipalId, member.Player, member.ClientId);
             m.GiveToHuman(seat, p);
         }
         var botId = Options.BotSeatIdBase;
-        while (team0 < teamSize)
-        {
-            m.GiveToBot(m.AddSeat(botId++, 0));
-            team0++;
-        }
-        while (team1 < teamSize)
-        {
-            m.GiveToBot(m.AddSeat(botId++, 1));
-            team1++;
-        }
+        for (var team = 0; team < teams; team++)
+            for (; seated[team] < teamSize; seated[team]++)
+                m.GiveToBot(m.AddSeat(botId++, team));
         if (!_host.TryStart(m))
         {
             _host.Send(s.ClientId, _game.Rejected(LobbyRejectReason.Unavailable, lobby.Code));
