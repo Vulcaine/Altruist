@@ -159,6 +159,16 @@ public sealed record RoomRules
     public double JoinHandoverSeconds { get; init; }
     /// <summary>Longest wait for the joining player's first input before the <see cref="JoinHandoverSeconds"/> start anyway.</summary>
     public double JoinHandoverMaxWaitSeconds { get; init; } = 10;
+    /// <summary>
+    /// Matchmaking: the room opens as soon as a player waits and gathers players before it starts
+    /// (<see cref="Room{TSim,TInput,TPlayer}.Forming"/>). Every
+    /// <see cref="Matchmaking.MatchmakingOptions.FormingBotEverySeconds"/> nobody new arrives, a bot
+    /// takes an open seat; queued players take open seats at once and bots' seats one at a time
+    /// (needs <see cref="JoinInProgress"/>). Once every seat is driven and nobody arrived for
+    /// <see cref="Matchmaking.MatchmakingOptions.FormingSettleSeconds"/> (at once when they are all
+    /// players), the game is told (<see cref="Matchmaking.IMatchmakingGame{TSim,TInput,TPlayer}.OnFormed"/>) and the match starts.
+    /// </summary>
+    public bool FormBeforeStart { get; init; }
 }
 
 /// <summary>Timings of the host (passed by the game; not read from configuration).</summary>

@@ -140,3 +140,22 @@ describe('SnapshotSchema', () => {
     assert.deepStrictEqual(missingFields(doc.rows.clock!, ['phase', 'time', 'extra']), []);
   });
 });
+
+describe('SnapshotSchema: appended rows', () => {
+  const appended: SnapshotSchemaDocument = {
+    ...doc,
+    packets: { state: { code: 3001, fields: [...doc.packets.state!.fields, { name: 'drones', index: 7, kind: 'rows', row: 'ship', whenMissing: [] }] } },
+  };
+  const decode = new SnapshotSchema(appended).packet<{ drones: unknown[] }>('state');
+
+  it('an array of rows an older writer did not send reads as its whenMissing (a fresh array)', () => {
+    const a = decode([3001, 9, [1, 2], [], [], 0, 0]);
+    const b = decode([3001, 9, [1, 2], [], [], 0, 0]);
+    assert.deepStrictEqual(a.drones, []);
+    assert.notStrictEqual(a.drones, b.drones);
+  });
+
+  it('a sent array of rows decodes', () => {
+    assert.deepStrictEqual(decode([3001, 9, [1, 2], [], [], 0, 0, [[7, 1, 12.5, 1, 3, 0]]]).drones, [{ id: 7, team: 'blue', x: 12.5, shielded: true, kills: 3, boost: false }]);
+  });
+});

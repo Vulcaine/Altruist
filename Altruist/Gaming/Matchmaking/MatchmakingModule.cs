@@ -42,6 +42,9 @@ public interface IMatchmakingGame<TSim, TInput, TPlayer>
 
     /// <summary>The packet that tells a connection its queue status (sent on changes and every <see cref="MatchmakingOptions.StatusIntervalSeconds"/> while searching).</summary>
     IPacketBase QueueStatus(QueueStatusInfo status);
+
+    /// <summary>A forming room (<see cref="RoomRules.FormBeforeStart"/>) has its players: the match starts.</summary>
+    void OnFormed(Room<TSim, TInput, TPlayer> room);
 }
 
 /// <summary>Join-in-progress pacing of a room.</summary>
@@ -229,11 +232,39 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         }
     }
 
-    /// <summary>Every frame: completes due join-in-progress swaps, then (unless draining) fills running rooms and starts new ones.</summary>
+    /// <summary>Every frame: completes due join-in-progress swaps, then (unless draining) fills running rooms and starts new ones, then forming rooms gather.</summary>
     public void BeforeBotRefills()
     {
         RunPendingSwaps();
         if (!_host.IsDraining) RunMatchmaking();
+        RunForming();
+    }
+
+    /// <summary>
+    /// Forming rooms: a bot takes an open seat once nobody arrived for <see cref="MatchmakingOptions.FormingBotEverySeconds"/>;
+    /// with every seat driven and no swap due, the match starts once nobody arrived for
+    /// <see cref="MatchmakingOptions.FormingSettleSeconds"/> (at once when they are all players).
+    /// </summary>
+    private void RunForming()
+    {
+        foreach (var m in _host.Rooms.ToArray())
+        {
+            if (!m.Forming || m.Ended) continue;
+            var quiet = _host.Now - m.FormingChangedAt;
+            if (m.Seats.FirstOrDefault(sl => sl.IsOpen && sl.Pending is null) is { } open)
+            {
+                if (quiet < O.FormingBotEverySeconds) continue;
+                m.GiveToBot(open);
+                m.FormingArrival(_host.Now);
+                _host.SendRoster(m);
+                continue;
+            }
+            if (m.Seats.Any(sl => sl.Pending is not null)) continue;
+            var allPlayers = m.Seats.All(sl => sl.Owner is not null);
+            if (!allPlayers && quiet < O.FormingSettleSeconds) continue;
+            m.EndForming();
+            _game.OnFormed(m);
+        }
     }
 
     /// <summary>
@@ -478,6 +509,7 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         var open = seat.IsOpen;
         var claim = new PendingSeatClaim(s.PrincipalId, name, open ? _host.Now : _host.Now + O.SwapNoticeSeconds, entry.QueuedAt);
         seat.Pending = claim;
+        m.FormingArrival(_host.Now);
         if (!open) Pacing(m).LastSwapAt = _host.Now;
         s.PendingRoom = m;
         SendStatus(s, QueueState.Found, m.Playlist);
@@ -510,6 +542,7 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
             return;
         }
         var wasBot = seat.IsBot;
+        m.FormingArrival(_host.Now);
         var p = m.Join(s.PrincipalId, s.Player, s.ClientId);
         p.Player = s.Player;
         p.DisconnectedAt = null;
@@ -534,11 +567,11 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     /// <summary>Starts a room for the group; false (the group is back in the queue) when the server no longer takes it.</summary>
     private bool StartRoom(PlaylistOptions playlist, List<QueueEntry> group)
     {
-        var (team0, team1) = Matchmaker.BalanceTeams(group, byRating: playlist.Rated);
+        var teams = playlist.Teams == 1 ? new[] { (0, group.ToList()) } : TwoTeams(group, playlist.Rated);
         var m = _host.CreateRoom(_host.Game.CreateSimulation(playlist.Mode, playlist.Id), playlist.Mode, playlist.Id, null, playlist.Rules);
         var seatId = 1;
         var botSeats = new List<Seat<TSim, TInput, TPlayer>>();
-        foreach (var (team, members) in new[] { (0, team0), (1, team1) })
+        foreach (var (team, members) in teams)
         {
             for (var i = 0; i < playlist.TeamSize; i++)
             {
@@ -549,8 +582,11 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
                 else botSeats.Add(seat);
             }
         }
+        // A forming room leaves its other seats open for players and bots that arrive one by one.
+        if (playlist.Rules.FormBeforeStart) m.BeginForming(_host.Now);
         // After every player is in: the game may base the bots on them (skill).
-        foreach (var seat in botSeats) m.GiveToBot(seat);
+        if (!m.Forming)
+            foreach (var seat in botSeats) m.GiveToBot(seat);
         if (playlist.Rated && group.Count > 0) m.Set(new RoomRating(group.Average(e => e.Rating)));
         if (!_host.TryStart(m))
         {
@@ -570,6 +606,12 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         _host.SendRoster(m);
         _host.SendSnapshots(m);
         return true;
+    }
+
+    private static (int, List<QueueEntry>)[] TwoTeams(List<QueueEntry> group, bool byRating)
+    {
+        var (team0, team1) = Matchmaker.BalanceTeams(group, byRating);
+        return [(0, team0), (1, team1)];
     }
 
     /// <inheritdoc/>

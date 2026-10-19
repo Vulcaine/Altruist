@@ -46,6 +46,26 @@ public sealed class Room<TSim, TInput, TPlayer>
     public string? LobbyCode { get; }
     /// <summary>Lifecycle rules of this room (disconnects, grace, leaving, empty room, backfill).</summary>
     public RoomRules Rules { get; }
+    /// <summary>Still gathering players before the match starts (<see cref="RoomRules.FormBeforeStart"/>).</summary>
+    public bool Forming { get; private set; }
+    /// <summary>Host time of the last arrival while <see cref="Forming"/> (a player or a bot took a seat).</summary>
+    public double FormingChangedAt { get; private set; }
+
+    /// <summary>The room starts gathering players (host time <paramref name="now"/>).</summary>
+    public void BeginForming(double now)
+    {
+        Forming = true;
+        FormingChangedAt = now;
+    }
+
+    /// <summary>A player or a bot took a seat of the forming room: its wait starts over.</summary>
+    public void FormingArrival(double now)
+    {
+        if (Forming) FormingChangedAt = now;
+    }
+
+    /// <summary>The room has its players: the match starts.</summary>
+    public void EndForming() => Forming = false;
     /// <summary>Wall-clock creation time (UTC, from the host's clock).</summary>
     public DateTime StartedAtUtc { get; }
     /// <summary>The load the room puts on the server (<see cref="IRoomGame{TSim,TInput,TPlayer}.LoadOf"/>).</summary>

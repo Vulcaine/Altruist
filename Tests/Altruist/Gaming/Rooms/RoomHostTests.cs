@@ -92,6 +92,8 @@ public sealed class LineGame :
     public int RatingOf(Player player, PlaylistOptions playlist) => player.Rating;
     public double TimeLeftSeconds(Room<LineSim, Walk, Player> room) => 120;
     public IPacketBase QueueStatus(QueueStatusInfo s) => new Sent("queue", $"{s.State}:{s.Playlist}:{s.PlayersFound}/{s.PlayersNeeded}");
+    public readonly List<string> Formed = new();
+    public void OnFormed(Room<LineSim, Walk, Player> room) => Formed.Add(room.Id);
 
     public int? TeamSizeOf(string mode) => mode switch { "duo" => 1, "free" => 0, _ => null };
     public IPacketBase LobbyState(Lobby<LineSim, Walk, Player> lobby, LobbyMember<Player> to) =>
@@ -136,7 +138,7 @@ public class RoomHostTests
         },
     };
 
-    private sealed class Harness
+    internal sealed class Harness
     {
         public readonly LineGame Game = new();
         public readonly RoomHost<LineSim, Walk, Player> Host;
@@ -144,10 +146,10 @@ public class RoomHostTests
         public readonly LobbyModule<LineSim, Walk, Player> Lobbies;
         private readonly WorldCoordinator _world;
 
-        public Harness(double grace = 30)
+        public Harness(double grace = 30, params PlaylistOptions[] playlists)
         {
             Host = new RoomHost<LineSim, Walk, Player>(Game, Game, new RoomHostOptions { ReconnectGraceSeconds = grace }, 60);
-            Mm = new MatchmakingModule<LineSim, Walk, Player>(Game, new MatchmakingOptions(), new[] { Casual, Rated });
+            Mm = new MatchmakingModule<LineSim, Walk, Player>(Game, new MatchmakingOptions(), playlists.Length > 0 ? playlists : new[] { Casual, Rated });
             Lobbies = new LobbyModule<LineSim, Walk, Player>(Game, new LobbyOptions());
             Host.Use(Mm).Use(Lobbies);
             _world = new WorldCoordinator(new IWorldStepper[] { Host });

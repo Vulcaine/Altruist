@@ -245,16 +245,17 @@ export class SnapshotSchema {
       const fields = this.packetSchema(name).fields;
       const readers: Reader[] = fields.map((f) => {
         const i = f.index;
+        // A key older writers did not send reads as its whenMissing (rows too: an appended array of rows).
+        const fallback = f.whenMissing === undefined ? null : copyDefault(f.whenMissing);
         if (f.kind === 'row') {
           const dec = this.row<unknown>(f.row!);
-          return (p) => dec(p[i] as ArrayLike<unknown>);
+          return (p) => (p[i] == null && fallback ? fallback() : dec(p[i] as ArrayLike<unknown>));
         }
         if (f.kind === 'rows') {
           const dec = this.row<unknown>(f.row!);
-          return (p) => (p[i] as ArrayLike<unknown>[]).map((r) => dec(r));
+          return (p) => (p[i] == null && fallback ? fallback() : (p[i] as ArrayLike<unknown>[]).map((r) => dec(r)));
         }
-        if (f.whenMissing === undefined) return (p) => p[i];
-        const fallback = copyDefault(f.whenMissing);
+        if (!fallback) return (p) => p[i];
         return (p) => p[i] ?? fallback();
       });
       const names = fields.map((f) => f.name);
