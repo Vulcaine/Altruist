@@ -48,6 +48,11 @@ export function normalizeOr(v: Vec2Like, fallback: Vec2Like): Vec2Like {
 
 /** 2D cross product (z of the 3D cross): `a.x * b.y - a.y * b.x`; positive when `b` is
  * counter-clockwise of `a`. Mirrors C# `VectorMath2D.Cross(Vector2, Vector2)`. */
+/** Dot product `a.x * b.x + a.y * b.y`. Mirrors C# `Vector2.Dot`. */
+export function dot(a: Vec2Like, b: Vec2Like): number {
+  return a.x * b.x + a.y * b.y;
+}
+
 export function cross(a: Vec2Like, b: Vec2Like): number {
   return a.x * b.y - a.y * b.x;
 }

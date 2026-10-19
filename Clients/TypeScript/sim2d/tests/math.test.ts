@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Aabb2D, Angle, DeterministicRandom, Direction2D, Geometry2D, PiecewiseLinear, Polyline2D, Rotation2D, Scalar, VectorMath2D } from '../src/math/index.ts';
+import { Aabb2D, Angle, DeterministicRandom, Direction2D, Distance2D, Geometry2D, PiecewiseLinear, Polyline2D, Rotation2D, Scalar, VectorMath2D } from '../src/math/index.ts';
 import type { Vec2Like } from '../src/math/vec2.ts';
 import { floats, inlineApproach, inlineClamp, inlineWrap, same, sameVec, units, vectors } from './helpers.ts';
 
@@ -264,5 +264,15 @@ describe('math: Polyline2D.dropCollinear', () => {
   it('keeps a point that turns back on the line', () => {
     const pts: Vec2Like[] = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 1, y: 0 }];
     assert.equal(Polyline2D.dropCollinear(pts, 1e-3).length, 3);
+  });
+});
+
+describe('math: Distance2D.between / squared', () => {
+  it('match the inline forms', () => {
+    for (const a of vectors()) {
+      const b = { x: a.y * 0.5 - 3, y: a.x + 1 };
+      same(Distance2D.squared(a, b), (a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+      same(Distance2D.between(a, b), Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)));
+    }
   });
 });
