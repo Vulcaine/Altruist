@@ -39,6 +39,12 @@ export class NormalFrame2D {
     this.tangent = side === 'left' ? { x: -normal.y, y: normal.x } : { x: normal.y, y: -normal.x };
   }
 
+  /** Frame of a line heading `radians` (counter-clockwise from +x): the tangent is the heading
+   * `(cos, sin)`, the normal its left `(-sin, cos)`. Mirrors C# `NormalFrame2D.OfHeading`. */
+  static ofHeading(radians: number): NormalFrame2D {
+    return new NormalFrame2D({ x: -Math.sin(radians), y: Math.cos(radians) }, 'right');
+  }
+
   /** Frame with the counter-clockwise tangent `(-n.y, n.x)`. Mirrors C# `NormalFrame2D.Left`. */
   static left(normal: Vec2Like): NormalFrame2D {
     return new NormalFrame2D(normal, 'left');

@@ -262,4 +262,40 @@ public class MathLayer2DTests
         Polyline2D.RemoveDuplicates(new List<Vector2>()).Should().BeEmpty();
         Polyline2D.RemoveDuplicates(new List<Vector2> { Vector2.One }).Should().Equal(Vector2.One);
     }
+
+    [Fact]
+    public void NearestIndex_searches_the_window_round_the_last_point()
+    {
+        var line = Enumerable.Range(0, 10).Select(i => new Vector2(i, 0)).ToList();
+        Polyline2D.NearestIndex(line, new Vector2(6.2f, 1), 5, 2, closed: false).Index.Should().Be(6);
+        // Out of the window: the window's nearest end; a negative last searches every point.
+        Polyline2D.NearestIndex(line, new Vector2(9, 0), 2, 2, closed: false).Index.Should().Be(4);
+        Polyline2D.NearestIndex(line, new Vector2(9, 0), -1, 2, closed: false).Index.Should().Be(9);
+    }
+
+    [Fact]
+    public void NearestIndex_wraps_round_a_closed_line()
+    {
+        var loop = Enumerable.Range(0, 10).Select(i => new Vector2(i, 0)).Append(Vector2.Zero).ToList();
+        Polyline2D.NearestIndex(loop, new Vector2(9, 0.1f), 0, 2, closed: true).Index.Should().Be(9);
+    }
+
+    [Fact]
+    public void OfHeading_has_the_heading_as_tangent_and_its_left_as_normal()
+    {
+        foreach (var th in new[] { 0f, 0.7f, MathF.PI / 2, 2.5f, -1.2f })
+        {
+            var f = NormalFrame2D.OfHeading(th);
+            f.Tangent.Should().Be(new Vector2(DeterministicMath.Cos(th), DeterministicMath.Sin(th)));
+            f.Normal.Should().Be(new Vector2(-DeterministicMath.Sin(th), DeterministicMath.Cos(th)));
+        }
+    }
+
+    [Fact]
+    public void DropCollinear_keeps_one_segment_per_straight_run()
+    {
+        var pts = new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(2, 0), new Vector2(3, 0), new Vector2(3, 1), new Vector2(3, 2) };
+        Polyline2D.DropCollinear(pts, 1e-3f).Should().Equal(new Vector2(0, 0), new Vector2(3, 0), new Vector2(3, 2));
+        Polyline2D.DropCollinear(new[] { new Vector2(0, 0), new Vector2(2, 0), new Vector2(1, 0) }, 1e-3f).Should().HaveCount(3);
+    }
 }

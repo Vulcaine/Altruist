@@ -276,3 +276,15 @@ describe('FacingFrame2D and the axis verbs match inline', () => {
     }
   });
 });
+
+describe('NormalFrame2D.ofHeading', () => {
+  it('has the heading as its tangent and its left as the normal', () => {
+    for (const th of [0, 0.7, Math.PI / 2, 2.5, -1.2]) {
+      const f = NormalFrame2D.ofHeading(th);
+      assert.equal(f.tangent.x, Math.cos(th));
+      assert.equal(f.tangent.y, Math.sin(th));
+      assert.equal(f.normal.x, -Math.sin(th));
+      assert.equal(f.normal.y, Math.cos(th));
+    }
+  });
+});
