@@ -1,5 +1,4 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 
 namespace Altruist.Physx.ThreeD;
 
@@ -137,11 +136,10 @@ public sealed class HeightmapLoader : IHeightmapLoader
 }
 
 /// <summary>
-/// Common base for ImageSharp-based heightmap loaders.
-/// Derived types only need to define how to load the Image and how to convert a pixel to a height.
+/// Common base for 16-bit image heightmap loaders.
+/// Reads encoded samples without reducing 16-bit terrain data to 8 bits.
 /// </summary>
-public abstract class AbstractHeightmapLoader<TPixel> : IHeightmapFormatLoader
-    where TPixel : unmanaged, IPixel<TPixel>
+public abstract class AbstractHeightmapLoader : IHeightmapFormatLoader
 {
     /// <summary>
     /// Default cell size along X. Override if your format encodes this elsewhere.
@@ -158,18 +156,11 @@ public abstract class AbstractHeightmapLoader<TPixel> : IHeightmapFormatLoader
     /// </summary>
     protected virtual float DefaultHeightScale => 1.0f;
 
-    /// <summary>
-    /// Implementations load and return an ImageSharp image of the correct pixel type.
-    /// </summary>
-    protected abstract Image<TPixel> LoadImage(Stream stream);
+    /// <summary>JPEG heights retain the existing 8-bit normalization.</summary>
+    protected virtual bool EightBitSamples => false;
 
     /// <summary>
-    /// Implementations convert a pixel into a normalized height value.
-    /// </summary>
-    protected abstract float ConvertPixelToHeight(TPixel pixel);
-
-    /// <summary>
-    /// Decodes the image and converts each pixel with <see cref="ConvertPixelToHeight"/>; image row <c>y</c> maps to Z and
+    /// Decodes the image and converts each pixel to normalized luminance; image row <c>y</c> maps to Z and
     /// column to X. Cell sizes and height scale come from the <c>Default*</c> properties (1 unless overridden), so set
     /// them on a copy of the result if the terrain needs other dimensions.
     /// </summary>
@@ -180,26 +171,30 @@ public abstract class AbstractHeightmapLoader<TPixel> : IHeightmapFormatLoader
         if (stream == null)
             throw new ArgumentNullException(nameof(stream));
 
-        using var image = LoadImage(stream);
+        using var image = new MagickImage(stream);
+        image.ColorSpace = ColorSpace.sRGB;
 
-        int width = image.Width;
-        int height = image.Height;
+        int width = checked((int)image.Width);
+        int height = checked((int)image.Height);
 
         var heights = new float[width, height];
 
-        // ImageSharp v1/v2 API: ProcessPixelRows + accessor.GetRowSpan(y)
-        image.ProcessPixelRows(accessor =>
+        using var pixels = image.GetPixels();
+        for (int z = 0; z < height; z++)
         {
-            for (int z = 0; z < height; z++)
+            for (int x = 0; x < width; x++)
             {
-                var rowSpan = accessor.GetRowSpan(z);
-
-                for (int x = 0; x < width; x++)
-                {
-                    heights[x, z] = ConvertPixelToHeight(rowSpan[x]);
-                }
+                var pixel = pixels.GetPixel(x, z);
+                // Match Rec.709 luminance used by the previous L16/L8 conversion.
+                // Explicit normalization avoids gamma conversion and keeps alpha out of terrain heights.
+                double luminance = (0.2126 * pixel.GetChannel(0)
+                    + 0.7152 * pixel.GetChannel(1)
+                    + 0.0722 * pixel.GetChannel(2)) / ushort.MaxValue;
+                heights[x, z] = EightBitSamples
+                    ? (float)(Math.Round(luminance * byte.MaxValue) / byte.MaxValue)
+                    : (float)(Math.Round(luminance * ushort.MaxValue) / ushort.MaxValue);
             }
-        });
+        }
 
         return new HeightfieldData
         {
@@ -412,47 +407,19 @@ public sealed class RawHeightmapLoader : IRawHeightmapLoader
 /// Cell sizes and HeightScale are set to 1 by default; adjust externally if needed.
 /// </summary>
 [Service(typeof(IPngHeightmapLoader))]
-public sealed class PngHeightmapLoader : AbstractHeightmapLoader<L16>, IPngHeightmapLoader
+public sealed class PngHeightmapLoader : AbstractHeightmapLoader, IPngHeightmapLoader
 {
-    /// <inheritdoc/>
-    protected override Image<L16> LoadImage(Stream stream)
-        => Image.Load<L16>(stream);
-
-    /// <inheritdoc/>
-    protected override float ConvertPixelToHeight(L16 pixel)
-        => pixel.PackedValue / 65535f;
 }
 
-/// <summary>
-/// TIFF / EXR loader.
-/// Currently implemented for TIFF via ImageSharp and assumes single-channel 16-bit grayscale (L16),
-/// normalized to [0, 1]. If you need EXR, you can add a different implementation and wire it similarly.
-/// </summary>
+/// <summary>TIFF heightmaps retain 16-bit sample precision, normalized to [0, 1].</summary>
 [Service(typeof(ITiffHeightmapLoader))]
-public sealed class TiffHeightmapLoader : AbstractHeightmapLoader<L16>, ITiffHeightmapLoader
+public sealed class TiffHeightmapLoader : AbstractHeightmapLoader, ITiffHeightmapLoader
 {
-    /// <inheritdoc/>
-    protected override Image<L16> LoadImage(Stream stream)
-        => Image.Load<L16>(stream);
-
-    /// <inheritdoc/>
-    protected override float ConvertPixelToHeight(L16 pixel)
-        => pixel.PackedValue / 65535f;
 }
 
-/// <summary>
-/// JPEG loader (lossy).
-/// Assumes an 8-bit grayscale heightmap (L8) or that the luminance channel encodes height.
-/// Byte values 0..255 are normalized to [0, 1].
-/// </summary>
+/// <summary>JPEG luminance heights use 8-bit samples normalized to [0, 1].</summary>
 [Service(typeof(IJpegHeightmapLoader))]
-public sealed class JpegHeightmapLoader : AbstractHeightmapLoader<L8>, IJpegHeightmapLoader
+public sealed class JpegHeightmapLoader : AbstractHeightmapLoader, IJpegHeightmapLoader
 {
-    /// <inheritdoc/>
-    protected override Image<L8> LoadImage(Stream stream)
-        => Image.Load<L8>(stream);
-
-    /// <inheritdoc/>
-    protected override float ConvertPixelToHeight(L8 pixel)
-        => pixel.PackedValue / 255f;
+    protected override bool EightBitSamples => true;
 }
