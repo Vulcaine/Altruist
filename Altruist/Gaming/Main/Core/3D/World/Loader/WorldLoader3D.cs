@@ -88,6 +88,7 @@ namespace Altruist.Gaming.ThreeD
     /// (Unity convention); box sizes are full sizes. Not thread-safe: <see cref="SpawnedWorldObjects"/> is shared across loads.
     /// </remarks>
     [Service(typeof(IWorldLoader3D))]
+    [ConditionalOnConfig("altruist:environment:mode", havingValue: "3D")]
     [ConditionalOnConfig("altruist:game")]
     public sealed class WorldLoader3D : IWorldLoader3D
     {
