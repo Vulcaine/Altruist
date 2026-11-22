@@ -27,8 +27,8 @@ namespace Altruist
     /// </summary>
     /// <remarks>
     /// <para>Config keys: <c>altruist:server:http:host</c> and <c>altruist:server:http:port</c> (both required to host
-    /// anything; a non-numeric port falls back to 8080), <c>altruist:server:http:path</c> (path base, default <c>/</c>),
-    /// <c>altruist:server:transport:websocket:path</c> (default <c>/ws</c>).</para>
+    /// anything; a non-numeric port falls back to 8080), <c>altruist:server:http:path</c> (path base, default <c>/</c>). WebSocket portals are served at their
+    /// <see cref="PortalAttribute"/> path.</para>
     /// <para>Singleton registrations are copied into the web host as the already-built instances of the bootstrap provider,
     /// so state initialized by <see cref="PostConstructAttribute"/> hooks is shared; controllers and portals gated by
     /// <see cref="ConditionalOnConfigAttribute"/> (or <see cref="ConditionalOnAssemblyAttribute"/>) get no route. Controllers
@@ -49,10 +49,6 @@ namespace Altruist
         private readonly string? _httpPort;
         private readonly string _httpContextPath;
 
-        // Packet transport (optional)
-        // Removed: _packetTransport — replaced by _transports collection
-        private readonly string _wsContextPath;
-
         // Dependencies we need at runtime
         private readonly ILoggerFactory _loggerFactory;
         private readonly IAltruistContext _settings;
@@ -64,7 +60,6 @@ namespace Altruist
         /// <param name="httpHost"><c>altruist:server:http:host</c>.</param>
         /// <param name="httpPort"><c>altruist:server:http:port</c>.</param>
         /// <param name="httpPath"><c>altruist:server:http:path</c>.</param>
-        /// <param name="wsPath"><c>altruist:server:transport:websocket:path</c>.</param>
         /// <param name="loggerFactory">Logger factory.</param>
         /// <param name="settings">Server context that receives the final <see cref="ServerInfo"/>.</param>
         /// <param name="appStatus">Server readiness status, printed at startup.</param>
@@ -75,8 +70,6 @@ namespace Altruist
             [AppConfigValue("altruist:server:http:host", null)] string? httpHost,
             [AppConfigValue("altruist:server:http:port", null)] string? httpPort,
             [AppConfigValue("altruist:server:http:path", "/")] string httpPath,
-
-            [AppConfigValue("altruist:server:transport:websocket:path", "/ws")] string wsPath,
 
             ILoggerFactory loggerFactory,
             IAltruistContext settings,
@@ -89,8 +82,6 @@ namespace Altruist
             _httpHost = NormalizeEmpty(httpHost);
             _httpPort = NormalizeEmpty(httpPort);
             _httpContextPath = NormalizePath(httpPath, defaultIfEmpty: "/");
-
-            _wsContextPath = NormalizePath(wsPath, defaultIfEmpty: "/ws");
 
             _loggerFactory = loggerFactory;
             _settings = settings;

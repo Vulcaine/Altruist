@@ -7,7 +7,7 @@ public class CatalogQueriesTests
     private static readonly CapabilityCatalog Catalog = new("1.0.0",
     [
         Capability("transports", "Transports and connections", "Accepts TCP and WebSocket clients.",
-            config: ["altruist:server:transport:websocket:path", "altruist:server:transport:websocket:enabled"],
+            config: ["altruist:server:transport:websocket:codec:provider", "altruist:server:transport:websocket:enabled"],
             types: ["Altruist.Web.WebSocketTransport"]),
         Capability("http-api", "HTTP API", "Host, port and path of the HTTP app.", config: ["altruist:server:http:port"]),
         Capability("dotnet-client", ".NET Client", "Talks to a server from .NET.", types: ["Altruist.Client.AltruistWebSocketClient"]),

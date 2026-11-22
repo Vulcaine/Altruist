@@ -133,7 +133,7 @@ public sealed class StartupConfigurationRegressionTests : IAsyncLifetime
 
         var bootstrap = _bootstrap = root.BuildServiceProvider();
         var startup = new AltruistStartupConfiguration(
-            new ApplicationArgs(), "127.0.0.1", "0", "/", "/ws",
+            new ApplicationArgs(), "127.0.0.1", "0", "/",
             NullLoggerFactory.Instance, context.Object, status.Object, new ITransport[] { _transport });
 
         _app = (await startup.BuildAndStartAsync(root, bootstrap))!;

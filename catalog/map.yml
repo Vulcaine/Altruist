@@ -587,7 +587,6 @@ capabilities:
             max-connections: 2000
             websocket:
               enabled: true
-              path: /ws
             tcp:
               enabled: true
               port: 13000
@@ -732,7 +731,6 @@ capabilities:
               provider: messagepack     # global default
             websocket:
               enabled: true
-              path: /ws
               codec:
                 provider: json          # browsers get JSON
       ```

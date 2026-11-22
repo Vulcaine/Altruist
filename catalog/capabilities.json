@@ -1184,7 +1184,7 @@
         "config": [
           "altruist:server:transport"
         ],
-        "example": "```yaml\n# config.yml: run WebSocket for browsers and TCP + UDP for desktop clients\naltruist:\n  server:\n    transport:\n      max-connections: 2000\n      websocket:\n        enabled: true\n        path: /ws\n      tcp:\n        enabled: true\n        port: 13000\n      udp:\n        enabled: true\n        port: 13001\n```\n\n```csharp\n// Program.cs: nothing else is needed, the enabled transports start with the app\nusing Altruist;\nawait AltruistApplication.Run(args);\n```"
+        "example": "```yaml\n# config.yml: run WebSocket for browsers and TCP + UDP for desktop clients\naltruist:\n  server:\n    transport:\n      max-connections: 2000\n      websocket:\n        enabled: true\n      tcp:\n        enabled: true\n        port: 13000\n      udp:\n        enabled: true\n        port: 13001\n```\n\n```csharp\n// Program.cs: nothing else is needed, the enabled transports start with the app\nusing Altruist;\nawait AltruistApplication.Run(args);\n```"
       },
       "keyTypes": [
         {
@@ -1501,17 +1501,6 @@
           "gates": [
             "altruist:server:transport:websocket:enabled = true"
           ]
-        },
-        {
-          "key": "altruist:server:transport:websocket:path",
-          "type": "string",
-          "default": "/ws",
-          "description": "`altruist:server:transport:websocket:path`.",
-          "origin": "value",
-          "live": false,
-          "readBy": "Altruist.AltruistStartupConfiguration",
-          "file": "Altruist/Core/Framework/Config/AltruistStartupConfiguration.cs",
-          "gates": []
         }
       ],
       "attributes": []
@@ -1772,7 +1761,7 @@
         "config": [
           "altruist:server:transport:codec"
         ],
-        "example": "```csharp\nusing MessagePack;\nusing System.Text.Json.Serialization;\n\n// Annotated for both codecs, so it works with JSON and MessagePack\n[MessagePackObject]\npublic struct ChatPacket : IPacketBase\n{\n    [Key(0)][JsonPropertyName(\"messageCode\")] public uint MessageCode { get; set; }\n    [Key(1)][JsonPropertyName(\"text\")] public string Text { get; set; }\n\n    public ChatPacket(string text) { MessageCode = 1000; Text = text; }\n}\n```\n\n```yaml\naltruist:\n  server:\n    transport:\n      codec:\n        provider: messagepack     # global default\n      websocket:\n        enabled: true\n        path: /ws\n        codec:\n          provider: json          # browsers get JSON\n```"
+        "example": "```csharp\nusing MessagePack;\nusing System.Text.Json.Serialization;\n\n// Annotated for both codecs, so it works with JSON and MessagePack\n[MessagePackObject]\npublic struct ChatPacket : IPacketBase\n{\n    [Key(0)][JsonPropertyName(\"messageCode\")] public uint MessageCode { get; set; }\n    [Key(1)][JsonPropertyName(\"text\")] public string Text { get; set; }\n\n    public ChatPacket(string text) { MessageCode = 1000; Text = text; }\n}\n```\n\n```yaml\naltruist:\n  server:\n    transport:\n      codec:\n        provider: messagepack     # global default\n      websocket:\n        enabled: true\n        codec:\n          provider: json          # browsers get JSON\n```"
       },
       "keyTypes": [
         {

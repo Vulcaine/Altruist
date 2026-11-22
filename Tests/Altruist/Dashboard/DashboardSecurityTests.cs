@@ -304,7 +304,7 @@ public sealed class DashboardHostTests
 
         var bootstrap = root.BuildServiceProvider();
         var startup = new AltruistStartupConfiguration(
-            new ApplicationArgs(), "127.0.0.1", "0", "/", "/ws",
+            new ApplicationArgs(), "127.0.0.1", "0", "/",
             NullLoggerFactory.Instance, context.Object, status.Object, Array.Empty<ITransport>());
         var app = (await startup.BuildAndStartAsync(root, bootstrap))!;
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();

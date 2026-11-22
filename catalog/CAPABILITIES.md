@@ -700,7 +700,6 @@ altruist:
       max-connections: 2000
       websocket:
         enabled: true
-        path: /ws
       tcp:
         enabled: true
         port: 13000
@@ -741,7 +740,6 @@ await AltruistApplication.Run(args);
 | `altruist:server:transport:udp:host` |  |  | Read in `Altruist/Testing/Clients/TestUdpClient.cs:45`. |
 | `altruist:server:transport:udp:port` | `int` | `13001` | Listen port (`udp:port`, default 13001). Read only when altruist:server:transport:udp:enabled = true. |
 | `altruist:server:transport:websocket:enabled` |  |  | Set to `true` to turn Altruist.Web.WebSocketTransportToken on. Read only when altruist:server:transport:websocket:enabled = true. |
-| `altruist:server:transport:websocket:path` | `string` | `/ws` | `altruist:server:transport:websocket:path`. |
 
 **Services**
 
@@ -882,7 +880,6 @@ altruist:
         provider: messagepack     # global default
       websocket:
         enabled: true
-        path: /ws
         codec:
           provider: json          # browsers get JSON
 ```

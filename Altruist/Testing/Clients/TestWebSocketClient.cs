@@ -19,18 +19,17 @@ namespace Altruist.Testing;
 /// <code>
 /// public ChatTest(TestWebSocketClient ws) { _ws = ws; }
 ///
-/// await _ws.ConnectAsync();
+/// await _ws.ConnectAsync("/"); // the [Portal("/")] path
 /// await _ws.SendAsync("chat", new CChat { Message = "hi" });
 /// var msg = await _ws.ReceiveAsync(TimeSpan.FromSeconds(1));
 /// </code>
 ///
-/// <para>WebSockets multiplex over the HTTP listener, so endpoint resolution
-/// reuses HTTP host/port plus the configured ws path
-/// (<c>altruist:server:transport:websocket:path</c>, default <c>/ws</c>).</para>
+/// <para>WebSockets multiplex over the HTTP listener, so the client connects to the HTTP host and port, at the
+/// path of the portal under test (portal paths match exactly).</para>
 /// </summary>
 public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
 {
-    private readonly Uri _url;
+    private readonly string _origin;
     private readonly ClientWebSocket _ws = new();
     private readonly WebSocketMessageType _messageType;
 
@@ -39,24 +38,29 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
     /// <summary>The socket is open.</summary>
     public bool IsConnected => _ws.State == WebSocketState.Open;
 
-    /// <summary>An unconnected plain (no TLS) WebSocket client for <c>{http host}:{http port}{websocket path}</c>.</summary>
+    /// <summary>An unconnected plain (no TLS) WebSocket client for <c>{http host}:{http port}</c>.</summary>
     /// <param name="cfg">The test configuration.</param>
     public TestWebSocketClient(IConfiguration cfg)
     {
         var host = TestHttpClient.NormalizeHost(cfg["altruist:server:http:host"] ?? "localhost");
         var port = cfg["altruist:server:http:port"] ?? "8080";
-        var path = cfg["altruist:server:transport:websocket:path"] ?? "/ws";
-        if (!path.StartsWith("/")) path = "/" + path;
-        _url = new Uri($"ws://{host}:{port}{path}"); // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- the local test server
+        _origin = $"ws://{host}:{port}"; // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- the local test server
 
         Codec = TestCodecResolver.Resolve(cfg, "websocket");
         // JSON over WS is text-frame, MessagePack is binary-frame.
         _messageType = Codec.Provider == "json" ? WebSocketMessageType.Text : WebSocketMessageType.Binary;
     }
 
-    /// <summary>Opens the WebSocket.</summary>
+    /// <summary>Opens the WebSocket to a portal.</summary>
+    /// <param name="portalPath">The portal's <see cref="PortalAttribute"/> path, such as <c>/</c> or <c>/game</c>.</param>
     /// <param name="ct">Cancels the handshake.</param>
-    public Task ConnectAsync(CancellationToken ct = default) => _ws.ConnectAsync(_url, ct);
+    /// <exception cref="ArgumentException"><paramref name="portalPath"/> does not start with <c>/</c>.</exception>
+    public Task ConnectAsync(string portalPath, CancellationToken ct = default)
+    {
+        if (!portalPath.StartsWith('/'))
+            throw new ArgumentException($"A portal path starts with '/': \"{portalPath}\".", nameof(portalPath));
+        return _ws.ConnectAsync(new Uri(_origin + portalPath), ct);
+    }
 
     /// <summary>Send a single Altruist envelope: <c>{ event, payload }</c> encoded
     /// via the configured codec. The server's portal router uses the event field
