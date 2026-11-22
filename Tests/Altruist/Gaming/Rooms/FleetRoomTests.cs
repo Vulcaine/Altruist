@@ -146,11 +146,26 @@ public sealed class Cluster
         throw new TimeoutException("the cluster did not settle");
     }
 
+    /// <summary>
+    /// Waits for the servers' running I/O, so it completes within a frame: otherwise frames race the
+    /// thread pool and a slow machine sees a handover land seconds later in game time.
+    /// </summary>
+    private async Task AwaitRunning()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (Servers.Any(s => s.Host.RunningAsync > 0))
+        {
+            if (DateTime.UtcNow >= deadline) throw new TimeoutException("fleet I/O did not complete");
+            await Task.Delay(1);
+        }
+    }
+
     public async Task Run(double seconds)
     {
         var frames = (int)Math.Round(seconds * 60);
         for (var i = 0; i < frames; i++)
         {
+            await AwaitRunning();
             Frame();
             if (i % 30 == 29) await Beat();
         }

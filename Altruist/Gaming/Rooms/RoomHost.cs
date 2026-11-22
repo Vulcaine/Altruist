@@ -245,7 +245,10 @@ public class RoomHost<TSim, TInput, TPlayer> : IWorldStepper, ICapacityContribut
     }
 
     /// <summary>Async work started with <see cref="RunAsync"/> that has not posted back yet, plus posted actions not run yet.</summary>
-    public int PendingAsync => Volatile.Read(ref _pendingAsync) + _posted.Count;
+    public int PendingAsync => RunningAsync + _posted.Count;
+
+    /// <summary>Async work started with <see cref="RunAsync"/> that is still running (its result not posted yet).</summary>
+    public int RunningAsync => Volatile.Read(ref _pendingAsync);
 
     private void RunPosted()
     {
