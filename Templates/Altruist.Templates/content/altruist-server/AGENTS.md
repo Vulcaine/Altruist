@@ -28,7 +28,11 @@ Its tools are `altruist_search` (by a word, type or config key), `altruist_capab
 
 The same MCP server reads the running server through its dashboard API: `altruist_runtime` (config, connections,
 rooms, engine, worlds, vaults, cache, routes, latency), `altruist_runtime_world` (a world's objects),
-`altruist_runtime_vault` (stored rows) and `altruist_runtime_traffic` (recent packets and requests). They only read.
+`altruist_runtime_vault` (stored rows) and `altruist_runtime_traffic` (recent packets and requests). Others change
+it: `altruist_runtime_drain`, `altruist_runtime_disconnect`, `altruist_runtime_close_room`, `altruist_runtime_set_config`
+(live-editable keys, in memory until restart) and `altruist_runtime_save_cache_entry` / `altruist_runtime_remove_cache_entry`.
+Each change is shown to the user for approval first and nothing changes without it; a client that cannot ask
+(no MCP elicitation) gets no changes.
 Turn the dashboard on for development: add its package, and enable it in a `config.Development.yml` next to
 `config.yml`:
 

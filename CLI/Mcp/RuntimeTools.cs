@@ -30,6 +30,7 @@ public sealed class RuntimeTools(DashboardClient dashboard)
         ["worlds"] = "dashboard/v1/worlds",
         ["vaults"] = "dashboard/v1/vaults",
         ["cache"] = "dashboard/v1/cache/info",
+        ["cache-entries"] = "dashboard/v1/cache/entries/stream",
         ["autosave"] = "dashboard/v1/autosave",
         ["performance"] = "dashboard/v1/performance",
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
@@ -39,9 +40,9 @@ public sealed class RuntimeTools(DashboardClient dashboard)
         + "server: this node's capacity and drain state and the fleet. architecture: how the servers, databases and caches connect. api: the HTTP routes. "
         + "sessions: rooms with their connections. connections: every connection. rooms: room hosts and their rooms. engine: tick rate and timing. "
         + "gameplay: AI agents and gameplay systems. worlds: the worlds (use altruist_runtime_world for their objects). vaults: the persisted types "
-        + "(use altruist_runtime_vault for rows). cache: the cache provider. autosave: autosave services. performance: latency statistics.")]
+        + "(use altruist_runtime_vault for rows). cache: the cache provider. cache-entries: the cached entries, one JSON object per line. autosave: autosave services. performance: latency statistics.")]
     public Task<CallToolResult> ReadView(
-        [Description("summary, server, architecture, api, sessions, connections, rooms, engine, gameplay, worlds, vaults, cache, autosave or performance.")] string view,
+        [Description("summary, server, architecture, api, sessions, connections, rooms, engine, gameplay, worlds, vaults, cache, cache-entries, autosave or performance.")] string view,
         CancellationToken ct) =>
         Views.TryGetValue(view, out var path)
             ? Read(path, ct)

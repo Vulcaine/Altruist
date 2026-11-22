@@ -118,7 +118,8 @@ public static partial class Program
         Console.WriteLine("  create <name>    Create a new Altruist project");
         Console.WriteLine("  run              Run the current Altruist project");
         Console.WriteLine("  mcp              MCP server for coding agents (stdio): the capability catalog, and the running");
-        Console.WriteLine("                   server through its dashboard (ALTRUIST_DASHBOARD_URL, ALTRUIST_DASHBOARD_TOKEN)");
+        Console.WriteLine("                   server through its dashboard (ALTRUIST_DASHBOARD_URL, ALTRUIST_DASHBOARD_TOKEN);");
+        Console.WriteLine("                   every change to the running server asks you to approve it first");
         Console.WriteLine("  --version, -v    Show version");
         Console.WriteLine("  --help, -h       Show this help");
         Console.WriteLine();

@@ -23,9 +23,17 @@ public enum DashboardFailure
     RouteNotMapped,
     /// <summary>The route exists, the item asked for does not.</summary>
     NotFound,
+    /// <summary>The server refused the request as invalid (400), such as a config key that is not live-editable.</summary>
+    Rejected,
     /// <summary>Any other non-success answer.</summary>
     ServerError,
 }
+
+/// <summary>One request to the dashboard API.</summary>
+/// <param name="Method">The HTTP method.</param>
+/// <param name="RelativePath">The path, such as <c>dashboard/v1/server/drain</c>, with its query.</param>
+/// <param name="JsonBody">The JSON body, for a request that has one.</param>
+public sealed record DashboardRequest(HttpMethod Method, string RelativePath, string? JsonBody = null);
 
 /// <summary>The outcome of one dashboard request.</summary>
 public abstract record DashboardReply

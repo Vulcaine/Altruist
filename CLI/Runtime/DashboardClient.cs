@@ -10,14 +10,20 @@ public sealed class DashboardClient(HttpClient http, DashboardEndpoint endpoint)
     private const string TokenHeader = "X-Altruist-Dashboard-Token";
 
     /// <summary>GETs a dashboard path such as <c>dashboard/v1/server</c> (relative, so the server's path base applies).</summary>
-    public async Task<DashboardReply> GetAsync(string relativePath, CancellationToken ct)
+    public Task<DashboardReply> GetAsync(string relativePath, CancellationToken ct) =>
+        SendAsync(new DashboardRequest(HttpMethod.Get, relativePath), ct);
+
+    /// <summary>Sends a request to a dashboard path (relative, so the server's path base applies).</summary>
+    public async Task<DashboardReply> SendAsync(DashboardRequest dashboardRequest, CancellationToken ct)
     {
         if (endpoint.BaseUrl is null)
             return new DashboardReply.Failed(DashboardFailure.InvalidUrl,
                 $"{DashboardEndpoint.UrlVariable} is \"{endpoint.ConfiguredUrl}\", which is not an http(s) URL. Set it to the server's address, for example {DashboardEndpoint.DefaultUrl}.");
 
-        var url = new Uri(endpoint.BaseUrl, relativePath);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        var url = new Uri(endpoint.BaseUrl, dashboardRequest.RelativePath);
+        using var request = new HttpRequestMessage(dashboardRequest.Method, url);
+        if (dashboardRequest.JsonBody is { } json)
+            request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
         if (endpoint.Token is { } token)
             request.Headers.Add(TokenHeader, token);
 
@@ -55,6 +61,7 @@ public sealed class DashboardClient(HttpClient http, DashboardEndpoint endpoint)
             (null, HttpStatusCode.NotFound) when string.IsNullOrWhiteSpace(body) => new(DashboardFailure.RouteNotMapped,
                 $"The server maps no {url.AbsolutePath}. Its package is not referenced: the world, engine, gameplay, rooms and autosave views come with the gaming packages."),
             (_, HttpStatusCode.NotFound) => new(DashboardFailure.NotFound, $"Not found: {body}"),
+            (_, HttpStatusCode.BadRequest) => new(DashboardFailure.Rejected, $"The server refused the request: {body}"),
             _ => new(DashboardFailure.ServerError, $"{url} answered {(int)status} {status}: {body}"),
         };
 

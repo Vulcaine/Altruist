@@ -18,7 +18,8 @@ public static class McpServerCommand
         + "keys instead of writing your own handler, repository or auth. To start a new server project, run "
         + "`altruist create <Name>`. While the server runs with altruist:dashboard:enabled: true, altruist_runtime and the "
         + "other altruist_runtime_* tools read its config, connections, rooms, worlds, stored data and traffic; use them to "
-        + "check what the code you wrote does instead of guessing.";
+        + "check what the code you wrote does instead of guessing. The tools that change the running server (drain, disconnect, "
+        + "close a room, set config, save or remove a cache entry) ask the user to approve each change first.";
 
     // A dashboard view is built from in-memory state; one that takes longer is a server in trouble.
     private static readonly TimeSpan DashboardTimeout = TimeSpan.FromSeconds(10);
@@ -35,6 +36,7 @@ public static class McpServerCommand
         builder.Services.AddSingleton(DashboardEndpoint.FromEnvironment(Environment.GetEnvironmentVariable));
         builder.Services.AddSingleton(new HttpClient { Timeout = DashboardTimeout });
         builder.Services.AddSingleton<DashboardClient>();
+        builder.Services.AddSingleton<RuntimeChanges>();
         builder.Services
             .AddMcpServer(options =>
             {
@@ -43,7 +45,8 @@ public static class McpServerCommand
             })
             .WithStdioServerTransport()
             .WithTools<KnowledgeTools>()
-            .WithTools<RuntimeTools>();
+            .WithTools<RuntimeTools>()
+            .WithTools<RuntimeChangeTools>();
 
         await builder.Build().RunAsync();
         return 0;
