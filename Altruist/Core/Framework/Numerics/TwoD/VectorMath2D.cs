@@ -131,6 +131,6 @@ public static class VectorMath2D
     }
 
     /// <summary>Linear interpolation <c>a + (b - a) * t</c> (unclamped). Not
-    /// <see cref="Vector2.Lerp"/>, whose formula differs between .NET versions.</summary>
+    /// <see cref="Vector2.Lerp(Vector2, Vector2, float)"/>, whose formula differs between .NET versions.</summary>
     public static Vector2 Lerp(Vector2 a, Vector2 b, float t) => a + (b - a) * t;
 }

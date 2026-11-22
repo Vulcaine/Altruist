@@ -13,7 +13,7 @@ namespace Altruist.Gaming.ThreeD;
 /// singleton when config <c>altruist:game:physics:enabled</c> is <c>true</c>; otherwise <see cref="HeightmapSpatialQueryProvider"/> is used.
 /// </summary>
 /// <remarks>
-/// Thin adapter over <see cref="IPhysxWorldEngine3D.RayCast"/>/<see cref="IPhysxWorldEngine3D.CapsuleCast"/>: layer masks are
+/// Thin adapter over <see cref="IPhysxWorldEngine3D.RayCast"/>/<see cref="IPhysxWorldEngine3D.CapsuleCast(Vector3, float, float, Vector3, float, int, uint)"/>: layer masks are
 /// honoured, hits are nearest first and <see cref="SpatialHit.HitObject"/> is the hit <see cref="IPhysxBody3D"/>. Returns no
 /// hits while world 0 or its physics world does not exist. Query the engine directly for other worlds.
 /// </remarks>

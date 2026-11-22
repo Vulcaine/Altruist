@@ -14,7 +14,7 @@ namespace Altruist.Dashboard
     /// the one matching <c>altruist:environment:mode</c> is registered.
     /// </summary>
     /// <remarks>
-    /// <see cref="Snapshot"/> and <see cref="Partitions"/> read the world from a request thread, as the world API allows
+    /// <see cref="Objects"/>, <see cref="Object"/> and <see cref="Partitions"/> read the world from a request thread, as the world API allows
     /// for reads; <see cref="LiveObjects"/> is called by <see cref="DashboardWorldFeed"/> on the engine thread.
     /// </remarks>
     public interface IDashboardWorldSource

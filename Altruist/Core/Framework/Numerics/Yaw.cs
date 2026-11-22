@@ -9,7 +9,7 @@ namespace Altruist.ThreeD.Numerics;
 
 /// <summary>"Which way is this entity facing?" — yaw in radians, single
 /// canonical convention (<c>Atan2(worldForwardX, worldForwardZ)</c>) that
-/// matches <see cref="Altruist.Gaming.IHasFacingYaw"/>.</summary>
+/// matches <c>Altruist.Gaming.IHasFacingYaw</c>.</summary>
 public static class Yaw3D
 {
     /// <summary>Extract yaw from a body's <see cref="Quaternion"/>.</summary>

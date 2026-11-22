@@ -198,6 +198,8 @@ public sealed class ServerNode : IServerNode, IServerNodeInspection, IDisposable
         foreach (var c in AllContributors())
         {
             if (!seen.Add(c)) continue;
+            // Implementations outside the framework may break the non-null contract; group those under "".
+            var kind = c.Kind ?? "";
             CapacitySample s;
             try
             {
@@ -206,12 +208,11 @@ public sealed class ServerNode : IServerNode, IServerNodeInspection, IDisposable
             catch (Exception ex)
             {
                 // A broken contributor must not take the report (or readiness) down with it.
-                LogFault(ex, "capacity contributor {Kind} threw; counted as empty", c.Kind);
+                LogFault(ex, "capacity contributor {Kind} threw; counted as empty", kind);
                 s = CapacitySample.Empty;
             }
             var load = double.IsFinite(s.Load) && s.Load > 0 ? s.Load : 0;
             var units = Math.Max(0, s.Units);
-            var kind = c.Kind ?? "";
             byKind[kind] = byKind.TryGetValue(kind, out var prev) ? (prev.Units + units, prev.Load + load) : (units, load);
             total += load;
         }

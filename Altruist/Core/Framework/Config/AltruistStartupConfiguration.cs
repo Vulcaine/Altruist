@@ -128,13 +128,13 @@ namespace Altruist
         }
 
         /// <summary>
-        /// Same setup as <see cref="StartAsync"/> but returns the live <see cref="WebApplication"/>
+        /// Same setup as <see cref="StartAsync(IServiceCollection, CancellationToken)"/> but returns the live <see cref="WebApplication"/>
         /// after listeners are bound, instead of blocking on shutdown. Callers (notably the
         /// test framework) can let it run in the background and shut it down explicitly via
         /// the returned <c>WebApplication</c>'s <c>StopAsync</c>/<c>DisposeAsync</c>.
         ///
         /// <para>Returns <c>null</c> if HTTP host/port is unconfigured (matches
-        /// <see cref="StartAsync"/>'s no-op semantic).</para>
+        /// <see cref="StartAsync(IServiceCollection, CancellationToken)"/>'s no-op semantic).</para>
         /// </summary>
         /// <param name="rootServices">The bootstrap service collection.</param>
         /// <param name="cancellationToken">Cancels startup.</param>
@@ -441,7 +441,7 @@ namespace Altruist
             }
 
             // Bind listeners (non-blocking). Caller decides whether to await shutdown
-            // — production calls <see cref="StartAsync"/> which then awaits
+            // — production calls <see cref="StartAsync(IServiceCollection, CancellationToken)"/> which then awaits
             // <c>WaitForShutdownAsync</c>; tests keep the handle and stop explicitly.
             var connectionString = $"http://{_httpHost}:{portNum}";
             app.Urls.Add(connectionString);

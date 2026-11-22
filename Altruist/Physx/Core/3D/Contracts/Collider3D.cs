@@ -93,7 +93,7 @@ namespace Altruist.Physx.ThreeD
         event Action<PhysxCollisionInfo3D>? OnCollisionExit;
     }
 
-    /// <summary>One hit returned by <see cref="IPhysxWorldEngine3D.RayCast"/> or <see cref="IPhysxWorldEngine3D.CapsuleCast"/>.</summary>
+    /// <summary>One hit returned by <see cref="IPhysxWorldEngine3D.RayCast"/> or <see cref="IPhysxWorldEngine3D.CapsuleCast(Vector3, float, float, Vector3, float, int, uint)"/>.</summary>
     public readonly struct PhysxRaycastHit3D
     {
         /// <summary>Body that was hit.</summary>

@@ -12,7 +12,7 @@ namespace Altruist
     /// <remarks>
     /// Use this for servers. For a process that only needs the DI container (tools, workers, no networking) use
     /// <see cref="AltruistDI.Run"/> instead. Configuration comes from <c>config.yml</c>, <c>config.{env}.yml</c>, environment
-    /// variables and <paramref name="args"/> (see <see cref="AppConfigLoader"/>). HTTP is only hosted when
+    /// variables and the command-line arguments passed to <see cref="Run"/> (see <see cref="AppConfigLoader"/>). HTTP is only hosted when
     /// <c>altruist:server:http:host</c> and <c>altruist:server:http:port</c> are set; otherwise <see cref="Run"/> returns after
     /// startup completes.
     /// </remarks>

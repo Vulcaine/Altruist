@@ -51,7 +51,7 @@ public class MessagePackMessageDecoder : IDecoder
        ).WithSecurity(MessagePackSecurity.UntrustedData);
 
     /// <inheritdoc/>
-    /// <exception cref="MessagePackSerializationException">The payload is malformed, truncated or nested too deeply.</exception>
+    /// <exception cref="T:MessagePack.MessagePackSerializationException">The payload is malformed, truncated or nested too deeply.</exception>
     public TPacket Decode<TPacket>(byte[] message)
     {
         MessagePackStructureGuard.Validate(message);
@@ -59,7 +59,7 @@ public class MessagePackMessageDecoder : IDecoder
     }
 
     /// <inheritdoc/>
-    /// <exception cref="MessagePackSerializationException">The payload is malformed, truncated or nested too deeply.</exception>
+    /// <exception cref="T:MessagePack.MessagePackSerializationException">The payload is malformed, truncated or nested too deeply.</exception>
     public TPacket Decode<TPacket>(byte[] message, Type type)
     {
         MessagePackStructureGuard.Validate(message);
@@ -67,7 +67,7 @@ public class MessagePackMessageDecoder : IDecoder
     }
 
     /// <inheritdoc/>
-    /// <exception cref="MessagePackSerializationException">The payload is malformed, truncated or nested too deeply.</exception>
+    /// <exception cref="T:MessagePack.MessagePackSerializationException">The payload is malformed, truncated or nested too deeply.</exception>
     public object Decode(byte[] message, Type type)
     {
         MessagePackStructureGuard.Validate(message);
@@ -78,7 +78,7 @@ public class MessagePackMessageDecoder : IDecoder
 /// <summary>
 /// Iterative (non-recursive) structural check of one MessagePack value: nesting depth is capped
 /// and every declared array/map length must fit in the remaining bytes. Throws
-/// <see cref="MessagePackSerializationException"/> for hostile or truncated input.
+/// <see cref="T:MessagePack.MessagePackSerializationException"/> for hostile or truncated input.
 /// </summary>
 public static class MessagePackStructureGuard
 {
@@ -91,7 +91,7 @@ public static class MessagePackStructureGuard
     /// </summary>
     /// <param name="data">The encoded value.</param>
     /// <param name="maxDepth">Maximum array/map nesting depth (stack-allocated bookkeeping, keep it small).</param>
-    /// <exception cref="MessagePackSerializationException">Nesting exceeds <paramref name="maxDepth"/>, a declared length exceeds the payload, or the payload is truncated.</exception>
+    /// <exception cref="T:MessagePack.MessagePackSerializationException">Nesting exceeds <paramref name="maxDepth"/>, a declared length exceeds the payload, or the payload is truncated.</exception>
     public static void Validate(ReadOnlyMemory<byte> data, int maxDepth = MaxDepth)
     {
         if (data.IsEmpty)

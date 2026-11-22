@@ -178,7 +178,7 @@ public abstract class PostgresConfigurationBase
     /// reset endpoint and test schema isolation), once.
     /// </summary>
     /// <remarks>
-    /// Built from the default provider's connection string (<see cref="PgSqlDbProvider.GetConnectionString"/>), so it
+    /// Built from the default provider's connection string (<see cref="GeneralSqlDatabaseProvider.GetConnectionString"/>), so it
     /// targets the same database with the same settings as the vaults: <c>altruist:persistence:database</c>
     /// <c>host</c>, <c>port</c>, <c>username</c>, <c>password</c>, <c>database</c>, <c>pooling</c>,
     /// <c>max-pool-size</c>, <c>ssl-mode</c> and the UTC session time zone. A transaction opened on it and the vault
