@@ -30,6 +30,7 @@
   <!-- Exclude nested DI.Tests project (has its own .csproj) -->
   <ItemGroup>
     <Compile Remove="DI.Tests/**" />
+    <Compile Remove="CLI.Tests/**" />
   </ItemGroup>
 
   <!-- Pre-existing tests referencing removed/renamed APIs — excluded until updated -->

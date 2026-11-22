@@ -55,6 +55,10 @@ jobs:
     - name: Run Postgres integration tests
       run: dotnet test ./Tests/Tests.csproj --no-build --verbosity normal --filter "Category=Integration" --blame-hang-timeout 5m
 
+    # A project of its own: the CLI's MCP server pulls newer Microsoft.Extensions packages than the framework targets.
+    - name: Run CLI tests
+      run: dotnet test ./Tests/CLI.Tests/CLI.Tests.csproj --verbosity normal
+
     # Fails when a service, config key or attribute belongs to no capability in catalog/map.yml, or when
     # catalog/capabilities.json and CAPABILITIES.md were not regenerated after a change.
     - name: Check the capability catalog

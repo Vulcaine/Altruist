@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.RegularExpressions;
+using Altruist.CLI.Mcp;
 
 namespace Altruist.CLI;
 
@@ -8,7 +10,10 @@ public static partial class Program
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9_.]*$")]
     private static partial Regex ProjectNamePattern();
 
-    private const string Version = "0.9.5-beta";
+    // The package version (the csproj's <Version>), without the "+commit" suffix the SDK appends.
+    private static readonly string Version =
+        (typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion)
+        .Split('+')[0];
     private const string TemplateName = "altruist";
     private const string TemplatePackage = "Altruist.Templates";
 
@@ -27,6 +32,7 @@ public static partial class Program
         {
             "create" or "new" => await CreateProject(args.Skip(1).ToArray()),
             "run" => await RunProject(args.Skip(1).ToArray()),
+            "mcp" => await McpServerCommand.RunAsync(Version),
             _ => ShowHelp($"Unknown command: {args[0]}")
         };
     }
@@ -105,6 +111,7 @@ public static partial class Program
         Console.WriteLine("Commands:");
         Console.WriteLine("  create <name>    Create a new Altruist project");
         Console.WriteLine("  run              Run the current Altruist project");
+        Console.WriteLine("  mcp              Serve the framework's capability catalog to coding agents (MCP over stdio)");
         Console.WriteLine("  --version, -v    Show version");
         Console.WriteLine("  --help, -h       Show this help");
         Console.WriteLine();
@@ -112,6 +119,7 @@ public static partial class Program
         Console.WriteLine("  altruist create MyGameServer");
         Console.WriteLine("  altruist create MyApi");
         Console.WriteLine("  cd MyGameServer && altruist run");
+        Console.WriteLine("  claude mcp add altruist -- altruist mcp");
         Console.WriteLine();
 
         return error != null ? 1 : 0;
