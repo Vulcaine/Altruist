@@ -1001,6 +1001,11 @@ public abstract class AbstractMigrationPlanner : IMigrationPlanner
             .ToList();
         PlanUnmappedColumns(ops, schemaName, tableName, doc, existing, unmapped, copySources);
 
+        // A table created without its key (by hand, or by an older tool) breaks every upsert: ON CONFLICT names the key.
+        var desiredPrimaryKey = ResolvePrimaryKeyColumns(doc);
+        if (existing.PrimaryKeyColumns.Count == 0 && desiredPrimaryKey.Count > 0)
+            ops.Add(new AddPrimaryKeyOperation(schemaName, tableName, desiredPrimaryKey));
+
         // ---------- UNIQUE constraints diff (single + composite) ----------
 
         // desired unique constraints from Document

@@ -160,6 +160,16 @@ public sealed record AlterColumnTypeOperation(
 
 // ----------------- constraints -----------------
 
+/// <summary>Adds the model's PRIMARY KEY to an existing table that has none (fails if existing rows hold duplicate or NULL keys).</summary>
+/// <param name="Schema">Schema name.</param>
+/// <param name="Table">Table name.</param>
+/// <param name="Columns">Physical primary key columns.</param>
+public sealed record AddPrimaryKeyOperation(
+    string Schema,
+    string Table,
+    IReadOnlyList<string> Columns
+) : MigrationOperation;
+
 /// <summary>Adds a UNIQUE constraint over one or more columns.</summary>
 /// <param name="Schema">Schema name.</param>
 /// <param name="Table">Table name.</param>

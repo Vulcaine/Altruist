@@ -254,6 +254,16 @@ public class MigrationPlannerTests
     }
 
     [Fact]
+    public void Diff_TableWithoutPrimaryKey_PlansAddPrimaryKey()
+    {
+        var schemas = WithSchema("public", ("t", Table("t", ["id", "name"], [])));
+        var doc = SimpleDoc("t", ["id", "name"], ["id"]);
+        var op = _planner.Plan(schemas, [doc]).Should().ContainSingle().Which.Should().BeOfType<AddPrimaryKeyOperation>().Subject;
+        op.Table.Should().Be("t");
+        op.Columns.Should().Equal("id");
+    }
+
+    [Fact]
     public void Diff_AddAndDrop_BothPlanned()
     {
         var schemas = WithSchema("public", ("t", Table("t", ["id", "old"], ["id"])));

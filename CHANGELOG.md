@@ -2,6 +2,12 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **`[PostConstruct]` runs on every provider's singletons** — the hook ran once per implementation type for the whole process, so a second service provider (a test class container, then the live test server) got singletons whose hooks never ran; `ServerStatus` never connected and the live server answered 503 "Service is not ready". The hook now runs once per instance: an instance registered under several service types, or processed again, still runs it once.
+- **The migrator adds a primary key an existing table lacks** — a table created without its key (by hand or by an older tool) was left as it was, and every save failed with 42P10 because the upsert's `ON CONFLICT` names the key. The diff now plans `AddPrimaryKeyOperation` (`ALTER TABLE … ADD PRIMARY KEY`); it fails loud when rows hold duplicate or NULL keys.
+
 ## [0.10.0-beta] - 2026-11-22
 
 A complete standalone 2D physics world API (enough to run an authoritative match simulation on it), AI agents that live outside the world organizer, match hosting (rooms, matchmaking, lobbies) as three new packages, a 2D rotation helper, and the server as a fleet member: capacity, drain, multi-core room steps, metrics, and a fleet of servers that finds each other through a shared backplane (one configuration for one server or many). Existing code keeps compiling: the new interface members have defaults and the state machine accepts every existing context. Nothing changes at run time until configured: one step worker, unlimited capacity, and a drain only when the host stops (it finishes at once when no room host is bound). Coding agents get the framework through `altruist mcp`: its capability catalog, and the running server (read, and changed only with the user's approval). One breaking change: the unused `altruist:server:transport:websocket:path` key is gone.

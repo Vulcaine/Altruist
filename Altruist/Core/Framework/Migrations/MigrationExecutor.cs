@@ -193,6 +193,9 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
             // CONSTRAINT OPERATIONS
             // --------------------------------
 
+            case AddPrimaryKeyOperation addPrimaryKey:
+                return ApplyAddPrimaryKeyAsync(defaultSchema, addPrimaryKey);
+
             case AddUniqueConstraintOperation addUnique:
                 return ApplyAddUniqueConstraintAsync(defaultSchema, addUnique);
 
@@ -244,6 +247,12 @@ public abstract class AbstractMigrationExecutor : IMigrationExecutor
     /// <param name="op">The operation.</param>
     /// <returns>A task.</returns>
     protected abstract Task ApplyDropColumnAsync(string defaultSchema, DropColumnOperation op);
+
+    /// <summary>Executes an <see cref="AddPrimaryKeyOperation"/>.</summary>
+    /// <param name="defaultSchema">Schema used when the operation's schema is blank.</param>
+    /// <param name="op">The operation.</param>
+    /// <returns>A task.</returns>
+    protected abstract Task ApplyAddPrimaryKeyAsync(string defaultSchema, AddPrimaryKeyOperation op);
 
     /// <summary>Executes an <see cref="AddUniqueConstraintOperation"/>.</summary>
     /// <param name="defaultSchema">Schema used when the operation's schema is blank.</param>

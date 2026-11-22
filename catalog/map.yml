@@ -1411,7 +1411,7 @@ capabilities:
     title: Code-First Migrations
     summary: >-
       At every start Altruist compares your [Vault] models with the live database schema and applies the difference:
-      new tables, columns, indexes, unique keys and foreign keys, renames and type changes. There are no migration files
+      new tables, columns, indexes, unique keys and foreign keys, a primary key an existing table lacks, renames and type changes. There are no migration files
       and no CLI. Destructive changes happen only when you ask for them.
     use:
       - When you add, rename or retype a column and want the database to follow the C# model on restart.
