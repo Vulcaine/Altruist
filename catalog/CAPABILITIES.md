@@ -1020,7 +1020,7 @@ public sealed class PlayerEntity : WorldObject3D, ISynchronizedEntity
 
 **Services**
 
-- `Altruist.ClientSynchronizator` as `Altruist.IClientSynchronizator`: Placeholder `IClientSynchronizator` registered when only the transport is configured. Only when altruist:server:transport is set.
+- `Altruist.ClientSynchronizator` as `Altruist.IClientSynchronizator`: Placeholder `IClientSynchronizator` registered when only the transport is configured. Only when altruist:server:transport is set and no other implementation is registered.
 
 **Attributes**
 

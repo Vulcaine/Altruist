@@ -90,9 +90,11 @@ public interface IAltruistRouter
 /// <summary>
 /// Placeholder <see cref="IClientSynchronizator"/> registered when only the transport is configured. Throws
 /// <see cref="NotImplementedException"/>; enable the gaming module (<c>altruist:game</c>) for the working implementation.
+/// Steps aside when the gaming implementation was registered first, so assembly scan order can't let it win.
 /// </summary>
 [Service(typeof(IClientSynchronizator))]
 [ConditionalOnConfig("altruist:server:transport")]
+[ConditionalOnMissingService(typeof(IClientSynchronizator))]
 public class ClientSynchronizator : IClientSynchronizator
 {
     /// <summary>Always throws <see cref="NotImplementedException"/>.</summary>

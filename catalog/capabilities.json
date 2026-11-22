@@ -1997,7 +1997,7 @@
         },
         {
           "type": "Altruist.ClientSynchronizator",
-          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation.",
+          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation. Steps aside when the gaming implementation was registered first, so assembly scan order can't let it win.",
           "file": "Altruist/Core/Framework/Contracts/Router.cs"
         },
         {
@@ -2013,10 +2013,11 @@
           "contracts": [
             "Altruist.IClientSynchronizator"
           ],
-          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation.",
+          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation. Steps aside when the gaming implementation was registered first, so assembly scan order can't let it win.",
           "file": "Altruist/Core/Framework/Contracts/Router.cs",
           "gates": [
-            "altruist:server:transport is set"
+            "altruist:server:transport is set",
+            "no other implementation is registered"
           ]
         }
       ],
