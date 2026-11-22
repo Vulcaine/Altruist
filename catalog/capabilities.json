@@ -4745,6 +4745,7 @@
         ],
         "avoid": [
           "When a [Cycle] method awaits something, do not declare it async void; the server refuses it at start. Return Task so the engine awaits it and reports its failures.",
+          "When a [Cycle] method must run once every N seconds, do not use CycleUnit.Seconds; it counts runs per second, so [Cycle(5, CycleUnit.Seconds)] runs 5 times a second. Use [Cycle(5, CycleUnit.IntervalSeconds)].",
           "When you only need a periodic background job with no game state, and no game engine is configured. Use a plain hosted service.",
           "When you need deterministic tick logic that the TypeScript client also runs. Write that logic with [flow] and call it from a stepper."
         ],
@@ -4778,7 +4779,7 @@
           "altruist:game:engine",
           "altruist:game"
         ],
-        "example": "```yaml\naltruist:\n  game:\n    engine:\n      framerateHz: 120          # sampling rate of the loop\n      world-step: inline        # worker (default) or inline\n      fixed-step:\n        max-steps-per-frame: 8\n        overrun: drop           # drop | carry | slow-motion\n```\n\n```csharp\nusing Altruist.Gaming;\n\n// A 60 Hz simulation that the engine steps. Every FixedStep is exactly step.Dt long.\n[Service]\n[Service(typeof(IWorldStepper))]\npublic class MatchSimulation : IWorldStepper\n{\n    public StepMode Mode => StepMode.Fixed;\n    public int FixedHz => 60;\n\n    public void BeforeSteps(in FrameInfo frame) { }\n    public void FixedStep(in FixedStep step) => Advance(step.Dt);\n    public void AfterSteps(in FrameInfo frame) { }\n}\n\n// A method on the game loop, 10 times per second.\n[Cycle(10, CycleUnit.Hz)]\npublic void Housekeeping() { }\n```"
+        "example": "```yaml\naltruist:\n  game:\n    engine:\n      framerateHz: 120          # sampling rate of the loop\n      world-step: inline        # worker (default) or inline\n      fixed-step:\n        max-steps-per-frame: 8\n        overrun: drop           # drop | carry | slow-motion\n```\n\n```csharp\nusing Altruist.Gaming;\n\n// A 60 Hz simulation that the engine steps. Every FixedStep is exactly step.Dt long.\n[Service]\n[Service(typeof(IWorldStepper))]\npublic class MatchSimulation : IWorldStepper\n{\n    public StepMode Mode => StepMode.Fixed;\n    public int FixedHz => 60;\n\n    public void BeforeSteps(in FrameInfo frame) { }\n    public void FixedStep(in FixedStep step) => Advance(step.Dt);\n    public void AfterSteps(in FrameInfo frame) { }\n}\n\n// A method on the game loop, 10 times per second.\n[Cycle(10, CycleUnit.Hz)]\npublic void Housekeeping() { }\n\n// Once every 5 seconds, by wall clock.\n[Cycle(5, CycleUnit.IntervalSeconds)]\npublic void Regenerate() { }\n```"
       },
       "keyTypes": [
         {

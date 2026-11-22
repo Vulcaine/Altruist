@@ -19,7 +19,8 @@ limitations under the License.
 /// </summary>
 /// <remarks>
 /// Note the default for both is <see cref="Ticks"/> (engine frames), where a HIGHER number means SLOWER
-/// execution; for a "times per second" rate pass <see cref="Hz"/> or <see cref="Seconds"/> explicitly.
+/// execution; for a "times per second" rate pass <see cref="Hz"/> or <see cref="Seconds"/> explicitly, and for
+/// "once every N seconds" pass <see cref="IntervalSeconds"/>.
 /// </remarks>
 public enum CycleUnit
 {
@@ -30,7 +31,10 @@ public enum CycleUnit
     /// <summary>Cycles per millisecond (effectively capped by the engine frame rate).</summary>
     Milliseconds,
     /// <summary>Engine frames between runs: 1 = every frame, 2 = every second frame, and so on.</summary>
-    Ticks
+    Ticks,
+    /// <summary>Seconds between runs, by wall clock: <c>[Cycle(5, CycleUnit.IntervalSeconds)]</c> runs every 5 seconds.
+    /// Use it for work slower than once per second; <see cref="Seconds"/> counts runs per second instead.</summary>
+    IntervalSeconds
 }
 
 /// <summary>
@@ -52,7 +56,8 @@ public class CycleRate
     /// <summary>
     /// The computed interval value; its meaning depends on <see cref="Unit"/>: frames between runs for
     /// <see cref="CycleUnit.Ticks"/>, cycles per second for <see cref="CycleUnit.Hz"/>, and the cycle period in
-    /// <see cref="TimeSpan"/> ticks (100 ns) for <see cref="CycleUnit.Seconds"/> / <see cref="CycleUnit.Milliseconds"/>.
+    /// <see cref="TimeSpan"/> ticks (100 ns) for <see cref="CycleUnit.Seconds"/> / <see cref="CycleUnit.Milliseconds"/> /
+    /// <see cref="CycleUnit.IntervalSeconds"/>.
     /// Prefer <see cref="Frequency"/> + <see cref="Unit"/> when you need the user-facing rate.
     /// </summary>
     public long Value { get; }
@@ -78,6 +83,7 @@ public class CycleRate
     /// - **Milliseconds:** A frequency of 30 means 30 cycles per millisecond (capped by the engine frame rate).
     /// - **Ticks:** The value is a number of engine frames: <c>[Cycle(2)]</c> runs every 2nd frame,
     ///   meaning **a higher value results in slower execution**.
+    /// - **IntervalSeconds:** The value is the number of seconds between runs: 5 means once every 5 seconds.
     /// </remarks>
     public CycleRate(int frequencyHz, CycleUnit unit = CycleUnit.Ticks)
     {
@@ -99,6 +105,9 @@ public class CycleRate
             CycleUnit.Ticks => frequencyHz,
 
             CycleUnit.Hz => frequencyHz,
+
+            // 5 → one run every 5 seconds → execute every 5 × 10,000,000 ticks
+            CycleUnit.IntervalSeconds => TimeSpan.TicksPerSecond * frequencyHz,
 
             _ => throw new ArgumentOutOfRangeException(nameof(unit), "Invalid cycle unit.")
         };
@@ -141,6 +150,12 @@ public class CycleRate
 ///
 ///     [Cycle(5, CycleUnit.Hz)]             // 5 times per second
 ///     public Task SyncAsync() =&gt; Task.CompletedTask;
+///
+///     [Cycle(10)]                          // every 10th frame (default unit is Ticks)
+///     public void Sweep() { }
+///
+///     [Cycle(5, CycleUnit.IntervalSeconds)] // once every 5 seconds
+///     public void Regen() { }
 ///
 ///     [Cycle(10)]                          // every 10th frame (default unit is Ticks)
 ///     public void Sweep() { }
@@ -257,6 +272,7 @@ public class CycleAttribute : Attribute
             {
                 CycleUnit.Ticks => "⚡ every " + Rate.Frequency + " frame(s)",
                 CycleUnit.Milliseconds => "⚡ " + Rate.Frequency + "/ms",
+                CycleUnit.IntervalSeconds => "⚡ every " + Rate.Frequency + " s",
                 _ => "⚡ " + Rate.Frequency + "Hz",
             };
 

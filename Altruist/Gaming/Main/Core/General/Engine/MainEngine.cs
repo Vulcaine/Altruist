@@ -1127,8 +1127,9 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
     {
         CycleUnit.Ticks => rate.Value == 1 ? "every frame" : $"every {rate.Value} frames",
         CycleUnit.Hz => $"{rate.Value} Hz",
-        CycleUnit.Seconds => $"every {rate.Value} s",
-        CycleUnit.Milliseconds => $"every {rate.Value} ms",
+        CycleUnit.Seconds => $"{rate.Frequency}/s",
+        CycleUnit.Milliseconds => $"{rate.Frequency}/ms",
+        CycleUnit.IntervalSeconds => $"every {rate.Frequency} s",
         _ => rate.ToString() ?? "",
     };
 
@@ -1141,7 +1142,7 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
             CycleUnit.Hz => Math.Max(1, Stopwatch.Frequency / Math.Max(1, rate.Value)),
             // CycleRate stores Seconds/Milliseconds rates as the cycle period in TimeSpan ticks
             // (100 ns): [Cycle(30, CycleUnit.Seconds)] = 30 times per second.
-            CycleUnit.Milliseconds or CycleUnit.Seconds => Math.Max(1, (long)((double)Math.Max(1, rate.Value) * Stopwatch.Frequency / TimeSpan.TicksPerSecond)),
+            CycleUnit.Milliseconds or CycleUnit.Seconds or CycleUnit.IntervalSeconds => Math.Max(1, (long)((double)Math.Max(1, rate.Value) * Stopwatch.Frequency / TimeSpan.TicksPerSecond)),
 
             // IMPORTANT: Ticks are frames; do not convert to stopwatch ticks here.
             CycleUnit.Ticks => throw new InvalidOperationException("CycleUnit.Ticks represents frames; use frame-based scheduling."),

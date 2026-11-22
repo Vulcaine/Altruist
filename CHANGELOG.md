@@ -4,10 +4,14 @@ All notable changes to the Altruist framework are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`CycleUnit.IntervalSeconds`** — `[Cycle(5, CycleUnit.IntervalSeconds)]` runs once every 5 seconds by wall clock. Before, nothing slower than once a second could be declared except by counting frames or with cron (whole minutes), and `CycleUnit.Seconds` reads as a period although it counts runs per second: `[Cycle(5, CycleUnit.Seconds)]` runs 5 times a second.
+
 ### Fixed
 - **`[PostConstruct]` runs on every provider's singletons** — the hook ran once per implementation type for the whole process, so a second service provider (a test class container, then the live test server) got singletons whose hooks never ran; `ServerStatus` never connected and the live server answered 503 "Service is not ready". The hook now runs once per instance: an instance registered under several service types, or processed again, still runs it once.
 - **The migrator adds a primary key an existing table lacks** — a table created without its key (by hand or by an older tool) was left as it was, and every save failed with 42P10 because the upsert's `ON CONFLICT` names the key. The diff now plans `AddPrimaryKeyOperation` (`ALTER TABLE … ADD PRIMARY KEY`); it fails loud when rows hold duplicate or NULL keys.
 - **An `async void` `[Cycle]` method is refused at start** — the scheduler wrapped it like a synchronous method, so the engine neither awaited it nor saw its exceptions: one failed socket write in it went to the thread pool and ended the process. Registration now throws and names the method; declare it `async Task`, which the engine awaits and whose failures it reports.
+- **The engine describes `Seconds` and `Milliseconds` rates correctly** — the dashboard and diagnostics showed the internal period in 100 ns ticks as seconds (`[Cycle(30, CycleUnit.Seconds)]` was "every 333333 s"); they now show "30/s".
 
 ## [0.10.0-beta] - 2026-11-22
 

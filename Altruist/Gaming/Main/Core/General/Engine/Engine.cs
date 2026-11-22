@@ -481,7 +481,7 @@ public class EngineWithDiagnostics : IAltruistEngine
         _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();
         var unit = _wrappedEngine.Rate.Unit;
 
-        if (unit == CycleUnit.Seconds)
+        if (unit == CycleUnit.Seconds || unit == CycleUnit.IntervalSeconds)
         {
             // Value = ticks per cycle => Hz = ticks per second / ticks per cycle
             _engineFrequencyHz = (double)TimeSpan.TicksPerSecond / _wrappedEngine.Rate.Value;
