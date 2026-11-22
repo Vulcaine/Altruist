@@ -1,4 +1,5 @@
 using Altruist.CLI.Catalog;
+using Altruist.CLI.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -15,7 +16,12 @@ public static class McpServerCommand
         + "physics, AI and typed clients. Before writing server code in an Altruist project, find the system that does it "
         + "with altruist_search or altruist_capabilities, read it with altruist_capability, and follow its example and config "
         + "keys instead of writing your own handler, repository or auth. To start a new server project, run "
-        + "`altruist create <Name>`.";
+        + "`altruist create <Name>`. While the server runs with altruist:dashboard:enabled: true, altruist_runtime and the "
+        + "other altruist_runtime_* tools read its config, connections, rooms, worlds, stored data and traffic; use them to "
+        + "check what the code you wrote does instead of guessing.";
+
+    // A dashboard view is built from in-memory state; one that takes longer is a server in trouble.
+    private static readonly TimeSpan DashboardTimeout = TimeSpan.FromSeconds(10);
 
     public static async Task<int> RunAsync(string version)
     {
@@ -26,6 +32,9 @@ public static class McpServerCommand
         // stdout carries the protocol; anything else written there breaks the client.
         builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Services.AddSingleton(catalog);
+        builder.Services.AddSingleton(DashboardEndpoint.FromEnvironment(Environment.GetEnvironmentVariable));
+        builder.Services.AddSingleton(new HttpClient { Timeout = DashboardTimeout });
+        builder.Services.AddSingleton<DashboardClient>();
         builder.Services
             .AddMcpServer(options =>
             {
@@ -33,7 +42,8 @@ public static class McpServerCommand
                 options.ServerInstructions = Instructions;
             })
             .WithStdioServerTransport()
-            .WithTools<KnowledgeTools>();
+            .WithTools<KnowledgeTools>()
+            .WithTools<RuntimeTools>();
 
         await builder.Build().RunAsync();
         return 0;
