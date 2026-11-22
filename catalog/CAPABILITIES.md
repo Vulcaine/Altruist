@@ -234,8 +234,6 @@ public sealed class World : IWorld
 - `Altruist.EnumerableStringConfigConverter`: Converts a config string to `IEnumerable<string>` using the same rules as `ListStringConfigConverter` (JSON array or comma-separated).
 - `Altruist.HttpServerOptions` (binds `altruist:server:http`): Snapshot of `altruist:server:http`, the keys the HTTP listener is started from.
 - `Altruist.ListStringConfigConverter`: Converts a config string to `List<string>`: a JSON array (`["a","b"]`) or a comma-separated list (`a, b`, entries trimmed, empty entries dropped).
-- `Altruist.MutableConfigProvider`: In-memory configuration provider whose `Set` immediately triggers a configuration reload (so `ILiveConfigValue` subscribers are notified).
-- `Altruist.MutableConfigSource`: Configuration source inserted first into the web host's configuration at startup (by `AltruistStartupConfiguration`).
 - `Altruist.ReadOnlyDictionaryStringStringConfigConverter`: Converts a config string to `IReadOnlyDictionary<string, string>` using the same rules as `DictionaryStringStringConfigConverter` (JSON object or `k=v` pairs).
 - `Altruist.ReadOnlyListStringConfigConverter`: Converts a config string to `IReadOnlyList<string>` using the same rules as `ListStringConfigConverter` (JSON array or comma-separated).
 - `Altruist.ServerOptions` (binds `altruist:server`): Snapshot of `altruist:server`: the HTTP listener and the transport section.

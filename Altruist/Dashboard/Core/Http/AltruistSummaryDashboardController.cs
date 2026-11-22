@@ -320,16 +320,9 @@ public sealed class AltruistSummaryDashboardController : ControllerBase
             .ToList();
     }
 
-    private MutableConfigProvider? GetMutableConfigProvider()
-    {
-        var provider = _configuration
-            .GetType()
-            .GetField("_providers", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?.GetValue(_configuration) as IEnumerable<IConfigurationProvider>;
-
-        return provider?
-            .FirstOrDefault(p => p is MutableConfigProvider) as MutableConfigProvider;
-    }
+    // AppConfigLoader adds it to the process-wide configuration; one replaced through AppConfigLoader.Set may have none.
+    private MutableConfigProvider? GetMutableConfigProvider() =>
+        (_configuration as IConfigurationRoot)?.Providers.OfType<MutableConfigProvider>().FirstOrDefault();
 
     // ------------------ Engine Info ------------------
 

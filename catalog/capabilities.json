@@ -173,26 +173,6 @@
           "gates": []
         },
         {
-          "type": "Altruist.MutableConfigProvider",
-          "kind": "service",
-          "contracts": [
-            "Altruist.MutableConfigProvider"
-          ],
-          "summary": "In-memory configuration provider whose `Set` immediately triggers a configuration reload (so `ILiveConfigValue` subscribers are notified). Registered as a singleton service.",
-          "file": "Altruist/DI/Attributes/ConfigAttributes.cs",
-          "gates": []
-        },
-        {
-          "type": "Altruist.MutableConfigSource",
-          "kind": "service",
-          "contracts": [
-            "Altruist.MutableConfigSource"
-          ],
-          "summary": "Configuration source inserted first into the web host's configuration at startup (by `AltruistStartupConfiguration`). Registered as a singleton service.",
-          "file": "Altruist/DI/Attributes/ConfigAttributes.cs",
-          "gates": []
-        },
-        {
           "type": "Altruist.ReadOnlyDictionaryStringStringConfigConverter",
           "kind": "service",
           "contracts": [

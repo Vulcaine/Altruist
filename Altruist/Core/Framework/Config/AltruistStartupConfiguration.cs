@@ -153,13 +153,6 @@ namespace Altruist
             // Falls back to tempProvider only when callers haven't been updated.
             var sharingProvider = bootstrapProvider ?? tempProvider;
 
-            var configSource = tempProvider.GetService<MutableConfigSource>();
-
-            if (configSource == null)
-                throw new InvalidOperationException("MutableConfigSource not registered.");
-
-            // Insert into WebApplication builder
-            builder.Configuration.Sources.Insert(0, configSource);
             builder.Logging.ClearProviders();
 
             // Promote every Singleton-with-factory descriptor to an instance-based

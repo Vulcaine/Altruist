@@ -47,8 +47,8 @@ namespace Altruist.Dashboard
     {
         /// <summary>Assembly-qualified type name, as in <see cref="CacheEntryDto.Type"/>.</summary>
         public string Type { get; set; } = default!;
-        /// <summary>Cache group (empty for the default group).</summary>
-        public string GroupId { get; set; } = string.Empty;
+        /// <summary>Cache group; empty or left out for the default group (an empty query value binds as null).</summary>
+        public string? GroupId { get; set; }
         /// <summary>Entry key.</summary>
         public string Key { get; set; } = default!;
     }

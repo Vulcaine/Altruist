@@ -51,6 +51,34 @@ public sealed class AppConfigLoaderRegressionTests
         }
     }
 
+    // The dashboard's config update found no mutable provider in the process configuration (it was only put into the
+    // web host's), so live edits answered 500 and never reached an ILiveConfigValue.
+    [Fact]
+    public void A_live_edit_reaches_live_values_of_the_process_configuration_and_wins_over_the_environment()
+    {
+        var previous = (IConfiguration?)CachedConfig.GetValue(null);
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var variable = $"ALTRUIST__TESTCFG{suffix}__GRAVITY";
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, "-9.81");
+            AppConfigLoader.Reset();
+            var cfg = AppConfigLoader.Load(Array.Empty<string>());
+            var key = $"altruist:testcfg{suffix}:gravity";
+            var live = new LiveConfigValue<float>(cfg, key);
+
+            ((IConfigurationRoot)cfg).Providers.OfType<MutableConfigProvider>().Single().Set(key, "-3");
+
+            Assert.Equal(-3f, live.Current);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+            if (previous is null) AppConfigLoader.Reset();
+            else AppConfigLoader.Set(previous);
+        }
+    }
+
     [Fact]
     public void Prefixed_environment_variables_map_under_the_altruist_root()
     {

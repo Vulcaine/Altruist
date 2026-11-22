@@ -352,7 +352,6 @@ public sealed class HttpApiHostTests : IAsyncLifetime
         }).Build());
 
         var root = new ServiceCollection();
-        root.AddSingleton(new MutableConfigSource(new MutableConfigProvider()));
         HttpApiConfiguration.Register(root, settings);
         root.AddSingleton<IRequestRateLimiter>(new RequestRateLimiter(settings.RateLimit));
         var status = new Mock<IServerStatus>();

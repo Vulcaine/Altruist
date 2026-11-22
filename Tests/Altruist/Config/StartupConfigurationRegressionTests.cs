@@ -120,7 +120,6 @@ public sealed class StartupConfigurationRegressionTests : IAsyncLifetime
     {
         var root = new ServiceCollection();
         root.AddSingleton(_counters);
-        root.AddSingleton(new MutableConfigSource(new MutableConfigProvider()));
         root.AddSingleton<IHostedService, FirstHostedService>();
         root.AddSingleton<IHostedService, SecondHostedService>();
         var status = new Mock<IServerStatus>();

@@ -50,7 +50,6 @@ public sealed class ServerNodeEndpointTests : IAsyncLifetime
         }, new[] { _load }, new[] { _rooms }, () => ReadyState.Alive, "endpoint-node");
 
         var root = new ServiceCollection();
-        root.AddSingleton(new MutableConfigSource(new MutableConfigProvider()));
         root.AddSingleton<IServerNode>(_node);
         root.AddSingleton<IHostedService>(new ServerDrainOnShutdown(_node));
         var status = new Mock<IServerStatus>();

@@ -289,7 +289,6 @@ public sealed class DashboardHostTests
         var cache = new InMemoryCache();
         var root = new ServiceCollection();
         root.AddSingleton(appConfig);
-        root.AddSingleton(new MutableConfigSource(new MutableConfigProvider()));
         root.AddSingleton(new JsonSerializerOptions(JsonSerializerDefaults.Web));
         root.AddSingleton<ICacheProvider>(cache);
         root.AddSingleton<IMemoryCacheProvider>(cache);

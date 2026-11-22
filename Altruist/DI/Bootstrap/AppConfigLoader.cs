@@ -9,7 +9,7 @@ namespace Altruist
 {
     /// <summary>
     /// Loads <c>config.yml</c>, <c>config.{environment}.yml</c> (<see cref="AltruistEnvironment.Name"/>),
-    /// environment variables and the command line, in that order (later wins).
+    /// environment variables, the command line and the live edits of a <see cref="MutableConfigProvider"/>, in that order (later wins).
     /// <para>
     /// Environment variables override YAML keys under every top-level section of the YAML files
     /// (plus the roots listed in <c>altruist:config:env-roots</c>, plus <c>altruist</c>): the variable
@@ -92,6 +92,8 @@ namespace Altruist
                     // ROOT__A__B variable of a known root to root:a:b so env overrides the YAML keys.
                     .AddInMemoryCollection(MapEnvironment(yamlConfig, environment))
                     .AddCommandLine(args ?? Array.Empty<string>())
+                    // Last, so a live edit (the dashboard's config update) wins over the files, environment and command line until restart.
+                    .Add(new MutableConfigSource(new MutableConfigProvider()))
                     .Build();
                 _loadedArgs = args ?? Array.Empty<string>();
                 _config = cfg;
