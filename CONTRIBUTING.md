@@ -38,6 +38,13 @@ Each TypeScript package under `Clients/TypeScript/` has its own tests:
 cd Clients/TypeScript/net && npm ci && npm test && npm run typecheck
 ```
 
+`catalog/` describes every system of the framework for people and coding agents: what it is for, its package, docs, config keys and an example. `catalog/map.yml` is written by hand; `capabilities.json` and `CAPABILITIES.md` are generated from it and the code. When you add or move a service, config key or attribute, place it in `map.yml` and regenerate:
+
+```bash
+dotnet run --project ./Tools/Catalog -c Release            # rewrites the outputs and lists what no capability claims
+dotnet run --project ./Tools/Catalog -c Release -- --check # what CI runs: fails on gaps or stale outputs
+```
+
 CI runs the same commands on every pull request.
 
 ## Pull requests

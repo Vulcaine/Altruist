@@ -55,6 +55,11 @@ jobs:
     - name: Run Postgres integration tests
       run: dotnet test ./Tests/Tests.csproj --no-build --verbosity normal --filter "Category=Integration" --blame-hang-timeout 5m
 
+    # Fails when a service, config key or attribute belongs to no capability in catalog/map.yml, or when
+    # catalog/capabilities.json and CAPABILITIES.md were not regenerated after a change.
+    - name: Check the capability catalog
+      run: dotnet run --project ./Tools/Catalog --configuration Release -- --check
+
   validate_version:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
