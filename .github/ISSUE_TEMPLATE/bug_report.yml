@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Altruist version
-      placeholder: 0.9.9-beta
+      placeholder: 0.10.0-beta
     validations:
       required: true
   - type: textarea

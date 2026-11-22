@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageType>Template</PackageType>
-    <PackageVersion>0.9.9-beta</PackageVersion>
+    <PackageVersion>0.10.0-beta</PackageVersion>
     <PackageId>Altruist.Templates</PackageId>
     <Title>Altruist Server Templates</Title>
     <Authors>Aron Gere</Authors>
