@@ -64,6 +64,15 @@ jobs:
     - name: Check the capability catalog
       run: dotnet run --project ./Tools/Catalog --configuration Release -- --check
 
+    # The release publishes what these commands pack: every Altruist dependency must be among them, and a project
+    # created from the template must build against them.
+    - name: Pack and check the packages
+      run: |
+        dotnet pack ./Altruist --configuration Release --output ./nupkgs
+        dotnet pack ./CLI --configuration Release --output ./nupkgs
+        dotnet pack ./Templates/Altruist.Templates --configuration Release --output ./nupkgs
+        bash ./Tools/check-packages.sh ./nupkgs
+
   validate_version:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
@@ -100,7 +109,11 @@ jobs:
       run: echo "VERSION=v$(cat Altruist/version.txt)" >> $GITHUB_OUTPUT
 
     - name: Pack NuGet packages
-      run: dotnet pack ./Altruist --configuration Release --output ./nupkgs
+      run: |
+        dotnet pack ./Altruist --configuration Release --output ./nupkgs
+        dotnet pack ./CLI --configuration Release --output ./nupkgs
+        dotnet pack ./Templates/Altruist.Templates --configuration Release --output ./nupkgs
+        bash ./Tools/check-packages.sh ./nupkgs
 
     - name: Create Tag
       run: |

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageType>Template</PackageType>
-    <PackageVersion>0.9.5-beta</PackageVersion>
+    <PackageVersion>0.9.9-beta</PackageVersion>
     <PackageId>Altruist.Templates</PackageId>
     <Title>Altruist Server Templates</Title>
     <Authors>Aron Gere</Authors>
@@ -14,6 +14,8 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <ContentTargetFolders>content</ContentTargetFolders>
     <NoDefaultExcludes>true</NoDefaultExcludes>
+    <!-- A template package installs files, not assemblies; it has no dependencies to declare. -->
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
   </PropertyGroup>
 
   <ItemGroup>
