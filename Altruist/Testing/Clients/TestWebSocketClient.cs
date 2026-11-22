@@ -39,7 +39,7 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
     /// <summary>The socket is open.</summary>
     public bool IsConnected => _ws.State == WebSocketState.Open;
 
-    /// <summary>An unconnected client for <c>ws://{http host}:{http port}{websocket path}</c>.</summary>
+    /// <summary>An unconnected plain (no TLS) WebSocket client for <c>{http host}:{http port}{websocket path}</c>.</summary>
     /// <param name="cfg">The test configuration.</param>
     public TestWebSocketClient(IConfiguration cfg)
     {
@@ -47,7 +47,7 @@ public sealed class TestWebSocketClient : IAsyncDisposable, IDisposable
         var port = cfg["altruist:server:http:port"] ?? "8080";
         var path = cfg["altruist:server:transport:websocket:path"] ?? "/ws";
         if (!path.StartsWith("/")) path = "/" + path;
-        _url = new Uri($"ws://{host}:{port}{path}");
+        _url = new Uri($"ws://{host}:{port}{path}"); // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- the local test server
 
         Codec = TestCodecResolver.Resolve(cfg, "websocket");
         // JSON over WS is text-frame, MessagePack is binary-frame.

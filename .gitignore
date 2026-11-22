@@ -65,6 +65,9 @@ docker-compose.override.yml
 
 # Entity Framework Migrations
 Migrations/
+# ...but not the framework's own migration planner and its tests
+!Altruist/**/Migrations/
+!Tests/**/Migrations/
 
 # Ignore local secrets
 secrets.json

@@ -13,6 +13,12 @@
   ],
   "icon": "media/icon.png",
   "main": "./extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted workspace the extension does not connect on its own; connect from the command palette."
+    }
+  },
   "activationEvents": [
     "onStartupFinished"
   ],

@@ -187,7 +187,7 @@ public class AltruistConnection : StoredModel, IAltruistConnection
 public interface ITransportClient
 {
     /// <summary>Connects to the gateway.</summary>
-    /// <param name="gatewayUrl">The gateway URL, e.g. <c>ws://host:port/route</c>.</param>
+    /// <param name="gatewayUrl">The gateway URL, e.g. <c>wss://host:port/route</c>.</param>
     Task ConnectAsync(string gatewayUrl);
     /// <summary>Closes the connection.</summary>
     Task DisconnectAsync();

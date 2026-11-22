@@ -463,7 +463,7 @@ public sealed class VaultDashboardController : ControllerBase
 
         await using (var searchPath = conn.CreateCommand())
         {
-            searchPath.CommandText = $"SET search_path TO \"{EscapeIdentifier(md.Keyspace)}\";";
+            searchPath.CommandText = $"SET search_path TO \"{EscapeIdentifier(md.Keyspace)}\";"; // nosemgrep: csharp.lang.security.sqli.csharp-sqli.csharp-sqli -- escaped identifier from model metadata
             await searchPath.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 

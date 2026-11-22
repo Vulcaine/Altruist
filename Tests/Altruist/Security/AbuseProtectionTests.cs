@@ -121,7 +121,7 @@ public sealed class CaptchaTests
         Assert.Equal("site", on.SiteKey);
         Assert.True(await on.VerifyAsync("token-1", "198.51.100.4"));
         Assert.Equal("https://challenges.cloudflare.com/turnstile/v0/siteverify", ok.Request!.RequestUri!.ToString());
-        Assert.Contains("secret=1x0000000000000000000000000000000AA", ok.Body);
+        Assert.Contains("secret=1x0000000000000000000000000000000AA", ok.Body); // nosemgrep: generic.secrets.security.detected-generic-secret.detected-generic-secret -- Cloudflare's public test secret
         Assert.Contains("response=token-1", ok.Body);
         Assert.Contains("remoteip=198.51.100.4", ok.Body);
 

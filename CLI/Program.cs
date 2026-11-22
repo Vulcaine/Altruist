@@ -1,9 +1,13 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Altruist.CLI;
 
-public static class Program
+public static partial class Program
 {
+    [GeneratedRegex("^[A-Za-z][A-Za-z0-9_.]*$")]
+    private static partial Regex ProjectNamePattern();
+
     private const string Version = "0.9.5-beta";
     private const string TemplateName = "altruist";
     private const string TemplatePackage = "Altruist.Templates";
@@ -35,22 +39,28 @@ public static class Program
             Console.Error.WriteLine("Usage: altruist create <ProjectName>");
             return 1;
         }
+        // The name becomes a folder and a C# namespace: no paths ("../x"), no option-like values ("--force").
+        if (!ProjectNamePattern().IsMatch(projectName))
+        {
+            Console.Error.WriteLine("Project name must start with a letter and contain only letters, digits, '_' and '.'.");
+            return 1;
+        }
 
         Console.WriteLine($"Creating Altruist project: {projectName}");
         Console.WriteLine();
 
         // Ensure template is installed
         Console.WriteLine("Checking template...");
-        var checkResult = await RunProcess("dotnet", $"new list {TemplateName}");
+        var checkResult = await RunProcess("dotnet", ["new", "list", TemplateName]);
         if (!checkResult.output.Contains(TemplateName))
         {
             Console.WriteLine($"Installing {TemplatePackage}...");
-            await RunProcess("dotnet", $"new install {TemplatePackage}");
+            await RunProcess("dotnet", ["new", "install", TemplatePackage]);
         }
 
         // Create project from template
         Console.WriteLine($"Scaffolding {projectName}...");
-        var createResult = await RunProcess("dotnet", $"new {TemplateName} -n {projectName} -o {projectName}");
+        var createResult = await RunProcess("dotnet", ["new", TemplateName, "-n", projectName, "-o", projectName]);
         if (createResult.exitCode != 0)
         {
             Console.Error.WriteLine($"Failed to create project: {createResult.output}");
@@ -59,7 +69,7 @@ public static class Program
 
         // Restore packages
         Console.WriteLine("Restoring packages...");
-        await RunProcess("dotnet", $"restore {projectName}");
+        await RunProcess("dotnet", ["restore", projectName]);
 
         Console.WriteLine();
         Console.WriteLine($"  {projectName} created successfully!");
@@ -79,7 +89,7 @@ public static class Program
 
     private static async Task<int> RunProject(string[] args)
     {
-        var result = await RunProcess("dotnet", "run " + string.Join(" ", args), inheritOutput: true);
+        var result = await RunProcess("dotnet", ["run", .. args], inheritOutput: true);
         return result.exitCode;
     }
 
@@ -108,17 +118,19 @@ public static class Program
     }
 
     private static async Task<(int exitCode, string output)> RunProcess(
-        string command, string arguments, bool inheritOutput = false)
+        string command, IReadOnlyList<string> arguments, bool inheritOutput = false)
     {
         var psi = new ProcessStartInfo
         {
             FileName = command,
-            Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = !inheritOutput,
             RedirectStandardError = !inheritOutput,
             CreateNoWindow = true
         };
+
+        foreach (var argument in arguments)
+            psi.ArgumentList.Add(argument);
 
         using var process = Process.Start(psi)!;
         string output = "";

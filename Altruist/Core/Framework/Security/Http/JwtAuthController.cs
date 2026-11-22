@@ -1,6 +1,8 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 
 using Altruist.Security.Auth;
 
@@ -169,18 +171,18 @@ public abstract class JwtAuthController : AuthController
 
             if (account != null)
             {
-                _logger.LogInformation($"[signup][{request.Email}] ✅ Signup succeeded – user ID: {account.StorageId}");
+                _logger.LogInformation($"[signup][{account.StorageId}] ✅ Signup succeeded");
                 return Ok();
             }
             else
             {
-                _logger.LogWarning($"[signup][{request.Email}] ❌ Signup failed – {signupResult.Error}");
+                _logger.LogWarning($"[signup] ❌ Signup failed – {signupResult.Error}");
                 return BadRequest(signupResult.Error);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[signup][{request.Email}] ❌ Signup exception");
+            _logger.LogError(ex, "[signup] ❌ Signup exception");
             return StatusCode(StatusCodes.Status500InternalServerError, "Signup failed. Please try again.");
         }
     }
@@ -199,7 +201,7 @@ public abstract class JwtAuthController : AuthController
             var account = loginResult.Model;
             if (account == null)
             {
-                _logger.LogWarning($"[login-email][{request.Email}] ❌ Login failed");
+                _logger.LogWarning("[login-email] ❌ Login failed");
                 return Unauthorized();
             }
 
@@ -208,9 +210,9 @@ public abstract class JwtAuthController : AuthController
             var groupKey = SessionGroupKeyStrategy(account.StorageId);
 
             if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.StorageId, request.Fingerprint))
-                return Unauthorized($"[login-email][{request.Email}] Only clients with IP address are allowed to connect.");
+                return Unauthorized("[login-email] Only clients with IP address are allowed to connect.");
 
-            _logger.LogInformation($"[login-email][{groupKey}] ✅ Login succeeded (email: {request.Email})");
+            _logger.LogInformation($"[login-email][{groupKey}] ✅ Login succeeded");
             return OkOrUnauthorized(issue);
         }
         catch
@@ -242,7 +244,7 @@ public abstract class JwtAuthController : AuthController
             var groupKey = SessionGroupKeyStrategy(account.StorageId);
 
             if (!await CreateAndSaveAuthSessionAsync(issue, groupKey, account.StorageId, request.Fingerprint))
-                return Unauthorized($"[login-uname][{request.Username}] Only clients with IP address are allowed to connect.");
+                return Unauthorized("[login-uname] Only clients with IP address are allowed to connect.");
 
             _logger.LogInformation($"[login-uname][{groupKey}] ✅ Login succeeded (username: {request.Username})");
             return OkOrUnauthorized(issue);
@@ -292,7 +294,7 @@ public abstract class JwtAuthController : AuthController
             if (principal == null || groupKey == null)
             {
                 _logger.LogWarning("[refresh] ❌ Invalid access token during refresh");
-                return Unauthorized("Invalid access token.");
+                return Unauthorized();
             }
 
             string? fingerprint = principal.FindFirst("Fingerprint")?.Value;
@@ -303,16 +305,16 @@ public abstract class JwtAuthController : AuthController
             {
                 // Never log the refresh token itself: it is a bearer secret.
                 _logger.LogWarning("[refresh] ❌ Invalid or expired session for the presented refresh token");
-                return Unauthorized("Invalid or expired session.");
+                return Unauthorized();
             }
 
             var expectedRefreshKey = $"{cached.RefreshToken}";
             var providedRefreshKey = $"{refreshToken};jwt";
 
-            if (!string.Equals(providedRefreshKey, expectedRefreshKey, StringComparison.Ordinal))
+            if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(providedRefreshKey), Encoding.UTF8.GetBytes(expectedRefreshKey)))
             {
                 _logger.LogWarning($"[refresh][{cached.PrincipalId}] ❌ Refresh token mismatch.");
-                return Unauthorized("Refresh token mismatch.");
+                return Unauthorized();
             }
 
             var issue = IssueToken(principal.Claims.Where(c => !IssuerOwnedClaims.Contains(c.Type)));

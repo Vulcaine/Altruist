@@ -630,7 +630,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
         cmd.Transaction = lease.Transaction;
         // Schema name is framework-controlled (from config), not user input
 #pragma warning disable CA2100
-        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS {VaultDocument.Quote(schema.Trim())};";
+        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS {VaultDocument.Quote(schema.Trim())};"; // nosemgrep: csharp.lang.security.sqli.csharp-sqli.csharp-sqli -- quoted identifier from config
 #pragma warning restore CA2100
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -870,11 +870,11 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
 
         if (parameters is null || parameters.Count == 0)
         {
-            cmd.CommandText = sql;
+            cmd.CommandText = sql; // nosemgrep: csharp.lang.security.sqli.csharp-sqli.csharp-sqli -- the parameterized query API: values are bound, never spliced
             return cmd;
         }
 
-        cmd.CommandText = ReplaceQuestionMarks(sql, parameters.Count, ParameterPrefix);
+        cmd.CommandText = ReplaceQuestionMarks(sql, parameters.Count, ParameterPrefix); // nosemgrep: csharp.lang.security.sqli.csharp-sqli.csharp-sqli -- placeholders only; values bound below
 
         for (int i = 0; i < parameters.Count; i++)
         {
@@ -1002,7 +1002,7 @@ public abstract class GeneralSqlDatabaseProvider : ISqlDatabaseProvider, IGenera
             await using var cmd = pingConn.CreateCommand();
             // HealthCheckSql is a constant ("SELECT 1"), not user input
 #pragma warning disable CA2100
-            cmd.CommandText = HealthCheckSql;
+            cmd.CommandText = HealthCheckSql; // nosemgrep: csharp.lang.security.sqli.csharp-sqli.csharp-sqli -- constant
 #pragma warning restore CA2100
             cmd.CommandTimeout = 3;
 

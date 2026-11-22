@@ -92,7 +92,7 @@ public sealed class ArchitectureCardBuilder
         foreach (var transport in _transports.Select(t => t.TransportType.ToLowerInvariant()).Distinct().Order(StringComparer.Ordinal))
         {
             var addresses = transport == "websocket"
-                ? http.Select(a => a.Replace("https://", "wss://").Replace("http://", "ws://"))
+                ? http.Select(a => a.Replace("https://", "wss://").Replace("http://", "ws://")) // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- shows the listener as configured
                 : new[] { $"{transport}://{SocketHost()}:{_config[$"altruist:server:transport:{transport}:port"] ?? DefaultSocketPort(transport)}" };
             listeners.AddRange(addresses.Select(a => new ArchitectureListenerDto(transport, a, CodecOf(transport), CountOf(transport))));
         }

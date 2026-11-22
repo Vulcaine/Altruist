@@ -25,6 +25,8 @@ export function createVsCodeTransport(api: VsCodeApi, onNavigate: (route: string
   let socketHandlers: { onMessage: (m: unknown) => void; onState: (open: boolean) => void } | null = null;
 
   window.addEventListener('message', (event: MessageEvent<FromHost>) => {
+    // VS Code relays host messages into the webview from its own origin; anything else is another frame.
+    if (event.origin !== window.origin) return;
     const message = event.data;
     switch (message.type) {
       case 'result':

@@ -59,7 +59,7 @@ public sealed class TransportEndpointOptions
     public int Port { get; set; }
     /// <summary>Codec for this transport (<c>codec: { provider: ... }</c>); defaults to MessagePack.</summary>
     public CodecOptions Codec { get; set; } = new();
-    /// <summary>WebSocket only: connect with TLS (<c>wss://</c>) instead of <c>ws://</c>. Default false; use true for any server reached over the internet.</summary>
+    /// <summary>WebSocket only: connect with TLS (scheme <c>wss</c>) instead of plain <c>ws</c>. Default false; use true for any server reached over the internet.</summary>
     public bool Secure { get; set; }
     /// <summary>WebSocket only: the portal route to connect to (e.g. <c>/game</c>). Default <c>""</c> (the server root).</summary>
     public string Path { get; set; } = "";

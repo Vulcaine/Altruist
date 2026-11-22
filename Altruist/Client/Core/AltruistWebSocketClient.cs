@@ -13,7 +13,7 @@ namespace Altruist.Client;
 ///
 /// <para>Internal: send through <see cref="IAltruistClientRouter.Ws"/>. Registered as a DI
 /// singleton only when <c>altruist:client:transport:ws</c> is configured; the URL comes from
-/// <see cref="TransportEndpointOptions.WebSocketUri"/> (<c>ws://</c>, or <c>wss://</c> with <c>secure: true</c>).</para>
+/// <see cref="TransportEndpointOptions.WebSocketUri"/> (plain <c>ws</c>, or TLS <c>wss</c> with <c>secure: true</c>).</para>
 /// </summary>
 [Service]
 [ConditionalOnConfig("altruist:client:transport:ws")]
@@ -37,7 +37,7 @@ internal sealed class AltruistWebSocketClient : IAsyncDisposable, IDisposable
     public event Action? OnDisconnected;
 
     /// <summary>Explicit ctor — used by tests.</summary>
-    /// <param name="url">Server WebSocket URL (<c>ws://</c> or <c>wss://</c>).</param>
+    /// <param name="url">Server WebSocket URL (scheme <c>ws</c> or <c>wss</c>).</param>
     /// <param name="codec">Codec; provider <c>"json"</c> (any case) selects text frames, anything else binary.</param>
     public AltruistWebSocketClient(Uri url, IClientCodec codec)
     {

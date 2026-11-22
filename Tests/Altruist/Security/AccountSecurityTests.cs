@@ -73,7 +73,7 @@ public sealed class PasswordHasherTests
 
 public sealed class AccessTokenTests
 {
-    internal static TokenValidationParameters Validation(string key = "0123456789abcdef0123456789abcdef-key")
+    internal static TokenValidationParameters Validation(string key = "0123456789abcdef0123456789abcdef-key") // gitleaks:allow (test value)
     {
         var p = new TokenValidationParameters
         {

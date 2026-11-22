@@ -43,7 +43,7 @@ public sealed class NeedsDashboardAssembly { }
 /// <summary>Unit tests of <see cref="DashboardAccessMiddleware"/>, redaction and <see cref="ConditionalOnAssemblyAttribute"/>.</summary>
 public sealed class DashboardAccessMiddlewareTests
 {
-    private const string Token = "0123456789abcdef-secret";
+    private const string Token = "0123456789abcdef-secret"; // gitleaks:allow (test value)
 
     private sealed class Env : IHostEnvironment
     {
@@ -63,6 +63,7 @@ public sealed class DashboardAccessMiddlewareTests
         var ctx = new DefaultHttpContext { RequestServices = services ?? new ServiceCollection().BuildServiceProvider() };
         ctx.Response.Body = new MemoryStream();
         ctx.Request.Path = "/dashboard/v1/summary";
+        ctx.Request.Host = new HostString("localhost:5000");
         ctx.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.9");
         setup(ctx);
         await mw.InvokeAsync(ctx);
@@ -123,6 +124,31 @@ public sealed class DashboardAccessMiddlewareTests
             c.Request.Headers["X-Forwarded-For"] = "198.51.100.7";
         });
         Assert.Equal(403, status);
+
+        // DNS rebinding: a page on attacker.example resolved to 127.0.0.1 still sends its own Host.
+        (status, reached, _) = await Run(Enabled(), "Development", c =>
+        {
+            c.Connection.RemoteIpAddress = IPAddress.Loopback;
+            c.Request.Host = new HostString("attacker.example:5000");
+        });
+        Assert.False(reached);
+        Assert.Equal(403, status);
+
+        // A cross-site page opening a socket to localhost sends its own Origin.
+        (status, reached, _) = await Run(Enabled(), "Development", c =>
+        {
+            c.Connection.RemoteIpAddress = IPAddress.Loopback;
+            c.Request.Headers.Origin = "https://attacker.example";
+        });
+        Assert.False(reached);
+        Assert.Equal(403, status);
+
+        (status, reached, _) = await Run(Enabled(), "Development", c =>
+        {
+            c.Connection.RemoteIpAddress = IPAddress.Loopback;
+            c.Request.Headers.Origin = "http://127.0.0.1:5000";
+        });
+        Assert.True(reached);
 
         var off = Enabled();
         off["altruist:dashboard:allow-loopback-without-token"] = "false";

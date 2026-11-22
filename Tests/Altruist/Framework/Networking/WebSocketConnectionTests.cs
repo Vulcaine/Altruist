@@ -47,7 +47,7 @@ public sealed class WebSocketConnectionTests : IAsyncLifetime
         await _app.StartAsync();
 
         var address = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
-        _uri = new Uri(address.Replace("http://", "ws://") + "/ws");
+        _uri = new Uri(address.Replace("http://", "ws://") + "/ws"); // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- the local test server
         _client = new ClientWebSocket();
         await _client.ConnectAsync(_uri, Timeout(5));
     }

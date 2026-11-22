@@ -59,10 +59,9 @@ class DashboardPanel {
    */
   html(appRoot) {
     const fs = require("fs");
-    const path = require("path");
     let index;
     try {
-      index = fs.readFileSync(path.join(appRoot.fsPath, "index.html"), "utf8");
+      index = fs.readFileSync(vscode.Uri.joinPath(appRoot, "index.html").fsPath, "utf8");
     } catch {
       return "<p>The dashboard app is missing from the extension (media/app). Build Altruist/Dashboard/App and package again.</p>";
     }

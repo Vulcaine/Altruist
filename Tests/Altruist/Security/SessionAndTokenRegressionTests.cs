@@ -241,7 +241,7 @@ public sealed class JwtTokenPairRegressionTests
         var forged = $"{parts[0]}.{parts[1]}.{new string('A', parts[2].Length)}";
 
         controller.Present($"Bearer {forged};jwt;{login.RefreshToken}");
-        Assert.IsType<UnauthorizedObjectResult>(await controller.Refresh());
+        Assert.IsType<UnauthorizedResult>(await controller.Refresh());
     }
 }
 

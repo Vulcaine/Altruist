@@ -109,7 +109,7 @@ export function hasTouchpad(identity: PadIdentity): boolean {
 /** Human product name from an unknown id ("Wireless Gamepad"), without browser decorations. */
 function productName(id: string): string {
   return id
-    .replace(/\(.*?(standard gamepad|vendor:).*?\)/i, '')
+    .replace(/\([^()]*(?:standard gamepad|vendor:)[^()]*\)/i, '')
     .replace(/^\s*[0-9a-f]{1,4}-[0-9a-f]{1,4}-/i, '')
     .replace(/\s+/g, ' ')
     .trim()

@@ -1,7 +1,9 @@
 version: "3.8"
 
 services:
-  sonarqube-db:
+  sonarqube-db: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- writes run/temp files outside its volumes
+    security_opt:
+      - no-new-privileges:true
     image: postgres:15
     container_name: sonarqube-db
     restart: unless-stopped
@@ -12,7 +14,9 @@ services:
     volumes:
       - sonarqube_db_data:/var/lib/postgresql/data
 
-  sonarqube:
+  sonarqube: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- writes run/temp files outside its volumes
+    security_opt:
+      - no-new-privileges:true
     image: sonarqube:community
     container_name: sonarqube
     depends_on:
@@ -23,7 +27,7 @@ services:
       SONAR_JDBC_USERNAME: sonar
       SONAR_JDBC_PASSWORD: sonar
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000" # local analysis only; the sonar/sonar credentials never leave this machine
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions

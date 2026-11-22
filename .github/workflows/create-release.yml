@@ -3,12 +3,17 @@ name: Create Release PR
 on:
   workflow_dispatch:  # Button trigger from GitHub UI
 
+# GITHUB_TOKEN only reads; the PR itself is opened with ACTION_PAT.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   create-release-pr:
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0  # Required to diff between branches
 
@@ -33,11 +38,13 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 🔁 Create PR via GitHub REST API
+        # Step outputs reach the script through env, never spliced into it: PR titles are user-controlled.
         env:
           GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          VERSION: ${{ steps.read_version.outputs.version }}
+          CHANGELOG: ${{ steps.changelog.outputs.log }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          VERSION=${{ steps.read_version.outputs.version }}
-          CHANGELOG="${{ steps.changelog.outputs.log }}"
           TITLE="Release/$VERSION"
           BODY="## 📝 Changelog
 
@@ -48,7 +55,7 @@ jobs:
 
           echo "Creating PR: $TITLE"
 
-          curl -s -X POST https://api.github.com/repos/${{ github.repository }}/pulls \
+          curl -s -X POST "https://api.github.com/repos/$REPOSITORY/pulls" \
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -d "$(jq -n \

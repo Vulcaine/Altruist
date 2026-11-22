@@ -32,6 +32,8 @@ class ConnectionManager {
   }
 
   async autoConnectIfEnabled() {
+    // A cloned repo's config.yml or .vscode settings choose the address: only a trusted workspace connects on its own.
+    if (!vscode.workspace.isTrusted) return;
     if (!vscode.workspace.getConfiguration("altruist.dashboard").get("autoConnect", true)) return;
     const discovered = await discoverConnectionInfo();
     if (!discovered.baseUrl || (!discovered.dashboardEnabled && discovered.source !== "settings")) return;
@@ -89,10 +91,16 @@ class ConnectionManager {
 
   /** A request to the server with the dashboard token, when one is set. */
   async fetch(path, init = {}) {
+    // Paths come from the webview: one like "@evil.example/x" would turn the base into userinfo and send the token there.
+    const base = new URL(this.state.baseUrl);
+    const url = new URL(`${this.state.baseUrl}${path}`);
+    if (!String(path).startsWith("/") || url.origin !== base.origin || url.username || url.password) {
+      throw new Error(`Refusing a request outside ${base.origin}: ${path}`);
+    }
     const token = await this.getToken();
     const headers = { ...(init.headers || {}) };
     if (token) headers[TOKEN_HEADER] = token;
-    return fetch(`${this.state.baseUrl}${path}`, { ...init, headers, cache: "no-store" });
+    return fetch(url, { ...init, headers, cache: "no-store" });
   }
 
   tokenKey() {
