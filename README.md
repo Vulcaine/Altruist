@@ -18,7 +18,17 @@ Measured with `Benchmarks/run.sh` (BenchmarkDotNet, .NET 9) on an Apple M1 Pro l
 - **Entity sync**: automatic `[Synchronized]` delta detection, ~0.6–0.8 µs per entity
 - Reproduce on your own hardware: `cd Benchmarks && ./run.sh` (or `./run.sh --quick`)
 
-## Quick Start
+## Get Started
+
+```bash
+dotnet tool install -g Altruist.CLI   # the `altruist` command
+altruist create MyGameServer          # a new server project
+cd MyGameServer && dotnet run
+```
+
+Or add Altruist to an existing project with `dotnet add package Altruist`, or start from the template with `dotnet new install Altruist.Templates` and `dotnet new altruist`. The [docs](https://altruist-docs.vercel.app) walk through configuration, networking, persistence and the game systems.
+
+## Examples
 
 Pick your adventure from the [Examples](Examples) folder:
 
@@ -30,3 +40,10 @@ Pick your adventure from the [Examples](Examples) folder:
 
 ![Demo of Starship](Assets/Videos/starship.gif)
 
+## Contributing
+
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build and test from source, and [SECURITY.md](SECURITY.md) how to report a vulnerability privately. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+[Apache 2.0](LICENSE)
