@@ -15,7 +15,7 @@ public sealed class GameWorldManager3DPartitionTests
         index.SetupGet(i => i.Index).Returns(0);
         index.SetupGet(i => i.Name).Returns("test");
         index.SetupProperty(i => i.Size, new IntVector3(128, 64, 64));
-        var world = new GameWorldManager3D(index.Object, physx3D: null, new WorldPartitioner3D(64, 64, 64));
+        var world = new GameWorldManager3D(index.Object, physx3D: null, new WorldPartitioner3D(64, 64, 64), new VirtualIdAllocator());
         world.Initialize();
         return world;
     }

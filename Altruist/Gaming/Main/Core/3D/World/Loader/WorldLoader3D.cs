@@ -96,6 +96,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IPhysxBodyApiProvider3D? _bodyApi;
         private readonly IPhysxColliderApiProvider3D? _colliderApi;
         private readonly IWorldPartitioner3D _worldPartitioner;
+        private readonly IVirtualIdAllocator _virtualIds;
         private readonly bool _physicsEnabled;
 
         private readonly Dictionary<string, Type> _archetypeMap;
@@ -110,6 +111,7 @@ namespace Altruist.Gaming.ThreeD
         /// <summary>Creates the loader and scans loaded assemblies once for <see cref="WorldObjectAttribute"/> types implementing <see cref="IWorldObject3D"/>.</summary>
         /// <param name="worldPartitioner">Partitioner passed to each created manager.</param>
         /// <param name="options">JSON options used to deserialize <see cref="WorldSchema"/>.</param>
+        /// <param name="virtualIds">Id source passed to each created manager.</param>
         /// <param name="engineFactory">Optional physics engine factory.</param>
         /// <param name="bodyApi">Optional body factory.</param>
         /// <param name="colliderApi">Optional collider factory.</param>
@@ -117,6 +119,7 @@ namespace Altruist.Gaming.ThreeD
         public WorldLoader3D(
             IWorldPartitioner3D worldPartitioner,
             JsonSerializerOptions options,
+            IVirtualIdAllocator virtualIds,
             IPhysxWorldEngineFactory3D? engineFactory = null,
             IPhysxBodyApiProvider3D? bodyApi = null,
             IPhysxColliderApiProvider3D? colliderApi = null,
@@ -127,6 +130,7 @@ namespace Altruist.Gaming.ThreeD
             _bodyApi = bodyApi;
             _colliderApi = colliderApi;
             _worldPartitioner = worldPartitioner;
+            _virtualIds = virtualIds;
             _physicsEnabled = physicsEnabled;
 
             _archetypeMap = BuildArchetypeMap();
@@ -171,7 +175,7 @@ namespace Altruist.Gaming.ThreeD
                     physxWorld = new PhysxWorld3D(engine);
                 }
 
-                var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _bodyApi, _colliderApi);
+                var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _virtualIds, _bodyApi, _colliderApi);
                 return manager;
             }
 
@@ -200,7 +204,7 @@ namespace Altruist.Gaming.ThreeD
                 physxWorld = new PhysxWorld3D(engine);
             }
 
-            var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _bodyApi, _colliderApi);
+            var manager = new GameWorldManager3D(index, physxWorld, _worldPartitioner, _virtualIds, _bodyApi, _colliderApi);
 
             // 3) Root "world" transform from exported landscape
             var position = worldSchema.Transform.Position.ToNumerics();

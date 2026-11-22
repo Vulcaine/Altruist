@@ -64,7 +64,33 @@ public sealed class GameWorldManager3DSpawnTests
         Assert.Same(obj, world.FindObject(obj.InstanceId));
     }
 
-    private static GameWorldManager3D CreateWorld()
+    [Fact]
+    public async Task Worlds_sharing_an_allocator_never_hand_out_the_same_virtual_id()
+    {
+        var allocator = new VirtualIdAllocator();
+        var preAllocated = allocator.Allocate();
+        var first = new SpawnTestObject3D();
+        var second = new SpawnTestObject3D();
+
+        await CreateWorld(allocator).SpawnObject(first);
+        await CreateWorld(allocator).SpawnObject(second);
+
+        Assert.Equal(3, new[] { preAllocated, first.VirtualId, second.VirtualId }.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task An_object_spawned_with_a_virtual_id_keeps_it()
+    {
+        var obj = new SpawnTestObject3D { VirtualId = 42 };
+
+        await CreateWorld().SpawnObject(obj);
+
+        Assert.Equal(42u, obj.VirtualId);
+    }
+
+    private static GameWorldManager3D CreateWorld() => CreateWorld(new VirtualIdAllocator());
+
+    private static GameWorldManager3D CreateWorld(IVirtualIdAllocator allocator)
     {
         var index = new Mock<IWorldIndex3D>();
         index.SetupGet(i => i.Index).Returns(0);
@@ -74,6 +100,7 @@ public sealed class GameWorldManager3DSpawnTests
         return new GameWorldManager3D(
             index.Object,
             physx3D: null,
-            new WorldPartitioner3D(64, 64, 64));
+            new WorldPartitioner3D(64, 64, 64),
+            allocator);
     }
 }

@@ -2292,6 +2292,7 @@ world.SpawnLightweight(monster);                  // spatial tracking only, no b
 
 - `Altruist.GameConfigOptions` (binds `altruist:game`): Snapshot of `altruist:game`.
 - `Altruist.Gaming.GameClientSynchronizator` as `Altruist.IClientSynchronizator`: The gaming module's `IClientSynchronizator` (used through `Synchronize`): computes the changed `[Synced]` properties of an `ISynchronizedEntity` for the current engine tick (`CurrentTick`) and broadcasts them as one `SyncPacket` to every connected client. Only when altruist:game is set.
+- `Altruist.Gaming.VirtualIdAllocator` as `Altruist.Gaming.IVirtualIdAllocator`: Sequential `IVirtualIdAllocator` starting at 1.
 - `Altruist.Gaming.WorldCapacityContributor` as `Altruist.ICapacityContributor`: Reports the persistent worlds of the 2D/3D world organizer to the `IServerNode` (kind `worlds`). Only when altruist:game is set.
 - `Altruist.Gaming.WorldCoordinator` as `Altruist.Gaming.IGameWorldOrganizer`: The default `IGameWorldOrganizer`: a composite that steps every registered `IWorldStepper` — the 2D/3D world organizers with the variable frame time and fixed-rate steppers (rooms, force runtimes) with a constant dt from one `FixedStepClock` per stepper. Only when altruist:game is set and no other implementation is registered.
 - `Altruist.PartitionerOptions` (binds `altruist:game:worlds:partitioner`): Snapshot of `altruist:game:worlds:partitioner`: partition cell dimensions in world units.
@@ -2372,6 +2373,7 @@ The 3D implementation of worlds: the 3D organizer and manager, the octree-style 
 - When your game is 3D (MMO, action, FPS).
 - When you load static geometry, colliders and archetype objects from a world JSON file, or replace the loader with IWorldLoader3D.
 - When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight).
+- When you need an object's VirtualId before it spawns (a player id sent at login); take it from IVirtualIdAllocator, the source the world manager uses, never from your own counter.
 
 **Don't use it when**
 
@@ -2402,6 +2404,7 @@ public class WorldSetup(IGameWorldOrganizer3D worlds)
 - `Altruist.Gaming.ThreeD.IGameWorldManager3D`: One persistent 3D world (open world / shard): owns the world's objects, its spatial partitions, its zones and (optionally) a physics world.
 - `Altruist.Gaming.ThreeD.IWorldLoader3D`: Builds `IGameWorldManager3D` instances from world configuration and optional exported scene JSON (`WorldSchema`).
 - `Altruist.Gaming.ThreeD.WorldPartitioner3D`: Default `IWorldPartitioner3D` (3D mode): fixed-size cells read from `altruist:game:worlds:partitioner:width|height|depth` (default 64 each); the last cell on each axis is clipped to the world size.
+- `Altruist.Gaming.IVirtualIdAllocator`: The one source of `VirtualId` values in a process: the world manager draws from it when it spawns an object whose id is still 0, and game code draws from it for ids it needs before a spawn (a player's id sent at login, a ground item announced before it enters the world).
 - `Altruist.Gaming.ThreeD.TrajectoryRuntime3D`: Default singleton `ITrajectoryRuntime3D` (registered when `altruist:game` is configured).
 - `Altruist.Gaming.EntitySyncService`: Automatically synchronizes all [Synchronized] ISynchronizedEntity world objects.
 - `Altruist.Gaming.WorldIndex3D`: Default `IWorldIndex3D` bound from configuration: one instance per item of `altruist:game:worlds:items` (keyed by `id`) when `altruist:environment:mode` is `3D`.

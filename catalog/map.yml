@@ -1908,6 +1908,7 @@ capabilities:
       - When your game is 3D (MMO, action, FPS).
       - When you load static geometry, colliders and archetype objects from a world JSON file, or replace the loader with IWorldLoader3D.
       - When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight).
+      - When you need an object's VirtualId before it spawns (a player id sent at login); take it from IVirtualIdAllocator, the source the world manager uses, never from your own counter.
     avoid:
       - When your game is 2D. Use [worlds-2d].
       - When you only need terrain heights and walkability without physics. Use [terrain].
@@ -1924,6 +1925,7 @@ capabilities:
       - Altruist.Gaming.ThreeD.IGameWorldManager3D
       - Altruist.Gaming.ThreeD.IWorldLoader3D
       - Altruist.Gaming.ThreeD.WorldPartitioner3D
+      - Altruist.Gaming.IVirtualIdAllocator
       - Altruist.Gaming.ThreeD.TrajectoryRuntime3D
       - Altruist.Gaming.EntitySyncService
       - Altruist.Gaming.WorldIndex3D

@@ -5157,6 +5157,16 @@
           ]
         },
         {
+          "type": "Altruist.Gaming.VirtualIdAllocator",
+          "kind": "service",
+          "contracts": [
+            "Altruist.Gaming.IVirtualIdAllocator"
+          ],
+          "summary": "Sequential `IVirtualIdAllocator` starting at 1. Thread-safe.",
+          "file": "Altruist/Gaming/Main/Core/General/World/VirtualIdAllocator.cs",
+          "gates": []
+        },
+        {
           "type": "Altruist.Gaming.WorldCapacityContributor",
           "kind": "service",
           "contracts": [
@@ -5678,7 +5688,8 @@
         "use": [
           "When your game is 3D (MMO, action, FPS).",
           "When you load static geometry, colliders and archetype objects from a world JSON file, or replace the loader with IWorldLoader3D.",
-          "When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight)."
+          "When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight).",
+          "When you need an object's VirtualId before it spawns (a player id sent at login); take it from IVirtualIdAllocator, the source the world manager uses, never from your own counter."
         ],
         "avoid": [
           "When your game is 2D. Use [worlds-2d].",
@@ -5700,6 +5711,7 @@
           "Altruist.Gaming.ThreeD.IGameWorldManager3D",
           "Altruist.Gaming.ThreeD.IWorldLoader3D",
           "Altruist.Gaming.ThreeD.WorldPartitioner3D",
+          "Altruist.Gaming.IVirtualIdAllocator",
           "Altruist.Gaming.ThreeD.TrajectoryRuntime3D",
           "Altruist.Gaming.EntitySyncService",
           "Altruist.Gaming.WorldIndex3D"
@@ -5727,6 +5739,11 @@
           "type": "Altruist.Gaming.ThreeD.WorldPartitioner3D",
           "summary": "Default `IWorldPartitioner3D` (3D mode): fixed-size cells read from `altruist:game:worlds:partitioner:width|height|depth` (default 64 each); the last cell on each axis is clipped to the world size.",
           "file": "Altruist/Gaming/Main/Core/3D/World/Partitioning/WorldPartition3D.cs"
+        },
+        {
+          "type": "Altruist.Gaming.IVirtualIdAllocator",
+          "summary": "The one source of `VirtualId` values in a process: the world manager draws from it when it spawns an object whose id is still 0, and game code draws from it for ids it needs before a spawn (a player's id sent at login, a ground item announced before it enters the world). Ids from separate counters collide on the wire.",
+          "file": "Altruist/Gaming/Main/Core/General/World/VirtualIdAllocator.cs"
         },
         {
           "type": "Altruist.Gaming.ThreeD.TrajectoryRuntime3D",
