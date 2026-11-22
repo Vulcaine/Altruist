@@ -28,21 +28,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
     <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
-    <PackageReference Include="CassandraCSharpDriver" Version="3.22.0" />
-    <PackageReference Include="Cronos" Version="0.10.0" />
+    <PackageReference Include="CassandraCSharpDriver" Version="3.23.0" />
+    <PackageReference Include="Cronos" Version="0.13.0" />
     <!-- SMTP email provider. The "Lite" builds (MIT) leave out S/MIME / PGP, so they pull no BouncyCastle.Cryptography
          (which would clash with BouncyCastle.NetCore's Org.BouncyCastle types). -->
     <PackageReference Include="MailKitLite" Version="4.18.1" />
-    <PackageReference Include="MessagePack" Version="3.1.10" />
+    <PackageReference Include="MessagePack" Version="3.1.12" />
     
 
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.3" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
-    <PackageReference Include="StackExchange.Redis" Version="2.8.31" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.23" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.23" />
+    <PackageReference Include="StackExchange.Redis" Version="3.4.35" />
     <PackageReference Include="System.Data.HashFunction.MurmurHash" Version="2.0.0" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.9.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
   </ItemGroup>
 
   <!-- Pinned transitive dependencies to patched versions (security advisories):
