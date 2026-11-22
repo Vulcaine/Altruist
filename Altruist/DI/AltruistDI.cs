@@ -213,6 +213,11 @@ public static class AltruistDI
             if (serviceType is null)
                 continue;
 
+            // An open generic registration (IOptions<>, ILogger<>) is a template for closed types, never a service
+            // that can be resolved itself.
+            if (serviceType.ContainsGenericParameters)
+                continue;
+
             if (!processedServiceTypes.Add(serviceType))
                 continue;
 

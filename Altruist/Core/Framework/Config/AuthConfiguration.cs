@@ -3,7 +3,6 @@ using System.Text;
 using Altruist.Contracts;
 
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -153,7 +152,6 @@ public sealed class AuthConfiguration : IAltruistConfiguration
                     };
                 });
 
-            services.AddAuthorization((AuthorizationOptions _) => { });
             logger.LogInformation("🔐 JWT authentication activated. Your app is armored and ready to secure connections!");
         }
         else if (string.Equals(Mode, "session", StringComparison.OrdinalIgnoreCase))
