@@ -2132,6 +2132,7 @@ The server-side game loop. It runs your [Cycle] methods, timers and effects at a
 
 **Don't use it when**
 
+- When a [Cycle] method awaits something, do not declare it async void; the server refuses it at start. Return Task so the engine awaits it and reports its failures.
 - When you only need a periodic background job with no game state, and no game engine is configured. Use a plain hosted service.
 - When you need deterministic tick logic that the TypeScript client also runs. Write that logic with [flow] and call it from a stepper.
 

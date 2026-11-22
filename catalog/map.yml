@@ -1738,6 +1738,7 @@ capabilities:
       - When you need an authoritative simulation that steps at a fixed rate (for example a 60 Hz match) through IWorldStepper.
       - When a socket handler must hand work to the loop (WaitForNextTick, SyncCommit) instead of locking shared state.
     avoid:
+      - When a [Cycle] method awaits something, do not declare it async void; the server refuses it at start. Return Task so the engine awaits it and reports its failures.
       - When you only need a periodic background job with no game state, and no game engine is configured. Use a plain hosted service.
       - When you need deterministic tick logic that the TypeScript client also runs. Write that logic with [flow] and call it from a stepper.
     packages:
