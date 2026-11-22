@@ -1,0 +1,15 @@
+name: Feature request
+description: A system or API Altruist should have.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to build?
+      description: The game or server problem this would solve.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Altruist to provide?

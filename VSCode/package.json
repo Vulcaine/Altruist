@@ -1,0 +1,119 @@
+{
+  "name": "altruist-dashboard-vscode",
+  "displayName": "Altruist Dashboard",
+  "description": "The Altruist dashboard in VS Code: server, fleet, engine, worlds (2D and 3D), rooms, AI, pairing, data, traffic and an API lab.",
+  "version": "0.9.48-beta",
+  "publisher": "vulcaine",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "media/icon.png",
+  "main": "./extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted workspace the extension does not connect on its own; connect from the command palette."
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "altruist",
+          "title": "Altruist",
+          "icon": "media/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "altruist": [
+        {
+          "id": "altruistConnection",
+          "name": "Connection"
+        },
+        {
+          "id": "altruistExplorer",
+          "name": "Dashboard"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "altruist.connectDashboard",
+        "title": "Altruist: Connect to Dashboard"
+      },
+      {
+        "command": "altruist.refreshConnection",
+        "title": "Altruist: Reconnect"
+      },
+      {
+        "command": "altruist.disconnectDashboard",
+        "title": "Altruist: Disconnect Dashboard"
+      },
+      {
+        "command": "altruist.setToken",
+        "title": "Altruist: Set Dashboard Token"
+      },
+      {
+        "command": "altruist.clearToken",
+        "title": "Altruist: Clear Dashboard Token"
+      },
+      {
+        "command": "altruist.open",
+        "title": "Altruist: Open Dashboard"
+      },
+      {
+        "command": "altruist.openWorlds",
+        "title": "Altruist: Open Worlds"
+      },
+      {
+        "command": "altruist.openLab",
+        "title": "Altruist: Open API Lab"
+      },
+      {
+        "command": "altruist.openSettings",
+        "title": "Altruist: Open Extension Settings"
+      }
+    ],
+    "configuration": {
+      "title": "Altruist Dashboard",
+      "properties": {
+        "altruist.dashboard.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "The Altruist server, for example http://localhost:8000. Empty: read from the workspace config.yml."
+        },
+        "altruist.dashboard.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically probe and connect to the dashboard when a workspace with Altruist config is opened."
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "altruist.refreshConnection",
+          "when": "view == altruistConnection",
+          "group": "navigation"
+        },
+        {
+          "command": "altruist.open",
+          "when": "view == altruistExplorer",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "node scripts/copy-app.js",
+    "copy-app": "node scripts/copy-app.js"
+  }
+}

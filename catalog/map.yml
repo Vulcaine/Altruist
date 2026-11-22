@@ -1,0 +1,3343 @@
+capabilities:
+  - name: project-creation
+    title: Project creation
+    summary: >-
+      Two ways to start a new Altruist server: the `altruist` dotnet template and the `altruist create` command of the
+      Altruist.CLI tool. Both give you the same ready-to-run project with Program.cs, config.yml, one WebSocket portal and one REST controller.
+    use:
+      - When you start a new Altruist server from nothing and want a project that runs at once.
+      - When you want a known-good layout (Program.cs, config.yml, Portals/, Http/) to copy from.
+      - When you want a short command to run the current project (`altruist run`, which calls `dotnet run`).
+    avoid:
+      - When you add Altruist to an existing .NET project, add the packages by hand and write config.yml yourself; see application.
+      - When you need a game with rooms, combat or inventory, create the project first, then add those packages (see the gaming capabilities).
+    packages:
+      - Altruist.CLI
+      - Altruist.Templates
+    docs:
+      - /docs/getting-started/installation
+      - /docs/getting-started/quick-start-guide
+    paths:
+      - CLI/
+      - Templates/
+    example: |-
+      ```bash
+      # Option 1: the dotnet template (installs once, then works offline)
+      dotnet new install Altruist.Templates
+      dotnet new altruist -n MyServer
+      cd MyServer
+      dotnet run
+
+      # Option 2: the CLI tool (installs the template for you if it is missing)
+      dotnet tool install -g Altruist.CLI
+      altruist create MyServer
+      cd MyServer
+      altruist run          # same as: dotnet run
+      ```
+
+      The project name must start with a letter and may contain letters, digits, `_` and `.`.
+      The template creates `Program.cs` (`await AltruistApplication.Run(args);`), `config.yml`
+      (HTTP on 0.0.0.0:8080, a JSON WebSocket at `/ws`, an in-memory cache), `Portals/HelloPortal.cs`
+      and `Http/HelloController.cs`. It references the packages Altruist, Altruist.Boot, Altruist.Socket and Altruist.Web.
+
+  - name: configuration
+    title: Configuration
+    summary: >-
+      Altruist is configured from YAML, not from builder code. `config.yml`, then `config.{environment}.yml`, then environment
+      variables, then command-line arguments are merged (later wins), and attributes pull the values into your classes.
+      The same attributes can also switch whole services on or off.
+    use:
+      - When a value (port, rate, key, provider) should come from config.yml instead of being hard-coded; use `[AppConfigValue]` on a constructor parameter.
+      - When a group of related settings belongs in one typed object; use `[ConfigurationProperties]`.
+      - When a value must change while the server runs (tunables); use `ILiveConfigValue<T>`.
+      - When a service should exist only if a config key is set, a package is installed, or no other implementation is registered; use `[ConditionalOnConfig]`, `[ConditionalOnAssembly]` or `[ConditionalOnMissingService]`.
+      - When you need one instance per entry of a YAML list (for example one per world); use a list-mode `[ConditionalOnConfig(path, KeyField = "id")]` with `*:` paths.
+    avoid:
+      - When you only need to register a service without any settings, use `[Service]`; see services-and-modules.
+      - When a value is a secret, keep it out of the committed YAML and set it by environment variable or `${NAME}` placeholder.
+      - When you need the settings of one specific system (email, security, rooms), read that capability's config keys instead of the general mechanics here.
+    packages:
+      - Altruist
+      - Altruist.DI
+    docs:
+      - /docs/getting-started/configuration
+    paths:
+      - Altruist/Core/Framework/ConfigurationConverter/
+      - Altruist/Core/Framework/Bootstrap/ApplicationConfigs.cs
+      - Altruist/DI/Bootstrap/AppConfigLoader.cs
+      - Altruist/DI/Bootstrap/AltruistEnvironment.cs
+      - Altruist/DI/Bootstrap/ApplicationArgs.cs
+      - Altruist/DI/Attributes/ConfigAttributes.cs
+      - Altruist/DI/Attributes/ConditionalOnConfig.cs
+      - Altruist/DI/Attributes/ConditionalOnMissingService.cs
+      - Altruist/DI/Attributes/ConfigurationPropertiesAttribute.cs
+    types:
+      - Altruist.AltruistConfigOptions
+      - Altruist.ServerOptions
+      - Altruist.HttpServerOptions
+      - Altruist.TransportConfigOptions
+      - Altruist.Vector3ConfigConverter
+    config:
+      - altruist:environment
+      - altruist:config
+    example: |-
+      How the sources combine (later wins):
+
+      1. `config.yml` and `config.{environment}.yml` in the build output folder. The environment is `DOTNET_ENVIRONMENT`,
+         else `ASPNETCORE_ENVIRONMENT`, else `Production` (`AltruistEnvironment.Name`), so `config.Development.yml` loads in Development.
+      2. Environment variables: the key path upper-cased, `__` for `:` and `_` for `-`.
+         `ALTRUIST__SERVER__HTTP__PORT=9090` sets `altruist:server:http:port`. Your own YAML roots work too (`MYAPP__MAIL__API_KEY`).
+      3. Command line: `--altruist:server:http:port=9090`.
+
+      A YAML value may read an environment variable: `${NAME}` or `${NAME:-default}`.
+
+      ```yaml
+      # config.yml: keys are kebab-case under `altruist:`, your own settings live under your own root
+      altruist:
+        environment:
+          mode: 2D                  # 2D or 3D; the game systems read it
+        server:
+          http:
+            host: 0.0.0.0
+            port: ${PORT:-8080}
+        game:
+          worlds:
+            items:                  # a list: one World per item, keyed by id
+              - id: overworld
+                size: { x: 1000, y: 1000 }
+                gravity: { x: 0, y: 0 }
+
+      myapp:
+        mail:
+          host: smtp.example.com
+          port: 587
+        match:
+          tick-rate: 60
+      ```
+
+      ```csharp
+      // One value, with a default, converted to the parameter type
+      [Service]
+      public sealed class Matchmaker
+      {
+          public Matchmaker(
+              [AppConfigValue("myapp:match:size", "4")] int teamSize,
+              [AppConfigValue("myapp:match:tick-rate", "30")] ILiveConfigValue<int> tickRate)   // follows reloads
+              => tickRate.BindTo(v => _rate = v);                                              // runs now and on every change
+          private int _rate;
+      }
+
+      // A whole section, bound once at startup and injectable as a singleton
+      [ConfigurationProperties("myapp:mail")]
+      public sealed class MailSettings
+      {
+          public string Host { get; set; } = "localhost";
+          public int Port { get; set; } = 25;
+      }
+
+      // Switch a service on or off
+      [Service(typeof(ICache))]
+      [ConditionalOnConfig("myapp:cache:provider", havingValue: "redis")]    // only when the key has this value
+      [ConditionalOnAssembly("Altruist.Redis")]                              // and only when the package is referenced
+      public sealed class RedisCache : ICache { /* ... */ }
+
+      [Service(typeof(IPasswordHasher))]
+      [ConditionalOnMissingService(typeof(IPasswordHasher))]                 // framework default; your own [Service] replaces it
+      public sealed class DefaultPasswordHasher : IPasswordHasher { /* ... */ }
+
+      // One instance per list item; "*:" paths read from the current item
+      [Service(typeof(IWorld))]
+      [ConditionalOnConfig("altruist:game:worlds:items", KeyField = "id")]
+      public sealed class World : IWorld
+      {
+          public World([AppConfigValue("*:id")] string id, [AppConfigValue("*:gravity")] Vector2 gravity) { /* ... */ }
+      }
+      // inject one with [ServiceKey("overworld")] IWorld world, or all with IEnumerable<IWorld> worlds
+      ```
+
+  - name: services-and-modules
+    title: Services, dependency injection and modules
+    summary: >-
+      Altruist finds your classes by attribute and wires them into the DI container, so you never write a Startup class.
+      `[Service]` registers a class, `[ServiceConfiguration]` runs a step that adds registrations by hand, `[Bean]` registers a factory method,
+      and `[AltruistModule]` runs one-time startup code once everything is built.
+    use:
+      - When you write an ordinary service: mark the class `[Service]` (or `[Service(typeof(IFoo))]` to expose an interface) and take its dependencies in the constructor.
+      - When you must call `services.Add...` yourself (third-party libraries, options, auth); use `[ServiceConfiguration(order: n)]` on an `IAltruistConfiguration` class.
+      - When you need an object you build by hand (a type you cannot annotate); use a `[Bean]` method.
+      - When one-time startup work needs several services together (seeding a registry); use an `[AltruistModule]` static class with an `[AltruistModuleLoader]` method.
+      - When a service needs initialization after the container is built, use a `[PostConstruct]` method.
+    avoid:
+      - When the setting is only a value or a section of YAML, use `[AppConfigValue]` or `[ConfigurationProperties]`; see configuration.
+      - When you need a service locator in normal code, inject through the constructor. `Dependencies.Inject<T>()` is for static helpers only.
+      - When your process needs no server (a worker or tool), use `AltruistDI.Run(args)` and not the full application; see application.
+    packages:
+      - Altruist.DI
+      - Altruist
+    docs:
+      - /docs/altruist/di
+      - /docs/extension/service
+    paths:
+      - Altruist/DI/
+      - Altruist/Core/Framework/Module/
+      - Altruist/Core/Framework/Attributes/
+      - Altruist/Core/Framework/Features/
+      - Altruist/Core/Framework/ServiceProviderExtensions.cs
+      - Altruist/Core/Framework/Contracts/Service.cs
+      - Altruist/Core/Framework/Contracts/Strategy.cs
+    types:
+      - Altruist.AltruistModuleAttribute
+      - Altruist.AltruistModuleLoaderAttribute
+      - IServiceProviderExtensions
+      - Altruist.IService
+      - Altruist.IConnectable
+      - Altruist.IRelayService
+      - Altruist.Contracts.ITransportServiceToken
+      - Altruist.Features.IAltruistFeatureProvider
+    example: |-
+      ```csharp
+      // A service, injectable as IScoreService
+      [Service(typeof(IScoreService))]
+      public sealed class ScoreService : IScoreService
+      {
+          public ScoreService(ILogger<ScoreService> log, [AppConfigValue("myapp:score:max", "100")] int max) { /* ... */ }
+
+          [PostConstruct]                                   // runs once after the container is built
+          public Task InitAsync(IRepository repo) => repo.PreloadAsync();
+      }
+
+      // A step that adds registrations by hand; lower order runs first
+      [ServiceConfiguration(order: 10)]
+      public sealed class MailSetup : IAltruistConfiguration
+      {
+          private readonly string _host;
+          public MailSetup([AppConfigValue("myapp:mail:host", "localhost")] string host) => _host = host;
+          public bool IsConfigured { get; set; }
+          public Task Configure(IServiceCollection services)
+          {
+              services.AddSingleton(new SmtpClient(_host));
+              return Task.CompletedTask;
+          }
+      }
+
+      // One-time startup wiring after every service exists, before HTTP starts
+      [AltruistModule("Shop")]
+      public static class ShopModule
+      {
+          [AltruistModuleLoader]
+          public static async Task Load(ICatalog catalog) => await catalog.SeedAsync();
+      }
+      ```
+
+  - name: application
+    title: Application bootstrap and lifetime
+    summary: >-
+      `AltruistApplication.Run(args)` is the whole entry point of a server. It loads configuration, registers everything found by attribute,
+      builds the container, runs modules, starts HTTP and the transports, and tracks readiness. Built-in health endpoints report the result.
+    use:
+      - When you write the Program.cs of an Altruist server: one line, `await AltruistApplication.Run(args);`.
+      - When another part of the app needs to know whether the server is ready (database and cache connected); inject `IServerStatus`.
+      - When a load balancer or Kubernetes probe needs a health check; use `GET /altruist/health` and check the `Online` field.
+      - When a service connects to something external and should delay readiness until it is up; implement `IConnectable`.
+    avoid:
+      - When you need only the DI container, with no HTTP and no transports, use `AltruistDI.Run`; see services-and-modules.
+      - When you want to change what the app does, do not edit bootstrap; add services, modules or config instead.
+      - When you probe `/altruist/health`, do not trust the status code alone: it is 200 while starting, so read `Online`.
+    packages:
+      - Altruist
+      - Altruist.Boot
+    docs:
+      - /docs/getting-started/introduction
+    paths:
+      - Altruist/Boot/
+      - Altruist/Core/Framework/Bootstrap/
+      - Altruist/Core/Framework/Config/
+      - Altruist/Core/Framework/LifeCycle/
+      - Altruist/Core/Framework/Health/
+      - Altruist/Core/Framework/Logging/
+      - Altruist/Core/Framework/Framework.cs
+      - Altruist/Core/Framework/Models.cs
+      - Altruist/Core/Framework/Contracts/Altruist.cs
+    types:
+      - Altruist.AltruistApplication
+      - Altruist.AltruistBootstrap
+      - Altruist.AltruistServerContext
+      - Altruist.IAltruistContext
+      - Altruist.IServerStatus
+      - Altruist.ServerStatus
+      - Altruist.ServerInfo
+      - Altruist.ServiceHealthController
+    config:
+      - altruist:logging
+    example: |-
+      ```csharp
+      // Program.cs
+      using Altruist;
+
+      await AltruistApplication.Run(args);   // blocks until shutdown; args are the highest-priority config source
+      ```
+
+      ```csharp
+      // Wait for readiness, and read what the server is
+      [Service]
+      public sealed class Announcer
+      {
+          private readonly IServerStatus _status;
+          private readonly IAltruistContext _context;
+          public Announcer(IServerStatus status, IAltruistContext context) { _status = status; _context = context; }
+
+          public bool CanServe => _status.Status == ReadyState.Alive;    // Starting, Alive or Failed
+          public string Address => $"{_context.ServerInfo.Protocol}://{_context.ServerInfo.Host}:{_context.ServerInfo.Port}";
+      }
+      ```
+
+      ```yaml
+      # HTTP is hosted only when host and port are both set
+      altruist:
+        server:
+          http:
+            host: 0.0.0.0
+            port: 8080
+        logging:
+          console: true      # false turns the framework console logger off
+      ```
+
+      Health: `GET /altruist/health` (readiness) and `GET /altruist/health/details` (endpoints, connection states; restrict it at the network edge).
+
+  - name: server-engine
+    title: Server engine and scheduling
+    summary: >-
+      The engine is the fixed-rate loop of the server: it runs recurring tasks, timers and effects every frame and applies state changes on one thread.
+      Here live its contract (`IEngineCore`, `IAltruistEngine`), cron presets and the engine-aware router; the loop itself ships in Altruist.Gaming.
+      It is not a web server and not a physics engine.
+    use:
+      - When game state is changed from a network or request thread and must be applied on the engine thread; use `WaitForNextTick` or `SyncCommit`.
+      - When you need a one-shot timer (`ScheduleOnce`), a buff that repeats until it expires (`ScheduleEffect`) or slow I/O whose result the game needs (`RunOffTick`).
+      - When work must run on the wall clock (daily reset, pruning); use `RegisterCronJob` with a `CronPresets` expression (UTC).
+      - When you serialize work per entity; use `SendTask` with a stable `TaskIdentifier`.
+    avoid:
+      - When the code is plain request handling with no game loop, do not turn the engine on; leave `altruist:game:engine` out of config.
+      - When you want a recurring method, mark it with the `[Cycle]` attribute; see the gaming capabilities.
+      - When you want the game tick, world step and physics, see the Gaming Main capabilities; this capability only describes the shared contract.
+    packages:
+      - Altruist
+      - Altruist.Gaming
+    docs:
+      - /docs/altruist/engine
+    paths:
+      - Altruist/Core/Framework/Engine/
+      - Altruist/Core/Framework/Contracts/Engine.cs
+      - Altruist/Core/Framework/Contracts/Cron.cs
+    types:
+      - Altruist.Engine.IEngineCore
+      - Altruist.Engine.IAltruistEngine
+      - Altruist.Engine.TaskIdentifier
+      - Altruist.Engine.IAltruistEngineRouter
+      - Altruist.Engine.EngineRouter
+      - CronPresets
+      - CronMapper
+    example: |-
+      ```yaml
+      # Presence of this section turns the engine on
+      altruist:
+        game:
+          engine:
+            framerateHz: 30      # frames per second; default 30
+            diagnostics: false   # true logs how long each task takes
+      ```
+
+      ```csharp
+      [Service]
+      public sealed class Respawner
+      {
+          private readonly IAltruistEngine _engine;
+          public Respawner(IAltruistEngine engine) => _engine = engine;
+
+          // from a network handler: change state on the engine thread
+          public void Move(Player p, Vector2 to) => _engine.WaitForNextTick(() => p.Position = to);
+
+          // a one-shot timer
+          public void ScheduleRespawn(string playerId) =>
+              _engine.ScheduleOnce(TimeSpan.FromSeconds(3), () => Respawn(playerId));
+
+          // wall-clock job (UTC), runs on the thread pool, not the engine thread
+          public void ResetDaily() => _engine.RegisterCronJob(DailyReset, CronPresets.Daily);
+
+          private static Task DailyReset() => Task.CompletedTask;
+          private void Respawn(string id) { /* ... */ }
+      }
+      ```
+
+  - name: email
+    title: Email
+    summary: >-
+      Sends transactional email (verification links, password resets) through one interface, `IEmailSender`. A config key picks the provider:
+      log it, Resend over HTTP, or any SMTP server.
+    use:
+      - When your game sends verification or reset emails; inject `IEmailSender` and call `SendAsync`.
+      - When you test or develop locally; keep `provider: log` so each email is written to the log instead of sent.
+      - When your mail host offers only SMTP (SES, Postmark, Mailgun, a company relay); set `provider: smtp`.
+    avoid:
+      - When you send mail from a request handler, use `SendInBackground` so the caller never waits on the provider.
+      - When you want marketing or bulk mail, use a dedicated mail service; this is for transactional messages.
+      - When you hold a secret (API key, SMTP password), put it in an environment variable, not in a committed YAML file.
+    packages:
+      - Altruist
+    docs:
+      - /docs/altruist/email
+    paths:
+      - Altruist/Core/Framework/Email/
+    types:
+      - Altruist.Email.IEmailSender
+      - Altruist.Email.EmailMessage
+      - Altruist.Email.EmailOptions
+      - Altruist.Email.ConfiguredEmailSender
+      - Altruist.Email.SmtpEmailSender
+      - Altruist.Email.SmtpOptions
+      - Altruist.Email.EmailSenderExtensions
+    config:
+      - altruist:email
+    example: |-
+      ```yaml
+      altruist:
+        email:
+          provider: smtp              # log (default) | resend | smtp
+          from: "Game <no-reply@example.com>"
+          # resend-api-key: ${RESEND_API_KEY}    # for provider: resend
+          smtp:
+            host: ${SMTP_HOST}
+            port: ${SMTP_PORT:-587}
+            username: ${SMTP_USER}
+            password: ${SMTP_PASS}
+            security: starttls        # starttls (default) | ssl | none (Development only)
+            timeout-seconds: 30
+      ```
+
+      ```csharp
+      [Service]
+      public sealed class Mailer
+      {
+          private readonly IEmailSender _email;
+          private readonly ILogger<Mailer> _log;
+          public Mailer(IEmailSender email, ILogger<Mailer> log) { _email = email; _log = log; }
+
+          public Task SendVerificationAsync(string to, string link) =>
+              _email.SendInBackground(                                  // returns at once; failures are logged as warnings
+                  new EmailMessage(to, "Verify your email", $"<a href=\"{link}\">Verify</a>", $"Verify: {link}"), _log);
+      }
+      ```
+
+  - name: core-utilities
+    title: Core utilities
+    summary: >-
+      Small helpers used across the framework and open to your code: a thread-safe pool for scratch collections, route and reflection helpers,
+      and flag-enum helpers that do not mutate.
+    use:
+      - When a hot path (per tick, per packet) needs a temporary list, dictionary, set or StringBuilder; rent it from `AltruistPool` and return it in the same scope.
+      - When you test, set or clear bits of a `[Flags]` enum without casting; use `FlagExtensions` (`IsSet`, `SetFlag`, `UnsetFlag`).
+      - When you build a route from segments without double slashes; use `PathUtils.NormalizeRoute`.
+    avoid:
+      - When a collection is stored long-term, allocate it normally; pooling is only for short-lived scratch objects.
+      - When you need pooled arrays, use `System.Buffers.ArrayPool<T>`.
+    packages:
+      - Altruist
+    docs: []
+    paths:
+      - Altruist/Core/Framework/Pool/
+      - Altruist/Core/Framework/Util/
+      - Altruist/Core/Framework/Flags/
+    types:
+      - Altruist.AltruistPool
+      - Altruist.FlagExtensions
+      - Altruist.PathUtils
+      - Altruist.ReflectionUtils
+    example: |-
+      ```csharp
+      var ids = AltruistPool.RentList<int>();
+      try
+      {
+          Collect(ids);                       // fill it
+          Process(ids);
+      }
+      finally
+      {
+          AltruistPool.ReturnList(ids);       // cleared on return; never use it afterwards
+      }
+
+      var perms = Perm.Read.SetFlag(Perm.Write);   // Read | Write, returns a new value
+      bool canWrite = perms.IsSet(Perm.Write);     // true
+      ```
+
+  - name: testing
+    title: Testing
+    summary: >-
+      xUnit helpers that run your tests against the real Altruist container. `[AltruistTest]` builds a fresh DI container per test with mocks,
+      `[AltruistIntegrationTest]` boots a real server for network tests, and `[AltruistE2ETest]` drives the client stack against a running server.
+    use:
+      - When you test a service with its real dependencies and want some replaced by mocks; use `[AltruistTest]` and `[Mock]` constructor parameters.
+      - When you test TCP, UDP, WebSocket or HTTP round trips against a live server; use `[AltruistIntegrationTest]` with `TestTcpClient`, `TestWebSocketClient` and the like.
+      - When you test the full client stack against a server that already runs (docker, staging) or from a host without xUnit; use `[AltruistE2ETest]` and `AltruistTestRunner`.
+    avoid:
+      - When a plain unit test needs no container, write a normal xUnit test.
+      - When a test only checks business logic, prefer `[AltruistTest]`; it is faster and isolated per test than `[AltruistIntegrationTest]`.
+      - When the E2E server is production, do not; run a dedicated stack with its own database and `altruist:e2e:enabled: true`.
+    packages:
+      - Altruist.Testing
+      - Altruist.Testing.E2E.Core
+    docs: []
+    paths:
+      - Altruist/Testing/
+      - Altruist/Testing.E2E.Core/
+    types:
+      - Altruist.Testing.AltruistTestFramework
+      - Altruist.Testing.AltruistTestRuntime
+      - Altruist.Testing.TestPlayerSession
+      - Altruist.Testing.TestHttpClient
+      - Altruist.Testing.TestTcpClient
+      - Altruist.Testing.E2E.AltruistE2EFixture
+      - Altruist.Testing.E2E.AltruistTestRunner
+    config:
+      - altruist:e2e
+    example: |-
+      ```csharp
+      // once per test assembly
+      [assembly: Xunit.TestFramework("Altruist.Testing.AltruistTestFramework", "Altruist.Testing")]
+
+      // service test: fresh container per [Fact]; the mocked IClock is what IScoreService receives
+      [AltruistTest(RunModuleLoaders = false)]
+      public sealed class ScoreServiceTests
+      {
+          private readonly IScoreService _scores;
+          public ScoreServiceTests(IScoreService scores, [Mock] IClock clock) => _scores = scores;
+
+          [Fact]
+          public async Task Adds_points() => Assert.Equal(10, await _scores.AddAsync("p1", 10));
+      }
+
+      // network test against a server the framework boots for you
+      [AltruistIntegrationTest]
+      public sealed class EchoTests
+      {
+          private readonly TestTcpClient _tcp;
+          public EchoTests(TestTcpClient tcp) => _tcp = tcp;
+
+          [Fact]
+          public async Task Echoes()
+          {
+              await _tcp.ConnectAsync();
+              await _tcp.SendAsync("echo", new { text = "hi" });
+              Assert.NotEmpty(await _tcp.DrainAsync(TimeSpan.FromSeconds(1)));
+          }
+      }
+      ```
+
+      ```yaml
+      # config.E2E.yml on the server an [AltruistE2ETest] runs against
+      altruist:
+        e2e:
+          enabled: true     # without it the fixture's reset endpoint answers 404
+      ```
+
+  - name: transports
+    title: Transports and connections
+    summary: >-
+      The listeners that accept client connections: TCP, UDP and WebSocket, plus the connection manager that tracks every live connection. You turn each transport on in config.yml and any mix can run at once. Portal code stays the same on all of them.
+    use:
+      - When you need a browser client (WebSocket), a reliable desktop or mobile stream (TCP) or fast unreliable updates (UDP).
+      - When you need to cap connections, set the idle timeout or change a port.
+      - When you write a new kind of transport (implement ITransport) or need to look up or close a connection by id.
+    avoid:
+      - When you need to handle what clients send, use portals-and-routing instead. Transports only deliver bytes.
+      - When you need to choose the message format (JSON or MessagePack), use packets-and-codecs instead.
+      - When you need REST endpoints, use http-api instead.
+    packages:
+      - Altruist
+      - Altruist.Socket
+      - Altruist.Web
+    docs:
+      - /docs/networking/server-setup
+      - /docs/networking/tcp
+      - /docs/networking/udp
+      - /docs/networking/websocket
+      - /docs/deployment/multi-channel
+    paths:
+      - Altruist/Socket/
+      - Altruist/Web/
+      - Altruist/Core/Framework/Networking/Transport.cs
+      - Altruist/Core/Framework/Networking/ConnectionManager/
+      - Altruist/Core/Framework/Networking/SocketManager/
+      - Altruist/Core/Framework/Contracts/Connection.cs
+    types:
+      - Altruist.Transport.ITransport
+      - Altruist.ConnectionManager
+      - Altruist.IConnectionManager
+      - Altruist.ISocketManager
+      - Altruist.Socket.TcpTransport
+      - Altruist.Socket.UdpTransport
+      - Altruist.Web.WebSocketTransport
+      - Altruist.Socket.IConnectionGate
+    config:
+      - altruist:server:transport
+    example: |-
+      ```yaml
+      # config.yml: run WebSocket for browsers and TCP + UDP for desktop clients
+      altruist:
+        server:
+          transport:
+            max-connections: 2000
+            websocket:
+              enabled: true
+            tcp:
+              enabled: true
+              port: 13000
+            udp:
+              enabled: true
+              port: 13001
+      ```
+
+      ```csharp
+      // Program.cs: nothing else is needed, the enabled transports start with the app
+      using Altruist;
+      await AltruistApplication.Run(args);
+      ```
+
+  - name: portals-and-routing
+    title: Portals, gates and routing
+    summary: >-
+      A portal is a class that handles client messages. Each gate method on it handles one event name, and the router sends replies to one client, a room or everyone. Interceptors can inspect or drop packets before a gate runs, and an outbound queue can send without blocking your handler.
+    use:
+      - When you handle client messages: mark a class with [Portal("/path")] and add [Gate("event")] methods.
+      - When you send a packet to one client, a room or all clients with IAltruistRouter.
+      - When you need to react to a client connecting or disconnecting (OnConnectedAsync, OnDisconnectedAsync).
+      - When you filter or log every incoming packet with an IInterceptor, or send through the queued outbound mode for busy game loops.
+    avoid:
+      - When you need to limit how fast a client may send, use rate-limit instead. It is built on interceptors.
+      - When you only need to send entity changes (changed properties), use entity-sync instead.
+      - When you serve plain request and response over HTTP, use http-api instead.
+    packages:
+      - Altruist
+    docs:
+      - /docs/networking/portals
+      - /docs/networking/router
+    paths:
+      - Altruist/Core/Framework/Portal/
+      - Altruist/Core/Framework/PortalRegistry.cs
+      - Altruist/Core/Framework/Contracts/Portal.cs
+      - Altruist/Core/Framework/Contracts/Router.cs
+      - Altruist/Core/Framework/Networking/Interceptor.cs
+      - Altruist/Core/Framework/Networking/Outbound.cs
+      - Altruist/Core/Framework/Networking/PacketContext.cs
+      - Altruist/Core/Framework/Networking/Endpoints.cs
+      - Altruist/Core/Framework/Networking/Relay/
+    types:
+      - Altruist.Portal
+      - Altruist.IPortal
+      - Altruist.IAltruistRouter
+      - Altruist.ClientSender
+      - Altruist.RoomSender
+      - Altruist.BroadcastSender
+      - Altruist.IInterceptor
+      - Altruist.OutboundQueues
+    config:
+      - altruist:server:transport:outbound
+    example: |-
+      ```csharp
+      using Altruist;
+
+      [Portal("/game")]
+      public class ChatPortal : Portal
+      {
+          private readonly IAltruistRouter _router;
+
+          public ChatPortal(IAltruistRouter router) => _router = router;
+
+          [Gate("chat")]
+          public Task OnChat(ChatPacket packet, string clientId)
+              => _router.Broadcast.SendAsync(packet, excludeClientId: clientId);
+
+          [Gate("whisper")]
+          public Task OnWhisper(WhisperPacket packet, string clientId)
+              => _router.Client.SendAsync(packet.TargetId, packet);
+      }
+      ```
+
+      ```yaml
+      # optional: queue outbound packets so a slow socket never blocks a gate
+      altruist:
+        server:
+          transport:
+            outbound:
+              mode: queued   # default: direct
+      ```
+
+  - name: packets-and-codecs
+    title: Packets and codecs
+    summary: >-
+      Packets are the typed messages sent between client and server, each with a numeric message code. Codecs turn them into bytes: JSON for browsers and debugging, MessagePack for compact binary. The Altruist.Protocol package holds the shared packet contracts, so other projects can use them without the server.
+    use:
+      - When you define your own message types: implement IPacketBase with a message code from 1000 up.
+      - When you choose JSON or MessagePack for all transports or per transport.
+      - When you need the built-in packets (handshake, text, success or failed results, sync) or the transport result codes.
+      - When you add a new wire format by implementing ICodec and registering it with [CodecProvider].
+    avoid:
+      - When you handle a packet on the server, use portals-and-routing instead.
+      - When you send many numeric rows every tick in a compact positional form, use snapshots instead.
+    packages:
+      - Altruist
+      - Altruist.Protocol
+    docs:
+      - /docs/networking/packets
+      - /docs/networking/codec
+      - /docs/networking/client-packets
+      - /docs/networking/handshake
+      - /docs/extension/codec
+    paths:
+      - Altruist/Core/Framework/Packet/
+      - Altruist/Core/Framework/Codec/
+      - Altruist/Core/Framework/Contracts/Codec.cs
+      - Altruist/Protocol/
+    types:
+      - Altruist.IPacketBase
+      - Altruist.IPacket
+      - Altruist.AltruistPacket
+      - Altruist.MessageEnvelope
+      - Altruist.ICodec
+      - Altruist.Codec.JsonCodec
+      - Altruist.Codec.MessagePack.MessagePackCodec
+      - Altruist.CodecResolver
+    config:
+      - altruist:server:transport:codec
+    example: |-
+      ```csharp
+      using MessagePack;
+      using System.Text.Json.Serialization;
+
+      // Annotated for both codecs, so it works with JSON and MessagePack
+      [MessagePackObject]
+      public struct ChatPacket : IPacketBase
+      {
+          [Key(0)][JsonPropertyName("messageCode")] public uint MessageCode { get; set; }
+          [Key(1)][JsonPropertyName("text")] public string Text { get; set; }
+
+          public ChatPacket(string text) { MessageCode = 1000; Text = text; }
+      }
+      ```
+
+      ```yaml
+      altruist:
+        server:
+          transport:
+            codec:
+              provider: messagepack     # global default
+            websocket:
+              enabled: true
+              codec:
+                provider: json          # browsers get JSON
+      ```
+
+  - name: rate-limit
+    title: Rate limiting for portals
+    summary: >-
+      A per-connection token-bucket limiter that runs before every gate handler. It drops packets that come too fast or are too large, and closes the connection of a client that keeps breaking the limits. It is installed from config.yml, with no code.
+    use:
+      - When clients can spam gates (chat, input, matchmaking) and you want hard limits per gate.
+      - When you cap the payload size of incoming packets.
+      - When you assign a gate to a bucket in code with [RateLimit("bucket")].
+    avoid:
+      - When you limit HTTP endpoints, use http-api instead. It has its own named policies (the same [RateLimit] attribute works there).
+      - When you need custom per-packet logic that is not a rate, write an IInterceptor (see portals-and-routing).
+    packages:
+      - Altruist
+    docs:
+      - /docs/networking/rate-limit
+    paths:
+      - Altruist/Core/Framework/Networking/RateLimit.cs
+    types:
+      - Altruist.RateLimitInterceptor
+      - Altruist.IRateLimiter
+      - Altruist.TokenBucketRateLimiter
+      - Altruist.RateLimitOptions
+      - Altruist.RateVerdict
+      - Altruist.IRateLimitMetrics
+    config:
+      - altruist:server:transport:rate-limit
+    example: |-
+      ```yaml
+      altruist:
+        server:
+          transport:
+            rate-limit:
+              enabled: true
+              strikes-to-disconnect: 60
+              buckets:
+                input:   { capacity: 300, per-second: 90, gates: ["input"] }
+                chat:    { capacity: 3,   per-second: 0.6 }
+                default: { capacity: 20,  per-second: 20 }
+      ```
+
+      ```csharp
+      [Portal("/game")]
+      public class GamePortal : Portal
+      {
+          // uses the "chat" bucket from config
+          [Gate("chat"), RateLimit("chat")]
+          public Task OnChat(ChatPacket packet, string clientId) => Task.CompletedTask;
+      }
+      ```
+
+  - name: entity-sync
+    title: Entity synchronization
+    summary: >-
+      Delta sync for world entities. Mark properties with [Synced] and the class with [Synchronized], and Altruist sends clients only the properties that changed, as a SyncPacket.
+    use:
+      - When world objects (players, NPCs) change a few properties per tick and clients should get only the changes.
+      - When you send an entity's changes by hand with IAltruistRouter.Synchronize.
+    avoid:
+      - When you send positional numeric rows for many objects every tick, use snapshots instead.
+      - When you send rare, mixed messages, use a normal packet (packets-and-codecs) instead.
+    packages:
+      - Altruist
+    docs:
+      - /docs/networking/synchronization
+    paths:
+      - Altruist/Core/Framework/Networking.cs
+    types:
+      - Altruist.Networking.ISynchronizedEntity
+      - Altruist.Networking.Synchronization
+      - Altruist.IClientSynchronizator
+      - Altruist.ClientSynchronizator
+      - Altruist.SyncPacket
+    example: |-
+      ```csharp
+      using Altruist;
+      using Altruist.Networking;
+
+      [Synchronized]                       // sync every engine tick
+      [WorldObject("player")]
+      public sealed class PlayerEntity : WorldObject3D, ISynchronizedEntity
+      {
+          public string ClientId { get; set; } = "";   // must not be empty for auto sync
+
+          [Synced(0)] public uint VirtualId { get; set; }
+          [Synced(1, SyncAlways: true)] public string Name { get; set; } = "";
+          [Synced(2)] public int Health { get; set; } = 100;
+
+          public PlayerEntity(Transform3D transform) : base(transform) { }
+      }
+      ```
+
+  - name: snapshots
+    title: Snapshot schemas
+    summary: >-
+      A way to declare once in C# how a fast-changing state row (a float array with no field names) is laid out. The same declaration builds the server's allocation-free encoder and exports a JSON schema for the clients' decoders.
+    use:
+      - When you send numeric state of many objects every tick (players, projectiles, match clock) as compact MessagePack rows.
+      - When the server and several clients must agree on what each position of a row means.
+    avoid:
+      - When only changed properties should travel, use entity-sync instead.
+      - When messages are rare or hold names, lists and nested objects, use a plain packet (packets-and-codecs) instead.
+    packages:
+      - Altruist
+    docs:
+      - /docs/networking/snapshot-schema
+    paths:
+      - Altruist/Core/Framework/Networking/Snapshots/
+    types:
+      - Altruist.Networking.SnapshotRowSchema
+      - Altruist.Networking.SnapshotRowSchema<T>
+      - Altruist.Networking.SnapshotSchemaSet
+      - Altruist.Networking.ISnapshotRowSchema
+      - Altruist.Networking.SnapshotField
+    example: |-
+      ```csharp
+      using Altruist.Networking;
+
+      public static class Wire
+      {
+          // Build once: the encoder compiles into one writer delegate
+          public static readonly SnapshotRowSchema<Ship> ShipRow = SnapshotRowSchema.For<Ship>("ship")
+              .Int("id", s => s.Id)
+              .Number("x", s => s.Body.Position.X)
+              .Number("y", s => s.Body.Position.Y)
+              .Bool("shielded", s => s.Shielded)
+              .Build();
+      }
+
+      float[] row = Wire.ShipRow.Encode(ship);          // exactly one row
+      Wire.ShipRow.Encode(ship, buffer, offset);        // no allocation
+      ```
+
+  - name: pairing
+    title: Device pairing
+    summary: >-
+      Lets two devices find each other through the server: a host (for example the game on a TV) opens a session and shows a short code, and companions (phones) join with that code. The server then relays small payloads between them, such as controller input or WebRTC signalling.
+    use:
+      - When a phone should act as a controller or second screen for a game on another device.
+      - When you need to signal a peer-to-peer (WebRTC) link between two devices.
+    avoid:
+      - When you need accounts or secure identity, use the security capabilities. Companions need only the code.
+      - When the devices may reach different server nodes. Sessions live in one process only.
+    packages:
+      - Altruist
+    paths:
+      - Altruist/Core/Framework/Networking/Pairing/
+    types:
+      - Altruist.Networking.PairingPortal
+      - Altruist.Networking.PairingSessions
+      - Altruist.Networking.PairingOptions
+      - Altruist.Networking.PairingHostPacket
+      - Altruist.Networking.PairingJoinPacket
+      - Altruist.Networking.PairingSendPacket
+    config:
+      - altruist:server:pairing
+    example: |-
+      ```csharp
+      using Altruist;
+      using Altruist.Networking;
+
+      // Deriving from PairingPortal turns pairing on for this route
+      [Portal("/pair")]
+      public sealed class PairPortal : PairingPortal
+      {
+          public PairPortal(IAltruistRouter router, PairingSessions sessions) : base(router, sessions) { }
+      }
+      ```
+
+      ```yaml
+      altruist:
+        server:
+          pairing:
+            max-companions: 4
+            code-length: 6
+            max-sessions: 10000
+            max-payload-bytes: 16384
+      ```
+
+  - name: http-api
+    title: HTTP API
+    summary: >-
+      The HTTP side of the server: host, port and path of the ASP.NET Core app, plus what a public API needs. That is one error format, hardening (forwarded headers, security headers, body limits), named rate-limit policies that work across a fleet, and token-guarded access to the dashboard.
+    use:
+      - When you set the HTTP host, port or base path.
+      - When you want one JSON error shape: throw HttpApiException from controllers.
+      - When you harden a public API (security headers, HSTS, body size) or rate-limit controllers with [RateLimit("policy")].
+    avoid:
+      - When you limit packets on portals (WebSocket, TCP, UDP), use rate-limit instead.
+      - When you need real-time messages, use portals-and-routing instead.
+    packages:
+      - Altruist
+    docs:
+      - /docs/networking/http-api
+    paths:
+      - Altruist/Core/Framework/Http/
+    types:
+      - Altruist.Http.HttpApiException
+      - Altruist.Http.HttpApiSettings
+      - Altruist.Http.HttpErrorWriter
+      - Altruist.Http.HttpHardeningOptions
+      - Altruist.Http.HttpRateLimitPolicy
+      - Altruist.Http.IRequestRateLimiter
+    config:
+      - altruist:server:http
+    example: |-
+      ```yaml
+      altruist:
+        server:
+          http:
+            host: 0.0.0.0
+            port: 8080
+            errors:
+              format: simple
+            hardening:
+              security-headers: { enabled: true }
+            rate-limit:
+              policies:
+                api: { permit: 600, window-seconds: 60, path: /api }
+      ```
+
+      ```csharp
+      using Altruist.Http;
+
+      if (await accounts.ExistsAsync(name))
+          throw new HttpApiException(409, "username_taken", "That username is taken.", field: "username");
+      ```
+
+  - name: accounts-and-auth
+    title: Accounts and Authentication
+    summary: >-
+      Everything for signing players in: BCrypt password hashing, HS256 JWT access tokens, rotating refresh tokens in an
+      HttpOnly cookie, one-time tokens (email verification, password reset), session tokens for sockets, and the
+      [Shield] attributes that protect portals and controllers on every transport. Altruist keeps the security-sensitive
+      parts and leaves your account model to you.
+    use:
+      - When players must log in and you want signed access tokens, refresh tokens that detect stolen sessions, and password hashing that is already done right.
+      - When a portal (WebSocket, TCP or UDP) or an HTTP controller must only be reachable by authenticated clients ([JwtShield], [SessionShield], [Shield(typeof(...))]).
+      - When you need email verification or password reset links (one-time tokens) or a custom IShieldAuth such as an API key check.
+      - When you want a ready login controller to extend (JwtAuthController gives signup, login, refresh and upgrade endpoints).
+    avoid:
+      - When a browser must open a WebSocket and cannot set an Authorization header, use connection-tickets instead of putting the token in the URL.
+      - When you need to slow down password guessing or sign-up bots, add abuse-protection (lockout and captcha) on top.
+      - When you only need request throttling, use the HTTP and socket rate limits of the networking capabilities, not auth.
+    packages:
+      - Altruist
+    docs:
+      - /docs/altruist/auth
+      - /docs/altruist/auth/accounts
+      - /docs/altruist/auth/fast-auth
+      - /docs/extension/security
+    paths:
+      - Altruist/Core/Framework/Security/Auth/
+      - Altruist/Core/Framework/Security/Hash/
+      - Altruist/Core/Framework/Security/Http/
+      - Altruist/Core/Framework/Security/Jwt/
+      - Altruist/Core/Framework/Security/Session/
+      - Altruist/Core/Framework/Security/Shield/
+      - Altruist/Core/Framework/Security/Token/
+      - Altruist/Core/Framework/Security/Database/
+      - Altruist/Core/Framework/Security/Model.cs
+      - Altruist/Core/Framework/Security/Packet.cs
+      - Altruist/Core/Framework/Contracts/Authentication.cs
+      - Altruist/Core/Framework/Config/AuthConfiguration.cs
+    types:
+      - Altruist.Security.AuthConfiguration
+      - Altruist.Security.IPasswordHasher
+      - Altruist.Security.IAccessTokenIssuer
+      - Altruist.Security.IRefreshTokenService
+      - Altruist.Security.RefreshCookie
+      - Altruist.Security.IOneTimeTokenStore
+      - Altruist.Security.Http.JwtAuthController
+      - Altruist.IShieldAuth
+    config:
+      - altruist:security
+    example: |-
+      Safe by default: tokens are HS256 only and need an expiry; passwords use BCrypt (work factor 11); the refresh
+      token lives in an HttpOnly cookie and only its SHA-256 is stored. Not safe by default: if `key` is unset Altruist
+      uses a PUBLIC development key. In Production an app with an `altruist:security` section refuses to start when the
+      key is unset, is the development key, or is shorter than `min-key-bytes` (32 bytes). Set the key from the
+      environment, for example `ALTRUIST__SECURITY__KEY=$(openssl rand -base64 48)`.
+      Pick `password:prehash` before you store hashes: hashes of the two modes do not verify against each other.
+      ```yaml
+      altruist:
+        security:
+          mode: jwt                  # jwt (default) | session
+          key: ""                    # set from ALTRUIST__SECURITY__KEY, never commit it
+          min-key-bytes: 32          # shorter keys are refused in Production
+          access-token-minutes: 15
+          password:
+            work-factor: 11          # BCrypt cost, 4-31
+            prehash: none            # none | sha384 (sha384 stops the 72-byte BCrypt truncation)
+          refresh-tokens:
+            lifetime-days: 30
+            max-sessions: 10
+          refresh-cookie:
+            same-site: strict        # strict | lax | none
+      ```
+      ```csharp
+      [Vault("refresh_tokens", Keyspace: "myapp")]
+      public sealed class RefreshTokenVault : RefreshTokenModel { }
+
+      [ApiController, Route("auth")]
+      public sealed class AuthController(
+          IRefreshTokenService refresh, IAccessTokenIssuer access, RefreshCookie cookie, Accounts accounts) : ControllerBase
+      {
+          [HttpPost("login")]
+          public async Task<IActionResult> Login(LoginRequest body, CancellationToken ct)
+          {
+              var account = await accounts.VerifyAsync(body.Username, body.Password, ct);
+              if (account is null) return Unauthorized();
+              cookie.Append(Response, await refresh.IssueAsync(account.Id, ct: ct));
+              return Ok(new { accessToken = access.Issue(account.Id).Token });
+          }
+      }
+
+      [Portal("/game")]
+      [JwtShield]
+      public class SecureGamePortal : AltruistPortal { }
+      ```
+
+  - name: abuse-protection
+    title: Lockout and Captcha
+    summary: >-
+      Two small building blocks against password guessing and sign-up bots. IFailureLockout locks a key after repeated
+      failures; ICaptchaVerifier checks a Turnstile, hCaptcha or reCAPTCHA token on the server. Both are registered
+      by default and do nothing until you call them.
+    use:
+      - When a login or reset endpoint needs a lockout after N failures inside a time window.
+      - When the failure budget must hold across a fleet of servers (set lockout store to backplane, which needs Redis).
+      - When sign-up or login needs a captcha check on the server.
+    avoid:
+      - When you only want to cap request volume per client, use the HTTP or socket rate limits instead.
+      - When you need to prove who a player is, use accounts-and-auth. Lockout and captcha do not authenticate.
+    packages:
+      - Altruist
+      - Altruist.Redis
+    docs:
+      - /docs/altruist/auth/abuse
+      - /docs/extension/shield
+    paths:
+      - Altruist/Core/Framework/Security/Captcha/
+      - Altruist/Core/Framework/Security/Lockout/
+    types:
+      - Altruist.Security.IFailureLockout
+      - Altruist.Security.FailureLockoutOptions
+      - Altruist.Security.ICaptchaVerifier
+      - Altruist.Security.CaptchaOptions
+      - Altruist.Security.TurnstileCaptchaVerifier
+    config:
+      - altruist:security:captcha
+      - altruist:security:lockout
+    example: |-
+      Safe by default: the captcha fails closed (an unreachable verifier rejects the token) and lockout keys are stored
+      hashed. The captcha is OFF until `secret-key` is set, and then `VerifyAsync` returns true, so refuse to boot in
+      Production yourself if you require one. Never lock by user name alone: combine it with the client address and add
+      a budget per address.
+      ```yaml
+      altruist:
+        security:
+          lockout:
+            store: memory            # memory (default) | backplane (shared by the fleet)
+          captcha:
+            provider: turnstile      # turnstile | hcaptcha | recaptcha
+            site-key: "0x4AAAA..."   # public, the client widget uses it
+            secret-key: ""           # from ALTRUIST__SECURITY__CAPTCHA__SECRET_KEY
+      ```
+      ```csharp
+      var userKey = $"login:{name.ToLowerInvariant()}|{clientIp}";
+      var locked = await lockout.LockedForAsync(userKey);
+      if (locked > TimeSpan.Zero) throw new HttpApiException(429, "locked", "Too many failed attempts.");
+
+      if (!hasher.Verify(password, account?.PasswordHash))
+      {
+          await lockout.RecordFailureAsync(userKey, 5, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(15));
+          throw new HttpApiException(401, "invalid_credentials", "Invalid username or password.");
+      }
+      await lockout.ClearAsync(userKey);
+
+      if (captcha.Enabled && !await captcha.VerifyAsync(body.CaptchaToken ?? "", HttpContext.ClientIp()))
+          throw new HttpApiException(400, "captcha_failed", "The security check failed.", "captcha");
+      ```
+
+  - name: connection-tickets
+    title: Connection Tickets
+    summary: >-
+      One-time tickets that let a browser open an authenticated WebSocket without putting a long-lived token in the URL.
+      The client trades its access token for a ticket valid for seconds, connects with ?ticket=, and the portal's
+      [TicketShield] redeems it exactly once.
+    use:
+      - When a browser client connects to a portal over WebSocket and cannot send an Authorization header.
+      - When tickets issued by one server must be redeemed by another (they live in the fleet backplane, so use Redis for a fleet).
+    avoid:
+      - When the client can send a header (native, TCP or UDP clients), use [JwtShield] or [SessionShield] from accounts-and-auth.
+      - When you need a long-lived login token or a refresh flow, use accounts-and-auth. A ticket is single-use and short.
+    packages:
+      - Altruist
+      - Altruist.Redis
+    docs:
+      - /docs/altruist/auth/tickets
+    paths:
+      - Altruist/Core/Framework/Security/Tickets/
+    types:
+      - Altruist.Security.IConnectionTicketService
+      - Altruist.Security.ConnectionTicketService
+      - Altruist.Security.ConnectionTicket
+      - Altruist.Security.ConnectionTicketOptions
+      - Altruist.Security.TicketShieldAuth
+    config:
+      - altruist:security:tickets
+    example: |-
+      Safe by default: only the SHA-256 of a ticket is stored, redemption is an atomic take (a second use fails), and
+      request log lines that contain the ticket URL are reduced to warnings (`redact-request-logs: true`). Write the
+      issuing endpoint yourself so your own rules (bans, maintenance) apply.
+      ```yaml
+      altruist:
+        security:
+          tickets:
+            query-param: ticket
+            ttl-seconds: 30
+            max-per-principal: 4
+            session-hours: 12
+            redact-request-logs: true
+      ```
+      ```csharp
+      [ApiController, Route("api"), Authorize]
+      public sealed class TicketController(IConnectionTicketService tickets) : ControllerBase
+      {
+          [HttpPost("ticket")]
+          public async Task<IActionResult> Ticket(CancellationToken ct)
+          {
+              var id = User.PrincipalId() ?? throw new UnauthorizedAccessException();
+              var t = await tickets.IssueAsync(id, groupKey: User.PrincipalName(), ct);
+              return Ok(new { ticket = t.Ticket, expiresIn = t.ExpiresInSeconds });
+          }
+      }
+
+      [Portal("/game")]
+      [TicketShield]
+      public class GamePortal : AltruistPortal { }
+      ```
+
+  - name: persistence
+    title: Persistence and the Unified Object Model
+    summary: >-
+      The data layer: model classes marked with [Vault] attributes (the Unified Object Model, UORM) map to database
+      tables, a database provider connects to the database, and [Transactional] wraps service methods in a transaction.
+      You write the model once and the provider creates and migrates the table.
+    use:
+      - When you need to store players, items or any game data in a database and describe the tables as C# classes.
+      - When several operations must succeed or roll back together ([Transactional] on a service method).
+      - When you want to route a model to a read replica or another database instance (DbInstance on [Vault]).
+      - When you want to seed data at startup (IDatabaseInitializer).
+    avoid:
+      - When you only need fast shared in-memory or Redis state with no tables, use cache instead.
+      - When you flush many hot, frequently changing rows, use autosave on top of the vault.
+      - When you need to read or write rows, use vault (IVault of T). This capability is the model and provider layer.
+    packages:
+      - Altruist
+      - Altruist.Postgres
+    docs:
+      - /docs/altruist/persistence
+      - /docs/altruist/persistence/orm
+      - /docs/altruist/orm
+      - /docs/altruist/persistence/hooks
+      - /docs/altruist/persistence/sync-services
+      - /docs/altruist/persistence/database-initializers
+      - /docs/extension/database
+      - /docs/deployment/database-scaling
+    paths:
+      - Altruist/Core/Framework/Persistence/UORM/
+      - Altruist/Core/Framework/Persistence/Database/
+      - Altruist/Core/Framework/Persistence/Transactions/
+      - Altruist/Core/Framework/Contracts/Database.cs
+      - Altruist/Core/Framework/Contracts/Querying.cs
+    types:
+      - Altruist.UORM.VaultAttribute
+      - Altruist.UORM.VaultColumnAttribute
+      - Altruist.Persistence.TransactionalAttribute
+      - Altruist.Persistence.IDatabaseInitializer
+      - Altruist.IGeneralDatabaseProvider
+      - Altruist.Persistence.ISqlDatabaseProvider
+      - Altruist.IKeyspace
+    config:
+      - altruist:persistence:database
+      - altruist:persistence:database:provider
+    example: |-
+      The only provider published to NuGet is Postgres (`provider: postgres`). Put real credentials in environment
+      variables, not in config.yml.
+      ```yaml
+      altruist:
+        persistence:
+          database:
+            provider: postgres
+            host: localhost
+            port: 5432
+            username: myuser
+            password: ""          # ALTRUIST__PERSISTENCE__DATABASE__PASSWORD
+            database: mydb
+      ```
+      ```csharp
+      [Vault("accounts")]
+      [VaultUniqueKey("username")]
+      public class AccountVault : VaultModel
+      {
+          [VaultColumn] public override string StorageId { get; set; } = "";
+          [VaultColumn("username")] public string Username { get; set; } = "";
+          [VaultColumn, VaultColumnIndex] public int Level { get; set; }
+      }
+
+      [Service]
+      public class TradeService(IVault<ItemVault> items, IVault<PlayerVault> players)
+      {
+          [Transactional]
+          public async Task Transfer(string itemId, string toPlayerId) { /* all or nothing */ }
+      }
+
+      public sealed class SeedInitializer : IDatabaseInitializer
+      {
+          public int Order => 0;
+          public async Task InitializeAsync(IServiceProvider services)
+          {
+              var vault = services.GetRequiredService<IVault<AccountVault>>();
+              if (await vault.CountAsync() > 0) return;   // runs on every start: guard it
+          }
+      }
+      ```
+
+  - name: vault
+    title: Vault (IVault)
+    summary: >-
+      IVault of T is the API your code uses to read and write one table: fluent Where, OrderBy, Skip and Take, then
+      async terminals such as ToListAsync, FirstOrDefaultAsync, SaveAsync, UpdateAsync and DeleteAsync. It also keeps a
+      history table when the model asks for it.
+    use:
+      - When you query, save, update or delete rows of a [Vault] model.
+      - When you need an audit trail of saves (StoreHistory on [Vault], then SaveAsync with saveHistory true).
+      - When you need joins over several vault tables (IVaultJoinQuery).
+    avoid:
+      - When you load a root record with its related rows in one call, use prefabs.
+      - When a hot object is changed many times a second, use autosave so the database is hit in batches.
+      - When the data is not relational, use cache.
+    packages:
+      - Altruist
+      - Altruist.Postgres
+    docs:
+      - /docs/altruist/persistence/vault
+      - /docs/altruist/persistence
+    paths:
+      - Altruist/Core/Framework/Persistence/Vault/
+    types:
+      - Altruist.IVault<TVaultModel>
+      - Altruist.IHistoricalVault<TVaultModel>
+      - Altruist.IVaultModel
+      - Altruist.VaultModel
+      - Altruist.VaultRegistry
+      - Altruist.Querying.IVaultQuery<T>
+      - Altruist.Persistence.OptimisticConcurrencyException
+    example: |-
+      ```csharp
+      [Service]
+      public class PlayerService(IVault<PlayerVault> players)
+      {
+          public Task<List<PlayerVault>> TopAsync() =>
+              players.Where(p => p.Level >= 50).OrderByDescending(p => p.Level).Take(20).ToListAsync();
+
+          public Task SaveAsync(PlayerVault player) => players.SaveAsync(player, saveHistory: true);
+
+          public Task LevelUpAsync(string id) => players
+              .Where(p => p.StorageId == id)
+              .UpdateAsync(s => s.SetProperty(p => p.Level, p => p.Level + 1));
+
+          public async Task<bool> ExistsAsync(string name) => await players.AnyAsync(p => p.Name == name);
+      }
+      ```
+
+  - name: cache
+    title: Cache
+    summary: >-
+      A key-value cache behind one interface, ICacheProvider, with an in-memory backend (default) and a Redis backend.
+      It holds hot or shared state such as session tokens and cross-server data.
+    use:
+      - When you keep fast, short-lived or shared state: session tokens, presence, leaderboards snapshots.
+      - When several servers must see the same state (use the Redis provider).
+      - When tests or a single dev server should run without Redis (use the inmemory provider).
+    avoid:
+      - When data must survive a restart, store it with vault. The in-memory cache loses everything on restart.
+      - When you need queries and relations, use vault.
+    packages:
+      - Altruist
+      - Altruist.Redis
+    docs:
+      - /docs/altruist/persistence
+      - /docs/deployment/database-scaling
+    paths:
+      - Altruist/Core/Framework/Persistence/Cache/
+      - Altruist/Core/Framework/Contracts/Cache.cs
+      - Altruist/Core/Framework/Contracts/Store.cs
+      - Altruist/Redis/Core/Store/
+    types:
+      - Altruist.ICacheProvider
+      - Altruist.IMemoryCacheProvider
+      - Altruist.IRemoteCacheProvider
+      - Altruist.IRedisCacheProvider
+      - Altruist.InMemory.InMemoryCache
+      - Altruist.Redis.RedisCacheProvider
+      - Altruist.IConnectionStore
+    config:
+      - altruist:persistence:cache
+    example: |-
+      Session tokens are stored in the cache, so use Redis in production: `inmemory` loses all sessions on restart.
+      ```yaml
+      altruist:
+        persistence:
+          cache:
+            provider: redis      # inmemory (default for dev) | redis
+          redis:
+            connection-string: "localhost:6379"
+      ```
+      ```csharp
+      [Service]
+      public class Presence(ICacheProvider cache)
+      {
+          public Task SetAsync(string playerId, PlayerState state) => cache.SaveAsync(playerId, state);
+          public Task<PlayerState?> GetAsync(string playerId) => cache.GetAsync<PlayerState>(playerId);
+      }
+      ```
+
+  - name: prefabs
+    title: Prefabs
+    summary: >-
+      A prefab is a composite entity that loads and saves a root vault model together with its related rows (single
+      references and collections) in one call. It saves only the parts that changed, in one batched statement.
+    use:
+      - When a player or character is spread over several tables (account, items, equipment, guild) and you load it as one object.
+      - When you filter by the root or by a child (Any on a collection) and eager-load only the components you need.
+    avoid:
+      - When one table is enough, inject IVault of T directly.
+      - When a save must also delete removed children. Prefab saves are upserts only; delete through the child's vault.
+    packages:
+      - Altruist
+      - Altruist.Postgres
+    docs:
+      - /docs/altruist/persistence/prefabs
+    paths:
+      - Altruist/Core/Framework/Persistence/Prefab/
+      - Altruist/Postgres/Core/Prefab/
+    types:
+      - Altruist.Persistence.IPrefabs
+      - Altruist.Persistence.IPrefabQuery<TPrefab>
+      - Altruist.Persistence.PrefabModel
+      - Altruist.IPrefabModel
+      - Altruist.Persistence.PgPrefabs
+    example: |-
+      ```csharp
+      [Prefab("character")]
+      public class CharacterPrefab : PrefabModel
+      {
+          [PrefabComponentRoot]
+          public CharacterVault Character { get; set; } = default!;
+
+          [PrefabComponentRef(principal: nameof(Character), foreignKey: nameof(ItemVault.CharacterId))]
+          public List<ItemVault> Items { get; set; } = new();
+      }
+
+      var player = await prefabs.Query<CharacterPrefab>()
+          .Where(p => p.Character.Name == "alice")
+          .Include(p => p.Items)
+          .FirstOrDefaultAsync();
+      player!.Items.Add(newItem);
+      await prefabs.SaveComponentAsync(player, nameof(CharacterPrefab.Items));
+      ```
+
+  - name: migrations
+    title: Code-First Migrations
+    summary: >-
+      At every start Altruist compares your [Vault] models with the live database schema and applies the difference:
+      new tables, columns, indexes, unique keys and foreign keys, renames and type changes. There are no migration files
+      and no CLI. Destructive changes happen only when you ask for them.
+    use:
+      - When you add, rename or retype a column and want the database to follow the C# model on restart.
+      - When you move data between columns ([VaultColumnCopy], [VaultRenamedFrom]) or retire tables ([VaultTableDelete], [VaultArchived]).
+    avoid:
+      - When you need hand-written SQL or a reviewed migration history. Altruist does not produce migration files.
+      - When you only seed rows, use IDatabaseInitializer from persistence.
+    packages:
+      - Altruist
+      - Altruist.Postgres
+    docs:
+      - /docs/altruist/persistence/migrations
+      - /docs/altruist/persistence/database-initializers
+    paths:
+      - Altruist/Core/Framework/Migrations/
+      - Altruist/Postgres/Core/Migrations/
+    types:
+      - Altruist.Migrations.IVaultSchemaMigrator
+      - Altruist.Migrations.IMigrationPlanner
+      - Altruist.Migrations.IMigrationExecutor
+      - Altruist.Migrations.ISchemaInspector
+      - Altruist.Migrations.MigrationOperation
+      - Altruist.Migrations.Postgres.PostgresMigrationPlanner
+    config:
+      - altruist:persistence:migration
+    example: |-
+      Safe by default: a column you remove from the model stays in the database with its data (a warning is logged).
+      Columns are dropped only with [VaultDropColumn], [VaultColumnDelete] or `drop-unmapped-columns: true`. Before
+      0.9.9-beta every unmapped column was dropped, so check this flag if you rely on the old cleanup.
+      ```yaml
+      altruist:
+        persistence:
+          migration:
+            drop-unmapped-columns: false   # default
+            batch-size: 50000              # rows per batch while copying a column
+      ```
+      ```csharp
+      [Vault("players")]
+      public class PlayerVault : VaultModel
+      {
+          [VaultColumn] public override string StorageId { get; set; } = "";
+
+          [VaultColumn("display_name")]
+          [VaultRenamedFrom("name")]          // renames the column, keeps the data
+          public string DisplayName { get; set; } = "";
+
+          [VaultColumn, VaultColumnIndex]     // added on the next start
+          public int Level { get; set; }
+      }
+      ```
+
+  - name: postgres
+    title: PostgreSQL Provider
+    summary: >-
+      The PostgreSQL implementation of the persistence layer: connection and pooling, SQL translation for IVault queries,
+      transactions, schema isolation, prefabs and migrations. Enabled with `provider: postgres`. It is the only database
+      provider published as a NuGet package.
+    use:
+      - When your game stores data in PostgreSQL (the default and recommended store).
+      - When you want a primary plus read replicas or an analytics database (list `instances`, route a model with DbInstance).
+    avoid:
+      - When you only need a cache, use the cache capability and Redis.
+      - When you want ScyllaDB or EF Core, note that those modules exist in the repo but are not published (see unpublished-stores).
+    packages:
+      - Altruist.Postgres
+    docs:
+      - /docs/altruist/persistence
+      - /docs/deployment/database-scaling
+    paths:
+      - Altruist/Postgres/
+    types:
+      - Altruist.Persistence.Postgres.PgSqlDbProvider
+      - Altruist.Persistence.Postgres.PgSqlDbInstanceProvider
+      - Altruist.Persistence.Postgres.PgVault<TVaultModel>
+      - Altruist.Persistence.Postgres.PostgresDatabaseConfiguration
+      - Altruist.Persistence.Postgres.SchemaIsolation
+    config:
+      - altruist:persistence:database:host
+      - altruist:persistence:database:port
+      - altruist:persistence:database:database
+      - altruist:persistence:database:username
+      - altruist:persistence:database:password
+      - altruist:persistence:database:pooling
+      - altruist:persistence:database:max-pool-size
+      - altruist:persistence:database:ssl-mode
+      - altruist:persistence:database:instances
+    example: |-
+      `ssl-mode` defaults to `disable`. For a database outside your private network set `require`, `verify-ca` or
+      `verify-full`. Any other value stops the server at start. The session time zone is forced to UTC. Keep the
+      password in an environment variable. The `Postgres/Core/E2E` controller (`altruist:e2e:enabled`) is test support.
+      ```yaml
+      altruist:
+        persistence:
+          database:
+            provider: postgres
+            host: db-primary.example.com
+            port: 5432
+            username: gameserver
+            password: ""            # ALTRUIST__PERSISTENCE__DATABASE__PASSWORD
+            database: mygame
+            pooling: true
+            max-pool-size: 300
+            ssl-mode: verify-full
+      ```
+      ```yaml
+      # several databases: primary, read replica
+      altruist:
+        persistence:
+          database:
+            provider: postgres
+            instances:
+              - { name: primary, host: db1, port: 5432, username: app, password: "", database: mygame, role: readwrite }
+              - { name: replica, host: db2, port: 5432, username: app_ro, password: "", database: mygame, role: readonly }
+      ```
+      ```csharp
+      [Vault("players", DbInstance = "replica")]
+      public class LeaderboardReadVault : VaultModel { /* columns */ }
+      ```
+
+  - name: redis
+    title: Redis Module
+    summary: >-
+      The Redis connection and its building blocks: the shared connection factory, Redis-backed message routers and
+      ingress/egress endpoints for multi-server pub/sub. The Redis cache provider and the fleet backplane have their own
+      capabilities (cache, fleet-and-server-nodes) and are delivered by the same package.
+    use:
+      - When several servers share a cache, session tokens or messages and you need a Redis connection configured once.
+      - When channels or servers must forward packets to each other over Redis pub/sub.
+    avoid:
+      - When one server is enough, use the in-memory cache (no Redis needed).
+      - When you want a cache API, start from cache. This capability is the connection and routing plumbing.
+    packages:
+      - Altruist.Redis
+    docs:
+      - /docs/deployment/database-scaling
+      - /docs/deployment/multi-channel
+    paths:
+      - Altruist/Redis/
+    types:
+      - Altruist.Redis.RedisConnectionFactory
+      - Altruist.Redis.RedisServiceConfiguration
+      - Altruist.Redis.RedisDirectRouter
+      - Altruist.Redis.RedisEngineRouter
+      - Altruist.Redis.IngressRedis
+      - Altruist.Redis.OutgressRedis
+    config:
+      - altruist:persistence:redis
+    example: |-
+      A connection string is a StackExchange.Redis string, so Sentinel and clusters work by listing nodes. Do not put a
+      Redis password in config.yml; use `ALTRUIST__PERSISTENCE__REDIS__CONNECTION_STRING`.
+      ```yaml
+      altruist:
+        persistence:
+          cache:
+            provider: redis
+          redis:
+            connection-string: "localhost:6379"     # default
+            # Sentinel: "s1:26379,s2:26379,s3:26379,serviceName=mymaster"
+      ```
+
+  - name: unpublished-stores
+    title: ScyllaDB and EF Core (not published)
+    summary: >-
+      Two store modules that live in the repository but are marked IsPackable=false, so they are NOT on NuGet and cannot
+      be installed as packages. EFCore has no code yet; ScyllaDB holds only a small model type. Use Postgres today.
+    use:
+      - When reading the repository: this is where a future ScyllaDB or EF Core store would land.
+    avoid:
+      - When you need a database today, use postgres. Do not add a package reference to Altruist.ScyllaDB or Altruist.EFCore, it does not exist on NuGet.
+      - When you need a different database, implement IGeneralDatabaseProvider yourself (see persistence).
+    docs:
+      - /docs/extension/database
+    paths:
+      - Altruist/ScyllaDB/
+      - Altruist/EFCore/
+    types:
+      - Altruist.ScyllaDB.ReplicationStrategy
+    example: |-
+      ```csharp
+      // Not available as a package. For another database, implement the provider contract:
+      [Service(typeof(IGeneralDatabaseProvider))]
+      public class MyDbProvider : IGeneralDatabaseProvider { /* see /docs/extension/database */ }
+      ```
+
+  - name: autosave
+    title: Autosave
+    summary: >-
+      Batched, cache-first saving for vault models. You mark an object dirty and Altruist flushes dirty objects to the
+      database on an interval, in batches, with a write-ahead log for crash recovery. It cuts thousands of single
+      writes into a few batched ones.
+    use:
+      - When many players or entities change often (position, gold, stats) and writing each change would overload the database.
+      - When a crash should lose at most a few seconds of changes (the write-ahead log is on by default).
+    avoid:
+      - When a change must be in the database before you continue (a trade, a purchase), call SaveAsync on the autosave service (cache and database now) or use a vault transaction.
+      - When you only create new rows or run queries, use vault directly.
+    packages:
+      - Altruist.Gaming.Autosave
+    docs:
+      - /docs/altruist/persistence/autosave
+    paths:
+      - Altruist/Gaming/Autosave/
+    types:
+      - Altruist.Gaming.Autosave.AutosaveAttribute
+      - Altruist.Gaming.Autosave.IAutosaveService<T>
+      - Altruist.Gaming.Autosave.AutosaveCycle
+      - Altruist.Gaming.Autosave.IAutosaveCoordinator
+      - Altruist.Gaming.Autosave.WriteAheadLog<T>
+    config:
+      - altruist:game:autosave
+    example: |-
+      The interval and batch size come from the attribute first, then from config, then from the built-in defaults
+      (every 5 minutes, batch 100). `Wal = false` turns the write-ahead log off for low-value, high-frequency data.
+      ```yaml
+      altruist:
+        game:
+          autosave:
+            default-interval: "*/1 * * * *"
+            default-batch-size: 200
+            wal:
+              enabled: true
+              directory: data/wal
+              flush-interval-seconds: 1
+      ```
+      ```csharp
+      [Autosave(120, AutosaveCycle.Seconds, BatchSize = 200)]
+      [Vault("players")]
+      public class PlayerVault : VaultModel { /* columns */ }
+
+      [Service]
+      public class CharacterService(IAutosaveService<PlayerVault> autosave)
+      {
+          public Task<PlayerVault?> JoinAsync(string id) => autosave.LoadAsync(id);   // cache first
+          public void Move(PlayerVault p, int x) { p.X = x; autosave.MarkDirty(p); }    // no database hit now
+          public Task TradeAsync(PlayerVault p) => autosave.SaveAsync(p);               // cache and database now
+      }
+      ```
+
+  - name: fleet-and-server-nodes
+    title: Fleet, Capacity and Drain
+    summary: >-
+      Runs one game on many servers. Every server is a node with a capacity budget, a drain (stop taking new work, let
+      running work finish, then exit), health endpoints, and a heartbeat into a shared backplane. A fleet registry, a
+      relay (?node=) and shared counters let a client reach the right server and let limits hold across servers.
+    use:
+      - When you run more than one copy of the server (Docker, Kubernetes) and rooms, lobbies or queues must find each other.
+      - When you need a load budget (max-load), readiness and liveness probes, or a graceful scale-down on SIGTERM.
+      - When tickets, rate limits or lockouts must be counted once for the whole fleet (shared counters in the backplane).
+    avoid:
+      - When you only need independent shards that never talk to each other, use multi-channel servers.
+      - When one server is enough: leave the defaults. With the in-memory backplane the fleet code stays inert.
+      - When you want to store game data, use persistence. The backplane holds only control-plane state.
+    packages:
+      - Altruist
+      - Altruist.Redis
+    docs:
+      - /docs/deployment/fleet
+      - /docs/deployment/server-node
+      - /docs/deployment/benchmarks
+    paths:
+      - Altruist/Core/Framework/Scaling/
+      - Altruist/Redis/Core/RedisFleetBackplane.cs
+    types:
+      - Altruist.IServerNode
+      - Altruist.ServerNode
+      - Altruist.ICapacityContributor
+      - Altruist.IDrainParticipant
+      - Altruist.IFleet
+      - Altruist.IFleetBackplane
+      - Altruist.Redis.RedisFleetBackplane
+      - Altruist.FleetRelayMiddleware
+    config:
+      - altruist:server:capacity
+      - altruist:server:drain
+      - altruist:server:fleet
+      - altruist:fleet
+    example: |-
+      Safe by default: the relay signs forwarded client IP headers with HMAC and ignores unsigned ones. The signing key
+      is `fleet:secret`, and falls back to `altruist:security:key`, so set one of them to a real secret in production.
+      The drain endpoint answers loopback callers; from outside it needs the `X-Altruist-Drain-Token` header, so set
+      `drain:token` only if you must call it remotely. The default backplane is in memory; set `fleet:redis` to share it.
+      Keep your orchestrator's grace period above `drain:timeout + force-grace`.
+      ```yaml
+      altruist:
+        server:
+          http: { host: "0.0.0.0", port: 8080 }
+          capacity:
+            max-load: 200          # 0 = unlimited
+          drain:
+            timeout: 360           # seconds running work may take
+            force-grace: 5
+            on-shutdown: true
+            token: ""              # optional, for POST /altruist/server/drain from outside loopback
+          fleet:
+            redis: "redis:6379"    # shared backplane (default: in memory)
+            cluster: my-game       # servers with the same name form one fleet
+            heartbeat: 2           # seconds
+            secret: ""             # relay signature key, default altruist:security:key
+      ```
+      ```csharp
+      [Service(typeof(ICapacityContributor))]
+      public sealed class MyRoomsCapacity : ICapacityContributor
+      {
+          public string Kind => "rooms";
+          public CapacitySample Sample() => /* units and load of what this server runs */;
+      }
+
+      public sealed class Stats(IFleet fleet, IServerNode node)
+      {
+          public string Describe() =>
+              $"{node.Capacity().State}: " + string.Join(", ", fleet.Nodes.Select(n => $"{n.NodeId} {n.Load}/{n.MaxLoad}"));
+      }
+      ```
+
+  - name: game-engine
+    title: Game Engine and Fixed-Step Loop
+    summary: >-
+      The server-side game loop. It runs your [Cycle] methods, timers and effects at a steady frame rate, and steps every
+      registered world once per frame. A fixed-rate stepper gets whole steps of exactly 1/Hz seconds, so a simulation
+      gives the same result however the frames fall. It is created only when the altruist:game:engine section exists.
+    use:
+      - When game logic must run at a steady rate (30 or 120 Hz) whatever the clients do.
+      - When you want a [Cycle] method, a delayed effect or a cron job on the game loop.
+      - When you need an authoritative simulation that steps at a fixed rate (for example a 60 Hz match) through IWorldStepper.
+      - When a socket handler must hand work to the loop (WaitForNextTick, SyncCommit) instead of locking shared state.
+    avoid:
+      - When you only need a periodic background job with no game state, and no game engine is configured. Use a plain hosted service.
+      - When you need deterministic tick logic that the TypeScript client also runs. Write that logic with [flow] and call it from a stepper.
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/altruist/engine
+    paths:
+      - Altruist/Gaming/Main/Core/General/Engine/
+      - Altruist/Gaming/Main/Core/General/Config/
+      - Altruist/Gaming/Main/Core/General/World/FixedStepClock.cs
+      - Altruist/Gaming/Main/Core/General/World/StepScheduler.cs
+      - Altruist/Core/Framework/Regen/
+      - Altruist/Gaming/Regen/
+    types:
+      - Altruist.Engine.AltruistEngine
+      - Altruist.Engine.IEffectManager
+      - Altruist.Engine.EngineTestDriver
+      - Altruist.Engine.ManualEngineClock
+      - Altruist.Gaming.IStepScheduler
+      - Altruist.Gaming.OverrunPolicy
+      - CycleRate
+      - CycleUnit
+      - CycleAttribute
+      - Altruist.EngineConfigOptions
+    config:
+      - altruist:game:engine
+      - altruist:game
+    example: |-
+      ```yaml
+      altruist:
+        game:
+          engine:
+            framerateHz: 120          # sampling rate of the loop
+            world-step: inline        # worker (default) or inline
+            fixed-step:
+              max-steps-per-frame: 8
+              overrun: drop           # drop | carry | slow-motion
+      ```
+
+      ```csharp
+      using Altruist.Gaming;
+
+      // A 60 Hz simulation that the engine steps. Every FixedStep is exactly step.Dt long.
+      [Service]
+      [Service(typeof(IWorldStepper))]
+      public class MatchSimulation : IWorldStepper
+      {
+          public StepMode Mode => StepMode.Fixed;
+          public int FixedHz => 60;
+
+          public void BeforeSteps(in FrameInfo frame) { }
+          public void FixedStep(in FixedStep step) => Advance(step.Dt);
+          public void AfterSteps(in FrameInfo frame) { }
+      }
+
+      // A method on the game loop, 10 times per second.
+      [Cycle(10, CycleUnit.Hz)]
+      public void Housekeeping() { }
+      ```
+
+  - name: worlds
+    title: Game Worlds and the World Coordinator
+    summary: >-
+      A world is a spatial container for game objects. It owns the physics world, the partitions, spawning and spatial queries.
+      This capability holds the dimension-neutral parts: the world index from config, the WorldCoordinator that steps every
+      world once per frame, the world object contracts, and the PlayerEntity base. The 2D and 3D parts are in worlds-2d and worlds-3d.
+    use:
+      - When you declare one or more worlds in config.yml (size, gravity, partition size, optional JSON data file).
+      - When you spawn and look up world objects through IGameWorldOrganizer and IWorldObject.
+      - When you want one large world with many maps, each a zone, or several separate worlds.
+    avoid:
+      - When you need a physics world that you own and step yourself, with no organizer, entities or visibility. Use [physics-2d].
+      - When your game is rooms and matches rather than a persistent spatial world. Use the rooms package.
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/worlds
+    paths:
+      - Altruist/Gaming/Main/Core/General/World/
+      - Altruist/Gaming/Main/Core/General/WorldIndex.cs
+      - Altruist/Gaming/Main/Core/General/Models.cs
+      - Altruist/Gaming/Main/Core/General/Models/
+      - Altruist/Gaming/Main/Core/General/Packet.cs
+      - Altruist/Gaming/Main/Core/Attribute/
+      - Altruist/Gaming/Main/Core/Router.cs
+    types:
+      - Altruist.Gaming.WorldCoordinator
+      - Altruist.Gaming.IGameWorldOrganizer
+      - Altruist.Gaming.IGameWorldManager
+      - Altruist.Gaming.IWorldStepper
+      - Altruist.Gaming.IWorldIndex
+      - Altruist.Gaming.PlayerEntity
+      - Altruist.Gaming.WorldObjectAttribute
+      - Altruist.GameConfigOptions
+      - Altruist.WorldsOptions
+      - Altruist.WorldOptions
+      - Altruist.PartitionerOptions
+      - Altruist.VectorConfig
+    config:
+      - altruist:game:worlds
+      - altruist:server:capacity:world-load
+    example: |-
+      ```yaml
+      altruist:
+        environment:
+          mode: "3D"                # or "2D"
+        game:
+          engine:
+            framerateHz: 30
+          worlds:
+            partitioner: { width: 256, height: 256, depth: 256 }
+            items:
+              - index: 0
+                id: "main-world"
+                size: { x: 1000, y: 1000, z: 1000 }
+                gravity: { x: 0, y: -9.81, z: 0 }
+                data-path: "Resources/world.json"   # optional
+      ```
+
+      ```csharp
+      var world = _worldOrganizer.GetWorld(0);          // IGameWorldOrganizer3D
+      await world.SpawnDynamicObject(player);           // full physics body
+      world.SpawnLightweight(monster);                  // spatial tracking only, no body
+      ```
+
+  - name: worlds-2d
+    title: 2D Worlds
+    summary: >-
+      The 2D implementation of worlds: the 2D organizer and manager, the 2D partitioner and spatial grid, the force runtime,
+      and the loader for the 2D world JSON. Use it when altruist:environment:mode is 2D.
+    use:
+      - When your game is top-down or side-view and runs in 2D mode.
+      - When you load world objects and colliders from a 2D world JSON file.
+      - When you apply continuous forces to 2D bodies through IForceRuntime2D.
+    avoid:
+      - When your game is 3D. Use [worlds-3d].
+      - When you want a standalone Box2D world you step yourself. Use [physics-2d].
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/worlds
+      - /docs/extension/world-loader
+    paths:
+      - Altruist/Gaming/Main/Core/2D/World/
+    types:
+      - Altruist.Gaming.TwoD.GameWorldOrganizer2D
+      - Altruist.Gaming.TwoD.IGameWorldManager2D
+      - Altruist.Gaming.TwoD.IWorldLoader2D
+      - Altruist.Gaming.TwoD.WorldPartitioner2D
+      - Altruist.Gaming.TwoD.IForceRuntime2D
+      - Altruist.Gaming.WorldIndex2D
+    example: |-
+      ```csharp
+      // 2D mode: environment.mode is "2D" in config.yml.
+      [Service]
+      public class Arena(IGameWorldOrganizer2D worlds)
+      {
+          public Task Spawn(IWorldObject2D obj) => worlds.GetWorld(0)!.SpawnDynamicObject(obj);
+      }
+      ```
+
+  - name: worlds-3d
+    title: 3D Worlds
+    summary: >-
+      The 3D implementation of worlds: the 3D organizer and manager, the octree-style partitioner and spatial grid, the world JSON
+      loader, entity synchronization, and the force and trajectory runtimes. Use it when altruist:environment:mode is 3D.
+    use:
+      - When your game is 3D (MMO, action, FPS).
+      - When you load static geometry, colliders and archetype objects from a world JSON file, or replace the loader with IWorldLoader3D.
+      - When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight).
+    avoid:
+      - When your game is 2D. Use [worlds-2d].
+      - When you only need terrain heights and walkability without physics. Use [terrain].
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/worlds
+      - /docs/extension/world-loader
+    paths:
+      - Altruist/Gaming/Main/Core/3D/World/
+      - Altruist/Gaming/Main/Core/3D/Numerics.cs
+    types:
+      - Altruist.Gaming.ThreeD.GameWorldOrganizer3D
+      - Altruist.Gaming.ThreeD.IGameWorldManager3D
+      - Altruist.Gaming.ThreeD.IWorldLoader3D
+      - Altruist.Gaming.ThreeD.WorldPartitioner3D
+      - Altruist.Gaming.ThreeD.TrajectoryRuntime3D
+      - Altruist.Gaming.EntitySyncService
+      - Altruist.Gaming.WorldIndex3D
+    example: |-
+      ```csharp
+      [Service]
+      public class WorldSetup(IGameWorldOrganizer3D worlds)
+      {
+          [PostConstruct]
+          public async Task Init()
+          {
+              var world = worlds.GetWorld(0)!;
+              var profile = new HumanoidCapsuleBodyProfile(0.28f, 0.62f, 0f, isKinematic: true);
+              player.BodyDescriptor = profile.CreateBody(player.Transform);
+              player.ColliderDescriptors = profile.CreateColliders(player.Transform);
+              await world.SpawnDynamicObject(player);
+          }
+      }
+      ```
+
+  - name: navmesh
+    title: Navigation Mesh and Pathfinding
+    summary: >-
+      Builds a navigation mesh from a walkability grid and terrain, finds paths on it (A* plus funnel smoothing), and moves agents along
+      those paths. NavMeshService holds one mesh per zone name. NavMeshRuntime ticks body-bound agents.
+    use:
+      - When NPCs or monsters must walk to a target around obstacles in a 3D world.
+      - When you need a reachability check, a random point on the mesh, or a line-of-walk test inside a zone.
+      - When you have a raw navmesh JSON (vertices and indices) to load.
+    avoid:
+      - When movement is grid-based and a walkability check per step is enough. Use [walkability-grid].
+      - When you need a player-controlled character with slopes and jumping. Use [character-movement].
+    packages:
+      - Altruist.Gaming
+    docs: []
+    paths:
+      - Altruist/Gaming/Main/Core/3D/World/Navmesh/
+    types:
+      - Altruist.Gaming.ThreeD.INavMeshService
+      - Altruist.Gaming.ThreeD.INavMeshRuntime
+      - Altruist.Gaming.ThreeD.NavMeshBuilder
+      - Altruist.Gaming.ThreeD.NavMeshAgent
+      - Altruist.Gaming.ThreeD.NavMeshGraph
+      - Altruist.Gaming.ThreeD.NavPath
+      - Altruist.Gaming.ThreeD.NavMeshLoader
+      - Altruist.Gaming.ThreeD.NavMeshSchema
+    example: |-
+      ```csharp
+      [Service]
+      public class Patrol(INavMeshService navMesh, INavMeshRuntime runtime)
+      {
+          public void Setup(IWalkabilityGrid grid, ITerrainProvider terrain, IPhysxBody3D body)
+          {
+              var graph = NavMeshBuilder.Build(grid, terrain);          // null when nothing is walkable
+              if (graph != null) navMesh.RegisterMesh("forest_01", graph);
+
+              var agent = runtime.CreateAgent("forest_01", body, speed: 3.5f);
+              agent.SetDestination(from: body.Position, to: new Vector3(40, 0, 25));
+          }
+
+          // Call once per world step; nothing calls it for you.
+          public void Step(float dt) => runtime.Update(dt);
+      }
+      ```
+
+  - name: terrain
+    title: Terrain, Heightmaps and Spatial Queries
+    summary: >-
+      Answers "what is under or in front of this body?" for the character controller. With physics on, queries go to the BEPU engine.
+      With physics off, a heightmap provider uses your ITerrainProvider (walkability, height, normal) plus the entity colliders.
+      Also loads heightmap images (PNG, JPEG, TIFF, raw) into BEPU heightfields.
+    use:
+      - When physics is disabled (altruist:game:physics:enabled: false) and characters still need ground, slopes and wall sliding.
+      - When you feed your own map data to the controller by implementing ITerrainProvider.
+      - When you load a heightmap image as terrain collision in a physics world.
+    avoid:
+      - When physics is on and you only need ray or capsule casts. Use the physics world API in [physics-3d].
+      - When you need paths around obstacles. Use [navmesh].
+    packages:
+      - Altruist.Gaming
+      - Altruist.Physx
+    docs:
+      - /docs/gaming/terrain
+      - /docs/extension/terrain-provider
+    paths:
+      - Altruist/Gaming/Main/Core/3D/World/Mesh/
+      - Altruist/Gaming/Main/Core/3D/Query/
+      - Altruist/Physx/Core/3D/BEPU/Heightmap.cs
+      - Altruist/Physx/Core/3D/BEPU/BEPUHeightmap.cs
+    types:
+      - Altruist.Gaming.ThreeD.ITerrainProvider
+      - Altruist.Gaming.ThreeD.ISpatialQueryProvider
+      - Altruist.Gaming.ThreeD.HeightmapSpatialQueryProvider
+      - Altruist.Gaming.ThreeD.PhysicsSpatialQueryProvider
+      - Altruist.Gaming.ThreeD.Terrain
+      - Altruist.Physx.ThreeD.IHeightmapLoader
+      - HeightfieldData
+    example: |-
+      ```yaml
+      altruist:
+        game:
+          physics:
+            enabled: false
+      ```
+
+      ```csharp
+      [Service(typeof(ITerrainProvider))]
+      public class MyTerrainProvider : ITerrainProvider
+      {
+          public bool IsWalkable(float x, float y, float z) => !Blocked(x, z);
+          public float GetHeight(float x, float z) => 0f;                 // flat ground
+          public Vector3 GetNormal(float x, float z) => Vector3.UnitY;
+      }
+      ```
+
+  - name: zones
+    title: Zones
+    summary: >-
+      Zones are named rectangular regions inside a world (a town, a forest, a dungeon). Each has a position and size and must fit inside one
+      partition. You register them on world.Zones and ask which zone contains a point. Managed zones switch on while players are in them.
+    use:
+      - When one big world holds many maps and you need to know which map a position belongs to.
+      - When you want zone enter and exit logic, or zone-based entity spawning with IZoneSpawnHandler.
+    avoid:
+      - When you need separate physics worlds for isolated areas. Declare several worlds in [worlds].
+      - When you need walkable-or-blocked cells inside a zone. Use [walkability-grid].
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/zones
+    paths:
+      - Altruist/Gaming/Main/Core/General/Zone/Zone.cs
+      - Altruist/Gaming/Main/Core/General/World/Zone.cs
+      - Altruist/Gaming/Main/Core/2D/World/ZoneManager2D.cs
+      - Altruist/Gaming/Main/Core/3D/World/ZoneManager3D.cs
+    types:
+      - Altruist.Gaming.IZone
+      - Altruist.Gaming.IZoneManager
+      - Altruist.Gaming.Zone3D
+      - Altruist.Gaming.IZoneSpawnHandler
+      - Altruist.Gaming.ZoneSpawnDefinition
+      - Altruist.Gaming.ZoneValidationException
+    example: |-
+      ```csharp
+      var world = _worldOrganizer.GetWorld(0)!;
+
+      // Throws ZoneValidationException if the zone is bigger than a partition or straddles two.
+      world.Zones.RegisterZone(new Zone3D(
+          name: "town_01",
+          position: new IntVector3(0, 0, 0),
+          size: new IntVector3(50000, 50000, 50000)));
+
+      var zone = world.Zones.FindZoneAt(32000, 18000, 0);   // IZone3D? or null
+      ```
+
+  - name: entity-hibernation
+    title: Entity Hibernation
+    summary: >-
+      Parks entities that no player can see, so they stop costing tick time, and wakes them when an observer comes near.
+      The framework hibernates zero-observer entities automatically; you decide what hibernating means for your entity.
+    use:
+      - When thousands of NPCs or monsters exist but only the ones near players need to be simulated.
+      - When your entity must save or clear state when it goes to sleep (IHibernatable.OnHibernate and OnWake).
+    avoid:
+      - When you need to remove an entity for good. Despawn it.
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/visibility
+    paths:
+      - Altruist/Gaming/Main/Core/General/Zone/Hibernation.cs
+    types:
+      - Altruist.Gaming.IHibernatable
+      - Altruist.Gaming.IEntityHibernationService
+      - Altruist.Gaming.EntityHibernationService
+      - Altruist.Gaming.HibernatedEntity
+    example: |-
+      ```csharp
+      public class MonsterEntity : WorldObject3D, IHibernatable
+      {
+          public bool IsHibernated { get; set; }
+          public bool CanHibernate => !InCombat;
+          public void OnHibernate() { /* stop timers */ }
+          public void OnWake() { /* resume */ }
+      }
+
+      // Find sleeping entities near a point.
+      List<HibernatedEntity> sleepers = _hibernation.FindNearby(x, y, z, radius: 500f);
+      ```
+
+  - name: walkability-grid
+    title: Walkability Grid
+    summary: >-
+      A per-zone grid of cell attributes (blocked, water, and so on) with a "can I walk from A to B" test. It is the cheap way to validate
+      movement in grid or tile games, and it is also the input for building a navmesh.
+    use:
+      - When movement is tile-based and the server must refuse steps into blocked cells.
+      - When you want to build a navmesh from the same grid.
+    avoid:
+      - When you need slopes, heights and sliding along walls. Use [terrain] with [character-movement].
+    packages:
+      - Altruist.Gaming
+    docs: []
+    paths:
+      - Altruist/Gaming/Main/Core/General/Zone/WalkabilityGrid.cs
+    types:
+      - Altruist.Gaming.IWalkabilityGrid
+      - Altruist.Gaming.IWalkabilityService
+      - Altruist.Gaming.WalkabilityGrid
+      - Altruist.Gaming.WalkabilityService
+      - Altruist.Gaming.CellAttribute
+    example: |-
+      ```csharp
+      [Service]
+      public class MapSetup(IWalkabilityService walkability)
+      {
+          public void Register(IWalkabilityGrid grid) => walkability.RegisterGrid("town_01", grid);
+
+          public bool CanStep(float fromX, float fromY, float toX, float toY)
+              => walkability.CanMoveTo("town_01", fromX, fromY, toX, toY);
+      }
+      ```
+
+  - name: visibility
+    title: Visibility (Interest Management)
+    summary: >-
+      Decides every tick which observers can see which world objects, diffs that against the last tick, and raises
+      visible and invisible events. It does not send spawn or despawn packets; your game does that in the event handlers.
+      It also feeds entity hibernation and sync broadcasting.
+    use:
+      - When a client should only know about entities near its player.
+      - When you must send a spawn or despawn packet to a client at the moment an entity enters or leaves its view.
+      - When you need to know who is looking at an entity (GetObserversOf).
+    avoid:
+      - When you need to broadcast one packet to everyone near a point. Use [spatial-broadcast].
+      - When the game has no spatial world, such as a lobby or card game. Skip it.
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/visibility
+    paths:
+      - Altruist/Gaming/Main/Core/General/World/VisibilityTracker.cs
+      - Altruist/Gaming/Main/Core/2D/World/VisibilityTracker2D.cs
+      - Altruist/Gaming/Main/Core/3D/World/VisibilityTracker3D.cs
+    types:
+      - Altruist.Gaming.IVisibilityTracker
+      - Altruist.Gaming.VisibilityChange
+      - Altruist.Gaming.ThreeD.VisibilityTracker3D
+      - Altruist.Gaming.TwoD.VisibilityTracker2D
+    config:
+      - altruist:game:visibility
+    example: |-
+      ```yaml
+      altruist:
+        game:
+          visibility:
+            range: 5000        # world units, the default
+      ```
+
+      ```csharp
+      var player = new PlayerWorldObject(transform) { ClientId = clientId };
+      await world.SpawnDynamicObject(player);
+      _visibilityTracker.Observe(player);          // explicit: only observers get visibility sets
+
+      _visibilityTracker.OnEntityVisible += change => SendSpawnPacket(change);
+      _visibilityTracker.OnEntityInvisible += change => SendDespawnPacket(change);
+      ```
+
+  - name: spatial-broadcast
+    title: Spatial Broadcast
+    summary: >-
+      Sends a packet only to the clients that can see an entity, using the visibility sets and the spatial hash grid. It saves bandwidth
+      in big worlds, where most clients are far from any one event.
+    use:
+      - When you replicate an entity's state or event to the players who observe it.
+      - When you need a broadcast limited to nearby partitions instead of the whole room.
+    avoid:
+      - When every connected client must get the message. Use the router's broadcast sender.
+      - When you replicate an authoritative match room. Send the game's own snapshots through the rooms package.
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/altruist/spatial-broadcast
+    paths:
+      - Altruist/Gaming/Main/Core/General/World/SpatialBroadcastService.cs
+      - Altruist/Gaming/Main/Core/General/World/SpatialGrid.cs
+      - Altruist/Gaming/Main/Core/2D/World/SpatialBroadcastService2D.cs
+      - Altruist/Gaming/Main/Core/3D/World/SpatialBroadcastService3D.cs
+    types:
+      - Altruist.Gaming.ISpatialBroadcastService
+      - Altruist.Gaming.SpatialHashGrid
+      - ISpatialBroadcastService3D
+      - SpatialBroadcastService3D
+      - Altruist.Gaming.TwoD.ISpatialBroadcastService2D
+    example: |-
+      ```csharp
+      [Service]
+      public class MonsterSync(ISpatialBroadcastService broadcast)
+      {
+          // Sent to every client that currently sees this monster, to nobody else.
+          public Task Replicate(MonsterEntity monster, IPacketBase packet)
+              => broadcast.SendToObserversAsync(monster.InstanceId, packet);
+      }
+      ```
+
+  - name: game-session
+    title: Game Session Portal
+    summary: >-
+      A ready-made portal for the connect, handshake, join and leave flow. It creates a session per connection, answers the framework's
+      handshake, join-game and leave-game packets, and runs registered cleanups on disconnect.
+    use:
+      - When you want the standard join and leave flow without writing it yourself.
+      - When per-player state must be cleared on disconnect (implement IClientSessionCleanup).
+      - When you want to hook into join, leave or handshake by overriding OnJoinGameReceived and friends.
+    avoid:
+      - When players join matches or lobbies. Use the rooms, lobbies and matchmaking packages.
+      - When you need login and tokens. Use the auth capability.
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/game-session-portal
+    paths:
+      - Altruist/Gaming/Main/Core/General/Session/
+    types:
+      - Altruist.Gaming.AltruistGameSessionPortal
+      - IGameSessionService
+      - IGameSession
+      - GameSessionResult
+      - Altruist.Gaming.IClientSessionCleanup
+    config:
+      - altruist:game:session
+    example: |-
+      ```yaml
+      altruist:
+        game:
+          session:
+            ttl-minutes: 60
+      ```
+
+      ```csharp
+      [Portal("/game")]
+      public class MyGamePortal : AltruistGameSessionPortal
+      {
+          public MyGamePortal(IGameSessionService sessions, IAltruistRouter router,
+              IEnumerable<IClientSessionCleanup> cleanups, ILoggerFactory loggers)
+              : base(sessions, router, cleanups, loggers) { }
+
+          protected override async Task<IResultPacket> OnJoinGameReceived(
+              JoinGamePacket message, string clientId, IResultPacket result) => result;
+      }
+      ```
+
+  - name: lag-compensation
+    title: Lag Compensation
+    summary: >-
+      Keeps a short history of entity positions and lets the server rewind the world to the tick a client saw when it acted. Use it to
+      judge hits fairly for players with latency. Live transforms are never changed; the rewind uses an override map.
+    use:
+      - When hit or melee validation must use where targets were on the client's screen, not where they are now.
+      - When a packet must carry the client's tick (implement ILagCompensated).
+    avoid:
+      - When the client predicts and the server simulates the same fixed-step logic. Use [flow] with prediction instead.
+      - When gameplay is not spatial or time-sensitive.
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/lag-compensation
+    paths:
+      - Altruist/Gaming/Main/Core/General/LagCompensation/
+      - Altruist/Gaming/Main/Core/General/IPositionHistoryRecorder.cs
+      - Altruist/Core/Framework/Networking/ILagCompensated.cs
+    types:
+      - Altruist.Gaming.ILagCompensationService
+      - Altruist.Gaming.LagCompensationService
+      - Altruist.Gaming.LagCompensationSnapshotStrategy
+      - Altruist.Gaming.PositionSnapshot
+      - Altruist.ILagCompensated
+    config:
+      - altruist:game:lag-compensation
+    example: |-
+      ```yaml
+      altruist:
+        game:
+          lag-compensation:
+            history-ticks: 64          # about 2.5 s at 25 Hz
+            snapshot-strategy: nearest # or interpolate
+      ```
+
+      ```csharp
+      var hit = _lagCompensation.RewindWorld(packet.ClientTick, () =>
+      {
+          var (ax, ay, az) = _lagCompensation.Compensate(attacker.VirtualId, attacker.X, attacker.Y, attacker.Z);
+          var yaw = _lagCompensation.CompensateYaw(attacker.VirtualId, attacker.FacingYaw);
+          return IsInCone(ax, ay, az, yaw, target);
+      });
+      ```
+
+  - name: ai-behaviors
+    title: AI Behaviors
+    summary: >-
+      Write a monster's brain as a plain class with [AIBehavior] and [AIState] methods. The framework finds the class, makes one state
+      machine per entity, ticks it every engine frame, skips hibernated entities and cleans up when an entity leaves. Also has a
+      receding-horizon planner for bots that plan ahead.
+    use:
+      - When NPCs or monsters need states such as idle, chase, attack and return.
+      - When bots in a match room need the same behaviors with a machine you create and tick yourself.
+      - When an agent must plan a short sequence of actions (RecedingPlanner).
+    avoid:
+      - When you need a state machine that is not AI (a door, a combo, a quest). Use [state-machines].
+      - When bot decisions must replay exactly on a TypeScript client. Use the UtilitySelector in [flow].
+    packages:
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/ai
+    paths:
+      - Altruist/Gaming/Main/Core/General/AI/
+    types:
+      - Altruist.Gaming.AIBehaviorAttribute
+      - Altruist.Gaming.AIStateAttribute
+      - Altruist.Gaming.AIStateEnterAttribute
+      - Altruist.Gaming.AIStateExitAttribute
+      - Altruist.Gaming.IAIBehaviorEntity
+      - Altruist.Gaming.IAIContext
+      - Altruist.Gaming.AIBehaviorService
+    example: |-
+      ```csharp
+      [AIBehavior("aggressive_monster")]
+      public sealed class AggressiveMonsterBehavior
+      {
+          [AIState("Idle", Initial = true)]
+          public string? Idle(MonsterAIContext ctx, float dt)
+              => ctx.Target is { IsDead: false } ? "Chase" : null;   // return the next state, or null to stay
+
+          [AIState("Attack", Delay = 1.5f)]
+          public string? Attack(MonsterAIContext ctx, float dt) { DealDamage(ctx); return "Chase"; }
+
+          [AIStateEnter("Chase")]
+          public void OnChase(MonsterAIContext ctx) { }
+      }
+
+      [WorldObject("monster")]
+      public sealed class MonsterEntity : WorldObject3D, IAIBehaviorEntity
+      {
+          public string AIBehaviorName => "aggressive_monster";
+          public IAIContext AIContext { get; set; } = null!;
+      }
+      ```
+
+  - name: state-machines
+    title: State Machines
+    summary: >-
+      A generic finite state machine for gameplay: doors, combos, boss phases, quests, match phases. State methods return the next state name.
+      You build an immutable definition once, make one machine per context, and call Update. It has timing windows and motion curves for
+      combos and attacks. The AI layer is built on it.
+    use:
+      - When something has named states with timed transitions and you want no switch statements.
+      - When an attack or combo needs timing windows (a hit window, a cancel window) and a motion profile.
+      - When the machine has no world entity, such as a bot in a match room.
+    avoid:
+      - When you want automatic discovery and per-entity ticking for monsters. Use [ai-behaviors].
+      - When the same state logic must run bit for bit on a TypeScript client. Use [flow], which adds Advance and RunState.
+    packages:
+      - Altruist.Gaming
+      - "@altruist/sim2d"
+    docs:
+      - /docs/gaming/state-machines
+      - /docs/gaming/combo-state-machine
+    paths:
+      - Altruist/Gaming/Main/Core/General/StateMachine/
+    types:
+      - Altruist.Gaming.StateMachine<TContext>
+      - Altruist.Gaming.StateMachineBuilder<TContext>
+      - Altruist.Gaming.IStateContextCore
+      - Altruist.Gaming.StateBehaviorAttribute
+      - Altruist.Gaming.StateAttribute
+      - Altruist.Gaming.StateWindowAttribute
+      - Altruist.Gaming.StateMotionProfile
+    example: |-
+      ```csharp
+      [StateBehavior("door")]
+      public sealed class DoorBehavior
+      {
+          [State("Closed", Initial = true)]
+          public string? Closed(DoorContext ctx, float dt) => ctx.OpenRequested ? "Opening" : null;
+
+          [State("Opening")]
+          public string? Opening(DoorContext ctx, float dt) => ctx.Progress >= 1f ? "Open" : null;
+      }
+
+      var def = new StateMachineBuilder<DoorContext>()
+          .RegisterHandlers<DoorBehavior>()
+          .ConfigureState("Opening").Duration(0.75f)
+          .Build();
+
+      var fsm = new StateMachine<DoorContext>(def);
+      fsm.Initialize(context);
+      fsm.Update(context, dt);          // from your own tick
+      ```
+
+  - name: flow
+    title: Flow (Deterministic Tick Building Blocks)
+    summary: >-
+      Small helpers for the code that runs every tick of a real-time match: ordered rule lists (FirstMatch), tick phases (TickPipeline),
+      modifier stacks, bot utility choice, timers, input edges, entity registries and event sinks. They run in a fixed order with no
+      allocation, and the TypeScript version behaves the same, so server and client compute the same result. It is for deterministic
+      tick logic shared by server and client.
+    use:
+      - When the client predicts the server by running the same simulation, and the two must not drift apart.
+      - When matches are replayed or rolled back and must give the same result.
+      - When game modes or tests must insert, replace or remove one rule by name instead of copying a whole Step().
+      - When bots must make the same choices for the same seed (UtilitySelector with DeterministicRandom).
+    avoid:
+      - When the server only stores state and checks requests (turn-based, lobbies, simple RPG commands). Plain code is fine.
+      - When you need a state machine for match phases. Use [state-machines].
+    packages:
+      - Altruist.Gaming
+      - Altruist.Physx
+      - "@altruist/sim2d"
+    docs:
+      - /docs/gaming/flow
+      - /docs/gaming/physics/typescript-sim2d
+    paths:
+      - Altruist/Gaming/Main/Core/General/Flow/
+    types:
+      - Altruist.Gaming.Flow.FirstMatch<TCtx, TResult>
+      - Altruist.Gaming.Flow.TickPipeline<TCtx>
+      - Altruist.Gaming.Flow.ModifierStack<TCtx>
+      - Altruist.Gaming.Flow.UtilitySelector<TOption, TCtx>
+      - Altruist.Gaming.Flow.Countdown
+      - Altruist.Gaming.Flow.TimerSet
+      - Altruist.Gaming.Flow.EntityRegistry<TKey, T>
+      - Altruist.Gaming.Flow.EventSink<TEvent>
+    example: |-
+      ```csharp
+      using Altruist.Gaming.Flow;
+
+      var rules = FirstMatch<HitContext, float>.Create()
+          .When("super",   c => c.SuperStrike,   c => cfg.SuperStrikeMultiplier)
+          .When("kick",    c => c.Kick,          c => MathF.Max(c.ZoneMult, cfg.Nose) * cfg.FlipKick)
+          .Otherwise(c => c.ZoneMult);
+
+      // A game mode adds a rule by name, before another one.
+      rules.Before("super").When("overcharged", c => c.Overcharged, 4f);
+
+      var multiplier = rules.Build();            // once, at setup
+      float mult = multiplier.Evaluate(ctx);     // every tick, no allocation
+
+      Countdown.Tick(ref car.DashCooldown, dt);  // t = max(0, t - dt)
+      ```
+
+      ```ts
+      // Same shape on the client.
+      import { FirstMatch } from '@altruist/sim2d/flow';
+      const rules = FirstMatch.create<HitContext, number>().when('super', c => c.superStrike, () => cfg.superStrikeMultiplier);
+      ```
+
+  - name: numerics
+    title: Numerics (Deterministic Math)
+    summary: >-
+      The math a simulation keeps rewriting: scalar clamps and approaches, angle wrapping, safe vector normalization, tuning curves, a seeded
+      random generator, positions, rotations and transforms for 2D and 3D, box and ray tests. Each helper evaluates exactly the formula in its
+      summary, so results match bit for bit across runs. The TypeScript package mirrors it.
+    use:
+      - When a simulation must replay exactly or match a client (use DeterministicRandom, not System.Random).
+      - When you need angle wrapping, Approach, Lerp, PiecewiseLinear curves or safe NormalizeOrZero.
+      - When you need Position3D, Rotation3D, Transform3D and their 2D twins.
+    avoid:
+      - When you need operations on bodies and contacts. Use [motion-2d] or [physics-2d].
+      - When exact repeatability does not matter and System.Numerics is enough.
+    packages:
+      - Altruist
+      - "@altruist/sim2d"
+    docs:
+      - /docs/gaming/physics/numerics
+      - /docs/gaming/physics/typescript-sim2d
+    paths:
+      - Altruist/Core/Framework/Numerics/
+    types:
+      - Altruist.Numerics.Scalar
+      - Altruist.Numerics.Angle
+      - Altruist.Numerics.DeterministicRandom
+      - Altruist.Numerics.PiecewiseLinear
+      - Altruist.TwoD.Numerics.VectorMath2D
+      - Altruist.ThreeD.Numerics.Transform3D
+      - Altruist.TwoD.Numerics.Transform2D
+    example: |-
+      ```csharp
+      using Altruist.Numerics;
+      using Altruist.TwoD.Numerics;
+
+      speed = Scalar.Approach(speed, maxSpeed, acceleration * dt);
+      var turn = Angle.ShortestDifference(heading, targetHeading);
+      var dir = VectorMath2D.NormalizeOrZero(velocity);
+
+      var rng = new DeterministicRandom(seed: matchId);   // same sequence on every runtime
+      bool crit = rng.Chance(0.25);
+      uint saved = rng.State;                             // for rollback
+      ```
+
+  - name: physics-2d
+    title: 2D Physics (Box2D)
+    summary: >-
+      A 2D physics engine behind a clean API. PhysxWorldEngine2D.Create makes a standalone Box2D world that you own and step yourself: bodies,
+      fixtures, shapes, contacts and ray casts. Use it for an authoritative match, a prediction scratch world, a bot trainer or a test.
+      Also holds the 2D collider models and body profiles that world objects use.
+    use:
+      - When you simulate a 2D match yourself and step it from a fixed-rate stepper.
+      - When you need a headless physics world for tests, replays or bot training.
+      - When 2D world objects need colliders and body profiles (box, circle, capsule, polygon).
+    avoid:
+      - When the game is 3D. Use [physics-3d].
+      - When you only need velocity math or gameplay verbs on bodies. Use [motion-2d].
+    packages:
+      - Altruist.Physx
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/physics/simulation-2d
+    paths:
+      - Altruist/Physx/Core/2D/
+      - Altruist/Gaming/Main/Core/2D/Physx/
+    types:
+      - Altruist.Physx.PhysxWorldEngine2D
+      - Altruist.Physx.IPhysxWorldEngine2D
+      - Altruist.Physx.IPhysxWorldEngineFactory2D
+      - Altruist.Physx.TwoD.PhysxWorldSettings2D
+      - Altruist.Physx.TwoD.IPhysxBody2D
+      - Altruist.Physx.TwoD.PhysxBodyDef2D
+      - Altruist.Physx.TwoD.PhysxFixtureDef2D
+      - Altruist.Gaming.TwoD.HumanoidCapsuleBodyProfile2D
+    example: |-
+      ```csharp
+      using System.Numerics;
+      using Altruist.Physx;
+      using Altruist.Physx.TwoD;
+
+      var world = PhysxWorldEngine2D.Create(new PhysxWorldSettings2D
+      {
+          Gravity = new Vector2(0, -10),
+          FixedDeltaTime = 1f / 60f,
+          VelocityIterations = 8,
+          PositionIterations = 3,
+      });
+
+      for (var tick = 0; tick < 600; tick++)
+          world.Step(world.FixedDeltaTime);   // pass the same fixed value every step
+
+      world.Dispose();
+      ```
+
+  - name: motion-2d
+    title: 2D Motion and Gameplay Verbs
+    summary: >-
+      Two layers on top of 2D bodies. The physics layer has velocity, bounce, drag, gravity, ray cast and ballistic helpers. The gameplay layer
+      has designer-level verbs such as JumpOff, DriveAlong, StickTo, AlignToSurface and AimAt. Each verb delegates to a physics helper, which
+      delegates to numerics, in a fixed operation order. The TypeScript package has the same API.
+    use:
+      - When you write the movement of a car, ball or character in a 2D match and want the code to read like the rules.
+      - When a client must predict that movement and match the server.
+      - When you need to predict a flight path or check whether a jump can reach a height.
+    avoid:
+      - When you need 3D character movement. Use [character-movement].
+      - When you only need pure math with no bodies. Use [numerics].
+    packages:
+      - Altruist.Physx
+      - Altruist.Gaming
+      - "@altruist/sim2d"
+    docs:
+      - /docs/gaming/physics/motion-2d
+      - /docs/gaming/physics/gameplay-verbs
+      - /docs/gaming/physics/typescript-sim2d
+    paths:
+      - Altruist/Physx/Core/2D/Motion/
+      - Altruist/Physx/Core/Motion/
+      - Altruist/Gaming/Main/Core/2D/Gameplay/
+    types:
+      - Altruist.Gaming.TwoD.GameplayVerbs2D
+      - Altruist.Physx.TwoD.Velocity2D
+      - Altruist.Physx.TwoD.Ballistics2D
+      - Altruist.Physx.TwoD.BodyMotionExtensions2D
+      - Altruist.Physx.TwoD.RayCastExtensions2D
+      - Altruist.Physx.Kinematics
+    example: |-
+      ```csharp
+      using Altruist.Gaming.TwoD;
+      using Altruist.Physx.TwoD;
+
+      if (jumpPressed && onSurface) car.JumpOff(surfaceNormal, cfg.JumpSpeed);
+      if (grounded)
+      {
+          car.DriveAlong(tangent, throttle * cfg.MaxSpeed, cfg.Acceleration, dt);
+          car.StickTo(groundNormal, cfg.Grip, dt);
+      }
+      else
+      {
+          car.ApplyDrag(cfg.AirDrag, dt);
+      }
+      ball.Fall(gravity, dt, gravityScale: 1f);
+      ```
+
+  - name: collisions
+    title: Collision Handlers and Contact Routing
+    summary: >-
+      Two ways to react to collisions. Mark a class [CollisionHandler] and its [CollisionEvent] methods get CollisionEnter, Stay, Exit, Hit and
+      the visibility events for the two entity types you name. For a standalone 2D world, ContactRouter2D routes Box2D contacts by the types of the
+      two fixture tags and always passes the pair in the same order.
+    use:
+      - When a player entering a monster's range, a pickup or a trigger volume must run game code.
+      - When you listen to a 2D physics world's contacts and want typed handlers, filters and impulse callbacks.
+    avoid:
+      - When you only need visible and invisible events for packets. Use [visibility].
+      - When you need damage rules. Use the combat package.
+    packages:
+      - Altruist.Physx
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/physics/collisions
+    paths:
+      - Altruist/Physx/Core/Common/CollisionHandler/
+      - Altruist/Physx/Core/Attributes/
+      - Altruist/Physx/Core/Config/
+      - Altruist/Physx/Core/2D/Contacts/
+      - Altruist/Gaming/Main/Core/3D/World/SpatialCollisionDispatcher.cs
+    types:
+      - Altruist.Physx.CollisionHandlerAttribute
+      - Altruist.Physx.CollisionEventAttribute
+      - Altruist.Physx.CollisionEnter
+      - Altruist.Physx.CollisionExit
+      - Altruist.Physx.TwoD.ContactRouter2D
+      - Altruist.Gaming.SpatialCollisionDispatcher
+    example: |-
+      ```csharp
+      using Altruist.Physx;
+
+      [CollisionHandler]
+      public class ProximityHandler
+      {
+          [CollisionEvent(typeof(CollisionEnter))]
+          public void OnPlayerNearMonster(CollisionEnter _, PlayerEntity player, MonsterEntity monster)
+          {
+              // set aggro
+          }
+
+          [CollisionEvent(typeof(CollisionExit))]
+          public void OnPlayerLeft(CollisionExit _, PlayerEntity player, MonsterEntity monster) { }
+      }
+      ```
+
+      ```csharp
+      // Standalone 2D world: contacts routed by tag type, pair always (A = first type).
+      var router = new ContactRouter2D()
+          .OnPreSolve((in RoutedContact2D<SurfaceTag, VehicleTag> c) => Record(c.GetWorldManifold().Normal))
+          .OnPostSolve((in RoutedContact2D<BallTag, SurfaceTag> c, float impulse) => Thud(impulse));
+      world.SetContactListener(router);
+      ```
+
+  - name: physics-3d
+    title: 3D Physics (BEPU)
+    summary: >-
+      A 3D physics engine (BEPU) behind a provider API: bodies, colliders, forces, ray and capsule casts, collision events. It is optional.
+      Turn it off with altruist:game:physics:enabled false for games that do not need real collision, and use heightmap queries instead.
+    use:
+      - When the game needs real 3D collision, rigid bodies, projectile tracing or character capsule sweeps.
+      - When you create bodies and colliders from descriptors and body profiles such as HumanoidCapsuleBodyProfile.
+    avoid:
+      - When thousands of NPCs only need positions and distance checks. Spawn them lightweight and set physics off, see [terrain].
+      - When the game is 2D. Use [physics-2d].
+    packages:
+      - Altruist.Physx
+      - Altruist.Gaming
+    docs:
+      - /docs/gaming/physics
+    paths:
+      - Altruist/Physx/Core/3D/
+      - Altruist/Physx/Core/Common/
+      - Altruist/Gaming/Main/Core/3D/Physx/
+    types:
+      - Altruist.Physx.ThreeD.PhysxWorld3D
+      - Altruist.Physx.ThreeD.IPhysxBody3D
+      - Altruist.Physx.ThreeD.IPhysxWorldEngine3D
+      - Altruist.Physx.ThreeD.PhysxRaycastHit3D
+      - Altruist.Physx.Contracts.IPhysxBody
+      - Altruist.Physx.Contracts.PhysxBodyType
+      - Altruist.Gaming.ThreeD.HumanoidCapsuleBodyProfile
+    config:
+      - altruist:game:physics
+    example: |-
+      ```yaml
+      altruist:
+        game:
+          physics:
+            enabled: true     # false: no BEPU, heightmap queries instead
+      ```
+
+      ```csharp
+      var profile = new HumanoidCapsuleBodyProfile(0.28f, 0.62f, 0f, isKinematic: true);
+      entity.BodyDescriptor = profile.CreateBody(entity.Transform);
+      entity.ColliderDescriptors = profile.CreateColliders(entity.Transform);
+      await world.SpawnDynamicObject(entity);     // creates the runtime physics body
+      ```
+
+  - name: character-movement
+    title: Character Controllers and Movement
+    summary: >-
+      A server-authoritative kinematic character controller. The client sends input, the controller moves the capsule each tick with gravity,
+      ground probing, slope limits and wall sliding. Movement profiles (FPS, TPS, MMO) and abilities such as jump plug in. There is also a 2D controller,
+      and a simpler input and output movement helper in Physx.
+    use:
+      - When players move in a 3D world and the server must compute the real position.
+      - When you need walk, sprint, jump or click-to-move with different feels (profiles).
+      - When you want a 2D character with jump abilities.
+    avoid:
+      - When NPCs walk paths around obstacles. Use [navmesh].
+      - When you write car or ball motion for a 2D match. Use [motion-2d].
+    packages:
+      - Altruist.Gaming
+      - Altruist.Physx
+    docs:
+      - /docs/gaming/physics/movement
+    paths:
+      - Altruist/Gaming/Main/Core/3D/Physx/Character/
+      - Altruist/Gaming/Main/Core/2D/Physx/Character/
+      - Altruist/Physx/Core/Movement/
+      - Altruist/Gaming/Movement/
+    types:
+      - Altruist.Gaming.ThreeD.KinematicCharacterController3D
+      - Altruist.Gaming.ThreeD.IKinematicCharacterController3D
+      - Altruist.Gaming.ThreeD.CharacterRealtimeWasdInput3D
+      - Altruist.Gaming.ThreeD.TpsMovementProfile3D
+      - Altruist.Gaming.ThreeD.SimpleJumpAbility3D
+      - Altruist.Gaming.TwoD.KinematicCharacterController2D
+    example: |-
+      ```csharp
+      var controller = new KinematicCharacterController3D
+      {
+          Radius = 0.28f,
+          Height = 1.8f,
+          PivotToCenterY = 0.9f,
+          MaxSlopeAngleDeg = 60f,
+          MovementProfile = TpsMovementProfile3D.Default,
+      };
+      controller.AddAbility(new SimpleJumpAbility3D { JumpSpeed = 7.5f });
+      controller.SetBody(body);
+
+      // On a move packet:
+      controller.SetMovementInput(new CharacterRealtimeWasdInput3D(
+          MoveX: p.InputX, MoveZ: p.InputZ, LookDirection: look, CameraYaw: p.CameraYaw,
+          ExternalFacingYaw: 0f, UseExternalFacing: false, Sprint: p.Sprint, Jump: p.Jump));
+      ```
+
+  - name: combat
+    title: Combat
+    summary: >-
+      A small combat core: one attacker hits one target, or sweeps an area (sphere, cone, line) in 2D or 3D. A damage calculator you replace turns attacker and target into damage, and hit, death and sweep events tell your game what happened. Your game keeps the formulas, rewards and packets.
+    use:
+      - When entities in your world hit each other and you want health, kill and event handling done for you.
+      - When you need area attacks (cones, spheres, lines) with a target cap and a filter.
+      - When clients send attack and target packets and you want the built-in portal gates for them.
+      - When attacks must be checked against where targets were on the attacker's screen (it uses lag compensation when the packet carries a client tick).
+    avoid:
+      - When you need knockback, impulses or projectiles that move bodies. Use the physics and body APIs of the gaming package; this only moves health numbers.
+      - When your fights are turn-based inside a match room. Put the rules in your room simulation (see rooms) and skip this service.
+    packages:
+      - Altruist.Gaming.Combat
+    docs:
+      - /docs/gaming/combat
+      - /docs/extension/damage-calculator
+    paths:
+      - Altruist/Gaming/Combat/
+    types:
+      - Altruist.Gaming.Combat.ICombatService
+      - Altruist.Gaming.Combat.CombatService
+      - Altruist.Gaming.Combat.ICombatEntity
+      - Altruist.Gaming.Combat.IDamageCalculator
+      - Altruist.Gaming.Combat.DefaultDamageCalculator
+      - Altruist.Gaming.Combat.DamageSpec
+      - Altruist.Gaming.Combat.SweepQuery3D
+      - Altruist.Gaming.Combat.AltruistCombatPortal
+    example: |-
+      ```csharp
+      // 1. Your entity says how to read and change health.
+      [WorldObject("player")]
+      public sealed class PlayerEntity : WorldObject3D, ICombatEntity
+      {
+          public int Hp { get; set; }
+          public int MaxHp { get; set; }
+          public int Attack { get; set; }
+          public int Defense { get; set; }
+          public uint VirtualId { get; set; }
+
+          int ICombatEntity.Health { get => Hp; set => Hp = value; }
+          int ICombatEntity.MaxHealth => MaxHp;
+          bool ICombatEntity.IsDead => Hp <= 0;
+          float ICombatEntity.X => Transform.Position.X;
+          float ICombatEntity.Y => Transform.Position.Y;
+          float ICombatEntity.Z => Transform.Position.Z;
+          public int GetAttackPower() => Attack;
+          public int GetDefensePower() => Defense;
+
+          public PlayerEntity(Transform3D transform) : base(transform) { }
+      }
+
+      // 2. Replace the default formula (max(1, attack - defense)).
+      [Service(typeof(IDamageCalculator))]
+      public sealed class GameDamageCalculator : IDamageCalculator
+      {
+          public DamageSpec Calculate(ICombatEntity attacker, ICombatEntity target)
+          {
+              bool crit = Random.Shared.NextDouble() < 0.15;
+              int damage = Math.Max(1, attacker.GetAttackPower() - target.GetDefensePower());
+              return new DamageSpec(crit ? (int)(damage * 1.5f) : damage, crit ? DamageFlags.Critical : DamageFlags.Normal);
+          }
+      }
+
+      // 3. Attack, sweep, and react.
+      HitResult hit = _combat.Attack(attacker, target);
+      var cone = SweepQuery3D.Cone(attackerPos, attackerYaw, range: 3f, halfAngleRadians: MathF.PI / 4) with { MaxTargets = 5 };
+      _combat.Sweep(attacker, cone, damage: 25);
+
+      [CombatHandler]
+      public sealed class PlayerCombatHandlers
+      {
+          [CombatEvent(typeof(HitEvent))]
+          public void OnHit(HitEvent hit, PlayerEntity attacker, PlayerEntity target) { /* play effects */ }
+      }
+      ```
+
+  - name: inventory
+    title: Inventory
+    summary: >-
+      Items, containers and equipment for a game: grid inventories (Diablo style), slot inventories (WoW style), named equipment slots and ground items. Item types and templates are yours; the framework handles placement, stacking, moves and the client packets. The client package keeps a mirror of the server inventory in a .NET game client.
+    use:
+      - When players carry, stack, move, equip, drop and pick up items, and the server must be the authority.
+      - When you want data-driven items: templates loaded from JSON or a database, with your own fields.
+      - When a .NET game client (Unity, Godot, console) needs a local mirror of the player's inventory that updates from server packets (Altruist.Client.Inventory).
+    avoid:
+      - When you only store a few numbers on a player (gold, level). Keep those in your own vault model and skip containers.
+      - When the client is a browser. Altruist.Client.Inventory is for .NET clients; handle the inventory packets yourself with the typescript-client packages.
+    packages:
+      - Altruist.Gaming.Inventory
+      - Altruist.Client.Inventory
+    docs:
+      - /docs/gaming/inventory
+    paths:
+      - Altruist/Gaming/Inventory/
+      - Altruist/Client/Inventory/
+    types:
+      - Altruist.Gaming.Inventory.IInventoryService
+      - Altruist.Gaming.Inventory.InventoryService
+      - Altruist.Gaming.Inventory.GameItem
+      - Altruist.Gaming.Inventory.ItemTemplate
+      - Altruist.Gaming.Inventory.IItemTemplateProvider
+      - Altruist.Gaming.Inventory.ContainerConfig
+      - Altruist.Gaming.Inventory.SlotKey
+      - Altruist.Gaming.Inventory.AltruistInventoryPortal
+      - Altruist.Client.Inventory.IClientInventoryService
+    example: |-
+      ```csharp
+      // Register templates once at startup.
+      [Service]
+      public class ItemSetup
+      {
+          private readonly IItemTemplateProvider _templates;
+          public ItemSetup(IItemTemplateProvider templates) => _templates = templates;
+
+          [PostConstruct]
+          public void RegisterItems() => _templates.LoadFromJson<WeaponTemplate>("Resources/weapons.json");
+      }
+
+      // Give a player containers, then items.
+      [Service]
+      public class PlayerInventorySetup
+      {
+          private readonly IInventoryService _inventory;
+          public PlayerInventorySetup(IInventoryService inventory) => _inventory = inventory;
+
+          public void SetupPlayer(string playerId)
+          {
+              _inventory.CreateContainer(playerId, new ContainerConfig
+              {
+                  ContainerId = "inventory", ContainerType = ContainerType.Grid, Width = 10, Height = 6,
+              });
+              _inventory.CreateContainer(playerId, new ContainerConfig
+              {
+                  ContainerId = "bank", ContainerType = ContainerType.Slot, SlotCount = 100,
+              });
+
+              GameItem sword = _inventory.CreateItem(templateId: 1001);
+              ItemStatus status = _inventory.AddItem(playerId, "inventory", sword);   // auto-placed
+          }
+      }
+      ```
+
+  - name: questing
+    title: Questing
+    summary: >-
+      A quest runtime. Quests are classes with attributes for id, name and requirements, and state methods that react to events such as kill, NPC talk, item pickup or timer. The runtime checks requirements, runs your hooks, saves progress and tells your game what changed. Your game owns the packets and the UI.
+    use:
+      - When your game has quests with steps, counters and requirements (level, class, faction).
+      - When quest progress must survive relogs and level changes (reconcile and suspend, without deleting progress).
+      - When you want quests as plain C# classes found by scanning an assembly.
+    avoid:
+      - When you only need a generic state machine for AI or entities. Use the state machine feature of the gaming package; quests add persistence, requirements and update publishing on top.
+      - When you want a ready-made quest UI or quest packets. The package sends nothing to clients; you map QuestUpdate to your own packet.
+    packages:
+      - Altruist.Gaming.Questing
+    docs:
+      - /docs/gaming/quest-system
+    paths:
+      - Altruist/Gaming/Questing/
+    types:
+      - Altruist.Gaming.Questing.QuestRuntime<TContext>
+      - Altruist.Gaming.Questing.QuestBehavior<TContext>
+      - Altruist.Gaming.Questing.QuestContext
+      - Altruist.Gaming.Questing.QuestTrigger
+      - Altruist.Gaming.Questing.IQuestStateStore
+      - Altruist.Gaming.Questing.IQuestUpdateSink<TContext>
+      - Altruist.Gaming.Questing.IQuestRequirementEvaluator<TContext>
+      - Altruist.Gaming.Questing.QuestUpdate
+    example: |-
+      ```csharp
+      // A quest is a class. The runtime finds it by scanning the assembly.
+      [Quest("side.gather_ores")]
+      [QuestName("Gather Ores")]
+      [QuestRequirement("level", QuestOperator.GreaterOrEqual, 10)]
+      public sealed class GatherOresQuest : QuestBehavior<GameQuestContext>
+      {
+          [QuestState("talk_to_blacksmith", Initial = true)]
+          public string? TalkToBlacksmith(GameQuestContext ctx)
+              => ctx.Trigger == QuestTrigger.Npc && ctx.TargetId == BlacksmithNpcId ? "collect_ore" : null;
+
+          [QuestStateEnter("collect_ore")]
+          public void EnterCollectOre(GameQuestContext ctx)
+          {
+              ctx.State.Set("target", 10);
+              ctx.State.Set("count", 0);
+          }
+
+          [QuestState("collect_ore")]
+          public string? CollectOre(GameQuestContext ctx)
+          {
+              if (ctx.Trigger == QuestTrigger.Item && ctx.TargetId == IronOreItemId
+                  && ctx.State.Increment("count") >= ctx.State.Get("target", 10))
+                  return "completed";
+              return null;
+          }
+      }
+
+      // Host side: you supply the store, the sink (QuestUpdate -> your packet) and requirement evaluators.
+      var runtime = new QuestRuntime<GameQuestContext>(stateStore, updateSink, requirements, contextFactory);
+      runtime.LoadFromAssembly(typeof(GatherOresQuest).Assembly);
+      await runtime.FireAsync(baseContext, QuestTrigger.Item, targetId: IronOreItemId);
+      ```
+
+  - name: rooms
+    title: Match Rooms
+    summary: >-
+      A host for short-lived, authoritative match rooms: a fixed group of players in an isolated instance with its own fixed-step simulation. It handles connections, seats for players and bots, ordered input, snapshots, reconnect, bot refill and room disposal. You write the simulation and the packets. Rooms are a library type, not a [Service]: you build a RoomHost yourself and expose it to the engine.
+    use:
+      - When your game is session-based (matches, rounds, races, arenas) and each match is its own deterministic simulation.
+      - When you need reconnect grace, bots filling empty seats, team forfeits and clean room disposal.
+      - When clients predict their own input and the server must apply exactly the client's input stream (see typescript-client).
+    avoid:
+      - When players share one persistent open world. Use the world organizers (2D or 3D) of the gaming package instead.
+      - When you only need to group players and then start a room. Rooms alone do not queue anyone; add matchmaking (public queues) or lobbies (private invite codes).
+    packages:
+      - Altruist.Gaming.Rooms
+    docs:
+      - /docs/gaming/rooms
+    paths:
+      - Altruist/Gaming/Rooms/
+    types:
+      - Altruist.Gaming.Rooms.RoomHost<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Rooms.IRoomGame<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Rooms.IRoomSimulation<TInput>
+      - Altruist.Gaming.Rooms.IRoomTransport
+      - Altruist.Gaming.Rooms.IRoomHostModule<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Rooms.RoomHostOptions
+      - Altruist.Gaming.Rooms.RoomRules
+      - Altruist.Gaming.Rooms.RoomInputModel<TInput>
+    example: |-
+      ```csharp
+      // How you turn it on: there is no config key. Reference Altruist.Gaming.Rooms, build the host in
+      // a service of your own, and forward the engine's fixed steps to it.
+      // Your game implements IRoomGame<ArenaSim, PadInput, Profile> (simulation, bots, packets).
+      [Service(typeof(IWorldStepper))]
+      public sealed class ArenaServer : IWorldStepper
+      {
+          private readonly RoomHost<ArenaSim, PadInput, Profile> _host;
+
+          public ArenaServer(IServerNode node, IFleet fleet, IStepScheduler scheduler)
+          {
+              var game = new ArenaGame();
+              _host = new RoomHost<ArenaSim, PadInput, Profile>(game, new ArenaTransport(), new RoomHostOptions(), fixedHz: 60)
+                  .UseScheduler(scheduler).UseServer(node).UseFleet(fleet);
+          }
+
+          public StepMode Mode => StepMode.Fixed;
+          public int FixedHz => _host.FixedHz;
+          public void BeforeSteps(in FrameInfo f) => _host.BeforeSteps(f);
+          public void FixedStep(in FixedStep s) => _host.FixedStep(s);
+          public void AfterSteps(in FrameInfo f) => _host.AfterSteps(f);
+      }
+
+      // Socket handlers run on socket threads: hand the call to the engine thread.
+      // _engine.WaitForNextTick(() => _host.SubmitInput(clientId, packet.Seq, input));
+      ```
+
+      ```yaml
+      # The host must run on the engine thread.
+      altruist:
+        game:
+          engine:
+            framerateHz: 60
+            world-step: inline
+      ```
+
+  - name: matchmaking
+    title: Matchmaking
+    summary: >-
+      Public queues for match rooms. Waiting players are grouped by playlist (and rating), bots fill unrated rooms, and queued players can join running rooms (join in progress). It is a module you add to a RoomHost, not a [Service]; there is no config key and the options are passed in code.
+    use:
+      - When strangers queue for a mode (duel, 2v2, ranked) and you want them put into rooms automatically.
+      - When you want rating windows, bot backfill or join in progress to replace leavers.
+      - When you run a fleet and want players of one playlist to gather on one server.
+    avoid:
+      - When friends play together through an invite code and a leader picks the mode. Use lobbies instead.
+      - When you have no match rooms. Matchmaking needs a RoomHost; see rooms.
+      - When you only need the queue logic in a tool or a test without a host. Use Matchmaker alone.
+    packages:
+      - Altruist.Gaming.Matchmaking
+    docs:
+      - /docs/gaming/matchmaking
+      - /docs/client-sdk/matchmaking
+    paths:
+      - Altruist/Gaming/Matchmaking/
+    types:
+      - Altruist.Gaming.Matchmaking.MatchmakingModule<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Matchmaking.IMatchmakingGame<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Matchmaking.MatchmakingOptions
+      - Altruist.Gaming.Matchmaking.PlaylistOptions
+      - Altruist.Gaming.Matchmaking.Matchmaker
+      - Altruist.Gaming.Matchmaking.QueueStatusInfo
+    example: |-
+      ```csharp
+      // How you turn it on: create the module and add it to your RoomHost. Your game class
+      // implements IMatchmakingGame<ArenaSim, PadInput, Profile> next to IRoomGame.
+      var playlists = new[]
+      {
+          new PlaylistOptions { Id = "duel", Mode = "1v1", TeamSize = 1, Rules = new RoomRules { JoinInProgress = true } },
+          new PlaylistOptions { Id = "ranked", Mode = "2v2", TeamSize = 2, Rated = true },
+      };
+      var mm = new MatchmakingModule<ArenaSim, PadInput, Profile>(game, new MatchmakingOptions { FillAfterSeconds = 10 }, playlists);
+      host.Use(mm);
+
+      // On the engine thread, when a client asks to queue or cancels:
+      if (mm.Queue.Playlist(request.Playlist) is { } playlist) mm.Enqueue(session, playlist);
+      mm.Cancel(session);
+      ```
+
+  - name: lobbies
+    title: Lobbies
+    summary: >-
+      Private lobbies for match rooms. A player creates a lobby, friends join by invite code, the host picks a mode and starts a room, and everyone comes back to the lobby afterwards. It is a module you add to a RoomHost, not a [Service]; options are passed in code, not read from config.
+    use:
+      - When friends or invited players play together (custom games, training) and a leader starts the match.
+      - When a group must stay together between rooms and survive a reconnect during a room.
+      - When lobbies must work across a fleet: a code joined on another server sends the player to the right one.
+    avoid:
+      - When strangers should be grouped automatically by playlist or rating. Use matchmaking instead.
+      - When you have no match rooms. Lobbies start rooms on a RoomHost; see rooms.
+    packages:
+      - Altruist.Gaming.Lobbies
+    docs:
+      - /docs/gaming/lobbies
+    paths:
+      - Altruist/Gaming/Lobbies/
+    types:
+      - Altruist.Gaming.Lobbies.LobbyModule<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Lobbies.ILobbyGame<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Lobbies.LobbyOptions
+      - Altruist.Gaming.Lobbies.Lobby<TSim, TInput, TPlayer>
+      - Altruist.Gaming.Lobbies.LobbyMember<TPlayer>
+      - Altruist.Gaming.Lobbies.LobbyRejectReason
+    example: |-
+      ```csharp
+      // How you turn it on: create the module and add it to your RoomHost. Your game class
+      // implements ILobbyGame<ArenaSim, PadInput, Profile> next to IRoomGame.
+      var lobbies = new LobbyModule<ArenaSim, PadInput, Profile>(game,
+          new LobbyOptions { MaxMembers = 6, Playlist = "private", Rules = new RoomRules { BotRefill = false } });
+      host.Use(lobbies);
+
+      // On the engine thread, on client commands:
+      lobbies.Join(session, "");          // create a lobby; the code comes back in ILobbyGame.LobbyState
+      lobbies.Join(session, "K7QXD");     // join by code
+      lobbies.Start(session, "2v2");      // host only; ILobbyGame.TeamSizeOf("2v2") must not be null
+      ```
+
+  - name: dashboard
+    title: Live Dashboard
+    summary: >-
+      The operations and debugging UI of a running server, served at /altruist/dashboard with JSON APIs under /dashboard/v1. It shows config, engine, fleet, connections, worlds, rooms, caches, vaults and traffic, and it can act: edit live config, drain the server, close rooms, run SQL, call any endpoint. A VS Code extension opens the same app in an editor tab. It is off until you turn it on, and it is an admin surface that must be protected.
+    use:
+      - When you develop or run a server and want to see the engine, worlds, rooms, traffic and fleet live.
+      - When you need to inspect or change live state: config keys, cache entries, vault rows, rooms, connections, autosave.
+      - When you want to draw debug shapes (spawn areas, aggro radii, paths) over a world with the gizmo registry.
+    avoid:
+      - When you need metrics and alerts for production monitoring. Export telemetry to a monitoring tool; the dashboard is an admin tool, not a monitoring system.
+      - When the server is public and you have not set a token or a policy. Outside Development every dashboard request is refused with 503 until you do.
+    packages:
+      - Altruist.Dashboard
+      - altruist-dashboard-vscode
+    docs:
+      - /docs/gaming/dashboard
+      - /docs/gaming/dashboard/vscode-extension
+    paths:
+      - Altruist/Dashboard/
+      - Altruist/Gaming/Main/Dashboard/
+      - Altruist/Core/Framework/Contracts/DashboardNetworkRecorder.cs
+      - Altruist/Core/Framework/Http/DashboardAccess.cs
+      - VSCode/
+    types:
+      - Altruist.Dashboard.DashboardAccessOptions
+      - Altruist.Dashboard.DashboardAccessMiddleware
+      - Altruist.Dashboard.IDashboardGizmoRegistry
+      - Altruist.Dashboard.DashboardGizmo
+      - Altruist.Dashboard.IDashboardWorldSource
+      - Altruist.Dashboard.DashboardWorldViewOptions
+      - Altruist.IDashboardNetworkRecorder
+      - Altruist.DashboardNetworkEvent
+    config:
+      - altruist:dashboard
+    example: |-
+      Reference the Altruist.Dashboard package, then turn it on and protect it. Security:
+      - `token` is a shared secret of at least 16 characters (shorter counts as not set). Whoever has it can run SQL on your vaults, edit config, disconnect players and drain the server. Keep it in an environment variable.
+      - `policy` names an ASP.NET Core authorization policy you register; signed-in users who satisfy it get in. If both are set, either grants access.
+      - With neither set, in Development only, loopback requests (same machine) get in without credentials. `allow-loopback-without-token: false` turns that off. Requests that carry proxy headers are never treated as loopback.
+      - With neither set outside Development, the server still runs but every dashboard request answers 503. Nothing is exposed.
+      - Do not put the dashboard on the public internet without a strong token or policy and TLS. The browser login is `?dashboard_token=...` once, then an HttpOnly cookie.
+
+      ```yaml
+      altruist:
+        dashboard:
+          enabled: true
+          token: ${DASHBOARD_TOKEN}      # >= 16 characters; or: policy: ops
+          allow-loopback-without-token: true   # Development only; default true
+          network:                       # traffic recorder (on by default when the dashboard is on)
+            enabled: true
+            maxEvents: 10000
+            maxPayloadBytes: 32768
+            redactFields: [password, token, authorization]
+          world:
+            renderScale: 1
+            terrainSampleStride: 1       # raise for large heightfields
+      ```
+
+      ```csharp
+      // Debug shapes over a world (inject IDashboardGizmoRegistry).
+      gizmos.Upsert(new DashboardGizmo
+      {
+          Id = $"spawn:{spawnId}", WorldIndex = 0, Category = "spawns", Type = "circle",
+          Color = "#F59E0BFF", Position = new Vector3Dto { X = p.X, Y = p.Y, Z = p.Z }, Radius = 4f,
+      });
+      ```
+
+      In VS Code, install the altruist-dashboard-vscode .vsix and run "Altruist: Set Dashboard Token". The extension keeps the token in VS Code secret storage and reads the server address from `altruist.dashboard.baseUrl` or the workspace config.yml.
+
+  - name: dotnet-client
+    title: .NET Client
+    summary: >-
+      A client library for talking to an Altruist server from .NET: Unity, Godot, Blazor, console tools and test harnesses. It speaks the server's wire protocol over TCP, UDP or WebSocket with a MessagePack or JSON codec, and dispatches incoming packets to methods marked [Packet]. Transports are chosen in config.
+    use:
+      - When a .NET program (Unity, Godot, a bot, a load test) must connect to an Altruist server.
+      - When you want one router that sends by gate name and can pick TCP, UDP or WebSocket per message.
+      - When incoming packets should be routed by message code to your handler methods.
+    avoid:
+      - When the client is a browser game. Use the typescript-client packages instead.
+      - When you write end-to-end tests of your own server in the same repo. Use the testing capability (Altruist.Testing); it has test clients with the same shape.
+    packages:
+      - Altruist.Client
+    docs:
+      - /docs/networking/client-packets
+    paths:
+      - Altruist/Client/Core/
+    types:
+      - Altruist.Client.IAltruistClientRouter
+      - Altruist.Client.AltruistClientRouter
+      - Altruist.Client.ClientTransportConfig
+      - Altruist.Client.PacketHandlerAttribute
+      - Altruist.Client.PacketAttribute
+      - Altruist.Client.IClientCodec
+      - Altruist.Client.MessagePackClientCodec
+      - Altruist.Client.JsonClientCodec
+    config:
+      - altruist:client
+    example: |-
+      ```yaml
+      # Each transport block that is present is brought up. Omit a block to leave that transport off.
+      altruist:
+        client:
+          transport:
+            defaultTransport: tcp          # tcp | udp | ws
+            tcp: { host: 127.0.0.1, port: 5566, codec: { provider: messagepack } }
+            ws:  { host: game.example.com, port: 443, secure: true, path: /game, codec: { provider: messagepack } }
+      ```
+
+      ```csharp
+      [PacketHandler]
+      public sealed class ChatHandlers
+      {
+          [Packet(typeof(ChatMessagePacket))]              // MessageCode read from the packet type
+          public void OnChat(ChatMessagePacket msg) { }
+      }
+
+      public sealed class LoginFlow
+      {
+          private readonly IAltruistClientRouter _router;
+          public LoginFlow(IAltruistClientRouter router) => _router = router;
+
+          public async Task RunAsync(CancellationToken ct)
+          {
+              await _router.ConnectAsync(ct: ct);                                  // use autoPump: false and DrainInbound(64) in Unity's Update
+              await _router.SendAsync("login", new LoginPacket { User = "alice" }, ct);
+              await _router.Udp.SendAsync("move", new MovePacket { X = 1 }, ct);   // pick a transport explicitly
+          }
+      }
+      ```
+
+  - name: typescript-client
+    title: TypeScript Client SDK
+    summary: >-
+      Dependency-free TypeScript packages for browser game clients. @altruist/net has the MessagePack wire format, the WebSocket transport (tickets, reconnect, heartbeat, fleet redirect) and ping and clock diagnostics. @altruist/client adds HTTP auth, the matchmaking and lobby flow, and device pairing. @altruist/input and @altruist/prediction match the server's room input and fixed-step clock, so the client can predict its own player exactly.
+    use:
+      - When a browser game connects to an Altruist server and you want the socket, token refresh and packet routing done.
+      - When the game queues or joins lobbies and you want the phase machine that mirrors MatchmakingModule and LobbyModule.
+      - When the client predicts its own movement against a RoomHost and must send inputs in the order and rate the server's input buffer expects.
+    avoid:
+      - When the client is .NET (Unity, Godot, console). Use the dotnet-client package.
+      - When you only need the 2D physics and gameplay helpers to run the same simulation in the browser. That is typescript-sim2d.
+    packages:
+      - "@altruist/client"
+      - "@altruist/net"
+      - "@altruist/input"
+      - "@altruist/prediction"
+    docs:
+      - /docs/client-sdk/overview
+      - /docs/client-sdk/connection
+      - /docs/client-sdk/auth
+      - /docs/client-sdk/diagnostics
+      - /docs/client-sdk/matchmaking
+      - /docs/networking/client-input
+      - /docs/networking/client-prediction
+    paths:
+      - Clients/TypeScript/client/
+      - Clients/TypeScript/net/
+      - Clients/TypeScript/input/
+      - Clients/TypeScript/prediction/
+    example: |-
+      ```ts
+      // Not on npm yet: point path aliases at Clients/TypeScript/*/src (see the overview doc).
+      import { ApiClient } from '@altruist/client/auth';
+      import { MatchmakingClient, queueStateName } from '@altruist/client/matchmaking';
+      import { packetFrame, serverPacket, ticketUrl } from '@altruist/net';
+
+      const api = new ApiClient({ baseUrl: '/api', sessionHintKey: 'mygame.signedIn' });
+      if (api.hasSessionHint()) await api.refresh();          // refresh cookie becomes a session
+
+      const mm = new MatchmakingClient({
+        protocol: {
+          queue: (playlist) => packetFrame('queue', 1007, playlist),
+          cancelQueue: () => packetFrame('cancelqueue', 1008),
+          rejoin: (room) => packetFrame('rejoin', 1010, room ?? ''),
+          queueStatus: serverPacket(2007, (m) => ({ state: queueStateName(m[1]) ?? String(m[1]), playlist: String(m[2]),
+            elapsed: Number(m[3]), playersFound: Number(m[4]), playersNeeded: Number(m[5]) })),
+          welcome: serverPacket(2001, (m) => ({ roomId: String(m[1]) })),
+        },
+        socket: { url: ticketUrl({ base: 'wss://play.example.com/game', fetchTicket: () => api.connectionTicket('/game/ticket') }) },
+      });
+      mm.on('match', (welcome) => startMatch(mm.socket!, welcome));
+      mm.queue('duel');
+      ```
+
+  - name: typescript-sim2d
+    title: TypeScript 2D Simulation and AI
+    summary: >-
+      TypeScript twins of Altruist's 2D math, physics, gameplay verbs and flow building blocks (@altruist/sim2d), and of its receding-horizon game AI planner (@altruist/ai). They follow the C# operation order, so a browser client can run the same simulation as the server for prediction, replays, offline play and bots.
+    use:
+      - When the browser must reproduce server physics or gameplay exactly (client-side prediction, replays).
+      - When you run bots or offline play in the browser using the same rules as the server.
+      - When you want an anytime planner that scores candidate input programs by rolling out your own simulation (@altruist/ai).
+    avoid:
+      - When you only need sockets, auth or matchmaking in the browser. Use typescript-client.
+      - When the simulation does not need to match the server. Use your own physics library; sim2d is for deterministic twins.
+    packages:
+      - "@altruist/sim2d"
+      - "@altruist/ai"
+    docs:
+      - /docs/gaming/physics/typescript-sim2d
+    paths:
+      - Clients/TypeScript/sim2d/
+      - Clients/TypeScript/ai/
+    example: |-
+      ```ts
+      // Not on npm yet: point path aliases at Clients/TypeScript/sim2d/src (see the doc).
+      import { DeterministicRandom } from '@altruist/sim2d/math';
+      import { rayCastClosest } from '@altruist/sim2d/physics';
+      import { GameplayVerbs2D as G } from '@altruist/sim2d/gameplay';
+      import { RecedingPlanner } from '@altruist/ai';
+
+      G.jumpOff(car.body, surfaceNormal, cfg.jumpSpeed);          // takes a planck.js Body directly
+      const below = rayCastClosest(world, from, to, (f) => f.getUserData()?.kind === 'surface', reach);
+      const rng = new DeterministicRandom(seed);                  // same sequence as the C# class
+
+      const planner = new RecedingPlanner<Maneuver, Frame>({ recheckTicks: 6, switchMargin: 0.5, refineRounds: 2 });
+      planner.restart(tick, candidates);
+      planner.search(tick, 8, ops);                               // ops: start, frames, pressed, evaluate, noise, neighbours
+      ```
+

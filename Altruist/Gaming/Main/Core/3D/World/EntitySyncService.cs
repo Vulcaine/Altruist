@@ -12,10 +12,14 @@ namespace Altruist.Gaming;
 
 /// <summary>
 /// Automatically synchronizes all [Synchronized] ISynchronizedEntity world objects.
-/// Ticked by GameWorldOrganizer3D — no game code needed.
+/// Ticked by GameWorldOrganizer3D (and the 2D organizer) — no game code needed.
 /// Uses spatial broadcast for visibility-aware sync — entities only sync to
 /// players who can see them.
 /// </summary>
+/// <remarks>
+/// Default singleton <see cref="IEntitySyncService"/> whenever <c>altruist:game</c> is configured (2D and 3D).
+/// Use it for persistent-world entities; match rooms send their own snapshots instead.
+/// </remarks>
 [Service(typeof(IEntitySyncService))]
 [ConditionalOnConfig("altruist:game")]
 public sealed class EntitySyncService : IEntitySyncService
@@ -26,6 +30,11 @@ public sealed class EntitySyncService : IEntitySyncService
     private readonly ILogger _logger;
     private uint _tickCounter;
 
+    /// <summary>Creates the service; without a <see cref="ClientSender"/> or <see cref="BroadcastSender"/> it does nothing.</summary>
+    /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="visibilityTracker">Optional tracker; when present, changes are sent to every observer of the entity.</param>
+    /// <param name="clientSender">Per-client sender (preferred delivery path).</param>
+    /// <param name="broadcastSender">Fallback: broadcast to all clients when no <paramref name="clientSender"/> is available.</param>
     public EntitySyncService(
         ILoggerFactory loggerFactory,
         IVisibilityTracker? visibilityTracker = null,
@@ -40,6 +49,7 @@ public sealed class EntitySyncService : IEntitySyncService
 
     private static readonly ConcurrentDictionary<Type, SynchronizedAttribute?> _syncAttrCache = new();
 
+    /// <inheritdoc/>
     public async Task Tick(WorldSnapshot[] snapshots, float engineFrequencyHz)
     {
         if (_clientSender == null && _broadcastSender == null) return;
@@ -53,7 +63,12 @@ public sealed class EntitySyncService : IEntitySyncService
             {
                 var obj = allObjects[i];
                 if (obj is not ISynchronizedEntity syncEntity) continue;
-                if (string.IsNullOrEmpty(syncEntity.ClientId)) continue;
+                // AI-controlled entities (monsters, NPCs) intentionally have an
+                // empty ClientId — they're not network observers — but their
+                // [Synced] state still needs to reach the players observing them
+                // through the visibility tracker. Skip only when there is no
+                // delivery path at all: no self-send target AND no observer broadcast.
+                if (string.IsNullOrEmpty(syncEntity.ClientId) && _visibilityTracker == null) continue;
 
                 var entityType = obj.GetType();
                 var syncAttr = _syncAttrCache.GetOrAdd(entityType, static t =>
@@ -77,8 +92,13 @@ public sealed class EntitySyncService : IEntitySyncService
 
     private async Task SendSyncData(ISynchronizedEntity entity, ITypelessWorldObject worldObj)
     {
+        // Delta cache must be keyed per-entity. Using entity.ClientId here
+        // collides for AI entities (monsters/NPCs) because they all share
+        // an empty ClientId — last-value tracking would be overwritten by
+        // every other monster on the same tick, producing garbage diffs.
+        // The world object's InstanceId is the stable per-entity identifier.
         using var changes = Synchronization.GetSyncChanges(
-            entity, entity.ClientId, AltruistEngine.CurrentTick);
+            entity, worldObj.InstanceId, AltruistEngine.CurrentTick);
 
         if (!changes.HasChanges) return;
 
@@ -122,7 +142,25 @@ public sealed class EntitySyncService : IEntitySyncService
     }
 }
 
+/// <summary>
+/// Per-tick automatic delta sync of world objects marked with <see cref="Altruist.Networking.SynchronizedAttribute"/>.
+/// Ticked by the world organizers (<see cref="Altruist.Gaming.ThreeD.GameWorldOrganizer3D"/> and the 2D counterpart);
+/// game code normally never calls it. Replace the registration to customize delivery.
+/// </summary>
 public interface IEntitySyncService
 {
+    /// <summary>
+    /// Scans every object in <paramref name="snapshots"/> that implements <see cref="Altruist.Networking.ISynchronizedEntity"/>
+    /// and carries <see cref="Altruist.Networking.SynchronizedAttribute"/>, and sends a <c>SyncPacket</c> with its changed
+    /// <c>[Synced]</c> properties when its sync interval is due. Delivery: to each observer from the visibility tracker, plus
+    /// self-sync to the owning <c>ClientId</c> for non-AI entities; or a broadcast to all clients when only a broadcast sender exists.
+    /// </summary>
+    /// <remarks>
+    /// Delta state is keyed per <c>InstanceId</c> and engine tick. Intervals are counted in calls to this method (one per world
+    /// step), using <paramref name="engineFrequencyHz"/> to convert <c>Hz</c>/<c>Seconds</c> units into a call count.
+    /// Send failures are logged and do not stop the tick.
+    /// </remarks>
+    /// <param name="snapshots">Per-world object snapshots for this tick.</param>
+    /// <param name="engineFrequencyHz">Assumed step rate in Hz (config <c>altruist:game:worlds:entity-sync-hz</c>, default 25).</param>
     Task Tick(WorldSnapshot[] snapshots, float engineFrequencyHz);
 }

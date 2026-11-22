@@ -1,7 +1,11 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Aron Gere",
-  "classifications": ["Game Server", "Real-Time", "Altruist"],
+  "classifications": [
+    "Game Server",
+    "Real-Time",
+    "Altruist"
+  ],
   "identity": "Altruist.Server.Template",
   "name": "Altruist Game Server",
   "shortName": "altruist",
@@ -10,18 +14,5 @@
     "type": "project"
   },
   "sourceName": "AltruistProject",
-  "preferNameDirectory": true,
-  "symbols": {
-    "transport": {
-      "type": "parameter",
-      "datatype": "choice",
-      "defaultValue": "tcp",
-      "choices": [
-        { "choice": "tcp", "description": "TCP with MessagePack" },
-        { "choice": "websocket", "description": "WebSocket with JSON" },
-        { "choice": "both", "description": "TCP + WebSocket" }
-      ],
-      "description": "Transport protocol"
-    }
-  }
+  "preferNameDirectory": true
 }

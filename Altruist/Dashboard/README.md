@@ -1,29 +1,70 @@
 # Altruist Dashboard
 
-Altruist is a high-performance, config-driven server framework for building scalable game servers and real-time applications in C# / .NET 9. While it serves as a general-purpose application server (DI, REST APIs, WebSocket/TCP/UDP, auth, persistence), its standout feature is a complete **game simulation engine** — built-in AI, combat, collision detection, visibility tracking, and automatic entity synchronization — all benchmarked with BenchmarkDotNet.
+A dashboard for a running Altruist server, in the browser and in VS Code (the same app). It shows and operates:
 
-## Highlights
+- **Overview and configuration**: engine settings, every registered type, every `altruist` key; live keys can be changed.
+- **Server and fleet**: capacity and drain (and the drain action), the fleet's servers and the units they hold, the
+  process's CPU, memory, GC and threads, ticket and rate-limit settings.
+- **Architecture**: every server of the fleet with its addresses, transports and portals, and the databases (each
+  instance with its role and vaults), caches and backplane they share, drawn as one diagram; independent fleets
+  (channels) on the same backplane appear as their own groups.
+- **Engine**: frame time against the target rate, the world steppers, every `[Cycle]` task and cron job with its runs
+  and failures.
+- **Worlds**: 2D and 3D worlds followed live, with colliders, terrain and the game's gizmos, and an object inspector.
+- **Rooms**: every room host's rooms, seats, players and input buffers, matchmaking queues and lobbies; close a room.
+- **AI and zones, pairing, autosave**: agents and their states, zones, phone pairing sessions, autosave services
+  (flush now).
+- **Data and traffic**: connections, cache entries (edit, delete), vaults (rows, schema, SQL), recorded HTTP and packet
+  traffic, latency percentiles, and an API lab that calls any endpoint or gate.
 
-- **0.9 ms total framework overhead** per tick (97.3% budget available for game logic)
-- **AI FSM**: 14 ns/entity, zero allocations
-- **Combat**: 8 ns single attack, AoE sweep queries (sphere/cone/line)
-- **Collision**: SpatialHashGrid broadphase, 13 μs for 100 entities
-- **Visibility**: parallel per-observer, tick staggering, 118 μs for 10 players × 100 NPCs
-- **Entity sync**: automatic [Synchronized] delta detection at 249 ns/entity
-- **~6,600 CCU at 30Hz** on a single server under full simulation load
+The navigation shows only what the server serves: an area appears when its module is loaded (rooms need
+`Altruist.Gaming.Rooms`, autosave `Altruist.Gaming.Autosave`, and so on).
 
-## Status
+It is a development and operations tool. Its APIs run SQL, edit caches, drain the server and act as any client, so
+dashboard access is admin access to the server.
 
-This package is in **beta** (v0.9.0). The core API is stabilizing and actively experimented with in production game development. Breaking changes are possible but increasingly rare. We encourage you to build with it and share feedback.
+## Enabling it
+
+Reference the `Altruist.Dashboard` package and turn it on in `config.yml`:
+
+```yaml
+altruist:
+  dashboard:
+    enabled: true
+    token: ${DASHBOARD_TOKEN}   # at least 16 characters; or:
+    # policy: ops               # an ASP.NET Core authorization policy you registered
+```
+
+Then open `http://localhost:<port>/altruist/dashboard?dashboard_token=<token>` once; the token is exchanged for a
+session cookie. In VS Code, install the Altruist Dashboard extension and run `Altruist: Set Dashboard Token`.
+
+Without `token` or `policy` the dashboard is closed: in the `Development` environment it answers loopback requests
+only, in any other environment every dashboard request gets `503`. With `enabled` missing or `false` nothing of it is
+mapped.
+
+## APIs
+
+Everything the app shows comes from JSON APIs under `/dashboard/v1` (the same token protects them), for example
+`/server`, `/architecture`, `/engine`, `/worlds`, `/worlds/{index}/live` (NDJSON: the whole world, then its changes), `/rooms`,
+`/gameplay`, `/pairing`, `/autosave`, `/sessions`, `/cache`, `/vaults`, `/network/events`, `/performance` and `/lab`.
+`GET /dashboard/v1/summary` lists the areas the server serves in `features`.
+
+## Network recording
+
+`altruist:dashboard:network:*` controls the traffic recorder: `enabled`, `captureHttp`, `capturePackets`,
+`retentionMinutes`, `maxEvents`, `maxPayloadBytes`, `slowHttpMs`, `slowGateMs`, `redactFields` (default `password`,
+`token`, `authorization`) and `recordNonJsonPayloads` (default `false`). JSON payloads are recorded with the
+`redactFields` replaced; a payload that is not JSON cannot be redacted, so only its size is recorded unless
+`recordNonJsonPayloads` is `true`.
+
+## Developing the app
+
+The app lives in `App/` (Preact, TypeScript, Vite; three.js for the world viewer). `npm run dev` serves it against a
+running server (`ALTRUIST_SERVER=http://localhost:8000`, default 8080), `npm test` runs its unit tests, and
+`npm run build` writes `App/dist`, which is committed and embedded into the package (packing needs no Node).
 
 ## Documentation
 
-📖 [Project Documentation](https://altruist-docs.vercel.app) — Installation, guides, API reference, and benchmarks.
-
-## Links
-
-📨 [Open a GitHub Issue](https://github.com/Vulcaine/Altruist/issues) — Report bugs or request features.
-
-♥️ [Sponsor the project](https://github.com/sponsors/Vulcaine) — Help fund development.
+[Altruist documentation](https://altruist-docs.vercel.app): the dashboard page covers every screen and setting.
 
 Copyright (c) Aron Gere 2025

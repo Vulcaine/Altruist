@@ -1,0 +1,211 @@
+const vscode = require("vscode");
+
+/**
+ * Where the Altruist server is: the altruist.dashboard.baseUrl setting, else the workspace's config.yml (the one
+ * that enables the dashboard wins), else nothing.
+ */
+async function discoverConnectionInfo() {
+  const config = vscode.workspace.getConfiguration("altruist.dashboard");
+  const baseUrlOverride = String(config.get("baseUrl") || "").trim();
+  if (baseUrlOverride) {
+    return { source: "settings", dashboardEnabled: true, environmentMode: undefined, baseUrl: normalizeBaseUrl(baseUrlOverride), configPath: undefined };
+  }
+
+  const candidate = await findWorkspaceConfigCandidate();
+  if (!candidate) {
+    return { source: "none", dashboardEnabled: false, environmentMode: undefined, baseUrl: "", configPath: undefined };
+  }
+
+  const { configPath, parsed } = candidate;
+  const httpHost = normalizeHost(stringOrUndefined(parsed?.altruist?.server?.http?.host) || "localhost");
+  const httpPort = Number(parsed?.altruist?.server?.http?.port || 8000);
+  const httpPath = normalizePath(stringOrUndefined(parsed?.altruist?.server?.http?.path) || "/");
+  return {
+    source: "workspace",
+    dashboardEnabled: toBoolean(parsed?.altruist?.dashboard?.enabled) === true,
+    environmentMode: stringOrUndefined(parsed?.altruist?.environment?.mode),
+    baseUrl: normalizeBaseUrl(`http://${httpHost}:${httpPort}${httpPath}`),
+    configPath,
+  };
+}
+
+async function findWorkspaceConfigPath() {
+  const matches = await vscode.workspace.findFiles(
+    "**/{config.yml,config.yaml,config.*.yml,config.*.yaml}",
+    "**/{node_modules,bin,obj,.git}/**",
+    20
+  );
+
+  if (!matches.length) return undefined;
+
+  const sorted = matches
+    .map((uri) => uri.fsPath)
+    .sort((a, b) => scoreConfigPath(a) - scoreConfigPath(b));
+
+  return sorted[0];
+}
+
+async function findWorkspaceConfigCandidate() {
+  const configPath = await findWorkspaceConfigPath();
+  if (!configPath) {
+    return undefined;
+  }
+
+  const matches = await vscode.workspace.findFiles(
+    "**/{config.yml,config.yaml,config.*.yml,config.*.yaml}",
+    "**/{node_modules,bin,obj,.git}/**",
+    20
+  );
+
+  const parsedByPath = new Map();
+  for (const match of matches) {
+    try {
+      const bytes = await vscode.workspace.fs.readFile(match);
+      parsedByPath.set(match.fsPath, parseSimpleYaml(Buffer.from(bytes).toString("utf8")));
+    } catch {
+      // ignore unreadable candidates
+    }
+  }
+
+  const candidates = [...parsedByPath].map(([fsPath, own]) => {
+    // config.<environment>.yml is loaded on top of the config.yml next to it, like the server does.
+    const parsed = mergeYaml(parsedByPath.get(baseConfigPathOf(fsPath)) || {}, own);
+    return { configPath: fsPath, parsed, score: scoreParsedConfig(fsPath, parsed) };
+  });
+
+  if (!candidates.length) {
+    const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(configPath));
+    const text = Buffer.from(bytes).toString("utf8");
+    return {
+      configPath,
+      parsed: parseSimpleYaml(text),
+    };
+  }
+
+  candidates.sort((a, b) => b.score - a.score || scoreConfigPath(a.configPath) - scoreConfigPath(b.configPath));
+  return {
+    configPath: candidates[0].configPath,
+    parsed: candidates[0].parsed,
+  };
+}
+
+function baseConfigPathOf(filePath) {
+  const match = filePath.match(/^(.*[\\/])config\.[^\\/]+\.(ya?ml)$/i);
+  return match ? `${match[1]}config.${match[2]}` : undefined;
+}
+
+function mergeYaml(base, overlay) {
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    const both = isPlainObject(merged[key]) && isPlainObject(value);
+    merged[key] = both ? mergeYaml(merged[key], value) : value;
+  }
+  return merged;
+}
+
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function scoreConfigPath(filePath) {
+  const lower = filePath.replace(/\\/g, "/").toLowerCase();
+  if (lower.endsWith("/config.yml") || lower.endsWith("/config.yaml")) return 0;
+  if (lower.includes("/examples/")) return 50;
+  return 10;
+}
+
+function scoreParsedConfig(filePath, parsed) {
+  let score = 0;
+  const lower = filePath.replace(/\\/g, "/").toLowerCase();
+
+  if (toBoolean(parsed?.altruist?.dashboard?.enabled) === true) score += 1000;
+  if (stringOrUndefined(parsed?.altruist?.environment?.mode)) score += 250;
+  if (stringOrUndefined(parsed?.altruist?.server?.http?.host)) score += 120;
+  if (parsed?.altruist?.server?.http?.port != null) score += 120;
+  if (toBoolean(parsed?.altruist?.server?.transport?.websocket?.enabled) === true) score += 140;
+  if (stringOrUndefined(parsed?.altruist?.server?.transport?.websocket?.path)) score += 80;
+  if (parsed?.altruist?.game?.worlds?.items) score += 80;
+
+  if (lower.includes("/examples/")) score -= 250;
+  if (lower.includes("/templates/")) score -= 250;
+  if (lower.includes("/testapp/")) score -= 200;
+  if (lower.includes("/tests/")) score -= 120;
+
+  return score;
+}
+
+function parseSimpleYaml(text) {
+  const root = {};
+  const stack = [{ indent: -1, value: root }];
+
+  const lines = text.split(/\r?\n/g);
+  for (const rawLine of lines) {
+    if (!rawLine.trim() || rawLine.trimStart().startsWith("#")) continue;
+    if (rawLine.trimStart().startsWith("- ")) continue;
+
+    const match = rawLine.match(/^(\s*)([^:#]+):(.*)$/);
+    if (!match) continue;
+
+    const indent = match[1].length;
+    const key = match[2].trim();
+    const rawValue = match[3].trim();
+
+    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) {
+      stack.pop();
+    }
+
+    const parent = stack[stack.length - 1].value;
+
+    if (!rawValue) {
+      const next = {};
+      parent[key] = next;
+      stack.push({ indent, value: next });
+      continue;
+    }
+
+    parent[key] = parseScalar(rawValue);
+  }
+
+  return root;
+}
+
+function parseScalar(value) {
+  const trimmed = value.trim();
+  const unquoted = trimmed.replace(/^["']|["']$/g, "");
+  if (/^(true|false)$/i.test(unquoted)) return /^true$/i.test(unquoted);
+  if (/^-?\d+(\.\d+)?$/.test(unquoted)) return Number(unquoted);
+  return unquoted;
+}
+
+function stringOrUndefined(value) {
+  if (value === undefined || value === null) return undefined;
+  return String(value);
+}
+
+function toBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.toLowerCase() === "true";
+  return undefined;
+}
+
+function normalizeHost(host) {
+  if (!host || host === "0.0.0.0" || host === "::" || host === "[::]") {
+    return "localhost";
+  }
+  return host;
+}
+
+function normalizePath(path) {
+  const normalized = String(path || "/").trim();
+  if (!normalized) return "/";
+  return normalized.startsWith("/") ? normalized.replace(/\/+$/, "") || "/" : `/${normalized.replace(/\/+$/, "")}`;
+}
+
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || "").trim().replace(/\/+$/, "");
+}
+
+module.exports = {
+  discoverConnectionInfo,
+  normalizeBaseUrl,
+};

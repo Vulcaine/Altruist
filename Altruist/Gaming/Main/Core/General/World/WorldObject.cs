@@ -8,6 +8,8 @@ using Altruist.UORM;
 namespace Altruist.Gaming
 {
 
+    /// <summary>The members every world object has regardless of dimension; what dimension-agnostic
+    /// systems (AI, snapshots, lag compensation) see. Implement the 2D/3D world object types instead of this.</summary>
     public interface ITypelessWorldObject
     {
         /// <summary>
@@ -26,8 +28,10 @@ namespace Altruist.Gaming
         string ZoneId { get; set; }
     }
 
+    /// <summary>An object stepped by its world each world tick (despite the name, used by 2D and 3D worlds).</summary>
     public interface ISteppable3D<GameWorldManagerType> where GameWorldManagerType : IGameWorldManager
     {
+        /// <summary>Advances the object by <paramref name="dt"/> seconds inside <paramref name="world"/>; called on the world step thread.</summary>
         void Step(float dt, GameWorldManagerType world);
     }
 

@@ -21,7 +21,7 @@ public class ItemsController : ControllerBase
     public IActionResult Get(string id)
         => _items.TryGetValue(id, out var item) ? Ok(item) : NotFound();
 
-    [HttpPost]
+    [HttpPost] // nosemgrep: csharp.dotnet.security.mvc-missing-antiforgery.mvc-missing-antiforgery -- JSON API without cookie auth: no CSRF surface
     public IActionResult Create([FromBody] ItemDto item)
     {
         item.Id = Guid.NewGuid().ToString("N")[..8];

@@ -6,25 +6,74 @@ using Microsoft.Extensions.FileProviders;
 
 namespace Altruist.Dashboard
 {
+    /// <summary>
+    /// Serves the embedded dashboard app at <c>/altruist/dashboard</c>: a browser UI over the JSON APIs under
+    /// <c>/dashboard/v1/*</c> (server and fleet, engine, worlds, rooms, gameplay, pairing, autosave, sessions, cache,
+    /// vaults, network, performance, API lab). The VS Code extension loads the same app.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Enable by referencing the <c>Altruist.Dashboard</c> package and setting <c>altruist:dashboard:enabled</c> to
+    /// <c>true</c>; this filter is then registered as a transient <see cref="IStartupFilter"/> and the gated
+    /// controllers are mapped. Static UI files are served from the assembly's embedded resources under the base path,
+    /// and any extension-less path under it returns <c>index.html</c> (client-side routing). If the UI was not
+    /// embedded at build time the filter adds nothing.
+    /// </para>
+    /// <para>
+    /// Security: the UI and the <c>/dashboard/v1</c> APIs are guarded by
+    /// <see cref="DashboardAccessMiddleware"/>: configure <c>altruist:dashboard:token</c> (header
+    /// <c>X-Altruist-Dashboard-Token</c>, or open <c>/altruist/dashboard?dashboard_token=...</c> once in a browser) or
+    /// <c>altruist:dashboard:policy</c>. Without either the dashboard answers only loopback requests in Development and
+    /// 503 elsewhere. The APIs run SQL, edit caches and act as any client, so treat dashboard access as admin access.
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// # config.yml
+    /// altruist:
+    ///   dashboard:
+    ///     enabled: true
+    ///     token: ${DASHBOARD_TOKEN}   # at least 16 characters
+    /// # then open http://localhost:&lt;port&gt;/altruist/dashboard?dashboard_token=&lt;token&gt;
+    /// </code>
+    /// </example>
     [Service(typeof(IStartupFilter), lifetime: ServiceLifetime.Transient)]
     [ConditionalOnConfig("altruist:dashboard:enabled", havingValue: "true")]
     public sealed class DashboardStartupFilter : IStartupFilter
     {
         private readonly string _basePath;
 
+        /// <summary>Creates the filter with the fixed base path <c>/altruist/dashboard</c>.</summary>
         public DashboardStartupFilter()
         {
             _basePath = "/altruist/dashboard";
         }
 
+        /// <summary>
+        /// Where a request for the app's base path without its trailing slash is sent (the same path with the slash, the
+        /// query kept), or null for any other path. The app loads its files relative to the page (<c>./assets/…</c>),
+        /// which resolve outside the app from <c>/altruist/dashboard</c>.
+        /// </summary>
+        /// <param name="basePath">The app's base path, without a trailing slash.</param>
+        /// <param name="path">Request path.</param>
+        /// <param name="query">Request query.</param>
+        public static string? CanonicalLocation(string basePath, PathString path, QueryString query) =>
+            string.Equals(path.Value, basePath, StringComparison.OrdinalIgnoreCase) ? $"{basePath}/{query.Value}" : null;
+
+        /// <summary>The dashboard app's files (<c>index.html</c>, <c>assets/…</c>), embedded in this assembly.</summary>
+        public static IFileProvider AppFiles() => new ManifestEmbeddedFileProvider(typeof(DashboardStartupFilter).Assembly, "App/dist");
+
+        /// <summary>
+        /// Adds the static-file and SPA-fallback middleware ahead of the rest of the pipeline, then calls <paramref name="next"/>.
+        /// </summary>
+        /// <param name="next">The remaining pipeline configuration.</param>
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
         {
             return app =>
             {
-                var assembly = typeof(DashboardStartupFilter).Assembly;
-                var fileProvider = new EmbeddedFileProvider(assembly, baseNamespace: string.Empty);
+                var fileProvider = AppFiles();
 
-                const string indexPath = "index.csr.html";
+                const string indexPath = "index.html";
 
                 var indexFile = fileProvider.GetFileInfo(indexPath);
                 if (!indexFile.Exists)
@@ -33,6 +82,17 @@ namespace Altruist.Dashboard
                     next(app);
                     return;
                 }
+
+                app.Use(async (context, nextMiddleware) =>
+                {
+                    if (CanonicalLocation(_basePath, context.Request.Path, context.Request.QueryString) is { } location)
+                        context.Response.Redirect(location);
+                    else
+                        await nextMiddleware(context);
+                });
+
+                // The UI is served ahead of the app pipeline, so it gets the same protection first.
+                app.UseMiddleware<DashboardAccessMiddleware>();
 
                 app.UseStaticFiles(new StaticFileOptions
                 {

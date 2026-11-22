@@ -5,17 +5,35 @@ using Microsoft.Extensions.Logging;
 
 namespace Altruist.Physx
 {
+    /// <summary>
+    /// Reflection helpers that turn <see cref="CollisionEventAttribute"/> methods into compiled invokers in
+    /// <see cref="CollisionHandlerRegistry"/>. With the Altruist host this runs automatically
+    /// (<see cref="AltruistCollisionHandlerConfig"/>); call it directly only in custom hosts or tests.
+    /// </summary>
     public static class CollisionHandlerDiscovery
     {
         /// <summary>
-        /// Discover all [CollisionHandler] classes in the given assemblies,
-        /// create instances (via instanceFactory) and register all their
-        /// [CollisionEvent] methods into CollisionHandlerRegistry.
-        ///
-        /// instanceFactory can be your DI container's resolver:
-        ///    type => serviceProvider.GetService(type)
-        /// falling back to Activator.CreateInstance if it returns null.
+        /// Scans <paramref name="assemblies"/> for <see cref="CollisionHandlerAttribute"/> classes, creates one instance
+        /// of each and registers all their <see cref="CollisionEventAttribute"/> methods into <see cref="CollisionHandlerRegistry"/>.
+        /// Does not clear the registry first.
         /// </summary>
+        /// <param name="assemblies">Assemblies to scan.</param>
+        /// <param name="instanceFactory">
+        /// Resolver for handler instances, e.g. <c>type =&gt; serviceProvider.GetService(type)</c>, or
+        /// <c>Activator.CreateInstance</c> for handlers with a public parameterless constructor.
+        /// </param>
+        /// <param name="logger">Logger for diagnostics.</param>
+        /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <paramref name="instanceFactory"/> returned <see langword="null"/> for a handler type, or a handler method has an
+        /// invalid signature (see <see cref="CollisionEventAttribute"/>).
+        /// </exception>
+        /// <example>
+        /// <code>
+        /// CollisionHandlerDiscovery.RegisterCollisionHandlers(
+        ///     new[] { typeof(MyHandlers).Assembly }, type =&gt; provider.GetService(type), logger);
+        /// </code>
+        /// </example>
         public static void RegisterCollisionHandlers(
             IEnumerable<Assembly> assemblies,
             Func<Type, object?> instanceFactory,
@@ -30,17 +48,38 @@ namespace Altruist.Physx
 
             var handlerTypes = TypeDiscovery.FindTypesWithAttribute<CollisionHandlerAttribute>(assemblies);
 
+            RegisterCollisionHandlerTypes(handlerTypes, instanceFactory, logger);
+        }
+
+        /// <summary>
+        /// Registers the <see cref="CollisionEventAttribute"/> methods of an explicit list of handler types (no assembly
+        /// scan; <see cref="RegisterCollisionHandlers"/> scans and then calls this). Does not clear the registry first.
+        /// </summary>
+        /// <param name="handlerTypes">Handler classes to register.</param>
+        /// <param name="instanceFactory">Resolver for handler instances, typically the DI root provider.</param>
+        /// <param name="logger">Logger for diagnostics.</param>
+        /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// <paramref name="instanceFactory"/> returned <see langword="null"/> for a handler type, or a handler method has an
+        /// invalid signature (see <see cref="CollisionEventAttribute"/>).
+        /// </exception>
+        public static void RegisterCollisionHandlerTypes(
+            IEnumerable<Type> handlerTypes,
+            Func<Type, object?> instanceFactory,
+            ILogger logger)
+        {
+            if (handlerTypes is null)
+                throw new ArgumentNullException(nameof(handlerTypes));
+            if (instanceFactory is null)
+                throw new ArgumentNullException(nameof(instanceFactory));
+            if (logger is null)
+                throw new ArgumentNullException(nameof(logger));
+
             foreach (var handlerType in handlerTypes)
             {
-                object? instance = instanceFactory(handlerType)
-                                   ?? Activator.CreateInstance(handlerType);
-
-                if (instance is null)
-                {
-                    logger.LogWarning("⚠️ Could not create instance of collision handler type {Type}. Skipping.",
-                        handlerType.FullName);
-                    continue;
-                }
+                var instance = instanceFactory(handlerType)
+                    ?? throw new InvalidOperationException(
+                        $"The instance factory returned null for collision handler type {handlerType.FullName}.");
 
                 RegisterCollisionMethodsFromInstance(instance, logger);
             }
@@ -63,30 +102,40 @@ namespace Altruist.Physx
             {
                 var pars = method.GetParameters();
 
-                // Require exactly two parameters: the two entities/components.
-                if (pars.Length != 2)
+                // Require event payload first, followed by the two entities/components.
+                if (pars.Length != 3)
                     throw new InvalidOperationException(
-                        $"Method {type.Name}.{method.Name} marked with [CollisionEvent] must have exactly 2 parameters.");
+                        $"Method {type.Name}.{method.Name} marked with [CollisionEvent] must have exactly 3 parameters: event payload, entity A, entity B.");
 
-                var paramA = pars[0].ParameterType;
-                var paramB = pars[1].ParameterType;
+                var payloadType = pars[0].ParameterType;
+                var paramA = pars[1].ParameterType;
+                var paramB = pars[2].ParameterType;
+
+                if (!payloadType.IsClass || payloadType.IsAbstract)
+                    throw new InvalidOperationException(
+                        $"First parameter of {type.Name}.{method.Name} must be a concrete event payload reference type.");
+
+                if (!payloadType.IsAssignableFrom(attr.EventType) && !attr.EventType.IsAssignableFrom(payloadType))
+                    throw new InvalidOperationException(
+                        $"First parameter of {type.Name}.{method.Name} must be compatible with the [CollisionEvent] event type.");
 
                 if (!paramA.IsClass || paramA.IsAbstract)
                     throw new InvalidOperationException(
-                        $"First parameter of {type.Name}.{method.Name} must be a concrete reference type.");
+                        $"Second parameter of {type.Name}.{method.Name} must be a concrete reference type.");
 
                 if (!paramB.IsClass || paramB.IsAbstract)
                     throw new InvalidOperationException(
-                        $"Second parameter of {type.Name}.{method.Name} must be a concrete reference type.");
+                        $"Third parameter of {type.Name}.{method.Name} must be a concrete reference type.");
 
                 if (method.ReturnType != typeof(void))
                     throw new InvalidOperationException(
                         $"Method {type.Name}.{method.Name} marked with [CollisionEvent] must return void.");
 
-                // Build a compiled delegate Action<object, object> that:
+                // Build a compiled delegate Action<object?, object, object> that:
+                //   - casts the event payload first
                 //   - casts the two objects to the method's parameter types
                 //   - calls the method on the given instance.
-                var invoker = BuildInvoker(instance, method, paramA, paramB);
+                var invoker = BuildInvoker(instance, method, paramA, paramB, payloadType);
 
                 var descriptor = new CollisionHandlerRegistry.HandlerDescriptor(
                     HandlerType: type,
@@ -108,26 +157,29 @@ namespace Altruist.Physx
         }
 
         /// <summary>
-        /// Builds an Action&lt;object, object&gt; that casts arguments to param types and invokes the method.
+        /// Builds an Action&lt;object?, object, object&gt; that casts arguments to param types and invokes the method.
         /// All reflection/Expression stuff happens once at startup.
         /// </summary>
         private static Delegate BuildInvoker(
             object target,
             MethodInfo method,
             Type paramA,
-            Type paramB)
+            Type paramB,
+            Type payloadType)
         {
             var targetConst = Expression.Constant(target);
 
+            var payload = Expression.Parameter(typeof(object), "payload");
             var argA = Expression.Parameter(typeof(object), "a");
             var argB = Expression.Parameter(typeof(object), "b");
 
+            var castPayload = Expression.Convert(payload, payloadType);
             var castA = Expression.Convert(argA, paramA);
             var castB = Expression.Convert(argB, paramB);
 
-            var call = Expression.Call(targetConst, method, castA, castB);
+            var call = Expression.Call(targetConst, method, castPayload, castA, castB);
 
-            var lambda = Expression.Lambda<Action<object, object>>(call, argA, argB);
+            var lambda = Expression.Lambda<Action<object?, object, object>>(call, payload, argA, argB);
             return lambda.Compile();
         }
     }

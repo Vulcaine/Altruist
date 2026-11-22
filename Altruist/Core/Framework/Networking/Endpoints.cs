@@ -16,20 +16,32 @@ limitations under the License.
 
 namespace Altruist;
 
+/// <summary>Built-in server-to-client event names used by the framework's session/room flow. Define your own constants for application events.</summary>
 public static class OutgressEP
 {
+    /// <summary>Sent when a player joined a room.</summary>
     public const string NotifyPlayerJoinedRoom = "room-joined";
+    /// <summary>Sent when a player left a room.</summary>
     public const string NotifyPlayerLeftRoom = "player-left";
+    /// <summary>Sent when a game session started.</summary>
     public const string NotifyGameStarted = "game-started";
+    /// <summary>Sent when a requested operation failed.</summary>
     public const string NotifyFailed = "failed";
+    /// <summary>Entity sync (delta) packet.</summary>
     public const string NotifySync = "sync";
 }
 
+/// <summary>Built-in client-to-server event names handled by the framework's game session portal (use as <c>[Gate(IngressEP.JoinGame)]</c>).</summary>
 public static class IngressEP
 {
+    /// <summary>Initial handshake after connecting.</summary>
     public const string Handshake = "handshake";
+    /// <summary>Request to join a game/room.</summary>
     public const string JoinGame = "join-game";
+    /// <summary>Forward a message to other clients.</summary>
     public const string Forward = "forward-message";
+    /// <summary>Request to leave the current game/room.</summary>
     public const string LeaveGame = "leave-game";
+    /// <summary>Example/demo shoot action.</summary>
     public const string Shoot = "SHOOT";
 }

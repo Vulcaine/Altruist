@@ -13,7 +13,6 @@ namespace Altruist.Benchmarks;
 /// Sweep is the most expensive combat operation — spatial queries over all entities.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class CombatBenchmarks
 {
     private CombatService _combat = null!;
@@ -64,12 +63,18 @@ public class CombatBenchmarks
         var world = new Mock<IGameWorldManager3D>();
         var allObjects = new List<IWorldObject3D> { _attacker };
         allObjects.AddRange(_manyTargets);
+        var lookup = allObjects.ToDictionary(o => o.InstanceId, o => o);
+        // CombatService.FindEntitiesInSweep reads the cached world snapshot.
+        world.Setup(w => w.GetCachedSnapshot())
+            .Returns((allObjects as IReadOnlyList<IWorldObject3D>,
+                      lookup as IReadOnlyDictionary<string, IWorldObject3D>));
+        world.Setup(w => w.SnapshotVersion).Returns(1);
         world.Setup(w => w.FindAllObjects<IWorldObject3D>()).Returns(allObjects);
 
         var organizer = new Mock<IGameWorldOrganizer3D>();
         organizer.Setup(o => o.GetWorld(0)).Returns(world.Object);
 
-        _combat = new CombatService(new DefaultDamageCalculator(), NullLoggerFactory.Instance, organizer.Object);
+        _combat = new CombatService(NullLoggerFactory.Instance, new DefaultDamageCalculator(), organizer.Object);
     }
 
     [Benchmark(Description = "Single Attack (calc + apply)")]
@@ -80,7 +85,7 @@ public class CombatBenchmarks
     }
 
     [Benchmark(Description = "DefaultDamageCalculator.Calculate")]
-    public int DamageCalc()
+    public DamageSpec DamageCalc()
     {
         return new DefaultDamageCalculator().Calculate(_attacker, _target);
     }
@@ -89,27 +94,27 @@ public class CombatBenchmarks
     public SweepResult SweepSphere()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Sphere(5000, 5000, 0, 500));
+        return _combat.Sweep(_attacker, SweepQuery3D.Sphere(5000, 5000, 0, 500));
     }
 
     [Benchmark(Description = "Sweep Sphere r=2000 (large AoE)")]
     public SweepResult SweepSphereLarge()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Sphere(5000, 5000, 0, 2000));
+        return _combat.Sweep(_attacker, SweepQuery3D.Sphere(5000, 5000, 0, 2000));
     }
 
     [Benchmark(Description = "Sweep Cone 90° r=1000")]
     public SweepResult SweepCone()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Cone(5000, 5000, 0, 1000, 0f, 90f));
+        return _combat.Sweep(_attacker, SweepQuery3D.Cone(5000, 5000, 0, 1000, 0f, 90f));
     }
 
     [Benchmark(Description = "Sweep Line r=2000")]
     public SweepResult SweepLine()
     {
         foreach (var t in _manyTargets) t.Health = 100;
-        return _combat.Sweep(_attacker, SweepQuery.Line(5000, 5000, 0, 2000, 0f));
+        return _combat.Sweep(_attacker, SweepQuery3D.Line(5000, 5000, 0, 2000, 0f));
     }
 }

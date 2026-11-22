@@ -1,23 +1,45 @@
 using System.Reflection;
 using System.Text;
+using System.Diagnostics;
 
 using Altruist.Contracts;
+using Altruist.Http;
 using Altruist.Security;
 using Altruist.Transport;
 using Altruist.Web.Features;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Altruist
 {
+    /// <summary>
+    /// Builds and runs the ASP.NET Core host for the server bootstrap: HTTP (controllers, authentication, readiness),
+    /// WebSocket/TCP/UDP transports and portal routes. Started last by <see cref="AltruistBootstrap.Bootstrap"/>, after
+    /// <see cref="PostConstructAttribute"/> hooks and modules.
+    /// </summary>
+    /// <remarks>
+    /// <para>Config keys: <c>altruist:server:http:host</c> and <c>altruist:server:http:port</c> (both required to host
+    /// anything; a non-numeric port falls back to 8080), <c>altruist:server:http:path</c> (path base, default <c>/</c>). WebSocket portals are served at their
+    /// <see cref="PortalAttribute"/> path.</para>
+    /// <para>Singleton registrations are copied into the web host as the already-built instances of the bootstrap provider,
+    /// so state initialized by <see cref="PostConstructAttribute"/> hooks is shared; controllers and portals gated by
+    /// <see cref="ConditionalOnConfigAttribute"/> (or <see cref="ConditionalOnAssemblyAttribute"/>) get no route. Controllers
+    /// from every loaded assembly are discovered.</para>
+    /// <para>When <c>altruist:dashboard:enabled</c> is true, every dashboard path is guarded by
+    /// <see cref="Dashboard.DashboardAccessMiddleware"/> (see <see cref="Dashboard.DashboardAccessOptions"/>).</para>
+    /// </remarks>
     [ServiceConfiguration(order: int.MaxValue)]
     public sealed class AltruistStartupConfiguration : IAltruistConfiguration
     {
+        /// <inheritdoc/>
         public bool IsConfigured { get; set; }
 
         private readonly ApplicationArgs _args;
@@ -27,24 +49,27 @@ namespace Altruist
         private readonly string? _httpPort;
         private readonly string _httpContextPath;
 
-        // Packet transport (optional)
-        // Removed: _packetTransport — replaced by _transports collection
-        private readonly string _wsContextPath;
-
         // Dependencies we need at runtime
         private readonly ILoggerFactory _loggerFactory;
         private readonly IAltruistContext _settings;
         private readonly IServerStatus _appStatus;
         private readonly IEnumerable<ITransport> _transports;
 
+        /// <summary>Created by the framework; parameters come from DI and the config keys listed on the type.</summary>
+        /// <param name="args">Process arguments passed on to the web host builder.</param>
+        /// <param name="httpHost"><c>altruist:server:http:host</c>.</param>
+        /// <param name="httpPort"><c>altruist:server:http:port</c>.</param>
+        /// <param name="httpPath"><c>altruist:server:http:path</c>.</param>
+        /// <param name="loggerFactory">Logger factory.</param>
+        /// <param name="settings">Server context that receives the final <see cref="ServerInfo"/>.</param>
+        /// <param name="appStatus">Server readiness status, printed at startup.</param>
+        /// <param name="transports">Active transports.</param>
         public AltruistStartupConfiguration(
             ApplicationArgs args,
 
             [AppConfigValue("altruist:server:http:host", null)] string? httpHost,
             [AppConfigValue("altruist:server:http:port", null)] string? httpPort,
             [AppConfigValue("altruist:server:http:path", "/")] string httpPath,
-
-            [AppConfigValue("altruist:server:transport:websocket:path", "/ws")] string wsPath,
 
             ILoggerFactory loggerFactory,
             IAltruistContext settings,
@@ -57,8 +82,6 @@ namespace Altruist
             _httpHost = NormalizeEmpty(httpHost);
             _httpPort = NormalizeEmpty(httpPort);
             _httpContextPath = NormalizePath(httpPath, defaultIfEmpty: "/");
-
-            _wsContextPath = NormalizePath(wsPath, defaultIfEmpty: "/ws");
 
             _loggerFactory = loggerFactory;
             _settings = settings;
@@ -74,34 +97,151 @@ namespace Altruist
 
         /// <summary>
         /// Build and run the single HTTP server after all services and PostConstruct hooks are done.
+        /// Blocks until shutdown.
         /// </summary>
-        public async Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
-        {
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="cancellationToken">Stops waiting / triggers shutdown.</param>
+        public Task StartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+            => StartAsync(rootServices, bootstrapProvider: null, cancellationToken);
 
+        /// <summary>
+        /// Builds and starts the host, sharing singleton instances from <paramref name="bootstrapProvider"/>, then blocks until
+        /// shutdown. Returns immediately when HTTP host/port are not configured.
+        /// </summary>
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="bootstrapProvider">Provider whose singletons (with PostConstruct done) are reused; null builds a temporary one.</param>
+        /// <param name="cancellationToken">Stops waiting / triggers shutdown.</param>
+        public async Task StartAsync(IServiceCollection rootServices, IServiceProvider? bootstrapProvider, CancellationToken cancellationToken = default)
+        {
+            var app = await BuildAndStartAsync(rootServices, bootstrapProvider, cancellationToken);
+            if (app is null) return;
+            await app.WaitForShutdownAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Same setup as <see cref="StartAsync(IServiceCollection, CancellationToken)"/> but returns the live <see cref="WebApplication"/>
+        /// after listeners are bound, instead of blocking on shutdown. Callers (notably the
+        /// test framework) can let it run in the background and shut it down explicitly via
+        /// the returned <c>WebApplication</c>'s <c>StopAsync</c>/<c>DisposeAsync</c>.
+        ///
+        /// <para>Returns <c>null</c> if HTTP host/port is unconfigured (matches
+        /// <see cref="StartAsync(IServiceCollection, CancellationToken)"/>'s no-op semantic).</para>
+        /// </summary>
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="cancellationToken">Cancels startup.</param>
+        public Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, CancellationToken cancellationToken = default)
+            => BuildAndStartAsync(rootServices, bootstrapProvider: null, cancellationToken);
+
+        /// <summary>
+        /// Like <see cref="BuildAndStartAsync(IServiceCollection, CancellationToken)"/>, sharing singleton instances from
+        /// <paramref name="bootstrapProvider"/>.
+        /// </summary>
+        /// <param name="rootServices">The bootstrap service collection.</param>
+        /// <param name="bootstrapProvider">Provider whose singletons are reused; null builds a temporary one.</param>
+        /// <param name="cancellationToken">Cancels startup.</param>
+        /// <returns>The started application, or null when HTTP is not configured.</returns>
+        public async Task<WebApplication?> BuildAndStartAsync(IServiceCollection rootServices, IServiceProvider? bootstrapProvider, CancellationToken cancellationToken = default)
+        {
             if (string.IsNullOrWhiteSpace(_httpHost) || string.IsNullOrWhiteSpace(_httpPort))
-                return;
+                return null;
 
             var builder = WebApplication.CreateBuilder(_args?.Args ?? Array.Empty<string>());
             using var tempProvider = rootServices.BuildServiceProvider();
+            // The provider whose pre-built singletons we share with WebApplication.
+            // Production passes the bootstrap provider (the one whose [PostConstruct]
+            // hooks ran). Tests inherit the same — LiveServerHandle's _provider.
+            // Falls back to tempProvider only when callers haven't been updated.
+            var sharingProvider = bootstrapProvider ?? tempProvider;
 
-            var configSource = tempProvider.GetService<MutableConfigSource>();
-
-            if (configSource == null)
-                throw new InvalidOperationException("MutableConfigSource not registered.");
-
-            // Insert into WebApplication builder
-            builder.Configuration.Sources.Insert(0, configSource);
             builder.Logging.ClearProviders();
 
+            // Promote every Singleton-with-factory descriptor to an instance-based
+            // registration backed by the bootstrap provider's already-built instance.
+            // Otherwise WebApplication's provider builds a fresh duplicate of each
+            // singleton (per-provider singleton lifetime in MEDI), and none of those
+            // duplicates would have had [PostConstruct] run on them. Symptoms in
+            // production: IServerStatus stuck at Starting → ReadinessMiddleware 503s
+            // forever; portals/sessions/connection-managers diverge from the bootstrap
+            // state so TCP packets dispatch against fresh handlers and silently drop.
+            // Restores the cross-provider singleton sharing that the old static
+            // _singletonCache provided implicitly. Test child providers (per-method
+            // DI containers) still build their own fresh singletons so mocks still
+            // substitute cleanly.
+            // Enumerable registrations (several descriptors for one service type, e.g. every
+            // IHostedService) must map descriptor i to instance i of GetServices: GetService
+            // returns only the LAST one, so promoting each descriptor with it registered the last
+            // implementation N times and dropped the others (two hosted services -> the last one
+            // started twice, the first never).
+            var seenOfType = new Dictionary<Type, int>();
+            var countOfType = rootServices
+                .Where(x => !x.IsKeyedService)
+                .GroupBy(x => x.ServiceType)
+                .ToDictionary(g => g.Key, g => g.Count());
             foreach (var d in rootServices)
             {
                 if (d.ServiceType == typeof(IHostApplicationLifetime))
                     continue;
+                var ordinal = 0;
+                if (!d.IsKeyedService)
+                {
+                    seenOfType.TryGetValue(d.ServiceType, out ordinal);
+                    seenOfType[d.ServiceType] = ordinal + 1;
+                }
+
+                // Promote singletons (factory- AND type-based) to instance-based
+                // registrations backed by the bootstrap provider's already-built
+                // instances. Otherwise WebApplication's provider builds a fresh
+                // duplicate, and singleton-state (PortalWarmup's gate registry,
+                // ConnectionManager's connection table, CharacterService's
+                // _playersByClientId, etc.) silently diverges between the two
+                // providers — the bootstrap's instance has the [PostConstruct]
+                // wiring done, but the TCP listener (started by WebApplication's
+                // provider) ends up dispatching against the FRESH duplicate
+                // whose state is empty.
+                if (d.Lifetime == ServiceLifetime.Singleton
+                    && !d.ServiceType.IsGenericTypeDefinition
+                    && !d.IsKeyedService
+                    && (d.ImplementationFactory is not null || d.ImplementationType is not null))
+                {
+                    try
+                    {
+                        var instance = countOfType.GetValueOrDefault(d.ServiceType) > 1
+                            ? sharingProvider.GetServices(d.ServiceType).ElementAtOrDefault(ordinal)
+                            : sharingProvider.GetService(d.ServiceType);
+                        if (instance is not null)
+                        {
+                            builder.Services.AddSingleton(d.ServiceType, instance);
+                            continue;
+                        }
+                    }
+                    catch
+                    {
+                        // Fall through — copy the original descriptor unchanged.
+                    }
+                }
 
                 builder.Services.Add(d);
             }
 
+            // A drain on shutdown (ServerDrainOnShutdown) must not be cut off by the host's
+            // default 30 s stop timeout.
+            if (sharingProvider.GetService<IServerNode>() is { } node)
+            {
+                var needed = node.DrainTimeout + (node is ServerNode sn ? sn.Options.ForceStopGrace : TimeSpan.Zero) + TimeSpan.FromSeconds(5);
+                builder.Services.Configure<HostOptions>(o =>
+                {
+                    if (o.ShutdownTimeout < needed) o.ShutdownTimeout = needed;
+                });
+            }
+
             var mvcBuilder = builder.Services.AddControllers();
+            var conditionLog = _loggerFactory.CreateLogger<AltruistStartupConfiguration>();
+
+            // Gates ([ConditionalOnConfig] on controllers / portals, the dashboard) read the app's Altruist
+            // configuration (config.yml etc., registered in the bootstrap services). builder.Configuration
+            // only holds the web host's own sources, so gates evaluated against it never saw altruist:* keys.
+            var appConfiguration = sharingProvider.GetService<Microsoft.Extensions.Configuration.IConfiguration>()
+                                   ?? builder.Configuration;
 
             // Automatically register all loaded assemblies that contain MVC controllers
             mvcBuilder.ConfigureApplicationPartManager(apm =>
@@ -140,12 +280,26 @@ namespace Altruist
                         }
                     }
                 }
+
+                // [ConditionalOnConfig] gates controllers too (e.g. the E2E reset endpoint, which
+                // truncates every vault table, must not exist unless altruist:e2e:enabled is true).
+                var defaultProvider = apm.FeatureProviders.OfType<ControllerFeatureProvider>().FirstOrDefault();
+                if (defaultProvider is not null)
+                    apm.FeatureProviders.Remove(defaultProvider);
+                apm.FeatureProviders.Add(new ConditionalControllerFeatureProvider(appConfiguration, conditionLog));
             });
 
             var app = builder.Build();
             var logger = app.Logger;
 
-            app.UseDeveloperExceptionPage();
+            // HTTP hardening (altruist:server:http:hardening and path rate limits) runs before
+            // everything else: the client address must be known before the relay and the shields.
+            if (app.Services.GetService<HttpApiSettings>() is { } http)
+                app.UseAltruistHttpHardening(http);
+
+            // Stack traces only in Development: elsewhere an unhandled error is a bare 500.
+            if (app.Environment.IsDevelopment())
+                app.UseDeveloperExceptionPage();
 
             if (_httpContextPath != "/" && !string.IsNullOrWhiteSpace(_httpContextPath))
             {
@@ -161,8 +315,63 @@ namespace Altruist
                 });
             }
 
+            // Fleet: a client may reach any server through this one (?node=), and requests relayed
+            // here get their client's address back. Before routing and the shields.
+            if (app.Services.GetService<IFleet>() is not null)
+                app.UseMiddleware<FleetRelayMiddleware>();
+
             app.UseRouting();
+            app.Use(async (context, next) =>
+            {
+                var recorder = context.RequestServices.GetService<IDashboardNetworkRecorder>();
+                if (recorder is null
+                    || !recorder.CaptureHttp
+                    || context.WebSockets.IsWebSocketRequest
+                    || IsDashboardDevtoolsEndpoint(context.Request.Path.Value))
+                {
+                    await next();
+                    return;
+                }
+
+                var watch = Stopwatch.StartNew();
+                string? error = null;
+                try
+                {
+                    await next();
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    throw;
+                }
+                finally
+                {
+                    watch.Stop();
+                    await recorder.RecordAsync(new DashboardNetworkEvent
+                    {
+                        Kind = "http",
+                        Direction = "inbound",
+                        Transport = "http",
+                        Method = context.Request.Method,
+                        Path = context.Request.Path.Value,
+                        StatusCode = context.Response.StatusCode,
+                        Route = context.GetEndpoint()?.DisplayName,
+                        DurationMs = watch.Elapsed.TotalMilliseconds,
+                        Error = error
+                    });
+                }
+            });
             app.UseAuthentication();
+
+            // Dashboard protection (token / policy / Development loopback): every dashboard path,
+            // whichever assembly maps it, goes through it before any endpoint runs.
+            var dashboardAccess = Dashboard.DashboardAccessOptions.FromConfiguration(appConfiguration);
+            if (dashboardAccess.Enabled)
+            {
+                Dashboard.DashboardAccess.LogStartupStatus(dashboardAccess, app.Environment, logger);
+                app.UseMiddleware<Dashboard.DashboardAccessMiddleware>();
+            }
+
             app.UseAuthorization();
             app.MapControllers();
             app.UseMiddleware<ReadinessMiddleware>();
@@ -175,11 +384,15 @@ namespace Altruist
             {
                 if (transport.TransportType == "websocket")
                 {
-                    // WebSocket: prefix paths, validate shields, register routes
+                    // WebSocket: portal paths are exact. Include any desired prefix in [Portal(...)].
                     ValidateWebSocketShields(portals, logger);
                     foreach (var (type, path) in portals)
                     {
-                        var wsMappedPath = CombinePaths(_wsContextPath, path);
+                        // Disabled portals get no route: otherwise their path would accept
+                        // unauthenticated sockets that can reach every registered gate.
+                        if (!DependencyResolver.ShouldRegister(type, appConfiguration, logger))
+                            continue;
+                        var wsMappedPath = NormalizePath(path);
                         transport.UseTransportEndpoints(app, type, wsMappedPath);
                     }
                     transport.RouteTraffic(app);
@@ -211,14 +424,27 @@ namespace Altruist
                 }
             }
 
-            // Listen & serve (this will block until shutdown)
+            // Bind listeners (non-blocking). Caller decides whether to await shutdown
+            // — production calls <see cref="StartAsync(IServiceCollection, CancellationToken)"/> which then awaits
+            // <c>WaitForShutdownAsync</c>; tests keep the handle and stop explicitly.
             var connectionString = $"http://{_httpHost}:{portNum}";
-            await app.RunAsync(connectionString);
+            app.Urls.Add(connectionString);
+            await app.StartAsync(cancellationToken);
+            return app;
         }
 
         // ---------- helpers ----------
 
         private static string NormalizeEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
+
+        private static bool IsDashboardDevtoolsEndpoint(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            return path.StartsWith("/dashboard/v1/network", StringComparison.OrdinalIgnoreCase) ||
+                   path.StartsWith("/dashboard/v1/performance", StringComparison.OrdinalIgnoreCase);
+        }
 
         private static string NormalizePath(string? path, string defaultIfEmpty = "/")
         {
@@ -320,5 +546,21 @@ namespace Altruist
 
             return logBuilder.ToString();
         }
+    }
+
+    /// <summary>MVC controller discovery that honours [ConditionalOnConfig] on controller types.</summary>
+    internal sealed class ConditionalControllerFeatureProvider : ControllerFeatureProvider
+    {
+        private readonly IConfiguration _configuration;
+        private readonly ILogger _logger;
+
+        public ConditionalControllerFeatureProvider(IConfiguration configuration, ILogger logger)
+        {
+            _configuration = configuration;
+            _logger = logger;
+        }
+
+        protected override bool IsController(TypeInfo typeInfo) =>
+            base.IsController(typeInfo) && DependencyResolver.ShouldRegister(typeInfo.AsType(), _configuration, _logger);
     }
 }

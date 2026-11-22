@@ -4,32 +4,62 @@ using System.Reflection;
 
 namespace Altruist.Persistence.Postgres;
 
+/// <summary>
+/// Cache of precomputed per-model SQL (qualified table, StorageId-keyed upsert statement and compiled parameter
+/// getters) for Postgres vault models.
+/// </summary>
+/// <remarks>
+/// Low-level infrastructure. Nothing in the framework currently calls <see cref="RegisterModel{T}"/> (vaults do not
+/// self-register), so <see cref="Get"/> throws unless your code registered the model first. The upsert it builds is a
+/// plain last-write-wins <c>INSERT ... ON CONFLICT (StorageId) DO UPDATE</c> without version checks; prefer
+/// <c>IVault&lt;T&gt;.SaveAsync</c> for concurrency-safe writes.
+/// </remarks>
 public interface IPgModelSqlMetadataProvider
 {
+    /// <summary>Builds and caches the metadata for <typeparamref name="T"/>; no-op when already cached.</summary>
+    /// <typeparam name="T">The vault model type.</typeparam>
+    /// <param name="vault">Vault supplying the schema and document.</param>
+    /// <exception cref="InvalidOperationException">The document does not map <c>StorageId</c>, or no column maps to a public read/write property.</exception>
     void RegisterModel<T>(PgVault<T> vault) where T : class, IVaultModel;
 
+    /// <summary>Returns the cached metadata for <paramref name="modelType"/>.</summary>
+    /// <param name="modelType">The vault model type.</param>
+    /// <exception cref="InvalidOperationException">The type was never registered.</exception>
     PgModelSqlMetadata Get(Type modelType);
 }
 
+/// <summary>Precomputed SQL facts for one vault model; produced by <see cref="IPgModelSqlMetadataProvider"/>.</summary>
 public sealed class PgModelSqlMetadata
 {
+    /// <summary>The vault model type.</summary>
     public required Type ModelType { get; init; }
+    /// <summary>The model's table metadata.</summary>
     public required VaultDocument Document { get; init; }
+    /// <summary>Quoted <c>"schema"."table"</c>.</summary>
     public required string QualifiedTable { get; init; }
 
+    /// <summary>Primary key property name (always <c>StorageId</c>).</summary>
     public required string PrimaryKeyProperty { get; init; } // e.g. "StorageId"
+    /// <summary>Column mapped to <see cref="PrimaryKeyProperty"/> (unquoted).</summary>
     public required string PrimaryKeyColumn { get; init; }   // mapped column
 
+    /// <summary>
+    /// Single-row upsert with <c>?</c> placeholders over every mapped public read/write property, conflict target the
+    /// primary key column, all other columns overwritten.
+    /// </summary>
     public required string UpsertSql { get; init; }
+    /// <summary>Returns the parameter values for <see cref="UpsertSql"/> from a model instance, in column order.</summary>
     public required Func<object, List<object?>> GetUpsertParameters { get; init; }
 }
 
+/// <summary>Default thread-safe <see cref="IPgModelSqlMetadataProvider"/> (singleton when the provider is <c>postgres</c>).</summary>
 [Service(typeof(IPgModelSqlMetadataProvider))]
 [ConditionalOnConfig("altruist:persistence:database:provider", havingValue: "postgres")]
 public sealed class PgModelSqlMetadataProvider : IPgModelSqlMetadataProvider
 {
     private readonly ConcurrentDictionary<Type, PgModelSqlMetadata> _byType = new();
 
+    /// <inheritdoc/>
     public void RegisterModel<T>(PgVault<T> vault) where T : class, IVaultModel
     {
         var type = typeof(T);
@@ -115,6 +145,7 @@ public sealed class PgModelSqlMetadataProvider : IPgModelSqlMetadataProvider
         _byType[type] = meta;
     }
 
+    /// <inheritdoc/>
     public PgModelSqlMetadata Get(Type modelType)
     {
         if (_byType.TryGetValue(modelType, out var meta))

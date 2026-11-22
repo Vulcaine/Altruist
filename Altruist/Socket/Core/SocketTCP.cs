@@ -38,33 +38,52 @@ namespace Altruist.Socket;
 /// </summary>
 public interface IConnectionGate
 {
+    /// <summary>Currently admitted TCP connections.</summary>
     int ActiveConnections { get; }
+    /// <summary>Admission limit (<c>altruist:server:transport:max-connections</c>, default 1000).</summary>
     int MaxConnections { get; }
+    /// <summary>Entries in the login queue.</summary>
     int QueueLength { get; }
+    /// <summary>True when <see cref="ActiveConnections"/> reached <see cref="MaxConnections"/>.</summary>
     bool IsFull { get; }
+    /// <summary>Returns the 1-based queue position of a user, or -1 when not queued.</summary>
+    /// <param name="userId">User id (e.g. JWT <c>sub</c>).</param>
     int GetQueuePosition(string userId);
+    /// <summary>Rough wait estimate in seconds (position × 6), 0 when not queued.</summary>
+    /// <param name="userId">User id.</param>
     int EstimatedWaitSeconds(string userId);
 }
 
+/// <summary>
+/// Default <see cref="IConnectionGate"/> (singleton). <see cref="TcpTransport"/> calls <see cref="TryAdmit"/> per accepted socket
+/// and <see cref="Release"/> when it closes; the queue is maintained by the queue endpoints of <see cref="QueueStatusController"/>
+/// and is informational only (admission does not consult it).
+/// </summary>
 [Service(typeof(IConnectionGate))]
 public sealed class ConnectionGate : IConnectionGate
 {
     private int _active;
     private readonly int _max;
-    private readonly ConcurrentQueue<QueueEntry> _queue = new();
-    private readonly ConcurrentDictionary<string, int> _queuePositions = new();
+    private readonly List<string> _queue = new();
 
+    /// <inheritdoc/>
     public int ActiveConnections => _active;
+    /// <inheritdoc/>
     public int MaxConnections => _max;
-    public int QueueLength => _queue.Count;
+    /// <inheritdoc/>
+    public int QueueLength { get { lock (_queue) return _queue.Count; } }
+    /// <inheritdoc/>
     public bool IsFull => _active >= _max;
 
+    /// <summary>Creates the gate.</summary>
+    /// <param name="maxConnections"><c>altruist:server:transport:max-connections</c> (default 1000).</param>
     public ConnectionGate(
-        [AppConfigValue("altruist:server:transport:max_connections", "1000")] int maxConnections = 1000)
+        [AppConfigValue("altruist:server:transport:max-connections", "1000")] int maxConnections = 1000)
     {
         _max = maxConnections;
     }
 
+    /// <summary>Atomically takes a connection slot; returns false (and takes nothing) when full. Pair every true result with <see cref="Release"/>.</summary>
     public bool TryAdmit()
     {
         var current = Interlocked.Increment(ref _active);
@@ -73,53 +92,69 @@ public sealed class ConnectionGate : IConnectionGate
         return false;
     }
 
+    /// <summary>Frees a slot taken by <see cref="TryAdmit"/>.</summary>
     public void Release() => Interlocked.Decrement(ref _active);
 
+    /// <summary>Appends a user to the login queue; a user already queued keeps their position.</summary>
+    /// <param name="userId">User id.</param>
     public void Enqueue(string userId)
     {
-        _queue.Enqueue(new QueueEntry(userId, DateTime.UtcNow));
-        RebuildPositions();
+        lock (_queue)
+        {
+            if (!_queue.Contains(userId))
+                _queue.Add(userId);
+        }
     }
 
+    /// <summary>Removes and returns the user at the head of the queue, or <c>null</c> when empty.</summary>
     public string? TryDequeue()
     {
-        if (_queue.TryDequeue(out var entry))
+        lock (_queue)
         {
-            _queuePositions.TryRemove(entry.UserId, out _);
-            RebuildPositions();
-            return entry.UserId;
+            if (_queue.Count == 0) return null;
+            var head = _queue[0];
+            _queue.RemoveAt(0);
+            return head;
         }
-        return null;
     }
 
+    /// <summary>Removes a user from the queue (users behind them move up); no-op when not queued.</summary>
+    /// <param name="userId">User id.</param>
     public void RemoveFromQueue(string userId)
     {
-        // ConcurrentQueue doesn't support removal, but we track positions
-        _queuePositions.TryRemove(userId, out _);
+        lock (_queue)
+            _queue.Remove(userId);
     }
 
+    /// <inheritdoc/>
     public int GetQueuePosition(string userId)
     {
-        return _queuePositions.TryGetValue(userId, out var pos) ? pos : -1;
+        lock (_queue)
+        {
+            var index = _queue.IndexOf(userId);
+            return index < 0 ? -1 : index + 1;
+        }
     }
 
+    /// <inheritdoc/>
     public int EstimatedWaitSeconds(string userId)
     {
         var pos = GetQueuePosition(userId);
         return pos <= 0 ? 0 : pos * 6; // ~6 seconds per player based on throughput
     }
-
-    private void RebuildPositions()
-    {
-        _queuePositions.Clear();
-        int i = 1;
-        foreach (var entry in _queue)
-            _queuePositions[entry.UserId] = i++;
-    }
-
-    private record QueueEntry(string UserId, DateTime EnqueuedAt);
 }
 
+/// <summary>
+/// Raw TCP transport (<c>altruist:server:transport:tcp:enabled: true</c>). Listens on all interfaces at
+/// <c>altruist:server:transport:tcp:port</c> (13000) and hands each socket to <see cref="IConnectionManager.HandleConnection"/>
+/// with route <c>altruist:server:transport:tcp:event</c> (<c>/game</c>).
+/// </summary>
+/// <remarks>
+/// Wire protocol: on connect the server first sends the generated client id as <c>[int32 LE length][UTF-8]</c>; when the
+/// <see cref="IConnectionGate"/> is full it sends <c>SERVER_FULL</c> (a rejected shield: <c>Authentication failed.</c>) in the same format and closes. With a codec that is not an
+/// <c>IFramedCodec</c> every message is framed as <c>[int32 LE length][payload]</c> (max 16 MB); with an <c>IFramedCodec</c> raw bytes
+/// flow and the codec's framer splits them. Authentication uses a <c>ShieldAttribute</c> on the registered connection manager type, if any.
+/// </remarks>
 [Service(typeof(ITransport))]
 [ConditionalOnConfig("altruist:server:transport:tcp:enabled", "true")]
 public sealed class TcpTransport : ITransport
@@ -131,24 +166,38 @@ public sealed class TcpTransport : ITransport
 
     private readonly ICodec _codec;
     private ConnectionGate? _gate;
+    private ILogger _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
+    /// <summary>Always <c>"tcp"</c>.</summary>
     public string TransportType => "tcp";
 
+    /// <summary>DI constructor.</summary>
+    /// <param name="codecs">Resolves the TCP codec (<c>altruist:server:transport:tcp:codec:provider</c>, else the global one); it decides whether length-prefix framing is used.</param>
+    /// <param name="event">Route assigned to TCP connections (<c>tcp:event</c>, default <c>/game</c>).</param>
+    /// <param name="port">Listen port (<c>tcp:port</c>, default 13000).</param>
     public TcpTransport(
-        ICodec codec,
+        ICodecResolver codecs,
         [AppConfigValue("altruist:server:transport:tcp:event", "/game")] string @event,
         [AppConfigValue("altruist:server:transport:tcp:port", "13000")] int port = 13000)
     {
         _port = port;
-        _codec = codec;
+        _codec = codecs.Resolve("tcp");
         _endpoint = @event;
     }
 
+    /// <summary>Starts the listener using the DI <see cref="IConnectionManager"/>; <paramref name="path"/> is ignored.</summary>
+    /// <typeparam name="TType">Ignored.</typeparam>
+    /// <param name="app">Application (service provider source).</param>
+    /// <param name="path">Ignored; the route comes from <c>tcp:event</c>.</param>
     public void UseTransportEndpoints<TType>(IApplicationBuilder app, string path) where TType : class
     {
         StartTcpServer(app.ApplicationServices.GetRequiredService<IConnectionManager>(), app.ApplicationServices);
     }
 
+    /// <summary>Starts the listener using the service of <paramref name="type"/> as the connection manager; <paramref name="path"/> is ignored. Call once.</summary>
+    /// <param name="app">Application (service provider source).</param>
+    /// <param name="type">Service type resolving to an <see cref="IConnectionManager"/>.</param>
+    /// <param name="path">Ignored.</param>
     public void UseTransportEndpoints(IApplicationBuilder app, Type type, string path)
     {
         StartTcpServer((app.ApplicationServices.GetRequiredService(type) as IConnectionManager)!, app.ApplicationServices);
@@ -157,6 +206,7 @@ public sealed class TcpTransport : ITransport
     private void StartTcpServer(IConnectionManager connectionManager, IServiceProvider serviceProvider)
     {
         _gate = serviceProvider.GetService<IConnectionGate>() as ConnectionGate;
+        _logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger<TcpTransport>();
 
         _listener = new TcpListener(IPAddress.Any, _port);
         _listener.Server.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, System.Net.Sockets.SocketOptionName.ReuseAddress, true);
@@ -167,34 +217,77 @@ public sealed class TcpTransport : ITransport
         {
             while (true)
             {
-                var client = await _listener.AcceptTcpClientAsync();
-                client.NoDelay = true;
-                client.ReceiveBufferSize = 16384;
-                client.SendBufferSize = 16384;
-
-                if (_gate != null && !_gate.TryAdmit())
+                TcpClient client;
+                try
                 {
-                    // Server full — send rejection and close
-                    try
-                    {
-                        var msg = Encoding.UTF8.GetBytes("SERVER_FULL");
-                        var len = new byte[4];
-                        BinaryPrimitives.WriteInt32LittleEndian(len, msg.Length);
-                        await client.GetStream().WriteAsync(len);
-                        await client.GetStream().WriteAsync(msg);
-                    }
-                    catch { }
-                    client.Close();
+                    client = await _listener.AcceptTcpClientAsync();
+                }
+                catch (ObjectDisposedException)
+                {
+                    return; // listener stopped
+                }
+                catch (SocketException ex)
+                {
+                    // One failed accept (EMFILE, a reset mid-accept) must not stop the listener.
+                    _logger.LogWarning(ex, "[TCP] Accept failed");
                     continue;
                 }
 
-                _ = HandleClient(client, connectionManager, serviceProvider);
+                if (_gate != null && !_gate.TryAdmit())
+                {
+                    await RejectFullAsync(client);
+                    continue;
+                }
+
+                _ = HandleAdmittedClient(client, connectionManager, serviceProvider);
             }
         });
     }
 
+    private static async Task RejectFullAsync(TcpClient client)
+    {
+        try
+        {
+            var msg = Encoding.UTF8.GetBytes("SERVER_FULL");
+            var len = new byte[4];
+            BinaryPrimitives.WriteInt32LittleEndian(len, msg.Length);
+            await client.GetStream().WriteAsync(len);
+            await client.GetStream().WriteAsync(msg);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            // The client is being turned away; a write it never reads changes nothing.
+        }
+        client.Close();
+    }
+
+    // Owns the admitted slot: it is released on every path, including failed auth and a client that resets mid-handshake.
+    private async Task HandleAdmittedClient(TcpClient client, IConnectionManager connectionManager, IServiceProvider serviceProvider)
+    {
+        try
+        {
+            await HandleClient(client, connectionManager, serviceProvider);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            _logger.LogDebug(ex, "[TCP] Client dropped during handshake");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TCP] Client handler failed");
+        }
+        finally
+        {
+            client.Close();
+            _gate?.Release();
+        }
+    }
+
     private async Task HandleClient(TcpClient client, IConnectionManager connectionManager, IServiceProvider serviceProvider)
     {
+        client.NoDelay = true;
+        client.ReceiveBufferSize = 16384;
+        client.SendBufferSize = 16384;
         var networkStream = client.GetStream();
         var clientIp = client.Client.RemoteEndPoint as IPEndPoint;
 
@@ -223,9 +316,8 @@ public sealed class TcpTransport : ITransport
 
             if (authDetails == null)
             {
-                var errorMessage = Encoding.UTF8.GetBytes("Authentication failed.");
-                await networkStream.WriteAsync(errorMessage, 0, errorMessage.Length);
-                client.Close();
+                // Same [int32 LE length][UTF-8] shape as the client id and SERVER_FULL, so clients can read it.
+                await WriteLengthPrefixedAsync(networkStream, "Authentication failed.");
                 return;
             }
         }
@@ -234,26 +326,40 @@ public sealed class TcpTransport : ITransport
         var connection = new CachedTcpConnection(new TcpConnection(client, authContext.ClientId, authDetails, lengthPrefixed: useFraming));
         connection.Route = _endpoint;
 
-        try
-        {
-            await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
-        }
-        finally
-        {
-            _gate?.Release();
-        }
+        await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
     }
 
+    private static async Task WriteLengthPrefixedAsync(NetworkStream stream, string text)
+    {
+        var bytes = Encoding.UTF8.GetBytes(text);
+        var frame = new byte[4 + bytes.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, bytes.Length);
+        bytes.CopyTo(frame, 4);
+        await stream.WriteAsync(frame);
+    }
+
+    /// <summary>No-op (TCP does not use the HTTP pipeline).</summary>
+    /// <param name="app">Unused.</param>
     public void RouteTraffic(IApplicationBuilder app) { }
 }
 
+/// <summary>
+/// Store-friendly wrapper around a <see cref="TcpConnection"/>: copies its metadata, forwards I/O and updates
+/// <c>LastActivity</c> on send/receive. Created by <see cref="TcpTransport"/>; you rarely construct it yourself.
+/// </summary>
 public sealed class CachedTcpConnection : AltruistConnection
 {
     [JsonIgnore]
     private TcpConnection? _connection;
 
+    /// <summary>Transport type tag (hides the base <c>Type</c>; the base property still reports the class name).</summary>
     public new string Type { get; } = "tcp";
 
+    /// <summary>Always <c>tcp</c> (selects <c>altruist:server:transport:tcp:codec</c>).</summary>
+    public override string? TransportMode => "tcp";
+
+    /// <summary>Wraps a live TCP connection.</summary>
+    /// <param name="tcpConnection">Underlying connection.</param>
     public CachedTcpConnection(TcpConnection tcpConnection)
     {
         _connection = tcpConnection;
@@ -264,6 +370,8 @@ public sealed class CachedTcpConnection : AltruistConnection
         ConnectedAt = tcpConnection.ConnectedAt;
     }
 
+    /// <summary>Creates a detached copy (metadata only): not connected, sends are dropped, receives return empty.</summary>
+    /// <param name="connection">Connection to copy id, auth details and last activity from.</param>
     public CachedTcpConnection(AltruistConnection connection)
     {
         ConnectionId = connection.ConnectionId;
@@ -271,9 +379,11 @@ public sealed class CachedTcpConnection : AltruistConnection
         LastActivity = connection.LastActivity;
     }
 
+    /// <summary>True while the underlying TCP client is connected; the setter is ignored.</summary>
     [JsonIgnore]
     public override bool IsConnected { get => _connection?.IsConnected ?? false; set { } }
 
+    /// <inheritdoc/>
     public override async Task SendAsync(byte[] data)
     {
         if (_connection != null)
@@ -283,6 +393,7 @@ public sealed class CachedTcpConnection : AltruistConnection
         }
     }
 
+    /// <inheritdoc/>
     public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
         if (_connection != null)
@@ -294,11 +405,13 @@ public sealed class CachedTcpConnection : AltruistConnection
         return Array.Empty<byte>();
     }
 
+    /// <inheritdoc/>
     public override Task CloseOutputAsync()
     {
         return _connection?.CloseOutputAsync() ?? Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public override Task CloseAsync()
     {
         return _connection?.CloseAsync() ?? Task.CompletedTask;
@@ -315,6 +428,7 @@ public sealed class CachedTcpConnection : AltruistConnection
 /// </summary>
 public sealed class TcpConnection : AltruistConnection
 {
+    /// <summary>Default raw read buffer size in bytes (non-length-prefixed mode).</summary>
     public const int DefaultBufferSize = 8192;
 
     [JsonIgnore]
@@ -328,12 +442,24 @@ public sealed class TcpConnection : AltruistConnection
 
     [JsonIgnore]
     private readonly bool _lengthPrefixed;
+    private const int InitialPayloadBytes = 64 * 1024;
 
+    /// <summary>Transport type tag (hides the base <c>Type</c>).</summary>
     public new string Type { get; } = "tcp";
 
+    /// <summary>Always <c>tcp</c> (selects <c>altruist:server:transport:tcp:codec</c>).</summary>
+    public override string? TransportMode => "tcp";
+
+    /// <summary>Reflects <see cref="TcpClient.Connected"/>; the setter is ignored.</summary>
     [JsonIgnore]
     public override bool IsConnected { get => _client.Connected; set { } }
 
+    /// <summary>Wraps an accepted <see cref="TcpClient"/>.</summary>
+    /// <param name="client">Accepted client.</param>
+    /// <param name="connectionId">Connection id.</param>
+    /// <param name="authDetails">Authentication result, if any.</param>
+    /// <param name="bufferSize">Raw read buffer size in bytes.</param>
+    /// <param name="lengthPrefixed">Use <c>[int32 LE length][payload]</c> framing.</param>
     public TcpConnection(TcpClient client, string connectionId, AuthDetails? authDetails,
                           int bufferSize = DefaultBufferSize, bool lengthPrefixed = false)
     {
@@ -347,6 +473,8 @@ public sealed class TcpConnection : AltruistConnection
         ConnectedAt = DateTime.UtcNow;
     }
 
+    /// <summary>Writes one message (length-prefixed when enabled) and flushes; silently does nothing when disconnected.</summary>
+    /// <param name="data">Message bytes.</param>
     public override async Task SendAsync(byte[] data)
     {
         if (!_client.Connected) return;
@@ -367,6 +495,11 @@ public sealed class TcpConnection : AltruistConnection
         }
     }
 
+    /// <summary>
+    /// Reads one length-prefixed message, or (raw mode) whatever bytes are available up to the buffer size. Returns an empty
+    /// array on close, and also for a length prefix that is non-positive or over 16 MB (which the read loop treats as a close).
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the read (used for the idle timeout).</param>
     public override async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
     {
         if (_lengthPrefixed)
@@ -386,13 +519,16 @@ public sealed class TcpConnection : AltruistConnection
             if (messageLength <= 0 || messageLength > 16 * 1024 * 1024) // 16MB max
                 return Array.Empty<byte>();
 
-            // Read exactly messageLength bytes
-            var payload = new byte[messageLength];
+            // The prefix is client-controlled: grow the buffer as bytes actually arrive, so a header
+            // claiming 16 MB followed by silence costs 64 KB, not 16 MB.
+            var payload = new byte[Math.Min(messageLength, InitialPayloadBytes)];
             int payloadRead = 0;
             while (payloadRead < messageLength)
             {
+                if (payloadRead == payload.Length)
+                    Array.Resize(ref payload, (int)Math.Min((long)payload.Length * 2, messageLength));
                 int n = await _networkStream.ReadAsync(
-                    payload.AsMemory(payloadRead, messageLength - payloadRead), cancellationToken);
+                    payload.AsMemory(payloadRead, payload.Length - payloadRead), cancellationToken);
                 if (n == 0) return Array.Empty<byte>();
                 payloadRead += n;
             }
@@ -409,12 +545,14 @@ public sealed class TcpConnection : AltruistConnection
         }
     }
 
+    /// <summary>Half-closes the socket (shutdown send); the peer sees end of stream.</summary>
     public override Task CloseOutputAsync()
     {
         try { _client.Client.Shutdown(SocketShutdown.Send); } catch { }
         return Task.CompletedTask;
     }
 
+    /// <summary>Closes the stream and the client; errors are ignored.</summary>
     public override Task CloseAsync()
     {
         try { _networkStream.Close(); } catch { }
@@ -423,21 +561,28 @@ public sealed class TcpConnection : AltruistConnection
     }
 }
 
+/// <summary>Service token announcing the TCP transport (startup banner/registration).</summary>
 [Service(typeof(ITransportServiceToken))]
 [ConditionalOnConfig("altruist:server:transport:tcp:enabled", "true")]
 public sealed class TcpTransportToken : ITransportServiceToken
 {
+    /// <summary>Shared instance.</summary>
     public static TcpTransportToken Instance = new TcpTransportToken();
 
+    /// <summary>Human-readable description shown at startup.</summary>
     public string Description => "📡 Transport: Tcp Socket";
 }
 
+/// <summary>Transport configuration registered when TCP is enabled; only logs activation.</summary>
 [Service(typeof(ITransportConfiguration))]
 [ConditionalOnConfig("altruist:server:transport:tcp:enabled", "true")]
 public sealed class TcpSocketConfiguration : ITransportConfiguration
 {
+    /// <summary>Set by the framework once configured.</summary>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Logs that TCP support is active (no services are added).</summary>
+    /// <param name="services">Service collection.</param>
     public Task Configure(IServiceCollection services)
     {
         ILoggerFactory factory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();

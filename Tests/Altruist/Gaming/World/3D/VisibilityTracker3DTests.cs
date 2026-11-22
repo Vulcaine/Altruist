@@ -1,6 +1,7 @@
 using System.Numerics;
 using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
+using Altruist.Physx;
 using Altruist.ThreeD.Numerics;
 using Moq;
 
@@ -21,6 +22,9 @@ public class VisibilityTracker3DTests
 {
     private VisibilityTracker3D CreateTracker(float viewRange = 5000f)
         => new(viewRange);
+
+    private VisibilityTracker3D CreateTracker(float viewRange, ISpatialCollisionDispatcher dispatcher)
+        => new(viewRange, null, dispatcher);
 
     private WorldSnapshot CreateSnapshot(Mock<IGameWorldManager3D> world, params IWorldObject3D[] objects)
     {
@@ -58,6 +62,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -70,6 +75,28 @@ public class VisibilityTracker3DTests
     }
 
     [Fact]
+    public void Tick_ShouldDispatchEntityVisibleCollisionEvent_WhenEntityEntersRange()
+    {
+        var dispatcher = new Mock<ISpatialCollisionDispatcher>();
+        var tracker = CreateTracker(1000f, dispatcher.Object);
+        var world = CreateMockWorld();
+        var organizer = new Mock<IGameWorldOrganizer3D>();
+        organizer.Setup(o => o.GetWorld(0)).Returns(world.Object);
+        organizer.Setup(o => o.GetAllWorlds()).Returns([world.Object]);
+        tracker.SetOrganizer(organizer.Object);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
+
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        dispatcher.Verify(
+            d => d.Dispatch(player, npc, typeof(EntityVisible), null),
+            Times.Once);
+    }
+
+    [Fact]
     public void Tick_ShouldFireOnEntityInvisible_WhenEntityLeavesRange()
     {
         var world = CreateMockWorld();
@@ -77,6 +104,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick([CreateSnapshot(world, player, npc)]);
 
@@ -92,12 +120,37 @@ public class VisibilityTracker3DTests
     }
 
     [Fact]
+    public void Tick_ShouldDispatchEntityInvisibleCollisionEvent_WhenEntityLeavesRange()
+    {
+        var dispatcher = new Mock<ISpatialCollisionDispatcher>();
+        var tracker = CreateTracker(1000f, dispatcher.Object);
+        var world = CreateMockWorld();
+        var organizer = new Mock<IGameWorldOrganizer3D>();
+        organizer.Setup(o => o.GetWorld(0)).Returns(world.Object);
+        organizer.Setup(o => o.GetAllWorlds()).Returns([world.Object]);
+        tracker.SetOrganizer(organizer.Object);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
+
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+        npc.Transform = Transform3D.From(new Vector3(5000, 0, 0), Quaternion.Identity, Vector3.One);
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        dispatcher.Verify(
+            d => d.Dispatch(player, npc, typeof(EntityInvisible), null),
+            Times.Once);
+    }
+
+    [Fact]
     public void Tick_ShouldNotFireVisible_ForSelf()
     {
         var world = CreateMockWorld();
         var (tracker, _) = SetupTracker(world);
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -115,6 +168,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         int visibleCount = 0;
         tracker.OnEntityVisible += _ => visibleCount++;
@@ -134,6 +188,7 @@ public class VisibilityTracker3DTests
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc1 = new TestWorldObj(100, 0);
         var npc2 = new TestWorldObj(200, 0);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick([CreateSnapshot(world, player, npc1, npc2)]);
 
@@ -152,6 +207,8 @@ public class VisibilityTracker3DTests
         var p1 = new TestWorldObj(0, 0, clientId: "player1");
         var p2 = new TestWorldObj(10, 0, clientId: "player2");
         var npc = new TestWorldObj(50, 0);
+        Assert.True(tracker.Observe(p1));
+        Assert.True(tracker.Observe(p2));
 
         tracker.Tick([CreateSnapshot(world, p1, p2, npc)]);
 
@@ -168,6 +225,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var farNpc = new TestWorldObj(200, 0);
+        Assert.True(tracker.Observe(player));
 
         VisibilityChange? visible = null;
         tracker.OnEntityVisible += v => visible = v;
@@ -185,6 +243,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         int visibleCount = 0;
         tracker.OnEntityVisible += _ => visibleCount++;
@@ -205,6 +264,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
 
         tracker.Tick([CreateSnapshot(world, player, npc)]);
 
@@ -229,6 +289,7 @@ public class VisibilityTracker3DTests
 
         var player = new TestWorldObj(0, 0, clientId: "player1");
         var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
         tracker.Tick([CreateSnapshot(world, player, npc)]);
 
         var list = new List<IWorldObject3D>();
@@ -238,6 +299,46 @@ public class VisibilityTracker3DTests
 
         tracker.RemoveObserver("player1");
 
+        Assert.Null(tracker.GetVisibleEntities("player1"));
+    }
+
+    [Fact]
+    public void RemoveObserver_ShouldCleanupState_WhenCalledWithWorldObject()
+    {
+        var world = CreateMockWorld();
+        var (tracker, organizer) = SetupTracker(world);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+        Assert.True(tracker.Observe(player));
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        var list = new List<IWorldObject3D> { player, npc };
+        var lookup = list.ToDictionary(o => o.InstanceId, o => o);
+        world.Setup(w => w.GetCachedSnapshot())
+            .Returns((list as IReadOnlyList<IWorldObject3D>, lookup as IReadOnlyDictionary<string, IWorldObject3D>));
+
+        player.ClientId = "";
+        tracker.RemoveObserver(player);
+
+        Assert.Null(tracker.GetVisibleEntities("player1"));
+    }
+
+    [Fact]
+    public void Tick_ShouldNotTreatClientIdAsObserverUntilObserved()
+    {
+        var world = CreateMockWorld();
+        var (tracker, _) = SetupTracker(world);
+
+        var player = new TestWorldObj(0, 0, clientId: "player1");
+        var npc = new TestWorldObj(100, 0);
+
+        VisibilityChange? visible = null;
+        tracker.OnEntityVisible += v => visible = v;
+
+        tracker.Tick([CreateSnapshot(world, player, npc)]);
+
+        Assert.Null(visible);
         Assert.Null(tracker.GetVisibleEntities("player1"));
     }
 }

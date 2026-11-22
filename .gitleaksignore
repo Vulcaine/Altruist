@@ -1,0 +1,4 @@
+# Public by design: test values, and the development JWT key that AuthConfiguration refuses in Production.
+6bab12f17b11a5f2142cfe9504f240332bc05816:Tests/Altruist/Dashboard/DashboardSecurityTests.cs:generic-api-key:46
+6b408877a5faf67531e570b90d0eb2efe23f8ee7:Altruist/Core/Framework/Config/AuthConfiguration.cs:generic-api-key:42
+6b408877a5faf67531e570b90d0eb2efe23f8ee7:Tests/Altruist/Security/AccountSecurityTests.cs:generic-api-key:76

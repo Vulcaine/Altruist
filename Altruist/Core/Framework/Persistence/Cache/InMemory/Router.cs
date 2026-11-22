@@ -16,10 +16,22 @@ limitations under the License.
 
 namespace Altruist.InMemory;
 
+/// <summary>
+/// <see cref="IAltruistRouter"/> for single-instance deployments: sends client, room and broadcast messages directly
+/// to connections in the local connection store. Registered when <c>altruist:persistence:cache:provider</c> is
+/// <c>inmemory</c>; inject <see cref="IAltruistRouter"/> rather than this type.
+/// </summary>
 [Service(typeof(IAltruistRouter))]
 [ConditionalOnConfig("altruist:persistence:cache:provider", havingValue: "inmemory")]
 public class InMemoryDirectRouter : DirectRouter
 {
+    /// <summary>Created by DI.</summary>
+    /// <param name="store">Connection store.</param>
+    /// <param name="codec">Message codec.</param>
+    /// <param name="clientSender">Sender for single clients.</param>
+    /// <param name="roomSender">Sender for rooms.</param>
+    /// <param name="broadcastSender">Sender for broadcasts.</param>
+    /// <param name="clientSynchronizator">Client state synchronizer.</param>
     public InMemoryDirectRouter(IConnectionStore store, ICodec codec, ClientSender clientSender, RoomSender roomSender, BroadcastSender broadcastSender, IClientSynchronizator clientSynchronizator) : base(store, codec, clientSender, roomSender, broadcastSender, clientSynchronizator)
     {
     }

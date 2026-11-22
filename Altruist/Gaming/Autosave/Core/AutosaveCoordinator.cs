@@ -11,18 +11,23 @@ namespace Altruist.Gaming.Autosave;
 /// Singleton coordinator that tracks all IAutosaveServiceBase instances.
 /// Provides owner-level and global flush operations.
 /// </summary>
+/// <remarks>Default <see cref="IAutosaveCoordinator"/>; inject the interface. Flushes run sequentially over a snapshot of
+/// the registered services and are thread-safe with respect to concurrent registration.</remarks>
 [Service(typeof(IAutosaveCoordinator))]
-public class AutosaveCoordinator : IAutosaveCoordinator
+public class AutosaveCoordinator : IAutosaveCoordinator, IAutosaveCoordinatorInspection
 {
     private readonly List<IAutosaveServiceBase> _services = new();
     private readonly object _lock = new();
     private readonly ILogger _logger;
 
+    /// <summary>Created by DI.</summary>
+    /// <param name="loggerFactory">Logger factory.</param>
     public AutosaveCoordinator(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<AutosaveCoordinator>();
     }
 
+    /// <inheritdoc/>
     public int TotalDirtyCount
     {
         get
@@ -30,6 +35,14 @@ public class AutosaveCoordinator : IAutosaveCoordinator
             lock (_lock)
                 return _services.Sum(s => s.DirtyCount);
         }
+    }
+
+    /// <inheritdoc/>
+    /// <inheritdoc/>
+    public IReadOnlyList<AutosaveServiceReport> Services()
+    {
+        lock (_lock)
+            return _services.OfType<IAutosaveInspection>().Select(s => s.Report()).ToList();
     }
 
     public void Register(IAutosaveServiceBase service)
@@ -41,6 +54,7 @@ public class AutosaveCoordinator : IAutosaveCoordinator
         }
     }
 
+    /// <inheritdoc/>
     public async Task FlushByOwnerAsync(string ownerId)
     {
         List<IAutosaveServiceBase> snapshot;
@@ -61,6 +75,7 @@ public class AutosaveCoordinator : IAutosaveCoordinator
         }
     }
 
+    /// <inheritdoc/>
     public async Task FlushAllAsync()
     {
         List<IAutosaveServiceBase> snapshot;

@@ -1,0 +1,46 @@
+/* Design tokens: one look in the browser and in VS Code (dark, or light when the system asks). Components use only
+   these tokens. */
+:root {
+  --font: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --text-size: 13px;
+
+  --bg: #0f1216;
+  --bg-raised: #151a20;
+  --bg-sunken: #0b0e11;
+  --bg-hover: #1c232b;
+  --bg-selected: #1f3a5c;
+  --fg: #d9e0e7;
+  --fg-muted: #8a96a3;
+  --fg-selected: #ffffff;
+  --border: #242c35;
+  --border-strong: #3b82f6;
+  --accent: #3b82f6;
+  --accent-fg: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --ok: #3fb950;
+  --warn: #d29922;
+  --danger: #f85149;
+  --link: #58a6ff;
+
+  --radius: 6px;
+  --gap: 12px;
+  --shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f8fa;
+    --bg-raised: #ffffff;
+    --bg-sunken: #eef1f4;
+    --bg-hover: #eef2f7;
+    --bg-selected: #dbe8fb;
+    --fg: #1d242c;
+    --fg-muted: #5f6b78;
+    --fg-selected: #0d1b2a;
+    --border: #dfe3e8;
+    --shadow: 0 8px 24px rgb(16 24 40 / 0.12);
+    color-scheme: light;
+  }
+}

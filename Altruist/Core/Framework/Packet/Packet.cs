@@ -16,152 +16,41 @@ limitations under the License.
 
 using System.Text.Json.Serialization;
 
-using Altruist.Networking.Codec.MessagePack;
-
 using MessagePack;
+
+// NOTE: PacketCodes, PacketHeaders, IPacket, IPacketBase, PacketHeader, MessageEnvelope
+// have moved to the Altruist.Protocol package (still under namespace Altruist) so the
+// client (Altruist.Client) and server can share one source of truth for the wire shape.
+// This file keeps the *concrete* framework packets (Text, Interprocess, Sync, etc.)
+// that depend on Core types.
 
 namespace Altruist
 {
-    /// <summary>
-    /// Reserved message codes for built-in framework packets.
-    /// User-defined packets are recommended to start from 1000+.
-    /// </summary>
-    public static class PacketCodes
-    {
-        // 0 reserved / invalid
-        public const uint Text = 1;
-        public const uint Interprocess = 2;
-        public const uint Sync = 3;
-        public const uint Altruist = 4;
-
-        public const uint Success = 5;
-        public const uint Failed = 6;
-
-        public const uint HandshakeRequest = 7;
-        public const uint HandshakeResponse = 8;
-
-        public const uint JoinGame = 9;
-        public const uint LeaveGame = 10;
-
-        public const uint Room = 11;
-        public const uint SessionAuth = 12;
-        public const uint DashboardWorldObjectState = 13;
-    }
-
-    public static class PacketHeaders
-    {
-        // Framework can later overwrite timestamp/receiver/etc as needed
-        public static readonly PacketHeader Broadcast = new PacketHeader
-        {
-            Sender = "server"
-        };
-    }
-
-    // === Base Interfaces ===
-
-    public interface IPacket : ITypedModel
-    {
-    }
-
-    /// <summary>
-    /// Base packet interface. All packets MUST serialize MessageCode at Key(0),
-    /// and shift their own fields to start at Key(1).
-    /// </summary>
-    [MessagePackFormatter(typeof(PacketBaseFormatter))]
-    public interface IPacketBase : IPacket
-    {
-        // NOTE: Do NOT put [Key] here; Key indices are defined by the concrete packet types.
-        uint MessageCode { get; set; }
-    }
-
-    // === Common Header Struct (used only on envelope) ===
-
-    [MessagePackObject]
-    public struct PacketHeader
-    {
-        [JsonPropertyName("timestamp")]
-        [Key(0)]
-        public long Timestamp { get; set; }
-
-        [JsonPropertyName("receiver")]
-        [Key(1)]
-        public string? Receiver { get; set; }
-
-        [JsonPropertyName("sender")]
-        [Key(2)]
-        public string Sender { get; set; }
-
-        public void Stamp(string sender, string receiver, DateTime tt)
-            => (Sender, Receiver, Timestamp) = (sender, receiver, tt.Ticks);
-
-        public void SetReceiver(string clientId) => Receiver = clientId;
-
-        public void SetTimestamp(DateTime tt) => Timestamp = tt.Ticks;
-    }
-
-    // === Envelope (only place with header + type) ===
-
-    [MessagePackObject]
-    public struct MessageEnvelope
-    {
-        [Key(0)]
-        [JsonPropertyName("messageCode")]
-        public uint MessageCode { get; set; }
-
-        [Key(1)]
-        [JsonPropertyName("header")]
-        public PacketHeader Header { get; set; }
-
-        [Key(2)]
-        [JsonPropertyName("message")]
-        public object? Message { get; set; }
-
-        public MessageEnvelope(PacketHeader header, IPacketBase message)
-        {
-            Header = header;
-            Message = message;
-            MessageCode = message.MessageCode;
-        }
-
-        public MessageEnvelope(IPacketBase message, string receiver)
-        {
-            Header = new PacketHeader
-            {
-                Sender = "server",
-                Receiver = receiver
-            };
-            Message = message;
-            MessageCode = message.MessageCode;
-        }
-
-        public void Stamp(string sender, string receiver, DateTime receivedAt)
-            => Header.Stamp(sender, receiver, receivedAt);
-
-        public void SetReceiver(string clientId)
-            => Header.SetReceiver(clientId);
-
-        public void SetTimestamp(DateTime receivedAt)
-            => Header.SetTimestamp(receivedAt);
-    }
-
     // === Simple Text Packet ===
 
+    /// <summary>A built-in packet carrying a single string (<see cref="PacketCodes.Text"/>). Use it for
+    /// plain text messages and human-readable result payloads (<see cref="ResultPacket.Success(int,string)"/>
+    /// wraps its message in one). For structured data define your own <see cref="IPacketBase"/> type.</summary>
     [MessagePackObject]
     public struct TextPacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>The text content (JSON <c>text</c>).</summary>
         [JsonPropertyName("text")]
         [Key(1)]
         public string Text { get; set; }
 
+        /// <summary>An empty text packet with <see cref="PacketCodes.Text"/> set.</summary>
         public TextPacket()
         {
             MessageCode = PacketCodes.Text;
             Text = string.Empty;
         }
 
+        /// <summary>A text packet carrying <paramref name="text"/>.</summary>
         public TextPacket(string text)
         {
             MessageCode = PacketCodes.Text;
@@ -170,20 +59,29 @@ namespace Altruist
     }
 
     // Used for interprocess communication: payload inside payload
+    /// <summary>Framework-internal wrapper for forwarding a packet between server processes
+    /// (<see cref="PacketCodes.Interprocess"/>): when the target client is not connected to this process,
+    /// the Redis router wraps the packet with the sender's process id and pushes it onto the shared queue
+    /// for the owning process to deliver. Application code normally does not create these.</summary>
     [MessagePackObject]
     public struct InterprocessPacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>Id of the process that forwarded the packet (JSON <c>processId</c>).</summary>
         [JsonPropertyName("processId")]
         [Key(1)]
         public string ProcessId { get; set; }
 
+        /// <summary>The wrapped packet to deliver (JSON <c>message</c>); serialized polymorphically through
+        /// <see cref="IPacketBase"/>.</summary>
         [JsonPropertyName("message")]
         [Key(2)]
         public IPacketBase Message { get; set; }
 
+        /// <summary>An empty interprocess packet with <see cref="PacketCodes.Interprocess"/> set.</summary>
         public InterprocessPacket()
         {
             MessageCode = PacketCodes.Interprocess;
@@ -191,6 +89,7 @@ namespace Altruist
             Message = default!;
         }
 
+        /// <summary>Wraps <paramref name="message"/> as forwarded by process <paramref name="processId"/>.</summary>
         public InterprocessPacket(string processId, IPacketBase message)
         {
             MessageCode = PacketCodes.Interprocess;
@@ -201,20 +100,28 @@ namespace Altruist
 
     // === Generic sync payload ===
 
+    /// <summary>Generic entity state-sync payload (<see cref="PacketCodes.Sync"/>): the entity's type name
+    /// plus a property-name → value map of what changed. Sent by the framework's entity sync/broadcast
+    /// paths; the dictionary values are serialized as untyped objects, so prefer a dedicated packet type
+    /// for high-frequency or size-sensitive state.</summary>
     [MessagePackObject]
     public struct SyncPacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>Entity type name (the framework passes <c>entity.GetType().Name</c>; JSON <c>entityType</c>).</summary>
         [JsonPropertyName("entityType")]
         [Key(1)]
         public string EntityType { get; set; }
 
+        /// <summary>Changed property values keyed by property name (JSON <c>data</c>).</summary>
         [JsonPropertyName("data")]
         [Key(2)]
         public Dictionary<string, object?> Data { get; set; }
 
+        /// <summary>An empty sync packet with <see cref="PacketCodes.Sync"/> set.</summary>
         public SyncPacket()
         {
             MessageCode = PacketCodes.Sync;
@@ -222,6 +129,8 @@ namespace Altruist
             Data = new Dictionary<string, object?>();
         }
 
+        /// <summary>A sync packet for <paramref name="entityType"/>; a null <paramref name="data"/> becomes an
+        /// empty dictionary.</summary>
         public SyncPacket(string entityType, Dictionary<string, object?> data)
         {
             MessageCode = PacketCodes.Sync;
@@ -230,12 +139,18 @@ namespace Altruist
         }
     }
 
+    /// <summary>The inbound event envelope (<see cref="PacketCodes.Altruist"/>): names the event a client
+    /// sent so the connection manager can route it to the matching handler. JSON clients send
+    /// <c>{"event": "name", "data": {...}}</c>; binary codecs use event-prefixed framing
+    /// (<c>[1-byte length][UTF-8 event name][payload]</c>), from which the framework builds this packet.</summary>
     [MessagePackObject]
     public struct AltruistPacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>The event name used for handler routing (JSON <c>event</c>).</summary>
         [JsonPropertyName("event")]
         [Key(1)]
         public string Event { get; set; }
@@ -249,6 +164,7 @@ namespace Altruist
         [JsonIgnore]
         public byte[]? RawData { get; set; }
 
+        /// <summary>An empty event packet with <see cref="PacketCodes.Altruist"/> set.</summary>
         public AltruistPacket()
         {
             MessageCode = PacketCodes.Altruist;
@@ -256,6 +172,7 @@ namespace Altruist
             RawData = null;
         }
 
+        /// <summary>An event packet for <paramref name="eventName"/>.</summary>
         public AltruistPacket(string eventName)
         {
             MessageCode = PacketCodes.Altruist;
@@ -266,32 +183,46 @@ namespace Altruist
 
     // === Result packets (used as payload inside envelope) ===
 
+    /// <summary>Marker for the result of a framework request handler (handshake, join game): either a
+    /// <see cref="SuccessPacket"/> or a <see cref="FailedPacket"/>. Create them with
+    /// <see cref="ResultPacket"/>. The session portal delivers a success's payload when it has one, and
+    /// otherwise the result packet itself (a <see cref="FailedPacket"/> with its code and reason, or a
+    /// payload-less <see cref="SuccessPacket"/> with its code).</summary>
     public interface IResultPacket
     {
     }
 
+    /// <summary>A result that carries a packet to deliver back to the requesting client.</summary>
     public interface IResultPacketWithPayload : IResultPacket
     {
+        /// <summary>The packet to send to the client, or null for nothing.</summary>
         IPacketBase? Payload { get; }
     }
 
     // Standardized success payload:
     //  - Code (int)
     //  - Payload (actual packet)
+    /// <summary>Standard success result (<see cref="PacketCodes.Success"/>): a <see cref="TransportCode"/>
+    /// plus an optional payload packet. Prefer <see cref="ResultPacket.Success(int,IPacketBase)"/> to build
+    /// one.</summary>
     [MessagePackObject]
     public struct SuccessPacket : IPacketBase, IResultPacketWithPayload
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>A <see cref="TransportCode"/> value (JSON <c>code</c>).</summary>
         [JsonPropertyName("code")]
         [Key(1)]
         public int Code { get; set; }
 
+        /// <summary>The packet returned to the client, if any (JSON <c>payload</c>).</summary>
         [JsonPropertyName("payload")]
         [Key(2)]
         public IPacketBase? Payload { get; set; }
 
+        /// <summary>An empty success packet (code 0, no payload).</summary>
         public SuccessPacket()
         {
             MessageCode = PacketCodes.Success;
@@ -299,6 +230,7 @@ namespace Altruist
             Payload = default!;
         }
 
+        /// <summary>A success result with <paramref name="code"/> and an optional <paramref name="payload"/>.</summary>
         public SuccessPacket(int code, IPacketBase? payload = null)
         {
             MessageCode = PacketCodes.Success;
@@ -310,20 +242,26 @@ namespace Altruist
     // Standardized failure payload:
     //  - Code (int)
     //  - Reason (string)
+    /// <summary>Standard failure result (<see cref="PacketCodes.Failed"/>): a <see cref="TransportCode"/>
+    /// plus a human-readable reason. Prefer <see cref="ResultPacket.Failed(int,string)"/> to build one.</summary>
     [MessagePackObject]
     public struct FailedPacket : IPacketBase, IResultPacket
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>A <see cref="TransportCode"/> value, usually 4xx/5xx (JSON <c>code</c>).</summary>
         [JsonPropertyName("code")]
         [Key(1)]
         public int Code { get; set; }
 
+        /// <summary>Why the request failed (JSON <c>reason</c>).</summary>
         [JsonPropertyName("reason")]
         [Key(2)]
         public string Reason { get; set; }
 
+        /// <summary>An empty failure packet (code 0, empty reason).</summary>
         public FailedPacket()
         {
             MessageCode = PacketCodes.Failed;
@@ -331,6 +269,7 @@ namespace Altruist
             Reason = string.Empty;
         }
 
+        /// <summary>A failure result with <paramref name="code"/> and <paramref name="reason"/>.</summary>
         public FailedPacket(int code, string reason)
         {
             MessageCode = PacketCodes.Failed;
@@ -341,23 +280,30 @@ namespace Altruist
 
     // === Helper DTOs ===
 
+    /// <summary>A serializable 2D vector DTO for packets (JSON <c>{x, y}</c>, MessagePack keys 0/1). Use it
+    /// in wire types instead of <see cref="System.Numerics.Vector2"/>, which has no MessagePack/JSON
+    /// attributes.</summary>
     [MessagePackObject]
     public struct Vector2Message
     {
+        /// <summary>X component (JSON <c>x</c>).</summary>
         [JsonPropertyName("x")]
         [Key(0)]
         public float X { get; set; }
 
+        /// <summary>Y component (JSON <c>y</c>).</summary>
         [JsonPropertyName("y")]
         [Key(1)]
         public float Y { get; set; }
 
+        /// <summary>(0, 0).</summary>
         public Vector2Message()
         {
             X = 0;
             Y = 0;
         }
 
+        /// <summary>Creates a vector from its components.</summary>
         public Vector2Message(float x, float y)
         {
             X = x;
@@ -365,22 +311,28 @@ namespace Altruist
         }
     }
 
+    /// <summary>Client → server session handshake (<see cref="PacketCodes.HandshakeRequest"/>) carrying an
+    /// optional auth token. Answered with a <see cref="HandshakeResponsePacket"/> listing the rooms.</summary>
     [MessagePackObject]
     public struct HandshakeRequestPacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>The client's auth token, or empty when none (JSON <c>token</c>).</summary>
         [JsonPropertyName("token")]
         [Key(1)]
         public string Token { get; set; }
 
+        /// <summary>A handshake request with no token.</summary>
         public HandshakeRequestPacket()
         {
             MessageCode = PacketCodes.HandshakeRequest;
             Token = string.Empty;
         }
 
+        /// <summary>A handshake request with <paramref name="token"/> (null becomes empty).</summary>
         public HandshakeRequestPacket(string? token)
         {
             MessageCode = PacketCodes.HandshakeRequest;
@@ -388,22 +340,28 @@ namespace Altruist
         }
     }
 
+    /// <summary>Server → client handshake answer (<see cref="PacketCodes.HandshakeResponse"/>) listing the
+    /// available rooms.</summary>
     [MessagePackObject]
     public struct HandshakeResponsePacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>The rooms the client can join (JSON <c>rooms</c>).</summary>
         [JsonPropertyName("rooms")]
         [Key(1)]
         public RoomPacket[] Rooms { get; set; }
 
+        /// <summary>An empty response (no rooms).</summary>
         public HandshakeResponsePacket()
         {
             MessageCode = PacketCodes.HandshakeResponse;
             Rooms = Array.Empty<RoomPacket>();
         }
 
+        /// <summary>A response listing <paramref name="rooms"/> (null becomes empty).</summary>
         public HandshakeResponsePacket(RoomPacket[] rooms)
         {
             MessageCode = PacketCodes.HandshakeResponse;
@@ -411,37 +369,47 @@ namespace Altruist
         }
     }
 
+    /// <summary>Client → server request to join the game (<see cref="PacketCodes.JoinGame"/>).</summary>
     [MessagePackObject]
     public struct JoinGamePacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>Display name of the joining player (JSON <c>name</c>).</summary>
         [JsonPropertyName("name")]
         [Key(1)]
         public string Name { get; set; }
 
+        /// <summary>Room to join, or null/empty to let the server choose (JSON <c>roomId</c>).</summary>
         [JsonPropertyName("roomId")]
         [Key(2)]
         public string? RoomId { get; set; }
 
+        /// <summary>Index of the world to spawn in (JSON <c>world</c>).</summary>
         [JsonPropertyName("world")]
         [Key(3)]
         public int? WorldIndex { get; set; }
 
+        /// <summary>Requested spawn position as a coordinate array (defaults to <c>[0, 0]</c>; JSON
+        /// <c>position</c>).</summary>
         [JsonPropertyName("position")]
         [Key(4)]
         public float[]? Position { get; set; }
 
+        /// <summary>An empty request: empty name, no room id (null, the server chooses), world 0, position
+        /// <c>[0, 0]</c>. The same defaults as the other constructor.</summary>
         public JoinGamePacket()
         {
             MessageCode = PacketCodes.JoinGame;
             Name = string.Empty;
-            RoomId = string.Empty;
+            RoomId = null;
             Position = new[] { 0f, 0f };
             WorldIndex = 0;
         }
 
+        /// <summary>A join request; a null <paramref name="roomId"/> lets the server choose the room.</summary>
         public JoinGamePacket(string name, string? roomId = null, int? worldIndex = 0, float[]? position = null)
         {
             MessageCode = PacketCodes.JoinGame;
@@ -452,22 +420,28 @@ namespace Altruist
         }
     }
 
+    /// <summary>Request to leave the game (<see cref="PacketCodes.LeaveGame"/>); also broadcast to the room
+    /// so the remaining clients learn who left.</summary>
     [MessagePackObject]
     public struct LeaveGamePacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; }
 
+        /// <summary>The connection id of the leaving client (JSON <c>clientId</c>).</summary>
         [JsonPropertyName("clientId")]
         [Key(1)]
         public string ClientId { get; set; }
 
+        /// <summary>An empty leave packet.</summary>
         public LeaveGamePacket()
         {
             MessageCode = PacketCodes.LeaveGame;
             ClientId = string.Empty;
         }
 
+        /// <summary>A leave packet for <paramref name="clientId"/>.</summary>
         public LeaveGamePacket(string clientId)
         {
             MessageCode = PacketCodes.LeaveGame;
@@ -475,52 +449,69 @@ namespace Altruist
         }
     }
 
+    /// <summary>A room: an id, a capacity and the connection ids inside it (<see cref="PacketCodes.Room"/>).
+    /// A class (reference type), so <see cref="AddConnection"/> / <see cref="RemoveConnection"/> mutate the
+    /// instance they are called on.</summary>
     [MessagePackObject]
     public class RoomPacket : IPacketBase
     {
+        /// <inheritdoc/>
         [Key(0)]
         public uint MessageCode { get; set; } = PacketCodes.Room;
 
+        /// <summary>Room id (JSON <c>id</c>).</summary>
         [JsonPropertyName("id")]
         [Key(1)]
         public string Id { get; set; }
 
+        /// <summary>Maximum number of connections (default 100; JSON <c>maxCapacity</c>).</summary>
         [JsonPropertyName("maxCapacity")]
         [Key(2)]
-        public uint MaxCapactiy { get; set; }
+        public uint MaxCapacity { get; set; }
 
+        /// <summary>Misspelled former name of <see cref="MaxCapacity"/> (not serialized).</summary>
+        [IgnoreMember]
+        [JsonIgnore]
+        [Obsolete("Use MaxCapacity.")]
+        public uint MaxCapactiy { get => MaxCapacity; set => MaxCapacity = value; }
+
+        /// <summary>Connection ids currently in the room (JSON <c>connectionIds</c>).</summary>
         [JsonPropertyName("connectionIds")]
         [Key(3)]
         public HashSet<string> ConnectionIds { get; set; }
 
+        /// <summary>Number of connections in the room (not serialized).</summary>
         [IgnoreMember]
         public int PlayerCount => (ConnectionIds ?? new HashSet<string>()).Count;
 
+        /// <summary>An empty room with capacity 100.</summary>
         public RoomPacket()
         {
             MessageCode = PacketCodes.Room;
             Id = string.Empty;
-            MaxCapactiy = 100;
+            MaxCapacity = 100;
             ConnectionIds = new HashSet<string>();
         }
 
+        /// <summary>An empty room <paramref name="roomId"/> with <paramref name="maxCapacity"/>.</summary>
         public RoomPacket(string roomId, uint maxCapacity = 100)
         {
             MessageCode = PacketCodes.Room;
             Id = roomId;
-            MaxCapactiy = maxCapacity;
+            MaxCapacity = maxCapacity;
             ConnectionIds = new HashSet<string>();
         }
 
+        /// <summary>Whether <paramref name="connectionId"/> is in the room.</summary>
         public bool Has(string connectionId) => ConnectionIds.Contains(connectionId);
 
-        public bool Full() => PlayerCount >= MaxCapactiy;
+        /// <summary>Whether the room is at or over capacity.</summary>
+        public bool Full() => PlayerCount >= MaxCapacity;
 
+        /// <summary>Whether the room has no connections.</summary>
         public bool Empty() => PlayerCount == 0;
 
-        public bool IsDefault() =>
-            EqualityComparer<RoomPacket>.Default.Equals(this, default);
-
+        /// <summary>Adds <paramref name="connectionId"/> (mutates this instance) and returns it for chaining.</summary>
         public RoomPacket AddConnection(string connectionId)
         {
             // NOTE: RoomPacket is a class; this mutates the same instance.
@@ -528,6 +519,7 @@ namespace Altruist
             return this;
         }
 
+        /// <summary>Removes <paramref name="connectionId"/> (mutates this instance) and returns it for chaining.</summary>
         public RoomPacket RemoveConnection(string connectionId)
         {
             // NOTE: RoomPacket is a class; this mutates the same instance.
@@ -535,20 +527,27 @@ namespace Altruist
             return this;
         }
 
+        /// <summary>Formats as <c>Room[id]: count/capacity</c>.</summary>
         public override string ToString()
         {
-            return $"Room[{Id}]: {PlayerCount}/{MaxCapactiy}";
+            return $"Room[{Id}]: {PlayerCount}/{MaxCapacity}";
         }
     }
 }
 
 // === Broadcasting / result helpers ===
 
+/// <summary>A result that sends <see cref="Packet"/> to every connection in room <see cref="RoomId"/>
+/// (used for leave-game notifications; the session portal publishes it through the room router).</summary>
 public sealed class RoomBroadcast
 {
+    /// <summary>The target room id.</summary>
     public string RoomId { get; }
+    /// <summary>The packet to broadcast.</summary>
     public Altruist.IPacketBase Packet { get; }
 
+    /// <summary>Creates a room broadcast.</summary>
+    /// <exception cref="System.ArgumentNullException"><paramref name="roomId"/> or <paramref name="packet"/> is null.</exception>
     public RoomBroadcast(string roomId, Altruist.IPacketBase packet)
     {
         RoomId = roomId ?? throw new ArgumentNullException(nameof(roomId));
@@ -556,14 +555,25 @@ public sealed class RoomBroadcast
     }
 }
 
+/// <summary>Factory for <see cref="Altruist.IResultPacket"/> values returned by framework request
+/// handlers, with codes from <see cref="Altruist.TransportCode"/>.</summary>
+/// <example><code>
+/// if (room.Full()) return ResultPacket.Failed(TransportCode.Conflict, "Room is full.");
+/// return ResultPacket.Success(TransportCode.Ok, new JoinedPacket(...));
+/// </code></example>
 public static class ResultPacket
 {
+    /// <summary>A success result with <paramref name="code"/> and an optional <paramref name="payload"/>
+    /// (the packet actually delivered to the client).</summary>
     public static Altruist.SuccessPacket Success(int code, Altruist.IPacketBase? payload = null)
         => new Altruist.SuccessPacket(code, payload);
 
+    /// <summary>A success result whose payload is a <see cref="Altruist.TextPacket"/> carrying
+    /// <paramref name="message"/>.</summary>
     public static Altruist.SuccessPacket Success(int code, string message)
         => new Altruist.SuccessPacket(code, new Altruist.TextPacket(message));
 
+    /// <summary>A failure result with <paramref name="code"/> and <paramref name="reason"/>.</summary>
     public static Altruist.FailedPacket Failed(int code, string reason)
         => new Altruist.FailedPacket(code, reason);
 }

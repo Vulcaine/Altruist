@@ -17,16 +17,28 @@ namespace Altruist;
 /// DI-level service configuration. Scans assemblies for [Service] attributes
 /// and registers them. Does NOT handle Portal/Gate discovery — that stays in Core.
 /// </summary>
+/// <remarks>
+/// Used by <see cref="AltruistDI"/>; the full framework uses <c>AltruistServiceConfig</c>, which reuses the public static
+/// helpers here. You normally never instantiate this yourself.
+/// </remarks>
 public class AltruistDIServiceConfig : IAltruistConfiguration
 {
     private readonly ILogger _log;
+    /// <inheritdoc/>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Creates the configuration step.</summary>
+    /// <param name="log">Logger for registration diagnostics.</param>
     public AltruistDIServiceConfig(ILogger log)
     {
         _log = log;
     }
 
+    /// <summary>
+    /// Discovers config converters, then registers all <see cref="BeanAttribute"/> methods followed by all
+    /// <see cref="ServiceAttribute"/> classes from the loaded assemblies.
+    /// </summary>
+    /// <param name="services">Collection to register into.</param>
     public Task Configure(IServiceCollection services)
     {
         var cfg = AppConfigLoader.Load();
@@ -34,6 +46,7 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
         DependencyResolver.EnsureConverters(services, cfg, _log);
 
         var registered = new List<string>();
+        RegisterBeanMethods(services, cfg, _log, registered);
         RegisterServiceAttributes(services, cfg, _log, registered);
 
         if (registered.Count > 0)
@@ -47,6 +60,11 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
             AppDomain.CurrentDomain.GetAssemblies()
                 .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName)));
 
+    /// <summary>Registers every <see cref="ServiceAttribute"/> class of the loaded assemblies via <see cref="RegisterServiceType"/>.</summary>
+    /// <param name="services">Collection to register into.</param>
+    /// <param name="cfg">Configuration used for conditions and value binding.</param>
+    /// <param name="log">Logger.</param>
+    /// <param name="reg">Receives a human-readable line per registration (for the debug summary).</param>
     public static void RegisterServiceAttributes(
         IServiceCollection services,
         IConfiguration cfg,
@@ -57,6 +75,144 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
             RegisterServiceType(services, cfg, log, reg, implType);
     }
 
+    /// <summary>Registers every public <see cref="BeanAttribute"/> method found on non-abstract classes of the loaded assemblies.</summary>
+    /// <param name="services">Collection to register into.</param>
+    /// <param name="cfg">Configuration used for parameter binding.</param>
+    /// <param name="log">Logger.</param>
+    /// <param name="reg">Receives a human-readable line per registration.</param>
+    public static void RegisterBeanMethods(
+        IServiceCollection services,
+        IConfiguration cfg,
+        ILogger log,
+        List<string> reg)
+    {
+        foreach (var method in FindBeanMethods())
+            RegisterBeanMethod(services, cfg, log, reg, method);
+    }
+
+    private static IEnumerable<MethodInfo> FindBeanMethods() =>
+        AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.FullName))
+            .SelectMany(SafeGetTypes)
+            .Where(t => t is { IsClass: true, IsAbstract: false })
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+            .Where(m => m.GetCustomAttribute<BeanAttribute>(inherit: true) is not null);
+
+    private static IEnumerable<Type> SafeGetTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(t => t is not null)!;
+        }
+    }
+
+    private static void RegisterBeanMethod(
+        IServiceCollection services,
+        IConfiguration cfg,
+        ILogger log,
+        List<string> reg,
+        MethodInfo method)
+    {
+        var attr = method.GetCustomAttribute<BeanAttribute>(inherit: true)!;
+
+        if (method.ContainsGenericParameters)
+        {
+            log.LogWarning("Skipping bean method {Method} because open generic bean methods are not supported.", method.Name);
+            return;
+        }
+
+        var returnType = method.ReturnType;
+        if (returnType == typeof(void) || returnType == typeof(Task) || returnType == typeof(ValueTask))
+        {
+            log.LogWarning("Skipping bean method {Method} because it does not return a service instance.", method.Name);
+            return;
+        }
+
+        var serviceType = attr.ServiceType ?? returnType;
+        if (!serviceType.IsAssignableFrom(returnType))
+        {
+            var msg =
+                $"Bean method '{method.DeclaringType?.FullName}.{method.Name}' returns '{returnType.FullName}', " +
+                $"which cannot be registered as '{serviceType.FullName}'.";
+            DependencyResolver.FailAndExit(log, msg);
+            throw new InvalidOperationException(msg);
+        }
+
+        if (attr.Replace)
+            RemoveExistingBeanRegistrations(services, serviceType, attr.Name);
+
+        object Factory(IServiceProvider sp)
+        {
+            var target = method.IsStatic
+                ? null
+                : DependencyResolver.CreateWithConfiguration(sp, cfg, method.DeclaringType!, log);
+            var args = method.GetParameters()
+                .Select(p => DependencyResolver.ResolveParameter(sp, cfg, p, log))
+                .ToArray();
+            return method.Invoke(target, args)
+                   ?? throw new InvalidOperationException($"Bean method '{method.Name}' returned null.");
+        }
+
+        if (attr.Name is null)
+        {
+            services.Add(new ServiceDescriptor(serviceType, Factory, attr.Lifetime));
+            reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)} <= bean {method.DeclaringType?.Name}.{method.Name} ({attr.Lifetime})");
+            return;
+        }
+
+        switch (attr.Lifetime)
+        {
+            case ServiceLifetime.Singleton:
+                services.AddKeyedSingleton(serviceType, attr.Name, (sp, _) => Factory(sp));
+                break;
+            case ServiceLifetime.Scoped:
+                services.AddKeyedScoped(serviceType, attr.Name, (sp, _) => Factory(sp));
+                break;
+            default:
+                services.AddKeyedTransient(serviceType, attr.Name, (sp, _) => Factory(sp));
+                break;
+        }
+
+        reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)}[{attr.Name}] <= bean {method.DeclaringType?.Name}.{method.Name} ({attr.Lifetime})");
+    }
+
+    private static void RemoveExistingBeanRegistrations(IServiceCollection services, Type serviceType, string? key)
+    {
+        for (int i = services.Count - 1; i >= 0; i--)
+        {
+            var descriptor = services[i];
+            if (descriptor.ServiceType != serviceType)
+                continue;
+
+            if (key is null)
+            {
+                if (!descriptor.IsKeyedService)
+                    services.RemoveAt(i);
+                continue;
+            }
+
+            if (descriptor.IsKeyedService && Equals(descriptor.ServiceKey, key))
+                services.RemoveAt(i);
+        }
+    }
+
+    /// <summary>
+    /// Registers one <see cref="ServiceAttribute"/> implementation type: evaluates <see cref="ConditionalOnConfigAttribute"/> and
+    /// <see cref="ConditionalOnMissingServiceAttribute"/>, runs <see cref="ServiceAttribute.DependsOn"/> configuration steps, plans
+    /// constructor dependencies, then adds the implementation registration plus a forward for each declared service type.
+    /// For a list-style <see cref="ConditionalOnConfigAttribute"/> it adds one keyed (and one unkeyed) registration per config item.
+    /// Types without a public constructor are skipped.
+    /// </summary>
+    /// <param name="services">Collection to register into.</param>
+    /// <param name="cfg">Configuration.</param>
+    /// <param name="log">Logger.</param>
+    /// <param name="reg">Receives a human-readable line per registration.</param>
+    /// <param name="implType">The class carrying <see cref="ServiceAttribute"/>.</param>
+    /// <exception cref="InvalidOperationException">A list-style condition's item lacks its key field.</exception>
     public static void RegisterServiceType(
         IServiceCollection services,
         IConfiguration cfg,
@@ -66,6 +222,17 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
     {
         if (!DependencyResolver.ShouldRegister(implType, cfg, log))
             return;
+
+        // A framework default steps aside for a registration the application made by hand.
+        foreach (var missing in implType.GetCustomAttributes<ConditionalOnMissingServiceAttribute>(false))
+        {
+            if (services.Any(d => d.ServiceType == missing.ServiceType))
+            {
+                log.LogDebug("Skipping {Type}: {Service} is already registered.",
+                    DependencyResolver.GetCleanName(implType), DependencyResolver.GetCleanName(missing.ServiceType));
+                return;
+            }
+        }
 
         if (implType.GetConstructors(BindingFlags.Public | BindingFlags.Instance).Length == 0)
         {
@@ -119,19 +286,39 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
             {
                 DependencyPlanner.EnsureDependenciesRegistered(services, cfg, log, implType);
 
-                services.Add(new ServiceDescriptor(
-                    implType,
-                    sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log, lifetime)!,
-                    lifetime));
+                // The planner may already have registered this type as a dependency of a service
+                // processed earlier. A second descriptor would build a second singleton (and an
+                // IEnumerable<T> would list it twice), so the planned registration is kept for the
+                // implementation and an interface registration is turned into a forward to it.
+                var selfIndex = DependencyResolver.IndexOfPlannedRegistration(services, implType, implType);
+                if (selfIndex < 0)
+                {
+                    services.Add(new ServiceDescriptor(
+                        implType,
+                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log)!,
+                        lifetime));
+                }
+                else if (services[selfIndex].Lifetime != lifetime)
+                {
+                    services[selfIndex] = new ServiceDescriptor(
+                        implType,
+                        sp => DependencyResolver.CreateWithConfiguration(sp, cfg, implType, log)!,
+                        lifetime);
+                }
 
                 reg.Add($"\t{DependencyResolver.GetCleanName(implType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
 
                 if (serviceType != implType)
                 {
-                    services.Add(new ServiceDescriptor(
+                    var forward = new ServiceDescriptor(
                         serviceType,
                         sp => sp.GetRequiredService(implType),
-                        lifetime));
+                        lifetime);
+                    var plannedIndex = DependencyResolver.IndexOfPlannedRegistration(services, serviceType, implType);
+                    if (plannedIndex < 0)
+                        services.Add(forward);
+                    else
+                        services[plannedIndex] = forward;
 
                     reg.Add($"\t{DependencyResolver.GetCleanName(serviceType)} → {DependencyResolver.GetCleanName(implType)} ({lifetime})");
                 }
@@ -186,32 +373,35 @@ public class AltruistDIServiceConfig : IAltruistConfiguration
                         services.AddKeyedSingleton(
                             serviceType,
                             itemKey,
-                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log, lifetime));
+                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log));
                         break;
 
                     case ServiceLifetime.Scoped:
                         services.AddKeyedScoped(
                             serviceType,
                             itemKey,
-                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log, lifetime));
+                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log));
                         break;
 
                     default:
                         services.AddKeyedTransient(
                             serviceType,
                             itemKey,
-                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log, lifetime));
+                            (sp, _) => DependencyResolver.CreateWithConfiguration(sp, itemSection, implType, log));
                         break;
                 }
 
-                services.Add(new ServiceDescriptor(
+                // Unkeyed forwards make every item part of IEnumerable<T>. They go to the front of the collection so
+                // that a regular (non-list) registration of the same service, wherever it was added, stays the one an
+                // unkeyed GetService<T> returns (the last registration wins) instead of the last list item.
+                services.Insert(0, new ServiceDescriptor(
                     serviceType,
                     sp => sp.GetRequiredKeyedService(serviceType, itemKey),
                     lifetime));
 
                 if (serviceType != implType)
                 {
-                    services.Add(new ServiceDescriptor(
+                    services.Insert(0, new ServiceDescriptor(
                         implType,
                         sp => sp.GetRequiredKeyedService(serviceType, itemKey),
                         lifetime));

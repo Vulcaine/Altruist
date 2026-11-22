@@ -14,6 +14,14 @@ using System.Runtime.CompilerServices;
 
 namespace Altruist.Persistence;
 
+/// <summary>
+/// Registry entry for one <see cref="TransactionalAttribute"/>-annotated method, as stored by
+/// <see cref="TransactionalRegistry"/>.
+/// </summary>
+/// <param name="Method">The annotated implementation method.</param>
+/// <param name="Attribute">The attribute instance (carries the isolation level).</param>
+/// <param name="DeclaringType">The method's declaring type (or the service type when the method has none).</param>
+/// <param name="ServiceType">The concrete type the method was found on during the scan, or the explicit service type passed to <see cref="TransactionalRegistry.Register"/>; may be null.</param>
 public readonly record struct TransactionalMetadata(
     MethodInfo Method,
     TransactionalAttribute Attribute,
@@ -25,6 +33,12 @@ public readonly record struct TransactionalMetadata(
 /// Populated once at startup by scanning assemblies.
 /// All operations are O(1) dictionary lookups.
 /// </summary>
+/// <remarks>
+/// The Postgres configuration calls <see cref="WarmUp"/> with the scanned assemblies and then wraps
+/// every DI service whose implementation <see cref="HasTransactionalMethods"/> in a transactional
+/// proxy; application code normally never touches this registry. Use <see cref="Register"/> only
+/// when building such a proxy by hand (e.g. tests) for types outside the scanned assemblies.
+/// </remarks>
 public static class TransactionalRegistry
 {
     private static readonly ConcurrentDictionary<MethodInfo, TransactionalMetadata> _byMethod =
@@ -39,6 +53,10 @@ public static class TransactionalRegistry
     /// Registers a single method with its metadata.
     /// Idempotent and thread-safe. O(1).
     /// </summary>
+    /// <param name="method">The annotated implementation method (the proxy maps interface methods to it).</param>
+    /// <param name="attribute">The method's <see cref="TransactionalAttribute"/>.</param>
+    /// <param name="serviceType">Type the method was found on; used as declaring type when <paramref name="method"/> has none.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="attribute"/> is null.</exception>
     public static void Register(MethodInfo method, TransactionalAttribute attribute, Type? serviceType = null)
     {
         if (method is null)
@@ -67,7 +85,10 @@ public static class TransactionalRegistry
     /// <summary>
     /// Registers all [Transactional] methods from given assemblies.
     /// Safe to call multiple times; will re-scan but remain consistent.
+    /// Skips dynamic assemblies and abstract/interface types; inspects public and non-public
+    /// instance methods (attribute lookup honours inheritance).
     /// </summary>
+    /// <param name="assemblies">Assemblies to scan; null or empty is a no-op.</param>
     public static void WarmUp(params Assembly[] assemblies)
     {
         if (assemblies is null || assemblies.Length == 0)

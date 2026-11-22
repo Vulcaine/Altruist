@@ -16,14 +16,8 @@ internal static class DocumentBuilder
         if (!typeof(IStoredModel).IsAssignableFrom(type))
             throw new InvalidOperationException($"The type {type.FullName} must implement IModel.");
 
-        var header = type.GetCustomAttribute<VaultAttribute>(inherit: true);
-        if (header is null)
-            throw new InvalidOperationException(
-                $"The type {type.FullName} must have a [Vault] (or derived) attribute.");
-
-        var tableName = string.IsNullOrWhiteSpace(header.Name)
-            ? ToSnakeCase(type.Name)
-            : header.Name;
+        var header = HeaderOf(type);
+        var tableName = TableNameOf(type, header);
 
         var primaryKey = type.GetCustomAttribute<VaultPrimaryKeyAttribute>(inherit: true);
         var sortingBy = type.GetCustomAttribute<VaultSortingByAttribute>(inherit: true);
@@ -57,6 +51,7 @@ internal static class DocumentBuilder
 
         doc.FieldTypes = fieldTypes;
         doc.NullableColumns = new HashSet<string>(nullablePhysical, StringComparer.OrdinalIgnoreCase);
+        doc.ColumnDefaultValues = ScanColumnDefaultValues(type, columns, accessors);
         doc.RenamedColumns = ScanRenames(type, columns);
         ScanCopyFromAndDeleted(type, columns, doc);
 
@@ -76,6 +71,37 @@ internal static class DocumentBuilder
         }
 
         return doc;
+    }
+
+    private static Dictionary<string, object?> ScanColumnDefaultValues(
+        Type type,
+        Dictionary<string, string> columns,
+        Dictionary<string, Func<object, object?>> accessors)
+    {
+        var defaults = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        object? instance;
+        try
+        {
+            instance = Activator.CreateInstance(type);
+        }
+        catch
+        {
+            return defaults;
+        }
+
+        if (instance == null)
+            return defaults;
+
+        foreach (var (logical, physical) in columns)
+        {
+            if (!accessors.TryGetValue(logical, out var accessor))
+                continue;
+
+            defaults[physical] = accessor(instance);
+        }
+
+        return defaults;
     }
 
     private static void ScanColumns(
@@ -213,6 +239,16 @@ internal static class DocumentBuilder
             }
         }
 
+        // [VaultDropColumn] on the class — columns whose property is already gone.
+        foreach (var drop in type.GetCustomAttributes<VaultDropColumnAttribute>(inherit: true))
+        {
+            if (columns.Values.Any(c => string.Equals(c, drop.ColumnName, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException(
+                    $"[VaultDropColumn(\"{drop.ColumnName}\")] on '{type.Name}' names a column the model still maps. " +
+                    "Remove the property (or mark it [VaultColumnDelete]) before dropping its column.");
+            deleted[drop.ColumnName] = drop.Reason;
+        }
+
         doc.CopyFromColumns = copyFrom;
         doc.DeletedColumns = deleted;
     }
@@ -244,6 +280,16 @@ internal static class DocumentBuilder
         var castResult = Expression.Convert(propertyAccess, typeof(object));
         return Expression.Lambda<Func<object, object?>>(castResult, instance).Compile();
     }
+
+    /// <summary>The table name of a <c>[Vault]</c> type: the attribute's name, or the snake_case class name.</summary>
+    internal static string TableNameOf(Type type) => TableNameOf(type, HeaderOf(type));
+
+    private static string TableNameOf(Type type, VaultAttribute header)
+        => string.IsNullOrWhiteSpace(header.Name) ? ToSnakeCase(type.Name) : header.Name;
+
+    private static VaultAttribute HeaderOf(Type type)
+        => type.GetCustomAttribute<VaultAttribute>(inherit: true)
+           ?? throw new InvalidOperationException($"The type {type.FullName} must have a [Vault] (or derived) attribute.");
 
     private static string ToSnakeCase(string value)
     {

@@ -13,7 +13,6 @@ namespace Altruist.Benchmarks;
 /// Measures: O(n²) overlap detection, enter/stay/exit lifecycle, dispatch overhead.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 5, iterationCount: 20)]
 public class CollisionBenchmarks
 {
     private SpatialCollisionDispatcher _dispatcher = null!;

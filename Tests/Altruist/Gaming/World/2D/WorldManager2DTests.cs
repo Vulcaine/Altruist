@@ -50,7 +50,7 @@ public class WorldManager2DTests
 
         var bodyMock = new Mock<IPhysxBody2D>();
         bodyMock.Setup(b => b.Position).Returns(Vector2.Zero);
-        _bodyApiMock.Setup(b => b.CreateBody(It.IsAny<PhysxBodyType>(), It.IsAny<float>(), It.IsAny<Transform2D>()))
+        _bodyApiMock.Setup(b => b.CreateBody(It.IsAny<IPhysxWorld2D>(), It.IsAny<PhysxBodyType>(), It.IsAny<float>(), It.IsAny<Transform2D>()))
             .Returns(bodyMock.Object);
         _colliderApiMock.Setup(c => c.CreateCollider(It.IsAny<PhysxCollider2DParams>()))
             .Returns(new Mock<IPhysxCollider2D>().Object);

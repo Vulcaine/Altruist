@@ -60,7 +60,8 @@ public class SpatialBroadcastService2DTests
             new Mock<ICodec>().Object,
             new Mock<ClientSender>(
                 new Mock<IConnectionStore>().Object,
-                new Mock<ICodec>().Object).Object);
+                new Mock<ICodec>().Object,
+                (IDashboardNetworkRecorder?)null).Object);
         roomSenderMock
             .Setup(r => r.SendAsync(It.IsAny<string>(), It.IsAny<IPacketBase>()))
             .Returns(Task.CompletedTask);

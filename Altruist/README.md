@@ -4,13 +4,15 @@ Altruist is a high-performance, config-driven server framework for building scal
 
 ## Highlights
 
-- **0.9 ms total framework overhead** per tick (97.3% budget available for game logic)
-- **AI FSM**: 14 ns/entity, zero allocations
-- **Combat**: 8 ns single attack, AoE sweep queries (sphere/cone/line)
-- **Collision**: SpatialHashGrid broadphase, 13 μs for 100 entities
-- **Visibility**: parallel per-observer, tick staggering, 118 μs for 10 players × 100 NPCs
-- **Entity sync**: automatic [Synchronized] delta detection at 249 ns/entity
-- **~6,600 CCU at 30Hz** on a single server under full simulation load
+Measured with `Benchmarks/run.sh` (BenchmarkDotNet, .NET 9) on an Apple M1 Pro laptop, 2026-10-03 — see [Benchmarks/BENCHMARK_RESULTS.md](https://github.com/Vulcaine/Altruist/blob/develop/Benchmarks/BENCHMARK_RESULTS.md) for the method, raw data and the caveat that the machine was not idle (larger numbers are noisy):
+
+- **~1.8 ms per full simulated tick** for 50 players + 500 NPCs (movement, AI, delta sync, visibility, collision, combat) — about 5% of a 30 Hz tick budget
+- **AI FSM**: 16 ns/entity per update, zero allocations
+- **Combat**: ~90 ns single attack (damage calc + apply + hit event), AoE sweep queries (sphere/cone/line)
+- **Collision**: SpatialHashGrid broadphase, ~55–85 µs per tick for 100 entities
+- **Visibility**: parallel per-observer with tick staggering, ~4 µs steady-state tick for 10 players × 100 NPCs
+- **Entity sync**: automatic `[Synchronized]` delta detection, ~0.6–0.8 µs per entity
+- Reproduce on your own hardware: `cd Benchmarks && ./run.sh` (or `./run.sh --quick`)
 
 ## Status
 

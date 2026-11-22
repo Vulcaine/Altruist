@@ -293,7 +293,7 @@ public class SweepGeometryTests
         var target = TestCombatEntity.Create(2, hp: 100, x: 50, y: 0, def: 0);
         var service = CreateServiceWithWorld(attacker, target);
 
-        var query = SweepQuery.Sphere(0, 0, 0, 100);
+        var query = SweepQuery3D.Sphere(0, 0, 0, 100);
         var result = service.Sweep(attacker, query, 20);
 
         Assert.Single(result.Hits);
@@ -307,7 +307,7 @@ public class SweepGeometryTests
         var far = TestCombatEntity.Create(2, hp: 100, x: 500, y: 500);
         var service = CreateServiceWithWorld(attacker, far);
 
-        var query = SweepQuery.Sphere(0, 0, 0, 100);
+        var query = SweepQuery3D.Sphere(0, 0, 0, 100);
         var result = service.Sweep(attacker, query, 20);
 
         Assert.Empty(result.Hits);
@@ -320,7 +320,7 @@ public class SweepGeometryTests
         var attacker = TestCombatEntity.Create(1, hp: 100, x: 0, y: 0);
         var service = CreateServiceWithWorld(attacker);
 
-        var query = SweepQuery.Sphere(0, 0, 0, 100);
+        var query = SweepQuery3D.Sphere(0, 0, 0, 100);
         var result = service.Sweep(attacker, query, 50);
 
         Assert.Empty(result.Hits);
@@ -334,7 +334,7 @@ public class SweepGeometryTests
         var dead = TestCombatEntity.Create(2, hp: 0, x: 10, y: 0);
         var service = CreateServiceWithWorld(attacker, dead);
 
-        var query = SweepQuery.Sphere(0, 0, 0, 100);
+        var query = SweepQuery3D.Sphere(0, 0, 0, 100);
         var result = service.Sweep(attacker, query, 20);
 
         Assert.Empty(result.Hits);
@@ -349,7 +349,7 @@ public class SweepGeometryTests
         var t3 = TestCombatEntity.Create(4, hp: 100, x: 30, y: 0, def: 0);
         var service = CreateServiceWithWorld(attacker, t1, t2, t3);
 
-        var query = SweepQuery.Sphere(0, 0, 0, 100) with { MaxTargets = 2 };
+        var query = SweepQuery3D.Sphere(0, 0, 0, 100) with { MaxTargets = 2 };
         var result = service.Sweep(attacker, query, 10);
 
         Assert.Equal(2, result.Hits.Count);
@@ -365,7 +365,7 @@ public class SweepGeometryTests
         var side = TestCombatEntity.Create(3, hp: 100, x: 0, y: 500);
         var service = CreateServiceWithWorld(attacker, ahead, side);
 
-        var query = SweepQuery.Line(0, 0, 0, 200, 0f); // direction = 0 = east
+        var query = SweepQuery3D.Line(0, 0, 0, 200, 0f); // direction = 0 = east
         var result = service.Sweep(attacker, query, 10);
 
         Assert.Single(result.Hits);

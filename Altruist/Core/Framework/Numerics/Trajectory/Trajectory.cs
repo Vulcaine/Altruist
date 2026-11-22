@@ -1,0 +1,89 @@
+/*
+Copyright 2025 Aron Gere
+Licensed under the Apache License, Version 2.0
+*/
+
+using System.Numerics;
+
+using Altruist.Numerics;
+
+namespace Altruist.ThreeD.Numerics.Trajectory;
+
+/// <summary>Pure parametric trajectory math. The flagship shape is the
+/// 3-phase parabolic arc (rise → hang → fall) used everywhere from
+/// knockback flights to projectile arcs to summon dives. Constants are
+/// always passed in; nothing about a specific game lives here.
+/// <see cref="Altruist.TwoD.Numerics.Trajectory.Trajectory2D"/> is the exact 2D mirror (same shape, phase
+/// clamping and errors; its X/Y equal this class's X/Y). Uses <see cref="DeterministicMath"/>, so samples
+/// are the same on every platform.</summary>
+public static class Trajectory3D
+{
+    /// <summary>Y offset above the linear XZ baseline at parameter <paramref name="t"/>
+    /// (0 = start, 1 = end). Three-phase shape:
+    /// <list type="bullet">
+    /// <item>t ∈ [0, riseEndN]    → ease-out rise from 0 to <paramref name="peakHeight"/>.</item>
+    /// <item>t ∈ [riseEndN, hangEndN] → flat hang at <paramref name="peakHeight"/>.</item>
+    /// <item>t ∈ [hangEndN, 1]     → ease-in fall back to 0.</item>
+    /// </list>
+    /// Returns 0 when <paramref name="peakHeight"/> ≤ 0 (collapses to a flat lerp). The rise is a quarter
+    /// sine (<c>sin(u·π/2)</c>) and the fall <c>1 - sin²(v·π/2)</c>; phase bounds are clamped to
+    /// [1e-4, 1 - 1e-4] with <c>hangEndN ≥ riseEndN</c>.</summary>
+    public static float ParabolicY(float t, float peakHeight, float riseEndN, float hangEndN)
+    {
+        if (peakHeight <= 0f) return 0f;
+        if (t <= 0f || t >= 1f) return 0f;
+        if (riseEndN <= 0f) riseEndN = 1e-4f;
+        if (hangEndN >= 1f) hangEndN = 1f - 1e-4f;
+        if (hangEndN < riseEndN) hangEndN = riseEndN;
+
+        if (t < riseEndN)
+        {
+            var u = t / riseEndN;
+            return peakHeight * DeterministicMath.Sin(u * (MathF.PI * 0.5f));
+        }
+        if (t < hangEndN) return peakHeight;
+
+        var fall = (t - hangEndN) / (1f - hangEndN);
+        var s = DeterministicMath.Sin(fall * (MathF.PI * 0.5f));
+        return peakHeight * (1f - s * s);
+    }
+
+    /// <summary>Sample a 3D arc at <paramref name="t"/>: lerp XZ from
+    /// <paramref name="start"/> to <paramref name="end"/> and add the parabolic Y on top. Returns exactly
+    /// <paramref name="start"/> for t ≤ 0 and <paramref name="end"/> for t ≥ 1.</summary>
+    public static Vector3 ParabolicSample(Vector3 start, Vector3 end, float t,
+                                          float peakHeight, float riseEndN, float hangEndN)
+    {
+        if (t <= 0f) return start;
+        if (t >= 1f) return end;
+        var x = start.X + (end.X - start.X) * t;
+        var z = start.Z + (end.Z - start.Z) * t;
+        var y = start.Y + (end.Y - start.Y) * t + ParabolicY(t, peakHeight, riseEndN, hangEndN);
+        return new Vector3(x, y, z);
+    }
+
+    /// <summary>Position3D overload of <see cref="ParabolicSample(Vector3,Vector3,float,float,float,float)"/>.</summary>
+    public static Vector3 ParabolicSample(Position3D start, Position3D end, float t,
+                                          float peakHeight, float riseEndN, float hangEndN)
+        => ParabolicSample(start.ToVector3(), end.ToVector3(), t, peakHeight, riseEndN, hangEndN);
+
+    /// <summary>Allocation-free polyline emission. Writes <paramref name="dest"/>.Length
+    /// samples evenly spaced over t ∈ [0, 1] inclusive (so dest[0] = start,
+    /// dest[^1] = end).</summary>
+    /// <exception cref="ArgumentException"><paramref name="dest"/> has fewer than 2 slots.</exception>
+    public static void ParabolicPolyline(Vector3 start, Vector3 end, float peakHeight,
+                                         float riseEndN, float hangEndN, Span<Vector3> dest)
+    {
+        if (dest.Length < 2)
+            throw new ArgumentException("dest must have at least 2 slots", nameof(dest));
+
+        var step = 1f / (dest.Length - 1);
+        for (int i = 0; i < dest.Length; i++)
+            dest[i] = ParabolicSample(start, end, i * step, peakHeight, riseEndN, hangEndN);
+    }
+
+    /// <summary>Position3D overload of <see cref="ParabolicPolyline(Vector3,Vector3,float,float,float,Span{Vector3})"/>.</summary>
+    public static void ParabolicPolyline(Position3D start, Position3D end, float peakHeight,
+                                         float riseEndN, float hangEndN, Span<Vector3> dest)
+        => ParabolicPolyline(start.ToVector3(), end.ToVector3(), peakHeight, riseEndN, hangEndN, dest);
+}

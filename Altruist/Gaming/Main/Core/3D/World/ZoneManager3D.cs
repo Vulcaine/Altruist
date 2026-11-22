@@ -11,12 +11,26 @@ namespace Altruist.Gaming.ThreeD
     /// Manages spatial zones in a 3D world.
     /// Validates that every zone fits entirely inside a single partition.
     /// </summary>
+    /// <remarks>
+    /// Obtain it through <see cref="IGameWorldManager3D.Zones"/> (one per world, created lazily); it is not a DI service.
+    /// Lookups are linear scans over registered zones, bounds are half-open <c>[Position, Position + Size)</c> in integer
+    /// world units and inactive zones are skipped. Not thread-safe. For the 2D variant see <see cref="Altruist.Gaming.TwoD.ZoneManager2D"/>.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// world.Zones.RegisterZone(new Zone3D("arena", new IntVector3(0, 0, 0), new IntVector3(32, 16, 32)));
+    /// var zone = world.Zones.FindZoneAt(10, 2, 10); // "arena"
+    /// </code>
+    /// </example>
     public sealed class ZoneManager3D : IZoneManager3D
     {
         private readonly Dictionary<string, IZone3D> _zones = new(StringComparer.Ordinal);
         private readonly IWorldPartitioner3D _partitioner;
         private readonly List<WorldPartitionManager3D> _partitions;
 
+        /// <summary>Creates a zone manager validating against the given partition grid.</summary>
+        /// <param name="partitioner">Partitioner providing the maximum zone size.</param>
+        /// <param name="partitions">The world's partitions (live list) used for containment checks.</param>
         public ZoneManager3D(
             IWorldPartitioner3D partitioner,
             List<WorldPartitionManager3D> partitions)
@@ -25,6 +39,9 @@ namespace Altruist.Gaming.ThreeD
             _partitions = partitions;
         }
 
+        /// <inheritdoc/>
+        /// <exception cref="ArgumentNullException"><paramref name="zone"/> is <c>null</c>.</exception>
+        /// <exception cref="ZoneValidationException">Empty or duplicate name, zone larger than a partition, or not inside a single partition.</exception>
         public IZone3D RegisterZone(IZone3D zone)
         {
             if (zone is null)
@@ -60,15 +77,20 @@ namespace Altruist.Gaming.ThreeD
             return zone;
         }
 
+        /// <inheritdoc/>
         public IZone3D? GetZone(string name)
             => _zones.TryGetValue(name, out var zone) ? zone : null;
 
+        /// <inheritdoc/>
         public bool RemoveZone(string name)
             => _zones.Remove(name);
 
+        /// <inheritdoc/>
         public IEnumerable<IZone3D> GetAllZones()
             => _zones.Values;
 
+        /// <inheritdoc/>
+        /// <remarks>Returns the first active match (dictionary enumeration order, normally registration order) when zones overlap.</remarks>
         public IZone3D? FindZoneAt(int x, int y, int z)
         {
             foreach (var zone in _zones.Values)
@@ -85,6 +107,8 @@ namespace Altruist.Gaming.ThreeD
             return null;
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Strict overlap test: boxes that only touch are not returned.</remarks>
         public IEnumerable<IZone3D> FindZonesInBounds(
             int minX, int minY, int minZ,
             int maxX, int maxY, int maxZ)

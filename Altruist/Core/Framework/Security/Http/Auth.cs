@@ -34,13 +34,22 @@ namespace Altruist.Security;
 /// </remarks>
 public abstract class AuthController : ControllerBase
 {
+    /// <summary>The token issuer the controller signs in with (an <see cref="IJwtTokenIssuer"/> for <see cref="Altruist.Security.Http.JwtAuthController"/>).</summary>
     protected readonly IIssuer _issuer;
+    /// <summary>Session store; null disables session tracking (the protected helpers then do nothing).</summary>
     protected readonly TokenSessionSyncService? _syncService;
 
+    /// <summary>The application's credential check and account creation.</summary>
     protected readonly ILoginService _loginService;
 
+    /// <summary>Logger for the auth flow.</summary>
     protected readonly ILogger<AuthController> _logger;
 
+    /// <summary>Creates the controller (derived controllers are resolved by MVC).</summary>
+    /// <param name="issuer">Token issuer.</param>
+    /// <param name="loginService">Application login/signup logic.</param>
+    /// <param name="tokenSessionSyncService">Session store.</param>
+    /// <param name="loggerFactory">Logger factory.</param>
     protected AuthController(IIssuer issuer, ILoginService loginService, TokenSessionSyncService tokenSessionSyncService, ILoggerFactory loggerFactory)
     {
         _issuer = issuer;
@@ -49,6 +58,7 @@ public abstract class AuthController : ControllerBase
         _logger = loggerFactory.CreateLogger<AuthController>();
     }
 
+    /// <summary>Deletes every cached session of <paramref name="groupKey"/> (sign out everywhere).</summary>
     protected async Task InvalidateAllSessions(string groupKey)
     {
         if (_syncService != null)
@@ -63,6 +73,7 @@ public abstract class AuthController : ControllerBase
     }
 
 
+    /// <summary>Deletes the sessions of <paramref name="groupKey"/> whose access and refresh tokens have both expired.</summary>
     protected async Task InvalidateExpiredSessions(string groupKey)
     {
         if (_syncService != null)
@@ -79,6 +90,16 @@ public abstract class AuthController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Stores <paramref name="issue"/> as an <see cref="AuthTokenSessionModel"/> keyed by its access token and bound
+    /// to the caller's IP, replacing all other sessions of <paramref name="groupKey"/> (one session per group).
+    /// Returns false only when the request has no remote IP; does nothing (true) when <paramref name="issue"/> is null
+    /// or no session store is registered.
+    /// </summary>
+    /// <param name="issue">The tokens just issued.</param>
+    /// <param name="groupKey">Session group, from <see cref="SessionGroupKeyStrategy"/>.</param>
+    /// <param name="principal">The principal id.</param>
+    /// <param name="fingerprint">Optional client fingerprint the session is bound to.</param>
     protected async Task<bool> CreateAndSaveAuthSessionAsync(TokenIssue? issue, string groupKey, string principal, string? fingerprint = null)
     {
         if (issue != null && _syncService != null)
@@ -112,6 +133,7 @@ public abstract class AuthController : ControllerBase
         return true;
     }
 
+    /// <summary>Invalidates all sessions of <paramref name="groupKey"/>, then saves <paramref name="session"/> under it.</summary>
     protected async Task SaveAuthSessionAsync(AuthTokenSessionModel session, string groupKey)
     {
         if (_syncService != null)

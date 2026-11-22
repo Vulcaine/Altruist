@@ -18,16 +18,26 @@ namespace Altruist;
 /// Full framework service configuration. Extends DI-level service registration
 /// with Portal/Gate discovery for the server runtime.
 /// </summary>
+/// <remarks>
+/// Run by <see cref="AltruistBootstrap.BootstrapServices"/>. Registers beans and <see cref="ServiceAttribute"/> classes
+/// (same rules as <see cref="AltruistDIServiceConfig"/>), then every discovered portal as a transient service under its own
+/// type (honouring <see cref="ConditionalOnConfigAttribute"/>), with its route set from its <c>[Portal]</c> endpoint.
+/// </remarks>
 public class AltruistServiceConfig : IAltruistConfiguration
 {
     private readonly ILogger _log;
+    /// <inheritdoc/>
     public bool IsConfigured { get; set; }
 
+    /// <summary>Creates the configuration step.</summary>
+    /// <param name="log">Logger for registration diagnostics.</param>
     public AltruistServiceConfig(ILogger log)
     {
         _log = log;
     }
 
+    /// <summary>Registers beans, services and portals into <paramref name="services"/>.</summary>
+    /// <param name="services">Collection to register into.</param>
     public Task Configure(IServiceCollection services)
     {
         var cfg = AppConfigLoader.Load();
@@ -36,7 +46,8 @@ public class AltruistServiceConfig : IAltruistConfiguration
 
         var registered = new List<string>();
 
-        // Reuse DI-level service registration (handles [Service] attributes)
+        // Reuse DI-level bean/service registration.
+        AltruistDIServiceConfig.RegisterBeanMethods(services, cfg, _log, registered);
         AltruistDIServiceConfig.RegisterServiceAttributes(services, cfg, _log, registered);
 
         // Full framework addition: Portal discovery
@@ -79,8 +90,7 @@ public class AltruistServiceConfig : IAltruistConfiguration
                         var portalAttribute = portalInstance.GetType().GetCustomAttribute<PortalAttribute>();
                         if (portalAttribute is not null)
                         {
-                            var basePath = cfg["altruist:server:transport:config:path"];
-                            portalInstance.Route = PathUtils.NormalizeRoute(basePath, portalAttribute.Endpoint);
+                            portalInstance.Route = PathUtils.NormalizeRoute(portalAttribute.Endpoint);
                         }
                     }
 

@@ -16,17 +16,21 @@ public sealed class EntityPositionHistory
     private int _head;
     private int _count;
 
+    /// <summary>Maximum snapshots kept.</summary>
     public int Capacity => _buffer.Length;
+    /// <summary>Snapshots currently stored.</summary>
     public int Count => _count;
 
+    /// <summary>Allocates a ring of <paramref name="capacity"/> snapshots.</summary>
     public EntityPositionHistory(int capacity = 64)
     {
         _buffer = new PositionSnapshot[capacity];
     }
 
-    public void Record(long tick, float x, float y, float z)
+    /// <summary>Appends a snapshot, overwriting the oldest when full. Ticks are expected to increase.</summary>
+    public void Record(long tick, float x, float y, float z, float yaw)
     {
-        _buffer[_head] = new PositionSnapshot(tick, x, y, z);
+        _buffer[_head] = new PositionSnapshot(tick, x, y, z, yaw);
         _head = (_head + 1) % _buffer.Length;
         if (_count < _buffer.Length)
             _count++;
@@ -76,5 +80,72 @@ public sealed class EntityPositionHistory
         }
 
         return _buffer[bestIdx];
+    }
+
+    /// <summary>
+    /// Get an exact snapshot or interpolate between the nearest snapshots around the tick.
+    /// Falls back to nearest when the requested tick cannot be bracketed.
+    /// </summary>
+    public PositionSnapshot? GetInterpolated(long tick)
+    {
+        if (_count == 0)
+            return null;
+
+        PositionSnapshot? before = null;
+        PositionSnapshot? after = null;
+
+        for (int i = 0; i < _count; i++)
+        {
+            int idx = (_head - 1 - i + _buffer.Length) % _buffer.Length;
+            var snapshot = _buffer[idx];
+
+            if (snapshot.Tick == tick)
+                return snapshot;
+
+            if (snapshot.Tick < tick)
+            {
+                if (!before.HasValue || snapshot.Tick > before.Value.Tick)
+                    before = snapshot;
+            }
+            else
+            {
+                if (!after.HasValue || snapshot.Tick < after.Value.Tick)
+                    after = snapshot;
+            }
+        }
+
+        if (!before.HasValue || !after.HasValue)
+            return GetNearest(tick);
+
+        var a = before.Value;
+        var b = after.Value;
+        var tickSpan = b.Tick - a.Tick;
+        if (tickSpan <= 0)
+            return GetNearest(tick);
+
+        var t = (float)(tick - a.Tick) / tickSpan;
+        return new PositionSnapshot(
+            tick,
+            Lerp(a.X, b.X, t),
+            Lerp(a.Y, b.Y, t),
+            Lerp(a.Z, b.Z, t),
+            LerpAngleRadians(a.Yaw, b.Yaw, t));
+    }
+
+    private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+    private static float LerpAngleRadians(float a, float b, float t)
+    {
+        var delta = NormalizeRadians(b - a);
+        return NormalizeRadians(a + delta * t);
+    }
+
+    private static float NormalizeRadians(float angle)
+    {
+        while (angle > MathF.PI)
+            angle -= MathF.PI * 2f;
+        while (angle < -MathF.PI)
+            angle += MathF.PI * 2f;
+        return angle;
     }
 }
