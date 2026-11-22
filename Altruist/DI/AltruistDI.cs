@@ -240,7 +240,7 @@ public static class AltruistDI
             if (instance is null)
                 continue;
 
-            if (!_constructedInstances.TryAdd(instance, instance))
+            if (!MarkConstructed(instance))
                 continue;
 
             var implType = instance.GetType();
@@ -250,6 +250,18 @@ public static class AltruistDI
 
             var log = loggerFactory.CreateLogger(implType);
             await DependencyResolver.InvokePostConstructAsync(instance, provider, cfg, log);
+        }
+    }
+
+    // ConditionalWeakTable.TryAdd is missing on netstandard2.1, so check-and-add under a lock.
+    private static bool MarkConstructed(object instance)
+    {
+        lock (_constructedInstances)
+        {
+            if (_constructedInstances.TryGetValue(instance, out _))
+                return false;
+            _constructedInstances.Add(instance, instance);
+            return true;
         }
     }
 

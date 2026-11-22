@@ -2231,6 +2231,7 @@ A world is a spatial container for game objects. It owns the physics world, the 
 
 - When you need a physics world that you own and step yourself, with no organizer, entities or visibility. Use [physics-2d].
 - When your game is rooms and matches rather than a persistent spatial world. Use the rooms package.
+- When you move a world object that has a physics body, do not assign only its Transform; the organizer copies the body's position into Transform after every step, so the object snaps back. Move the body too (body.Position, or the physics API's Teleport).
 
 **Packages:** `Altruist.Gaming` · **Docs:** [/docs/gaming/worlds](https://altruist-docs.vercel.app/docs/gaming/worlds)
 
