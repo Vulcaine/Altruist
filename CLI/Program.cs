@@ -55,13 +55,14 @@ public static partial class Program
         Console.WriteLine($"Creating Altruist project: {projectName}");
         Console.WriteLine();
 
-        // Ensure template is installed
-        Console.WriteLine("Checking template...");
-        var checkResult = await RunProcess("dotnet", ["new", "list", TemplateName]);
-        if (!checkResult.output.Contains(TemplateName))
+        Console.WriteLine($"Installing {TemplatePackage} {Version}...");
+        // The template of this CLI's own version, so the project references the framework this CLI describes;
+        // --force replaces any other installed version (and the same one, which would otherwise be an error).
+        var installResult = await RunProcess("dotnet", ["new", "install", $"{TemplatePackage}::{Version}", "--force"]);
+        if (installResult.exitCode != 0)
         {
-            Console.WriteLine($"Installing {TemplatePackage}...");
-            await RunProcess("dotnet", ["new", "install", TemplatePackage]);
+            Console.Error.WriteLine($"Failed to install the template: {installResult.output}");
+            return 1;
         }
 
         // Create project from template
@@ -75,7 +76,12 @@ public static partial class Program
 
         // Restore packages
         Console.WriteLine("Restoring packages...");
-        await RunProcess("dotnet", ["restore", projectName]);
+        var restoreResult = await RunProcess("dotnet", ["restore", projectName]);
+        if (restoreResult.exitCode != 0)
+        {
+            Console.Error.WriteLine($"Failed to restore packages: {restoreResult.output}");
+            return 1;
+        }
 
         Console.WriteLine();
         Console.WriteLine($"  {projectName} created successfully!");
@@ -85,9 +91,9 @@ public static partial class Program
         Console.WriteLine("    dotnet run");
         Console.WriteLine();
         Console.WriteLine("  Then open:");
-        Console.WriteLine("    http://localhost:8080/api/health        (REST API)");
-        Console.WriteLine("    http://localhost:8080/api/health/hello  (Hello World)");
-        Console.WriteLine("    ws://localhost:8080/                    (WebSocket)");
+        Console.WriteLine("    http://localhost:8080/api/hello         (REST API)");
+        Console.WriteLine("    http://localhost:8080/altruist/health   (health check)");
+        Console.WriteLine("    ws://localhost:8080/                    (WebSocket portal)");
         Console.WriteLine();
 
         return 0;

@@ -8,10 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Altruist" Version="0.9.4-beta" />
-    <PackageReference Include="Altruist.Boot" Version="0.9.4-beta" />
-    <PackageReference Include="Altruist.Socket" Version="0.9.4-beta" />
-    <PackageReference Include="Altruist.Web" Version="0.9.4-beta" />
+    <PackageReference Include="Altruist" Version="0.9.9-beta" />
+    <PackageReference Include="Altruist.Boot" Version="0.9.9-beta" />
+    <PackageReference Include="Altruist.Socket" Version="0.9.9-beta" />
+    <PackageReference Include="Altruist.Web" Version="0.9.9-beta" />
   </ItemGroup>
 
   <ItemGroup>

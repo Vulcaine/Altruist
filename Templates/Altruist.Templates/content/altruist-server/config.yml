@@ -9,7 +9,6 @@ altruist:
         provider: json
       websocket:
         enabled: true
-        path: /ws
         codec:
           provider: json
 

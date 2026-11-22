@@ -14,7 +14,8 @@ public static class McpServerCommand
         + "routing, auth and sessions, persistence (vaults on Postgres, Redis cache), rooms, matchmaking, lobbies, worlds, "
         + "physics, AI and typed clients. Before writing server code in an Altruist project, find the system that does it "
         + "with altruist_search or altruist_capabilities, read it with altruist_capability, and follow its example and config "
-        + "keys instead of writing your own handler, repository or auth.";
+        + "keys instead of writing your own handler, repository or auth. To start a new server project, run "
+        + "`altruist create <Name>`.";
 
     public static async Task<int> RunAsync(string version)
     {
