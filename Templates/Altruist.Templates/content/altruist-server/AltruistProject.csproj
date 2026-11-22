@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="config.yml" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="config*.yml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
