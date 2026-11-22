@@ -8,9 +8,8 @@ using Altruist.Gaming.Rooms;
 namespace Altruist.Gaming.Matchmaking;
 
 /// <summary>
-/// A queue players can join: which room mode it starts, team size, rated or not, and the
+/// A queue players can join: which room mode it starts, teams and their size, rated or not, and the
 /// <see cref="RoomRules"/> of its rooms. Passed to <see cref="MatchmakingModule{TSim,TInput,TPlayer}"/>.
-/// Rooms always have two teams (0 and 1).
 /// </summary>
 public sealed record PlaylistOptions
 {
@@ -18,8 +17,10 @@ public sealed record PlaylistOptions
     public required string Id { get; init; }
     /// <summary>The room mode it starts (passed to the game's simulation).</summary>
     public required string Mode { get; init; }
-    /// <summary>Seats per team; a match has two teams (0 and 1).</summary>
+    /// <summary>Seats per team.</summary>
     public int TeamSize { get; init; } = 1;
+    /// <summary>Teams in a room: 2 (0 and 1, balanced), or 1 (everyone on team 0: free for all).</summary>
+    public int Teams { get; init; } = 2;
     /// <summary>
     /// Rated: groups only form from players inside each other's rating window, teams are balanced
     /// by rating sum, and nobody is filled by bots. Unrated: a full group forms at once, otherwise
@@ -29,8 +30,8 @@ public sealed record PlaylistOptions
     /// <summary>The lifecycle rules of the rooms it starts (reconnects, leaves, join in progress, bots).</summary>
     public RoomRules Rules { get; init; } = new();
 
-    /// <summary>Players in a full room (two teams of <see cref="TeamSize"/>).</summary>
-    public int PlayersNeeded => TeamSize * 2;
+    /// <summary>Players in a full room (<see cref="Teams"/> of <see cref="TeamSize"/>).</summary>
+    public int PlayersNeeded => TeamSize * Teams;
 }
 
 /// <summary>Timings and windows of matchmaking (passed by the game; not read from configuration).</summary>
@@ -54,6 +55,10 @@ public sealed record MatchmakingOptions
     public double StatusIntervalSeconds { get; init; } = 1;
     /// <summary>Fleet: seconds a player that just arrived from another server is not moved again.</summary>
     public double FleetMoveCooldownSeconds { get; init; } = 3;
+    /// <summary>A forming room (<see cref="RoomRules.FormBeforeStart"/>): a bot takes an open seat once nobody arrived for this long.</summary>
+    public double FormingBotEverySeconds { get; init; } = 3;
+    /// <summary>A forming room with every seat driven starts once nobody arrived for this long.</summary>
+    public double FormingSettleSeconds { get; init; } = 3;
 }
 
 /// <summary>One waiting player.</summary>
@@ -151,10 +156,13 @@ public sealed class Matchmaker
         var q = _queues[playlist];
         var free = q.Skip(reserved).ToList();
         if (free.Count == 0) return null;
-        var needed = _playlists[playlist].PlayersNeeded;
+        var p = _playlists[playlist];
+        var needed = p.PlayersNeeded;
+        // A forming room gathers the rest itself: it opens for whoever waits now.
+        var fillAfter = p.Rules.FormBeforeStart ? 0 : _options.FillAfterSeconds;
         List<QueueEntry> group;
         if (free.Count >= needed) group = free.Take(needed).ToList();
-        else if (now - free[0].QueuedAt >= _options.FillAfterSeconds) group = free;
+        else if (now - free[0].QueuedAt >= fillAfter) group = free;
         else return null;
         foreach (var e in group) Remove(e.PrincipalId);
         return group;

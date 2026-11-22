@@ -117,7 +117,7 @@ namespace Altruist.Physx.TwoD
 
     /// <summary>
     /// A collision shape in body-local coordinates. Chains are one-sided (Box2D 2.4): a loop
-    /// wound clockwise collides on its inside. Immutable; create with the static factories and pass in
+    /// wound clockwise collides on its inside; a two-sided chain collides on both. Immutable; create with the static factories and pass in
     /// <see cref="PhysxFixtureDef2D.Shape"/>.
     /// </summary>
     public sealed class PhysxShape2D
@@ -136,6 +136,9 @@ namespace Altruist.Physx.TwoD
 
         /// <summary>For chains: the chain closes into a loop.</summary>
         public bool Loop { get; }
+
+        /// <summary>For chains: collides on both sides, each smoothed over the chain's vertices.</summary>
+        public bool TwoSided { get; private init; }
 
         private PhysxShape2D(PhysxShapeKind2D kind, float radius, Vector2 center, Vector2[] vertices, bool loop)
         {
@@ -178,11 +181,14 @@ namespace Altruist.Physx.TwoD
             new(PhysxShapeKind2D.Polygon, 0f, default, vertices.ToArray(), false);
 
         /// <summary>A chain of one-sided edges; <paramref name="loop"/> closes it. An open chain is created
-        /// with its own first and last vertex as the (degenerate) ghost vertices.</summary>
+        /// with its own first and last vertex as the (degenerate) ghost vertices. <paramref name="twoSided"/>:
+        /// it collides on both sides (the TypeScript twin's planck chains always do), each side as
+        /// smooth over the vertices as a one-sided chain.</summary>
         /// <param name="vertices">Body-local vertices (copied; at least 2 for a chain, 3 for a loop).</param>
         /// <param name="loop">Close the chain.</param>
-        public static PhysxShape2D Chain(IEnumerable<Vector2> vertices, bool loop) =>
-            new(PhysxShapeKind2D.Chain, 0f, default, vertices.ToArray(), loop);
+        /// <param name="twoSided">Collide on both sides.</param>
+        public static PhysxShape2D Chain(IEnumerable<Vector2> vertices, bool loop, bool twoSided = false) =>
+            new(PhysxShapeKind2D.Chain, 0f, default, vertices.ToArray(), loop) { TwoSided = twoSided };
 
         /// <summary>A single two-sided edge from <paramref name="a"/> to <paramref name="b"/> (body-local).</summary>
         /// <param name="a">First end point.</param>

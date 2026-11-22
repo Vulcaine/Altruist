@@ -43,7 +43,7 @@ public sealed class NeedsDashboardAssembly { }
 /// <summary>Unit tests of <see cref="DashboardAccessMiddleware"/>, redaction and <see cref="ConditionalOnAssemblyAttribute"/>.</summary>
 public sealed class DashboardAccessMiddlewareTests
 {
-    private const string Token = "0123456789abcdef-secret";
+    private const string Token = "0123456789abcdef-secret"; // gitleaks:allow (test value)
 
     private sealed class Env : IHostEnvironment
     {
@@ -63,6 +63,7 @@ public sealed class DashboardAccessMiddlewareTests
         var ctx = new DefaultHttpContext { RequestServices = services ?? new ServiceCollection().BuildServiceProvider() };
         ctx.Response.Body = new MemoryStream();
         ctx.Request.Path = "/dashboard/v1/summary";
+        ctx.Request.Host = new HostString("localhost:5000");
         ctx.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.9");
         setup(ctx);
         await mw.InvokeAsync(ctx);
@@ -123,6 +124,31 @@ public sealed class DashboardAccessMiddlewareTests
             c.Request.Headers["X-Forwarded-For"] = "198.51.100.7";
         });
         Assert.Equal(403, status);
+
+        // DNS rebinding: a page on attacker.example resolved to 127.0.0.1 still sends its own Host.
+        (status, reached, _) = await Run(Enabled(), "Development", c =>
+        {
+            c.Connection.RemoteIpAddress = IPAddress.Loopback;
+            c.Request.Host = new HostString("attacker.example:5000");
+        });
+        Assert.False(reached);
+        Assert.Equal(403, status);
+
+        // A cross-site page opening a socket to localhost sends its own Origin.
+        (status, reached, _) = await Run(Enabled(), "Development", c =>
+        {
+            c.Connection.RemoteIpAddress = IPAddress.Loopback;
+            c.Request.Headers.Origin = "https://attacker.example";
+        });
+        Assert.False(reached);
+        Assert.Equal(403, status);
+
+        (status, reached, _) = await Run(Enabled(), "Development", c =>
+        {
+            c.Connection.RemoteIpAddress = IPAddress.Loopback;
+            c.Request.Headers.Origin = "http://127.0.0.1:5000";
+        });
+        Assert.True(reached);
 
         var off = Enabled();
         off["altruist:dashboard:allow-loopback-without-token"] = "false";
@@ -263,7 +289,6 @@ public sealed class DashboardHostTests
         var cache = new InMemoryCache();
         var root = new ServiceCollection();
         root.AddSingleton(appConfig);
-        root.AddSingleton(new MutableConfigSource(new MutableConfigProvider()));
         root.AddSingleton(new JsonSerializerOptions(JsonSerializerDefaults.Web));
         root.AddSingleton<ICacheProvider>(cache);
         root.AddSingleton<IMemoryCacheProvider>(cache);
@@ -278,7 +303,7 @@ public sealed class DashboardHostTests
 
         var bootstrap = root.BuildServiceProvider();
         var startup = new AltruistStartupConfiguration(
-            new ApplicationArgs(), "127.0.0.1", "0", "/", "/ws",
+            new ApplicationArgs(), "127.0.0.1", "0", "/",
             NullLoggerFactory.Instance, context.Object, status.Object, Array.Empty<ITransport>());
         var app = (await startup.BuildAndStartAsync(root, bootstrap))!;
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
@@ -408,5 +433,26 @@ public sealed class DashboardHostTests
         using var badRes = await host.Http.SendAsync(bad);
         var badResult = JsonDocument.Parse(await badRes.Content.ReadAsStringAsync()).RootElement;
         Assert.False(badResult.GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_summary_lists_the_served_areas_and_the_lab_leaves_out_the_dashboard_api()
+    {
+        await using var host = await Start(new() { ["altruist:dashboard:enabled"] = "true", ["altruist:dashboard:token"] = Token });
+
+        using var summary = await host.Http.SendAsync(Req(HttpMethod.Get, "/dashboard/v1/summary"));
+        var features = JsonDocument.Parse(await summary.Content.ReadAsStringAsync()).RootElement.GetProperty("features")
+            .EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("summary", features);
+        Assert.Contains("lab", features);
+        Assert.Contains("server", features);
+        Assert.Contains("pairing", features);
+        Assert.Equal(features.Order(StringComparer.Ordinal), features);
+
+        using var lab = await host.Http.SendAsync(Req(HttpMethod.Get, "/dashboard/v1/lab/actions"));
+        var paths = JsonDocument.Parse(await lab.Content.ReadAsStringAsync()).RootElement.GetProperty("actions")
+            .EnumerateArray().Select(a => a.GetProperty("path").GetString() ?? "").ToList();
+        Assert.NotEmpty(paths);
+        Assert.DoesNotContain(paths, p => p.StartsWith("/dashboard", StringComparison.OrdinalIgnoreCase));
     }
 }

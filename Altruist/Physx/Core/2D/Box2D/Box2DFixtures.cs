@@ -36,6 +36,9 @@ namespace Altruist.Physx.TwoD
 
         internal Fixture Native = null!;
 
+        /// <summary>A two-sided chain's back side: the same chain reversed (one-sided chains collide on one side).</summary>
+        internal Fixture? Back;
+
         /// <summary>The <see cref="Collider2D"/> this fixture is part of (attached through the body provider), or null.</summary>
         internal Collider2D? Owner;
 
@@ -93,19 +96,31 @@ namespace Altruist.Physx.TwoD
         public bool IsTrigger
         {
             get => Native.IsSensor;
-            set => Native.IsSensor = value;
+            set
+            {
+                Native.IsSensor = value;
+                if (Back is not null) Back.IsSensor = value;
+            }
         }
 
         public float Friction
         {
             get => Native.Friction;
-            set => Native.Friction = value;
+            set
+            {
+                Native.Friction = value;
+                if (Back is not null) Back.Friction = value;
+            }
         }
 
         public float Restitution
         {
             get => Native.Restitution;
-            set => Native.Restitution = value;
+            set
+            {
+                Native.Restitution = value;
+                if (Back is not null) Back.Restitution = value;
+            }
         }
 
         public float Density => Native.Density;
@@ -117,7 +132,11 @@ namespace Altruist.Physx.TwoD
                 var f = Native.Filter;
                 return new PhysxFilter2D(f.CategoryBits, f.MaskBits, f.GroupIndex);
             }
-            set => Native.Filter = new Filter { CategoryBits = value.Category, MaskBits = value.Mask, GroupIndex = value.Group };
+            set
+            {
+                Native.Filter = new Filter { CategoryBits = value.Category, MaskBits = value.Mask, GroupIndex = value.Group };
+                if (Back is not null) Back.Filter = Native.Filter;
+            }
         }
 
         public event Action<IPhysxCollider, IPhysxCollider>? OnTriggerEnter;
@@ -315,13 +334,7 @@ namespace Altruist.Physx.TwoD
                         return poly;
                     }
                 case PhysxShapeKind2D.Chain:
-                    {
-                        var chain = new ChainShape();
-                        var verts = s.Vertices.ToArray();
-                        if (s.Loop) chain.CreateLoop(verts);
-                        else chain.CreateChain(verts, verts.Length, verts[0], verts[^1]);
-                        return chain;
-                    }
+                    return ChainOf(s.Vertices.ToArray(), s.Loop);
                 case PhysxShapeKind2D.Edge:
                     {
                         var edge = new EdgeShape();
@@ -333,6 +346,17 @@ namespace Altruist.Physx.TwoD
                 default:
                     throw new NotSupportedException($"Unsupported shape: {s.Kind}");
             }
+        }
+
+        /// <summary>A two-sided chain's back side: the chain with its vertices reversed (it collides on the other side).</summary>
+        public static Shape CreateReversedChain(PhysxShape2D s) => ChainOf(s.Vertices.Reverse().ToArray(), s.Loop);
+
+        private static ChainShape ChainOf(Vector2[] verts, bool loop)
+        {
+            var chain = new ChainShape();
+            if (loop) chain.CreateLoop(verts);
+            else chain.CreateChain(verts, verts.Length, verts[0], verts[^1]);
+            return chain;
         }
     }
 }

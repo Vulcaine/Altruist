@@ -60,7 +60,7 @@ public sealed class FleetRelayMiddleware
     /// Creates the middleware. Installed automatically by the startup pipeline (before routing and shields) whenever an
     /// <see cref="IFleet"/> is registered; you do not add it yourself.
     /// </summary>
-    /// <remarks>Without a secret (<c>altruist:server:fleet:secret</c> or <c>altruist:security:key</c>) nothing is relayed and incoming relay headers are stripped and ignored. Relays connect over plain <c>ws://</c> to the target's internal address.</remarks>
+    /// <remarks>Without a secret (<c>altruist:server:fleet:secret</c> or <c>altruist:security:key</c>) nothing is relayed and incoming relay headers are stripped and ignored. Relays connect over plain WebSocket (no TLS) to the target's internal address.</remarks>
     /// <param name="next">Next middleware.</param>
     /// <param name="fleet">Fleet used to find the target server.</param>
     /// <param name="config">Configuration (relay secret).</param>

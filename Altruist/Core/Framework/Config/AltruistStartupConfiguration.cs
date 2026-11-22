@@ -27,8 +27,8 @@ namespace Altruist
     /// </summary>
     /// <remarks>
     /// <para>Config keys: <c>altruist:server:http:host</c> and <c>altruist:server:http:port</c> (both required to host
-    /// anything; a non-numeric port falls back to 8080), <c>altruist:server:http:path</c> (path base, default <c>/</c>),
-    /// <c>altruist:server:transport:websocket:path</c> (default <c>/ws</c>).</para>
+    /// anything; a non-numeric port falls back to 8080), <c>altruist:server:http:path</c> (path base, default <c>/</c>). WebSocket portals are served at their
+    /// <see cref="PortalAttribute"/> path.</para>
     /// <para>Singleton registrations are copied into the web host as the already-built instances of the bootstrap provider,
     /// so state initialized by <see cref="PostConstructAttribute"/> hooks is shared; controllers and portals gated by
     /// <see cref="ConditionalOnConfigAttribute"/> (or <see cref="ConditionalOnAssemblyAttribute"/>) get no route. Controllers
@@ -49,10 +49,6 @@ namespace Altruist
         private readonly string? _httpPort;
         private readonly string _httpContextPath;
 
-        // Packet transport (optional)
-        // Removed: _packetTransport — replaced by _transports collection
-        private readonly string _wsContextPath;
-
         // Dependencies we need at runtime
         private readonly ILoggerFactory _loggerFactory;
         private readonly IAltruistContext _settings;
@@ -64,7 +60,6 @@ namespace Altruist
         /// <param name="httpHost"><c>altruist:server:http:host</c>.</param>
         /// <param name="httpPort"><c>altruist:server:http:port</c>.</param>
         /// <param name="httpPath"><c>altruist:server:http:path</c>.</param>
-        /// <param name="wsPath"><c>altruist:server:transport:websocket:path</c>.</param>
         /// <param name="loggerFactory">Logger factory.</param>
         /// <param name="settings">Server context that receives the final <see cref="ServerInfo"/>.</param>
         /// <param name="appStatus">Server readiness status, printed at startup.</param>
@@ -75,8 +70,6 @@ namespace Altruist
             [AppConfigValue("altruist:server:http:host", null)] string? httpHost,
             [AppConfigValue("altruist:server:http:port", null)] string? httpPort,
             [AppConfigValue("altruist:server:http:path", "/")] string httpPath,
-
-            [AppConfigValue("altruist:server:transport:websocket:path", "/ws")] string wsPath,
 
             ILoggerFactory loggerFactory,
             IAltruistContext settings,
@@ -89,8 +82,6 @@ namespace Altruist
             _httpHost = NormalizeEmpty(httpHost);
             _httpPort = NormalizeEmpty(httpPort);
             _httpContextPath = NormalizePath(httpPath, defaultIfEmpty: "/");
-
-            _wsContextPath = NormalizePath(wsPath, defaultIfEmpty: "/ws");
 
             _loggerFactory = loggerFactory;
             _settings = settings;
@@ -128,13 +119,13 @@ namespace Altruist
         }
 
         /// <summary>
-        /// Same setup as <see cref="StartAsync"/> but returns the live <see cref="WebApplication"/>
+        /// Same setup as <see cref="StartAsync(IServiceCollection, CancellationToken)"/> but returns the live <see cref="WebApplication"/>
         /// after listeners are bound, instead of blocking on shutdown. Callers (notably the
         /// test framework) can let it run in the background and shut it down explicitly via
         /// the returned <c>WebApplication</c>'s <c>StopAsync</c>/<c>DisposeAsync</c>.
         ///
         /// <para>Returns <c>null</c> if HTTP host/port is unconfigured (matches
-        /// <see cref="StartAsync"/>'s no-op semantic).</para>
+        /// <see cref="StartAsync(IServiceCollection, CancellationToken)"/>'s no-op semantic).</para>
         /// </summary>
         /// <param name="rootServices">The bootstrap service collection.</param>
         /// <param name="cancellationToken">Cancels startup.</param>
@@ -162,13 +153,6 @@ namespace Altruist
             // Falls back to tempProvider only when callers haven't been updated.
             var sharingProvider = bootstrapProvider ?? tempProvider;
 
-            var configSource = tempProvider.GetService<MutableConfigSource>();
-
-            if (configSource == null)
-                throw new InvalidOperationException("MutableConfigSource not registered.");
-
-            // Insert into WebApplication builder
-            builder.Configuration.Sources.Insert(0, configSource);
             builder.Logging.ClearProviders();
 
             // Promote every Singleton-with-factory descriptor to an instance-based
@@ -441,7 +425,7 @@ namespace Altruist
             }
 
             // Bind listeners (non-blocking). Caller decides whether to await shutdown
-            // — production calls <see cref="StartAsync"/> which then awaits
+            // — production calls <see cref="StartAsync(IServiceCollection, CancellationToken)"/> which then awaits
             // <c>WaitForShutdownAsync</c>; tests keep the handle and stop explicitly.
             var connectionString = $"http://{_httpHost}:{portNum}";
             app.Urls.Add(connectionString);

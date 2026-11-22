@@ -50,7 +50,6 @@ public sealed class ServerNodeEndpointTests : IAsyncLifetime
         }, new[] { _load }, new[] { _rooms }, () => ReadyState.Alive, "endpoint-node");
 
         var root = new ServiceCollection();
-        root.AddSingleton(new MutableConfigSource(new MutableConfigProvider()));
         root.AddSingleton<IServerNode>(_node);
         root.AddSingleton<IHostedService>(new ServerDrainOnShutdown(_node));
         var status = new Mock<IServerStatus>();
@@ -62,7 +61,7 @@ public sealed class ServerNodeEndpointTests : IAsyncLifetime
 
         var bootstrap = _bootstrap = root.BuildServiceProvider();
         var startup = new AltruistStartupConfiguration(
-            new ApplicationArgs(), "127.0.0.1", "0", "/", "/ws",
+            new ApplicationArgs(), "127.0.0.1", "0", "/",
             NullLoggerFactory.Instance, context.Object, status.Object, Array.Empty<ITransport>());
         _app = (await startup.BuildAndStartAsync(root, bootstrap))!;
         var address = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();

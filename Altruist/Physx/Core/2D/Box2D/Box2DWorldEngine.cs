@@ -3,6 +3,7 @@ using System.Numerics;
 using Altruist.Physx.Contracts;
 
 using Box2DSharp.Collision.Collider;
+using Box2DSharp.Collision.Shapes;
 using Box2DSharp.Dynamics;
 using Box2DSharp.Dynamics.Contacts;
 
@@ -186,18 +187,22 @@ namespace Altruist.Physx.TwoD
         internal Box2DFixture2D CreateNativeFixture(Body2DAdapter owner, in PhysxFixtureDef2D def)
         {
             var fixture = new Box2DFixture2D(owner, def);
-            fixture.Native = owner.Underlying.CreateFixture(new FixtureDef
-            {
-                Shape = Box2DShapes.Create(def.Shape),
-                Density = def.Density,
-                Friction = def.Friction,
-                Restitution = def.Restitution,
-                IsSensor = def.IsTrigger,
-                Filter = new Filter { CategoryBits = def.Filter.Category, MaskBits = def.Filter.Mask, GroupIndex = def.Filter.Group },
-                UserData = fixture,
-            });
+            fixture.Native = owner.Underlying.CreateFixture(NativeDef(def, Box2DShapes.Create(def.Shape), fixture));
+            if (def.Shape is { Kind: PhysxShapeKind2D.Chain, TwoSided: true })
+                fixture.Back = owner.Underlying.CreateFixture(NativeDef(def, Box2DShapes.CreateReversedChain(def.Shape), fixture));
             return fixture;
         }
+
+        private static FixtureDef NativeDef(in PhysxFixtureDef2D def, Shape shape, Box2DFixture2D fixture) => new()
+        {
+            Shape = shape,
+            Density = def.Density,
+            Friction = def.Friction,
+            Restitution = def.Restitution,
+            IsSensor = def.IsTrigger,
+            Filter = new Filter { CategoryBits = def.Filter.Category, MaskBits = def.Filter.Mask, GroupIndex = def.Filter.Group },
+            UserData = fixture,
+        };
 
         /// <inheritdoc/>
         public void RemoveBody(IPhysxBody body)

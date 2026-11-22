@@ -42,6 +42,9 @@ public interface IMatchmakingGame<TSim, TInput, TPlayer>
 
     /// <summary>The packet that tells a connection its queue status (sent on changes and every <see cref="MatchmakingOptions.StatusIntervalSeconds"/> while searching).</summary>
     IPacketBase QueueStatus(QueueStatusInfo status);
+
+    /// <summary>A forming room (<see cref="RoomRules.FormBeforeStart"/>) has its players: the match starts.</summary>
+    void OnFormed(Room<TSim, TInput, TPlayer> room);
 }
 
 /// <summary>Join-in-progress pacing of a room.</summary>
@@ -90,7 +93,7 @@ internal sealed record RoomRating(double Mean);
 /// </code>
 /// </example>
 /// </summary>
-public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>
+public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<TSim, TInput, TPlayer>, IRoomModuleInspection
     where TSim : class, IRoomSimulation<TInput> where TInput : struct
 {
     private readonly IMatchmakingGame<TSim, TInput, TPlayer> _game;
@@ -104,6 +107,9 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
 
     /// <summary>The fleet stat with a playlist's queue length.</summary>
     public static string StatKey(string playlist) => "queue:" + playlist;
+
+    /// <summary>The fleet stat with the seats a newcomer could take in a playlist's running rooms (unrated playlists).</summary>
+    public static string JoinableStatKey(string playlist) => "joinable:" + playlist;
 
     private sealed record Arrival(double At);
 
@@ -226,11 +232,39 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         }
     }
 
-    /// <summary>Every frame: completes due join-in-progress swaps, then (unless draining) fills running rooms and starts new ones.</summary>
+    /// <summary>Every frame: completes due join-in-progress swaps, then (unless draining) fills running rooms and starts new ones, then forming rooms gather.</summary>
     public void BeforeBotRefills()
     {
         RunPendingSwaps();
         if (!_host.IsDraining) RunMatchmaking();
+        RunForming();
+    }
+
+    /// <summary>
+    /// Forming rooms: a bot takes an open seat once nobody arrived for <see cref="MatchmakingOptions.FormingBotEverySeconds"/>;
+    /// with every seat driven and no swap due, the match starts once nobody arrived for
+    /// <see cref="MatchmakingOptions.FormingSettleSeconds"/> (at once when they are all players).
+    /// </summary>
+    private void RunForming()
+    {
+        foreach (var m in _host.Rooms.ToArray())
+        {
+            if (!m.Forming || m.Ended) continue;
+            var quiet = _host.Now - m.FormingChangedAt;
+            if (m.Seats.FirstOrDefault(sl => sl.IsOpen && sl.Pending is null) is { } open)
+            {
+                if (quiet < O.FormingBotEverySeconds) continue;
+                m.GiveToBot(open);
+                m.FormingArrival(_host.Now);
+                _host.SendRoster(m);
+                continue;
+            }
+            if (m.Seats.Any(sl => sl.Pending is not null)) continue;
+            var allPlayers = m.Seats.All(sl => sl.Owner is not null);
+            if (!allPlayers && quiet < O.FormingSettleSeconds) continue;
+            m.EndForming();
+            _game.OnFormed(m);
+        }
     }
 
     /// <summary>
@@ -284,7 +318,11 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     private void RunFleet()
     {
         if (_host.Fleet is not { } fleet) return;
-        foreach (var p in Queue.Playlists) fleet.SetStat(StatKey(p.Id), Queue.Waiting(p.Id).Count);
+        foreach (var p in Queue.Playlists)
+        {
+            fleet.SetStat(StatKey(p.Id), Queue.Waiting(p.Id).Count);
+            fleet.SetStat(JoinableStatKey(p.Id), JoinableSeats(p));
+        }
         if (!_host.FleetShared || _host.IsDraining || !fleet.IsMultiNode)
         {
             _dirty.Clear();
@@ -310,11 +348,13 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     }
 
     /// <summary>
-    /// Where a playlist's players should wait: the server with room for one more of its rooms and
-    /// the most of them waiting (ties: the lowest server id); null when no server has room.
+    /// Where a playlist's players should wait: a server with a running room they can join (unrated
+    /// playlists), else the server with room for one more of its rooms and the most of them waiting
+    /// (ties: the lowest server id); null when no server has room.
     /// </summary>
     private string? QueueTarget(PlaylistOptions p, int localCount, bool selfFits)
     {
+        if (JoinTarget(p) is { } join) return join;
         var fleet = _host.Fleet!;
         var cost = _host.Game.LoadOf(p.Mode, p.Id);
         FleetNodeInfo? best = null;
@@ -332,6 +372,34 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         }
         return best?.NodeId;
     }
+
+    /// <summary>
+    /// The ready server with the most seats a newcomer could take in an unrated playlist's running
+    /// rooms (ties: the lowest server id; this server while it is not draining); null when none has any.
+    /// </summary>
+    private string? JoinTarget(PlaylistOptions p)
+    {
+        if (p.Rated) return null;
+        var fleet = _host.Fleet!;
+        string? best = null;
+        double bestSeats = 0;
+        foreach (var n in fleet.Nodes)
+        {
+            var self = n.NodeId == fleet.NodeId;
+            if (self ? _host.IsDraining : !n.Accepting) continue;
+            var seats = self ? JoinableSeats(p) : n.Stat(JoinableStatKey(p.Id));
+            if (seats > bestSeats || (seats == bestSeats && best is not null && string.CompareOrdinal(n.NodeId, best) < 0))
+            {
+                best = n.NodeId;
+                bestSeats = seats;
+            }
+        }
+        return bestSeats > 0 ? best : null;
+    }
+
+    /// <summary>Seats nobody drives or is about to take (bot or open) in the playlist's joinable rooms; 0 for rated playlists.</summary>
+    private int JoinableSeats(PlaylistOptions p) =>
+        p.Rated ? 0 : Joinable(p).Sum(m => m.Seats.Count(sl => sl.Owner is null && sl.Pending is null));
 
     private bool Move(RoomSession<TSim, TInput, TPlayer> s, QueueEntry e, string nodeId, string reason, Action? undo = null)
     {
@@ -441,6 +509,7 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         var open = seat.IsOpen;
         var claim = new PendingSeatClaim(s.PrincipalId, name, open ? _host.Now : _host.Now + O.SwapNoticeSeconds, entry.QueuedAt);
         seat.Pending = claim;
+        m.FormingArrival(_host.Now);
         if (!open) Pacing(m).LastSwapAt = _host.Now;
         s.PendingRoom = m;
         SendStatus(s, QueueState.Found, m.Playlist);
@@ -473,11 +542,13 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
             return;
         }
         var wasBot = seat.IsBot;
+        m.FormingArrival(_host.Now);
         var p = m.Join(s.PrincipalId, s.Player, s.ClientId);
         p.Player = s.Player;
         p.DisconnectedAt = null;
         p.LeftEarly = false;
-        m.GiveToHuman(seat, p);
+        if (wasBot) m.HandOverToHuman(seat, p, m.Rules.JoinHandoverSeconds, m.Rules.JoinHandoverMaxWaitSeconds);
+        else m.GiveToHuman(seat, p);
         s.Room = m;
         _host.Bind(s.PrincipalId, m);
         if (wasBot) _host.Notify(m, RoomNoticeKind.BotOut, seat.Id, _host.Game.BotNameOf(m, seat), except: p);
@@ -496,11 +567,11 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
     /// <summary>Starts a room for the group; false (the group is back in the queue) when the server no longer takes it.</summary>
     private bool StartRoom(PlaylistOptions playlist, List<QueueEntry> group)
     {
-        var (team0, team1) = Matchmaker.BalanceTeams(group, byRating: playlist.Rated);
+        var teams = playlist.Teams == 1 ? new[] { (0, group.ToList()) } : TwoTeams(group, playlist.Rated);
         var m = _host.CreateRoom(_host.Game.CreateSimulation(playlist.Mode, playlist.Id), playlist.Mode, playlist.Id, null, playlist.Rules);
         var seatId = 1;
         var botSeats = new List<Seat<TSim, TInput, TPlayer>>();
-        foreach (var (team, members) in new[] { (0, team0), (1, team1) })
+        foreach (var (team, members) in teams)
         {
             for (var i = 0; i < playlist.TeamSize; i++)
             {
@@ -511,8 +582,11 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
                 else botSeats.Add(seat);
             }
         }
+        // A forming room leaves its other seats open for players and bots that arrive one by one.
+        if (playlist.Rules.FormBeforeStart) m.BeginForming(_host.Now);
         // After every player is in: the game may base the bots on them (skill).
-        foreach (var seat in botSeats) m.GiveToBot(seat);
+        if (!m.Forming)
+            foreach (var seat in botSeats) m.GiveToBot(seat);
         if (playlist.Rated && group.Count > 0) m.Set(new RoomRating(group.Average(e => e.Rating)));
         if (!_host.TryStart(m))
         {
@@ -533,4 +607,25 @@ public sealed class MatchmakingModule<TSim, TInput, TPlayer> : IRoomHostModule<T
         _host.SendSnapshots(m);
         return true;
     }
+
+    private static (int, List<QueueEntry>)[] TwoTeams(List<QueueEntry> group, bool byRating)
+    {
+        var (team0, team1) = Matchmaker.BalanceTeams(group, byRating);
+        return [(0, team0), (1, team1)];
+    }
+
+    /// <inheritdoc/>
+    public RoomModuleReport Report(double now) => new(
+        "Matchmaking",
+        Queue.Playlists.Select(p => new KeyValuePair<string, string>(
+            p.Id, $"{Queue.Waiting(p.Id).Count} waiting · {p.Mode}, {p.PlayersNeeded} players{(p.Rated ? ", rated" : "")}")).ToList(),
+        Queue.Playlists
+            .Where(p => Queue.Waiting(p.Id).Count > 0)
+            .Select(p => new ReportTable(
+                $"Queue {p.Id}",
+                ["Player", "Rating", "Waiting"],
+                Queue.Waiting(p.Id)
+                    .Select(e => (IReadOnlyList<string>)[e.PrincipalId, e.Rating.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{Math.Max(0, now - e.QueuedAt):F0} s"])
+                    .ToList()))
+            .ToList());
 }

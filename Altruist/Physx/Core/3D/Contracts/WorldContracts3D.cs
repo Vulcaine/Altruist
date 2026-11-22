@@ -145,7 +145,7 @@ namespace Altruist.Physx.ThreeD
     /// <summary>Engine-agnostic 3D world facade (implemented by <see cref="PhysxWorld3D"/>) over an <see cref="IPhysxWorldEngine3D"/>.</summary>
     public interface IPhysxWorld3D : IPhysxWorld
     {
-        /// <summary>The underlying backend engine; use it for queries the facade does not expose (e.g. <see cref="IPhysxWorldEngine3D.CapsuleCast"/>).</summary>
+        /// <summary>The underlying backend engine; use it for queries the facade does not expose (e.g. <see cref="IPhysxWorldEngine3D.CapsuleCast(Vector3, float, float, Vector3, float, int, uint)"/>).</summary>
         IPhysxWorldEngine3D Engine { get; }
         /// <summary>Registers a body with the engine (see <see cref="IPhysxWorldEngine3D.AddBody"/>).</summary>
         /// <param name="body">Body created for this world's engine.</param>

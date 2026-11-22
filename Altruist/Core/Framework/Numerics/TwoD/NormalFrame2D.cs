@@ -50,6 +50,12 @@ public readonly struct NormalFrame2D
     /// <summary>Tangent <c>(-n.Y, n.X)</c> (counter-clockwise of the normal).</summary>
     public static NormalFrame2D Left(Vector2 normal) => new(normal, TangentSide2D.Left);
 
+    /// <summary>Frame of a line heading <paramref name="radians"/> (counter-clockwise from +X): the
+    /// tangent is the heading <c>(cos, sin)</c>, the normal its left <c>(-sin, cos)</c>. Mirrors TS
+    /// <c>NormalFrame2D.ofHeading</c>.</summary>
+    public static NormalFrame2D OfHeading(float radians) =>
+        new(new Vector2(-DeterministicMath.Sin(radians), DeterministicMath.Cos(radians)), TangentSide2D.Right);
+
     /// <summary>Tangent <c>(n.Y, -n.X)</c> (clockwise of the normal; +X on a floor).</summary>
     public static NormalFrame2D Right(Vector2 normal) => new(normal, TangentSide2D.Right);
 

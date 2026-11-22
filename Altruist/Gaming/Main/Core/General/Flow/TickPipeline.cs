@@ -180,7 +180,7 @@ public sealed class TickPipeline<TCtx>
 
 /// <summary>
 /// The sub-steps a <see cref="TickPipeline{TCtx}"/> runs for each entity of a list: plain steps
-/// and skip points (<see cref="SkipWhen"/>: true skips the remaining sub-steps for THIS entity,
+/// and skip points (<see cref="SkipWhen(string, Func{TCtx, TEntity, bool})"/>: true skips the remaining sub-steps for THIS entity,
 /// the <c>continue</c> of a <c>foreach</c>). Editable by name like every flow builder.
 /// </summary>
 public sealed class EntitySteps<TCtx, TEntity> : OrderedBuilder<EntitySteps<TCtx, TEntity>, EntitySteps<TCtx, TEntity>.Entry>

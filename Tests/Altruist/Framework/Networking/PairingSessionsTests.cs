@@ -123,4 +123,21 @@ public sealed class PairingSessionsTests
         Assert.Equal(6, code.Length);
         Assert.All(code, c => Assert.Contains(c, PairingSessions.CodeAlphabet));
     }
+
+    [Fact]
+    public void Snapshot_lists_each_open_session_with_its_companions_by_slot()
+    {
+        var s = Sessions();
+        s.Host("tv");
+        s.Join("phone-b", "ABC123");
+        s.Join("phone-a", "ABC123");
+        s.Host("monitor");
+
+        var sessions = s.Snapshot();
+
+        Assert.Equal(new[] { "ABC123", "XYZ789" }, sessions.Select(x => x.Code));
+        Assert.Equal("tv", sessions[0].HostClientId);
+        Assert.Equal(new[] { (1, "phone-b"), (2, "phone-a") }, sessions[0].Companions.Select(c => (c.Slot, c.ClientId)));
+        Assert.Empty(sessions[1].Companions);
+    }
 }

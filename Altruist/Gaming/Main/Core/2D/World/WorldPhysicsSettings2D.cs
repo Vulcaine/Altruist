@@ -9,7 +9,7 @@ using Altruist.Physx.TwoD;
 namespace Altruist.Gaming.TwoD
 {
     /// <summary>The physics settings of an organizer-managed 2D world: the index's gravity and fixed step,
-    /// with fixed stepping on, so a world advances in whole steps of <see cref="IWorldIndex2D.FixedDeltaTime"/>
+    /// with fixed stepping on, so a world advances in whole steps of <see cref="IWorldIndex.FixedDeltaTime"/>
     /// whatever the frame time (like the 3D engine). At most <see cref="MaxCatchUpSeconds"/> of simulated time
     /// is run per frame; a longer frame drops the rest instead of spiralling.</summary>
     public static class WorldPhysicsSettings2D

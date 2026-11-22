@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Reflection;
 
 using Altruist.Physx.ThreeD;
+using Altruist.Physx.TwoD;
+using Altruist.TwoD.Numerics;
 using Altruist.ThreeD.Numerics;
 
 using MessagePack;
@@ -10,132 +12,26 @@ using MessagePack;
 namespace Altruist.Dashboard
 {
     /// <summary>
-    /// Delta packet (message code <see cref="PacketCodes.DashboardWorldObjectState"/>) sent by <see cref="DashboardPortal"/>
-    /// to dashboard viewers: changed objects grouped by partition, removed objects, and gizmo upserts/removals for one world.
-    /// JSON and MessagePack compatible.
+    /// Where a shown object is now: what the live feed (<see cref="DashboardWorldFeed"/>) compares tick to tick and sends
+    /// for objects that moved. Objects that appear are sent in full (<see cref="WorldObjectDto"/>) instead.
     /// </summary>
-    /// <remarks>Only changed data is included; viewers apply it on top of the HTTP snapshot from <see cref="WorldDashboardController"/>.</remarks>
-    [MessagePackObject]
-    public sealed class DashboardWorldObjectStatePacket : IPacketBase
-    {
-        /// <summary>Packet code; always <see cref="PacketCodes.DashboardWorldObjectState"/>.</summary>
-        [JsonPropertyName("messageCode")]
-        [Key(0)]
-        public uint MessageCode { get; set; }
-
-        /// <summary>World the update belongs to.</summary>
-        [JsonPropertyName("worldIndex")]
-        [Key(1)]
-        public int WorldIndex { get; set; }
-
-        /// <summary>Server time the diff was taken (UTC).</summary>
-        [JsonPropertyName("timestampUtc")]
-        [Key(2)]
-        public DateTime TimestampUtc { get; set; }
-
-        /// <summary>Partitions containing objects that were added or changed.</summary>
-        [JsonPropertyName("partitions")]
-        [Key(3)]
-        public DashboardPartitionStateDto[] Partitions { get; set; }
-
-        /// <summary>Gizmos added or changed since the last packet (visibility-radius gizmos are resent every packet).</summary>
-        [JsonPropertyName("gizmos")]
-        [Key(4)]
-        public DashboardGizmo[] Gizmos { get; set; }
-
-        /// <summary>Ids of gizmos to delete.</summary>
-        [JsonPropertyName("removedGizmoIds")]
-        [Key(5)]
-        public string[] RemovedGizmoIds { get; set; }
-
-        /// <summary>Instance ids of objects that left the world (or the visibility filter).</summary>
-        [JsonPropertyName("removedObjectIds")]
-        [Key(6)]
-        public string[] RemovedObjectIds { get; set; }
-
-        /// <summary>Creates an empty packet (for deserializers).</summary>
-        public DashboardWorldObjectStatePacket()
-        {
-            MessageCode = PacketCodes.DashboardWorldObjectState;
-            Partitions = Array.Empty<DashboardPartitionStateDto>();
-            Gizmos = Array.Empty<DashboardGizmo>();
-            RemovedGizmoIds = Array.Empty<string>();
-            RemovedObjectIds = Array.Empty<string>();
-        }
-
-        /// <summary>Creates a populated packet; null arrays become empty.</summary>
-        /// <param name="worldIndex">World index.</param>
-        /// <param name="timestampUtc">Diff time (UTC).</param>
-        /// <param name="partitions">Changed partitions.</param>
-        /// <param name="gizmos">Changed gizmos.</param>
-        /// <param name="removedGizmoIds">Removed gizmo ids.</param>
-        /// <param name="removedObjectIds">Removed object instance ids.</param>
-        public DashboardWorldObjectStatePacket(
-            int worldIndex,
-            DateTime timestampUtc,
-            DashboardPartitionStateDto[] partitions,
-            DashboardGizmo[]? gizmos = null,
-            string[]? removedGizmoIds = null,
-            string[]? removedObjectIds = null)
-        {
-            MessageCode = PacketCodes.DashboardWorldObjectState;
-            WorldIndex = worldIndex;
-            TimestampUtc = timestampUtc;
-            Partitions = partitions ?? Array.Empty<DashboardPartitionStateDto>();
-            Gizmos = gizmos ?? Array.Empty<DashboardGizmo>();
-            RemovedGizmoIds = removedGizmoIds ?? Array.Empty<string>();
-            RemovedObjectIds = removedObjectIds ?? Array.Empty<string>();
-        }
-    }
-
-    /// <summary>Changed objects of one world partition inside a <see cref="DashboardWorldObjectStatePacket"/>.</summary>
-    [MessagePackObject]
-    public sealed class DashboardPartitionStateDto
-    {
-        /// <summary>Partition grid index X.</summary>
-        [JsonPropertyName("x")]
-        [Key(0)]
-        public int X { get; set; }
-
-        /// <summary>Partition grid index Y.</summary>
-        [JsonPropertyName("y")]
-        [Key(1)]
-        public int Y { get; set; }
-
-        /// <summary>Partition grid index Z.</summary>
-        [JsonPropertyName("z")]
-        [Key(2)]
-        public int Z { get; set; }
-
-        /// <summary>Objects in this partition that changed since the last packet.</summary>
-        [JsonPropertyName("objects")]
-        [Key(3)]
-        public IReadOnlyList<DashboardWorldObjectStateDto> Objects { get; set; } = Array.Empty<DashboardWorldObjectStateDto>();
-    }
-
-    /// <summary>Minimal per-object state streamed to the dashboard (identity and position only).</summary>
-    [MessagePackObject]
-    public sealed class DashboardWorldObjectStateDto
+    public sealed class DashboardObjectPoseDto
     {
         /// <summary>World object instance id.</summary>
-        [JsonPropertyName("id")]
-        [Key(0)]
         public string InstanceId { get; set; } = string.Empty;
-
         /// <summary>Object archetype (empty if none).</summary>
-        [JsonPropertyName("archetype")]
-        [Key(1)]
         public string Archetype { get; set; } = string.Empty;
-
-        /// <summary>World position (from the physics body when the object has one).</summary>
-        [JsonPropertyName("position")]
-        [Key(2)]
-        public Vector3Dto Position { get; set; } = default!;
-
-        /// <summary>Value of a public string <c>Name</c> property on the object, if it has one; otherwise empty.</summary>
-        [JsonPropertyName("name")]
-        [Key(3)]
+        /// <summary>Value of a public string <c>Name</c> property on the object, if any.</summary>
         public string Name { get; set; } = string.Empty;
+        /// <summary>World position (2D worlds: x, y and z = 0).</summary>
+        public Vector3Dto Position { get; set; } = new();
+        /// <summary>World rotation (2D worlds: about the z axis).</summary>
+        public QuaternionDto Rotation { get; set; } = QuaternionDto.Identity;
+
+        /// <summary>Whether <paramref name="other"/> is the same object at the same pose (within 1e-4).</summary>
+        public bool SameAs(DashboardObjectPoseDto other)
+            => InstanceId == other.InstanceId && Archetype == other.Archetype && string.Equals(Name, other.Name, StringComparison.Ordinal)
+               && Position.Near(other.Position) && Rotation.Near(other.Rotation);
     }
 
     internal static class DashboardWorldObjectNames
@@ -161,6 +57,10 @@ namespace Altruist.Dashboard
     [MessagePackObject]
     public sealed class Vector3Dto
     {
+        /// <summary>Whether every component is within <paramref name="epsilon"/> of <paramref name="other"/>'s.</summary>
+        public bool Near(Vector3Dto other, float epsilon = 1e-4f)
+            => Math.Abs(X - other.X) <= epsilon && Math.Abs(Y - other.Y) <= epsilon && Math.Abs(Z - other.Z) <= epsilon;
+
         /// <summary>X component.</summary>
         [JsonPropertyName("x")]
         [Key(0)]
@@ -175,6 +75,41 @@ namespace Altruist.Dashboard
         [JsonPropertyName("z")]
         [Key(2)]
         public float Z { get; set; }
+    }
+
+    /// <summary>Serializable rotation (a unit quaternion, System.Numerics conventions) used by dashboard DTOs.</summary>
+    public sealed class QuaternionDto
+    {
+        /// <summary>X component.</summary>
+        public float X { get; set; }
+        /// <summary>Y component.</summary>
+        public float Y { get; set; }
+        /// <summary>Z component.</summary>
+        public float Z { get; set; }
+        /// <summary>W component.</summary>
+        public float W { get; set; } = 1f;
+
+        /// <summary>No rotation.</summary>
+        public static QuaternionDto Identity => new();
+
+        /// <summary>From a quaternion.</summary>
+        public static QuaternionDto From(System.Numerics.Quaternion q) => new() { X = q.X, Y = q.Y, Z = q.Z, W = q.W };
+
+        /// <summary>A rotation of <paramref name="radians"/> about the z axis (2D worlds).</summary>
+        public static QuaternionDto AboutZ(float radians) => new() { Z = MathF.Sin(radians / 2f), W = MathF.Cos(radians / 2f) };
+
+        /// <summary>Whether every component is within <paramref name="epsilon"/> of <paramref name="other"/>'s.</summary>
+        public bool Near(QuaternionDto other, float epsilon = 1e-4f)
+            => Math.Abs(X - other.X) <= epsilon && Math.Abs(Y - other.Y) <= epsilon && Math.Abs(Z - other.Z) <= epsilon && Math.Abs(W - other.W) <= epsilon;
+    }
+
+    /// <summary>Serializable 2D vector (a 2D collider's vertex, in the collider's space).</summary>
+    public sealed class Vector2Dto
+    {
+        /// <summary>X component.</summary>
+        public float X { get; set; }
+        /// <summary>Y component.</summary>
+        public float Y { get; set; }
     }
 
     /// <summary>One vertex of a <see cref="DashboardGizmo"/> polyline/polygon (<see cref="DashboardGizmo.Points"/>), world space.</summary>
@@ -308,6 +243,8 @@ namespace Altruist.Dashboard
         public int Index { get; set; }
         /// <summary>World name.</summary>
         public string Name { get; set; } = string.Empty;
+        /// <summary>2 or 3.</summary>
+        public int Dimensions { get; set; } = 3;
 
         /// <summary>Number of partitions in the world.</summary>
         public int PartitionCount { get; set; }
@@ -349,9 +286,15 @@ namespace Altruist.Dashboard
     {
         /// <summary>Collider id.</summary>
         public string Id { get; set; } = string.Empty;
-        /// <summary>Collider shape.</summary>
-        public PhysxColliderShape3D Shape { get; set; }
-        /// <summary>Collider transform; its <c>Size</c> holds the shape dimensions (e.g. capsule = radius, halfLength).</summary>
+        /// <summary>
+        /// Collider shape: <c>sphere</c>, <c>box</c>, <c>capsule</c>, <c>heightfield</c> (3D), <c>circle</c>, <c>box2d</c>,
+        /// <c>capsule2d</c>, <c>polygon</c>, <c>chain</c>, <c>edge</c> (2D).
+        /// </summary>
+        public string Shape { get; set; } = string.Empty;
+        /// <summary>
+        /// Collider transform; its <c>Size</c> holds the shape dimensions (3D capsule = radius, halfLength; 2D circle = radius;
+        /// 2D box = half extents; 2D capsule = radius, half length).
+        /// </summary>
         public TransformDto Transform { get; set; } = default!;
         /// <summary>Whether the collider is an overlap-only trigger.</summary>
         public bool IsTrigger { get; set; }
@@ -360,6 +303,42 @@ namespace Altruist.Dashboard
 
         /// <summary>Down-sampled heightfield for terrain colliders; null otherwise.</summary>
         public HeightfieldDto? Heightfield { get; set; }
+
+        /// <summary>A 2D polygon's, chain's or edge's vertices in the collider's space; null otherwise.</summary>
+        public List<Vector2Dto>? Vertices { get; set; }
+
+        /// <summary>The DTO name of a 3D shape.</summary>
+        public static string ShapeName(PhysxColliderShape3D shape) => shape switch
+        {
+            PhysxColliderShape3D.Sphere3D => "sphere",
+            PhysxColliderShape3D.Box3D => "box",
+            PhysxColliderShape3D.Capsule3D => "capsule",
+            PhysxColliderShape3D.Heightfield3D => "heightfield",
+            _ => shape.ToString().ToLowerInvariant(),
+        };
+
+        /// <summary>The DTO name of a 2D shape.</summary>
+        public static string ShapeName(PhysxColliderShape2D shape) => shape switch
+        {
+            PhysxColliderShape2D.Circle2D => "circle",
+            PhysxColliderShape2D.Box2D => "box2d",
+            PhysxColliderShape2D.Capsule2D => "capsule2d",
+            PhysxColliderShape2D.Polygon2D => "polygon",
+            PhysxColliderShape2D.Chain2D => "chain",
+            PhysxColliderShape2D.Edge2D => "edge",
+            _ => shape.ToString().ToLowerInvariant(),
+        };
+
+        /// <summary>A 2D collider of a body: its transform is the offset and rotation in the body (<c>"local"</c>).</summary>
+        public static ColliderDto FromCollider(IPhysxCollider2D c) => new()
+        {
+            Id = c.Id,
+            Shape = ShapeName(c.Shape),
+            IsTrigger = c.IsTrigger,
+            TransformSpace = "local",
+            Transform = TransformDto.FromTransform(c.Transform),
+            Vertices = c.Vertices?.Select(v => new Vector2Dto { X = v.X, Y = v.Y }).ToList(),
+        };
 
         /// <summary>Builds a local-space DTO from a collider descriptor.</summary>
         /// <param name="c">Collider descriptor.</param>
@@ -370,7 +349,7 @@ namespace Altruist.Dashboard
             return new ColliderDto
             {
                 Id = c.Id,
-                Shape = c.Shape,
+                Shape = ShapeName(c.Shape),
                 IsTrigger = c.IsTrigger,
                 TransformSpace = "local",
                 Transform = TransformDto.FromTransform(c.Transform),
@@ -439,7 +418,7 @@ namespace Altruist.Dashboard
         }
     }
 
-    /// <summary>Serializable transform for dashboard DTOs: position, size and scale (rotation is not included).</summary>
+    /// <summary>Serializable transform for dashboard DTOs: position, rotation, size and scale (2D: z = 0, rotation about z).</summary>
     public sealed class TransformDto
     {
         /// <summary>Position, world units.</summary>
@@ -448,6 +427,8 @@ namespace Altruist.Dashboard
         public Vector3Dto Size { get; set; } = default!;
         /// <summary>Scale.</summary>
         public Vector3Dto Scale { get; set; } = default!;
+        /// <summary>Rotation.</summary>
+        public QuaternionDto Rotation { get; set; } = QuaternionDto.Identity;
 
         /// <summary>Converts a <see cref="Transform3D"/> (rotation dropped).</summary>
         /// <param name="t">Source transform.</param>
@@ -473,8 +454,18 @@ namespace Altruist.Dashboard
                     X = t.Scale.X,
                     Y = t.Scale.Y,
                     Z = t.Scale.Z
-                }
+                },
+                Rotation = QuaternionDto.From(t.Rotation.Value)
             };
         }
+
+        /// <summary>A 2D transform: x, y with z = 0 (size and scale z = 0 and 1), rotation about z.</summary>
+        public static TransformDto FromTransform(Transform2D t) => new()
+        {
+            Position = new Vector3Dto { X = t.Position.X, Y = t.Position.Y },
+            Size = new Vector3Dto { X = t.Size.X, Y = t.Size.Y },
+            Scale = new Vector3Dto { X = t.Scale.X, Y = t.Scale.Y, Z = 1f },
+            Rotation = QuaternionDto.AboutZ(t.Rotation.Radians),
+        };
     }
 }

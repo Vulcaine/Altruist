@@ -51,7 +51,7 @@ public class TokenSessionSyncService
         => _cache.GetAsync<AuthTokenSessionModel>(id, cacheGroupId);
 
     /// <summary>
-    /// The cached session stored under <paramref name="token"/> (its <see cref="IVaultModel.StorageId"/>) in whichever group
+    /// The cached session stored under <paramref name="token"/> (its <see cref="IStoredModel.StorageId"/>) in whichever group
     /// it was saved under, together with that group; null when there is none. Use it to authenticate a presented token.
     /// </summary>
     public async Task<SessionLookup?> FindByTokenAsync(string token)
@@ -67,7 +67,7 @@ public class TokenSessionSyncService
         => _cache.GetAllAsync<AuthTokenSessionModel>(cacheGroupId);
 
     /// <summary>
-    /// Saves <paramref name="entity"/> in the cache under its <see cref="IVaultModel.StorageId"/> and group (recording the
+    /// Saves <paramref name="entity"/> in the cache under its <see cref="IStoredModel.StorageId"/> and group (recording the
     /// group for <see cref="FindByTokenAsync"/>), and in the vault when present.
     /// </summary>
     public async Task SaveAsync(AuthTokenSessionModel entity, string cacheGroupId = "")

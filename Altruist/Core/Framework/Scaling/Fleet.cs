@@ -144,6 +144,29 @@ public interface IFleet
 }
 
 /// <summary>Settings of a <see cref="Fleet"/> (config <c>altruist:server:fleet</c>).</summary>
+/// <summary>
+/// What an operator sees of the fleet beyond <see cref="IFleet"/> (the dashboard reads it). <see cref="Fleet"/>
+/// implements it.
+/// </summary>
+public interface IFleetInspection
+{
+    /// <summary>Effective options.</summary>
+    FleetOptions Options { get; }
+
+    /// <summary>The backplane's kind (<c>memory</c>, <c>redis</c>).</summary>
+    string BackplaneKind { get; }
+
+    /// <summary>Every unit claimed in the cluster (rooms, lobbies, queues …) and which server holds it.</summary>
+    Task<IReadOnlyList<FleetClaim>> ClaimsAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>A unit claimed in the fleet.</summary>
+/// <param name="Kind">Unit kind (e.g. <c>lobby</c>).</param>
+/// <param name="Id">Unit id.</param>
+/// <param name="NodeId">The server that holds it.</param>
+/// <param name="NodeLive">Whether that server is still in the fleet (a claim of a dead server waits for takeover).</param>
+public sealed record FleetClaim(string Kind, string Id, string NodeId, bool NodeLive);
+
 public sealed record FleetOptions
 {
     /// <summary>Servers with the same cluster name form one fleet (several games may share a backplane).</summary>
@@ -179,7 +202,7 @@ public sealed record FleetOptions
 /// </summary>
 [Service(typeof(IFleet))]
 [ConditionalOnMissingService(typeof(IFleet))]
-public sealed class Fleet : IFleet
+public sealed class Fleet : IFleet, IFleetInspection
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -401,6 +424,24 @@ public sealed class Fleet : IFleet
     }
 
     // ------------------------------------------------------------------ units
+
+    /// <inheritdoc/>
+    public string BackplaneKind => _backplane.Kind;
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<FleetClaim>> ClaimsAsync(CancellationToken cancellationToken = default)
+    {
+        var prefix = Key("unit:");
+        var claims = await _backplane.GetByPrefixAsync(prefix, cancellationToken).ConfigureAwait(false);
+        // fleet:{cluster}:unit:{kind}:{id}; a kind has no colon, an id may.
+        return claims
+            .Select(kv => (Unit: kv.Key[prefix.Length..], Owner: kv.Value))
+            .Where(c => c.Unit.Contains(':'))
+            .Select(c => new FleetClaim(c.Unit[..c.Unit.IndexOf(":")], c.Unit[(c.Unit.IndexOf(":") + 1)..], c.Owner, Find(c.Owner) is not null))
+            .OrderBy(c => c.Kind, StringComparer.Ordinal)
+            .ThenBy(c => c.Id, StringComparer.Ordinal)
+            .ToList();
+    }
 
     /// <inheritdoc/>
     /// <remarks>Non-blocking: the backplane write runs in the background and overwrites any previous holder. For ids that must be unique fleet-wide use <see cref="TryClaimAsync"/>.</remarks>

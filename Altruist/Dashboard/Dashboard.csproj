@@ -10,7 +10,7 @@
     <AssemblyName>Altruist.Dashboard</AssemblyName>
     <RootNamespace>Altruist.Dashboard</RootNamespace>
     <Description>Dashboard module for Altruist framework.</Description>
-    <Version>0.9.9-beta</Version>
+    <Version>0.10.0-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>./README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
@@ -18,19 +18,21 @@
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
+  <!-- The dashboard app (App/, built with `npm run build`; dist/ is committed so packing needs no Node). The embedded
+       files manifest keeps their folders ("assets/index.js"), which plain resource names cannot (ManifestEmbeddedFileProvider). -->
+  <PropertyGroup>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="UI\dist\ui\browser\**">
-      <!-- e.g. "scene/index.html", "sessions/index.html", "index.csr.html" -->
-      <LogicalName>%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
+    <EmbeddedResource Include="App\dist\**" />
   </ItemGroup>
 
-  <!-- The Angular UI (incl. node_modules, which ships stray .cs files such as node-gyp's Find-VisualStudio.cs)
-       is never C# source. -->
+  <!-- The app's sources (and node_modules, which ships stray .cs files such as node-gyp's Find-VisualStudio.cs) are
+       never C# source. -->
   <ItemGroup>
-    <Compile Remove="UI\**" />
-    <None Remove="UI\**" />
-    <Content Remove="UI\**" />
+    <Compile Remove="App\**" />
+    <None Remove="App\**" />
+    <Content Remove="App\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -40,9 +42,10 @@
     <Content Remove="TestApp\**\*" />
   </ItemGroup>
 
-  <!-- <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.0-preview.5.24306.11" />
-  </ItemGroup> -->
+  <!-- Generates the embedded files manifest (GenerateEmbeddedFilesManifest above). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.4" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath=""/>

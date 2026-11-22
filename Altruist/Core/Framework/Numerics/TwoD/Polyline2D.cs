@@ -52,4 +52,53 @@ public static class Polyline2D
             outPts.RemoveAt(outPts.Count - 1);
         return outPts;
     }
+
+    /// <summary>The index of the point of <paramref name="points"/> nearest <paramref name="point"/> and
+    /// its distance, searching <paramref name="window"/> indices either side of <paramref name="last"/>
+    /// (so a line that crosses itself never jumps to the other part), wrapping round a
+    /// <paramref name="closed"/> line (its last point repeats its first), or every point when
+    /// <paramref name="last"/> is negative. Ties keep the lower searched index. Mirrors TS
+    /// <c>nearestIndex</c>.</summary>
+    public static (int Index, float Distance) NearestIndex(IReadOnlyList<Vector2> points, Vector2 point, int last, int window, bool closed)
+    {
+        var all = last < 0;
+        var n = closed ? points.Count - 1 : points.Count;
+        var lo = all ? 0 : closed ? last - window : Math.Max(0, last - window);
+        var hi = all ? points.Count - 1 : closed ? last + window : Math.Min(points.Count - 1, last + window);
+        var best = Math.Max(0, last);
+        var bestD = float.PositiveInfinity;
+        for (var k = lo; k <= hi; k++)
+        {
+            var i = (k % n + n) % n;
+            var d = Vector2.DistanceSquared(points[i], point);
+            if (d < bestD)
+            {
+                bestD = d;
+                best = i;
+            }
+        }
+        return (best, MathF.Sqrt(bestD));
+    }
+
+    /// <summary>Drops the points that lie on the straight line between their neighbours (within
+    /// <paramref name="tolerance"/> of the line from the last kept point to the next point, and between
+    /// the two), so a straight run is one segment; the first and last points are kept. Mirrors TS
+    /// <c>dropCollinear</c>.</summary>
+    public static List<Vector2> DropCollinear(IReadOnlyList<Vector2> points, float tolerance)
+    {
+        if (points.Count < 3) return points.ToList();
+        var output = new List<Vector2> { points[0] };
+        for (var i = 1; i < points.Count - 1; i++)
+        {
+            var a = output[^1];
+            var b = points[i];
+            var u = points[i + 1] - a;
+            var len2 = u.LengthSquared();
+            var along = Vector2.Dot(b - a, u);
+            var off = MathF.Abs(VectorMath2D.Cross(b - a, u));
+            if (len2 == 0 || along < 0 || along > len2 || off > tolerance * MathF.Sqrt(len2)) output.Add(b);
+        }
+        output.Add(points[^1]);
+        return output;
+    }
 }

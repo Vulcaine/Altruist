@@ -47,7 +47,7 @@ namespace Altruist.Engine;
 /// </code></example>
 [Service(typeof(IEngineCore))]
 [ConditionalOnConfig("altruist:game:engine")]
-public class AltruistEngine : IAltruistEngine, IDisposable
+public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
 {
     /// <summary>Frame counter of the most recently started engine frame (any engine instance).</summary>
     public static long CurrentTick { get; private set; } = 0;
@@ -149,6 +149,24 @@ public class AltruistEngine : IAltruistEngine, IDisposable
     {
         public long LastLogged;
         public long Suppressed;
+        public long Count;
+        public DateTime LastUtc;
+        public string LastMessage = "";
+    }
+
+    // -------- Inspection (IEngineInspection): read from any thread --------
+    private readonly FrameStats _frameStats = new();
+    private readonly ConcurrentDictionary<TaskIdentifier, (EngineStaticTask Task, RunStats Stats)> _taskStats = new();
+    private readonly Dictionary<TaskIdentifier, long> _staticStartedAt = new();
+    private readonly ConcurrentDictionary<long, CronEntry> _cronJobs = new();
+    private long _nextCronId;
+
+    private sealed class CronEntry(string name, string expression)
+    {
+        public string Name { get; } = name;
+        public string Expression { get; } = expression;
+        public RunStats Stats { get; } = new();
+        public DateTime? Next;
     }
 
     /// <summary>Created by DI; the parameters marked <c>[AppConfigValue]</c> are read from
@@ -406,29 +424,39 @@ public class AltruistEngine : IAltruistEngine, IDisposable
         ArgumentNullException.ThrowIfNull(jobDelegate);
         ObjectDisposedException.ThrowIf(_disposed, this);
         var cron = CronExpression.Parse(cronExpression);
-        _ = RunCronJobAsync(jobDelegate, cron, "cron job " + DescribeDelegate(jobDelegate) + " (" + cronExpression + ")", _cronCts.Token);
+        var entry = new CronEntry(DescribeDelegate(jobDelegate), cronExpression);
+        var id = Interlocked.Increment(ref _nextCronId);
+        _cronJobs[id] = entry;
+        _ = RunCronJobAsync(jobDelegate, cron, entry, "cron job " + entry.Name + " (" + cronExpression + ")", _cronCts.Token)
+            .ContinueWith(_ => _cronJobs.TryRemove(id, out CronEntry? _), TaskScheduler.Default);
     }
 
-    private async Task RunCronJobAsync(Delegate job, CronExpression cron, string source, CancellationToken token)
+    private async Task RunCronJobAsync(Delegate job, CronExpression cron, CronEntry entry, string source, CancellationToken token)
     {
         try
         {
             while (true)
             {
                 var next = cron.GetNextOccurrence(_timeProvider.GetUtcNow().UtcDateTime, TimeZoneInfo.Utc);
+                entry.Next = next;
                 if (!next.HasValue)
                     return;
 
                 await WaitUntilAsync(next.Value, token).ConfigureAwait(false);
 
+                entry.Stats.Started(_timeProvider.GetUtcNow().UtcDateTime);
+                var started = Stopwatch.GetTimestamp();
+                Exception? fault = null;
                 try
                 {
                     await ExecuteDelegateAsync(job).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
+                    fault = ex;
                     ReportFault(source, ex);
                 }
+                entry.Stats.Finished(Stopwatch.GetElapsedTime(started).TotalMilliseconds, fault);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -626,12 +654,25 @@ public class AltruistEngine : IAltruistEngine, IDisposable
 
     private void BeginFrame()
     {
+        _frameStats.Begin();
         CurrentTick = Interlocked.Increment(ref _frame);
         AdoptPendingStaticTasks();
     }
 
     /// <summary>The frame phases after the next-tick queue.</summary>
     private void FinishFrame(long nowStopwatch, float dt)
+    {
+        try
+        {
+            FinishFramePhases(nowStopwatch, dt);
+        }
+        finally
+        {
+            _frameStats.End();
+        }
+    }
+
+    private void FinishFramePhases(long nowStopwatch, float dt)
     {
         RunStaticTasks(nowStopwatch);
         StartDynamicTasksBudgeted();
@@ -729,7 +770,10 @@ public class AltruistEngine : IAltruistEngine, IDisposable
     private void AdoptPendingStaticTasks()
     {
         while (_pendingStaticTasks.TryDequeue(out var task))
+        {
             _staticTasks.Add(task);
+            _taskStats[task.Id] = (task, new RunStats());
+        }
     }
 
     private void RunStaticTasks(long nowStopwatch)
@@ -764,6 +808,9 @@ public class AltruistEngine : IAltruistEngine, IDisposable
             else
                 _staticLastRunStopwatch[task.Id] = NextCadence(lastRun, interval, nowStopwatch);
 
+            if (_taskStats.TryGetValue(task.Id, out var stats))
+                stats.Stats.Started(DateTime.UtcNow);
+            _staticStartedAt[task.Id] = Stopwatch.GetTimestamp();
             _staticInFlight[task.Id] = ExecuteDelegateAsync(task.Delegate);
         }
 
@@ -776,6 +823,8 @@ public class AltruistEngine : IAltruistEngine, IDisposable
                     continue;
                 if (kv.Value.IsFaulted)
                     ReportFault("cycle task " + kv.Key.Id, kv.Value.Exception!.GetBaseException());
+                if (_taskStats.TryGetValue(kv.Key, out var stats) && _staticStartedAt.Remove(kv.Key, out var startedAt))
+                    stats.Stats.Finished(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds, kv.Value.Exception);
                 (done ??= new List<TaskIdentifier>()).Add(kv.Key);
             }
             if (done is not null)
@@ -1013,7 +1062,9 @@ public class AltruistEngine : IAltruistEngine, IDisposable
     }
 
     private static string DescribeDelegate(Delegate del) =>
-        $"{del.Method.DeclaringType?.Name ?? "?"}.{del.Method.Name}";
+        del.Target is IWrappedDelegate wrapped
+            ? DescribeDelegate(wrapped.Inner)
+            : $"{del.Method.DeclaringType?.Name ?? "?"}.{del.Method.Name}";
 
     /// <summary>
     /// Logs a task failure without stopping the loop. Repeats of the same source are
@@ -1026,6 +1077,9 @@ public class AltruistEngine : IAltruistEngine, IDisposable
         long suppressed;
         lock (entry)
         {
+            entry.Count++;
+            entry.LastUtc = DateTime.UtcNow;
+            entry.LastMessage = ex.GetBaseException().Message;
             if (entry.LastLogged != 0 && now - entry.LastLogged < FaultLogInterval)
             {
                 entry.Suppressed++;
@@ -1040,6 +1094,43 @@ public class AltruistEngine : IAltruistEngine, IDisposable
         else
             Logger.LogError(ex, "Engine {Source} threw; the engine keeps running.", source);
     }
+
+    // ---------------- Inspection ----------------
+
+    /// <inheritdoc/>
+    public EngineFrameReport Frames() => _frameStats.Report(_engineHz);
+
+    /// <inheritdoc/>
+    public IReadOnlyList<EngineTaskReport> CycleTasks() => _taskStats.Values
+        .Select(t => t.Stats.TaskReport(DescribeDelegate(t.Task.Delegate), DescribeRate(t.Task.CycleRate)))
+        .OrderBy(t => t.Name, StringComparer.Ordinal)
+        .ToList();
+
+    /// <inheritdoc/>
+    public IReadOnlyList<CronJobReport> CronJobs() => _cronJobs
+        .OrderBy(kv => kv.Key)
+        .Select(kv => kv.Value.Stats.CronReport(kv.Value.Name, kv.Value.Expression, kv.Value.Next))
+        .ToList();
+
+    /// <inheritdoc/>
+    public IReadOnlyList<EngineFaultReport> Faults() => _faults
+        .Select(kv =>
+        {
+            lock (kv.Value)
+                return new EngineFaultReport(kv.Key, kv.Value.Count, kv.Value.LastUtc, kv.Value.LastMessage);
+        })
+        .Where(f => f.Count > 0)
+        .OrderByDescending(f => f.LastUtc)
+        .ToList();
+
+    private static string DescribeRate(CycleRate rate) => rate.Unit switch
+    {
+        CycleUnit.Ticks => rate.Value == 1 ? "every frame" : $"every {rate.Value} frames",
+        CycleUnit.Hz => $"{rate.Value} Hz",
+        CycleUnit.Seconds => $"every {rate.Value} s",
+        CycleUnit.Milliseconds => $"every {rate.Value} ms",
+        _ => rate.ToString() ?? "",
+    };
 
     // ---------------- Timing helpers ----------------
 

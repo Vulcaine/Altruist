@@ -56,6 +56,18 @@ public readonly record struct PairingResult<T>(T? Value, PairingRejectReason? Re
 /// <param name="HostClientId">The host's connection.</param>
 public readonly record struct PairingJoin(int Slot, string HostClientId);
 
+/// <summary>An open pairing session, as <see cref="PairingSessions.Snapshot"/> reports it.</summary>
+/// <param name="Code">The join code.</param>
+/// <param name="HostClientId">The host's connection.</param>
+/// <param name="CreatedUtc">When the host opened it.</param>
+/// <param name="Companions">The companions by slot.</param>
+public sealed record PairingSessionInfo(string Code, string HostClientId, DateTime CreatedUtc, IReadOnlyList<PairingCompanionInfo> Companions);
+
+/// <summary>A companion of a pairing session.</summary>
+/// <param name="Slot">Its slot (1 and up; 0 is the host).</param>
+/// <param name="ClientId">Its connection.</param>
+public sealed record PairingCompanionInfo(int Slot, string ClientId);
+
 /// <summary>Where a relayed payload goes: the target connection and the sender's slot.</summary>
 /// <param name="TargetClientId">The receiving connection.</param>
 /// <param name="FromSlot">The sender's slot (0 = host).</param>
@@ -93,6 +105,7 @@ public sealed class PairingSessions
     {
         public required string Code { get; init; }
         public required string HostClientId { get; init; }
+        public DateTime CreatedUtc { get; } = DateTime.UtcNow;
         public readonly Dictionary<int, string> Companions = new();
     }
 
@@ -137,6 +150,17 @@ public sealed class PairingSessions
     public int Count
     {
         get { lock (_gate) return _byCode.Count; }
+    }
+
+    /// <summary>Every open session (for operators: the dashboard), oldest first.</summary>
+    public IReadOnlyList<PairingSessionInfo> Snapshot()
+    {
+        lock (_gate)
+            return _byCode.Values
+                .OrderBy(x => x.CreatedUtc)
+                .Select(x => new PairingSessionInfo(x.Code, x.HostClientId, x.CreatedUtc,
+                    x.Companions.OrderBy(c => c.Key).Select(c => new PairingCompanionInfo(c.Key, c.Value)).ToList()))
+                .ToList();
     }
 
     /// <summary>Opens a session hosted by <paramref name="hostClientId"/> and returns its code.</summary>

@@ -352,7 +352,6 @@ public sealed class HttpApiHostTests : IAsyncLifetime
         }).Build());
 
         var root = new ServiceCollection();
-        root.AddSingleton(new MutableConfigSource(new MutableConfigProvider()));
         HttpApiConfiguration.Register(root, settings);
         root.AddSingleton<IRequestRateLimiter>(new RequestRateLimiter(settings.RateLimit));
         var status = new Mock<IServerStatus>();
@@ -364,7 +363,7 @@ public sealed class HttpApiHostTests : IAsyncLifetime
 
         _bootstrap = root.BuildServiceProvider();
         var startup = new AltruistStartupConfiguration(
-            new ApplicationArgs(), "127.0.0.1", "0", "/", "/ws",
+            new ApplicationArgs(), "127.0.0.1", "0", "/",
             NullLoggerFactory.Instance, context.Object, status.Object, Array.Empty<ITransport>());
         _app = (await startup.BuildAndStartAsync(root, _bootstrap))!;
         var address = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();

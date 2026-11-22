@@ -12,29 +12,39 @@ VERSION_FILE="version.txt"
 EXPECTED_VERSION=$(cat $VERSION_FILE)
 ERRORS=0
 
-echo "Checking .csproj versions match version.txt ($EXPECTED_VERSION)..."
+# The framework, the CLI and the project template ship together under one version.
+PROJECTS=$(find . ../CLI ../Templates -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*')
+
+echo "Checking versions match version.txt ($EXPECTED_VERSION)..."
 echo ""
 
-for csproj in $(find . -name '*.csproj'); do
-  VERSION=$(grep '<Version>' "$csproj" | sed -E 's|.*<Version>(.*)</Version>.*|\1|')
+for csproj in $PROJECTS; do
+  VERSIONS=$(grep -oE '<(Package)?Version>[^<]*</(Package)?Version>' "$csproj" | sed -E 's|<(Package)?Version>([^<]*)<.*|\2|' || true)
+  # A project created from the template references the Altruist packages of the release it came with.
+  case "$csproj" in
+    ../Templates/*/content/*)
+      VERSIONS="$VERSIONS $(grep -oE 'Include="Altruist[A-Za-z.]*" Version="[^"]*"' "$csproj" | sed -E 's|.*Version="([^"]*)"|\1|')" ;;
+  esac
 
-  if [ -z "$VERSION" ]; then
-    echo "  ⚠️  $csproj => no <Version> tag (skipped)"
+  if [ -z "${VERSIONS// /}" ]; then
+    echo "  ⚠️  $csproj => no version (skipped)"
     continue
   fi
 
-  if [ "$VERSION" == "$EXPECTED_VERSION" ]; then
-    echo "  ✅ $csproj => $VERSION"
-  else
-    echo "  ❌ $csproj => $VERSION (expected $EXPECTED_VERSION)"
-    ERRORS=$((ERRORS + 1))
-  fi
+  for VERSION in $VERSIONS; do
+    if [ "$VERSION" == "$EXPECTED_VERSION" ]; then
+      echo "  ✅ $csproj => $VERSION"
+    else
+      echo "  ❌ $csproj => $VERSION (expected $EXPECTED_VERSION)"
+      ERRORS=$((ERRORS + 1))
+    fi
+  done
 done
 
 echo ""
 
 if [ $ERRORS -gt 0 ]; then
-  echo "❌ $ERRORS project(s) have mismatched versions. Run update_versions.sh to fix."
+  echo "❌ $ERRORS version(s) do not match. Run update_versions.sh to fix."
   exit 1
 fi
 

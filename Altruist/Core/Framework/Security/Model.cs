@@ -229,17 +229,10 @@ public class LoginRequestBinder : IModelBinder
         var body = bindingContext.HttpContext.Request.Body;
         var json = await new StreamReader(body).ReadToEndAsync();
 
-        // Deserialize the JSON into a dynamic object
-        dynamic request = JsonConvert.DeserializeObject(json);
-
-        if (request.username != null && request.password != null)
-        {
-            var usernamePasswordRequest = JsonConvert.DeserializeObject<UsernamePasswordLoginRequest>(json);
-            bindingContext.Result = ModelBindingResult.Success(usernamePasswordRequest);
-        }
-        else
-        {
-            bindingContext.Result = ModelBindingResult.Failed();
-        }
+        // A "null" body deserializes to null, and missing fields come through the constructor as null.
+        var request = JsonConvert.DeserializeObject<UsernamePasswordLoginRequest>(json);
+        bindingContext.Result = request is { Username: not null, Password: not null }
+            ? ModelBindingResult.Success(request)
+            : ModelBindingResult.Failed();
     }
 }

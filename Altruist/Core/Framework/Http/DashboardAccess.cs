@@ -230,7 +230,9 @@ public static class DashboardAccess
     /// <summary>
     /// Whether the request comes straight from this machine: loopback remote address and no proxy headers
     /// (<c>X-Forwarded-For</c>, <c>Forwarded</c>, <c>X-Real-IP</c>), so a local reverse proxy does not make remote
-    /// clients look local.
+    /// clients look local. The <c>Host</c> and any <c>Origin</c> must name loopback too: a web page the developer
+    /// opens reaches localhost from the loopback address as well, through DNS rebinding (Host is the attacker's
+    /// name) or a cross-site WebSocket (Origin is the attacker's site).
     /// </summary>
     /// <param name="context">The request.</param>
     /// <returns>True for a direct loopback request.</returns>
@@ -244,7 +246,19 @@ public static class DashboardAccess
             return false;
         if (ip.IsIPv4MappedToIPv6)
             ip = ip.MapToIPv4();
-        return IPAddress.IsLoopback(ip);
+        return IPAddress.IsLoopback(ip)
+            && IsLoopbackHostName(context.Request.Host.Host)
+            && HasLoopbackOrNoOrigin(headers.Origin.ToString());
+    }
+
+    private static bool HasLoopbackOrNoOrigin(string origin) =>
+        origin.Length == 0 || (Uri.TryCreate(origin, UriKind.Absolute, out var uri) && IsLoopbackHostName(uri.Host));
+
+    private static bool IsLoopbackHostName(string host)
+    {
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return IPAddress.TryParse(host.Trim('[', ']'), out var address) && IPAddress.IsLoopback(address);
     }
 }
 

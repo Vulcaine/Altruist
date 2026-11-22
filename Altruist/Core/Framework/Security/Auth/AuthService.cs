@@ -32,12 +32,12 @@ public interface IAuthService
     Task<ClaimsPrincipal?> ValidateToken(UpgradeAuthRequest context);
 }
 
-[Service(typeof(IAuthService))]
-[ConditionalOnConfig("altruist:security")]
 /// <summary>
 /// Default <see cref="IAuthService"/> (registered when <c>altruist:security</c> exists). Validates with the
 /// registered <see cref="ITokenValidator"/> (JWT in <c>mode: jwt</c>). Override <see cref="Upgrade"/> to customise.
 /// </summary>
+[Service(typeof(IAuthService))]
+[ConditionalOnConfig("altruist:security")]
 public class AuthService : IAuthService
 {
     /// <summary>The issuer of the session token handed out by <see cref="Upgrade"/>.</summary>

@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7 # let a fresh release settle before it is proposed
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: nuget
+    directories:
+      - /Altruist
+      - /Tests
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7 # let a fresh release settle before it is proposed
+    groups:
+      nuget:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directories:
+      - /Altruist/Dashboard/App
+      - /VSCode
+      - /Clients/TypeScript/ai
+      - /Clients/TypeScript/client
+      - /Clients/TypeScript/input
+      - /Clients/TypeScript/net
+      - /Clients/TypeScript/prediction
+      - /Clients/TypeScript/sim2d
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7 # let a fresh release settle before it is proposed
+    groups:
+      npm:
+        patterns: ["*"]

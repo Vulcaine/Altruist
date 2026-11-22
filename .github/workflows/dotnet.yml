@@ -1,8 +1,7 @@
 name: .NET
 
 permissions:
-  pull-requests: write
-  contents: write
+  contents: read
 
 on:
   push:
@@ -37,10 +36,10 @@ jobs:
       ALTRUIST_TEST_PG_REQUIRED: "true"
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
         dotnet-version: 9.0.x
 
@@ -56,11 +55,29 @@ jobs:
     - name: Run Postgres integration tests
       run: dotnet test ./Tests/Tests.csproj --no-build --verbosity normal --filter "Category=Integration" --blame-hang-timeout 5m
 
+    # A project of its own: the CLI's MCP server pulls newer Microsoft.Extensions packages than the framework targets.
+    - name: Run CLI tests
+      run: dotnet test ./Tests/CLI.Tests/CLI.Tests.csproj --verbosity normal
+
+    # Fails when a service, config key or attribute belongs to no capability in catalog/map.yml, or when
+    # catalog/capabilities.json and CAPABILITIES.md were not regenerated after a change.
+    - name: Check the capability catalog
+      run: dotnet run --project ./Tools/Catalog --configuration Release -- --check
+
+    # The release publishes what these commands pack: every Altruist dependency must be among them, and a project
+    # created from the template must build against them.
+    - name: Pack and check the packages
+      run: |
+        dotnet pack ./Altruist --configuration Release --output ./nupkgs
+        dotnet pack ./CLI --configuration Release --output ./nupkgs
+        dotnet pack ./Templates/Altruist.Templates --configuration Release --output ./nupkgs
+        bash ./Tools/check-packages.sh ./nupkgs
+
   validate_version:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Install dos2unix
       run: sudo apt-get install dos2unix
@@ -74,14 +91,16 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # pushes the version tag
     needs: [build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
         dotnet-version: 9.0.x
 
@@ -90,7 +109,11 @@ jobs:
       run: echo "VERSION=v$(cat Altruist/version.txt)" >> $GITHUB_OUTPUT
 
     - name: Pack NuGet packages
-      run: dotnet pack ./Altruist --configuration Release --output ./nupkgs
+      run: |
+        dotnet pack ./Altruist --configuration Release --output ./nupkgs
+        dotnet pack ./CLI --configuration Release --output ./nupkgs
+        dotnet pack ./Templates/Altruist.Templates --configuration Release --output ./nupkgs
+        bash ./Tools/check-packages.sh ./nupkgs
 
     - name: Create Tag
       run: |

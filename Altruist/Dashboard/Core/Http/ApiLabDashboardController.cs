@@ -74,7 +74,7 @@ public sealed class ApiLabDashboardController : ControllerBase
 
     /// <summary>
     /// <c>GET /dashboard/v1/lab/actions</c>: 200 with an <see cref="ApiLabActionsDto"/>: one entry per HTTP route and
-    /// verb (auth-like routes first, then by verb and path), followed by one entry per socket gate. Each entry carries a
+    /// verb, the dashboard's own routes excepted (auth-like routes first, then by verb and path), followed by one entry per socket gate. Each entry carries a
     /// generated sample body (nested to depth 3) and whether it requires auth (<c>[Shield]</c> / <c>[Authorize]</c>,
     /// overridden by <c>[AllowAnonymous]</c>).
     /// </summary>
@@ -121,12 +121,17 @@ public sealed class ApiLabDashboardController : ControllerBase
         return BadRequest("Unknown lab action kind.");
     }
 
+    private static bool IsDashboardRoute(string route)
+        => DashboardAccess.IsDashboardPath(new Microsoft.AspNetCore.Http.PathString(route));
+
     private IEnumerable<ApiLabActionDto> GetHttpActions()
     {
         foreach (var action in _actions.ActionDescriptors.Items.OfType<ControllerActionDescriptor>())
         {
             var route = "/" + (action.AttributeRouteInfo?.Template ?? string.Empty).TrimStart('/');
-            if (string.IsNullOrWhiteSpace(route) || route == "/")
+            // The dashboard's own API is not the app's: it needs the dashboard token (the lab forwards no credentials),
+            // and some of it streams forever.
+            if (string.IsNullOrWhiteSpace(route) || route == "/" || IsDashboardRoute(route))
                 continue;
 
             var methods = action.EndpointMetadata

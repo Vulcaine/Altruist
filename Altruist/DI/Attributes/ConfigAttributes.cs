@@ -346,9 +346,9 @@ public static class LiveConfigSugarExtensions
 
 /// <summary>
 /// In-memory configuration provider whose <see cref="Set"/> immediately triggers a configuration reload
-/// (so <see cref="ILiveConfigValue{T}"/> subscribers are notified). Registered as a singleton service.
+/// (so <see cref="ILiveConfigValue{T}"/> subscribers are notified). <see cref="AppConfigLoader"/> adds one as the last
+/// source of the process-wide configuration; the dashboard's config update sets keys on it.
 /// </summary>
-[Service]
 public sealed class MutableConfigProvider : ConfigurationProvider
 {
     /// <summary>Sets <paramref name="key"/> to <paramref name="value"/> and signals a reload.</summary>
@@ -362,21 +362,19 @@ public sealed class MutableConfigProvider : ConfigurationProvider
 }
 
 /// <summary>
-/// Configuration source inserted first into the web host's configuration at startup (by
-/// <c>AltruistStartupConfiguration</c>). Registered as a singleton service.
+/// Configuration source around one <see cref="MutableConfigProvider"/> (<see cref="AppConfigLoader"/> adds it last).
 /// </summary>
 /// <remarks>
-/// <see cref="Build"/> returns <see cref="Provider"/> itself, so values set on the DI-registered
-/// <see cref="MutableConfigProvider"/> reach every configuration built from this source.
+/// <see cref="Build"/> returns <see cref="Provider"/> itself, so values set on that provider reach every configuration
+/// built from this source.
 /// </remarks>
-[Service]
 public sealed class MutableConfigSource : IConfigurationSource
 {
-    /// <summary>The DI-registered provider instance injected at construction.</summary>
+    /// <summary>The provider this source builds to.</summary>
     public readonly MutableConfigProvider Provider;
 
-    /// <summary>Creates the source around the DI-registered provider.</summary>
-    /// <param name="mutableConfigProvider">Singleton provider.</param>
+    /// <summary>Creates the source around <paramref name="mutableConfigProvider"/>.</summary>
+    /// <param name="mutableConfigProvider">The provider live edits are set on.</param>
     public MutableConfigSource(MutableConfigProvider mutableConfigProvider)
     {
         Provider = mutableConfigProvider;

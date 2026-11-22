@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Aabb2D, Angle, DeterministicRandom, Direction2D, Geometry2D, PiecewiseLinear, Polyline2D, Rotation2D, Scalar, VectorMath2D } from '../src/math/index.ts';
+import { Aabb2D, Angle, DeterministicRandom, Direction2D, Distance2D, Geometry2D, PiecewiseLinear, Polyline2D, Rotation2D, Scalar, VectorMath2D } from '../src/math/index.ts';
 import type { Vec2Like } from '../src/math/vec2.ts';
 import { floats, inlineApproach, inlineClamp, inlineWrap, same, sameVec, units, vectors } from './helpers.ts';
 
@@ -233,5 +233,46 @@ describe('math: Geometry2D / Aabb2D / Polyline2D', () => {
     assert.equal(out.length, pts.length - 2); // the duplicate and the closing point
     assert.deepEqual(Polyline2D.removeDuplicates(pts, 1e-10, false).at(-1), { x: -40, y: 0 });
     assert.deepEqual(Polyline2D.removeDuplicates([]), []);
+  });
+});
+
+describe('math: Polyline2D.nearestIndex', () => {
+  const line: Vec2Like[] = Array.from({ length: 10 }, (_, i) => ({ x: i, y: 0 }));
+
+  it('finds the nearest point within the window round the last one', () => {
+    assert.deepEqual(Polyline2D.nearestIndex(line, { x: 6.2, y: 1 }, 5, 2, false), { index: 6, distance: Math.hypot(0.2, 1) });
+    // Out of the window: the window's nearest end.
+    assert.equal(Polyline2D.nearestIndex(line, { x: 9, y: 0 }, 2, 2, false).index, 4);
+  });
+
+  it('searches every point when last is negative', () => {
+    assert.equal(Polyline2D.nearestIndex(line, { x: 9, y: 0 }, -1, 2, false).index, 9);
+  });
+
+  it('wraps round a closed line (its last point repeats its first)', () => {
+    const loop = [...line, line[0]!];
+    assert.equal(Polyline2D.nearestIndex(loop, { x: 9, y: 0.1 }, 0, 2, true).index, 9);
+  });
+});
+
+describe('math: Polyline2D.dropCollinear', () => {
+  it('keeps one segment per straight run, and every corner', () => {
+    const pts: Vec2Like[] = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }, { x: 3, y: 1 }, { x: 3, y: 2 }];
+    assert.deepEqual(Polyline2D.dropCollinear(pts, 1e-3), [{ x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: 2 }]);
+  });
+
+  it('keeps a point that turns back on the line', () => {
+    const pts: Vec2Like[] = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 1, y: 0 }];
+    assert.equal(Polyline2D.dropCollinear(pts, 1e-3).length, 3);
+  });
+});
+
+describe('math: Distance2D.between / squared', () => {
+  it('match the inline forms', () => {
+    for (const a of vectors()) {
+      const b = { x: a.y * 0.5 - 3, y: a.x + 1 };
+      same(Distance2D.squared(a, b), (a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+      same(Distance2D.between(a, b), Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)));
+    }
   });
 });

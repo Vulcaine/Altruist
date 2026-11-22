@@ -47,7 +47,7 @@ public interface IAuthChallengeWriter
 public sealed class AuthConfiguration : IAltruistConfiguration
 {
     /// <summary>The key used when <c>altruist:security:key</c> is not set. Public (it ships with Altruist): never valid in Production.</summary>
-    public const string DevelopmentKey = "VGhpcy1pcy1hLWRldmVsb3BtZW50LXNlY3JldC1rZXktMTIzNDU2";
+    public const string DevelopmentKey = "VGhpcy1pcy1hLWRldmVsb3BtZW50LXNlY3JldC1rZXktMTIzNDU2"; // gitleaks:allow (public by design; refused in Production)
     /// <summary>Default minimum key length in bytes (UTF-8) for <c>altruist:security:min-key-bytes</c>.</summary>
     public const int DefaultMinKeyBytes = 32;
 

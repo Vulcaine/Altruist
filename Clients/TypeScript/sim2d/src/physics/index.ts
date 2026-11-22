@@ -13,3 +13,5 @@ export { ClosestRayHit2D, rayCastClosest } from './closestRayHit2D.ts';
 export { ContactImpact2D } from './contactImpact2D.ts';
 export { ContactRouter2D, RoutedContact2D, tagOf, touchingContacts, touchingContactsOf, tryRoute } from './contactRouter2D.ts';
 export type { ContactBodyLike, ContactEdgeBodyLike, ContactEdgeLike, ContactFixtureLike, ContactLike, ContactListLike, ContactWorldLike, TagGuard, WorldManifoldLike } from './contactRouter2D.ts';
+export { installBox2D24ChainContacts } from './box2d24Contacts.ts';
+export type { PlanckContacts } from './box2d24Contacts.ts';

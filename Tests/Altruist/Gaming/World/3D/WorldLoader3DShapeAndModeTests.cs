@@ -5,6 +5,8 @@ using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
 using Altruist.Gaming.TwoD;
 using Altruist.Numerics;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace Tests.Gaming.World.ThreeD;
@@ -37,6 +39,25 @@ public class WorldLoader3DShapeAndModeTests
 
         var collider = Assert.Single(Assert.Single(loader.SpawnedWorldObjects).ColliderDescriptors);
         Assert.Equal(2f, collider.Transform.Size.X);
+    }
+
+    [Theory]
+    [InlineData("2D", true, false)]
+    [InlineData("3D", true, true)]
+    [InlineData(null, true, false)]
+    [InlineData("2D", false, false)]
+    [InlineData("3D", false, false)]
+    [InlineData(null, false, false)]
+    public void Loader_registration_requires_3D_mode_and_game_configuration(string? mode, bool gameConfigured, bool expected)
+    {
+        var settings = new Dictionary<string, string?>();
+        if (mode is not null) settings["altruist:environment:mode"] = mode;
+        if (gameConfigured) settings["altruist:game:worlds:partitioner:width"] = "64";
+        var config = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        Assert.Equal(expected, DependencyResolver.ShouldRegister(typeof(WorldLoader3D), config, NullLogger.Instance));
+        if (expected)
+            Assert.True(DependencyResolver.ShouldRegister(typeof(WorldPartitioner3D), config, NullLogger.Instance));
     }
 
     [Fact]

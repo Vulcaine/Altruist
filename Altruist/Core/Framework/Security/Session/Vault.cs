@@ -24,7 +24,7 @@ namespace Altruist.Security;
 /// <summary>
 /// A stored server-side session of the legacy token flows (<see cref="AuthController"/>, <see cref="IAuthService"/>,
 /// <c>mode: session</c>): the issued token pair, expirations, client IP and optional fingerprint. Kept in the cache by
-/// <see cref="TokenSessionSyncService"/> (keyed by <see cref="IVaultModel.StorageId"/>, which the controllers set to the
+/// <see cref="TokenSessionSyncService"/> (keyed by <see cref="IStoredModel.StorageId"/>, which the controllers set to the
 /// access token) and also in the <c>security</c> vault when one is available. Registered when <c>altruist:security</c> exists.
 /// </summary>
 [Vault("security")]

@@ -166,6 +166,7 @@ public sealed class TcpTransport : ITransport
 
     private readonly ICodec _codec;
     private ConnectionGate? _gate;
+    private ILogger _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
     /// <summary>Always <c>"tcp"</c>.</summary>
     public string TransportType => "tcp";
@@ -205,6 +206,7 @@ public sealed class TcpTransport : ITransport
     private void StartTcpServer(IConnectionManager connectionManager, IServiceProvider serviceProvider)
     {
         _gate = serviceProvider.GetService<IConnectionGate>() as ConnectionGate;
+        _logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger<TcpTransport>();
 
         _listener = new TcpListener(IPAddress.Any, _port);
         _listener.Server.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, System.Net.Sockets.SocketOptionName.ReuseAddress, true);
@@ -215,34 +217,77 @@ public sealed class TcpTransport : ITransport
         {
             while (true)
             {
-                var client = await _listener.AcceptTcpClientAsync();
-                client.NoDelay = true;
-                client.ReceiveBufferSize = 16384;
-                client.SendBufferSize = 16384;
-
-                if (_gate != null && !_gate.TryAdmit())
+                TcpClient client;
+                try
                 {
-                    // Server full — send rejection and close
-                    try
-                    {
-                        var msg = Encoding.UTF8.GetBytes("SERVER_FULL");
-                        var len = new byte[4];
-                        BinaryPrimitives.WriteInt32LittleEndian(len, msg.Length);
-                        await client.GetStream().WriteAsync(len);
-                        await client.GetStream().WriteAsync(msg);
-                    }
-                    catch { }
-                    client.Close();
+                    client = await _listener.AcceptTcpClientAsync();
+                }
+                catch (ObjectDisposedException)
+                {
+                    return; // listener stopped
+                }
+                catch (SocketException ex)
+                {
+                    // One failed accept (EMFILE, a reset mid-accept) must not stop the listener.
+                    _logger.LogWarning(ex, "[TCP] Accept failed");
                     continue;
                 }
 
-                _ = HandleClient(client, connectionManager, serviceProvider);
+                if (_gate != null && !_gate.TryAdmit())
+                {
+                    await RejectFullAsync(client);
+                    continue;
+                }
+
+                _ = HandleAdmittedClient(client, connectionManager, serviceProvider);
             }
         });
     }
 
+    private static async Task RejectFullAsync(TcpClient client)
+    {
+        try
+        {
+            var msg = Encoding.UTF8.GetBytes("SERVER_FULL");
+            var len = new byte[4];
+            BinaryPrimitives.WriteInt32LittleEndian(len, msg.Length);
+            await client.GetStream().WriteAsync(len);
+            await client.GetStream().WriteAsync(msg);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            // The client is being turned away; a write it never reads changes nothing.
+        }
+        client.Close();
+    }
+
+    // Owns the admitted slot: it is released on every path, including failed auth and a client that resets mid-handshake.
+    private async Task HandleAdmittedClient(TcpClient client, IConnectionManager connectionManager, IServiceProvider serviceProvider)
+    {
+        try
+        {
+            await HandleClient(client, connectionManager, serviceProvider);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            _logger.LogDebug(ex, "[TCP] Client dropped during handshake");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TCP] Client handler failed");
+        }
+        finally
+        {
+            client.Close();
+            _gate?.Release();
+        }
+    }
+
     private async Task HandleClient(TcpClient client, IConnectionManager connectionManager, IServiceProvider serviceProvider)
     {
+        client.NoDelay = true;
+        client.ReceiveBufferSize = 16384;
+        client.SendBufferSize = 16384;
         var networkStream = client.GetStream();
         var clientIp = client.Client.RemoteEndPoint as IPEndPoint;
 
@@ -273,7 +318,6 @@ public sealed class TcpTransport : ITransport
             {
                 // Same [int32 LE length][UTF-8] shape as the client id and SERVER_FULL, so clients can read it.
                 await WriteLengthPrefixedAsync(networkStream, "Authentication failed.");
-                client.Close();
                 return;
             }
         }
@@ -282,14 +326,7 @@ public sealed class TcpTransport : ITransport
         var connection = new CachedTcpConnection(new TcpConnection(client, authContext.ClientId, authDetails, lengthPrefixed: useFraming));
         connection.Route = _endpoint;
 
-        try
-        {
-            await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
-        }
-        finally
-        {
-            _gate?.Release();
-        }
+        await connectionManager.HandleConnection(connection, _endpoint, authContext.ClientId);
     }
 
     private static async Task WriteLengthPrefixedAsync(NetworkStream stream, string text)
@@ -405,6 +442,7 @@ public sealed class TcpConnection : AltruistConnection
 
     [JsonIgnore]
     private readonly bool _lengthPrefixed;
+    private const int InitialPayloadBytes = 64 * 1024;
 
     /// <summary>Transport type tag (hides the base <c>Type</c>).</summary>
     public new string Type { get; } = "tcp";
@@ -481,13 +519,16 @@ public sealed class TcpConnection : AltruistConnection
             if (messageLength <= 0 || messageLength > 16 * 1024 * 1024) // 16MB max
                 return Array.Empty<byte>();
 
-            // Read exactly messageLength bytes
-            var payload = new byte[messageLength];
+            // The prefix is client-controlled: grow the buffer as bytes actually arrive, so a header
+            // claiming 16 MB followed by silence costs 64 KB, not 16 MB.
+            var payload = new byte[Math.Min(messageLength, InitialPayloadBytes)];
             int payloadRead = 0;
             while (payloadRead < messageLength)
             {
+                if (payloadRead == payload.Length)
+                    Array.Resize(ref payload, (int)Math.Min((long)payload.Length * 2, messageLength));
                 int n = await _networkStream.ReadAsync(
-                    payload.AsMemory(payloadRead, messageLength - payloadRead), cancellationToken);
+                    payload.AsMemory(payloadRead, payload.Length - payloadRead), cancellationToken);
                 if (n == 0) return Array.Empty<byte>();
                 payloadRead += n;
             }

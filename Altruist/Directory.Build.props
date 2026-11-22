@@ -1,5 +1,9 @@
 <Project>
   <PropertyGroup>
     <UseLocalProjects>true</UseLocalProjects>
+    <!-- The XML docs ship with the packages (IntelliSense) and feed the capability catalog (Tools/Catalog). -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Not every public member is documented yet; a missing comment is not a build problem. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 </Project>

@@ -1231,4 +1231,26 @@ public class AutosaveConcurrencyTests
                 Directory.Delete(walDir, true);
         }
     }
+
+    [Fact]
+    public async Task Inspection_reports_dirty_entities_and_flushes_per_service()
+    {
+        var coordinator = new AutosaveCoordinator(NullLoggerFactory.Instance);
+        var service = new AutosaveService<TestPlayerVault>(new InMemoryCache(), coordinator, NullLoggerFactory.Instance, vault: null, walEnabled: false);
+        service.MarkDirty(new TestPlayerVault { StorageId = "p1" }, "o1");
+        service.MarkDirty(new TestPlayerVault { StorageId = "p2" }, "o1");
+
+        var before = Assert.Single(((IAutosaveCoordinatorInspection)coordinator).Services());
+        Assert.Equal(nameof(TestPlayerVault), before.Type);
+        Assert.Equal(2, before.Dirty);
+        Assert.False(before.HasVault);
+        Assert.Null(before.WalPath);
+
+        await coordinator.FlushAllAsync();
+
+        var after = Assert.Single(((IAutosaveCoordinatorInspection)coordinator).Services());
+        Assert.Equal(0, after.Dirty);
+        Assert.Equal(1, after.Flushes);
+        Assert.NotNull(after.LastFlushUtc);
+    }
 }

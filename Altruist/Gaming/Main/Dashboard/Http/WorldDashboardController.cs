@@ -11,24 +11,17 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
-using Altruist.Gaming;
-using Altruist.Gaming.ThreeD;
-using Altruist.Physx.ThreeD;
-using Altruist.ThreeD.Numerics;
-
 namespace Altruist.Dashboard
 {
     /// <summary>
-    /// Read-only HTTP API under <c>/dashboard/v1/worlds</c> used by the world dashboard viewer to list 3D worlds and load full
-    /// snapshots (objects with transforms, colliders, terrain heightfields, gizmos); live deltas then come from
-    /// <see cref="DashboardPortal"/>.
+    /// The world viewer's HTTP API under <c>/dashboard/v1/worlds</c>, for 2D and 3D worlds alike
+    /// (<see cref="IDashboardWorldSource"/>): list the worlds, load one in full, inspect an object, and follow a world
+    /// live as an NDJSON stream of <see cref="DashboardWorldDelta"/>s.
     /// </summary>
     /// <remarks>
     /// Enabled when an <c>altruist:game</c> config section exists, <c>altruist:dashboard:enabled = true</c> and the
-    /// <c>Altruist.Dashboard</c> assembly is loaded. When an <see cref="IVisibilityTracker"/> is registered, non-terrain objects
-    /// are included only if they are player-owned or observed. Heightfields are down-sampled by
-    /// <see cref="DashboardWorldViewOptions.TerrainSampleStride"/>; heightfield objects that span several partitions are emitted once.
-    /// Framework-internal: games publish debug visuals through <see cref="IDashboardGizmoRegistry"/> instead of calling this.
+    /// <c>Altruist.Dashboard</c> assembly is loaded. Without a world source (no 2D or 3D environment mode) the list is
+    /// empty and every world is 404. Games publish debug visuals through <see cref="IDashboardGizmoRegistry"/>.
     /// </remarks>
     [ApiController]
     [Route("/dashboard/v1/worlds")]
@@ -37,327 +30,163 @@ namespace Altruist.Dashboard
     [ConditionalOnAssembly("Altruist.Dashboard")]
     public sealed class WorldDashboardController : ControllerBase
     {
-        private readonly IGameWorldOrganizer3D _worldOrganizer;
+        private static readonly TimeSpan Heartbeat = TimeSpan.FromSeconds(10);
+
+        private readonly IDashboardWorldSource? _source;
+        private readonly DashboardWorldFeed? _feed;
         private readonly IDashboardGizmoRegistry _gizmos;
-        private readonly IVisibilityTracker? _visibilityTracker;
-        private readonly JsonSerializerOptions _jsonOptions;
-        private readonly DashboardWorldViewOptions _viewOptions;
+        private readonly JsonSerializerOptions _json;
+        private readonly DashboardWorldViewOptions _view;
 
         /// <summary>Created by ASP.NET Core through DI.</summary>
-        /// <param name="worldOrganizer">Source of the 3D worlds.</param>
-        /// <param name="gizmos">Gizmo registry included in snapshots.</param>
-        /// <param name="jsonOptions">Serializer options used by the NDJSON stream.</param>
-        /// <param name="viewOptions">Render options (scale, terrain stride).</param>
-        /// <param name="visibilityTracker">Optional; filters objects and adds visibility-radius gizmos.</param>
         public WorldDashboardController(
-            IGameWorldOrganizer3D worldOrganizer,
             IDashboardGizmoRegistry gizmos,
-            JsonSerializerOptions jsonOptions,
-            DashboardWorldViewOptions viewOptions,
-            IVisibilityTracker? visibilityTracker = null)
+            JsonSerializerOptions json,
+            DashboardWorldViewOptions view,
+            IDashboardWorldSource? source = null,
+            DashboardWorldFeed? feed = null)
         {
-            _worldOrganizer = worldOrganizer;
             _gizmos = gizmos;
-            _visibilityTracker = visibilityTracker;
-            _jsonOptions = jsonOptions;
-            _viewOptions = viewOptions;
+            _json = json;
+            _view = view;
+            _source = source;
+            _feed = feed;
         }
 
-        /// <summary><c>GET /dashboard/v1/worlds</c>: summary of every world (index, name, partition and object counts), ordered by index.</summary>
-        /// <returns>200 with the world summaries.</returns>
+        /// <summary><c>GET /dashboard/v1/worlds</c>: every world (index, name, dimensions, partition and object counts), by index.</summary>
         [HttpGet]
-        public ActionResult<IEnumerable<WorldSummaryDto>> GetWorlds()
-        {
-            var worlds = _worldOrganizer
-                .GetAllWorlds()
-                .Select(w => new WorldSummaryDto
-                {
-                    Index = w.Index.Index,
-                    Name = w.Index.Name,
-                    PartitionCount = w.FindPartitionsForPosition(0, 0, 0, float.MaxValue).Count(),
-                    ObjectCount = w.FindAllObjects<IWorldObject3D>().Count(ShouldIncludeObject)
-                })
-                .OrderBy(w => w.Index)
-                .ToList();
+        public ActionResult<IReadOnlyList<WorldSummaryDto>> GetWorlds() => Ok(_source?.Worlds() ?? Array.Empty<WorldSummaryDto>());
 
-            return Ok(worlds);
-        }
-
-        /// <summary><c>GET /dashboard/v1/worlds/{worldIndex}/objects</c>: full snapshot of a world grouped by partition, with render options and gizmos.</summary>
-        /// <param name="worldIndex">World index.</param>
-        /// <returns>200 with a <see cref="WorldObjectsSnapshotDto"/>, or 404 if the world does not exist.</returns>
+        /// <summary><c>GET /dashboard/v1/worlds/{worldIndex}/objects</c>: the whole world by partition, with render options and gizmos; 404 for an unknown world.</summary>
         [HttpGet("{worldIndex:int}/objects")]
         public ActionResult<WorldObjectsSnapshotDto> GetWorldObjectsSnapshot(int worldIndex)
         {
-            var world = _worldOrganizer.GetWorld(worldIndex);
-            if (world is null)
+            if (_source is null || !_source.Exists(worldIndex))
                 return NotFound(new { message = $"World {worldIndex} not found." });
 
-            var partitions = world
-                .FindPartitionsForPosition(0, 0, 0, float.MaxValue)
-                .OfType<WorldPartitionManager3D>()
-                .ToList();
-
-            var partitionDtos = new List<WorldPartitionObjectsDto>();
-            var emittedLargeObjects = new HashSet<string>(StringComparer.Ordinal);
-
-            foreach (var partition in partitions)
+            var summary = _source.Worlds().First(w => w.Index == worldIndex);
+            return Ok(new WorldObjectsSnapshotDto
             {
-                var objs = partition
-                    .GetAllObjects<IWorldObject3D>()
-                    .Where(ShouldIncludeObject)
-                    .Where(o => !IsLargeSnapshotObject(o) || emittedLargeObjects.Add(o.InstanceId));
-
-                var dto = new WorldPartitionObjectsDto
-                {
-                    IndexX = partition.Index.X,
-                    IndexY = partition.Index.Y,
-                    IndexZ = partition.Index.Z,
-                    Objects = objs.Select(BuildWorldObjectDto).ToList()
-                };
-
-                if (dto.Objects.Count == 0)
-                    continue;
-
-                partitionDtos.Add(dto);
-            }
-
-            var snapshot = new WorldObjectsSnapshotDto
-            {
-                WorldIndex = world.Index.Index,
-                WorldName = world.Index.Name ?? string.Empty,
+                WorldIndex = worldIndex,
+                WorldName = summary.Name,
+                Dimensions = _source.Dimensions,
                 GeneratedAtUtc = DateTime.UtcNow,
-                RenderOptions = BuildRenderOptions(),
-                Partitions = partitionDtos,
-                Gizmos = BuildWorldGizmos(world).ToList()
-            };
-
-            return Ok(snapshot);
+                RenderOptions = RenderOptions(),
+                Partitions = _source.Partitions(worldIndex).ToList(),
+                Gizmos = Gizmos(worldIndex).ToList(),
+            });
         }
 
-        /// <summary><c>GET /dashboard/v1/worlds/{worldIndex}/gizmos</c>: current registry gizmos of a world plus visibility-radius gizmos.</summary>
-        /// <param name="worldIndex">World index.</param>
-        /// <returns>200 with the gizmos, or 404 if the world does not exist.</returns>
+        /// <summary><c>GET /dashboard/v1/worlds/{worldIndex}/objects/{instanceId}</c>: one object in full (colliders included); 404 when it is not shown.</summary>
+        [HttpGet("{worldIndex:int}/objects/{instanceId}")]
+        public ActionResult<WorldObjectDto> GetWorldObject(int worldIndex, string instanceId)
+            => _source?.Object(worldIndex, instanceId) is { } o ? Ok(o) : NotFound(new { message = $"Object {instanceId} not found in world {worldIndex}." });
+
+        /// <summary><c>GET /dashboard/v1/worlds/{worldIndex}/gizmos</c>: the registry's gizmos of a world plus visibility radii; 404 for an unknown world.</summary>
         [HttpGet("{worldIndex:int}/gizmos")]
         public ActionResult<IEnumerable<DashboardGizmo>> GetWorldGizmos(int worldIndex)
-        {
-            var world = _worldOrganizer.GetWorld(worldIndex);
-            if (world is null)
-                return NotFound(new { message = $"World {worldIndex} not found." });
-
-            return Ok(BuildWorldGizmos(world));
-        }
+            => _source is not null && _source.Exists(worldIndex) ? Ok(Gizmos(worldIndex).ToList()) : NotFound(new { message = $"World {worldIndex} not found." });
 
         /// <summary>
-        /// <c>GET /dashboard/v1/worlds/{worldIndex}/objects/stream</c>: same objects as the snapshot endpoint, streamed as
-        /// <c>application/x-ndjson</c> with one <see cref="WorldPartitionObjectsDto"/> per line (flushed per partition). Prefer it
-        /// for very large worlds; it carries no gizmos or render options.
+        /// <c>GET /dashboard/v1/worlds/{worldIndex}/objects/stream</c>: the snapshot's objects as <c>application/x-ndjson</c>,
+        /// one <see cref="WorldPartitionObjectsDto"/> per line (flushed per partition), for very large worlds.
         /// </summary>
-        /// <param name="worldIndex">World index.</param>
-        /// <param name="ct">Request cancellation.</param>
-        /// <returns>A task that completes when the stream ends; writes a 404 JSON body if the world does not exist.</returns>
         [HttpGet("{worldIndex:int}/objects/stream")]
         public async Task StreamWorldObjects(int worldIndex, CancellationToken ct)
         {
-            var world = _worldOrganizer.GetWorld(worldIndex);
-            if (world is null)
+            if (_source is null || !_source.Exists(worldIndex))
             {
-                Response.StatusCode = StatusCodes.Status404NotFound;
-                await Response.WriteAsJsonAsync(
-                    new { message = $"World {worldIndex} not found." }, _jsonOptions, ct);
+                await NotFoundJson(worldIndex, ct);
                 return;
             }
 
-            Response.StatusCode = StatusCodes.Status200OK;
             Response.ContentType = "application/x-ndjson";
-
-            var partitions = world
-                .FindPartitionsForPosition(0, 0, 0, float.MaxValue)
-                .OfType<WorldPartitionManager3D>()
-                .ToList();
-            var emittedLargeObjects = new HashSet<string>(StringComparer.Ordinal);
-
-            foreach (var partition in partitions)
+            foreach (var partition in _source.Partitions(worldIndex))
             {
                 ct.ThrowIfCancellationRequested();
-
-                var objs = partition
-                    .GetAllObjects<IWorldObject3D>()
-                    .Where(ShouldIncludeObject)
-                    .Where(o => !IsLargeSnapshotObject(o) || emittedLargeObjects.Add(o.InstanceId));
-
-                var dto = new WorldPartitionObjectsDto
-                {
-                    IndexX = partition.Index.X,
-                    IndexY = partition.Index.Y,
-                    IndexZ = partition.Index.Z,
-                    Objects = objs.Select(BuildWorldObjectDto).ToList()
-                };
-
-                if (dto.Objects.Count == 0)
-                    continue;
-
-                await JsonSerializer.SerializeAsync(Response.Body, dto, _jsonOptions, ct);
-                await Response.WriteAsync("\n", ct);
-                await Response.Body.FlushAsync(ct);
+                await WriteLineAsync(partition, ct);
             }
         }
 
-        private WorldObjectDto BuildWorldObjectDto(IWorldObject3D o)
+        /// <summary>
+        /// <c>GET /dashboard/v1/worlds/{worldIndex}/live</c>: follows a world as <c>application/x-ndjson</c>. The first line
+        /// is the whole world (<see cref="DashboardWorldDelta.Reset"/>), then one line per change (about four a second while
+        /// things move); a line can be another reset when the viewer fell behind. An idle stream gets a
+        /// <c>{"ping":"&lt;utc&gt;"}</c> line every 10 s. Ends when the client goes away. Needs the engine running.
+        /// </summary>
+        [HttpGet("{worldIndex:int}/live")]
+        public async Task FollowWorld(int worldIndex, CancellationToken ct)
         {
-            var effectiveTransform = GetWorldObjectTransform(o);
-            var colliderFallbackTransform = GetColliderFallbackTransform(o, effectiveTransform);
-
-
-            var wod = new WorldObjectDto
+            if (_source is null || _feed is null || !_source.Exists(worldIndex))
             {
-                InstanceId = o.InstanceId,
-                Archetype = o.ObjectArchetype ?? string.Empty,
-                Name = DashboardWorldObjectNames.Resolve(o),
-                ZoneId = o.ZoneId,
-                ClientId = o.ClientId,
-                Expired = o.Expired,
-                Transform = TransformDto.FromTransform(effectiveTransform),
-                Colliders = new List<ColliderDto>()
-            };
-
-            var runtimeColliders = o.Colliders ?? Enumerable.Empty<IPhysxCollider3D>();
-            bool anyRuntime = false;
-
-            foreach (var c in runtimeColliders)
-            {
-                anyRuntime = true;
-                wod.Colliders.Add(BuildRuntimeColliderDto(c, colliderFallbackTransform));
+                await NotFoundJson(worldIndex, ct);
+                return;
             }
 
-            if (!anyRuntime)
+            Response.ContentType = "application/x-ndjson";
+            Response.Headers.CacheControl = "no-cache";
+            using var subscription = _feed.Subscribe(worldIndex);
+            await Response.Body.FlushAsync(ct);
+            try
             {
-                foreach (var c in o.ColliderDescriptors ?? Enumerable.Empty<PhysxCollider3DDesc>())
+                while (!ct.IsCancellationRequested)
                 {
-                    wod.Colliders.Add(ColliderDto.FromCollider(c, _viewOptions.TerrainSampleStride));
+                    using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    idle.CancelAfter(Heartbeat);
+                    try
+                    {
+                        if (!await subscription.Deltas.WaitToReadAsync(idle.Token))
+                            return;
+                        while (subscription.Deltas.TryRead(out var delta))
+                            await WriteLineAsync(delta, ct);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        await WriteLineAsync(new { ping = DateTime.UtcNow }, ct);
+                    }
                 }
             }
-
-            return wod;
-        }
-
-        private static Transform3D GetWorldObjectTransform(IWorldObject3D o)
-        {
-            if (o.Body is not IPhysxBody3D body)
-                return o.Transform;
-
-            if (o is IPhysicsTransformSync3D transformSync)
-                return transformSync.GetWorldTransformFromPhysics(body);
-
-            return o.Transform
-                .WithPosition(Position3D.From(body.Position))
-                .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
-        }
-
-        private static Transform3D GetColliderFallbackTransform(IWorldObject3D o, Transform3D objectTransform)
-        {
-            if (o.Body is not IPhysxBody3D body)
-                return objectTransform;
-
-            return objectTransform
-                .WithPosition(Position3D.From(body.Position))
-                .WithRotation(Rotation3D.FromQuaternion(body.Rotation));
-        }
-
-        private static bool IsLargeSnapshotObject(IWorldObject3D o)
-            => o is Terrain
-                || o.ColliderDescriptors.Any(c => c.Shape == PhysxColliderShape3D.Heightfield3D || c.Heightfield != null);
-
-        private bool ShouldIncludeObject(IWorldObject3D o)
-        {
-            if (o is Terrain)
-                return true;
-
-            if (_visibilityTracker is null)
-                return true;
-
-            if (!string.IsNullOrEmpty(o.ClientId))
-                return true;
-
-            return _visibilityTracker.GetObserversOf(o.InstanceId).Any();
-        }
-
-        private IEnumerable<DashboardGizmo> BuildWorldGizmos(IGameWorldManager3D world)
-            => _gizmos.GetSnapshot(world.Index.Index).Concat(BuildVisibilityRadiusGizmos(world));
-
-        private IEnumerable<DashboardGizmo> BuildVisibilityRadiusGizmos(IGameWorldManager3D world)
-        {
-            if (_visibilityTracker is null)
-                yield break;
-
-            var (_, lookup) = world.GetCachedSnapshot();
-            foreach (var observer in _visibilityTracker.GetObservers())
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                if (observer is not IWorldObject3D observer3D)
-                    continue;
-
-                if (!lookup.ContainsKey(observer3D.InstanceId))
-                    continue;
-
-                var p = observer3D.Transform.Position;
-                yield return new DashboardGizmo
-                {
-                    Id = $"altruist:visibility:observer:{observer3D.InstanceId}:radius",
-                    WorldIndex = world.Index.Index,
-                    Category = "visibility",
-                    Source = "altruist",
-                    Type = "circle",
-                    Label = $"visibility radius {_visibilityTracker.ViewRange:F0}",
-                    Color = "#22C55E66",
-                    Position = new Vector3Dto { X = p.X, Y = p.Y, Z = p.Z },
-                    Radius = _visibilityTracker.ViewRange,
-                    AttachToInstanceId = observer3D.InstanceId,
-                    UpdatedAtUtc = DateTime.UtcNow,
-                };
+                // The viewer left.
             }
         }
 
-        private DashboardWorldRenderOptionsDto BuildRenderOptions()
-            => new()
-            {
-                RenderScale = _viewOptions.RenderScale,
-                TerrainSampleStride = _viewOptions.TerrainSampleStride
-            };
+        private IEnumerable<DashboardGizmo> Gizmos(int worldIndex)
+            => _gizmos.GetSnapshot(worldIndex).Concat(_source!.SourceGizmos(worldIndex));
 
-        private ColliderDto BuildRuntimeColliderDto(IPhysxCollider3D c, Transform3D fallbackWorldTransform)
+        private DashboardWorldRenderOptionsDto RenderOptions()
+            => new() { RenderScale = _view.RenderScale, TerrainSampleStride = _view.TerrainSampleStride };
+
+        private async Task WriteLineAsync<T>(T value, CancellationToken ct)
         {
-            var t = c.Transform;
-            if (t.Equals(Transform3D.Identity) || c.Shape != PhysxColliderShape3D.Heightfield3D)
-                t = fallbackWorldTransform;
+            await JsonSerializer.SerializeAsync(Response.Body, value, _json, ct);
+            await Response.WriteAsync("\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
 
-            return new ColliderDto
-            {
-                Id = c.Id,
-                Shape = c.Shape,
-                Transform = TransformDto.FromTransform(t),
-                IsTrigger = c.IsTrigger,
-                TransformSpace = "world",
-                Heightfield = c.Heightfield is null ? null : HeightfieldDto.FromHeightfield(c.Heightfield, _viewOptions.TerrainSampleStride)
-            };
+        private async Task NotFoundJson(int worldIndex, CancellationToken ct)
+        {
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            await Response.WriteAsJsonAsync(new { message = $"World {worldIndex} not found." }, _json, ct);
         }
     }
 
-    /// <summary>Full world snapshot returned by <see cref="WorldDashboardController.GetWorldObjectsSnapshot"/>.</summary>
+    /// <summary>A whole world, returned by <see cref="WorldDashboardController.GetWorldObjectsSnapshot"/>.</summary>
     public sealed class WorldObjectsSnapshotDto
     {
         /// <summary>World index.</summary>
         public int WorldIndex { get; set; }
         /// <summary>World name (empty if unnamed).</summary>
         public string WorldName { get; set; } = string.Empty;
+        /// <summary>2 or 3.</summary>
+        public int Dimensions { get; set; } = 3;
         /// <summary>Server time the snapshot was built (UTC).</summary>
         public DateTime GeneratedAtUtc { get; set; }
-
         /// <summary>Viewer render hints from <see cref="DashboardWorldViewOptions"/>.</summary>
         public DashboardWorldRenderOptionsDto RenderOptions { get; set; } = new();
-
         /// <summary>Non-empty partitions with their objects.</summary>
         public List<WorldPartitionObjectsDto> Partitions { get; set; } = new();
-
         /// <summary>Registry gizmos plus visibility-radius gizmos for this world.</summary>
         public List<DashboardGizmo> Gizmos { get; set; } = new();
     }
@@ -378,9 +207,8 @@ namespace Altruist.Dashboard
         public int IndexX { get; set; }
         /// <summary>Partition grid index Y.</summary>
         public int IndexY { get; set; }
-        /// <summary>Partition grid index Z.</summary>
+        /// <summary>Partition grid index Z (0 in 2D worlds).</summary>
         public int IndexZ { get; set; }
-
         /// <summary>Objects in the partition.</summary>
         public List<WorldObjectDto> Objects { get; set; } = new();
     }

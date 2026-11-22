@@ -130,6 +130,8 @@ public interface IJwtTokenIssuer : IIssuer
 [ConditionalOnConfig("altruist:security")]
 public class JwtTokenIssuer : IJwtTokenIssuer
 {
+    /// <summary>Appended to the access audience to form the refresh JWT's audience (<c>Altruist.refresh</c>).</summary>
+    public const string RefreshAudienceSuffix = ".refresh";
     /// <summary>Config key of the access JWT lifetime in minutes (default 60).</summary>
     public const string AccessLifetimeKey = "altruist:security:jwt:access-token-minutes";
     /// <summary>Config key of the refresh JWT lifetime in minutes (default 10080 = 7 days).</summary>
@@ -199,7 +201,7 @@ public class JwtTokenIssuer : IJwtTokenIssuer
         return this;
     }
 
-    private string GenerateJwtToken(IEnumerable<Claim> claims, DateTime expires)
+    private string GenerateJwtToken(IEnumerable<Claim> claims, DateTime expires, string? audience)
     {
         var signingKey = JwtOptions.TokenValidationParameters.IssuerSigningKey
             as SymmetricSecurityKey ?? throw new InvalidOperationException("Signing key is not configured.");
@@ -208,7 +210,7 @@ public class JwtTokenIssuer : IJwtTokenIssuer
 
         var token = new JwtSecurityToken(
             issuer: JwtOptions.TokenValidationParameters.ValidIssuer,
-            audience: JwtOptions.TokenValidationParameters.ValidAudience,
+            audience: audience,
             claims: claims,
             expires: expires,
             signingCredentials: creds
@@ -246,8 +248,11 @@ public class JwtTokenIssuer : IJwtTokenIssuer
         now = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
         var accessExpiration = now + _accessTokenExpiry;
         var refreshExpiration = now + _refreshTokenExpiry;
-        var accessToken = GenerateJwtToken(claims, accessExpiration);
-        var refreshToken = GenerateJwtToken(claims, refreshExpiration) + ";jwt";
+        var audience = JwtOptions.TokenValidationParameters.ValidAudience;
+        var accessToken = GenerateJwtToken(claims, accessExpiration, audience);
+        // Its own audience: access-token validation (ValidAudience) rejects a refresh token presented as a bearer token.
+        // The refresh endpoint compares it with the stored session instead of validating it as a JWT.
+        var refreshToken = GenerateJwtToken(claims, refreshExpiration, $"{audience}{RefreshAudienceSuffix}") + ";jwt";
 
         return new JwtToken
         {

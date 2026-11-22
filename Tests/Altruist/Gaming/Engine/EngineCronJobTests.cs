@@ -255,4 +255,53 @@ public sealed class EngineCronJobTests
         ((Func<Task>)Assert.Single(scheduled))().GetAwaiter().GetResult();
         Assert.Equal(before + 1, Volatile.Read(ref StaticCycleService.Runs));
     }
+
+    private static int _ticks;
+    private static void CountTick() => Interlocked.Increment(ref _ticks);
+    private static void Explode() => throw new InvalidOperationException("tick boom");
+
+    [Fact]
+    public void Inspection_names_cycle_tasks_after_the_game_method_and_counts_runs_and_failures()
+    {
+        var clock = new ManualEngineClock();
+        var status = new Mock<IServerStatus>();
+        status.SetupGet(s => s.Status).Returns(ReadyState.Alive);
+        using var engine = new AltruistEngine(status.Object, new ServiceCollection().BuildServiceProvider(),
+            new Mock<IGameWorldOrganizer>().Object, framerateHz: 60, worldStep: "inline", clock: clock);
+        // The diagnostics decorator wraps every task: the report still names the game's own method.
+        var diagnostics = new EngineWithDiagnostics(engine, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+        diagnostics.ScheduleTask(new Action(CountTick));
+        engine.ScheduleTask(new Action(Explode));
+
+        new EngineTestDriver(engine, clock).AdvanceFrames(3, 1.0 / 60);
+
+        var tasks = ((IEngineInspection)engine).CycleTasks();
+        var count = Assert.Single(tasks, t => t.Name == "EngineCronJobTests.CountTick");
+        Assert.Equal(3, count.Runs);
+        Assert.Equal(0, count.Faults);
+        var boom = Assert.Single(tasks, t => t.Name == "EngineCronJobTests.Explode");
+        Assert.Equal(3, boom.Faults);
+        Assert.Equal("tick boom", boom.LastFault);
+        var fault = Assert.Single(((IEngineInspection)engine).Faults());
+        Assert.Equal(3, fault.Count);
+        Assert.Equal(3, ((IEngineInspection)engine).Frames().Window);
+    }
+
+    [Fact]
+    public void Inspection_lists_cron_jobs_with_their_next_occurrence_and_runs()
+    {
+        var time = new ManualTimeProvider(Start);
+        using var engine = NewEngine(time);
+        var runs = 0;
+        engine.RegisterCronJob(new Action(() => Interlocked.Increment(ref runs)), CronPresets.EveryMinute);
+
+        WaitUntil(() => time.PendingTimers == 1, "the job to wait");
+        var job = Assert.Single(((IEngineInspection)engine).CronJobs());
+        Assert.Equal(CronPresets.EveryMinute, job.Expression);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 1, 0, DateTimeKind.Utc), job.NextUtc);
+        Assert.Equal(0, job.Runs);
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        WaitUntil(() => ((IEngineInspection)engine).CronJobs().Single().Runs == 1, "the run to be counted");
+    }
 }

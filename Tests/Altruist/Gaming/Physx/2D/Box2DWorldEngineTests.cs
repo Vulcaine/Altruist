@@ -139,6 +139,45 @@ public class Box2DWorldEngineTests
         { PhysxShape2D.Edge(new Vector2(0, 0), new Vector2(1, 0)), PhysxColliderShape2D.Edge2D },
     };
 
+    [Theory]
+    [InlineData(5f, -10f)]
+    [InlineData(-5f, 10f)]
+    public void Two_sided_chain_stops_a_body_from_either_side(float startY, float vy)
+    {
+        var engine = CreateEngine(0f);
+        Body(engine, Vector2.Zero, PhysxShape2D.Chain(new[] { new Vector2(-10, 0), new Vector2(0, 0), new Vector2(10, 0) }, loop: false, twoSided: true));
+        var ball = Body(engine, new Vector2(0.5f, startY), PhysxShape2D.Circle(0.5f), PhysxBodyType.Dynamic);
+        ball.LinearVelocity = new Vector2(0, vy);
+        for (var i = 0; i < 120; i++) engine.Step(1f / 60f);
+        Assert.Equal(MathF.Sign(startY), MathF.Sign(ball.Position.Y));
+    }
+
+    [Fact]
+    public void One_sided_chain_lets_a_body_through_from_behind()
+    {
+        var engine = CreateEngine(0f);
+        // Left to right: collides from below (Box2D 2.4: the side of normal (dy, -dx)), not from above.
+        Body(engine, Vector2.Zero, PhysxShape2D.Chain(new[] { new Vector2(-10, 0), new Vector2(0, 0), new Vector2(10, 0) }, loop: false));
+        var ball = Body(engine, new Vector2(0.5f, 5f), PhysxShape2D.Circle(0.5f), PhysxBodyType.Dynamic);
+        ball.LinearVelocity = new Vector2(0, -10f);
+        for (var i = 0; i < 120; i++) engine.Step(1f / 60f);
+        Assert.True(ball.Position.Y < 0);
+    }
+
+    [Fact]
+    public void Two_sided_chain_filter_applies_to_both_sides()
+    {
+        var engine = CreateEngine(0f);
+        var wall = engine.CreateBody(new PhysxBodyDef2D());
+        var chain = engine.CreateFixture(wall, new PhysxFixtureDef2D { Shape = PhysxShape2D.Chain(new[] { new Vector2(-10, 0), new Vector2(10, 0) }, loop: false, twoSided: true) });
+        chain.Filter = new PhysxFilter2D(Category: 2, Mask: 0xFFFF);
+        var ball = engine.CreateBody(new PhysxBodyDef2D { Type = PhysxBodyType.Dynamic, Position = new Vector2(0, -5f) });
+        engine.CreateFixture(ball, new PhysxFixtureDef2D { Shape = PhysxShape2D.Circle(0.5f), Density = 1f, Filter = new PhysxFilter2D(Category: 1, Mask: 1) });
+        ball.LinearVelocity = new Vector2(0, 10f);
+        for (var i = 0; i < 120; i++) engine.Step(1f / 60f);
+        Assert.True(ball.Position.Y > 0);
+    }
+
     [Fact]
     public void Fixture_transform_describes_its_geometry()
     {
