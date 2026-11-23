@@ -93,6 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write  # pushes the version tag
+      id-token: write  # NuGet trusted publishing identifies the workflow by its OIDC token
     needs: [build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
@@ -139,8 +140,14 @@ jobs:
 
         echo "✅ Release created with artifacts."
 
+    - name: NuGet login
+      id: nuget
+      uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+      with:
+        user: vulcaine
+
     - name: Publish to NuGet
       env:
-        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
       run: |
         dotnet nuget push ./nupkgs/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
